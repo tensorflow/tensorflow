@@ -39,6 +39,7 @@
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/tfrt_utils.h"
 #include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
@@ -266,53 +267,8 @@ LogicalResult JitRtAsyncCollectiveSupport::PushEvent(int32_t uid,
 
 // -------------------------------------------------------------------------- //
 
-static PrimitiveType ToPrimitiveType(tfrt::DType dtype) {
-  switch (dtype) {
-    // Unsigned integer types.
-    case tfrt::DType::UI8:
-      return PrimitiveType::U8;
-    case tfrt::DType::UI16:
-      return PrimitiveType::U16;
-    case tfrt::DType::UI32:
-      return PrimitiveType::U32;
-    case tfrt::DType::UI64:
-      return PrimitiveType::U64;
-
-    // Signed integer types.
-    case tfrt::DType::I1:
-      return PrimitiveType::PRED;
-    case tfrt::DType::I8:
-      return PrimitiveType::S8;
-    case tfrt::DType::I16:
-      return PrimitiveType::S16;
-    case tfrt::DType::I32:
-      return PrimitiveType::S32;
-    case tfrt::DType::I64:
-      return PrimitiveType::S64;
-
-    // Floating point types.
-    case tfrt::DType::F16:
-      return PrimitiveType::F16;
-    case tfrt::DType::F32:
-      return PrimitiveType::F32;
-    case tfrt::DType::F64:
-      return PrimitiveType::F64;
-    case tfrt::DType::BF16:
-      return PrimitiveType::BF16;
-
-    // Complex types.
-    case tfrt::DType::Complex64:
-      return PrimitiveType::C64;
-    case tfrt::DType::Complex128:
-      return PrimitiveType::C128;
-
-    default:
-      LOG(FATAL) << "Unsupported data type: " << dtype;
-  }
-}
-
 static Shape ToShape(const jitrt::StridedMemrefView& memref) {
-  PrimitiveType type = ToPrimitiveType(memref.dtype);
+  PrimitiveType type = TfrtToPrimitiveType(memref.dtype);
 
   // Recover `minor_to_major` dimensions permutation from strides.
   auto indexed_strides_range =
@@ -388,7 +344,7 @@ FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
     int element_count = 1;
     for (int size : source->sizes) element_count *= size;
     device_buffers.emplace_back(DeviceBufferPair{
-        ToPrimitiveType(source->dtype), element_count,
+        TfrtToPrimitiveType(source->dtype), element_count,
         GetDeviceAddress(*source), GetDeviceAddress(*destination)});
   }
   return device_buffers;
@@ -1194,8 +1150,9 @@ LogicalResult Cholesky::operator()(
 
   CholeskyParams params{n,        batch_size,       uplo,
                         a_buffer, workspace_buffer, info_buffer};
-  auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
-                              ToPrimitiveType(operand.dtype), &params, stream);
+  auto executed =
+      RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
+                  TfrtToPrimitiveType(operand.dtype), &params, stream);
   if (!executed.ok()) return failure();
 
   return success();
@@ -1303,7 +1260,7 @@ LogicalResult TriangularSolve::operator()(
       b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
       [](int64_t a, int64_t b) { return a * b; });
 
-  PrimitiveType elem_type = ToPrimitiveType(b.dtype);
+  PrimitiveType elem_type = TfrtToPrimitiveType(b.dtype);
   int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_type);
   int64_t a_batch_stride = left_side ? m * m * elem_size : n * n * elem_size;
   int64_t b_batch_stride = m * n * elem_size;

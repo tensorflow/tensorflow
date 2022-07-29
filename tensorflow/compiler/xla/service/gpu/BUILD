@@ -633,6 +633,7 @@ cc_library(
         ":stream_executor_util",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//mlir:Support",
+        "//tensorflow/compiler/xla:tfrt_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:custom_call_status_internal",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
