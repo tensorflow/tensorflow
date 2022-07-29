@@ -1283,6 +1283,10 @@ bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
       if (const_node != nullptr && const_node->op() == "Const") {
         Tensor alpha_tensor;
         alpha_tensor.FromProto(const_node->attr().at("value").tensor());
+        // Only fusing if the const is a scalar value
+        if (alpha_tensor.shape().dims() > 0) {
+          return false;
+        }
         alpha_val = alpha_tensor.flat<float>()(0);
       } else {
         return false;
@@ -1290,6 +1294,10 @@ bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
     } else if (alpha_node_def->op() == "Const") {
       Tensor alpha_tensor;
       alpha_tensor.FromProto(alpha_node_def->attr().at("value").tensor());
+      // Only fusing if the const is a scalar value
+      if (alpha_tensor.shape().dims() > 0) {
+        return false;
+      }
       alpha_val = alpha_tensor.flat<float>()(0);
     } else {
       return false;
