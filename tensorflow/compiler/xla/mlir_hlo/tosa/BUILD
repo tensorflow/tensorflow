@@ -5,7 +5,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 package(
     default_visibility = [
         ":internal",
-        "//tensorflow/compiler/mlir/hlo/tosa:__subpackages__",
+        "//tensorflow/compiler/xla/mlir_hlo/tosa:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -26,7 +26,7 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-pdll",
     td_file = "lib/Transforms/legalize_mhlo.pdll",
     deps = [
-        "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:TosaDialectTdFiles",
     ],
@@ -82,7 +82,7 @@ cc_binary(
     srcs = ["mhlo_tosa_opt.cc"],
     deps = [
         ":MHLOTOSATransforms",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",

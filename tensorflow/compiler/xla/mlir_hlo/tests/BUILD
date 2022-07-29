@@ -15,7 +15,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/mlir/hlo:mlir-hlo-opt",
+        "//tensorflow/compiler/xla/mlir_hlo:mlir-hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
 )
@@ -24,7 +24,7 @@ cc_library(
     name = "capi_test",
     srcs = ["capi_test.c"],
     deps = [
-        "//tensorflow/compiler/mlir/hlo:CAPI",
+        "//tensorflow/compiler/xla/mlir_hlo:CAPI",
     ],
 )
 
