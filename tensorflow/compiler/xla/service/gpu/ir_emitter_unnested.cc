@@ -2125,7 +2125,8 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
   //         selected_value = operand(I)
   //         selected_index = I
   //         initialized_flag = true
-  //   output(selected_index) = scatter(output(selected_index), source(S))
+  //   if initialized_flag:
+  //     output(selected_index) = scatter(output(selected_index), source(S))
   auto loop_body_emitter = [&](const IrArray::Index& source_index) -> Status {
     // Allocate space to keep the currently selected value, its index, and a
     // boolean flag if the value is initialized. The initialized_flag is set
@@ -2251,12 +2252,21 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
           selected_value_address);
     save_operand_index(operand_index);
 
+    // If the initialized_flag is true, write to the selected index of the
+    // output; otherwise the window is outside the source (in the padding) and
+    // should be ignored.
+    llvm_ir::SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(),
+                                   &b_);
+    llvm_ir::LlvmIfData if_should_store = llvm_ir::EmitIfThenElse(
+        Load(initialized_flag_address->getAllocatedType(),
+             initialized_flag_address),
+        "should-store", &b_, /*emit_else=*/false);
+    llvm_ir::SetToFirstInsertPoint(if_should_store.true_block, &b_);
+
     // After iterating over the window elements, scatter the source element to
     // the selected index of the output. The value we store at the output
     // location is computed by calling the `scatter` function with the source
     // value and the current output value.
-    llvm_ir::SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(),
-                                   &b_);
     std::vector<llvm::Value*> selected_multi_index;
     for (int64_t i = 0; i < rank; ++i) {
       llvm::Value* selected_index_address_slot =
