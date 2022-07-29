@@ -228,47 +228,7 @@ TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduceFusion) {
                    .ValueOrDie());
 }
 
-TEST_F(InstructionFusionTest, Fuse201TransposingOpWithElementwise) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule test_module
-    ENTRY entry {
-      p0 = f32[16,16,16]{2,1,0} parameter(0)
-      copy = f32[16,16,16]{0,2,1} copy(p0)
-      ROOT add = f32[16,16,16]{0,2,1} add(copy, copy)
-    })")
-                    .ValueOrDie();
-
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
-
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  ASSERT_THAT(root, op::Fusion()) << module->ToString();
-  EXPECT_THAT(root->fused_expression_root(), op::Add(op::Copy(), op::Copy()))
-      << module->ToString();
-}
-
-TEST_F(InstructionFusionTest, FuseTransposingOpRetainingMostMinorDimension) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule test_module
-    ENTRY entry {
-      p0 = f32[16,16,16,16]{0,1,2,3} parameter(0)
-      copy = f32[16,16,16,16]{0,3,2,1} copy(p0)
-      ROOT add = f32[16,16,16,16]{0,3,2,1} add(copy, copy)
-    })")
-                    .ValueOrDie();
-
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
-
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  ASSERT_THAT(root, op::Fusion()) << module->ToString();
-  EXPECT_THAT(root->fused_expression_root(), op::Add(op::Copy(), op::Copy()))
-      << module->ToString();
-}
-
-TEST_F(InstructionFusionTest, DoNotFuseNon201TransposingOpWithElementwise) {
+TEST_F(InstructionFusionTest, FuseLayoutChangingOpWithElementwise) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
     ENTRY entry {
@@ -278,76 +238,13 @@ TEST_F(InstructionFusionTest, DoNotFuseNon201TransposingOpWithElementwise) {
     })")
                     .ValueOrDie();
 
-  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
-                   .Run(module.get())
-                   .ValueOrDie());
-}
-
-TEST_F(InstructionFusionTest, FuseSimilarPhysicallyTransposingOps) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule test_module
-    ENTRY entry {
-      p0 = f32[16,16,16,16]{3,2,1,0} parameter(0)
-      p1 = f32[16,16,16,16]{3,2,1,0} parameter(1)
-      copy = f32[16,16,16,16]{0,3,2,1} copy(p0)
-      copy1 = f32[16,16,16,16]{0,3,2,1} copy(p1)
-      ROOT add = f32[16,16,16,16]{0,3,2,1} add(copy, copy1)
-    })")
-                    .ValueOrDie();
-
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  ASSERT_THAT(root, op::Fusion()) << module->ToString();
-  EXPECT_THAT(root->fused_expression_root(), op::Add(op::Copy(), op::Copy()))
-      << module->ToString();
-}
-
-TEST_F(InstructionFusionTest, DoNotFuseDifferentPhysicallyTransposingOps) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule test_module
-    ENTRY entry {
-      p0 = f32[16,16,16,16]{2,1,0,3} parameter(0)
-      p1 = f32[16,16,16,16]{3,2,1,0} parameter(1)
-      copy = f32[16,16,16,16]{0,3,2,1} copy(p0)
-      copy1 = f32[16,16,16,16]{0,3,2,1} copy(p1)
-      ROOT add = f32[16,16,16,16]{0,3,2,1} add(copy, copy1)
-    })")
-                    .ValueOrDie();
-
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie())
-      << module->ToString();
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  ASSERT_THAT(root, op::Fusion(op::Copy(), op::Parameter()))
-      << module->ToString();
-}
-
-TEST_F(InstructionFusionTest,
-       FusePhysicallyTransposingWithOpsNotSafeForShmemOnOtherParams) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule test_module
-
-    ENTRY main {
-      p0 = f32[64,64]{0,1} parameter(0)
-      p1 = f32[64,64]{1,0} parameter(1)
-      reverse = f32[64,64]{0,1} reverse(p0), dimensions={0}
-      copy = f32[64,64]{0,1} copy(p1)
-      ROOT add = f32[64,64]{0,1} add(reverse, copy)
-    })")
-                    .ValueOrDie();
-
   EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
                   .Run(module.get())
                   .ValueOrDie());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  ASSERT_THAT(root, op::Fusion()) << module->ToString();
-  EXPECT_THAT(root->fused_instructions_computation()->root_instruction(),
-              op::Add(op::Reverse(), op::Copy()))
-      << module->ToString();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(), op::Add(op::Copy(), op::Copy()));
 }
 
 TEST_F(InstructionFusionTest, BitcastIntoAdd) {

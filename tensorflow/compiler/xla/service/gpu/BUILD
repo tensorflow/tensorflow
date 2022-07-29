@@ -2234,7 +2234,6 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:instruction_fusion",
-        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
