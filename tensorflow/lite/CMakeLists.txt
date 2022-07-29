@@ -138,12 +138,12 @@ macro(populate_tf_source_vars RELATIVE_DIR SOURCES_VAR)
 endmacro()
 # Find TensorFlow Lite dependencies.
 find_package(absl REQUIRED)
-find_package(eigen REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(farmhash REQUIRED)
 find_package(fft2d REQUIRED)
-find_package(flatbuffers REQUIRED)
+find_package(Flatbuffers REQUIRED)
 find_package(gemmlowp REQUIRED)
-find_package(neon2sse REQUIRED)
+find_package(NEON_2_SSE REQUIRED)
 find_package(clog REQUIRED)
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
 find_package(ruy REQUIRED)
@@ -399,7 +399,7 @@ else()
 endif()
 if(TFLITE_ENABLE_XNNPACK)
   find_package(fp16_headers REQUIRED)
-  find_package(xnnpack REQUIRED)
+  find_package(XNNPACK REQUIRED)
   populate_tflite_source_vars("delegates/xnnpack"
     TFLITE_DELEGATES_XNNPACK_SRCS
     FILTER ".*(_test|_tester)\\.(cc|h)"
@@ -513,7 +513,7 @@ target_include_directories(tensorflow-lite
 target_link_libraries(tensorflow-lite
   PUBLIC
     Eigen3::Eigen
-    NEON_2_SSE
+    NEON_2_SSE::NEON_2_SSE
     absl::flags
     absl::hash
     absl::status
@@ -522,7 +522,7 @@ target_link_libraries(tensorflow-lite
     absl::variant
     farmhash
     fft2d_fftsg2d
-    flatbuffers
+    flatbuffers::flatbuffers
     gemmlowp
     ruy::ruy
     ${CMAKE_DL_LIBS}
