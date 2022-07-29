@@ -5454,8 +5454,8 @@ def gather_nd(params, indices, name=None, batch_dims=0):
   arranged along the last axis of `indices`.
 
   This is similar to `tf.gather`, in which `indices` defines slices into the
-  first dimension of `params`. In `tf.gather_nd`, `indices` defines slices into the
-  first `N` dimensions of `params`, where `N = indices.shape[-1]`.
+  first dimension of `params`. In `tf.gather_nd`, `indices` defines slices into
+  the first `N` dimensions of `params`, where `N = indices.shape[-1]`.
 
   Caution: On CPU, if an out of bound index is found, an error is returned.
   On GPU, if an out of bound index is found, a 0 is stored in the
