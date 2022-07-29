@@ -48,8 +48,7 @@ std::string GetOneInputCode(const GpuInfo& gpu_info,
       }
       break;
     case OperationType::COPY:
-      // No op as inout_value will be copied to dest automatically.
-      result = "\n";
+      result = "$0 = $1;\n";
       break;
     case OperationType::ELU:
       if (gpu_info.IsApiOpenCl()) {
@@ -78,7 +77,7 @@ $0.w = $1.w < INIT_FLT(0.0f) ? exp($1.w) - INIT_FLT(1.0f) : $1.w;)";
       break;
     case OperationType::HARD_SWISH:
       result =
-          "$0 *= clamp($1 * INIT_FLT(0.16666667f) + INIT_FLT(0.5f), "
+          "$0 = $1 * clamp($1 * INIT_FLT(0.16666667f) + INIT_FLT(0.5f), "
           "INIT_FLT4(0.0f), "
           "INIT_FLT4(1.0f));\n";
       break;
