@@ -2828,6 +2828,19 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "unsorted_segment_min_test",
+    size = "small",
+    srcs = ["unsorted_segment_min_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
 tflite_portable_test_suite_combined(
     combine_conditions = {"deps": [":test_main"]},
     # TODO(b/229985981) : Remove `nnapi_args` after adding Relu0To1 is completed.
