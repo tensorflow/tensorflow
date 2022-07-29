@@ -80,6 +80,7 @@ TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
     : id_(id),
       max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
   debug_string_ = absl::StrCat("TFRT_CPU_", id);
+  to_string_ = absl::StrCat("CpuDevice(id=", id, ")");
 }
 
 absl::string_view TfrtCpuDevice::device_kind() const {
@@ -88,9 +89,7 @@ absl::string_view TfrtCpuDevice::device_kind() const {
 
 absl::string_view TfrtCpuDevice::DebugString() const { return debug_string_; }
 
-std::string TfrtCpuDevice::ToString() const {
-  return absl::StrCat("CpuDevice(id=", id(), ")");
-}
+absl::string_view TfrtCpuDevice::ToString() const { return to_string_; }
 
 Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id(), literal);

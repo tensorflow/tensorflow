@@ -130,7 +130,7 @@ class PjRtDevice {
 
   // Debug string suitable for reading by end users, should be reasonably terse,
   // for example: "CpuDevice(id=0)".
-  virtual std::string ToString() const = 0;
+  virtual absl::string_view ToString() const = 0;
 
   // Returns a scoped event that the caller uses to tell the PjRtClient that
   // there is asynchronous work happening that depends on activity on the

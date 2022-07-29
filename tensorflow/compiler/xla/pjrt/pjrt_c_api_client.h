@@ -49,9 +49,7 @@ class PjRtCApiDevice : public PjRtDevice {
 
   absl::string_view DebugString() const override;
 
-  std::string ToString() const override {
-    return absl::StrCat("PjRtCApiDevice(wrapped=", wrapped_->ToString(), ")");
-  }
+  absl::string_view ToString() const override { return wrapped_->ToString(); }
 
   Status TransferToInfeed(const LiteralSlice& literal) override {
     return wrapped_->TransferToInfeed(literal);
