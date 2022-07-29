@@ -1,15 +1,7 @@
 # Release 2.10.0
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
-
-# Release 2.10.0
-
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
-
 ## Breaking Changes
 
-*   <DOCUMENT BREAKING CHANGES HERE>
-*   <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 *   Causal attention in `keras.layers.Attention` and
     `keras.layers.AdditiveAttention` is now specified in the `call()` method
     via the `use_causal_mask` argument (rather than in the constructor),
@@ -38,12 +30,6 @@
     *   An unseeded initializer will raise a warning if it is reused (called)
         multiple times. This is because it would produce the same values
         each time, which may not be intended.
-
-## Known Caveats
-
-*   <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-*   <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-*   <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
 ## Major Features and Improvements
 
@@ -210,7 +196,7 @@
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+Abolfazl Shahbazi, Adam Lanicek, Amin Benarieb, andreii, Andrew Fitzgibbon, Andrew Goodbody, angerson, Ashiq Imran, Aurélien Geron, Banikumar Maiti (Intel Aipg), Ben Barsdell, Ben Mares, bhack, Bhavani Subramanian, Bill Schnurr, Byungsoo Oh, Chandra Sr Potula, Chengji Yao, Chris Carpita, Christopher Bate, chunduriv, Cliff Woolley, Cliffs Dover, Cloud Han, Code-Review-Doctor, DEKHTIARJonathan, Deven Desai, Djacon, Duncan Riach, fedotoff, fo40225, Frederic Bastien, gadagashwini, Gauri1 Deshpande, guozhong.zhuang, Hui Peng, James Gerity, Jason Furmanek, Jonathan Dekhtiar, Jueon Park, Kaixi Hou, Kanvi Khanna, Keith Smiley, Koan-Sin Tan, Kulin Seth, kushanam, Learning-To-Play, Li-Wen Chang, lipracer, liuyuanqiang, Louis Sugy, Lucas David, Lukas Geiger, Mahmoud Abuzaina, Marius Brehler, Maxiwell S. Garcia, mdfaijul, Meenakshi Venkataraman, Michal Szutenberg, Michele Di Giorgio, Mickaël Salamin, Nathan John Sircombe, Nathan Luehr, Neil Girdhar, Nils Reichardt, Nishidha Panpaliya, Nobuo Tsukamoto, Om Thakkar, Patrice Vignola, Philipp Hack, Pooya Jannaty, Prianka Liz Kariat, pshiko, Rajeshwar Reddy T, rdl4199, Rohit Santhanam, Rsanthanam-Amd, Sachin Muradi, Saoirse Stewart, Serge Panev, Shu Wang, Srinivasan Narayanamoorthy, Stella Stamenova, Stephan Hartmann, Sunita Nadampalli, synandi, Tamas Bela Feher, Tao Xu, Thibaut Goetghebuer-Planchon, Trevor Morris, Xiaoming (Jason) Cui, Yimei Sun, Yong Tang, Yuanqiang Liu, Yulv-Git, Zhoulong Jiang, ZihengJiang
 
 # Release 2.9.1
 
