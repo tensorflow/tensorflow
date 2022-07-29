@@ -287,7 +287,8 @@ class PoolingTest(test.TestCase):
       # numbers from 1.
       x = np.arange(1, total_size + 1)
       with self.cached_session(use_gpu=use_gpu):
-        input_tensor = constant_op.constant(x, shape=input_sizes, name="input", dtype=dtype)
+        input_tensor = constant_op.constant(x, shape=input_sizes, name="input",
+                                            dtype=dtype)
         if dtype != dtypes.bfloat16:
           err_g_margin = 1e-3
           err_gg_margin = 1.5e-2
