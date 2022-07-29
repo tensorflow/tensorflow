@@ -3343,6 +3343,33 @@ LogicalResult DynamicBroadcastInDimOp::verify() {
                       resultRank, outputDimensionsSize));
   }
 
+  // Verify that the known expanding and non-expanding dimensions are a subset
+  // of the operand's dimensions.
+  int64_t numKnownExpansionBehavior = 0;
+  DenseSet<int64_t> knownExpansionBehavior;
+  auto collectExpansionBehaviorDims =
+      [&](const Optional<DenseIntElementsAttr>& attr) {
+        if (!attr) return;
+        for (const APInt& it : *attr) {
+          numKnownExpansionBehavior++;
+          knownExpansionBehavior.insert(it.getLimitedValue());
+        }
+      };
+  collectExpansionBehaviorDims(known_expanding_dimensions());
+  collectExpansionBehaviorDims(known_nonexpanding_dimensions());
+  if (knownExpansionBehavior.size() != numKnownExpansionBehavior) {
+    return emitOpError(
+        "duplicate expansion hint for at least one operand dimension");
+  }
+  for (int64_t i : knownExpansionBehavior) {
+    if (i < 0 || i >= operandRank) {
+      return emitOpError(
+          llvm::formatv("hint for expanding dimension {0} does not refer to a "
+                        "valid operand dimension",
+                        i));
+    }
+  }
+
   return success();
 }
 

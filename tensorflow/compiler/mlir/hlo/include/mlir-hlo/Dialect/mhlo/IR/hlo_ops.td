@@ -1433,7 +1433,7 @@ def HLO_DynamicBroadcastInDimOp : HLO_ShapedInterfaceOp<
     expanding behavior of dimensions. If not specified, all dimensions are
     assumed to be possibly expanding. The sets of dimensions that are known to
     be expanding and the set of dimensions that are known to be non-expanding
-    must be disjoint.
+    must be disjoint and they must be a subset of the operand's dimensions.
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
