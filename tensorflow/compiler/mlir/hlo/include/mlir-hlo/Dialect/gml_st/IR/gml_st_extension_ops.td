@@ -22,8 +22,9 @@ include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
 
 def TensorOrMemref : AnyTypeOf<[AnyMemRef, AnyRankedTensor]>;
 
-class GMLST_DstStyleOp<string mnemonic, list<Trait> traits> : GMLST_Op<mnemonic,
-    [NoSideEffect] # traits> {
+class GMLST_DstStyleOp<string mnemonic, list<Trait> traits> : GMLST_Op<mnemonic, [
+    NoSideEffect,
+    TypesMatchWith<"result and init types match", "init", "result", "$_self">] # traits> {
   let hasCustomAssemblyFormat = 1;
   code extraBaseClassDeclaration = [{
     unsigned getNumInputs() {
@@ -31,6 +32,19 @@ class GMLST_DstStyleOp<string mnemonic, list<Trait> traits> : GMLST_Op<mnemonic,
     };
     unsigned getNumOutputs() { return 1; };
   }];
+}
+
+def GMLST_ConcatenateOp : GMLST_DstStyleOp<"concatenate", [
+    SameOperandsAndResultElementType]> {
+  let summary = "Destination-style twin for `mhlo.concatenate`";
+  let arguments = (ins
+    Variadic<AnyTensor>:$operands,
+    AnyTensor:$init,
+    I64Attr:$dimension
+  );
+  let results = (outs AnyTensor:$result);
+
+  let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
 def GMLST_DynamicBroadcastInDimOp : GMLST_DstStyleOp<"dynamic_broadcast_in_dim",

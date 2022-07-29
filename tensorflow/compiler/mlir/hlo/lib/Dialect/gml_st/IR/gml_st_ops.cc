@@ -2014,6 +2014,22 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 //===----------------------------------------------------------------------===//
+// ConcatenateOp
+//===----------------------------------------------------------------------===//
+
+ParseResult ConcatenateOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseDstStyleOp(parser, result);
+}
+
+void ConcatenateOp::print(OpAsmPrinter &p) {
+  printDstStyleOp(cast<ConcatenateOp>(getOperation()), p);
+}
+
+LogicalResult ConcatenateOp::verify() {
+  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+}
+
+//===----------------------------------------------------------------------===//
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//
 
@@ -2027,7 +2043,7 @@ void DynamicBroadcastInDimOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult DynamicBroadcastInDimOp::verify() {
-  return verifyDestinationStyleOp(this->getOperation(), getNumOutputs());
+  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
 }
 
 Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
@@ -2179,7 +2195,7 @@ void GatherOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult GatherOp::verify() {
-  return verifyDestinationStyleOp(this->getOperation(), getNumOutputs());
+  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
 }
 
 //===----------------------------------------------------------------------===//

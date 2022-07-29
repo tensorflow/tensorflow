@@ -22,6 +22,24 @@ func.func @types() {
 
 // -----
 
+// CHECK-LABEL: @concatenate
+// CHECK-SAME:  %[[INIT:.*]]: tensor<?x?xi32>, %[[A:.*]]: tensor<?x?xi32>, %[[B:.*]]: tensor<?x?xi32>, %[[C:.*]]: tensor<?x?xi32>
+func.func @concatenate(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
+    %b: tensor<?x?xi32>, %c: tensor<?x?xi32>) -> tensor<?x?xi32> {
+  // CHECK:      %[[CONCAT:.*]] = gml_st.concatenate
+  // CHECK-SAME:     ins(%[[A]] : tensor<?x?xi32>, %[[B]] : tensor<?x?xi32>, %[[C]] : tensor<?x?xi32>)
+  // CHECK-SAME:     outs(%[[INIT]] : tensor<?x?xi32>)
+  // CHECK-SAME:     {dimension = 1 : i64}
+  // CHECK:      return %[[CONCAT]] : tensor<?x?xi32>
+  %0 = gml_st.concatenate
+      ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
+      outs(%init : tensor<?x?xi32>)
+      {dimension = 1 : i64}
+  return %0 : tensor<?x?xi32>
+}
+
+// -----
+
 // CHECK-LABEL: @collapse_tile
 // CHECK-SAME:  %[[ARG0:.*]]: !gml_st.tile<?x64x128>
 func.func @collapse_tile(%tile: !gml_st.tile<?x64x128>) -> !gml_st.tile<?x128> {
