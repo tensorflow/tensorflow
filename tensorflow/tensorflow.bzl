@@ -1396,6 +1396,11 @@ def tf_cc_test(
         **kwargs
     )
 
+register_extension_info(
+    extension = tf_cc_test,
+    label_regex_for_dep = "{extension_name}",
+)
+
 def tf_gpu_cc_test(
         name,
         srcs = [],
