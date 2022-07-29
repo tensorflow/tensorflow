@@ -96,7 +96,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
   opts.set_xla_cpu_enable_mlir_lowering(false);
+#if TENSORFLOW_USE_ROCM
+  opts.set_xla_gpu_enable_mlir_lowering(false);
+#else
   opts.set_xla_gpu_enable_mlir_lowering(true);
+#endif
   opts.set_xla_gpu_normalize_layouts(false);
   return opts;
 }
