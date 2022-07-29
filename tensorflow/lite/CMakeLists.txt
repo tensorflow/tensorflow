@@ -146,7 +146,6 @@ find_package(fft2d REQUIRED)
 find_package(Flatbuffers REQUIRED)
 find_package(gemmlowp REQUIRED)
 find_package(NEON_2_SSE REQUIRED)
-find_package(clog REQUIRED)
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
 find_package(ruy REQUIRED)
 set(TF_TARGET_PRIVATE_OPTIONS "")
