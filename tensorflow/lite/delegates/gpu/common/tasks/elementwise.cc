@@ -181,40 +181,40 @@ std::string GetTwoInputCode(const OperationType& op_type,
       break;
     // Comparison operators
     case OperationType::LESS:
-      result = "$0.x = $1.x < $2.x ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.y = $1.y < $2.y ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.z = $1.z < $2.z ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.w = $1.w < $2.w ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result = "$0.x = $1.x < $2.x;\n";
+      result += "$0.y = $1.y < $2.y;\n";
+      result += "$0.z = $1.z < $2.z;\n";
+      result += "$0.w = $1.w < $2.w;\n";
       break;
     case OperationType::LESS_EQUAL:
-      result = "$0.x = $1.x <= $2.x ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.y = $1.y <= $2.y ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.z = $1.z <= $2.z ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.w = $1.w <= $2.w ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result = "$0.x = $1.x <= $2.x;\n";
+      result += "$0.y = $1.y <= $2.y;\n";
+      result += "$0.z = $1.z <= $2.z;\n";
+      result += "$0.w = $1.w <= $2.w;\n";
       break;
     case OperationType::GREATER:
-      result = "$0.x = $1.x > $2.x ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.y = $1.y > $2.y ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.z = $1.z > $2.z ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.w = $1.w > $2.w ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result = "$0.x = $1.x > $2.x;\n";
+      result += "$0.y = $1.y > $2.y;\n";
+      result += "$0.z = $1.z > $2.z;\n";
+      result += "$0.w = $1.w > $2.w;\n";
       break;
     case OperationType::GREATER_EQUAL:
-      result = "$0.x = $1.x >= $2.x ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.y = $1.y >= $2.y ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.z = $1.z >= $2.z ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.w = $1.w >= $2.w ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result = "$0.x = $1.x >= $2.x;\n";
+      result += "$0.y = $1.y >= $2.y;\n";
+      result += "$0.z = $1.z >= $2.z;\n";
+      result += "$0.w = $1.w >= $2.w;\n";
       break;
     case OperationType::EQUAL:
-      result = "$0.x = $1.x == $2.x ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.y = $1.y == $2.y ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.z = $1.z == $2.z ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.w = $1.w == $2.w ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result = "$0.x = $1.x == $2.x;\n";
+      result += "$0.y = $1.y == $2.y;\n";
+      result += "$0.z = $1.z == $2.z;\n";
+      result += "$0.w = $1.w == $2.w;\n";
       break;
     case OperationType::NOT_EQUAL:
-      result = "$0.x = $1.x != $2.x ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.y = $1.y != $2.y ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.z = $1.z != $2.z ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
-      result += "$0.w = $1.w != $2.w ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result = "$0.x = $1.x != $2.x;\n";
+      result += "$0.y = $1.y != $2.y;\n";
+      result += "$0.z = $1.z != $2.z;\n";
+      result += "$0.w = $1.w != $2.w;\n";
       break;
     default:
       return "Unknown operation type;\n";
