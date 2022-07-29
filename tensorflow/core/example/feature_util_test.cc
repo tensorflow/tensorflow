@@ -181,7 +181,7 @@ TEST(GetFeatureValuesStringTest, ReadsASingleValueFromFeature) {
   Feature feature;
   feature.mutable_bytes_list()->add_value("FOO");
 
-  auto values = GetFeatureValues<string>(feature);
+  auto values = GetFeatureValues<std::string>(feature);
 
   ASSERT_EQ(1, values.size());
   EXPECT_EQ("FOO", values.Get(0));
@@ -193,7 +193,7 @@ TEST(GetFeatureValuesStringTest, ReadsASingleValue) {
       .mutable_bytes_list()
       ->add_value("FOO");
 
-  auto tag = GetFeatureValues<string>("tag", example);
+  auto tag = GetFeatureValues<std::string>("tag", example);
 
   ASSERT_EQ(1, tag.size());
   EXPECT_EQ("FOO", tag.Get(0));
@@ -202,7 +202,7 @@ TEST(GetFeatureValuesStringTest, ReadsASingleValue) {
 TEST(GetFeatureValuesStringTest, WritesASingleValueToFeature) {
   Feature feature;
 
-  *GetFeatureValues<string>(&feature)->Add() = "FOO";
+  *GetFeatureValues<std::string>(&feature)->Add() = "FOO";
 
   ASSERT_EQ(1, feature.bytes_list().value_size());
   EXPECT_EQ("FOO", feature.bytes_list().value(0));
@@ -211,7 +211,7 @@ TEST(GetFeatureValuesStringTest, WritesASingleValueToFeature) {
 TEST(GetFeatureValuesStringTest, WritesASingleValue) {
   Example example;
 
-  *GetFeatureValues<string>("tag", &example)->Add() = "FOO";
+  *GetFeatureValues<std::string>("tag", &example)->Add() = "FOO";
 
   ASSERT_EQ(1,
             example.features().feature().at("tag").bytes_list().value_size());
@@ -223,12 +223,12 @@ TEST(GetFeatureValuesStringTest, CheckTypedFieldExistence) {
   Example example;
 
   GetFeatureValues<protobuf_int64>("tag", &example)->Add(42);
-  ASSERT_FALSE(HasFeature<string>("tag", example));
+  ASSERT_FALSE(HasFeature<std::string>("tag", example));
 
-  *GetFeatureValues<string>("tag", &example)->Add() = "FOO";
+  *GetFeatureValues<std::string>("tag", &example)->Add() = "FOO";
 
-  EXPECT_TRUE(HasFeature<string>("tag", example));
-  auto tag_ro = GetFeatureValues<string>("tag", example);
+  EXPECT_TRUE(HasFeature<std::string>("tag", example));
+  auto tag_ro = GetFeatureValues<std::string>("tag", example);
   ASSERT_EQ(1, tag_ro.size());
   EXPECT_EQ("FOO", tag_ro.Get(0));
 }
@@ -357,7 +357,7 @@ TEST(AppendFeatureValuesTest, StringValuesUsingInitializerList) {
 
   AppendFeatureValues({"FOO", "BAR", "BAZ"}, "tag", &example);
 
-  auto tag_ro = GetFeatureValues<string>("tag", example);
+  auto tag_ro = GetFeatureValues<std::string>("tag", example);
   ASSERT_EQ(3, tag_ro.size());
   EXPECT_EQ("FOO", tag_ro.Get(0));
   EXPECT_EQ("BAR", tag_ro.Get(1));
@@ -373,7 +373,7 @@ TEST(AppendFeatureValuesTest, StringVariablesUsingInitializerList) {
 
   AppendFeatureValues({string1, string2, string3}, "tag", &example);
 
-  auto tag_ro = GetFeatureValues<string>("tag", example);
+  auto tag_ro = GetFeatureValues<std::string>("tag", example);
   ASSERT_EQ(3, tag_ro.size());
   EXPECT_EQ("FOO", tag_ro.Get(0));
   EXPECT_EQ("BAR", tag_ro.Get(1));
