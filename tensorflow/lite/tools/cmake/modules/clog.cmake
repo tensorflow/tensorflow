@@ -38,5 +38,4 @@ set(CLOG_BUILD_TESTS OFF CACHE BOOL "Disable CLOG tests")
 add_subdirectory(
   "${clog_SOURCE_DIR}/deps/clog"
   "${clog_BINARY_DIR}"
-  EXCLUDE_FROM_ALL
 )
