@@ -2372,6 +2372,10 @@ struct ReduceWindowOpConversion
       return rewriter.notifyMatchFailure(op, "require paddings are all zero");
     }
 
+    if (op.base_dilations() && !isSplatValue(*op.base_dilations(), 1)) {
+      return rewriter.notifyMatchFailure(op, "expected undilated base");
+    }
+
     int lastDim = rank - 1;
     SmallVector<int64_t, 2> fakeWindowShapes;
     for (int i = 1; i < lastDim; ++i) {

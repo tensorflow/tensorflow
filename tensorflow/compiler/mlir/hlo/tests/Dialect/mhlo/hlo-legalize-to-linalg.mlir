@@ -3927,6 +3927,23 @@ func.func @reduce_window_sum_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
 
 // -----
 
+// CHECK-LABEL: func @reduce_window_sum_ndhwc_dilated_base
+// CHECK: linalg.generic
+func.func @reduce_window_sum_ndhwc_dilated_base(
+    %arg0: tensor<1x17x17x17x64xf32>,
+    %arg1: tensor<f32>) -> tensor<1x8x8x16x64xf32>{
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3 : tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {base_dilations = dense<[1, 1, 1, 2, 1]> : tensor<5xi64>,
+      window_dimensions = dense<[1, 3, 3, 3, 1]> : tensor<5xi64>,
+      window_strides = dense<[1, 2, 2, 2, 1]> : tensor<5xi64>} : (tensor<1x17x17x17x64xf32>, tensor<f32>) -> tensor<1x8x8x16x64xf32>
+  func.return %0 : tensor<1x8x8x16x64xf32>
+}
+
+// -----
+
 // CHECK: #[[MAP0:.+]] = affine_map<(d0, d1) -> ()>
 // CHECK: #[[MAP1:.+]] = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK: #[[MAP2:.+]] = affine_map<(d0, d1, d2) -> (d0 * 2, d1 + d2 * 2)>
