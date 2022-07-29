@@ -2295,6 +2295,36 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "convolution_pred_expander",
+    srcs = ["convolution_pred_expander.cc"],
+    hdrs = ["convolution_pred_expander.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":op_expander_pass",
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "convolution_pred_expander_test",
+    srcs = ["convolution_pred_expander_test.cc"],
+    deps = [
+        ":convolution_pred_expander",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 tf_cc_test(
     name = "batchnorm_expander_test",
     size = "small",
