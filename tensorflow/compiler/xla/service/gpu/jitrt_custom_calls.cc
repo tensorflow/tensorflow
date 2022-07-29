@@ -946,20 +946,22 @@ enum class MemcpyDirection { kDeviceToDevice, kDeviceToHost, kHostToDevice };
 
 template <MemcpyDirection direction>
 struct Memcpy {
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           jitrt::FlatMemrefView dst,
-                           jitrt::FlatMemrefView src) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   jitrt::FlatMemrefView dst, jitrt::FlatMemrefView src) const;
   static Memcpy Handler() { return Memcpy(); }
 };
 }  // namespace
 
 template <MemcpyDirection direction>
-LogicalResult Memcpy<direction>::operator()(
+Error Memcpy<direction>::operator()(
     const ServiceExecutableRunOptions* run_options, jitrt::FlatMemrefView dst,
     jitrt::FlatMemrefView src) const {
   se::Stream* stream = run_options->stream();
 
-  if (dst.size_in_bytes != src.size_in_bytes) return failure();
+  if (dst.size_in_bytes != src.size_in_bytes) {
+    return MakeStringError(
+        "Source memref size does not match destination memref size");
+  }
 
   switch (direction) {
     case MemcpyDirection::kDeviceToDevice: {
@@ -982,10 +984,10 @@ LogicalResult Memcpy<direction>::operator()(
   // transfer is completed.
   if (direction != MemcpyDirection::kDeviceToDevice) {
     auto st = stream->BlockHostUntilDone();
-    if (!st.ok()) return failure();
+    if (!st.ok()) return AsError(st);
   }
 
-  return success();
+  return Error::success();
 }
 
 template <MemcpyDirection direction>
@@ -1005,33 +1007,34 @@ static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 
 struct Memset {
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           jitrt::FlatMemrefView dst,
-                           CustomCall::VariantArg constant) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   jitrt::FlatMemrefView dst,
+                   CustomCall::VariantArg constant) const;
   static Memset Handler() { return Memset(); }
 };
 
 }  // namespace
 
-LogicalResult Memset::operator()(const ServiceExecutableRunOptions* run_options,
-                                 jitrt::FlatMemrefView dst,
-                                 CustomCall::VariantArg constant) const {
+Error Memset::operator()(const ServiceExecutableRunOptions* run_options,
+                         jitrt::FlatMemrefView dst,
+                         CustomCall::VariantArg constant) const {
   uint32_t pattern;
   if (constant.isa<int32_t>())
     pattern = *constant.get<int32_t>();
   else if (constant.isa<float>())
     pattern = reinterpret_cast<uint32_t&>(*constant.get<float>());
   else
-    return failure();
+    return MakeStringError("Unsupported memset value type");
 
   se::Stream* stream = run_options->stream();
 
-  if (dst.size_in_bytes % 4 != 0) return failure();
+  if (dst.size_in_bytes % 4 != 0)
+    return MakeStringError("Memref size is not divisible by 4");
 
   se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
   stream->ThenMemset32(&dst_data, pattern, dst.size_in_bytes);
 
-  return success();
+  return Error::success();
 }
 
 static bool MemsetFn(runtime::KernelContext* ctx, void** args, void** attrs) {
@@ -1050,20 +1053,19 @@ static bool MemsetFn(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct Fft {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           jitrt::StridedMemrefView input,
-                           jitrt::StridedMemrefView output,
-                           ArrayRef<int64_t> fft_length,
-                           se::fft::Type fft_type) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   jitrt::StridedMemrefView input,
+                   jitrt::StridedMemrefView output,
+                   ArrayRef<int64_t> fft_length, se::fft::Type fft_type) const;
   static Fft Handler() { return Fft(); }
 };
 }  // namespace
 
-LogicalResult Fft::operator()(const ServiceExecutableRunOptions* run_options,
-                              jitrt::StridedMemrefView input,
-                              jitrt::StridedMemrefView output,
-                              ArrayRef<int64_t> fft_length,
-                              se::fft::Type fft_type) const {
+Error Fft::operator()(const ServiceExecutableRunOptions* run_options,
+                      jitrt::StridedMemrefView input,
+                      jitrt::StridedMemrefView output,
+                      ArrayRef<int64_t> fft_length,
+                      se::fft::Type fft_type) const {
   // TODO(ezhulenev): Cache FFT plans in the GpuExecutable.
   FftPlanCache fft_plan_cache;
 
@@ -1087,7 +1089,7 @@ LogicalResult Fft::operator()(const ServiceExecutableRunOptions* run_options,
         fft_type = se::fft::Type::kZ2D;
         break;
       default:
-        return failure();
+        return MakeStringError("Unsupported FFT type");
     }
   }
 
@@ -1095,9 +1097,9 @@ LogicalResult Fft::operator()(const ServiceExecutableRunOptions* run_options,
       RunFft(GetDeviceAddress(input), ToShape(input), GetDeviceAddress(output),
              ToShape(output), fft_type, fft_length, executor->device_ordinal(),
              &fft_plan_cache, stream, run_options->allocator());
-  if (!st.ok()) return failure();
+  if (!st.ok()) return AsError(st);
 
-  return success();
+  return Error::success();
 }
 
 static bool Fft(runtime::KernelContext* ctx, void** args, void** attrs) {
@@ -1118,20 +1120,20 @@ static bool Fft(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct Cholesky {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           jitrt::MemrefView operand, jitrt::MemrefView a,
-                           jitrt::MemrefView workspace, jitrt::MemrefView info,
-                           int64_t batch_size, bool is_lower, int64_t n) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   const DebugOptions* debug_options, jitrt::MemrefView operand,
+                   jitrt::MemrefView a, jitrt::MemrefView workspace,
+                   jitrt::MemrefView info, int64_t batch_size, bool is_lower,
+                   int64_t n) const;
   static Cholesky Handler() { return Cholesky(); }
 };
 }  // namespace
 
-LogicalResult Cholesky::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, jitrt::MemrefView operand,
-    jitrt::MemrefView a, jitrt::MemrefView workspace, jitrt::MemrefView info,
-    int64_t batch_size, bool is_lower, int64_t n) const {
+Error Cholesky::operator()(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           jitrt::MemrefView operand, jitrt::MemrefView a,
+                           jitrt::MemrefView workspace, jitrt::MemrefView info,
+                           int64_t batch_size, bool is_lower, int64_t n) const {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
   se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
@@ -1153,9 +1155,9 @@ LogicalResult Cholesky::operator()(
   auto executed =
       RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
                   TfrtToPrimitiveType(operand.dtype), &params, stream);
-  if (!executed.ok()) return failure();
+  if (!executed.ok()) return AsError(executed);
 
-  return success();
+  return Error::success();
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return failure();
 #endif
@@ -1189,32 +1191,29 @@ namespace {
 // call (no need to pass config via the serialized string).
 struct TriangularSolve {
   // Adaptor from XlaCustomCall API to properly typed TriangularSolve handler.
-  static LogicalResult run(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           CustomCall::RemainingArgs args,
-                           StringRef backend_config);
+  static Error run(const ServiceExecutableRunOptions* run_options,
+                   const DebugOptions* debug_options,
+                   CustomCall::RemainingArgs args, StringRef backend_config);
 
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           jitrt::StridedMemrefView a,
-                           jitrt::StridedMemrefView b,
-                           jitrt::StridedMemrefView result,
-                           jitrt::FlatMemrefView temp, bool left_side,
-                           bool lower, bool unit_diagonal,
-                           TriangularSolveOptions::Transpose transpose_a) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   const DebugOptions* debug_options,
+                   jitrt::StridedMemrefView a, jitrt::StridedMemrefView b,
+                   jitrt::StridedMemrefView result, jitrt::FlatMemrefView temp,
+                   bool left_side, bool lower, bool unit_diagonal,
+                   TriangularSolveOptions::Transpose transpose_a) const;
   static TriangularSolve Handler() { return TriangularSolve(); }
 };
 
 }  // namespace
 
-LogicalResult TriangularSolve::run(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, CustomCall::RemainingArgs args,
-    StringRef backend_config) {
+Error TriangularSolve::run(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           CustomCall::RemainingArgs args,
+                           StringRef backend_config) {
   TriangularSolve handler = TriangularSolve::Handler();
 
-  // We expect 4 memref argumets.
-  if (args.size() != 4) return failure();
+  if (args.size() != 4)
+    return MakeStringError("Expected 4 arguments, got %n", args.size());
 
   // Check if all arguments have the correct type.
   auto a = args.get<jitrt::StridedMemrefView>(0);
@@ -1222,19 +1221,19 @@ LogicalResult TriangularSolve::run(
   auto result = args.get<jitrt::StridedMemrefView>(2);
   auto temp = args.get<jitrt::FlatMemrefView>(3);
   if (failed(a) || failed(b) || failed(result) || failed(temp))
-    return failure();
+    return MakeStringError("Incorrect argument types");
 
   // Parse backend config string.
   TriangularSolveOptions opts;
-  if (!tensorflow::HumanReadableJsonToProto(backend_config.str(), &opts).ok())
-    return failure();
+  auto st = tensorflow::HumanReadableJsonToProto(backend_config.str(), &opts);
+  if (!st.ok()) return AsError(st);
 
   return handler(run_options, debug_options, *a, *b, *result, *temp,
                  opts.left_side(), opts.lower(), opts.unit_diagonal(),
                  opts.transpose_a());
 }
 
-LogicalResult TriangularSolve::operator()(
+Error TriangularSolve::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, jitrt::StridedMemrefView a,
     jitrt::StridedMemrefView b, jitrt::StridedMemrefView result,
@@ -1288,15 +1287,16 @@ LogicalResult TriangularSolve::operator()(
     }
   }();
 
-  if (failed(transpose)) return failure();
+  if (failed(transpose))
+    return MakeStringError("Failed to convert transpose type");
 
   auto st = RunTriangulatSolve(
       a_data, result_data, temp_data, PtxOptsFromDebugOptions(*debug_options),
       uplo, side, diagonal, *transpose, elem_type, batch_size, m, n,
       a_batch_stride, b_batch_stride, stream);
-  if (!st.ok()) return failure();
+  if (!st.ok()) return AsError(st);
 
-  return success();
+  return Error::success();
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return failure();
 #endif
@@ -1312,20 +1312,19 @@ namespace {
 struct XlaCustomCall {
   using Stream = se::gpu::GpuStreamHandle;
 
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           CustomCall::RemainingArgs args,
-                           StringRef call_target_name, int32_t api_version,
-                           StringRef backend_config) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   const DebugOptions* debug_options,
+                   CustomCall::RemainingArgs args, StringRef call_target_name,
+                   int32_t api_version, StringRef backend_config) const;
   static XlaCustomCall Handler() { return XlaCustomCall(); }
 };
 }  // namespace
 
-LogicalResult XlaCustomCall::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, CustomCall::RemainingArgs args,
-    StringRef call_target_name, int32_t api_version,
-    StringRef backend_config) const {
+Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
+                                const DebugOptions* debug_options,
+                                CustomCall::RemainingArgs args,
+                                StringRef call_target_name, int32_t api_version,
+                                StringRef backend_config) const {
   // Pattern match custom call to a few special cases, otherwise find the custom
   // call handler regustered with the runtime.
   if (call_target_name == kTriangularSolveCallTarget)
@@ -1336,13 +1335,17 @@ LogicalResult XlaCustomCall::operator()(
   auto& platform_name = run_options->stream()->parent()->platform()->Name();
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name.str(), platform_name);
-  if (!call_target) return failure();
+  if (!call_target) {
+    return MakeStringError("Cannot find the Xla custom call handler %s",
+                           call_target_name.str());
+  }
 
   // Prepare pointers to buffers to pass to the Xla custom call handler.
   llvm::SmallVector<void*> buffers;
   for (unsigned i = 0; i < args.size(); ++i) {
     auto memref = args.get<jitrt::FlatMemrefView>(i);
-    if (failed(memref)) return failure();
+    if (failed(memref))
+      return MakeStringError("Failed to get arguments as memref view");
 
     // We use zero-sized memrefs to represent holes in custom calls with target
     // arguments mapping (see `CustomCallTargetArgMapping`).
@@ -1358,7 +1361,7 @@ LogicalResult XlaCustomCall::operator()(
                     buffers.data(), backend_config.data(),
                     backend_config.size());
 
-    return success();
+    return Error::success();
   }
 
   // Xla Custom call API returning status.
@@ -1373,13 +1376,13 @@ LogicalResult XlaCustomCall::operator()(
                     backend_config.size(), &custom_call_status);
 
     if (auto message = CustomCallStatusGetMessage(&custom_call_status)) {
-      return failure();
+      return MakeStringError(message.value());
     } else {
-      return success();
+      return Error::success();
     }
   }
 
-  return failure();
+  return MakeStringError("Incorrect custom call API version");
 }
 
 static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
