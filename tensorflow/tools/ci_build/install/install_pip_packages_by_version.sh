@@ -43,6 +43,7 @@ PACKAGES=(
   "libclang"
   "markdown"
   "pandas"
+  "packaging"
   "portpicker"
   "protobuf"
   "psutil"
