@@ -22,13 +22,10 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/rpc/client/tensorboard_export.h"
 
 namespace tensorflow {
 namespace profiler {
-
-// Convert XSpace to tool data and saves under <logdir>/plugins/profile/.
-Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir);
 
 // Collects one sample of monitoring profile and shows user-friendly metrics.
 // If timestamp flag is true, timestamp will be displayed in "%H:%M:%S" format.

@@ -116,6 +116,7 @@ load(
     "tf_protos_all_impl",
     "tf_protos_grappler_impl",
     "tf_protos_profiler_impl",
+    "tf_protos_profiler_service",
     "tf_tpu_dependencies",
 )
 load(
@@ -1615,6 +1616,7 @@ filegroup(
         "//tensorflow/core/framework:tensor_reference.h",
         "//tensorflow/core/framework:tracking_allocator.h",  # only needed for tests
         "//tensorflow/core/framework:variant.h",
+        "//tensorflow/core/profiler/rpc/client:tensorboard_export.h",
         "//tensorflow/core/util:framework_internal_public_hdrs",
     ],
     visibility = ["//visibility:private"],
@@ -1723,6 +1725,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/rpc/client:tensorboard_export",
         "//tensorflow/core/util:determinism",
         "//tensorflow/core/util:managed_stack_trace",
         "//tensorflow/core/util:einsum_op_util",
@@ -1737,7 +1740,7 @@ tf_cuda_library(
     ]) + if_static(
         extra_deps = ["@com_google_protobuf//:protobuf"],
         otherwise = ["@com_google_protobuf//:protobuf_headers"],
-    ),
+    ) + tf_protos_profiler_service(),
     alwayslink = 1,
 )
 

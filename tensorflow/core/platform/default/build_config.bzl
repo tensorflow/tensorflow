@@ -688,6 +688,24 @@ def tf_protos_profiler_impl():
     return [
         clean_dep("//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl"),
         clean_dep("//tensorflow/core/profiler:profiler_options_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:memory_profile_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:hardware_types_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:trace_events_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:diagnostics_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:op_metrics_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:steps_db_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:op_profile_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:op_stats_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:tf_function_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:tf_stats_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:tfstreamz_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:tf_data_stats_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:memory_viewer_preprocess_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:input_pipeline_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:overview_page_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:pod_stats_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler/protobuf:pod_viewer_proto_cc_impl"),
     ]
 
 def tf_protos_profiler_service():

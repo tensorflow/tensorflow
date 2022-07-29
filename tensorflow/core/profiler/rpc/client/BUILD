@@ -17,6 +17,35 @@ package(
     licenses = ["notice"],
 )
 
+exports_files(
+    srcs = ["tensorboard_export.h"],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+cc_library(
+    name = "populate_request",
+    hdrs = ["populate_request.h"],
+    deps = [
+        ":remote_profiler_session_manager",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "tensorboard_export",
+    srcs = ["tensorboard_export.cc"],
+    hdrs = ["tensorboard_export.h"],
+    copts = tf_profiler_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":save_profile",
+        ":profiler_client",
+        ":populate_request",
+        "//tensorflow/core/profiler/convert:xplane_to_profile_response",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
 cc_library(
     name = "capture_profile",
     srcs = ["capture_profile.cc"],
@@ -28,15 +57,14 @@ cc_library(
     ],
     deps = [
         ":profiler_client_for_pybind",
-        ":remote_profiler_session_manager",
         ":save_profile",
+        ":populate_request",
+        ":tensorboard_export",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler:profiler_analysis_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
-        "//tensorflow/core/profiler/convert:xplane_to_profile_response",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],

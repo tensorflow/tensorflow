@@ -27,13 +27,13 @@ limitations under the License.
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 #include "tensorflow/core/profiler/profiler_analysis.pb.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/rpc/client/profiler_client.h"
 #include "tensorflow/core/profiler/rpc/client/remote_profiler_session_manager.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
+#include "tensorflow/core/profiler/rpc/client/populate_request.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -41,64 +41,6 @@ namespace {
 
 using ::tensorflow::profiler::RemoteProfilerSessionManager;
 using Response = ::tensorflow::profiler::RemoteProfilerSessionManager::Response;
-
-constexpr uint64 kMaxEvents = 1000000;
-const absl::string_view kXPlanePb = "xplane.pb";
-
-MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
-                                      bool timestamp) {
-  MonitorRequest request;
-  request.set_duration_ms(duration_ms);
-  request.set_monitoring_level(monitoring_level);
-  request.set_timestamp(timestamp);
-  return request;
-}
-
-ProfileRequest PopulateProfileRequest(
-    absl::string_view repository_root, absl::string_view session_id,
-    absl::string_view host_name,
-    const RemoteProfilerSessionManagerOptions& options) {
-  ProfileRequest request;
-  // TODO(b/169976117) Remove duration from request.
-  request.set_duration_ms(options.profiler_options().duration_ms());
-  request.set_max_events(kMaxEvents);
-  request.set_repository_root(repository_root.data(), repository_root.size());
-  request.set_session_id(session_id.data(), session_id.size());
-  request.set_host_name(host_name.data(), host_name.size());
-  // These tools are only used by TPU profiler.
-  request.add_tools("trace_viewer");
-  request.add_tools("op_profile");
-  request.add_tools("input_pipeline");
-  request.add_tools("kernel_stats");
-  request.add_tools("memory_viewer");
-  request.add_tools("memory_profile");
-  request.add_tools("overview_page");
-  request.add_tools("pod_viewer");
-  request.add_tools("tensorflow_stats");
-  // XPlane tool is only used by OSS profiler and safely ignored by TPU
-  // profiler.
-  request.add_tools(kXPlanePb.data(), kXPlanePb.size());
-  *request.mutable_opts() = options.profiler_options();
-  return request;
-}
-
-NewProfileSessionRequest PopulateNewProfileSessionRequest(
-    absl::string_view repository_root, absl::string_view session_id,
-    const RemoteProfilerSessionManagerOptions& opts) {
-  NewProfileSessionRequest request;
-  std::vector<absl::string_view> parts =
-      absl::StrSplit(opts.service_addresses(0), ':');
-  DCHECK(!parts.empty());
-
-  *request.mutable_request() =
-      PopulateProfileRequest(repository_root, session_id, parts[0], opts);
-  request.set_repository_root(repository_root.data(), repository_root.size());
-  request.set_session_id(session_id.data(), session_id.size());
-  for (const auto& hostname : opts.service_addresses()) {
-    request.add_hosts(hostname);
-  }
-  return request;
-}
 
 inline bool ShouldRetryTracing(Status status) {
   return status.code() == error::Code::UNAVAILABLE ||
@@ -232,23 +174,6 @@ Status Monitor(const std::string& service_addr, int duration_ms,
   MonitorResponse response;
   TF_RETURN_IF_ERROR(MonitorGrpc(service_addr, request, &response));
   *result = response.data();
-  return OkStatus();
-}
-
-Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir) {
-  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
-
-  ProfileResponse response;
-  ProfileRequest request = PopulateProfileRequest(
-      GetTensorBoardProfilePluginDir(logdir), GetCurrentTimeStampAsString(),
-      port::Hostname(), /*options=*/{});
-  TF_RETURN_IF_ERROR(
-      ConvertXSpaceToProfileResponse(xspace, request, &response));
-  std::stringstream ss;  // Record LOG messages.
-  TF_RETURN_IF_ERROR(SaveProfile(request.repository_root(),
-                                 request.session_id(), request.host_name(),
-                                 response, &ss));
-  LOG(INFO) << ss.str();
   return OkStatus();
 }
 
