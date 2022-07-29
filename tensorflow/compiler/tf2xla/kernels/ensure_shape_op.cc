@@ -48,14 +48,15 @@ class EnsureShapeOp : public XlaOpKernel {
                                 expected_shape_.DebugString(), "."));
 
     // If the shape dimension in `expected_shape_` is already static, we would
-    // remove the dynamic dimensions in XLA dynamic padder.
+    // remove the dynamic dimensions in XLA dynamic padder. Here we don't check
+    // whether the original input has dynamic shapes, because
+    // `ctx->ResolveInputDynamismIntoPredVector` runs a DFS underneath which is
+    // more expensive.
     xla::XlaOp tensor = ctx->Input(0);
-    std::vector<bool> dynamic_dims;
-    OP_REQUIRES_OK(ctx,
-                   ctx->ResolveInputDynamismIntoPredVector(0, &dynamic_dims));
     for (int i = 0; i < expected_shape_.dims(); ++i) {
-      if (expected_shape_.dim_size(i) > 0 && dynamic_dims[i]) {
-        VLOG(1) << "RemoveDynamicDimension: " << i;
+      if (expected_shape_.dim_size(i) > 0) {
+        VLOG(1) << "RemoveDynamicDimension: " << i << " of shape "
+                << shape.DebugString();
         tensor = xla::RemoveDynamicDimension(tensor, i);
       }
     }
