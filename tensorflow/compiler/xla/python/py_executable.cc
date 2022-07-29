@@ -26,6 +26,12 @@ namespace xla {
 
 namespace py = pybind11;
 
+Status PyToken::Await() {
+  CHECK(future_.IsValid());
+  py::gil_scoped_release gil_release;
+  return future_.Await();
+}
+
 PyExecutable::PyExecutable(std::shared_ptr<PyClient> client,
                            std::unique_ptr<PjRtLoadedExecutable> executable,
                            std::shared_ptr<Traceback> traceback,
@@ -73,13 +79,15 @@ std::vector<ClientAndPtr<PjRtDevice>> PyExecutable::AddressableDevices() const {
   return devices;
 }
 
-StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
-    absl::Span<PyBuffer::object const> args) {
+StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
+PyExecutable::ExecuteInternal(
+    absl::Span<PyBuffer::object const> args,
+    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   {
     auto options = options_;
-    std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
     std::shared_ptr<HostCallbackStates> host_callback_states;
+
     if (!host_callbacks_.empty()) {
       returned_futures.emplace();
 
@@ -109,10 +117,10 @@ StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
         executable_->Execute({arg_buffers}, options, returned_futures));
 
     if (!host_callbacks_.empty()) {
-      returned_futures.value().at(0).OnReady(
-          [host_callback_states](Status) mutable {
-            host_callback_states.reset();
-          });
+      // For host callbacks to work, `returned_futures` must not be nullopt.
+      returned_futures->at(0).OnReady([host_callback_states](Status) mutable {
+        host_callback_states.reset();
+      });
     }
   }
   auto traceback = Traceback::Get();
@@ -121,7 +129,32 @@ StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
   for (auto& buffer : output_buffers[0]) {
     outputs.push_back(PyBuffer::Make(client_, std::move(buffer), traceback));
   }
-  return outputs;
+
+  // TODO(b/240696624): Although the PjRt interface require `returned_futures`
+  // to be resized correctly if it is not nullopt, some implementation does not
+  // implement this. So we have to check whether returned_futures is empty.
+  // Remove this check once the implementation is fixed.
+  if (!returned_futures.has_value()) {
+    return std::pair<std::vector<PyBuffer::object>, PyToken>(std::move(outputs),
+                                                             PyToken());
+  }
+  return std::pair<std::vector<PyBuffer::object>, PyToken>(
+      std::move(outputs), PyToken(std::move(returned_futures->at(0))));
+}
+
+StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
+PyExecutable::ExecuteWithToken(absl::Span<PyBuffer::object const> args) {
+  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+  returned_futures.emplace();
+  return ExecuteInternal(args, returned_futures);
+}
+
+StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
+    absl::Span<PyBuffer::object const> args) {
+  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+  TF_ASSIGN_OR_RETURN(auto outputs_and_token,
+                      ExecuteInternal(args, returned_futures));
+  return std::move(outputs_and_token.first);
 }
 
 StatusOr<std::vector<std::vector<PyBuffer::object>>>
