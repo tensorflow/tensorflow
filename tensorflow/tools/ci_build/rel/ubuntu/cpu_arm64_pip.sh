@@ -63,19 +63,10 @@ export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium --verbose_failures=true --test_keep_going"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/lite/... \
-    -//tensorflow/compiler/mlir/lite/tests:const-fold.mlir.test \
-    -//tensorflow/compiler/mlir/lite/tests:prepare-tf.mlir.test \
     -//tensorflow/python:nn_grad_test \
-    -//tensorflow/python:dequantize_op_test \
-    -//tensorflow/python:quantized_ops_test \
     -//tensorflow/python/client:session_list_devices_test \
-    -//tensorflow/python/data/experimental/kernel_tests/service:cross_trainer_cache_test \
     -//tensorflow/python/data/kernel_tests:iterator_test_cpu \
-    -//tensorflow/python/data/kernel_tests:snapshot_test \
-    -//tensorflow/python/distribute:random_generator_test_cpu \
     -//tensorflow/python/eager:forwardprop_test \
-    -//tensorflow/python/framework:node_file_writer_test \
-    -//tensorflow/python/grappler:memory_optimizer_test \
     -//tensorflow/python/kernel_tests/array_ops:array_ops_test_cpu \
     -//tensorflow/python/kernel_tests/array_ops:concat_op_test_cpu \
     -//tensorflow/python/kernel_tests/array_ops:pad_op_test_cpu \
@@ -90,9 +81,7 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/python/kernel_tests/math_ops:batch_matmul_op_test \
     -//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
     -//tensorflow/python/kernel_tests/nn_ops:conv2d_backprop_filter_grad_test \
-    -//tensorflow/python/kernel_tests/nn_ops:conv3d_backprop_filter_v2_grad_test \
     -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
-    -//tensorflow/python/kernel_tests/quantization_ops:quantization_ops_test \
     -//tensorflow/python/ops/parallel_for:math_test \
     -//tensorflow/python/training:server_lib_test"
 export TF_PIP_TESTS="test_pip_virtualenv_clean"
