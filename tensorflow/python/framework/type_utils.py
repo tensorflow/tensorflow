@@ -162,5 +162,10 @@ def fulltypes_for_flat_tensors(element_spec):
   specs = _specs_for_flat_tensors(element_spec)
   full_types_lists = [_translate_to_fulltype_for_flat_tensors(s) for s in specs]
   rval = nest.flatten(full_types_lists)  # flattens list-of-list to flat list.
-  assert len(rval) == len(element_spec._flat_tensor_specs)  # pylint: disable=protected-access
   return rval
+
+
+def fulltype_list_to_product(fulltype_list):
+  """Convert a list of FullType Def into a single FullType Def."""
+  return full_type_pb2.FullTypeDef(
+      type_id=full_type_pb2.TFT_PRODUCT, args=fulltype_list)
