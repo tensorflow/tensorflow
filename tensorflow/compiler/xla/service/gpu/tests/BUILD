@@ -676,20 +676,10 @@ xla_test(
     ],
 )
 
-<<<<<<< HEAD
-xla_test(
-    name = "bef_executable_test",
-    srcs = ["bef_executable_test.cc"],
-    backends = ["gpu"],
-    tags = [
-        "no_rocm",
-    ],
-=======
 tf_cc_test(
     name = "select_and_scatter_test",
     srcs = ["select_and_scatter_test.cc"],
     tags = tf_cuda_tests_tags(),
->>>>>>> google_upstream/master
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:error_spec",
