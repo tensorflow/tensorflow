@@ -1336,7 +1336,7 @@ Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name.str(), platform_name);
   if (!call_target) {
-    return MakeStringError("Cannot find the Xla custom call handler %s",
+    return MakeStringError("Cannot find the Xla custom call handler ",
                            call_target_name.str());
   }
 
@@ -1669,22 +1669,22 @@ static bool ReduceScatter(runtime::KernelContext* ctx, void** args,
 namespace {
 struct AllGather {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtCollectiveSupport* collectives,
-                           CustomCall::RemainingArgs args, int32_t uid,
-                           int64_t group_mode, int64_t op_id,
-                           ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtCollectiveSupport* collectives,
+                   CustomCall::RemainingArgs args, int32_t uid,
+                   int64_t group_mode, int64_t op_id,
+                   ArrayRef<int64_t> replica_group_offsets,
+                   ArrayRef<int64_t> replica_group_values) const;
   static AllGather Handler() { return AllGather(); }
 };
 }  // namespace
 
-LogicalResult AllGather::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, int64_t op_id,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
+Error AllGather::operator()(const ServiceExecutableRunOptions* run_options,
+                            JitRtCollectiveSupport* collectives,
+                            CustomCall::RemainingArgs args, int32_t uid,
+                            int64_t group_mode, int64_t op_id,
+                            ArrayRef<int64_t> replica_group_offsets,
+                            ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllGather";
   se::Stream* stream = run_options->stream();
@@ -1692,21 +1692,22 @@ LogicalResult AllGather::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return comm;
+  if (failed(comm)) return MakeStringError("Failed to get NCCL comm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers)) return device_buffers;
+  if (failed(device_buffers))
+    return MakeStringError("Failed to get device buffers");
 
-  if (!RunAllGather(*device_buffers, *stream, **comm).ok()) return failure();
+  auto st = RunAllGather(*device_buffers, *stream, **comm);
+  if (!st.ok()) return AsError(st);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
-  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return failure();
+  st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
+  if (!st.ok()) return AsError(st);
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
-  // NCCL disabled.
-  return failure();
+  return MakeStringError("NCCL diasbled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1732,23 +1733,23 @@ static bool AllGather(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct AllToAll {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtCollectiveSupport* collectives,
+                   CustomCall::RemainingArgs args, int32_t uid,
+                   int64_t group_mode, bool has_split_dimension, int64_t op_id,
+                   ArrayRef<int64_t> replica_group_offsets,
+                   ArrayRef<int64_t> replica_group_values) const;
+  static AllToAll Handler() { return AllToAll(); }
+};
+}  // namespace
+
+Error AllToAll::operator()(const ServiceExecutableRunOptions* run_options,
                            JitRtCollectiveSupport* collectives,
                            CustomCall::RemainingArgs args, int32_t uid,
                            int64_t group_mode, bool has_split_dimension,
                            int64_t op_id,
                            ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values) const;
-  static AllToAll Handler() { return AllToAll(); }
-};
-}  // namespace
-
-LogicalResult AllToAll::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, bool has_split_dimension, int64_t op_id,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
+                           ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllToAll";
   se::Stream* stream = run_options->stream();
@@ -1756,22 +1757,22 @@ LogicalResult AllToAll::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return comm;
+  if (failed(comm)) return MakeStringError("Failed to get NCCL comm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers)) return device_buffers;
+  if (failed(device_buffers))
+    return MakeStringError("Failed to get device buffers");
 
-  if (!RunAllToAll(has_split_dimension, *device_buffers, *stream, **comm).ok())
-    return failure();
+  auto st = RunAllToAll(has_split_dimension, *device_buffers, *stream, **comm);
+  if (!st.ok()) return AsError(st);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
-  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return failure();
+  st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
+  if (!st.ok()) return AsError(st);
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
-  // NCCL disabled.
-  return failure();
+  return MakeStringError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1798,19 +1799,19 @@ static bool AllToAll(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct CollectivePermute {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtCollectiveSupport* collectives,
-                           CustomCall::RemainingArgs args, int32_t uid,
-                           int64_t group_mode, int64_t op_id,
-                           ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values,
-                           ArrayRef<int64_t> source_peers,
-                           ArrayRef<int64_t> target_peers) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtCollectiveSupport* collectives,
+                   CustomCall::RemainingArgs args, int32_t uid,
+                   int64_t group_mode, int64_t op_id,
+                   ArrayRef<int64_t> replica_group_offsets,
+                   ArrayRef<int64_t> replica_group_values,
+                   ArrayRef<int64_t> source_peers,
+                   ArrayRef<int64_t> target_peers) const;
   static CollectivePermute Handler() { return CollectivePermute(); }
 };
 }  // namespace
 
-LogicalResult CollectivePermute::operator()(
+Error CollectivePermute::operator()(
     const ServiceExecutableRunOptions* run_options,
     JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id,
@@ -1824,18 +1825,22 @@ LogicalResult CollectivePermute::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return comm;
+  if (failed(comm)) return MakeStringError("Failed to get NcclComm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers)) return device_buffers;
-  if (device_buffers->size() != 1) return failure();
+  if (failed(device_buffers))
+    return MakeStringError("Failed to get device buffers");
+  if (device_buffers->size() != 1) {
+    return MakeStringError("Expected device buffer size: 1, got ",
+                           device_buffers->size());
+  }
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return failure();
+  if (!global_device_id.ok()) return AsError(global_device_id);
 
   StatusOr<DeviceAssignment::LogicalID> current_logical_id =
       params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!current_logical_id.ok()) return failure();
+  if (!current_logical_id.ok()) return AsError(current_logical_id);
 
   const int64_t current_id = static_cast<CollectiveOpGroupMode>(group_mode) ==
                                      CollectiveOpGroupMode::kCrossReplica
@@ -1857,16 +1862,15 @@ LogicalResult CollectivePermute::operator()(
   auto executed =
       RunCollectivePermute(source_target, (*device_buffers)[0], *stream, **comm,
                            device_string, current_id);
-  if (!executed.ok()) return failure();
+  if (!executed.ok()) return AsError(executed);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
-  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return failure();
+  auto st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
+  if (!st.ok()) return AsError(st);
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
-  // NCCL disabled.
-  return failure();
+  return MakeStringError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1895,31 +1899,30 @@ static bool CollectivePermute(runtime::KernelContext* ctx, void** args,
 namespace {
 struct ReplicaId {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           jitrt::FlatMemrefView result) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   jitrt::FlatMemrefView result) const;
   static ReplicaId Handler() { return ReplicaId(); }
 };
 }  // namespace
 
-LogicalResult ReplicaId::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    jitrt::FlatMemrefView result) const {
+Error ReplicaId::operator()(const ServiceExecutableRunOptions* run_options,
+                            jitrt::FlatMemrefView result) const {
   VLOG(3) << "Running ReplicaId";
   se::Stream* stream = run_options->stream();
   NcclExecuteParams params(*run_options, stream);
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return failure();
+  if (!global_device_id.ok()) return AsError(global_device_id);
 
   StatusOr<DeviceAssignment::LogicalID> logical_id =
       params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!logical_id.ok()) return failure();
+  if (!logical_id.ok()) return AsError(logical_id);
 
   se::DeviceMemoryBase result_data = GetDeviceAddress(result);
   params.stream->ThenMemset32(&result_data, logical_id.value().replica_id,
                               /*size=*/4);
 
-  return success();
+  return Error::success();
 }
 
 static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs) {
@@ -1937,31 +1940,30 @@ static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct PartitionId {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           jitrt::FlatMemrefView result) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   jitrt::FlatMemrefView result) const;
   static PartitionId Handler() { return PartitionId(); }
 };
 }  // namespace
 
-LogicalResult PartitionId::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    jitrt::FlatMemrefView result) const {
+Error PartitionId::operator()(const ServiceExecutableRunOptions* run_options,
+                              jitrt::FlatMemrefView result) const {
   VLOG(3) << "Running PartitionId";
   se::Stream* stream = run_options->stream();
   NcclExecuteParams params(*run_options, stream);
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return failure();
+  if (!global_device_id.ok()) return AsError(global_device_id);
 
   StatusOr<DeviceAssignment::LogicalID> logical_id =
       params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!logical_id.ok()) return failure();
+  if (!logical_id.ok()) return AsError(logical_id);
 
   se::DeviceMemoryBase result_data = GetDeviceAddress(result);
   params.stream->ThenMemset32(&result_data, logical_id.value().computation_id,
                               /*size=*/4);
 
-  return success();
+  return Error::success();
 }
 
 static bool PartitionId(runtime::KernelContext* ctx, void** args,
