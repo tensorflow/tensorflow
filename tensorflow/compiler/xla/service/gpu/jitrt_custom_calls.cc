@@ -1404,23 +1404,23 @@ static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct AllReduce {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtCollectiveSupport* collectives,
-                           CustomCall::RemainingArgs args, int32_t uid,
-                           int64_t group_mode, int64_t op_id,
-                           int64_t reduction_kind,
-                           ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtCollectiveSupport* collectives,
+                   CustomCall::RemainingArgs args, int32_t uid,
+                   int64_t group_mode, int64_t op_id, int64_t reduction_kind,
+                   ArrayRef<int64_t> replica_group_offsets,
+                   ArrayRef<int64_t> replica_group_values) const;
   static AllReduce Handler() { return AllReduce(); }
 };
 }  // namespace
 
-LogicalResult AllReduce::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
+Error AllReduce::operator()(const ServiceExecutableRunOptions* run_options,
+                            JitRtCollectiveSupport* collectives,
+                            CustomCall::RemainingArgs args, int32_t uid,
+                            int64_t group_mode, int64_t op_id,
+                            int64_t reduction_kind,
+                            ArrayRef<int64_t> replica_group_offsets,
+                            ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduce";
   se::Stream* stream = run_options->stream();
@@ -1428,23 +1428,24 @@ LogicalResult AllReduce::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return comm;
+  if (failed(comm)) return MakeStringError("Failed to get NcclComm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers)) return device_buffers;
+  if (failed(device_buffers))
+    return MakeStringError("Failed to get device buffers");
 
   auto executed = RunAllReduce(static_cast<ReductionKind>(reduction_kind),
                                *device_buffers, *stream, **comm);
-  if (!executed.ok()) return failure();
+  if (!executed.ok()) return AsError(executed);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
-  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return failure();
+  auto st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
+  if (!st.ok()) return AsError(st);
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
   // NCCL disabled.
-  return failure();
+  return MakeStringError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1471,23 +1472,24 @@ static bool AllReduce(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct AllReduceStart {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtAsyncCollectiveSupport* async_collectives,
-                           CustomCall::RemainingArgs args, int64_t group_mode,
-                           int64_t op_id, int64_t reduction_kind,
-                           ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values,
-                           int32_t uid) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtAsyncCollectiveSupport* async_collectives,
+                   CustomCall::RemainingArgs args, int64_t group_mode,
+                   int64_t op_id, int64_t reduction_kind,
+                   ArrayRef<int64_t> replica_group_offsets,
+                   ArrayRef<int64_t> replica_group_values, int32_t uid) const;
   static AllReduceStart Handler() { return AllReduceStart(); }
 };
 }  // namespace
 
-LogicalResult AllReduceStart::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtAsyncCollectiveSupport* async_collectives,
-    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
-    int64_t reduction_kind, ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values, int32_t uid) const {
+Error AllReduceStart::operator()(const ServiceExecutableRunOptions* run_options,
+                                 JitRtAsyncCollectiveSupport* async_collectives,
+                                 CustomCall::RemainingArgs args,
+                                 int64_t group_mode, int64_t op_id,
+                                 int64_t reduction_kind,
+                                 ArrayRef<int64_t> replica_group_offsets,
+                                 ArrayRef<int64_t> replica_group_values,
+                                 int32_t uid) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduceStart";
   se::Stream* stream = run_options->stream();
@@ -1495,10 +1497,11 @@ LogicalResult AllReduceStart::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return comm;
+  if (failed(comm)) return MakeStringError("Failed to get NcclComm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers)) return device_buffers;
+  if (failed(device_buffers))
+    return MakeStringError("Failed to get device buffers");
 
   // Wait until compute inputs are ready.
   async_collectives->async_comm_stream()->ThenWaitFor(params.stream);
@@ -1506,20 +1509,20 @@ LogicalResult AllReduceStart::operator()(
   auto executed =
       RunAllReduce(static_cast<ReductionKind>(reduction_kind), *device_buffers,
                    *async_collectives->async_comm_stream(), **comm);
-  if (!executed.ok()) return failure();
+  if (!executed.ok()) return AsError(executed);
 
   // Create an event on the async stream for the completion of the all-reduce.
   se::Event done_event(async_collectives->async_comm_stream()->parent());
-  if (!done_event.Init()) return failure();
+  if (!done_event.Init()) return MakeStringError("Failed to create event");
   async_collectives->async_comm_stream()->ThenRecordEvent(&done_event);
 
   if (failed(async_collectives->PushEvent(
           uid, stream->parent()->device_ordinal(), std::move(done_event))))
-    return failure();
+    return MakeStringError("Failed to push event to async collectives");
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
-  return failure();  // NCCL disabled.
+  return MakeStringError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1547,35 +1550,35 @@ static bool AllReduceStart(runtime::KernelContext* ctx, void** args,
 namespace {
 struct AllReduceDone {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtCollectiveSupport* collectives,
-                           JitRtAsyncCollectiveSupport* async_collectives,
-                           CustomCall::RemainingArgs args, int32_t uid) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtCollectiveSupport* collectives,
+                   JitRtAsyncCollectiveSupport* async_collectives,
+                   CustomCall::RemainingArgs args, int32_t uid) const;
   static AllReduceDone Handler() { return AllReduceDone(); }
 };
 }  // namespace
 
-LogicalResult AllReduceDone::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives,
-    JitRtAsyncCollectiveSupport* async_collectives,
-    CustomCall::RemainingArgs args, int32_t uid) const {
+Error AllReduceDone::operator()(const ServiceExecutableRunOptions* run_options,
+                                JitRtCollectiveSupport* collectives,
+                                JitRtAsyncCollectiveSupport* async_collectives,
+                                CustomCall::RemainingArgs args,
+                                int32_t uid) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduceDone";
   se::Stream* stream = run_options->stream();
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
   auto event = async_collectives->PopEvent(uid, device_ordinal);
-  if (failed(event)) return failure();
+  if (failed(event)) return MakeStringError("Failed to pop event");
 
   stream->ThenWaitFor(&*event);
 
   if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return failure();
+    return MakeStringError("Failed to block host");
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
-  return failure();  // NCCL disabled.
+  return MakeStringError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1598,23 +1601,23 @@ static bool AllReduceDone(runtime::KernelContext* ctx, void** args,
 namespace {
 struct ReduceScatter {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtCollectiveSupport* collectives,
-                           CustomCall::RemainingArgs args, int32_t uid,
-                           int64_t group_mode, int64_t op_id,
-                           int64_t reduction_kind,
-                           ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtCollectiveSupport* collectives,
+                   CustomCall::RemainingArgs args, int32_t uid,
+                   int64_t group_mode, int64_t op_id, int64_t reduction_kind,
+                   ArrayRef<int64_t> replica_group_offsets,
+                   ArrayRef<int64_t> replica_group_values) const;
   static ReduceScatter Handler() { return ReduceScatter(); }
 };
 }  // namespace
 
-LogicalResult ReduceScatter::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
+Error ReduceScatter::operator()(const ServiceExecutableRunOptions* run_options,
+                                JitRtCollectiveSupport* collectives,
+                                CustomCall::RemainingArgs args, int32_t uid,
+                                int64_t group_mode, int64_t op_id,
+                                int64_t reduction_kind,
+                                ArrayRef<int64_t> replica_group_offsets,
+                                ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running ReduceScatter";
   se::Stream* stream = run_options->stream();
@@ -1622,23 +1625,23 @@ LogicalResult ReduceScatter::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return comm;
+  if (failed(comm)) return MakeStringError("Failed to get NcclComm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers)) return device_buffers;
+  if (failed(device_buffers))
+    return MakeStringError("Failed to get device buffers");
 
   auto executed = RunReduceScatter(static_cast<ReductionKind>(reduction_kind),
                                    *device_buffers, *stream, **comm);
-  if (!executed.ok()) return failure();
+  if (!executed.ok()) return AsError(executed);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
   if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return failure();
+    return MakeStringError("Failed to block host");
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
-  // NCCL disabled.
-  return failure();
+  return MakeStringError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
