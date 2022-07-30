@@ -1094,6 +1094,43 @@ def run_all_in_graph_and_eager_modes(cls):
   return cls
 
 
+def enable_nested_function_shape_inference(fn):
+  """Decorator for enabling nested_function_shape_inference on a test.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will set nested_function_shape_inference,
+  reset the context, execute the test, then reset the context to the state
+  it was in prior to this test.
+
+  Example:
+
+  class MyTest(test.TestCase):
+
+    @enable_nested_function_shape_inference
+    def testFoo(self):
+      ...
+
+  Args:
+    fn: the function to be wrapped.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def wrapper(*args, **kwargs):
+    # If `nested_function_shape_inference` is already enabled do nothing.
+    if flags.config().enable_nested_function_shape_inference.value():
+      return fn(*args, **kwargs)
+
+    flags.config().enable_nested_function_shape_inference.reset(True)
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      flags.config().enable_nested_function_shape_inference.reset(False)
+
+  return wrapper
+
+
 def enable_eager_op_as_function(fn):
   """Decorator for enabling eager_op_as_function on a test.
 

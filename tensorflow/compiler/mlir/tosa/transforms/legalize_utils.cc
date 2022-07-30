@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
@@ -561,39 +562,11 @@ LogicalResult ApplyPatternsWithShapeResolution(
     op.getResult().setType(new_ty);
   });
 
-  // Insert UnrealizedConversionCasts to guarantee ReturnOp agrees with
-  // the FuncOp type.
-  IRRewriter rewriter(func.getContext());
-  func.walk([&](func::ReturnOp op) {
-    func::FuncOp parent = dyn_cast<func::FuncOp>(op->getParentOp());
-    if (parent != func) return;
+  auto returnOp = cast<func::ReturnOp>(func.getBody().front().getTerminator());
+  llvm::SmallVector<Type> result_tys(returnOp.getOperandTypes());
 
-    rewriter.setInsertionPoint(op);
-    FunctionType func_ty = func.getFunctionType();
-    auto result_tys = func_ty.getResults();
-
-    bool cast_added = false;
-    SmallVector<Value> return_values;
-    for (auto it : llvm::zip(op->getOperands(), result_tys)) {
-      Value operand = std::get<0>(it);
-      Type current_ty = operand.getType();
-      Type cast_ty = std::get<1>(it);
-      if (current_ty == cast_ty) {
-        return_values.push_back(operand);
-        continue;
-      }
-
-      return_values.push_back(
-          rewriter.create<tensor::CastOp>(op.getLoc(), cast_ty, operand)
-              .getResult());
-
-      cast_added = true;
-    }
-
-    if (cast_added) {
-      rewriter.replaceOpWithNewOp<func::ReturnOp>(op, return_values);
-    }
-  });
+  func.setType(FunctionType::get(
+      func.getContext(), func.getFunctionType().getInputs(), result_tys));
 
   return success();
 }

@@ -60,7 +60,7 @@ dependencies {
 ```
 
 To use nightly snapshots, make sure that you have added
-[Sonatype snapshot repository](./build_android#use_nightly_snapshots).
+[Sonatype snapshot repository](../android/lite_build.md#use_nightly_snapshots).
 
 Once you've added the dependency, the necessary delegate for handling the
 graph's TensorFlow ops should be automatically installed for graphs that require
@@ -83,8 +83,9 @@ android {
 #### Building the Android AAR
 
 For reducing the binary size or other advanced cases, you can also build the
-library manually. Assuming a <a href="android.md">working TensorFlow Lite build
-environment</a>, build the Android AAR with select TensorFlow ops as follows:
+library manually. Assuming a
+[working TensorFlow Lite build environment](../android/quickstart.md), build the
+Android AAR with select TensorFlow ops as follows:
 
 ```sh
 sh tensorflow/lite/tools/build_aar.sh \

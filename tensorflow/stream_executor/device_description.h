@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 
+<<<<<<< HEAD
 #include <map>
 #include <memory>
 #include <set>
@@ -476,5 +477,8 @@ void CalculateDimensionality(const DeviceDescription &device_description,
                              int64_t *block_count);
 
 }  // namespace stream_executor
+=======
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+>>>>>>> google_upstream/master
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_

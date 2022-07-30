@@ -5184,8 +5184,25 @@ TfLiteXNNPackDelegateWeightsCache* TfLiteXNNPackDelegateWeightsCacheCreate() {
     return nullptr;
   }
 
-  xnn_weights_cache_t weights_cache;
-  xnn_create_weights_cache(&weights_cache);
+  xnn_weights_cache_t weights_cache = nullptr;
+  if (xnn_create_weights_cache(&weights_cache) != xnn_status_success) {
+    return nullptr;
+  }
+  return reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(weights_cache);
+}
+
+TfLiteXNNPackDelegateWeightsCache*
+TfLiteXNNPackDelegateWeightsCacheCreateWithSize(size_t size) {
+  xnn_status status = xnn_initialize(/*allocator=*/nullptr);
+  if (status != xnn_status_success) {
+    return nullptr;
+  }
+
+  xnn_weights_cache_t weights_cache = nullptr;
+  if (xnn_create_weights_cache_with_size(size, &weights_cache) !=
+      xnn_status_success) {
+    return nullptr;
+  }
   return reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(weights_cache);
 }
 

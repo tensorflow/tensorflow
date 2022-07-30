@@ -492,12 +492,16 @@ std::string CLArguments::GetListOfArgs() {
     for (const auto& attr : t.second.desc.attributes) {
       attributes += absl::StrCat("  __attribute__((", attr, "))");
     }
-    AppendArgument(
-        absl::StrCat(
-            MemoryTypeToCLType(t.second.desc.memory_type), " ",
-            ToCLDataType(t.second.desc.data_type, t.second.desc.element_size),
-            "* ", t.first, attributes),
-        &result);
+    std::string cl_type;
+    if (t.second.desc.data_type == DataType::BOOL) {
+      cl_type = ToCLDataType(DataType::UINT8, t.second.desc.element_size);
+    } else {
+      cl_type =
+          ToCLDataType(t.second.desc.data_type, t.second.desc.element_size);
+    }
+    AppendArgument(absl::StrCat(MemoryTypeToCLType(t.second.desc.memory_type),
+                                " ", cl_type, "* ", t.first, attributes),
+                   &result);
   }
   for (auto& t : image_buffers_) {
     AppendArgument(absl::StrCat(GetImageModifier(t.second.desc.access_type),

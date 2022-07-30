@@ -51,7 +51,7 @@ StatusOr<mlir::Value> EmitAllGather(
     mlir::OpBuilder& builder, mlir::Value input,
     const dtensor::Layout& src_layout, const dtensor::Layout& tgt_layout,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops) {
-  if (src_layout == tgt_layout) return input;
+  if (src_layout.IsEquivalent(tgt_layout)) return input;
 
   if (src_layout.rank() != tgt_layout.rank()) {
     return errors::InvalidArgument(
@@ -105,7 +105,7 @@ StatusOr<const mlir::Value> EmitAllScatter(
     mlir::OpBuilder& builder, const mlir::Value& original_value,
     const Layout& original_layout, const Layout& desired_layout,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops) {
-  if (original_layout == desired_layout) return original_value;
+  if (original_layout.IsEquivalent(desired_layout)) return original_value;
 
   // Have an early return if desired layout is not more sharded then the
   // original_layout.
@@ -208,6 +208,8 @@ StatusOr<mlir::Value> EmitRelayout(
   // that does not agree with the sharding on the output axis.
   // This produces intermediate layout 2.
   // A split is performed from intermediate layout 2 to the tgt layout.
+
+  if (src_layout.IsEquivalent(tgt_layout)) return input;
 
   // Save whether the input is from a SparseToDenseOp. If it is, then we will
   // emit a DenseToSparse and a SparseToDense op.

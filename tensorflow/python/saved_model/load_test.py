@@ -28,6 +28,7 @@ import weakref
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python.checkpoint import checkpoint
+from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -1957,7 +1958,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     options = load_options.LoadOptions(experimental_io_device="/job:localhost")
     self.assertEqual("/job:localhost", options.experimental_io_device)
 
-  def test_load_custom_saveable_object(self, cycles):
+  def _custom_saveable_object(self, cycles):
     if context.is_tfrt_enabled():
       self.skipTest("Disable due to b/190539415.")
     root = autotrackable.AutoTrackable()
@@ -1976,6 +1977,19 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = cycle(root, cycles)
     self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
     self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
+
+    if not saveable_compat.force_checkpoint_conversion_enabled():
+      self.assertEqual({"table"},
+                       imported.table._self_saveable_object_factories.keys())
+
+  def test_load_custom_saveable_object(self, cycles):
+    self._custom_saveable_object(cycles)
+
+  def test_load_custom_saveable_object_ckpt_conversion(self, cycles):
+    # Tests custom saveable object with checkpoint conversion enabled (forces
+    # Trackable-based checkpoint implementation).
+    saveable_compat.force_checkpoint_conversion()
+    self._custom_saveable_object(cycles)
 
   def test_load_resource_with_dependency(self, cycles):
     # Test with StaticHashTable, which has a _initializer attribute that tracks

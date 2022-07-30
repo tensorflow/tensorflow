@@ -180,6 +180,7 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
     TfLiteTensor* scratch_buffer;
     TF_LITE_ENSURE_OK(
         context, GetTemporarySafe(context, node, /*index=*/1, &scratch_buffer));
+    scratch_buffer->name = "BatchMatMul_scratch_buffer";
     const TfLiteTensor* rhs = op_context->rhs;
     int rhs_rank = NumDimensions(rhs);
     TfLiteIntArray* scratch_buffer_size = TfLiteIntArrayCreate(rhs_rank);

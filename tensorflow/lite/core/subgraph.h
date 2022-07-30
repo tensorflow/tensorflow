@@ -380,6 +380,11 @@ class Subgraph {
   void DumpMemoryPlannerDebugInfo() const;
 
   // WARNING: This is an experimental API and subject to change.
+  // Returns memory allocation status.
+  void GetMemoryAllocInfo(size_t* arena_size, size_t* arena_persist_size,
+                          size_t* dynamic_size) const;
+
+  // WARNING: This is an experimental API and subject to change.
   // Set the given `InterpreterOptions` object.
   void SetOptions(InterpreterOptions* options) { options_ = options; }
 

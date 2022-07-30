@@ -93,18 +93,25 @@ ParseHloProtosFromXSpace(const XSpace& space) {
   return hlo_protos;
 }
 
-void HloProtoMap::AddHloProto(uint64_t program_id,
+bool HloProtoMap::AddHloProto(uint64_t program_id,
                               const xla::HloProto* hlo_proto) {
-  hlo_protos_by_program_id_.try_emplace(program_id, hlo_proto);
+  bool new_program_id =
+      hlo_protos_by_program_id_.try_emplace(program_id, hlo_proto).second;
   absl::string_view hlo_module_name = hlo_proto->hlo_module().name();
-  hlo_protos_by_name_.try_emplace(
-      HloModuleNameWithProgramId(hlo_module_name, program_id), hlo_proto);
+  bool new_module_name =
+      hlo_protos_by_name_
+          .try_emplace(HloModuleNameWithProgramId(hlo_module_name, program_id),
+                       hlo_proto)
+          .second;
+  return new_program_id || new_module_name;
 }
 
 void HloProtoMap::AddHloProto(uint64_t program_id,
                               std::unique_ptr<const xla::HloProto> hlo_proto) {
-  AddHloProto(program_id, hlo_proto.get());
-  owned_hlo_protos_.push_back(std::move(hlo_proto));
+  if (AddHloProto(program_id, hlo_proto.get())) {
+    // Only add to <owned_hlo_protos_> if <hlo_proto> is new to HloProtoMap.
+    owned_hlo_protos_.push_back(std::move(hlo_proto));
+  }
 }
 
 void HloProtoMap::AddHloProtosFromXSpace(const XSpace& space) {

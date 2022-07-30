@@ -23,6 +23,7 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <random>
+#include <sstream>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -119,6 +120,33 @@ class InterpreterStatePrinter : public BenchmarkListener {
  private:
   Interpreter* const interpreter_ = nullptr;  // not own the memory.
   const BenchmarkParams* params_ = nullptr;   // not own the memory.
+};
+
+class OutputSaver : public BenchmarkListener {
+ public:
+  explicit OutputSaver(Interpreter* interpreter) : interpreter_(interpreter) {}
+
+  void OnBenchmarkStart(const BenchmarkParams& params) override {
+    params_ = &params;
+  }
+
+  void OnBenchmarkEnd(const BenchmarkResults& results) override {
+    std::string path = params_->Get<std::string>("output_filepath");
+    if (path.empty()) return;
+
+    std::ofstream ofs(path, std::ofstream::out);
+    if (ofs.good()) {
+      for (int i = 0; i < interpreter_->outputs().size(); i++) {
+        ofs.write(interpreter_->output_tensor(i)->data.raw,
+                  interpreter_->output_tensor(i)->bytes);
+      }
+      ofs.close();
+    }
+  }
+
+ private:
+  Interpreter* const interpreter_ = nullptr;
+  const BenchmarkParams* params_ = nullptr;
 };
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
@@ -336,6 +364,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("optimize_memory_for_large_tensors",
                           BenchmarkParam::Create<int32_t>(0));
+  default_params.AddParam("output_filepath",
+                          BenchmarkParam::Create<std::string>(""));
 
   tools::ProvidedDelegateList delegate_providers(&default_params);
   delegate_providers.AddAllDelegateParams();
@@ -412,7 +442,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                        "are not used."),
       CreateFlag<int32_t>(
           "optimize_memory_for_large_tensors", &params_,
-          "Optimize memory usage for large tensors with sacrificing latency.")};
+          "Optimize memory usage for large tensors with sacrificing latency."),
+      CreateFlag<std::string>(
+          "output_filepath", &params_,
+          "File path to export outputs layer as binary data.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -455,6 +488,8 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Release dynamic tensor memory", verbose);
   LOG_BENCHMARK_PARAM(int32_t, "optimize_memory_for_large_tensors",
                       "Optimize memory usage for large tensors", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "output_filepath",
+                      "File path to export outputs layer to", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -506,19 +541,32 @@ InputTensorData BenchmarkTfLiteModel::LoadInputTensorData(
     t_data.data = VoidUniquePtr(
         static_cast<void*>(new tflite::DynamicBuffer()),
         [](void* ptr) { delete static_cast<DynamicBuffer*>(ptr); });
-    std::string line;
-    size_t num_line = 0;
-    // Read the line with the delimiter '\0'.
-    while (std::getline(value_file, line, '\0')) {
-      num_line++;
+    if (input_file_path.size() > 3 &&
+        input_file_path.substr(input_file_path.size() - 3) == ".pb") {
+      // If input file is ".pb" file, read data as a binary.
+      std::stringstream buffer;
+      buffer << value_file.rdbuf();
       static_cast<DynamicBuffer*>(t_data.data.get())
-          ->AddString(line.data(), line.length());
-    }
-    int num_elements = GetNumElements(t.dims);
-    if (num_line != num_elements) {
-      TFLITE_LOG(FATAL) << "The number of string in the input_layer_value_file("
-                        << input_file_path << ") is " << num_line
-                        << ". It should be " << num_elements << ".";
+          ->AddString(buffer.str().data(), buffer.str().length());
+      TFLITE_LOG(INFO) << "Read " << buffer.str().length()
+                       << " bytes data from " << input_file_path << ".";
+    } else {
+      // Read input as a text.
+      std::string line;
+      size_t num_line = 0;
+      // Read the line with the delimiter '\0'.
+      while (std::getline(value_file, line, '\0')) {
+        num_line++;
+        static_cast<DynamicBuffer*>(t_data.data.get())
+            ->AddString(line.data(), line.length());
+      }
+      int num_elements = GetNumElements(t.dims);
+      if (num_line != num_elements) {
+        TFLITE_LOG(FATAL)
+            << "The number of string in the input_layer_value_file("
+            << input_file_path << ") is " << num_line << ". It should be "
+            << num_elements << ".";
+      }
     }
   } else {
     value_file.seekg(0, std::ios_base::end);
@@ -786,6 +834,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   AddOwnedListener(
       std::unique_ptr<BenchmarkListener>(new RuyProfileListener()));
+  AddOwnedListener(
+      std::unique_ptr<BenchmarkListener>(new OutputSaver(interpreter_.get())));
 
   return kTfLiteOk;
 }

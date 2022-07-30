@@ -38,9 +38,9 @@
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -124,6 +124,12 @@ CloneToModule(Operation* op, mlir::ValueRange arguments,
         pair.value(), pair.value().getNameAttr());
     auto attr = builder.getIndexAttr(pair.index());
     builder.clone(*global_op)->setAttr("lmhlo.alloc", attr);
+  }
+
+  // If 'op' is a gpu.launch_func, clone referenced gpu.module.
+  if (auto launch_func_op = llvm::dyn_cast<mlir::gpu::LaunchFuncOp>(op)) {
+    builder.clone(*mlir::SymbolTable::lookupNearestSymbolFrom(
+        op, launch_func_op.getKernelModuleName()));
   }
 
   auto func_type = builder.getType<mlir::FunctionType>(
@@ -230,7 +236,11 @@ Emit(mlir::func::FuncOp func_op,
 
 // Returns the data to rewrite op without changing the IR.
 static llvm::Expected<RewriteData> Match(Operation* op) {
-  mlir::SmallVector<Value, 4> arguments = op->getOperands();
+  mlir::SmallVector<Value> arguments;
+  llvm::copy_if(
+      op->getOperands(), std::back_inserter(arguments),
+      // Filter block/thread size arguments of gpu.launch_func.
+      [](Value value) { return value.getType().isa<mlir::ShapedType>(); });
   mlir::SetVector<Value> captures;
   getUsedValuesDefinedAbove(op->getRegions(), captures);
   llvm::copy(captures, std::back_inserter(arguments));
@@ -448,7 +458,8 @@ mlir::LogicalResult KernelOpsPattern::matchAndRewrite(
       walk(mlir::lmhlo::RngGetAndUpdateStateOp()).wasInterrupted() ||
       walk(mlir::lmhlo::ScatterOp()).wasInterrupted() ||
       walk(mlir::lmhlo::SelectAndScatterOp()).wasInterrupted() ||
-      walk(mlir::lmhlo::SortOp()).wasInterrupted())
+      walk(mlir::lmhlo::SortOp()).wasInterrupted() ||
+      walk(mlir::gpu::LaunchFuncOp()).wasInterrupted())
     return mlir::failure();
 
   if (rewrites.empty()) {

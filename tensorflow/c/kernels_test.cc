@@ -121,6 +121,32 @@ static std::unique_ptr<OpKernel> GetFakeKernel(const char* device_name,
                         status);
 }
 
+static std::unique_ptr<OpKernel> GetFakeKernel2(const char* device_name,
+                                                const char* op_name,
+                                                const char* node_name,
+                                                Status* status) {
+  NodeDef def;
+  def.set_op(op_name);
+  def.set_name(node_name);
+  def.set_device(device_name);
+  def.add_input("input1");
+  def.add_input("input2");
+  def.add_input("input3");
+  def.add_input("input3");
+  def.add_input("input3");
+
+  AttrValue v0;
+  v0.set_type(DataType::DT_INT32);
+  v0.set_i(3);
+  (*def.mutable_attr())["NumInput3"] = v0;
+  AttrValue v1;
+  v1.set_type(DataType::DT_FLOAT);
+  (*def.mutable_attr())["SomeDataTypeAttr"] = v1;
+
+  return CreateOpKernel(DeviceType(device_name), nullptr, nullptr, def, 1,
+                        status);
+}
+
 // Tests registration of a single C kernel and checks that calls through the
 // C/C++ boundary are being made.
 TEST(TestKernel, TestRegisterKernelBuilder) {
@@ -1136,6 +1162,8 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSize2x3) {
 REGISTER_OP("DoNothingOp")
     .Input("input1: float")
     .Input("input2: float")
+    .Attr("NumInput3: int >= 0")
+    .Input("input3: NumInput3 * float")
     .Output("output1: float")
     .Attr("SomeDataTypeAttr: type");
 
@@ -1160,6 +1188,13 @@ TEST_F(DeviceKernelOpTest, TestGetKernelInfo) {
 
     sv = TF_GetOpKernelRequestedInput(ctx, 1);
     EXPECT_STREQ(sv.data, "input2");
+
+    TF_InputRange_Args args;
+    args.status = s;
+    TF_InputRange(ctx, "input3", &args);
+    EXPECT_EQ(TF_OK, TF_GetCode(s));
+    EXPECT_EQ(args.start, 2);
+    EXPECT_EQ(args.stop, 5);
 
     TF_Tensor* output = TF_AllocateTemp(
         /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/dim,
@@ -1190,16 +1225,23 @@ TEST_F(DeviceKernelOpTest, TestGetKernelInfo) {
     gtl::InlinedVector<TensorValue, 4> inputs;
     Tensor t0(1.0f);
     Tensor t1(2.0f);
+    Tensor t2_0(2.0f);
+    Tensor t2_1(2.1f);
+    Tensor t2_2(2.2f);
     inputs.emplace_back(&t0);
     inputs.emplace_back(&t1);
+    inputs.emplace_back(&t2_0);
+    inputs.emplace_back(&t2_1);
+    inputs.emplace_back(&t2_2);
 
     Status status;
     std::unique_ptr<OpKernel> kernel =
-        GetFakeKernel(device_name, op_name, node_name, &status);
+        GetFakeKernel2(device_name, op_name, node_name, &status);
     TF_EXPECT_OK(status);
     ASSERT_NE(nullptr, kernel.get());
 
     p.op_kernel = kernel.get();
+    p.inputs = inputs;
     OpKernelContext ctx(&p);
     kernel->Compute(&ctx);
   }

@@ -533,6 +533,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     TfLiteTensor* hwcn_weights =
         &context->tensors[node->temporaries->data[data->hwcn_weights_index]];
     hwcn_weights->type = input_type;
+    hwcn_weights->name = "Conv_hwcn_weights";
     hwcn_weights->allocation_type = kTfLiteArenaRwPersistent;
 
     auto hwcn_weights_status =
@@ -629,6 +630,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
           context,
           GetTemporarySafe(context, node, data->row_sums_index, &row_sums));
       row_sums->type = kTfLiteInt32;
+      row_sums->name = "Conv_row_sums";
       row_sums->allocation_type = kTfLiteArenaRwPersistent;
       // See above comment for the need to allocate for height of inputs.
       const int row_sums_dims[1] = {channels_out};

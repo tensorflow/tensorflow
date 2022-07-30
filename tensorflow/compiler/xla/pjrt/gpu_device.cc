@@ -405,14 +405,13 @@ GpuDevice::GpuDevice(int id,
   attributes_ = {
       {"device_vendor", PjRtDeviceAttribute(device_vendor_)},
   };
+  to_string_ = absl::StrFormat("GpuDevice(id=%i, process_index=%i)", id,
+                               process_index());
 }
 
 absl::string_view GpuDevice::device_vendor() { return device_vendor_; }
 
-std::string GpuDevice::ToString() const {
-  return absl::StrFormat("GpuDevice(id=%i, process_index=%i)", id(),
-                         process_index());
-}
+absl::string_view GpuDevice::ToString() const { return to_string_; }
 
 StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,

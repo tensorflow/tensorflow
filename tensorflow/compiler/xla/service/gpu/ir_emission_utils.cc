@@ -18,14 +18,15 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <numeric>
 #include <optional>
 #include <vector>
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -714,6 +715,7 @@ static bool IsInstructionSafeForShmemTranspose(const HloInstruction* hlo) {
     });
   }
 
+  // Needs to be kept in sync with `ShmemTransposeSupportedForInputs` below.
   switch (hlo->opcode()) {
     // Non-elementwise instructions that don't cause the shmem transpose
     // to be unsafe, including the instructions that don't currently fuse.
@@ -761,6 +763,52 @@ static std::vector<int64_t> FilterInputsForShmemTranspose(
   return filtered_input_ids;
 }
 
+// Whether code emission supports shared memory transposes for one or more
+// `input_ids`.
+bool ShmemTransposeSupportedForInputs(const HloInstruction& instr,
+                                      std::vector<int64_t> input_ids) {
+  if (instr.opcode() == HloOpcode::kFusion) {
+    return !FilterInputsForShmemTranspose(
+                instr.fused_instructions_computation(), input_ids)
+                .empty();
+  }
+  // Needs to be kept in sync with `IsInstructionSafeForShmemTranspose` above.
+  return instr.IsElementwise() ||
+         instr.opcode() == HloOpcode::kGetDimensionSize;
+}
+
+std::optional<TransposeDimsAndParams> FindTranspose021DimsAndParameters(
+    const std::vector<Shape>& operand_shapes, const Shape& output_shape) {
+  std::vector<int64_t> params_012;
+  std::optional<Vector3> reduced_dims_021;
+  for (int64_t operand_idx = 0; operand_idx < operand_shapes.size();
+       ++operand_idx) {
+    auto find_transpose_result =
+        ShapeUtil::FindTranspose021(operand_shapes[operand_idx], output_shape);
+    if (!find_transpose_result.has_value()) {
+      continue;
+    }
+    const Vector3& curr_reduced_dims_021 = *find_transpose_result;
+    if (!reduced_dims_021.has_value()) {
+      reduced_dims_021 = curr_reduced_dims_021;
+    }
+    if (!absl::c_equal(*reduced_dims_021, curr_reduced_dims_021)) {
+      // There is more than one possible transpose. Instead of picking one
+      // transpose, we simply give up here.
+      VLOG(3) << "021 transpose not matched; More than one possible "
+                 "transposition of parameters: "
+              << VectorString(*reduced_dims_021) << " and "
+              << VectorString(*find_transpose_result);
+      return std::nullopt;
+    }
+    params_012.push_back(operand_idx);
+  }
+  if (!reduced_dims_021.has_value()) {
+    return std::nullopt;
+  }
+  return TransposeDimsAndParams{*reduced_dims_021, params_012};
+}
+
 std::optional<TransposeDimsAndParams> Match021Transpose(
     const HloComputation* fused_computation) {
   // If a dimensions is smaller than this, untiled transposition may be more
@@ -774,38 +822,24 @@ std::optional<TransposeDimsAndParams> Match021Transpose(
   }
   const Shape& output_shape = root->shape();
 
-  std::vector<int64_t> params_012;
-  std::optional<Vector3> reduced_dims_021;
-  for (int64_t param_idx = 0; param_idx < fused_computation->num_parameters();
-       ++param_idx) {
-    HloInstruction* param = fused_computation->parameter_instruction(param_idx);
-    const Shape& param_shape = param->shape();
-    if (std::optional<Vector3> find_transpose_result =
-            ShapeUtil::FindTranspose021(param_shape, output_shape)) {
-      if (!reduced_dims_021.has_value()) {
-        reduced_dims_021 = *find_transpose_result;
-      } else if (*reduced_dims_021 != *find_transpose_result) {
-        // There is more than one possible transpose. Instead of picking one
-        // transpose, we simply give up here.
-        VLOG(3) << "021 transpose on instruction " << root->ToString()
-                << " not matched; More than one possible transposition of "
-                   "parameters: "
-                << VectorString(*reduced_dims_021) << " and "
-                << VectorString(*find_transpose_result);
-        return std::nullopt;
-      }
-      params_012.push_back(param_idx);
-    }
-  }
+  std::vector<Shape> param_shapes;
+  absl::c_for_each(fused_computation->parameter_instructions(),
+                   [&](const HloInstruction* param) {
+                     param_shapes.push_back(param->shape());
+                   });
+  std::optional<TransposeDimsAndParams> reduced_dims_and_params_021 =
+      FindTranspose021DimsAndParameters(param_shapes, output_shape);
 
-  if (!reduced_dims_021.has_value()) {
+  if (!reduced_dims_and_params_021.has_value()) {
     VLOG(3) << "021 transposition not found on instruction "
             << root->ToString();
     return std::nullopt;
   }
+  std::vector<int64_t> params_012 = reduced_dims_and_params_021->params;
+  const Vector3& reduced_dims_021 = reduced_dims_and_params_021->dims;
 
-  if (reduced_dims_021->at(1) < kMinDimensionToTransposeTiled ||
-      reduced_dims_021->at(2) < kMinDimensionToTransposeTiled) {
+  if (reduced_dims_021.at(1) < kMinDimensionToTransposeTiled ||
+      reduced_dims_021.at(2) < kMinDimensionToTransposeTiled) {
     VLOG(3) << "021 transpose not matched: dimensions of transposition "
             << root->ToString() << " are too small";
     return std::nullopt;
@@ -861,7 +895,86 @@ std::optional<TransposeDimsAndParams> Match021Transpose(
     return std::nullopt;
   }
 
-  return TransposeDimsAndParams{*reduced_dims_021, params_012};
+  return TransposeDimsAndParams{reduced_dims_021, params_012};
+}
+
+bool FusionCanBeEmittedAsShmemTranspose(const HloInstruction& producer,
+                                        const HloInstruction& consumer) {
+  const Shape& output_shape = consumer.shape();
+  std::vector<Shape> consumer_operand_shapes;
+  absl::c_for_each(consumer.operands(), [&](const HloInstruction* operand) {
+    consumer_operand_shapes.push_back(operand->shape());
+  });
+  std::optional<TransposeDimsAndParams> consumer_dims_and_params_021 =
+      FindTranspose021DimsAndParameters(consumer_operand_shapes, output_shape);
+
+  VLOG(3) << "Consumer " << consumer.name() << " has 021 transposed dimension: "
+          << consumer_dims_and_params_021.has_value();
+  // Whether the `consumer` will be emitted as shared memory transpose.
+  bool consumer_shmem_transpose =
+      consumer_dims_and_params_021.has_value() &&
+      ShmemTransposeSupportedForInputs(consumer,
+                                       consumer_dims_and_params_021->params);
+
+  std::vector<Shape> producer_operand_shapes;
+  absl::c_for_each(producer.operands(), [&](const HloInstruction* operand) {
+    producer_operand_shapes.push_back(operand->shape());
+  });
+  std::optional<TransposeDimsAndParams> producer_dims_and_params_021 =
+      FindTranspose021DimsAndParameters(producer_operand_shapes, output_shape);
+  VLOG(3) << "Producer " << producer.name() << " has 021 transposed dimension: "
+          << producer_dims_and_params_021.has_value();
+  // Whether the `producer` will be emitted as shared memory transpose.
+  bool producer_shmem_transpose =
+      producer_dims_and_params_021.has_value() &&
+      ShmemTransposeSupportedForInputs(producer,
+                                       producer_dims_and_params_021->params);
+
+  if (!consumer_shmem_transpose && !producer_shmem_transpose) {
+    // Neither `consumer` nor `producer` will be emitted as shared memory
+    // transpose. Hence, the fusion of both won't be either.
+    return false;
+  }
+
+  // The transposed dimensions of `producer` and `consumer` need to match.
+  if (consumer_dims_and_params_021.has_value() &&
+      producer_dims_and_params_021.has_value() &&
+      !absl::c_equal(consumer_dims_and_params_021->dims,
+                     producer_dims_and_params_021->dims)) {
+    VLOG(3) << producer.name() << " and " << consumer.name()
+            << " have different 021 transposed dimensions: "
+            << consumer_dims_and_params_021->ToString() << " vs "
+            << producer_dims_and_params_021->ToString();
+    return false;
+  }
+
+  std::vector<int64_t> producer_params_012;
+  if (producer_dims_and_params_021.has_value()) {
+    producer_params_012 = producer_dims_and_params_021->params;
+  }
+  int64_t producer_param_idx = consumer.operand_index(&producer);
+  // If the producer feeds into a 021 transposing param of the consumer, all
+  // consumer params need to be taken into account for further analysis.
+  if (consumer_dims_and_params_021.has_value() &&
+      absl::c_linear_search(consumer_dims_and_params_021->params,
+                            producer_param_idx)) {
+    producer_params_012.resize(producer.operand_count());
+    std::iota(producer_params_012.begin(), producer_params_012.end(), 0);
+  }
+  if (!producer_params_012.empty() &&
+      !ShmemTransposeSupportedForInputs(producer, producer_params_012)) {
+    VLOG(3) << "Producer " << producer.name()
+            << " has no operands that are considered safe for shared memory "
+               "transpose.";
+    return false;
+  }
+  if (!ShmemTransposeSupportedForInputs(consumer, {producer_param_idx})) {
+    VLOG(3) << "Consumer " << consumer.name()
+            << " has no operands that are considered safe for shared memory "
+               "transpose.";
+    return false;
+  }
+  return true;
 }
 
 }  // namespace gpu

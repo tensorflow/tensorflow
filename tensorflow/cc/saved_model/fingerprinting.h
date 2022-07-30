@@ -31,6 +31,9 @@ uint64 ComputeHash(const GraphDef& graph_def);
 // Creates a FingerprintDef proto from a MetaGraph.
 FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph);
 
+// Canonicalizes the GraphDef in order to remove sources of non-determinism.
+void CanonicalizeGraphDef(GraphDef& graph_def);
+
 }  // namespace tensorflow::fingerprinting
 
 #endif  // TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_

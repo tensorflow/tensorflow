@@ -835,7 +835,18 @@ class FuncGraph(ops.Graph):
         are replaced with placehoders, and non-tensors remain the same.
 
     """
-    # prevent repeated captures
+    # Support manual capture for inner nested tf.function is not possible at the
+    # moment. Inner here means any tf.function wrapped by another tf.function.
+    # Usage inside the outer most tf.function only is fine.
+    # The infeasibility is due to it's impossible to determine the
+    # definition scope of the captured side input. This info is needed when
+    # propagating inner tf.function captures to outer tf.function.
+    if isinstance(self.outer_graph, FuncGraph):
+      raise NotImplementedError(
+          ("Manual side input usage for inner nested tf.function is not "
+           f"supported. Got side input: {identifier}."))
+
+    # Prevent repeated captures
     if identifier in self._capture_placeholder_lib:
       return self._capture_placeholder_lib[identifier]
 

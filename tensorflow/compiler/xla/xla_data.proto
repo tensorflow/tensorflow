@@ -669,6 +669,7 @@ message FrontendAttributes {
   map<string, string> map = 1;
 }
 
+// LINT.IfChange
 message OpSharding {
   enum Type {
     // This sharding is replicated across all devices (implies maximal,
@@ -720,6 +721,7 @@ message OpSharding {
   // unreduced sharding type respectively.
   repeated Type last_tile_dims = 8;
 }
+// LINT.ThenChange()
 
 // Describes the replica groups in a cross replica op (e.g., all-reduce and
 // all-to-all).

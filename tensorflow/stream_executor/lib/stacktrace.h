@@ -16,15 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_STACKTRACE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_STACKTRACE_H_
 
-#include "tensorflow/core/platform/stacktrace.h"
-#include "tensorflow/stream_executor/platform/port.h"
-
-namespace stream_executor {
-namespace port {
-
-using tensorflow::CurrentStackTrace;
-
-}  // namespace port
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/lib/stacktrace.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_STACKTRACE_H_

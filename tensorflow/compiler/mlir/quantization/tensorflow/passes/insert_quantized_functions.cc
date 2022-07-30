@@ -84,8 +84,8 @@ class InsertQuantizedFunctionsPass
 
   // Returns the function library for the given quantization method and opset
   // pair.
-  const char* GetFunctionLibrary(QuantizationMethod quantization_method,
-                                 OpSet op_set);
+  llvm::StringRef GetFunctionLibrary(QuantizationMethod quantization_method,
+                                     OpSet op_set);
 
   QuantizationMethod quantization_method_ =
       QuantizationMethod::kPostTrainingQuantization;
@@ -93,23 +93,24 @@ class InsertQuantizedFunctionsPass
   OpSet op_set_;
 };
 
-const char* InsertQuantizedFunctionsPass::GetFunctionLibrary(
+llvm::StringRef InsertQuantizedFunctionsPass::GetFunctionLibrary(
     QuantizationMethod quantization_method, OpSet op_set) {
-  std::map<OpSet, const char*> function_library_map;
+  absl::flat_hash_map<OpSet, llvm::StringRef> function_library_map;
   if (quantization_method == QuantizationMethod::kDynamicRangeQuantization) {
     function_library_map = {
         {OpSet::UNIFORM_QUANTIZED,
          kQuantizedFunctionLibraryInMLIR_UNIFORM_QUANTIZED_DRQ},
         {OpSet::TF, kQuantizedFunctionLibraryInMLIR_TF_DRQ}};
   } else {
-    function_library_map = {{OpSet::TF, kQuantizedFunctionLibraryInMLIR}};
+    function_library_map = {{OpSet::TF, kQuantizedFunctionLibraryInMLIR},
+                            {OpSet::XLA, kQuantizedFunctionLibraryInMLIR}};
   }
 
   auto it = function_library_map.find(op_set);
   if (it != function_library_map.end()) {
     return it->second;
   }
-  return nullptr;
+  return llvm::StringRef();
 }
 
 static PassRegistration<InsertQuantizedFunctionsPass> pass;
@@ -119,20 +120,20 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
   SymbolTable symbol_table(module);
 
   std::unique_ptr<llvm::MemoryBuffer> mem_buffer;
-  const char* quantized_function_library =
+  llvm::StringRef quantized_function_library =
       GetFunctionLibrary(quantization_method_, op_set_);
 
-  if (quantized_function_library == nullptr) {
+  if (quantized_function_library.empty()) {
     emitError(module.getLoc())
         << "Failed to get function library for the opset.";
     signalPassFailure();
     return;
   }
 
-  mem_buffer = llvm::MemoryBuffer::getMemBuffer(
-      llvm::StringRef(quantized_function_library),
-      /*BufferName=*/"",
-      /*RequiresNullTerminator=*/false);
+  mem_buffer =
+      llvm::MemoryBuffer::getMemBuffer(quantized_function_library,
+                                       /*BufferName=*/"",
+                                       /*RequiresNullTerminator=*/false);
 
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(mem_buffer), llvm::SMLoc());

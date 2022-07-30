@@ -462,10 +462,10 @@ add {
   // CHECK: [[rehape:%[a-zA-Z0-9]+]] = "mhlo.reshape"
   // CHECK-NEXT:  "mhlo.dot_general"([[rehape]], [[ARG1]])
   // CHECK-SAME: lhs_contracting_dimensions = [0]
-  // CHECK-SAME: rhs_contracting_dimensions = [0]
+  // CHECK-SAME: rhs_contracting_dimensions = [1]
   // CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
   reshape.0 = f32[4]{0} reshape(f32[4, 1] Arg_0.1)
-  ROOT %dot.7 = f32[] dot(%reshape.0, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT %dot.7 = f32[] dot(%reshape.0, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
 }
 
 // CHECK-LABEL:  func private @test_dynamic_slice

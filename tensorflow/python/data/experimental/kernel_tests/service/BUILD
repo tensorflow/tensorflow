@@ -182,8 +182,12 @@ tf_py_test(
     name = "cross_trainer_cache_test",
     size = "medium",
     srcs = ["cross_trainer_cache_test.py"],
+<<<<<<< HEAD
     tags = ["no_rocm"],
     shard_count = 4,
+=======
+    shard_count = 8,
+>>>>>>> google_upstream/master
     deps = [
         ":test_base",
         "//tensorflow/python/data/experimental/ops:data_service_ops",

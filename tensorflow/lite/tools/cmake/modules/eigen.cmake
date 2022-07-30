@@ -99,4 +99,4 @@ set(EIGEN_TEST_SYCL OFF CACHE BOOL "Disable Sycl test")
 set(EIGEN_SYCL_TRISYCL OFF CACHE BOOL "Disable triSYCL test")
 # Make sure only MPL2.0 or more permissively licensed code is included.
 add_compile_definitions(EIGEN_MPL2_ONLY)
-add_subdirectory("${eigen_SOURCE_DIR}" "${eigen_BINARY_DIR}" EXCLUDE_FROM_ALL)
+add_subdirectory("${eigen_SOURCE_DIR}" "${eigen_BINARY_DIR}")

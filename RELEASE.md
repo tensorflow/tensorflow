@@ -1,3 +1,35 @@
+# Release 2.11.0
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+# Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+# Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+# Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+# Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+# Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.10.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
@@ -14,6 +46,16 @@
     `tensorflow/python/tracking` and `tensorflow/python/checkpoint`. Please
     update your imports accordingly, the old files will be removed in Release
     2.11.
+*   `tf.keras.optimizers.experimental.Optimizer` will graduate in Release 2.11,
+    which means `tf.keras.optimizers.Optimizer` will be an alias of
+    `tf.keras.optimizers.experimental.Optimizer`. The current
+    `tf.keras.optimizers.Optimizer` will continue to be supported as
+    `tf.keras.optimizers.legacy.Optimizer`, e.g.,
+    `tf.keras.optimizers.legacy.Adam`. Most users won't be affected by this
+    change, but please check the [API doc](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/experimental)
+    if any API used in your workflow is changed or deprecated, and
+    make adaptions. If you decide to keep using the old optimizer, please
+    explicitly change your optimizer to `tf.keras.optimizers.legacy.Optimizer`.
 *   RNG behavior change for `tf.keras.initializers`. Keras initializers will now
     use stateless random ops to generate random numbers.
     *   Both seeded and unseeded initializers will always generate the same
@@ -131,6 +173,11 @@
         optimized alternatives to `tf.math.top_k` on TPU. The performance
         difference range from 8 to 100 times depending on the size of k. When
         running on CPU and GPU, a non-optimized XLA kernel is used.
+
+*   `tf.train`:
+
+    *  Added `tf.train.TrackableView` which allows users to inspect the
+       TensorFlow Trackable object (e.g. `tf.Module`, Keras Layers and models).
 
 *   `tf.vectorized_map`:
 

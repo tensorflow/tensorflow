@@ -3015,3 +3015,23 @@ func.func @testUnsortedSegmentMax(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>,  %
   func.return %0 : tensor<8xf32>
   // CHECK: return %0 : tensor<8xf32>
 }
+
+// -----
+
+// CHECK-LABEL: testControlNodeLongForm
+func.func @testControlNodeLongForm(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>)->tensor<8xf32> {
+  %0, %c0 = "tfl.control_node"() ({
+    %1 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<8xf32>, tensor<8xf32>)->tensor<8xf32>
+    "tfl.yield"(%1) : (tensor<8xf32>) -> ()
+    }) : () -> (tensor<8xf32>, !tfl.control)
+  func.return %0 : tensor<8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testControlNodeShortForm
+func.func @testControlNodeShortForm(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>)->tensor<8xf32> {
+  %0, %c0 = tfl.control_node() controls "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<8xf32>, tensor<8xf32>)->tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+}
+

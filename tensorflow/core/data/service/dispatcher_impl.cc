@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
+#include "tensorflow/core/data/service/validate_utils.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -526,25 +527,6 @@ StatusOr<std::optional<std::string>> DataServiceDispatcherImpl::FindDataset(
         request.dataset_id(), request.metadata(), existing_dataset->metadata));
   }
   return std::optional<std::string>(existing_dataset->dataset_id);
-}
-
-Status DataServiceDispatcherImpl::ValidateMatchingDataset(
-    const std::string& dataset_id, const DataServiceMetadata& new_metadata,
-    const DataServiceMetadata& old_metadata) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  MessageDifferencer differ;
-  differ.set_message_field_comparison(MessageDifferencer::EQUIVALENT);
-  differ.set_repeated_field_comparison(MessageDifferencer::AS_SET);
-
-  std::string diff;
-  differ.ReportDifferencesToString(&diff);
-  bool equivalent = differ.Compare(new_metadata, old_metadata);
-  if (!equivalent) {
-    return errors::InvalidArgument(
-        "Datasets with the same ID should have the same structure, got ",
-        "diff for dataset ID ", dataset_id, ": ", diff, ". To fix this error, ",
-        "make sure you're registering the same dataset with the same ID.");
-  }
-  return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::RegisterDataset(

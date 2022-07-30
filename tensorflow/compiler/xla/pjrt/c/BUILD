@@ -26,6 +26,8 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
     ],

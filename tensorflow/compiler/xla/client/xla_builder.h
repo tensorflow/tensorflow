@@ -17,11 +17,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_XLA_BUILDER_H_
 
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -2787,6 +2792,22 @@ XlaOp ConstantR4FromArray4D(XlaBuilder* builder,
                             const Array4D<NativeT>& values) {
   return ConstantFromArray(builder, values);
 }
+
+// Switches from automatic SPMD partitioning to manual partitioning. Converts a
+// full-shaped tensor (to be automatically partitioned by SPMD partitioner) to a
+// shard-shaped tensor to be consumed by manually partitioned ops.
+StatusOr<xla::XlaOp> ConvertSpmdFullToShardShape(
+    xla::XlaBuilder* builder, xla::XlaOp input, int single_dim,
+    const xla::OpSharding& manual_sharding,
+    absl::Span<const int64_t> unspecified_dims);
+
+// Switches from manual partitioning to automatic SPMD partitioning. Converts a
+// shard-shaped tensor (manually partitioned in SPMD-style) to a full-shaped
+// tensor to be partitioned automatically by the SPMD partitioner.
+StatusOr<xla::XlaOp> ConvertSpmdShardToFullShape(
+    xla::XlaBuilder* builder, xla::XlaOp input, const xla::Shape& output_shape,
+    int single_dim, const xla::OpSharding& manual_sharding,
+    absl::Span<const int64_t> unspecified_dims);
 
 }  // namespace xla
 

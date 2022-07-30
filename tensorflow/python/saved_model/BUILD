@@ -331,6 +331,7 @@ py_strict_library(
     name = "save",
     srcs = [
         "save.py",
+        "tracing_utils.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -364,6 +365,7 @@ py_strict_library(
         "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/checkpoint:functional_saver",
         "//tensorflow/python/checkpoint:graph_view",
+        "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/checkpoint:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -495,6 +497,7 @@ cuda_py_test(
         "//tensorflow/python:lib",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:while_v2",  # b/118513001
+        "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/module",
@@ -757,5 +760,20 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         "//tensorflow/python/eager:test",
+    ],
+)
+
+tf_py_test(
+    name = "tracing_utils_test",
+    size = "small",
+    srcs = ["tracing_utils_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":save",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/trackable:base",
     ],
 )

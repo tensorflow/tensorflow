@@ -58,19 +58,16 @@ absl::Status TensorBHWCTest(const BHWC& shape,
     }
     tensor_cpu.data[i] = transformed_val;
   }
-  tflite::gpu::Tensor<BHWC, T> tensor_gpu;
-  tensor_gpu.shape = shape;
-  tensor_gpu.data.resize(shape.DimensionsProduct());
-  for (int i = 0; i < tensor_gpu.data.size(); ++i) {
-    tensor_gpu.data[i] = 0;
-  }
 
   Tensor tensor;
-  TensorDescriptor descriptor_with_shape = descriptor;
-  descriptor_with_shape.SetBHWCShape(shape);
-  RETURN_IF_ERROR(CreateTensor(env->context(), descriptor_with_shape, &tensor));
-  RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
-  RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
+  TensorDescriptor descriptor_with_data = descriptor;
+  descriptor_with_data.UploadData(tensor_cpu);
+  RETURN_IF_ERROR(
+      tensor.CreateFromDescriptor(descriptor_with_data, &env->context()));
+  TensorDescriptor output_descriptor;
+  RETURN_IF_ERROR(tensor.ToDescriptor(&output_descriptor, env->queue()));
+  tflite::gpu::Tensor<BHWC, T> tensor_gpu;
+  output_descriptor.DownloadData(&tensor_gpu);
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
@@ -108,19 +105,16 @@ absl::Status TensorBHWDCTest(const BHWDC& shape,
     }
     tensor_cpu.data[i] = transformed_val;
   }
-  tflite::gpu::Tensor<BHWDC, T> tensor_gpu;
-  tensor_gpu.shape = shape;
-  tensor_gpu.data.resize(shape.DimensionsProduct());
-  for (int i = 0; i < tensor_gpu.data.size(); ++i) {
-    tensor_gpu.data[i] = 0;
-  }
 
   Tensor tensor;
-  TensorDescriptor descriptor_with_shape = descriptor;
-  descriptor_with_shape.SetBHWDCShape(shape);
-  RETURN_IF_ERROR(CreateTensor(env->context(), descriptor_with_shape, &tensor));
-  RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
-  RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
+  TensorDescriptor descriptor_with_data = descriptor;
+  descriptor_with_data.UploadData(tensor_cpu);
+  RETURN_IF_ERROR(
+      tensor.CreateFromDescriptor(descriptor_with_data, &env->context()));
+  TensorDescriptor output_descriptor;
+  RETURN_IF_ERROR(tensor.ToDescriptor(&output_descriptor, env->queue()));
+  tflite::gpu::Tensor<BHWDC, T> tensor_gpu;
+  output_descriptor.DownloadData(&tensor_gpu);
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {

@@ -892,7 +892,8 @@ Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
                                                  reverse->dimensions()));
 }
 
-Status ShapeVerifier::HandleSort(HloInstruction* sort) {
+Status ShapeVerifier::HandleSort(HloInstruction* hlo) {
+  HloSortInstruction* sort = Cast<HloSortInstruction>(hlo);
   if (sort->operand_count() < 1) {
     return InternalError("Expected at least 1 operand for %s instruction: %s",
                          HloOpcodeString(sort->opcode()), sort->ToString());
@@ -943,6 +944,15 @@ Status ShapeVerifier::HandleSort(HloInstruction* sort) {
           StringifyShape(sort->operand(operand)->shape()));
     }
   }
+
+  // Verify the sort_dimension.
+  if (sort->sort_dimension() >= sort->operand(0)->shape().rank()) {
+    return InternalError(
+        "Expected the sort_dimension %d of sort to be smaller than the rank %d "
+        "of the operand(s).",
+        sort->sort_dimension(), sort->shape().rank());
+  }
+
   return CheckVariadicShape(sort);
 }
 
