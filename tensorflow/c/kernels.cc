@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -274,6 +275,16 @@ void TF_GetInput(TF_OpKernelContext* ctx, int i, TF_Tensor** tensor,
   if (TF_GetCode(status) == TF_OK) {
     *tensor = result;
   }
+}
+
+void TF_InputRange(TF_OpKernelContext* ctx, const char* name,
+                   TF_InputRange_Args* args) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  int start = -1, stop = -1;
+  auto status = cc_ctx->op_kernel().InputRange(name, &start, &stop);
+  args->start = start;
+  args->stop = stop;
+  tensorflow::Set_TF_Status_from_Status(args->status, status);
 }
 
 void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
