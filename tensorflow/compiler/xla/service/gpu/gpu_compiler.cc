@@ -73,6 +73,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/comparison_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/convert_mover.h"
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
 #include "tensorflow/compiler/xla/service/convolution_pred_expander.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
@@ -301,6 +302,18 @@ Status GpuCompiler::OptimizeHloModule(
     se::DeviceMemoryAllocator* device_allocator) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
+  AlgebraicSimplifierOptions layout_insensitive_algsimp_opts({},
+                                                             ConvIsLowerable);
+  // "slow" minmax means we propagate nan.
+  layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
+      !debug_options.xla_gpu_enable_fast_min_max());
+
+  const se::Platform* platform = stream_exec->platform();
+  if (platform->Name() == "ROCM") {
+    // SwapConvOperands does not yet work on ROCM
+    layout_insensitive_algsimp_opts.set_enable_conv_operand_swap(false);
+  }
+
   if (hlo_module->config().use_spmd_partitioning()) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
     const int64_t num_partitions = hlo_module->config().num_partitions();
@@ -315,12 +328,8 @@ Status GpuCompiler::OptimizeHloModule(
       HloPassPipeline& spmd_simplify =
           spmd_pipeline.AddPass<HloPassFix<HloPassPipeline>>("spmd-simplify");
 
-      AlgebraicSimplifierOptions options;
-      options.set_enable_conv_operand_swap(false);
-      // "slow" minmax means we propagate nan.
-      options.set_minmax_propagate_nan(
-          !debug_options.xla_gpu_enable_fast_min_max());
-      spmd_simplify.AddPass<AlgebraicSimplifier>(options);
+      spmd_simplify.AddPass<AlgebraicSimplifier>(
+          layout_insensitive_algsimp_opts);
 
       spmd_simplify.AddPass<SortSimplifier>();
       spmd_simplify.AddPass<TupleSimplifier>();
@@ -476,18 +485,7 @@ Status GpuCompiler::OptimizeHloModule(
       }
       pipeline.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
-
-      AlgebraicSimplifierOptions options({}, ConvIsLowerable);
-      // "slow" minmax means we propagate nan.
-      options.set_minmax_propagate_nan(
-          !debug_options.xla_gpu_enable_fast_min_max());
-
-      const se::Platform* platform = stream_exec->platform();
-      if (platform->Name() == "ROCM") {
-        // SwapConvOperands does not yet work on ROCM
-        options.set_enable_conv_operand_swap(false);
-      }
-      pipeline.AddPass<AlgebraicSimplifier>(options);
+      pipeline.AddPass<AlgebraicSimplifier>(layout_insensitive_algsimp_opts);
       pipeline.AddPass<BitcastDtypesExpander>();
       // AlgebraicSimplifier may add contracting dimensions to a dot.
       pipeline.AddPass<DotDecomposer>();
@@ -509,6 +507,16 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
       pipeline.AddPass<HloDCE>();
+    }();
+
+    // ConvertMover and ReshapeMover fight with each other: ConvertMover wants
+    // to move some converts down the graph, but ReshapeMover wants to move them
+    // up the graph.  As a compromise, let ReshapeMover run to a fixed point,
+    // and then run ConvertMover + algsimp to a fixed point.
+    [&, &pipeline =
+            pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification-2")] {
+      pipeline.AddPass<ConvertMover>();
+      pipeline.AddPass<AlgebraicSimplifier>(layout_insensitive_algsimp_opts);
     }();
 
     // Run WhileLoopTripCountAnnotator at the end of the simplification
@@ -535,13 +543,8 @@ Status GpuCompiler::OptimizeHloModule(
     // Run algebraic simplifier to reshape(broadcast) into a broadcast when
     // the reshape is just adding a unit dimension. This will help with the
     // AllGatherBroadcastReorder pass.
-    AlgebraicSimplifierOptions options;
-    options.set_enable_conv_operand_swap(false);
-    // "slow" minmax means we propagate nan.
-    options.set_minmax_propagate_nan(
-        !debug_options.xla_gpu_enable_fast_min_max());
-
-    collectives_pipeline.AddPass<AlgebraicSimplifier>(options);
+    collectives_pipeline.AddPass<AlgebraicSimplifier>(
+        layout_insensitive_algsimp_opts);
 
     collectives_pipeline.AddPass<AllGatherBroadcastReorder>();
     TF_RETURN_IF_ERROR(collectives_pipeline.Run(hlo_module).status());
@@ -642,12 +645,8 @@ Status GpuCompiler::OptimizeHloModule(
 
     pipeline.AddPass<CollectivesScheduleLinearizer>();
 
-    AlgebraicSimplifierOptions options;
+    AlgebraicSimplifierOptions options = layout_insensitive_algsimp_opts;
     options.set_is_layout_sensitive(true);
-    options.set_enable_conv_operand_swap(false);
-    // "slow" minmax means we propagate nan.
-    options.set_minmax_propagate_nan(
-        !debug_options.xla_gpu_enable_fast_min_max());
     pipeline.AddPass<AlgebraicSimplifier>(options);
     pipeline.AddPass<OptimizationBarrierExpander>();
     pipeline.AddPass<BitcastDecomposer>();
