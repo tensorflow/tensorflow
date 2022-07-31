@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/llvm/llvm-project/mlir/include/mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "third_party/llvm/llvm-project/mlir/include/mlir/Dialect/Quant/QuantTypes.h"
-#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/BuiltinTypes.h"
-#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/Matchers.h"
-#include "third_party/llvm/llvm-project/mlir/include/mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "third_party/tensorflow/compiler/mlir/lite/quantization/ir/PassDetail.h"
-#include "third_party/tensorflow/compiler/mlir/lite/quantization/ir/Passes.h"
-#include "third_party/tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "third_party/tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
-#include "third_party/tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/PassDetail.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/Passes.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 
 using namespace mlir;
 using namespace mlir::quantfork;

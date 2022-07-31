@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
@@ -89,7 +90,8 @@ class QuantizeCompositeFunctionsPass
   }
 
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TF::TensorFlowDialect, QuantizationDialect>();
+    registry.insert<TF::TensorFlowDialect, quant::QuantizationDialect,
+                    quantfork::QuantizationForkDialect>();
   }
 
  private:
@@ -118,8 +120,8 @@ LogicalResult CreateUniformQuantizedTypeParams(UniformQuantizedType qtype,
 }
 
 LogicalResult CreateUniformQuantizedPerAxisTypeParams(
-    UniformQuantizedPerAxisType qtype, Location loc, PatternRewriter& rewriter,
-    Value& scale, Value& zero_point) {
+    quant::UniformQuantizedPerAxisType qtype, Location loc,
+    PatternRewriter& rewriter, Value& scale, Value& zero_point) {
   // Consuming op should already know about Quantized channel information,
   // so not passing it during conversion. This design might change if needed.
   ArrayRef<double> scales = qtype.getScales();
@@ -154,7 +156,8 @@ LogicalResult CreateQuantizationParams(QuantizedType elem_type, Location loc,
   if (auto qtype = elem_type.dyn_cast<UniformQuantizedType>()) {
     return CreateUniformQuantizedTypeParams(qtype, loc, rewriter, scale,
                                             zero_point);
-  } else if (auto qtype = elem_type.dyn_cast<UniformQuantizedPerAxisType>()) {
+  } else if (auto qtype =
+                 elem_type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
     return CreateUniformQuantizedPerAxisTypeParams(qtype, loc, rewriter, scale,
                                                    zero_point);
   }
@@ -162,13 +165,14 @@ LogicalResult CreateQuantizationParams(QuantizedType elem_type, Location loc,
 }
 
 // Replaces quant.qcast op to composite quantize_i8 function.
-class ReplaceQuantizePattern : public mlir::OpRewritePattern<QuantizeCastOp> {
+class ReplaceQuantizePattern
+    : public mlir::OpRewritePattern<quantfork::QuantizeCastOp> {
  public:
   explicit ReplaceQuantizePattern(MLIRContext* context)
-      : OpRewritePattern<QuantizeCastOp>(context) {}
+      : OpRewritePattern<quantfork::QuantizeCastOp>(context) {}
 
  private:
-  LogicalResult matchAndRewrite(QuantizeCastOp q_op,
+  LogicalResult matchAndRewrite(quantfork::QuantizeCastOp q_op,
                                 PatternRewriter& rewriter) const override {
     auto output_type = q_op.getType().cast<TensorType>();
     auto elem_type = output_type.getElementType().dyn_cast<QuantizedType>();
@@ -189,7 +193,7 @@ class ReplaceQuantizePattern : public mlir::OpRewritePattern<QuantizeCastOp> {
     auto quantize_call = rewriter.create<TF::PartitionedCallOp>(
         loc, output_types, args, func_name,
         /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
-    auto scast_op = rewriter.create<quant::StorageCastOp>(
+    auto scast_op = rewriter.create<quantfork::StorageCastOp>(
         loc, output_type, quantize_call->getResult(0));
     q_op->replaceAllUsesWith(scast_op);
     return success();
@@ -198,13 +202,13 @@ class ReplaceQuantizePattern : public mlir::OpRewritePattern<QuantizeCastOp> {
 
 // Replaces quant.dcast op to composite dequantize_i8 function.
 class ReplaceDequantizePattern
-    : public mlir::OpRewritePattern<DequantizeCastOp> {
+    : public mlir::OpRewritePattern<quantfork::DequantizeCastOp> {
  public:
   explicit ReplaceDequantizePattern(MLIRContext* context)
-      : OpRewritePattern<DequantizeCastOp>(context) {}
+      : OpRewritePattern<quantfork::DequantizeCastOp>(context) {}
 
  private:
-  LogicalResult matchAndRewrite(DequantizeCastOp dq_op,
+  LogicalResult matchAndRewrite(quantfork::DequantizeCastOp dq_op,
                                 PatternRewriter& rewriter) const override {
     auto input_type = dq_op.getArg().getType().cast<TensorType>();
     auto elem_type = input_type.getElementType().dyn_cast<QuantizedType>();
@@ -217,8 +221,8 @@ class ReplaceDequantizePattern
     }
 
     TensorType output_type = input_type.clone(elem_type.getStorageType());
-    auto scast_op =
-        rewriter.create<quant::StorageCastOp>(loc, output_type, dq_op.getArg());
+    auto scast_op = rewriter.create<quantfork::StorageCastOp>(loc, output_type,
+                                                              dq_op.getArg());
 
     FlatSymbolRefAttr func_name =
         FlatSymbolRefAttr::get(rewriter.getStringAttr(kDequantizeFuncName));
@@ -238,7 +242,7 @@ bool IsQuantizedCallforDynamicRange(TF::PartitionedCallOp call_op) {
   bool has_quantized_types_for_weights = false;
   for (int32_t cur_idx = 0; cur_idx < call_op.args().size(); cur_idx++) {
     // Check if the only the weight index has QuantizeCastOp.
-    auto cur_op = dyn_cast_or_null<QuantizeCastOp>(
+    auto cur_op = dyn_cast_or_null<quantfork::QuantizeCastOp>(
         call_op.args()[cur_idx].getDefiningOp());
     if ((!cur_op && cur_idx == 1) || (cur_op && cur_idx != 1)) {
       return false;
@@ -427,8 +431,8 @@ class QuantizeFunctionPattern
       if (const auto arg_type = arg.getType().dyn_cast<TensorType>()) {
         QuantizedType qtype =
             arg_type.getElementType().dyn_cast<QuantizedType>();
-        if (qtype &&
-            !qtype.isa<UniformQuantizedType, UniformQuantizedPerAxisType>()) {
+        if (qtype && !qtype.isa<UniformQuantizedType,
+                                quant::UniformQuantizedPerAxisType>()) {
           return failure();
         }
       }
@@ -438,8 +442,8 @@ class QuantizeFunctionPattern
       if (auto result_type = result.getType().dyn_cast<TensorType>()) {
         QuantizedType qtype =
             result_type.getElementType().dyn_cast<QuantizedType>();
-        if (qtype &&
-            !qtype.isa<UniformQuantizedType, UniformQuantizedPerAxisType>()) {
+        if (qtype && !qtype.isa<UniformQuantizedType,
+                                quant::UniformQuantizedPerAxisType>()) {
           return failure();
         }
       }
@@ -468,7 +472,7 @@ class QuantizeFunctionPattern
         return failure();
       }
 
-      StorageCastOp scast_op;
+      quantfork::StorageCastOp scast_op;
       if (quantization_method_ ==
           QuantizationMethod::kDynamicRangeQuantization) {
         ShapedType new_arg_type = ConvertIntToQint(arg_type.cast<ShapedType>(),
@@ -478,10 +482,10 @@ class QuantizeFunctionPattern
               "Failed to convert the type to the corresponding qtype.");
           return failure();
         }
-        scast_op = rewriter.create<StorageCastOp>(
+        scast_op = rewriter.create<quantfork::StorageCastOp>(
             arg.getLoc(), new_arg_type.cast<TensorType>(), arg);
       } else {
-        scast_op = rewriter.create<StorageCastOp>(
+        scast_op = rewriter.create<quantfork::StorageCastOp>(
             arg.getLoc(), arg_type.clone(qtype.getStorageType()), arg);
       }
       args.push_back(scast_op.getResult());
@@ -489,7 +493,7 @@ class QuantizeFunctionPattern
       qparam_args.push_back(zero_point);
     }
 
-    DenseMap<Value, StorageCastOp> replace_map;
+    DenseMap<Value, quantfork::StorageCastOp> replace_map;
     rewriter.setInsertionPointAfter(call_op);
 
     SmallVector<Type, 4> result_types;
@@ -513,8 +517,8 @@ class QuantizeFunctionPattern
             "Failed to create quantization parameter for a result.");
         return failure();
       }
-      auto scast_op =
-          rewriter.create<StorageCastOp>(call_op.getLoc(), result_type, result);
+      auto scast_op = rewriter.create<quantfork::StorageCastOp>(
+          call_op.getLoc(), result_type, result);
       replace_map.insert(std::make_pair(result, scast_op));
 
       result_types.push_back(result_type.clone(qtype.getStorageType()));
@@ -524,7 +528,7 @@ class QuantizeFunctionPattern
 
     for (auto replace_pair : replace_map) {
       Value result = replace_pair.first;
-      StorageCastOp scast_op = replace_pair.second;
+      quantfork::StorageCastOp scast_op = replace_pair.second;
       result.replaceAllUsesExcept(scast_op, scast_op);
     }
 
@@ -577,18 +581,19 @@ class QuantizeFunctionPattern
 // Converts const -> quant.qcast pattern to quantized constant, after
 // quantization parameters are safely included to each quantize composite
 // functions.
-class QuantizeConstPattern : public OpRewritePattern<QuantizeCastOp> {
+class QuantizeConstPattern
+    : public OpRewritePattern<quantfork::QuantizeCastOp> {
  public:
   // This pattern should have larger benefit than ReplaceQuantizePattern
   explicit QuantizeConstPattern(MLIRContext* context,
                                 QuantizationMethod quantization_method)
-      : OpRewritePattern<QuantizeCastOp>(context, /*benefit=*/10),
+      : OpRewritePattern<quantfork::QuantizeCastOp>(context, /*benefit=*/10),
         quantization_method_(quantization_method) {}
 
  private:
   QuantizationMethod quantization_method_ =
       QuantizationMethod::kPostTrainingQuantization;
-  LogicalResult matchAndRewrite(QuantizeCastOp q_op,
+  LogicalResult matchAndRewrite(quantfork::QuantizeCastOp q_op,
                                 PatternRewriter& rewriter) const override {
     DenseFPElementsAttr attr;
     if (!matchPattern(q_op.getArg(), m_Constant(&attr))) {
@@ -630,8 +635,8 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeCastOp> {
     auto const_op = rewriter.create<TF::ConstOp>(loc, new_type, quantized_attr);
     // Add scast op to match quantize -> composition pattern. The added scast
     // is then removed by canonicalization. ([scast - scast] -> [])
-    auto scast_op = rewriter.create<quant::StorageCastOp>(loc, tensor_qtype,
-                                                          const_op.output());
+    auto scast_op = rewriter.create<quantfork::StorageCastOp>(
+        loc, tensor_qtype, const_op.output());
     q_op->replaceAllUsesWith(scast_op);
     return success();
   }

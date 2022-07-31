@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 
 #include <numeric>
 
-#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 
 using namespace mlir;
 using namespace mlir::quantfork;

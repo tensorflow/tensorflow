@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 
-#include "third_party/llvm/llvm-project/mlir/include/mlir/Dialect/Quant/QuantTypes.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 
 using namespace mlir;
 using namespace mlir::quantfork;

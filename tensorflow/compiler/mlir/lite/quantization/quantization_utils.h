@@ -33,8 +33,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -47,6 +45,8 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -74,8 +74,8 @@ constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
 
 constexpr double kNearZeroTolerance = 1.0e-6;
 
-using QuantParams = quant::QuantizedType;
-using QuantSpec = mlir::quant::QuantizationSpecs;
+using QuantParams = mlir::quant::QuantizedType;
+using QuantSpec = QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
 using AccumulatorScaleFunc =
@@ -168,12 +168,13 @@ typedef std::unique_ptr<OpQuantScaleSpec> (*OpQuantScaleSpecGetter)(
 
 // Re-calculates scales again in float instead of simply downcasting existing
 // scales.
-QuantizedType DownCastScale(QuantizedType type,
-                            const SmallVectorImpl<double>& mins,
-                            const SmallVectorImpl<double>& maxs, Location loc);
+quant::QuantizedType DownCastScale(quant::QuantizedType type,
+                                   const SmallVectorImpl<double>& mins,
+                                   const SmallVectorImpl<double>& maxs,
+                                   Location loc);
 
-QuantizedType DownCastScale(QuantizedType type, double min, double max,
-                            Location loc);
+quant::QuantizedType DownCastScale(quant::QuantizedType type, double min,
+                                   double max, Location loc);
 
 bool IsOpNotQuantizable(Operation* op);
 
@@ -186,16 +187,16 @@ inline std::string GetTensorNameFromLoc(Location loc) {
 }
 
 template <typename Q, typename DQ>
-struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
+struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
   ConvertStatsToQDQs(int num_bits, bool narrow_range, bool is_signed,
                      bool legacy_float_scale, MLIRContext* context)
-      : OpRewritePattern<quant::StatisticsOp>(context),
+      : OpRewritePattern<quantfork::StatisticsOp>(context),
         num_bits(num_bits),
         narrow_range(narrow_range),
         is_signed(is_signed),
         legacy_float_scale(legacy_float_scale) {}
 
-  LogicalResult matchAndRewrite(quant::StatisticsOp op,
+  LogicalResult matchAndRewrite(quantfork::StatisticsOp op,
                                 PatternRewriter& rewriter) const override {
     Type expressed = op.getType().cast<ShapedType>().getElementType();
     quant::QuantizedType quant_type;
@@ -219,7 +220,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
         mins.push_back(rmin);
         maxs.push_back(rmax);
       }
-      quant_type = quant::fakeQuantAttrsToType(
+      quant_type = quantfork::fakeQuantAttrsToType(
           op.getLoc(), num_bits, *op.getAxis(), mins, maxs, narrow_range,
           expressed, is_signed);
       if (legacy_float_scale) {
@@ -237,8 +238,8 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       rmax = std::max(rmax, 0.0);
       TensorRangeSanityCheck(op, rmin, rmax);
       quant_type =
-          quant::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
-                                      narrow_range, expressed, is_signed);
+          quantfork::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
+                                          narrow_range, expressed, is_signed);
       if (legacy_float_scale) {
         quant_type = DownCastScale(quant_type, rmin, rmax, op->getLoc());
       }
@@ -267,7 +268,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 
   // Emits an op warning message if the calibrated range is larger than 10.0 and
   // the storage type is less than or equal to 8 bits.
-  void TensorRangeSanityCheck(quant::StatisticsOp op, double& min,
+  void TensorRangeSanityCheck(quantfork::StatisticsOp op, double& min,
                               double& max) const {
     double range = std::fabs(max - min);
     if (num_bits <= 8 && range >= 10.0) {

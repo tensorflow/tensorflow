@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -54,6 +55,7 @@ class ConvertTFQuantOpsToMHLOPass
     registry.insert<mhlo::MhloDialect>();
     registry.insert<tf_type::TFTypeDialect>();
     registry.insert<quant::QuantizationDialect>();
+    registry.insert<quantfork::QuantizationForkDialect>();
   }
 
   void runOnOperation() override;
@@ -117,7 +119,7 @@ struct ReplaceConstDotHybridPattern : public RewritePattern {
     if (quantized_dimension != -1) return failure();
 
     Type rhs_elem_ty;
-    rhs_elem_ty = UniformQuantizedType::get(
+    rhs_elem_ty = quant::UniformQuantizedType::get(
         flags, storage_type, expressed_type, rhs_scales.getValues<float>()[0],
         rhs_zps.getValues<int32_t>()[0], storage_type_min, storage_type_max);
 

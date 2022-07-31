@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -46,8 +47,8 @@ using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 class PrepareQuantizeDRQPass
     : public PassWrapper<PrepareQuantizeDRQPass, OperationPass<func::FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry
-        .insert<TF::TensorFlowDialect, ::mlir::quant::QuantizationDialect>();
+    registry.insert<TF::TensorFlowDialect, ::mlir::quant::QuantizationDialect,
+                    ::mlir::quantfork::QuantizationForkDialect>();
   }
 
  public:
@@ -172,19 +173,20 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
     // Insert DQ-op if it does not exist yet. Otherwise, just rewire without
     // creating a new DQ-op.
     for (auto connected_op : op->getUsers()) {
-      auto q_op = llvm::dyn_cast_or_null<quant::QuantizeCastOp>(connected_op);
+      auto q_op =
+          llvm::dyn_cast_or_null<quantfork::QuantizeCastOp>(connected_op);
       if (q_op && q_op.getType() == cast_type) {
-        auto dq_op = llvm::cast<quant::DequantizeCastOp>(
+        auto dq_op = llvm::cast<quantfork::DequantizeCastOp>(
             q_op.getResult().use_begin()->getOwner());
         quantize_op->setOperand(quantize_operand_num, dq_op);
         return false;
       }
     }
     rewriter.setInsertionPointAfter(op);
-    auto q = rewriter.create<quant::QuantizeCastOp>(op->getLoc(), cast_type,
-                                                    op.getResult());
-    auto dq = rewriter.create<quant::DequantizeCastOp>(op->getLoc(),
-                                                       expressed_type, q);
+    auto q = rewriter.create<quantfork::QuantizeCastOp>(op->getLoc(), cast_type,
+                                                        op.getResult());
+    auto dq = rewriter.create<quantfork::DequantizeCastOp>(op->getLoc(),
+                                                           expressed_type, q);
     quantize_op->setOperand(quantize_operand_num, dq.getResult());
     return true;
   }
@@ -231,7 +233,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.
 void PrepareQuantizeDRQPass::removeAllStatsOp(func::FuncOp func) {
-  func.walk([&](quant::StatisticsOp stats_op) {
+  func.walk([&](quantfork::StatisticsOp stats_op) {
     stats_op.replaceAllUsesWith(stats_op.getArg());
     stats_op.erase();
   });

@@ -13,30 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 
 #include <numeric>
 
-#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/StringRef.h"
-#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/Twine.h"
-#include "third_party/llvm/llvm-project/llvm/include/llvm/Support/MathExtras.h"
-#include "third_party/llvm/llvm-project/mlir/include/mlir/Dialect/Quant/QuantTypes.h"
-#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/BuiltinTypes.h"
-#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/MLIRContext.h"
-#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/Matchers.h"
-#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/PatternMatch.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/Support/MathExtras.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 
 using namespace mlir;
 using namespace mlir::quantfork;
 
 using mlir::quant::QuantizedType;
 
-#include "third_party/tensorflow/compiler/mlir/lite/quantization/ir/QuantOpsDialect.cpp.inc"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOpsDialect.cc.inc"
 
 void QuantizationForkDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
-#include "third_party/tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.cpp.inc"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.cc.inc"
       >();
 }
 
@@ -136,4 +136,4 @@ LogicalResult StatisticsOp::verify() {
 }
 
 #define GET_OP_CLASSES
-#include "third_party/tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.cpp.inc"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.cc.inc"

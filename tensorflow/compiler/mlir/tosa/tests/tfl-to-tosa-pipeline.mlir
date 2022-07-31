@@ -1401,10 +1401,10 @@ func.func @test_dequantize_quant_per_axis(%arg0: tensor<1x4x!quant.uniform<i8:f3
 
 // -----
 
-// CHECK-LABEL: test_quant_stats
-func.func @test_quant_stats(%arg0: tensor<2x1xf32>) -> (tensor<2x1xf32>) {
-  // CHECK-NOT: quant.stats
-  %0 = "quant.stats"(%arg0) {layerStats = dense<[1.0, 1.0]> : tensor<2xf32>}: (tensor<2x1xf32>) -> tensor<2x1xf32>
+// CHECK-LABEL: test_quantfork.stats
+func.func @test_quantfork.stats(%arg0: tensor<2x1xf32>) -> (tensor<2x1xf32>) {
+  // CHECK-NOT: quantfork.stats
+  %0 = "quantfork.stats"(%arg0) {layerStats = dense<[1.0, 1.0]> : tensor<2xf32>}: (tensor<2x1xf32>) -> tensor<2x1xf32>
   func.return %0 : tensor<2x1xf32>
 }
 
