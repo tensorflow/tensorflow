@@ -148,7 +148,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
     SmallVector<Value> initValues;
     initValues.reserve(k + 3);
     // Initially, all values are marked as not broadcasted.
-    for (int i = 0; i < k; ++i) {
+    for (int64_t i = 0; i < static_cast<int64_t>(k); ++i) {
       initValues.push_back(constantFalse);
     }
     // The running product is initially 1.

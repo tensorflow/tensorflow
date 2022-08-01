@@ -497,7 +497,7 @@ LogicalResult TopKOp::inferReturnTypeComponents(
     return emitOptionalError(location,
                              "operand's last dimension must be static");
   }
-  if (operandLastDim < k) {
+  if (operandLastDim < static_cast<int64_t>(k)) {
     return emitOptionalError(location,
                              "operand's last dimension must be at least ", k);
   }

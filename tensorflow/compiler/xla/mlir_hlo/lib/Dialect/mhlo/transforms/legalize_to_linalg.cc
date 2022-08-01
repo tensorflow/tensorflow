@@ -508,7 +508,8 @@ SmallVector<std::string> EinsumToLinalgConverter::getEinsumConfigAsVector(
   bool hasElip = preElip != std::string::npos;
   if (!hasElip) preElip = loop.size();
   // Add the dimension until the end or up to ellipsis if it exist.
-  for (int preElipInd = 0; preElipInd < preElip; preElipInd++) {
+  for (int64_t preElipInd = 0; preElipInd < static_cast<int64_t>(preElip);
+       preElipInd++) {
     loopDim.push_back(loop.substr(preElipInd, 1).str());
   }
   if (!hasElip) return loopDim;
@@ -517,12 +518,14 @@ SmallVector<std::string> EinsumToLinalgConverter::getEinsumConfigAsVector(
   size_t batchRank = operandRank - nonBatchRank;
   // Add the batch dimension ("0",...,"N") where N is rank of batch into the
   // loop.
-  for (int batchInd = 0; batchInd < batchRank; batchInd++) {
+  for (int64_t batchInd = 0; batchInd < static_cast<int64_t>(batchRank);
+       batchInd++) {
     loopDim.push_back(std::to_string(batchInd));
   }
   // Add the dimension after ellipsis into the loop.
   int postElip = preElip + kEllipsis.size();
-  for (int postElipInd = postElip; postElipInd < loop.size(); postElipInd++) {
+  for (int64_t postElipInd = postElip;
+       postElipInd < static_cast<int64_t>(loop.size()); postElipInd++) {
     loopDim.push_back(loop.substr(postElipInd, 1).str());
   }
   return loopDim;
@@ -1409,9 +1412,7 @@ SmallVector<Value, 2> getDotOpInitTensorDynSizes(OpBuilder& b, Location loc,
     }
     case DotOperationType::kVectorDot:
     case DotOperationType::kUnsupported:
-    default: {
       break;
-    }
   }
   return dynShape;
 }
@@ -1986,7 +1987,7 @@ struct DepthwiseConvolutionOpConversion
     int64_t inputFeatureDim = dimensionNumbers.getInputFeatureDimension();
     int64_t inputFeatureCount =
         op.lhs().getType().cast<ShapedType>().getDimSize(inputFeatureDim);
-    if (op.feature_group_count() != inputFeatureCount) {
+    if (static_cast<int64_t>(op.feature_group_count()) != inputFeatureCount) {
       return rewriter.notifyMatchFailure(op, "not depth-wise convolution");
     }
 
@@ -2044,7 +2045,7 @@ struct DepthwiseConvolutionOpConversion
         dimensionNumbers.getKernelOutputFeatureDimension();
     if (filterDims[kernelInputFeatureDimension] *
             filterDims[kernelOutputFeatureDimension] !=
-        op.feature_group_count()) {
+        static_cast<int64_t>(op.feature_group_count())) {
       // For cases where channel multiplier != 1
 
       // Reshaping filter shape
@@ -2260,7 +2261,7 @@ struct ReduceWindowOpOnTensorsGenericConversion
         llvm::any_of(baseDilations, [](int64_t v) { return v != 1; })) {
       llvm::SmallVector<int64_t> staticLows(rank, 0);
       llvm::SmallVector<int64_t> staticHighs(rank, 0);
-      for (int i = 0; i < padding.size(); i += 2) {
+      for (int64_t i = 0; i < static_cast<int64_t>(padding.size()); i += 2) {
         staticLows[i / 2] = padding[i];
         staticHighs[i / 2] = padding[i + 1];
       }
@@ -2440,7 +2441,7 @@ struct ReduceWindowOpConversion
       for (auto& en : llvm::enumerate(resultType.getShape())) {
         if (en.value() != ShapedType::kDynamicSize) continue;
         Value dimSize = rewriter.create<tensor::DimOp>(loc, input, en.index());
-        if (en.index() == 0 || en.index() == rank - 1) {
+        if (en.index() == 0 || static_cast<int64_t>(en.index()) == rank - 1) {
           // batch dims and channel dims can be derived from input dims
           // directly.
           resultDynamicDims.push_back(dimSize);
@@ -2695,7 +2696,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     // We'll need these later and creating them on demand we end up with
     // duplicates, which also makes lit tests really hard to write.
     SmallVector<Value> constants;
-    for (unsigned i = 0; i < std::max({resultRank, operandRank, 2}); ++i) {
+    for (int i = 0; i < std::max({resultRank, operandRank, 2}); ++i) {
       constants.push_back(
           rewriter.create<arith::ConstantOp>(loc, rewriter.getIndexAttr(i)));
     }
@@ -2744,7 +2745,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     // Same as with the constants. Creating these all up front is easier than
     // potentially getting duplicates later.
     SmallVector<Value> linalgIndices;
-    for (unsigned i = 0; i < resultRank; ++i)
+    for (int i = 0; i < resultRank; ++i)
       linalgIndices.push_back(rewriter.create<linalg::IndexOp>(loc, i));
 
     // Now the complicated part. For a given output dimension we build up an
@@ -2771,7 +2772,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
       // just use the gather index directly
       SmallVector<Value> gCombine(gatherIndex);
       if (indexVectorDim != startIndicesType.getRank()) {
-        assert(indexVectorDim <= gCombine.size());
+        assert(indexVectorDim <= static_cast<int64_t>(gCombine.size()));
         gCombine.insert(gCombine.begin() + indexVectorDim, constants[i]);
       }
 
@@ -2787,14 +2788,14 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     // Now we construct the index based on the offset. First we need to remap
     // the offset dimensions by dropping the collapsed indices.
     SmallVector<unsigned> remappedOffsetDims;
-    for (unsigned i = 0; i < operandRank; ++i)
+    for (int i = 0; i < operandRank; ++i)
       if (!llvm::is_contained(collapsedSliceDims, i))
         remappedOffsetDims.push_back(i);
 
     assert(remappedOffsetDims.size() == offsetDims.size());
 
     // Clamp out of bounds indices.
-    for (unsigned i = 0, operandIndexDim = 0; i < operandRank; ++i) {
+    for (int i = 0, operandIndexDim = 0; i < operandRank; ++i) {
       // Compute the size of the output shape dimension corresponding to this
       // index dimension. If it's collapsed set it to 1.
       Value outputDimSize = constants[1];
@@ -2830,7 +2831,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     // Now we add together our two indices to get the final index into the
     // operand.
     SmallVector<Value> combinedIndex;
-    for (unsigned i = 0; i < operandRank; ++i)
+    for (int i = 0; i < operandRank; ++i)
       combinedIndex.push_back(rewriter.createOrFold<arith::AddIOp>(
           loc, rewriter.getIndexType(), remappedIndexFromIndices[i],
           indexFromOffset[i]));

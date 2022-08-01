@@ -126,7 +126,7 @@ struct SortOpPattern : public OpConversionPattern<mhlo::SortOp> {
       OpBuilder::InsertionGuard guard(b);
       auto& block = region.front();
       b.setInsertionPointToEnd(&block);
-      for (int i = 0; i < srcBlock.getNumArguments(); i += 2) {
+      for (int64_t i = 0; i < srcBlock.getNumArguments(); i += 2) {
         bvm.map(srcBlock.getArgument(i), sortArgs[i]);
         bvm.map(srcBlock.getArgument(i + 1), sortArgs[i + 1]);
 

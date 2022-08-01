@@ -1799,7 +1799,7 @@ LogicalResult TransposeDimsOp::verify() {
   SmallVector<int64_t> position(rank, -1);
   for (const auto &it : llvm::enumerate(permutation())) {
     int64_t dim = it.value();
-    if (dim < 0 || dim >= rank) {
+    if (dim < 0 || dim >= static_cast<int64_t>(rank)) {
       return emitOpError("permutation[")
              << it.index() << "] = " << dim << " is outside of range [0, "
              << rank - 1 << "]";
@@ -1861,7 +1861,8 @@ void SetYieldOp::build(
     return attr.cast<BoolAttr>().getValue();
   });
   (void)accumulatorCount;
-  assert(accumulatorCount == accumulatorBuilderFns.size() &&
+  assert(accumulatorCount ==
+             static_cast<int64_t>(accumulatorBuilderFns.size()) &&
          "the number of flags set in `accumulatorFlags` attribute should be "
          "equal to the number of `accumulatorBuilderFns`");
 
@@ -1895,7 +1896,7 @@ LogicalResult SetYieldOp::verify() {
   auto accumulatorCount = llvm::count_if(
       accumulatorFlags(),
       [](Attribute attr) { return attr.cast<BoolAttr>().getValue(); });
-  if (accumulatorCount != accumulators().size())
+  if (accumulatorCount != static_cast<int64_t>(accumulators().size()))
     return emitOpError("expected the number of accumulator regions ")
            << accumulators().size()
            << " to match the number of set accumulator flags "

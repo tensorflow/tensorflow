@@ -230,8 +230,10 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
         results.front().cast<ShapedType>().clone(resultTy.getElementType());
     Value newDotOp =
         rewriter.create<DotOp>(op.getLoc(), newTy, lhs, rhs, precisionConfig);
-    if (lhsContractingDims.size() == (lhsTy.getRank() - 1) &&
-        rhsContractingDims.size() == (rhsTy.getRank() - 1)) {
+    if (static_cast<int64_t>(lhsContractingDims.size()) ==
+            lhsTy.getRank() - 1 &&
+        static_cast<int64_t>(rhsContractingDims.size()) ==
+            rhsTy.getRank() - 1) {
       rewriter.replaceOp(op, newDotOp);
       return success();
     }

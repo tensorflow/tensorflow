@@ -452,7 +452,7 @@ inline Value mapReducePrecisionOpToStdScalarOp(
   APInt expBitsMask(nbits, 1);
   expBitsMask = ((expBitsMask << srcExponentBits) - 1) << srcMantissaBits;
 
-  if (destMantissaBits < srcMantissaBits) {
+  if (destMantissaBits < static_cast<int>(srcMantissaBits)) {
     // Last remaining mantissa bit.
     APInt lastMantissaBitMask(nbits, 1);
     lastMantissaBitMask <<= srcMantissaBits - destMantissaBits;
