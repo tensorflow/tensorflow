@@ -273,9 +273,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
     return wrapped_->logical_on_device_shape();
   }
 
-  PjRtDevice* device() const override {
-    return client_->GetCApiDevice(wrapped_->device());
-  }
+  PjRtDevice* device() const override;
 
   PjRtClient* client() const override { return client_; }
 

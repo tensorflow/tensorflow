@@ -559,6 +559,18 @@ const size_t PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE =
 // Whether this buffer is on CPU and thus allows for certain optimizations.
 typedef PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  PJRT_Device* device;  // out
+} PJRT_Buffer_Device_Args;
+const size_t PJRT_Buffer_Device_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_Device_Args, device);
+
+// Returns this buffer's storage device.
+typedef PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args);
+
 // -------------------------------- API access ---------------------------------
 
 #define _PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
@@ -598,6 +610,7 @@ typedef struct {
 
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToDevice);
