@@ -73,6 +73,10 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
+    name: "TrackableView"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "experimental"
     mtype: "<type \'module\'>"
   }

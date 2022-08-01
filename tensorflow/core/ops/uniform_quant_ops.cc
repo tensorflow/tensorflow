@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/errors.h"
@@ -82,6 +83,18 @@ Status DotHybridShape(shape_inference::InferenceContext* context) {
 }
 
 }  // namespace
+
+REGISTER_OP("UniformDequantize")
+    .Input("input: Tin")
+    .Input("scales: float")
+    .Input("zero_points: int32")
+    .Output("output: Tout")
+    .Attr("Tin: {qint8, qint32}")
+    .Attr("Tout: {float}")
+    .Attr("quantization_axis: int = -1")
+    .Attr("quantization_min_val: int")
+    .Attr("quantization_max_val: int")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("UniformQuantizedDotHybrid")
     .Input("lhs: Tlhs")

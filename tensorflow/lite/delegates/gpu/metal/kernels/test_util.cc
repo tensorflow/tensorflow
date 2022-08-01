@@ -75,9 +75,10 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
       return absl::InvalidArgumentError(
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
-    RETURN_IF_ERROR(CreateTensor(device_.device(), dst_shape,
-                                 op_def.dst_tensors[i], &dst[i]));
-
+    TensorDescriptor descriptor_with_shape = op_def.dst_tensors[i];
+    descriptor_with_shape.SetBHWDCShape(dst_shape);
+    RETURN_IF_ERROR(
+        CreateTensor(device_.device(), descriptor_with_shape, &dst[i]));
     operation->SetDst(&dst[i], i);
   }
   RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));

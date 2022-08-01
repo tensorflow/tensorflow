@@ -429,20 +429,24 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._contains_quantized_function_call(output_meta_graphdef))
 
   @parameterized.named_parameters(
-      ('none', None, False, False),
-      ('relu', nn_ops.relu, False, False),
-      ('relu6', nn_ops.relu6, False, False),
-      ('bn', None, False, True),
-      ('bn_and_relu', nn_ops.relu, False, True),
-      ('with_bias', None, True, False),
-      ('with_bias_and_bn', None, True, True),
-      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True),
-      ('with_bias_and_relu', nn_ops.relu, True, False),
-      ('with_bias_and_relu6', nn_ops.relu6, True, False),
+      ('none', None, False, False, quant_opts_pb2.TF),
+      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF),
+      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF),
+      ('bn', None, False, True, quant_opts_pb2.TF),
+      ('bn_and_relu', nn_ops.relu, False, True, quant_opts_pb2.TF),
+      ('with_bias', None, True, False, quant_opts_pb2.TF),
+      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF),
+      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True, quant_opts_pb2.TF),
+      ('with_bias_and_relu', nn_ops.relu, True, False, quant_opts_pb2.TF),
+      ('with_bias_and_relu6', nn_ops.relu6, True, False, quant_opts_pb2.TF),
+      ('with_bias_and_bn_to_xla', None, True, True, quant_opts_pb2.XLA),
+      ('with_bias_and_relu6_to_xla', nn_ops.relu6, True, False,
+       quant_opts_pb2.XLA),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model(self, activation_fn: Optional[ops.Operation],
-                          has_bias: bool, has_bn: bool):
+                          has_bias: bool, has_bn: bool,
+                          target_opset: quant_opts_pb2.OpSet):
 
     class ConvModel(module.Module):
 
@@ -498,7 +502,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=target_opset)
 
     converted_model = quantize_model.quantize(
         input_saved_model_path, ['serving_default'],
@@ -512,27 +517,34 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    if target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaConvV2'))
+    else:
+      self.assertTrue(
+          self._contains_quantized_function_call(output_meta_graphdef))
     self.assertFalse(
         self._contains_op(output_meta_graphdef, 'FusedBatchNormV3'))
 
   @parameterized.named_parameters(
-      ('none', None, False, False),
-      ('relu', nn_ops.relu, False, False),
-      ('relu6', nn_ops.relu6, False, False),
-      ('bn', None, False, True),
-      ('bn_and_relu', nn_ops.relu, False, True),
-      ('with_bias', None, True, False),
-      ('with_bias_and_bn', None, True, True),
-      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True),
-      ('with_bias_and_relu', nn_ops.relu, True, False),
-      ('with_bias_and_relu6', nn_ops.relu6, True, False),
+      ('none', None, False, False, quant_opts_pb2.TF),
+      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF),
+      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF),
+      ('bn', None, False, True, quant_opts_pb2.TF),
+      ('bn_and_relu', nn_ops.relu, False, True, quant_opts_pb2.TF),
+      ('with_bias', None, True, False, quant_opts_pb2.TF),
+      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF),
+      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True, quant_opts_pb2.TF),
+      ('with_bias_and_relu', nn_ops.relu, True, False, quant_opts_pb2.TF),
+      ('with_bias_and_relu6', nn_ops.relu6, True, False, quant_opts_pb2.TF),
+      ('bn_and_relu_to_xla', nn_ops.relu, False, True, quant_opts_pb2.XLA),
+      ('with_bias_and_relu_to_xla', nn_ops.relu, True, False,
+       quant_opts_pb2.XLA),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_depthwise_conv_ptq_model(self,
                                     activation_fn: Optional[ops.Operation],
-                                    has_bias: bool, has_bn: bool):
+                                    has_bias: bool, has_bn: bool,
+                                    target_opset: quant_opts_pb2.OpSet):
 
     class DepthwiseConvModel(module.Module):
 
@@ -588,7 +600,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=target_opset)
 
     converted_model = quantize_model.quantize(
         input_saved_model_path, ['serving_default'],
@@ -602,8 +615,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    if target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaConvV2'))
+    else:
+      self.assertTrue(
+          self._contains_quantized_function_call(output_meta_graphdef))
     self.assertFalse(
         self._contains_op(output_meta_graphdef, 'FusedBatchNormV3'))
 

@@ -2138,18 +2138,16 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_COMPILER_OPTIONS = 10,
     VT_TENSOR_TO_GRID = 12,
     VT_ELEMENTWISE = 14,
-    VT_LINKABLE = 16,
-    VT_CHECK_SRC_CHANNELS_SIZE = 18,
-    VT_FLOPS = 20,
-    VT_DEFINITION = 22,
-    VT_GRID_DIMENSION = 24,
-    VT_WORK_GROUP_LAUNCH_ORDER = 26,
-    VT_GRID_SIZE = 28,
-    VT_SRC_TENSORS_NAMES = 30,
-    VT_DST_TENSORS_NAMES = 32,
-    VT_WORK_GROUPS_COUNT = 34,
-    VT_LINKABLE_COUNT = 36,
-    VT_ELEMENTWISE_CODE = 38
+    VT_FLOPS = 16,
+    VT_DEFINITION = 18,
+    VT_GRID_DIMENSION = 20,
+    VT_WORK_GROUP_LAUNCH_ORDER = 22,
+    VT_GRID_SIZE = 24,
+    VT_SRC_TENSORS_NAMES = 26,
+    VT_DST_TENSORS_NAMES = 28,
+    VT_WORK_GROUPS_COUNT = 30,
+    VT_LINKABLE_COUNT = 32,
+    VT_ELEMENTWISE_CODE = 34
   };
   const tflite::gpu::data::Arguments *arguments() const {
     return GetPointer<const tflite::gpu::data::Arguments *>(VT_ARGUMENTS);
@@ -2168,12 +2166,6 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool elementwise() const {
     return GetField<uint8_t>(VT_ELEMENTWISE, 0) != 0;
-  }
-  bool linkable() const {
-    return GetField<uint8_t>(VT_LINKABLE, 0) != 0;
-  }
-  bool check_src_channels_size() const {
-    return GetField<uint8_t>(VT_CHECK_SRC_CHANNELS_SIZE, 0) != 0;
   }
   uint64_t flops() const {
     return GetField<uint64_t>(VT_FLOPS, 0);
@@ -2218,8 +2210,6 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyVectorOfTables(compiler_options()) &&
            VerifyField<int8_t>(verifier, VT_TENSOR_TO_GRID, 1) &&
            VerifyField<uint8_t>(verifier, VT_ELEMENTWISE, 1) &&
-           VerifyField<uint8_t>(verifier, VT_LINKABLE, 1) &&
-           VerifyField<uint8_t>(verifier, VT_CHECK_SRC_CHANNELS_SIZE, 1) &&
            VerifyField<uint64_t>(verifier, VT_FLOPS, 8) &&
            VerifyOffset(verifier, VT_DEFINITION) &&
            verifier.VerifyTable(definition()) &&
@@ -2264,12 +2254,6 @@ struct GPUOperationBuilder {
   }
   void add_elementwise(bool elementwise) {
     fbb_.AddElement<uint8_t>(GPUOperation::VT_ELEMENTWISE, static_cast<uint8_t>(elementwise), 0);
-  }
-  void add_linkable(bool linkable) {
-    fbb_.AddElement<uint8_t>(GPUOperation::VT_LINKABLE, static_cast<uint8_t>(linkable), 0);
-  }
-  void add_check_src_channels_size(bool check_src_channels_size) {
-    fbb_.AddElement<uint8_t>(GPUOperation::VT_CHECK_SRC_CHANNELS_SIZE, static_cast<uint8_t>(check_src_channels_size), 0);
   }
   void add_flops(uint64_t flops) {
     fbb_.AddElement<uint64_t>(GPUOperation::VT_FLOPS, flops, 0);
@@ -2320,8 +2304,6 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperation(
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::CompilerOption>>> compiler_options = 0,
     tflite::gpu::data::TensorToGrid tensor_to_grid = tflite::gpu::data::TensorToGrid::CUSTOM,
     bool elementwise = false,
-    bool linkable = false,
-    bool check_src_channels_size = false,
     uint64_t flops = 0,
     flatbuffers::Offset<tflite::gpu::data::OperationDef> definition = 0,
     int32_t grid_dimension = 0,
@@ -2347,8 +2329,6 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperation(
   builder_.add_work_group_size(work_group_size);
   builder_.add_code(code);
   builder_.add_arguments(arguments);
-  builder_.add_check_src_channels_size(check_src_channels_size);
-  builder_.add_linkable(linkable);
   builder_.add_elementwise(elementwise);
   builder_.add_tensor_to_grid(tensor_to_grid);
   return builder_.Finish();
@@ -2362,8 +2342,6 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperationDirect(
     const std::vector<flatbuffers::Offset<tflite::gpu::data::CompilerOption>> *compiler_options = nullptr,
     tflite::gpu::data::TensorToGrid tensor_to_grid = tflite::gpu::data::TensorToGrid::CUSTOM,
     bool elementwise = false,
-    bool linkable = false,
-    bool check_src_channels_size = false,
     uint64_t flops = 0,
     flatbuffers::Offset<tflite::gpu::data::OperationDef> definition = 0,
     int32_t grid_dimension = 0,
@@ -2387,8 +2365,6 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperationDirect(
       compiler_options__,
       tensor_to_grid,
       elementwise,
-      linkable,
-      check_src_channels_size,
       flops,
       definition,
       grid_dimension,

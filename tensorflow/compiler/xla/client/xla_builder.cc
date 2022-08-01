@@ -16,11 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -34,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
-#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -44,12 +46,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/sharding_op_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 
@@ -197,7 +199,7 @@ XlaOp operator<<(XlaOp x, XlaOp y) { return ShiftLeft(x, y); }
 XlaOp operator>>(XlaOp x, XlaOp y) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const xla::Shape* shape, builder->GetShapePtr(x));
+    TF_ASSIGN_OR_RETURN(const Shape* shape, builder->GetShapePtr(x));
     if (!ShapeUtil::ElementIsIntegral(*shape)) {
       return InvalidArgument(
           "Argument to >> operator does not have an integral type (%s).",
@@ -243,12 +245,12 @@ std::string XlaBuilder::OpToString(XlaOp op) const {
   return s;
 }
 
-static std::string ShapeToString(const xla::ShapeProto& shape) {
+static std::string ShapeToString(const ShapeProto& shape) {
   if (shape.tuple_shapes_size() > 1) {
     return absl::StrCat(
         "(",
         absl::StrJoin(shape.tuple_shapes(), ", ",
-                      [&](std::string* s, const xla::ShapeProto& subshape) {
+                      [&](std::string* s, const ShapeProto& subshape) {
                         absl::StrAppend(s, ShapeToString(subshape));
                       }),
         ")");
@@ -1281,8 +1283,7 @@ XlaOp XlaBuilder::Collapse(XlaOp operand,
 }
 
 // Dummy pass-through computation returning it's parameter of shape `shape`.
-static StatusOr<XlaComputation> PassthroughComputation(
-    const xla::Shape& shape) {
+static StatusOr<XlaComputation> PassthroughComputation(const Shape& shape) {
   XlaBuilder builder("dummy");
   XlaOp out = Parameter(&builder, 0, shape, "p");
   return builder.Build(out);
@@ -1737,7 +1738,7 @@ StatusOr<XlaOp> XlaBuilder::TriangularSolveInternal(
 StatusOr<XlaOp> XlaBuilder::CholeskyInternal(const Shape& shape, XlaOp a,
                                              bool lower) {
   HloInstructionProto instr;
-  xla::CholeskyOptions& options = *instr.mutable_cholesky_options();
+  CholeskyOptions& options = *instr.mutable_cholesky_options();
   options.set_lower(lower);
   *instr.mutable_shape() = shape.ToProto();
 
@@ -2497,7 +2498,7 @@ XlaOp XlaBuilder::Conditional(XlaOp predicate, XlaOp true_operand,
                               XlaOp false_operand,
                               const XlaComputation& false_computation) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const xla::Shape* shape, GetShapePtr(predicate));
+    TF_ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(predicate));
 
     if (!ShapeUtil::IsScalar(*shape) || shape->element_type() != PRED) {
       return InvalidArgument(
@@ -2517,7 +2518,7 @@ XlaOp XlaBuilder::Conditional(
     absl::Span<const XlaComputation* const> branch_computations,
     absl::Span<const XlaOp> branch_operands) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const xla::Shape* shape, GetShapePtr(branch_index));
+    TF_ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(branch_index));
 
     if (!ShapeUtil::IsScalar(*shape) || shape->element_type() != S32) {
       return InvalidArgument(
@@ -4375,7 +4376,7 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* a_shape, builder->GetShapePtr(a));
     TF_ASSIGN_OR_RETURN(const Shape* b_shape, builder->GetShapePtr(b));
-    xla::TriangularSolveOptions options;
+    TriangularSolveOptions options;
     options.set_left_side(left_side);
     options.set_lower(lower);
     options.set_unit_diagonal(unit_diagonal);
@@ -5004,6 +5005,121 @@ XlaOp SetDimensionSize(const XlaOp operand, const XlaOp val,
 
 XlaOp RemoveDynamicDimension(const XlaOp operand, int64_t dimension) {
   return operand.builder()->RemoveDynamicDimension(operand, dimension);
+}
+
+OpSharding GetManualSharding(const OpSharding& original, int64_t single_dim) {
+  OpSharding manual;
+  if (single_dim < 0 || original.type() != OpSharding::OTHER) {
+    manual.set_type(OpSharding::MANUAL);
+    return manual;
+  }
+  manual.set_type(OpSharding::OTHER);
+  std::vector<int64_t> new_tile_shape(
+      original.tile_assignment_dimensions().begin(),
+      original.tile_assignment_dimensions().end());
+  new_tile_shape.push_back(new_tile_shape[single_dim]);
+  new_tile_shape[single_dim] = 1;
+  Array<int64_t> new_tile(new_tile_shape);
+  new_tile.Each([&](absl::Span<const int64_t> indices, int64_t* v) {
+    int64_t src_index = 0;
+    for (int64_t i = 0; i < indices.size() - 1; ++i) {
+      if (i > 0) {
+        src_index *= new_tile_shape[i];
+      }
+      int64_t index = indices[i];
+      if (i == single_dim) {
+        index = indices.back();
+      }
+      src_index += index;
+    }
+    *v = original.tile_assignment_devices(src_index);
+  });
+  for (int64_t dim : new_tile_shape) {
+    manual.add_tile_assignment_dimensions(dim);
+  }
+  for (int64_t device : new_tile) {
+    manual.add_tile_assignment_devices(device);
+  }
+  if (original.replicate_on_last_tile_dim()) {
+    manual.add_last_tile_dims(OpSharding::REPLICATED);
+  }
+  for (int64_t type : original.last_tile_dims()) {
+    manual.add_last_tile_dims(static_cast<OpSharding::Type>(type));
+  }
+  manual.add_last_tile_dims(OpSharding::MANUAL);
+  return manual;
+}
+
+StatusOr<XlaOp> ConvertSpmdFullToShardShape(
+    XlaBuilder* builder, XlaOp input, int single_dim,
+    const OpSharding& manual_sharding,
+    absl::Span<const int64_t> unspecified_dims) {
+  TF_ASSIGN_OR_RETURN(const Shape input_shape, builder->GetShape(input));
+
+  Shape output_shape = input_shape;
+  const int64_t rank = output_shape.rank();
+  if (manual_sharding.type() == OpSharding::OTHER) {
+    for (int64_t i = 0; i < rank; ++i) {
+      if (single_dim >= 0 && i != single_dim) {
+        continue;
+      }
+      const int64_t partitions_i =
+          manual_sharding.tile_assignment_dimensions(i);
+      if (partitions_i == 1) continue;
+      const int64_t dim_size =
+          CeilOfRatio(output_shape.dimensions(i), partitions_i);
+      output_shape.set_dimensions(i, dim_size);
+    }
+  }
+
+  XlaOp input_annotation;
+  {
+    // Annotate the full-shape input with the sharding.
+    XlaScopedShardingAssignment assign_sharding(builder, manual_sharding);
+    input_annotation = CustomCall(
+        builder, /*call_target_name=*/"Sharding", {input}, input_shape,
+        /*opaque=*/
+        sharding_op_util::EncodeAttributes(unspecified_dims));
+  }
+
+  {
+    // Annotate the shard-shape output with manual sharding, so that the
+    // partitioner will leave it as is.
+    OpSharding manual = GetManualSharding(manual_sharding, single_dim);
+    XlaScopedShardingAssignment assign_sharding(builder, manual);
+    return CustomCall(builder,
+                      /*call_target_name=*/"SPMDFullToShardShape",
+                      {input_annotation}, output_shape,
+                      /*opaque=*/
+                      sharding_op_util::EncodeAttributes(unspecified_dims));
+  }
+}
+
+StatusOr<XlaOp> ConvertSpmdShardToFullShape(
+    XlaBuilder* builder, XlaOp input, const Shape& output_shape, int single_dim,
+    const OpSharding& manual_sharding,
+    absl::Span<const int64_t> unspecified_dims) {
+  TF_ASSIGN_OR_RETURN(const Shape input_shape, builder->GetShape(input));
+
+  XlaOp input_annotation;
+  {
+    // Annotate the shard-shape input with manual sharding, so that the
+    // partitioner will leave it as is.
+    OpSharding manual = GetManualSharding(manual_sharding, single_dim);
+    XlaScopedShardingAssignment assign_sharding(builder, manual);
+    input_annotation = CustomCall(
+        builder, /*call_target_name=*/"Sharding", {input}, input_shape,
+        sharding_op_util::EncodeAttributes(unspecified_dims));
+  }
+
+  {
+    // Annotate the full-shape output with the sharding.
+    XlaScopedShardingAssignment assign_sharding(builder, manual_sharding);
+    return CustomCall(builder,
+                      /*call_target_name=*/"SPMDShardToFullShape",
+                      {input_annotation}, output_shape,
+                      sharding_op_util::EncodeAttributes(unspecified_dims));
+  }
 }
 
 }  // namespace xla

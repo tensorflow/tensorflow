@@ -2659,6 +2659,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
   }
   for (auto comp : called_computations) {
     AppendComputation(comp);
+    comp->SetCustomCallInstruction(this);
   }
 }
 
@@ -2875,8 +2876,22 @@ std::unique_ptr<HloInstruction>
 HloCustomCallInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
+  HloModule* module = context != nullptr ? context->module() : GetModule();
+  std::vector<HloComputation*> new_called_computations;
+  for (auto* comp : called_computations()) {
+    HloComputation* new_custom_call_computation = nullptr;
+    if (context != nullptr) {
+      new_custom_call_computation = context->FindComputation(comp);
+    }
+    if (new_custom_call_computation == nullptr) {
+      new_custom_call_computation =
+          module->AddEmbeddedComputation(comp->Clone("clone", context));
+    }
+    new_called_computations.push_back(new_custom_call_computation);
+  }
+
   auto cloned = std::make_unique<HloCustomCallInstruction>(
-      shape, new_operands, called_computations(), custom_call_target(),
+      shape, new_operands, new_called_computations, custom_call_target(),
       opaque(), api_version_);
   if (layout_constrained()) {
     cloned->layout_constrained_ = true;

@@ -19,6 +19,7 @@ import re
 import six
 
 from tensorflow.python import tf2
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import autotrackable
@@ -184,7 +185,8 @@ class Module(autotrackable.AutoTrackable):
       name) followed by variables from all submodules recursively (breadth
       first).
     """
-    return tuple(self._flatten(predicate=_is_non_trainable_variable))
+    return tuple(self._flatten(
+        predicate=_is_non_trainable_variable, expand_composites=True))
 
   @property
   def submodules(self):
@@ -340,6 +342,21 @@ def camel_to_snake(value):
   return _CAMEL_TO_SNAKE_R.sub(r"_\1", value).lower()
 
 
+def _flatten_non_variable_composites_with_tuple_path(structure, path_prefix=()):
+  """Flattens composite tensors with tuple path expect variables."""
+  for path, child in nest.flatten_with_tuple_paths(structure):
+    if (isinstance(child, composite_tensor.CompositeTensor) and
+        not _is_variable(child)):
+      # pylint: disable=protected-access
+      spec = child._type_spec
+      yield from _flatten_non_variable_composites_with_tuple_path(
+          spec._to_components(child),
+          path_prefix + path + (spec.value_type.__name__,))
+      # pylint: enable=protected-access
+    else:
+      yield path_prefix + path, child
+
+
 def _flatten_module(module,
                     recursive,
                     predicate,
@@ -403,8 +420,10 @@ def _flatten_module(module,
 
     prop = module_dict[key]
     try:
-      leaves = nest.flatten_with_tuple_paths(
-          prop, expand_composites=expand_composites)
+      if expand_composites:
+        leaves = list(_flatten_non_variable_composites_with_tuple_path(prop))
+      else:
+        leaves = nest.flatten_with_tuple_paths(prop)
     except Exception as cause:  # pylint: disable=broad-except
       six.raise_from(
           ValueError(

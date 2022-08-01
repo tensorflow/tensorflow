@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_errors.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
@@ -74,7 +75,8 @@ class OpenClConverterImpl : public TensorObjectConverter {
 };
 
 bool IsSupportedDataType(DataType type) {
-  return type == DataType::FLOAT16 || type == DataType::FLOAT32;
+  return type == DataType::FLOAT16 || type == DataType::FLOAT32 ||
+         type == DataType::BOOL;
 }
 
 bool IsBHWCOpenCLBuffer(const ObjectDef& def) {
@@ -234,6 +236,13 @@ class TensorToBHWCBufferConverter : public OpenClConverterImpl {
     if (need_fp16_support) {
       shader_src += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
     }
+    if (output_def.object_def.data_type == DataType::BOOL ||
+        input_def.object_def.data_type == DataType::BOOL) {
+      shader_src +=
+          "#define convert_bool4(value) (convert_uchar4((value) != 0) & "
+          "(uchar4) 1)\n";
+      shader_src += "#define bool4 uchar4\n";
+    }
     const std::string out_data_type =
         ToCLDataType(output_def.object_def.data_type);
     shader_src += "__kernel void tensor_to_bhwc(";
@@ -334,6 +343,13 @@ class BHWCBufferToTensorConverter : public OpenClConverterImpl {
     std::string shader_src;
     if (need_fp16_support) {
       shader_src += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
+    }
+    if (output_def.object_def.data_type == DataType::BOOL ||
+        input_def.object_def.data_type == DataType::BOOL) {
+      shader_src +=
+          "#define convert_bool4(value) (convert_uchar4((value) != 0) & "
+          "(uchar4) 1)\n";
+      shader_src += "#define bool4 uchar4\n";
     }
     const std::string in_data_type =
         ToCLDataType(input_def.object_def.data_type);
@@ -500,6 +516,8 @@ class CpuCopier : public OpenClConverterImpl {
     region_ = CalculateTextureRegion(
         input_def.object_def.object_type == ObjectType::CPU_MEMORY ? output_def
                                                                    : input_def);
+    input_data_type_ = input_def.object_def.data_type;
+    output_data_type_ = output_def.object_def.data_type;
     queue_ = environment->queue();
     return absl::OkStatus();
   }
@@ -509,6 +527,9 @@ class CpuCopier : public OpenClConverterImpl {
     auto cpu_input = std::get_if<CpuMemory>(&input_obj);
     auto cpu_output = std::get_if<CpuMemory>(&output_obj);
     if (cpu_input) {
+      if (output_data_type_ == DataType::BOOL) {
+        return CopyFromBoolCpu(cpu_input, output_obj);
+      }
       auto texture_output = std::get_if<OpenClTexture>(&output_obj);
       if (texture_output) {
         return queue_->EnqueueWriteImage(
@@ -522,6 +543,9 @@ class CpuCopier : public OpenClConverterImpl {
                                           cpu_input->data, async_);
       }
     } else if (cpu_output) {
+      if (input_data_type_ == DataType::BOOL) {
+        return CopyToBoolCpu(input_obj, cpu_output);
+      }
       auto texture_input = std::get_if<OpenClTexture>(&input_obj);
       if (texture_input) {
         return queue_->EnqueueReadImage(
@@ -539,8 +563,56 @@ class CpuCopier : public OpenClConverterImpl {
   }
 
  private:
+  absl::Status CopyToBoolCpu(const TensorObject& tensor_obj,
+                             const CpuMemory* cpu_memory) {
+    const size_t num_elements = cpu_memory->size_bytes;
+    std::vector<uint8_t> tmp_data(num_elements);
+    auto texture_input = std::get_if<OpenClTexture>(&tensor_obj);
+    if (texture_input) {
+      RETURN_IF_ERROR(queue_->EnqueueReadImage(
+          texture_input->memobj, int3(region_[0], region_[1], region_[2]),
+          tmp_data.data(), false));
+    } else {
+      auto buffer_input = std::get_if<OpenClBuffer>(&tensor_obj);
+      if (!buffer_input) {
+        return absl::InternalError("Unexpected object");
+      }
+      RETURN_IF_ERROR(queue_->EnqueueReadBuffer(
+          buffer_input->memobj, tmp_data.size(), tmp_data.data(), false));
+    }
+    bool* output_data = reinterpret_cast<bool*>(cpu_memory->data);
+    for (int i = 0; i < num_elements; ++i) {
+      output_data[i] = tmp_data[i];
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status CopyFromBoolCpu(const CpuMemory* cpu_memory,
+                               const TensorObject& tensor_obj) {
+    const size_t num_elements = cpu_memory->size_bytes;
+    const bool* bool_data = reinterpret_cast<bool*>(cpu_memory->data);
+    std::vector<uint8_t> tmp_data(num_elements);
+    for (int i = 0; i < num_elements; ++i) {
+      tmp_data[i] = bool_data[i];
+    }
+    auto texture_output = std::get_if<OpenClTexture>(&tensor_obj);
+    if (texture_output) {
+      return queue_->EnqueueWriteImage(texture_output->memobj,
+                                       int3(region_[0], region_[1], region_[2]),
+                                       tmp_data.data(), async_);
+    }
+    auto buffer_output = std::get_if<OpenClBuffer>(&tensor_obj);
+    if (buffer_output) {
+      return queue_->EnqueueWriteBuffer(buffer_output->memobj, tmp_data.size(),
+                                        tmp_data.data(), async_);
+    }
+    return absl::InternalError("Unexpected object");
+  }
+
   std::array<size_t, 3> region_;
   bool async_;
+  DataType input_data_type_;
+  DataType output_data_type_;
 };
 
 class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {

@@ -28,6 +28,7 @@ namespace tflite {
 class Interpreter;  // Class for friend declarations.
 class SignatureRunnerJNIHelper;  // Class for friend declarations.
 class TensorHandle;              // Class for friend declarations.
+class SignatureRunnerHelper;     // Class for friend declarations.
 
 /// WARNING: Experimental interface, subject to change
 ///
@@ -144,6 +145,7 @@ class SignatureRunner {
   friend class Interpreter;
   friend class SignatureRunnerJNIHelper;
   friend class TensorHandle;
+  friend class SignatureRunnerHelper;
 
   // The SignatureDef object is owned by the interpreter.
   const internal::SignatureDef* signature_def_;

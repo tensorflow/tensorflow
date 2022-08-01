@@ -35,7 +35,15 @@ class ConvolutionMetal : public GPUOperation {
   };
 
   struct ConvParams {
-    int3 block_size;
+    struct BlockSize {
+      int b =
+          1;  // block size for batch dimension, must be equal to 1, reserved
+      int x = 1;  // block size for width dimension
+      int y = 1;  // block size for height dimension
+      int z =
+          1;  // block size for depth dimension, must be equal to 1, reserved
+      int s = 1;  // block size for slice(grouped channels) dimension
+    } block_size;
     int3 work_group_size;
     int3 work_group_launch_order;
     int src_depth_loop_size;
@@ -77,7 +85,7 @@ class ConvolutionMetal : public GPUOperation {
     WeightsDescription desc;
     desc.type = DeduceDataTypeFromPrecision(definition_.precision);
     desc.layout = params_.weights_layout;
-    desc.output_group_size = params_.block_size.z;
+    desc.output_group_size = params_.block_size.s;
     return desc;
   }
 

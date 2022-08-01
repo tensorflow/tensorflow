@@ -3330,7 +3330,7 @@ def class_method_to_instance_method(original_function, instance):
       jit_compile=original_function._jit_compile)
   # pylint: enable=protected-access
 
-  # We wrap the the bound method with tf_decorator so inspection works correctly
+  # We wrap the bound method with tf_decorator so inspection works correctly
   wrapped_instance_func = tf_decorator.make_decorator(bound_method,
                                                       instance_func)
   return wrapped_instance_func

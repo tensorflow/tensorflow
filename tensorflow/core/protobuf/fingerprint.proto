@@ -13,6 +13,8 @@ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobu
 // If there are multiple MetaGraphDefs in the SavedModel, the FingerprintDef
 // corresponds to the first one.
 message FingerprintDef {
-  // Hash of the graph_def.
-  uint64 graph_def_hash = 1;
+  // Hash of the graph_def, referred to as a "checksum".
+  uint64 graph_def_checksum = 1;
+  // Hash of regularized graph_def.
+  uint64 graph_def_program_hash = 2;
 }

@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -213,6 +213,15 @@ struct TransposeDimsAndParams {
 std::optional<TransposeDimsAndParams> Match021Transpose(
     const HloComputation* fused_computation);
 
+// If one or multiple `operand_shapes` are the same 0-2-1 transpose of
+// `output_shape` in 0-1-2, return the dimensions of the normalized shape.
+std::optional<TransposeDimsAndParams> FindTranspose021DimsAndParameters(
+    const absl::Span<Shape const>& operand_shapes, const Shape& output_shape);
+
+// Whether fusing `producer` into `consumer` results in a fusion op that will be
+// emitted as shared memory transpose.
+bool FusionCanBeEmittedAsShmemTranspose(const HloInstruction& producer,
+                                        const HloInstruction& consumer);
 }  // namespace gpu
 }  // namespace xla
 

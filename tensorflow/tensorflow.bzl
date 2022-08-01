@@ -40,6 +40,7 @@ load(
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_mkldnn_aarch64_acl",
+    "if_mkldnn_aarch64_acl_openmp",
     "if_mkldnn_openmp",
 )
 load(
@@ -60,7 +61,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.10.0"
+VERSION = "2.11.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -404,7 +405,8 @@ def tf_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
-        if_mkldnn_aarch64_acl(["-DENABLE_ONEDNN_OPENMP", "-DDNNL_AARCH64_USE_ACL=1"]) +
+        if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
+        if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
@@ -1393,6 +1395,11 @@ def tf_cc_test(
         }),
         **kwargs
     )
+
+register_extension_info(
+    extension = tf_cc_test,
+    label_regex_for_dep = "{extension_name}",
+)
 
 def tf_gpu_cc_test(
         name,

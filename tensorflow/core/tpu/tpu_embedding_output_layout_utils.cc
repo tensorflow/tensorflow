@@ -14,40 +14,39 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
-#include "tensorflow/core/lib/core/errors.h"
+
+#include <vector>
 
 namespace tensorflow {
 namespace tpu {
 
-Status ComputeOutputTensorShapes(const TPUEmbeddingConfiguration& config,
-                                 std::vector<TensorShapeProto>* shapes) {
-  int batch_size = config.batch_size_per_tensor_core();
-
-  for (const TPUEmbeddingConfiguration::TableDescriptor& table :
-       config.table_descriptor()) {
-    TensorShapeProto shape;
-    auto* dim0 = shape.add_dim();
-    dim0->set_size(table.num_features() * batch_size);
-    auto* dim1 = shape.add_dim();
-    dim1->set_size(table.dimension());
-    shapes->push_back(shape);
-  }
-  return OkStatus();
-}
-
-Status ComputeOutputTensorShapesFromFeature(
-    const TPUEmbeddingConfiguration& config,
+Status ComputeOutputTensorShapes(
+    const tensorflow::tpu::TPUEmbeddingConfiguration& config,
     std::vector<TensorShapeProto>* shapes) {
-  for (const TPUEmbeddingConfiguration::FeatureDescriptor& feature :
-       config.feature_descriptor()) {
-    TensorShapeProto shape;
-    for (int32 input_shape : feature.input_shape()) {
-      auto* dim = shape.add_dim();
-      dim->set_size(input_shape);
+  if (config.feature_descriptor_size() > 0) {
+    for (const TPUEmbeddingConfiguration::FeatureDescriptor& feature :
+         config.feature_descriptor()) {
+      TensorShapeProto shape;
+      for (int32 input_shape : feature.input_shape()) {
+        auto* dim = shape.add_dim();
+        dim->set_size(input_shape);
+      }
+      shape.add_dim()->set_size(
+          config.table_descriptor(feature.table_id()).dimension());
+      shape.mutable_dim(0)->set_size(shape.dim(0).size());
+      shapes->push_back(shape);
     }
-    shape.add_dim()->set_size(
-        config.table_descriptor(feature.table_id()).dimension());
-    shapes->push_back(shape);
+  } else {
+    const int batch_size = config.batch_size_per_tensor_core();
+    for (const TPUEmbeddingConfiguration::TableDescriptor& table :
+         config.table_descriptor()) {
+      TensorShapeProto shape;
+      auto* dim0 = shape.add_dim();
+      dim0->set_size(table.num_features() * batch_size);
+      auto* dim1 = shape.add_dim();
+      dim1->set_size(table.dimension());
+      shapes->push_back(shape);
+    }
   }
   return OkStatus();
 }

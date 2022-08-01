@@ -30,34 +30,34 @@ Feature& ExampleFeature(absl::string_view name, Example* example) {
 
 template <>
 bool HasFeature<>(absl::string_view key, const Features& features) {
-  return features.feature().contains(std::string(key));
+  return features.feature().contains(internal::ProtoMapKey(key));
 }
 
 template <>
 bool HasFeature<protobuf_int64>(absl::string_view key,
                                 const Features& features) {
-  auto it = features.feature().find(std::string(key));
+  auto it = features.feature().find(internal::ProtoMapKey(key));
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kInt64List);
 }
 
 template <>
 bool HasFeature<float>(absl::string_view key, const Features& features) {
-  auto it = features.feature().find(std::string(key));
+  auto it = features.feature().find(internal::ProtoMapKey(key));
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kFloatList);
 }
 
 template <>
 bool HasFeature<std::string>(absl::string_view key, const Features& features) {
-  auto it = features.feature().find(std::string(key));
+  auto it = features.feature().find(internal::ProtoMapKey(key));
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kBytesList);
 }
 
 template <>
 bool HasFeature<tstring>(absl::string_view key, const Features& features) {
-  auto it = features.feature().find(std::string(key));
+  auto it = features.feature().find(internal::ProtoMapKey(key));
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kBytesList);
 }
@@ -65,7 +65,7 @@ bool HasFeature<tstring>(absl::string_view key, const Features& features) {
 bool HasFeatureList(absl::string_view key,
                     const SequenceExample& sequence_example) {
   return sequence_example.feature_lists().feature_list().contains(
-      std::string(key));
+      internal::ProtoMapKey(key));
 }
 
 template <>
@@ -119,14 +119,15 @@ const protobuf::RepeatedPtrField<Feature>& GetFeatureList(
     absl::string_view key, const SequenceExample& sequence_example) {
   return sequence_example.feature_lists()
       .feature_list()
-      .at(std::string(key))
+      .at(internal::ProtoMapKey(key))
       .feature();
 }
 
 protobuf::RepeatedPtrField<Feature>* GetFeatureList(
     absl::string_view feature_list_key, SequenceExample* sequence_example) {
   return (*sequence_example->mutable_feature_lists()
-               ->mutable_feature_list())[std::string(feature_list_key)]
+               ->mutable_feature_list())[internal::ProtoMapKey(
+                                             feature_list_key)]
       .mutable_feature();
 }
 

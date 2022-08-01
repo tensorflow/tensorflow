@@ -55,9 +55,9 @@ class TpuDevice : public PjRtDevice {
   const std::array<int, 3>& coords() const { return coords_; }
   int core_on_chip() const { return core_on_chip_; }
 
-  std::string DebugString() const override;
+  absl::string_view DebugString() const override;
 
-  std::string ToString() const override;
+  absl::string_view ToString() const override;
 
   static xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
   GetTpuDevices(const tpu_driver::SystemInfo& system_info);
@@ -99,6 +99,8 @@ class TpuDevice : public PjRtDevice {
   const int process_index_;
   const std::array<int, 3> coords_;
   const std::string device_kind_ = "Cloud TPU";
+  std::string debug_string_;
+  std::string to_string_;
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
   // Index of the core of the same chip.
   int core_on_chip_;

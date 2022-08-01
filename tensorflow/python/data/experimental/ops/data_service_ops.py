@@ -934,7 +934,7 @@ def _from_dataset_id(processing_mode,
                      task_refresh_interval_hint_ms=None,
                      data_transfer_protocol=None,
                      compression="AUTO",
-                     cross_trainer_cache=False,
+                     cross_trainer_cache=None,
                      target_workers="AUTO"):
   """Creates a dataset which reads data from the tf.data service.
 
@@ -1092,6 +1092,7 @@ def from_dataset_id(processing_mode,
                     num_consumers=None,
                     max_outstanding_requests=None,
                     data_transfer_protocol=None,
+                    cross_trainer_cache=None,
                     target_workers="AUTO"):
   """Creates a dataset which reads data from the tf.data service.
 
@@ -1173,6 +1174,11 @@ def from_dataset_id(processing_mode,
       `max_outstanding_requests` of memory.
     data_transfer_protocol: (Optional.) The protocol to use for transferring
       data with the tf.data service. By default, data is transferred using gRPC.
+    cross_trainer_cache: (Optional.) If a `CrossTrainerCache` object is
+      provided, dataset iteration will be shared across concurrently running
+      trainers. See
+      https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers
+      for details.
     target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
       runtime decides which workers to read from. If `"ANY"`, reads from any
       tf.data service workers. If `"LOCAL"`, only reads from local in-processs
@@ -1200,4 +1206,5 @@ def from_dataset_id(processing_mode,
       num_consumers=num_consumers,
       max_outstanding_requests=max_outstanding_requests,
       data_transfer_protocol=data_transfer_protocol,
+      cross_trainer_cache=cross_trainer_cache,
       target_workers=target_workers)

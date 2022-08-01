@@ -30,7 +30,7 @@ of these tools installed:
 * Android Studio 4.2.2 or higher
 * Android SDK version 31 or higher
 
-Note: This example uses the camera, so you should runs it on a physical Android
+Note: This example uses the camera, so you should run it on a physical Android
 device.
 
 ### Get the example code
@@ -74,8 +74,8 @@ completes, the Android Studio displays a `BUILD SUCCESSFUL` message in the
 
 Note: The example code is built with Android Studio 4.2.2, but works with
 earlier versions of Studio. If you are using an earlier version of Android
-Studio you can try adjust the version number of the Android plugin so that the
-build completes, instead of upgrading Studio.
+Studio you can try to adjust the version number of the Android plugin so that
+the build completes, instead of upgrading Studio.
 
 **Optional:** To fix build errors by updating the Android plugin version:
 
@@ -106,8 +106,8 @@ TensorFlow Lite machine learning models, and access utility functions that
 convert data such as images, into a tensor data format that can be processed by
 the model you are using.
 
-The example app uses several TensorFlow Lite libraries to enable execution of
-the object detection machine learning model:
+The example app uses several TensorFlow Lite libraries to enable the execution
+of the object detection machine learning model:
 
 -   *TensorFlow Lite main library* - Provides the required data input
     classes,  execution of the machine learning model, and output results from
@@ -199,8 +199,8 @@ handle hardware acceleration of the model execution:
 Interpreter.Options().addDelegate(nnApiDelegate)
 ```
 
-TensorFlow Lite *delegates* are software modules that accelerate execution of
-machine learning models using specialized processing hardware on a mobile
+TensorFlow Lite *delegates* are software modules that accelerate the execution
+of machine learning models using specialized processing hardware on a mobile
 device, such as GPUs, TPUs, or DSPs. Using delegates for running TensorFlow Lite
 models is recommended, but not required.
 
@@ -217,7 +217,7 @@ data format that can be processed by your model. The data in a Tensor must have
 specific dimensions, or shape, that matches the format of data used to train the
 model.
 
-To determine required tensor shape for a model:
+To determine the required tensor shape for a model:
 
 -   Use the initialized
     [Interpreter](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter)
@@ -318,9 +318,9 @@ objects are not created and then removed by the system for each prediction run.
 ## Handle model output
 
 In your Android app, after you run image data against the object detection
-model, it produces a list of predictions which your app code must handle
-by executing additional business logic, displaying results to the user, or
-taking other actions.
+model, it produces a list of predictions that your app code must handle by
+executing additional business logic, displaying results to the user, or taking
+other actions.
 
 The output of any given TensorFlow Lite model varies in terms of the number of
 predictions it produces (one or many), and the descriptive information for each
@@ -362,7 +362,8 @@ results is up to you and the needs of your application.
 Once the model has returned a prediction result, your application can act on
 that prediction by presenting the result to your user or executing additional
 logic. In the case of the example code, the application draws a bounding box
-around the identified object and displays the class name on screen. Review the
+around the identified object and displays the class name on the screen. Review
+the
 [`CameraActivity.reportPrediction()`](https://github.com/android/camera-samples/blob/b0f4ec3a81ec30e622bb1ccd55f30e54ddac223f/CameraXAdvanced/tflite/src/main/java/com/example/android/camerax/tflite/CameraActivity.kt#L236-L262)
 function in the example code for details.
 

@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 
 namespace xla {
 namespace {
@@ -1775,11 +1774,6 @@ ENTRY TestComputation {
 }
 
 XLA_TEST_F(ConvolutionHloTest, TestBooleanInput) {
-  const bool isCudaPlatform =
-      GetTestPlatform()->id() == stream_executor::cuda::kCudaPlatformId;
-  const bool isROCmPlatform =
-      GetTestPlatform()->id() == stream_executor::rocm::kROCmPlatformId;
-
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1789,12 +1783,7 @@ ENTRY TestComputation {
   convolution.3 = pred[3,3,3]{2,1,0} convolution(broadcast.2, broadcast.2), window={size=3 pad=1_1}, dim_labels=bf0_oi0->bf0
   ROOT tuple.4 = (pred[3,3,3]{2,1,0}) tuple(convolution.3)
 })";
-  auto result = RunAndCompare(kHlo, ErrorSpec{0.01, 0.01});
-  if (isCudaPlatform || isROCmPlatform) {
-    EXPECT_FALSE(result);
-  } else {
-    EXPECT_TRUE(result);
-  }
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
 }  // namespace

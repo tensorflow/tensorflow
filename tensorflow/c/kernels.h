@@ -170,6 +170,22 @@ TF_CAPI_EXPORT extern int TF_NumOutputs(TF_OpKernelContext* ctx);
 TF_CAPI_EXPORT extern void TF_GetInput(TF_OpKernelContext* ctx, int i,
                                        TF_Tensor** tensor, TF_Status* status);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;         // Not used, for possible extension.
+  int start;          // output
+  int stop;           // output
+  TF_Status* status;  // output
+} TF_InputRange_Args;
+const size_t TF_InputRange_Args_STRUCT_SIZE =
+    TF_OFFSET_OF_END(TF_InputRange_Args, status);
+
+// Retrieves the start and stop indices, given the input name. Equivalent to
+// OpKernel::InputRange(). `args` will contain the result indices and status.
+TF_CAPI_EXPORT extern void TF_InputRange(TF_OpKernelContext* ctx,
+                                         const char* name,
+                                         TF_InputRange_Args* args);
+
 // Sets the ith output of ctx to tensor. If TF_GetCode(status) is anything but
 // TF_OK, ctx is left unmodified.
 //

@@ -294,6 +294,13 @@ func.func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>)
   func.return %0 : tensor<?xf32>
 }
 
+// CHECK-LABEL: unique
+func.func @unique(%arg0: tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi32>) {
+  // CHECK-NOT: tf.Unique
+  %0, %1 = "tf.Unique"(%arg0) : (tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi32>)
+  func.return %0, %1 : tensor<?xf32> , tensor<?xi32>
+}
+
 // CHECK-LABEL: @erfinv
 func.func @erfinv(%input: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK-NOT: tf.Erfinv

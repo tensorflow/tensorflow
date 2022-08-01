@@ -181,7 +181,7 @@ tf_kernel_library(
         "@llvm-project//mlir:Support",
         "//tensorflow/compiler/jit:xla_activity_listener",
         "//tensorflow/compiler/jit:xla_activity_proto_cc",
-        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",

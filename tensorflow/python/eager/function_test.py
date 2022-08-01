@@ -5551,6 +5551,25 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(NotImplementedError):
       f()
 
+  # TODO(panzf): remove this test after exposing manual API, as the integration
+  # testcase can be turned on at that time.
+  def test_inner_nested_tf_function_raise_error(self):
+    @def_function.function
+    def tf_f():
+
+      @def_function.function
+      def tf_g():
+        cx = ops.get_default_graph()._experimental_capture_side_input_by_ref(  # pylint: disable=protected-access
+            'lambda: x', lambda: x)
+        return cx
+
+      return tf_g()
+
+    x = constant_op.constant(0)  # pylint: disable=unused-variable
+    with self.assertRaisesRegex(
+        NotImplementedError, 'Manual side input usage for inner nested'):
+      tf_f()
+
   @parameterized.parameters(
       (1, int, 2, int, 2),
       (1, constant_op.constant, 2, constant_op.constant, 1))

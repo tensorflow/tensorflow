@@ -35,6 +35,7 @@ from .xla_extension import FftType as FftType
 from .xla_extension import Frame as Frame
 from .xla_extension import HostBufferSemantics as HostBufferSemantics
 from .xla_extension import OpSharding as OpSharding
+from .xla_extension import HloSharding as HloSharding
 from .xla_extension import PrimitiveType as PrimitiveType
 from .xla_extension import Traceback as Traceback
 from .xla_extension import XlaBuilder as XlaBuilder

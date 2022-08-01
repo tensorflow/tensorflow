@@ -14,8 +14,9 @@
 # ==============================================================================
 """Tests for sharing datasets across training jobs."""
 
-from absl.testing import parameterized
+import multiprocessing
 
+from absl.testing import parameterized
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.kernel_tests import test_base
@@ -23,8 +24,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
-
-import multiprocessing
 
 
 class CrossTrainerCacheTest(data_service_test_base.TestBase,
@@ -34,6 +33,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
   @combinations.generate(
       combinations.times(test_base.default_test_combinations()))
   def testEnableCrossTrainerCache(self):
+    """Tests cross-trainer cache with `distribute`."""
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
     dataset1 = self.make_distributed_dataset(
@@ -48,6 +48,36 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     dataset2 = self.make_distributed_dataset(
         dataset,
         cluster,
+        job_name="job",
+        cross_trainer_cache=data_service_ops.CrossTrainerCache(
+            trainer_id="Trainer 2"))
+    self.assertDatasetProduces(dataset2.take(10), list(range(10)))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testFromDatasetId(self):
+    """Tests cross-trainer cache with `register_dataset`/`from_dataset_id`."""
+    cluster = self._create_cluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10000000).repeat()
+    dataset_id1 = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset, dataset_id="dataset_id")
+    dataset1 = data_service_ops.from_dataset_id(
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        dataset_id=dataset_id1,
+        element_spec=dataset.element_spec,
+        job_name="job",
+        cross_trainer_cache=data_service_ops.CrossTrainerCache(
+            trainer_id="Trainer 1"))
+    self.assertDatasetProduces(dataset1.take(10), list(range(10)))
+
+    dataset_id2 = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset, dataset_id="dataset_id")
+    dataset2 = data_service_ops.from_dataset_id(
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        dataset_id=dataset_id2,
+        element_spec=dataset.element_spec,
         job_name="job",
         cross_trainer_cache=data_service_ops.CrossTrainerCache(
             trainer_id="Trainer 2"))
@@ -203,7 +233,6 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
   @combinations.generate(
       combinations.times(test_base.default_test_combinations()))
   def testDifferentJobNames(self):
-    # TODO(b/221104308): Disallow this use case because it increases RAM usage.
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
     dataset1 = self.make_distributed_dataset(

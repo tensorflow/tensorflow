@@ -1898,6 +1898,20 @@ void Subgraph::DumpMemoryPlannerDebugInfo() const {
   memory_planner_->DumpDebugInfo(execution_plan());
 }
 
+void Subgraph::GetMemoryAllocInfo(size_t* arena_size,
+                                  size_t* arena_persist_size,
+                                  size_t* dynamic_size) const {
+  if (memory_planner_ == nullptr) return;
+  memory_planner_->GetAllocInfo(arena_size, arena_persist_size);
+  *dynamic_size = 0;
+  for (const auto& tensor : tensors_) {
+    if (tensor.allocation_type == kTfLiteDynamic &&
+        tensor.data.raw != nullptr) {
+      *dynamic_size += tensor.bytes;
+    }
+  }
+}
+
 std::unique_ptr<GraphInfo> Subgraph::CreateGraphInfo() {
   return std::unique_ptr<GraphInfo>(new InterpreterInfo(this));
 }

@@ -108,6 +108,7 @@ typedef struct TP_OptimizerConfigs {
   TF_TriState constant_folding;
   TF_TriState shape_optimization;
   TF_TriState auto_mixed_precision;
+  TF_TriState auto_mixed_precision_onednn_bfloat16;
   TF_TriState auto_mixed_precision_mkl;
   TF_TriState pin_to_host_optimization;
   TF_TriState layout_optimizer;

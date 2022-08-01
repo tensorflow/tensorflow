@@ -37,45 +37,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class GpuAotCompilationResult : public AotCompilationResult {
- public:
-  static StatusOr<std::unique_ptr<GpuAotCompilationResult>> FromString(
-      const std::string& serialized) {
-    GpuBefExecutableProto bef_executable;
-    if (!bef_executable.ParseFromString(serialized)) {
-      return InternalError("Failed to parse serialized GpuBefExecutableProto.");
-    }
-    return std::unique_ptr<GpuAotCompilationResult>(
-        new GpuAotCompilationResult(std::move(bef_executable)));
-  }
-
-  GpuAotCompilationResult(HloModuleProto hlo_module_proto,
-                          const std::string& bef,
-                          EntryFunctionAttributes entry_func_attrs) {
-    *bef_executable_.mutable_hlo_module_proto() = hlo_module_proto;
-    bef_executable_.set_bef(bef);
-    *bef_executable_.mutable_entry_func_attrs() = entry_func_attrs;
-  }
-  ~GpuAotCompilationResult() override = default;
-
-  StatusOr<std::string> SerializeAsString() const override {
-    return bef_executable_.SerializeAsString();
-  }
-
-  StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, se::StreamExecutor* executor) const override;
-
-  const GpuBefExecutableProto& bef_executable() const {
-    return bef_executable_;
-  }
-
- private:
-  explicit GpuAotCompilationResult(GpuBefExecutableProto bef_executable)
-      : bef_executable_(std::move(bef_executable)) {}
-
-  GpuBefExecutableProto bef_executable_;
-};
-
 // The GPU compiler generates efficient GPU executables.
 class GpuCompiler : public LLVMCompiler {
  public:
@@ -97,9 +58,6 @@ class GpuCompiler : public LLVMCompiler {
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
-
-  StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
-      const std::string& serialized_aot_result) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,

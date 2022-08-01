@@ -131,8 +131,15 @@ def get_checkpoint_factories_and_keys(object_names, object_map=None):
               object_to_save).items()):  # pylint: disable=protected-access
         # Retrieve the legacy saveable name (for compatibility purposes during
         # SaveableObject deprecation)
-        name = saveable_compat.get_saveable_name(object_to_save) or name
-        checkpoint_key = trackable_utils.checkpoint_key(object_name, name)
+
+        key_suffix = saveable_compat.get_saveable_name(object_to_save) or name
+        checkpoint_key = trackable_utils.checkpoint_key(object_name, key_suffix)
+
+        if not saveable_compat.force_checkpoint_conversion_enabled():
+          # Make sure the set the name as the legacy saveable name if there
+          # is one (only when checkpoint conversion is diabled)
+          name = key_suffix
+
         checkpoint_factory_map[trackable].append(
             _CheckpointFactoryData(
                 factory=saveable_factory,
@@ -237,7 +244,7 @@ def _add_attributes_to_object_graph_for_saveable_objects(
       if saveables is None:
         if callable(saveable_factory):
           maybe_saveable = saveable_object_util.create_saveable_object(
-              saveable_factory, key, call_with_mapped_captures)
+              name, key, saveable_factory, call_with_mapped_captures)
         else:
           maybe_saveable = saveable_factory
         if isinstance(maybe_saveable, saveable_object_lib.SaveableObject):

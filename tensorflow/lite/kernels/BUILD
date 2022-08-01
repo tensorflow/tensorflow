@@ -805,6 +805,7 @@ cc_library(
 cc_library(
     name = "custom_ops",
     srcs = [
+        "atan2_custom.cc",
         "irfft2d.cc",
         "multinomial.cc",
         "pooling3d.cc",
@@ -1580,6 +1581,20 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "atan2_custom_test",
+    size = "small",
+    srcs = ["atan2_custom_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -2804,6 +2819,19 @@ cc_test(
     name = "unsorted_segment_sum_test",
     size = "small",
     srcs = ["unsorted_segment_sum_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "unsorted_segment_min_test",
+    size = "small",
+    srcs = ["unsorted_segment_min_test.cc"],
     deps = [
         ":test_main",
         ":test_util",

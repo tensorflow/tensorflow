@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -54,16 +55,6 @@ class GpuContextCache;
 namespace xla {
 namespace gpu {
 
-// Returns whether GpuExecutable runs on TFRT (instead of thunks).
-bool IsBefExecutableEnabled(const HloModuleConfig& config);
-
-// Returns whether to create BefThunks (if the specific thunk is supported).
-bool IsBefThunkEnabled(const HloModuleConfig& config);
-
-inline bool IsBefEnabled(const HloModuleConfig& config) {
-  return IsBefExecutableEnabled(config) || IsBefThunkEnabled(config);
-}
-
 // Returns whether GpuExecutable runs on TFRT/JitRt.
 bool IsJitRtExecutableEnabled(const HloModuleConfig& config);
 
@@ -73,17 +64,7 @@ bool IsJitRtExecutableEnabled(const HloModuleConfig& config);
 //
 // This is an immutable data type after initialization, and thus thread safe.
 class GpuExecutable : public Executable {
-  struct BefBufferDeleter {
-    void operator()(uint8_t* ptr) const;
-    size_t size;
-  };
-
-  struct GpuContextCacheDeleter {
-    void operator()(tfrt::gpu::GpuContextCache* ptr) const;
-  };
-
  public:
-  struct BefExecutable;
   struct JitRtExecutable;
 
   // Serialized MLIR module prepared for JitRt compilation.
@@ -103,10 +84,7 @@ class GpuExecutable : public Executable {
   };
 
   typedef std::unique_ptr<const ThunkSchedule> OwnedThunkSchedule;
-  typedef std::unique_ptr<uint8_t, BefBufferDeleter> OwnedBefBuffer;
   typedef std::unique_ptr<JitRtProgram> OwnedJitRtProgram;
-  typedef std::unique_ptr<tfrt::gpu::GpuContextCache, GpuContextCacheDeleter>
-      OwnedGpuContextCache;
 
   struct ConstantInfo {
     std::string symbol_name;
@@ -130,10 +108,9 @@ class GpuExecutable : public Executable {
     std::string asm_text;
     std::vector<uint8_t> binary;
     GpuVersion gpu_version;
-    // The GpuExecutable will either execute Thunks, a whole-program BEF or a
-    // JitRt compiled native function depending on which is supplied.
-    std::variant<OwnedThunkSchedule, OwnedBefBuffer, OwnedJitRtProgram>
-        executable;
+    // The GpuExecutable will either execute Thunks or a JitRt compiled native
+    // function depending on which is supplied.
+    std::variant<OwnedThunkSchedule, OwnedJitRtProgram> executable;
     xla::EntryFunctionAttributes entry_func_attrs;
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
@@ -150,15 +127,6 @@ class GpuExecutable : public Executable {
     };
 
     std::unique_ptr<HloModule> debug_module = nullptr;
-
-    // Only relevant to whole-program BEF execution:
-    // Optionally provide a cache of GPU contexts and corresponding
-    // tfrt::ResourceContext(s). This can be used to supply
-    // tfrt::ResourceContext(s) that are preloaded with GPU resources for given
-    // GPU contexts. This isn't required for correct execution. However, it
-    // prevents the initial execution step from being slowed down due to
-    // initializing GPU resources.
-    OwnedGpuContextCache gpu_ctx_cache;
   };
 
   // TODO(hanbinyoon): Once BEF replaces Thunks, hide this method as an
@@ -172,20 +140,6 @@ class GpuExecutable : public Executable {
       std::vector<BufferAllocation>* allocations,
       absl::flat_hash_map<ShapeIndex, OutputInfo>* output_info,
       Shape* output_shape, int buffer_param_offset = 0);
-
-  // Returns an Executable that is loaded from a BEF. This BEF must have entry
-  // point information set using the 'tfrt-set-entry-point' pass.
-  static StatusOr<std::unique_ptr<Executable>> LoadFromBef(
-      std::shared_ptr<HloModule> hlo_module, absl::string_view bef,
-      xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version,
-      stream_executor::StreamExecutor* executor);
-
-  // Returns a cache of the given StreamExecutor's GPU context and a
-  // corresponding tfrt::ResourceContext that is preloaded with the GPU
-  // resources needed to run the specified BEF program.
-  static StatusOr<OwnedGpuContextCache> CreatePreloadedGpuContextCache(
-      llvm::ArrayRef<uint8_t> bef_array,
-      stream_executor::StreamExecutor* executor);
 
   static StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
   ~GpuExecutable() override;
@@ -237,23 +191,14 @@ class GpuExecutable : public Executable {
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(Params params);
 
-  // Constructor to use when loading a GpuExecutable from a BEF. Omits setting
-  // class members that aren't used in BEF execution mode.
-  GpuExecutable(std::shared_ptr<HloModule> hlo_module, GpuVersion gpu_version,
-                xla::EntryFunctionAttributes entry_func_attrs,
-                absl::string_view module_name, Shape xla_output_shape,
-                std::vector<BufferAllocation> allocations,
-                absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
-                BefExecutable* bef_executable);
-
   // If `block_host_until_done` is false, execution will not block the host
   // until the kernels have completed. This is used as an optimization for
   // clients, such as Tensorflow, that use a single stream of execution for
   // computations, and allow host-side deallocation from the allocator before
   // GPU execution completes.
-  Status ExecuteThunksOrBef(const ServiceExecutableRunOptions* run_options,
-                            const BufferAllocations& buffer_allocations,
-                            bool block_host_until_done);
+  Status ExecuteThunksOrJitRt(const ServiceExecutableRunOptions* run_options,
+                              const BufferAllocations& buffer_allocations,
+                              bool block_host_until_done);
 
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
@@ -339,9 +284,6 @@ class GpuExecutable : public Executable {
   // Retains shared ownership of on-device constants that are managed by XLA and
   // potentially shared with other executables.
   std::vector<std::shared_ptr<se::DeviceMemoryBase>> shared_constants_;
-
-  // Data for bef executable mode only, owned.
-  BefExecutable* bef_executable_ = nullptr;
 
   // JitRt executable if the JitRt mode is on, owned.
   JitRtExecutable* jitrt_executable_ = nullptr;

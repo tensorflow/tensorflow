@@ -572,8 +572,8 @@ class ShapeUtil {
                                  const Shape& output_shape,
                                  absl::Span<const int64_t> dimension_mapping);
 
-  // Returns whether a reshape from "input_shape" to "output_shape" is a
-  // bitcast.
+  // Returns whether a reshape from `input_shape` to `output_shape` is a
+  // bitcast, when minor_to_major in layout is considered.
   //
   // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool ReshapeIsBitcast(const Shape& input_shape,

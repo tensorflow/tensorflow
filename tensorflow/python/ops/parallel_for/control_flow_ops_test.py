@@ -419,6 +419,7 @@ class ImageTest(PForTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.run_all_without_tensor_float_32("Uses matmul")
 class NNTest(PForTestCase):
 
   def test_conv2d(self):

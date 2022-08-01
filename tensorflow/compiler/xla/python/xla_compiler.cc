@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -760,6 +761,13 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                       &xla::OpSharding::mutable_tuple_shardings);
   DefRepeatedProperty(op_sharding, "last_tile_dims",
                       &xla::OpSharding::mutable_last_tile_dims);
+
+  py::class_<HloSharding> hlo_sharding(m, "HloSharding");
+  hlo_sharding.def_static("from_proto", &xla::HloSharding::FromProto)
+      .def("__eq__", [](const xla::HloSharding& a,
+                        const xla::HloSharding& b) { return a == b; })
+      .def("__hash__",
+           [](const xla::HloSharding& self) { return absl::HashOf(self); });
 
   py::class_<FrontendAttributes> frontend_attributes(m, "FrontendAttributes");
   frontend_attributes.def(py::init<>())

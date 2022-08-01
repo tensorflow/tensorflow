@@ -425,7 +425,9 @@ class HloComputation {
       std::unique_ptr<HloInstruction> new_instruction);
 
   // Replace old instruction with new instruction.  Updates uses and root
-  // instruction. Removes old instruction from computation. Precondition:
+  // instruction. Removes old instruction from computation. Transitively removes
+  // non-side effecting operands of old instruction that no longer have users,
+  // similar to RemoveInstructionAndUnusedOperands(). Precondition:
   // old_instruction and new_instruction must have the compatible shapes.
   // If preserve_sharding is true, the replacement will fail if both new and old
   // instruction have sharding that is not compatible, and the function will

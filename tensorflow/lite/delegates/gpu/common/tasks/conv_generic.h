@@ -75,13 +75,6 @@ class ConvGeneric : public GPUOperation {
   };
 
   struct ConvParams {
-    // Usually we use this combinations for CalculationPrecision:
-    // F32: all F32
-    // F16: all F16
-    // F32_F16: all besides accumulator is F16, including weights
-    // But for PowerVR we can achieve better performance in F32_F16 with F32
-    // weights, so for PowerVR in this kernel we have F32 weights for
-    // F32_F16 precision mode
     DataType weights_data_type;  // used for weights and biases
     int4 block_size;             // WHDS
     bool fixed_work_group_size;
@@ -201,7 +194,6 @@ class ConvGeneric : public GPUOperation {
                              const BHWC* dst_shape = nullptr);
 
   std::string GenerateConv(const GpuInfo& gpu_info, const OperationDef& op_def,
-                           bool stride_correction,
                            const ConvParams& conv_params);
 
   int4 stride_;

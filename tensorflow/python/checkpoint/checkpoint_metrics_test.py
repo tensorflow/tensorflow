@@ -15,6 +15,7 @@
 """Tests for checking the checkpoint reading and writing metrics."""
 
 import os
+import time
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.checkpoint import checkpoint as util
@@ -55,6 +56,7 @@ class CheckpointMetricTests(test.TestCase):
 
       for i in range(3):
         time_saved = self._get_time_saved(api_label)
+        time.sleep(1)
         ckpt_path = ckpt.write(file_prefix=prefix)
         filesize = util._get_checkpoint_size(ckpt_path)
         self.assertEqual(self._get_checkpoint_size(api_label, filesize), i + 1)
@@ -85,10 +87,11 @@ class CheckpointMetricTests(test.TestCase):
 
       for i in range(3):
         time_saved = self._get_time_saved(api_label)
+        time.sleep(1)
         ckpt_path = ckpt.write(file_prefix=prefix)
         filesize = util._get_checkpoint_size(ckpt_path)
         self.assertEqual(self._get_checkpoint_size(api_label, filesize), i + 1)
-        self.assertGreaterEqual(self._get_time_saved(api_label), time_saved)
+        self.assertGreater(self._get_time_saved(api_label), time_saved)
 
     self.assertEqual(self._get_write_histogram_proto(api_label).num, 3.0)
 
