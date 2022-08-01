@@ -135,16 +135,9 @@ pip install tflite-support
 ```python
 # Imports
 from tflite_support.task import text
-from tflite_support.task import core
-from tflite_support.task import processor
 
 # Initialization
-base_options = core.BaseOptions(file_name=model_path)
-options = text.BertQuestionAnswererOptions(base_options=base_options)
-answerer = text.BertQuestionAnswerer.create_from_options(options)
-
-# Alternatively, you can create a BertQuestionAnswerer in the following manner:
-# answerer = text.BertQuestionAnswerer.create_from_file(model_path)
+answerer = text.BertQuestionAnswerer.create_from_file(model_path)
 
 # Run inference
 bert_qa_result = answerer.answer(context, question)

@@ -146,16 +146,9 @@ pip install tflite-support
 ```python
 # Imports
 from tflite_support.task import text
-from tflite_support.task import core
-from tflite_support.task import processor
 
 # Initialization
-base_options = core.BaseOptions(file_name=model_path)
-options = text.NLClassifierOptions(base_options=base_options)
-classifier = text.NLClassifier.create_from_options(options)
-
-# Alternatively, you can create an NLClassifier in the following manner:
-# classifier = text.NLClassifier.create_from_file(model_path)
+classifier = text.NLClassifier.create_from_file(model_path)
 
 # Run inference
 text_classification_result = classifier.classify(text)
