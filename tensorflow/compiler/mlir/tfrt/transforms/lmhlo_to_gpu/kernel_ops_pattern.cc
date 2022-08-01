@@ -440,25 +440,46 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
   rewriter.eraseOp(op);
 }
 
+// An overload set for defining predicates for operations that should
+// conditionally go through the XLA GPU code emitters.
+template <typename OpTy>
+static bool HasGpuEmitter(OpTy) {
+  return true;
+}
+
+// Select custom calls that have corresponding GPU emitters.
+static bool HasGpuEmitter(mlir::lmhlo::CustomCallOp custom_call) {
+  llvm::StringRef target = custom_call.getCallTargetName();
+  return target == "SliceToDynamic" || target == "PadToStatic";
+}
+
 mlir::LogicalResult KernelOpsPattern::matchAndRewrite(
     mlir::ModuleOp module_op, mlir::PatternRewriter& rewriter) const {
   SmallVector<RewriteData, 4> rewrites;
 
   // Get data to rewrite kernel ops without changing the IR.
-  auto walk = [&](auto concrete_op) {
-    return module_op.walk([&](decltype(concrete_op) op) -> mlir::WalkResult {
+  auto walk = [&](auto op_type_tag) {
+    using OpTy = decltype(op_type_tag);
+
+    return module_op.walk([&](OpTy op) -> mlir::WalkResult {
+      if (!HasGpuEmitter(op)) return mlir::success();
+
       auto data = Match(op);
-      if (!data)
-        return rewriter.notifyMatchFailure(op, toString(data.takeError()));
+      if (auto err = data.takeError())
+        return rewriter.notifyMatchFailure(op, toString(std::move(err)));
+
       rewrites.emplace_back(std::move(*data));
       return mlir::success();
     });
   };
+
+  // Compile all operations that have GPU code emitters to the GPU binary,
   if (walk(mlir::lmhlo::FusionOp()).wasInterrupted() ||
       walk(mlir::lmhlo::RngGetAndUpdateStateOp()).wasInterrupted() ||
       walk(mlir::lmhlo::ScatterOp()).wasInterrupted() ||
       walk(mlir::lmhlo::SelectAndScatterOp()).wasInterrupted() ||
       walk(mlir::lmhlo::SortOp()).wasInterrupted() ||
+      walk(mlir::lmhlo::CustomCallOp()).wasInterrupted() ||
       walk(mlir::gpu::LaunchFuncOp()).wasInterrupted())
     return mlir::failure();
 
