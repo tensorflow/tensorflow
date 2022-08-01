@@ -137,8 +137,8 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       grid_size_(operation.grid_size_),
       src_tensors_names_(std::move(operation.src_tensors_names_)),
       dst_tensors_names_(std::move(operation.dst_tensors_names_)),
-      elementwise_(operation.elementwise_),
       work_groups_count_(operation.work_groups_count_),
+      elementwise_(operation.elementwise_),
       linkable_count_(operation.linkable_count_),
       elementwise_code_(std::move(operation.elementwise_code_)) {}
 
@@ -159,8 +159,8 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     std::swap(grid_size_, operation.grid_size_);
     src_tensors_names_ = std::move(operation.src_tensors_names_);
     dst_tensors_names_ = std::move(operation.dst_tensors_names_);
-    elementwise_ = operation.elementwise_;
     std::swap(work_groups_count_, operation.work_groups_count_);
+    elementwise_ = operation.elementwise_;
     std::swap(linkable_count_, operation.linkable_count_);
     elementwise_code_ = std::move(operation.elementwise_code_);
   }

@@ -2137,17 +2137,14 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_WORK_GROUP_SIZE = 8,
     VT_COMPILER_OPTIONS = 10,
     VT_TENSOR_TO_GRID = 12,
-    VT_ELEMENTWISE = 14,
-    VT_FLOPS = 16,
-    VT_DEFINITION = 18,
-    VT_GRID_DIMENSION = 20,
-    VT_WORK_GROUP_LAUNCH_ORDER = 22,
-    VT_GRID_SIZE = 24,
-    VT_SRC_TENSORS_NAMES = 26,
-    VT_DST_TENSORS_NAMES = 28,
-    VT_WORK_GROUPS_COUNT = 30,
-    VT_LINKABLE_COUNT = 32,
-    VT_ELEMENTWISE_CODE = 34
+    VT_FLOPS = 14,
+    VT_DEFINITION = 16,
+    VT_GRID_DIMENSION = 18,
+    VT_WORK_GROUP_LAUNCH_ORDER = 20,
+    VT_GRID_SIZE = 22,
+    VT_SRC_TENSORS_NAMES = 24,
+    VT_DST_TENSORS_NAMES = 26,
+    VT_WORK_GROUPS_COUNT = 28
   };
   const tflite::gpu::data::Arguments *arguments() const {
     return GetPointer<const tflite::gpu::data::Arguments *>(VT_ARGUMENTS);
@@ -2163,9 +2160,6 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   tflite::gpu::data::TensorToGrid tensor_to_grid() const {
     return static_cast<tflite::gpu::data::TensorToGrid>(GetField<int8_t>(VT_TENSOR_TO_GRID, 0));
-  }
-  bool elementwise() const {
-    return GetField<uint8_t>(VT_ELEMENTWISE, 0) != 0;
   }
   uint64_t flops() const {
     return GetField<uint64_t>(VT_FLOPS, 0);
@@ -2191,12 +2185,6 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::gpu::data::Int3 *work_groups_count() const {
     return GetPointer<const tflite::gpu::data::Int3 *>(VT_WORK_GROUPS_COUNT);
   }
-  int32_t linkable_count() const {
-    return GetField<int32_t>(VT_LINKABLE_COUNT, 0);
-  }
-  const flatbuffers::String *elementwise_code() const {
-    return GetPointer<const flatbuffers::String *>(VT_ELEMENTWISE_CODE);
-  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_ARGUMENTS) &&
@@ -2209,7 +2197,6 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyVector(compiler_options()) &&
            verifier.VerifyVectorOfTables(compiler_options()) &&
            VerifyField<int8_t>(verifier, VT_TENSOR_TO_GRID, 1) &&
-           VerifyField<uint8_t>(verifier, VT_ELEMENTWISE, 1) &&
            VerifyField<uint64_t>(verifier, VT_FLOPS, 8) &&
            VerifyOffset(verifier, VT_DEFINITION) &&
            verifier.VerifyTable(definition()) &&
@@ -2226,9 +2213,6 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyVectorOfStrings(dst_tensors_names()) &&
            VerifyOffset(verifier, VT_WORK_GROUPS_COUNT) &&
            verifier.VerifyTable(work_groups_count()) &&
-           VerifyField<int32_t>(verifier, VT_LINKABLE_COUNT, 4) &&
-           VerifyOffset(verifier, VT_ELEMENTWISE_CODE) &&
-           verifier.VerifyString(elementwise_code()) &&
            verifier.EndTable();
   }
 };
@@ -2251,9 +2235,6 @@ struct GPUOperationBuilder {
   }
   void add_tensor_to_grid(tflite::gpu::data::TensorToGrid tensor_to_grid) {
     fbb_.AddElement<int8_t>(GPUOperation::VT_TENSOR_TO_GRID, static_cast<int8_t>(tensor_to_grid), 0);
-  }
-  void add_elementwise(bool elementwise) {
-    fbb_.AddElement<uint8_t>(GPUOperation::VT_ELEMENTWISE, static_cast<uint8_t>(elementwise), 0);
   }
   void add_flops(uint64_t flops) {
     fbb_.AddElement<uint64_t>(GPUOperation::VT_FLOPS, flops, 0);
@@ -2279,12 +2260,6 @@ struct GPUOperationBuilder {
   void add_work_groups_count(flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count) {
     fbb_.AddOffset(GPUOperation::VT_WORK_GROUPS_COUNT, work_groups_count);
   }
-  void add_linkable_count(int32_t linkable_count) {
-    fbb_.AddElement<int32_t>(GPUOperation::VT_LINKABLE_COUNT, linkable_count, 0);
-  }
-  void add_elementwise_code(flatbuffers::Offset<flatbuffers::String> elementwise_code) {
-    fbb_.AddOffset(GPUOperation::VT_ELEMENTWISE_CODE, elementwise_code);
-  }
   explicit GPUOperationBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2301,23 +2276,25 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperation(
     flatbuffers::Offset<tflite::gpu::data::Arguments> arguments = 0,
     flatbuffers::Offset<flatbuffers::String> code = 0,
     flatbuffers::Offset<tflite::gpu::data::Int3> work_group_size = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::CompilerOption>>> compiler_options = 0,
-    tflite::gpu::data::TensorToGrid tensor_to_grid = tflite::gpu::data::TensorToGrid::CUSTOM,
-    bool elementwise = false,
+    flatbuffers::Offset<flatbuffers::Vector<
+        flatbuffers::Offset<tflite::gpu::data::CompilerOption>>>
+        compiler_options = 0,
+    tflite::gpu::data::TensorToGrid tensor_to_grid =
+        tflite::gpu::data::TensorToGrid::CUSTOM,
     uint64_t flops = 0,
     flatbuffers::Offset<tflite::gpu::data::OperationDef> definition = 0,
     int32_t grid_dimension = 0,
     flatbuffers::Offset<tflite::gpu::data::Int3> work_group_launch_order = 0,
     flatbuffers::Offset<tflite::gpu::data::Int3> grid_size = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> src_tensors_names = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> dst_tensors_names = 0,
-    flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count = 0,
-    int32_t linkable_count = 0,
-    flatbuffers::Offset<flatbuffers::String> elementwise_code = 0) {
+    flatbuffers::Offset<
+        flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+        src_tensors_names = 0,
+    flatbuffers::Offset<
+        flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+        dst_tensors_names = 0,
+    flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count = 0) {
   GPUOperationBuilder builder_(_fbb);
   builder_.add_flops(flops);
-  builder_.add_elementwise_code(elementwise_code);
-  builder_.add_linkable_count(linkable_count);
   builder_.add_work_groups_count(work_groups_count);
   builder_.add_dst_tensors_names(dst_tensors_names);
   builder_.add_src_tensors_names(src_tensors_names);
@@ -2329,7 +2306,6 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperation(
   builder_.add_work_group_size(work_group_size);
   builder_.add_code(code);
   builder_.add_arguments(arguments);
-  builder_.add_elementwise(elementwise);
   builder_.add_tensor_to_grid(tensor_to_grid);
   return builder_.Finish();
 }
@@ -2339,42 +2315,29 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperationDirect(
     flatbuffers::Offset<tflite::gpu::data::Arguments> arguments = 0,
     const char *code = nullptr,
     flatbuffers::Offset<tflite::gpu::data::Int3> work_group_size = 0,
-    const std::vector<flatbuffers::Offset<tflite::gpu::data::CompilerOption>> *compiler_options = nullptr,
-    tflite::gpu::data::TensorToGrid tensor_to_grid = tflite::gpu::data::TensorToGrid::CUSTOM,
-    bool elementwise = false,
+    const std::vector<flatbuffers::Offset<tflite::gpu::data::CompilerOption>>
+        *compiler_options = nullptr,
+    tflite::gpu::data::TensorToGrid tensor_to_grid =
+        tflite::gpu::data::TensorToGrid::CUSTOM,
     uint64_t flops = 0,
     flatbuffers::Offset<tflite::gpu::data::OperationDef> definition = 0,
     int32_t grid_dimension = 0,
     flatbuffers::Offset<tflite::gpu::data::Int3> work_group_launch_order = 0,
     flatbuffers::Offset<tflite::gpu::data::Int3> grid_size = 0,
-    const std::vector<flatbuffers::Offset<flatbuffers::String>> *src_tensors_names = nullptr,
-    const std::vector<flatbuffers::Offset<flatbuffers::String>> *dst_tensors_names = nullptr,
-    flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count = 0,
-    int32_t linkable_count = 0,
-    const char *elementwise_code = nullptr) {
+    const std::vector<flatbuffers::Offset<flatbuffers::String>>
+        *src_tensors_names = nullptr,
+    const std::vector<flatbuffers::Offset<flatbuffers::String>>
+        *dst_tensors_names = nullptr,
+    flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count = 0) {
   auto code__ = code ? _fbb.CreateString(code) : 0;
   auto compiler_options__ = compiler_options ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::CompilerOption>>(*compiler_options) : 0;
   auto src_tensors_names__ = src_tensors_names ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*src_tensors_names) : 0;
   auto dst_tensors_names__ = dst_tensors_names ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*dst_tensors_names) : 0;
-  auto elementwise_code__ = elementwise_code ? _fbb.CreateString(elementwise_code) : 0;
   return tflite::gpu::data::CreateGPUOperation(
-      _fbb,
-      arguments,
-      code__,
-      work_group_size,
-      compiler_options__,
-      tensor_to_grid,
-      elementwise,
-      flops,
-      definition,
-      grid_dimension,
-      work_group_launch_order,
-      grid_size,
-      src_tensors_names__,
-      dst_tensors_names__,
-      work_groups_count,
-      linkable_count,
-      elementwise_code__);
+      _fbb, arguments, code__, work_group_size, compiler_options__,
+      tensor_to_grid, flops, definition, grid_dimension,
+      work_group_launch_order, grid_size, src_tensors_names__,
+      dst_tensors_names__, work_groups_count);
 }
 
 }  // namespace data
