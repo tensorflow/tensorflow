@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
+#include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
