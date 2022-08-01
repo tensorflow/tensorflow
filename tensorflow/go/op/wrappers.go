@@ -6814,7 +6814,7 @@ func ConfigureTPUEmbeddingHost(scope *Scope, common_config tf.Output, memory_con
 // about the TPUEmbedding partitioner output and the HBM size (in bytes) required
 // for operation.
 //
-// Returns A string-encoded HbmBuffersConfig proto containing metadata about
+// Returns A string-encoded memory configuration containing metadata about
 // the memory allocations reserved for TPUEmbedding.
 func ConfigureTPUEmbeddingMemory(scope *Scope, common_config tf.Output) (memory_config tf.Output) {
 	if scope.Err() != nil {
