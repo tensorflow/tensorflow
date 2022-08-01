@@ -92,7 +92,7 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/python/ops/parallel_for:math_test \
     -//tensorflow/python/training:server_lib_test"
 export TF_PIP_TESTS="test_pip_virtualenv_clean"
-export TF_TEST_FILTER_TAGS="-nopip,-no_pip,-no_oss,-oss_serial,-v1only,-benchmark-test,-no_aarch64"
+export TF_TEST_FILTER_TAGS="-no_oss,-oss_serial,-v1only,-benchmark-test,-no_aarch64"
 export TF_PIP_TEST_ROOT="pip_test"
 export TF_AUDITWHEEL_TARGET_PLAT="manylinux2014"
 
