@@ -95,7 +95,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/stream_executor:dnn_proto",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
     ],
 )
 
@@ -1077,7 +1077,7 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor:dnn_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
     ] + if_cuda_is_configured([
         ":buffer_comparator",
         "@local_config_cuda//cuda:cudnn_header",
@@ -2266,10 +2266,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:dnn_proto_cc",
     ],
 )
 

@@ -4,7 +4,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-import "tensorflow/stream_executor/dnn.proto";
+import "tensorflow/compiler/xla/stream_executor/dnn.proto";
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 

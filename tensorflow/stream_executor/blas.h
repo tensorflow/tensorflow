@@ -43,9 +43,9 @@ limitations under the License.
 #include <complex>
 #include <vector>
 
+#include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/data_type.h"
 #include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
