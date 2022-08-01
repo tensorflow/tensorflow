@@ -67,7 +67,11 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   pm.addNestedPass<GPUModuleOp>(createCanonicalizerPass());
   pm.addNestedPass<GPUModuleOp>(createConvertSCFToCFPass());
   // GPU -> low-level IR
+#if TENSORFLOW_USE_ROCM
+  pm.addNestedPass<GPUModuleOp>(createGpuKernelToRocdlPass());
+#else
   pm.addNestedPass<GPUModuleOp>(createGpuKernelToNvvmPass());
+#endif
   pm.addPass(createPropagateStaticShapesToKernelPass());
   // Some instructions crash ptxas down the line if they have debug info
   // attached.
