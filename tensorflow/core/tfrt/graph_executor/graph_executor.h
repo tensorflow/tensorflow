@@ -150,15 +150,13 @@ class GraphExecutor {
  private:
   // A set of methods to load a client graph.
   StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>> LoadClientGraph(
-      const GraphExecutor::ClientGraph& client_graph,
-      tensorflow::tfrt_stub::WorkQueueInterface* work_queue);
+      const GraphExecutor::ClientGraph& client_graph);
   tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
   ImportClientGraphToMlirModule(const GraphExecutor::ClientGraph& client_graph,
                                 mlir::MLIRContext* context) const;
   StatusOr<tfrt::BefBuffer> CompileMlirModuleToBef(mlir::ModuleOp module) const;
-  tensorflow::Status InitBef(
-      tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context,
-      tensorflow::tfrt_stub::WorkQueueInterface* work_queue);
+  tensorflow::Status InitBef(tfrt::BEFFile* bef_file,
+                             tfrt::ResourceContext* resource_context);
 
   // Returns a `LoadedClientGraph` given input/output tensor info. If there is
   // no existing one yet, creates one first.
@@ -167,8 +165,7 @@ class GraphExecutor {
       absl::Span<const std::string> input_tensor_names,
       absl::Span<const tensorflow::DataType> input_tensor_dtypes,
       absl::Span<const std::string> output_tensor_names,
-      absl::Span<const std::string> target_tensor_names,
-      tensorflow::tfrt_stub::WorkQueueInterface* work_queue)
+      absl::Span<const std::string> target_tensor_names)
       TF_LOCKS_EXCLUDED(loaded_client_graphs_mu_);
 
   Options options_;
