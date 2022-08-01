@@ -373,13 +373,13 @@ class TfrtCpuBuffer final : public PjRtBuffer {
     bool ok() const { return state_ == kValid; }
 
     // Access to the underlying device buffer storage. Requires this->ok().
-    TrackedTfrtCpuDeviceBuffer* buffer() const {
+    const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>& buffer() const {
       CHECK_EQ(state_, kValid);
-      CHECK_NE(buffer_ptr_, nullptr);
-      return buffer_ptr_;
+      CHECK_NE(buffer_, nullptr);
+      return buffer_;
     }
-    TrackedTfrtCpuDeviceBuffer* operator->() const { return buffer_ptr_; }
-    const TrackedTfrtCpuDeviceBuffer& operator*() const { return *buffer_ptr_; }
+    TrackedTfrtCpuDeviceBuffer* operator->() const { return buffer().get(); }
+    const TrackedTfrtCpuDeviceBuffer& operator*() const { return *buffer(); }
 
     // Converts the hold into a usage event. Only valid for holds of type
     // kUsage.
@@ -400,19 +400,9 @@ class TfrtCpuBuffer final : public PjRtBuffer {
     // Sets buffer state.
     void SetState(State state) { state_ = state; }
 
-    // Acquires the unique ownership of the buffer. Called by parent_ to
-    // initialize the donation hold.
-    void AcquireDonation(
-        StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> buffer_or);
-
-    // Acquires a non-owning reference of the buffer. Called by parent_ to
-    // initialize the usage or external reference hold.
-    void AcquireUsageOrExternalReference(
-        StatusOr<TrackedTfrtCpuDeviceBuffer*> buffer_or);
-
-    // Drops this hold. It resets `holds_` counters. If it is a donation hold
-    // and an error occurs, it returns the device buffer to the TfrtCpuBuffer.
-    void DropHold();
+    // Sets buffer_ and status_. Called by parent_ to initialize the hold.
+    void Acquire(
+        StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>&& buffer_or);
 
     TfrtCpuBuffer* parent_;
     Type type_;
@@ -420,17 +410,12 @@ class TfrtCpuBuffer final : public PjRtBuffer {
     // There is an invariant that if ok() then buffer_ != nullptr.
     State state_;
     Status status_;
-    // The non-owning pointer to the underlying buffer. It is not nullptr for
-    // all types of holds.
-    TrackedTfrtCpuDeviceBuffer* buffer_ptr_ = nullptr;
-    // If it is a donation hold, `buffer_` will not be nullptr. Otherwise, it is
-    // a nullptr.
-    std::unique_ptr<TrackedTfrtCpuDeviceBuffer> buffer_;
+    std::shared_ptr<TrackedTfrtCpuDeviceBuffer> buffer_;
   };
 
   TfrtCpuBuffer(
       Shape on_device_shape,
-      std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
+      std::shared_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
       TfrtCpuClient* client, TfrtCpuDevice* device);
   ~TfrtCpuBuffer() override;
 
@@ -510,10 +495,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   // Requires holds_[kDonation] == 0 (i.e., WaitForOutstandingDonationHolds()
   // must be called first.)
-  StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
-  GetBufferForDonationHoldLocked() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  StatusOr<TrackedTfrtCpuDeviceBuffer*> GetBufferForUsageOrExternalHoldLocked(
+  StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>> GetBufferForHoldLocked(
       ScopedHold::Type type) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Requires holds_[kDonation] == 0 (i.e., WaitForOutstandingDonationHolds()
@@ -525,9 +507,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   void ConfirmDonation(TrackedTfrtCpuDeviceBuffer* device_buffer);
 
-  void DropUsageOrExternalHold(ScopedHold::Type type,
-                               TrackedTfrtCpuDeviceBuffer* buffer);
-  void DropDonationHold(std::unique_ptr<TrackedTfrtCpuDeviceBuffer> buffer);
+  void DropHold(ScopedHold::Type type, TrackedTfrtCpuDeviceBuffer* buffer);
 
   void WaitForOutstandingUsageHolds() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WaitForOutstandingDonationHold() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -546,24 +526,20 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   // If the buffer was shared via an external reference it is the client's
   // responsibility that accesses via that reference do not interfere with
   // accesses via the buffer returned from Release.
-  StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> Release(
+  StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>> Release(
       bool wait_for_operations_to_complete);
-
-  // Releases the device buffer by returning a unique_ptr of it. If there is
-  // outstanding donation or usage holds, this method blocks until those holds
-  // are commited or dropped.
-  std::unique_ptr<TrackedTfrtCpuDeviceBuffer> ReleaseBufferLocked()
-      ABSL_LOCKS_EXCLUDED(mu_);
 
   TfrtCpuClient* client_;
   const Shape on_device_shape_;
   TfrtCpuDevice* const device_;
 
   mutable absl::Mutex mu_;
-  std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer_
+  std::shared_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer_
       ABSL_GUARDED_BY(mu_);
   // Count of holds on the buffer.
   std::array<int, ScopedHold::Type::kMaxValue> holds_ ABSL_GUARDED_BY(mu_);
+  // Cached definition event used for constructing PjRtFutures to wait on.
+  tfrt::AsyncValueRef<Status> definition_event_ ABSL_GUARDED_BY(mu_);
 };
 
 class TfrtCpuExecutable final : public PjRtLoadedExecutable {
@@ -648,7 +624,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.
   Status CheckBufferCompatibilities(
-      absl::Span<TrackedTfrtCpuDeviceBuffer* const> input_buffers) const;
+      absl::Span<const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>
+          input_buffers) const;
 
   StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
