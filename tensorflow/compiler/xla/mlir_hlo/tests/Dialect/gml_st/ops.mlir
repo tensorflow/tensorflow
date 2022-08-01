@@ -22,24 +22,6 @@ func.func @types() {
 
 // -----
 
-// CHECK-LABEL: @concatenate
-// CHECK-SAME:  %[[INIT:.*]]: tensor<?x?xi32>, %[[A:.*]]: tensor<?x?xi32>, %[[B:.*]]: tensor<?x?xi32>, %[[C:.*]]: tensor<?x?xi32>
-func.func @concatenate(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
-    %b: tensor<?x?xi32>, %c: tensor<?x?xi32>) -> tensor<?x?xi32> {
-  // CHECK:      %[[CONCAT:.*]] = gml_st.concatenate
-  // CHECK-SAME:     ins(%[[A]] : tensor<?x?xi32>, %[[B]] : tensor<?x?xi32>, %[[C]] : tensor<?x?xi32>)
-  // CHECK-SAME:     outs(%[[INIT]] : tensor<?x?xi32>)
-  // CHECK-SAME:     {dimension = 1 : i64}
-  // CHECK:      return %[[CONCAT]] : tensor<?x?xi32>
-  %0 = gml_st.concatenate
-      ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
-      outs(%init : tensor<?x?xi32>)
-      {dimension = 1 : i64}
-  return %0 : tensor<?x?xi32>
-}
-
-// -----
-
 // CHECK-LABEL: @collapse_tile
 // CHECK-SAME:  %[[ARG0:.*]]: !gml_st.tile<?x64x128>
 func.func @collapse_tile(%tile: !gml_st.tile<?x64x128>) -> !gml_st.tile<?x128> {
@@ -434,6 +416,69 @@ func.func @trivial_acc_region(%lhs: tensor<8xf32>,
 // CHECK-SAME:    acc (%[[NEW:.*]], %{{.*}}: tensor<4xf32>) {
 // CHECK:           gml_st.yield %[[NEW]] : tensor<4xf32>
 // CHECK:       } : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
+
+// -----
+
+#id_1d = affine_map<(d0) -> (d0)>
+
+func.func @two_acc_region(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
+    %output: tensor<8xf32>, %output_2: tensor<8xf32>) -> tensor<8xf32> {
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+  %space = gml_st.space [8] : !gml_st.tile<8>
+
+  %result:2 = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
+    %tile = gml_st.tile %space [%i] [4] [1]
+      : !gml_st.tile<8> to !gml_st.tile<4>
+    %lhs_sub = gml_st.materialize %lhs[%tile]
+      : tensor<8xf32>[!gml_st.tile<4>]
+    %rhs_sub = gml_st.materialize %rhs[%tile]
+      : tensor<8xf32>[!gml_st.tile<4>]
+    %out_sub = gml_st.materialize %output[%tile]
+      : tensor<8xf32>[!gml_st.tile<4>]
+    %out_2_sub = gml_st.materialize %output_2[%tile]
+      : tensor<8xf32>[!gml_st.tile<4>]
+
+    %result_sub = linalg.generic {
+        indexing_maps = [#id_1d, #id_1d, #id_1d],
+        iterator_types = ["parallel"]}
+        ins(%lhs_sub, %rhs_sub : tensor<4xf32>, tensor<4xf32>)
+        outs(%out_sub : tensor<4xf32>) {
+      ^bb(%l: f32, %r: f32, %o: f32) :
+        %s = arith.addf %l, %r : f32
+        linalg.yield %s : f32
+    } -> tensor<4xf32>
+
+    gml_st.set_yield
+      %result_sub into %output[%tile] acc (%new, %old: tensor<4xf32>) {
+        gml_st.yield %new : tensor<4xf32>
+      } : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>],
+      %result_sub into %output_2[%tile] acc (%new, %old: tensor<4xf32>) {
+        %sum = linalg.generic {
+           indexing_maps = [#id_1d, #id_1d],
+           iterator_types = ["parallel"]}
+           ins(%new: tensor<4xf32>)
+          outs(%old : tensor<4xf32>) {
+        ^bb(%n: f32, %o: f32) :
+          %s = arith.addf %n, %o : f32
+          linalg.yield %s : f32
+        } -> tensor<4xf32>
+        gml_st.yield %sum : tensor<4xf32>
+      } : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
+
+  } : tensor<8xf32>, tensor<8xf32>
+  func.return %result#0 : tensor<8xf32>
+}
+
+// CHECK-LABEL: func @two_acc_region
+// CHECK:       gml_st.set_yield %[[RES:.*]] into %{{.*}}[%{{.*}}]
+// CHECK-SAME:    acc (%[[NEW:.*]], %{{.*}}: tensor<4xf32>) {
+// CHECK-NEXT:           gml_st.yield %[[NEW]] : tensor<4xf32>
+
+// CHECK:  %[[RES]] into %{{.*}}[%{{.*}}]
+// CHECK-SAME:    acc (%[[NEW:.*]], %{{.*}}: tensor<4xf32>) {
+// CHECK-NEXT:           linalg.generic
 
 
 // -----

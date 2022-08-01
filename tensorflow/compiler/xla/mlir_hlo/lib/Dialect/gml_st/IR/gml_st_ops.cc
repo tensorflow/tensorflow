@@ -1887,7 +1887,7 @@ void SetYieldOp::build(
     builder.setInsertionPointToStart(&bodyBlock);
     (*builderFnIt)(builder, result.location, bodyBlock.getArgument(0),
                    bodyBlock.getArgument(1));
-    std::next(builderFnIt);
+    ++builderFnIt;
   }
 }
 
@@ -1912,7 +1912,7 @@ LogicalResult SetYieldOp::verify() {
       return emitOpError()
              << "expected accumulator region to have 2 arguments of type "
              << srcType;
-    std::next(regionIt);
+    ++regionIt;
   }
   return success();
 }
@@ -1924,7 +1924,10 @@ void SetYieldOp::print(OpAsmPrinter &p) {
   auto *regionIt = getOperation()->getRegions().begin();
   for (auto &en :
        llvm::enumerate(llvm::zip(srcs(), dsts(), sets(), accumulatorFlags()))) {
-    if (en.index() > 0) p.printNewline();
+    if (en.index() > 0) {
+      p << ',';
+      p.printNewline();
+    }
     Value src = std::get<0>(en.value());
     Value dst = std::get<1>(en.value());
     Value set = std::get<2>(en.value());
@@ -1940,7 +1943,7 @@ void SetYieldOp::print(OpAsmPrinter &p) {
         << oldValue.getType() << ") ";
 
       p.printRegion(*regionIt, false);
-      std::next(regionIt);
+      ++regionIt;
     }
 
     p << " : " << src.getType() << " into " << dst.getType() << '['
