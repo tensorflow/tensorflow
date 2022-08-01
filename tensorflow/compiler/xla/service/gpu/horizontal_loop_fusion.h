@@ -95,7 +95,9 @@ namespace gpu {
 // outputs of Mul and Add are row-major.
 class GpuHorizontalLoopFusion : public HloModulePass {
  public:
-  GpuHorizontalLoopFusion() {}
+  GpuHorizontalLoopFusion() { }
+  GpuHorizontalLoopFusion(absl::string_view prefix):
+    prefix_(prefix) { }
 
   absl::string_view name() const override {
     return "gpu_horizontal_loop_fusion";
@@ -108,6 +110,7 @@ class GpuHorizontalLoopFusion : public HloModulePass {
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation*);
+  std::string prefix_;
 };
 
 }  // namespace gpu
