@@ -24,6 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
@@ -72,7 +73,8 @@ def build_tensor_info(tensor):
 def build_tensor_info_internal(tensor):
   """Utility function to build TensorInfo proto from a Tensor."""
   if (isinstance(tensor, composite_tensor.CompositeTensor) and
-      not isinstance(tensor, sparse_tensor.SparseTensor)):
+      not isinstance(tensor, sparse_tensor.SparseTensor) and
+      not isinstance(tensor, resource_variable_ops.ResourceVariable)):
     return _build_composite_tensor_info_internal(tensor)
 
   tensor_info = meta_graph_pb2.TensorInfo(

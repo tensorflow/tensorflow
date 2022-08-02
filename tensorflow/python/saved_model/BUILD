@@ -215,6 +215,7 @@ py_strict_library(
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
