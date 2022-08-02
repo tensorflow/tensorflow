@@ -90,6 +90,66 @@ func.func @dynamic_broadcast_in_dim_at_point(%arg : tensor<?x?xf32>,
 
 // -----
 
+// TODO(frgossen): Add test for tiled concatenate when implemented.
+
+// -----
+
+// CHECK:      @concatenate_at_point
+// CHECK-SAME: %[[ARG_A:.*]]: tensor<?x?xi32>, %[[ARG_B:.*]]: tensor<?x?xi32>, %[[ARG_C:.*]]: tensor<?x?xi32>, %[[POINT:.*]]: !gml_st.point
+func.func @concatenate_at_point(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>, %point : !gml_st.point) -> i32 {
+  // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+  // CHECK-DAG:  %[[OFFSET_D0:.*]] = gml_st.offset %[[POINT]][%[[C0]]]
+  // CHECK-DAG:  %[[REMAINING_CONCAT_OFFSET:.*]] = gml_st.offset %[[POINT]][%[[C1]]]
+  // CHECK-DAG:  %[[ARG_A_CONCAT_DIM:.*]] = tensor.dim %[[ARG_A]], %[[C1]]
+  // CHECK-DAG:  %[[ARG_A_PRED:.*]] = arith.cmpi ult, %[[REMAINING_CONCAT_OFFSET]], %[[ARG_A_CONCAT_DIM]]
+  // CHECK:      %[[RES:.*]] = scf.if %[[ARG_A_PRED]]
+  // CHECK-DAG:    %[[ARG_A_D0:.*]] = tensor.dim %[[ARG_A]], %[[C0]]
+  // CHECK-DAG:    %[[ARG_A_D1:.*]] = tensor.dim %[[ARG_A]], %[[C1]]
+  // CHECK-DAG:    %[[ARG_A_SPACE:.*]] = gml_st.space [%[[ARG_A_D0]], %[[ARG_A_D1]]]
+  // CHECK-DAG:    %[[ARG_A_POINT:.*]] = gml_st.point %[[ARG_A_SPACE]] [%[[OFFSET_D0]], %[[REMAINING_CONCAT_OFFSET]]]
+  // CHECK-DAG:    %[[RES_ARG_A:.*]] = gml_st.materialize %[[ARG_A]][%[[ARG_A_POINT]]]
+  // CHECK:        scf.yield %[[RES_ARG_A]]
+  // CHECK:      else
+  // CHECK-DAG:    %[[REMAINING_CONCAT_OFFSET_:.*]] = arith.subi %[[REMAINING_CONCAT_OFFSET]], %[[ARG_A_CONCAT_DIM]]
+  // CHECK-DAG:    %[[ARG_B_CONCAT_DIM:.*]] = tensor.dim %[[ARG_B]], %[[C1]]
+  // CHECK-DAG:    %[[ARG_B_PRED:.*]] = arith.cmpi ult, %[[REMAINING_CONCAT_OFFSET_]], %[[ARG_B_CONCAT_DIM]]
+  // CHECK:        %[[RES_:.*]] = scf.if %[[ARG_B_PRED]]
+  // CHECK-DAG:      %[[ARG_B_D0:.*]] = tensor.dim %[[ARG_B]], %[[C0]]
+  // CHECK-DAG:      %[[ARG_B_D1:.*]] = tensor.dim %[[ARG_B]], %[[C1]]
+  // CHECK-DAG:      %[[ARG_B_SPACE:.*]] = gml_st.space [%[[ARG_B_D0]], %[[ARG_B_D1]]]
+  // CHECK-DAG:      %[[ARG_B_POINT:.*]] = gml_st.point %[[ARG_B_SPACE]] [%[[OFFSET_D0]], %[[ARG_A_D0]]]
+  // CHECK-DAG:      %[[RES_ARG_B:.*]] = gml_st.materialize %[[ARG_B]][%[[ARG_B_POINT]]]
+  // CHECK:          scf.yield %[[RES_ARG_B]]
+  // CHECK:        else
+  // CHECK-DAG:      %[[REMAINING_CONCAT_OFFSET__:.*]] = arith.subi %[[REMAINING_CONCAT_OFFSET_]], %[[ARG_B_CONCAT_DIM]]
+  // CHECK-DAG:      %[[ARG_C_D0:.*]] = tensor.dim %[[ARG_C]], %[[C0]]
+  // CHECK-DAG:      %[[ARG_C_D1:.*]] = tensor.dim %[[ARG_C]], %[[C1]]
+  // CHECK-DAG:      %[[ARG_C_SPACE:.*]] = gml_st.space [%[[ARG_C_D0]], %[[ARG_C_D1]]]
+  // CHECK-DAG:      %[[ARG_C_POINT:.*]] = gml_st.point %[[ARG_C_SPACE]] [%[[OFFSET_D0]], %[[REMAINING_CONCAT_OFFSET__]]]
+  // CHECK-DAG:      %[[RES_ARG_C:.*]] = gml_st.materialize %[[ARG_C]][%[[ARG_C_POINT]]]
+  // CHECK:          scf.yield %[[RES_ARG_C]]
+  // CHECK:        scf.yield %[[RES_]]
+  // CHECK:      return %[[RES]]
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %dim_0 = tensor.dim %a, %c0 : tensor<?x?xi32>
+  %concat_dim_a = tensor.dim %a, %c1 : tensor<?x?xi32>
+  %concat_dim_b = tensor.dim %b, %c1 : tensor<?x?xi32>
+  %concat_dim_c = tensor.dim %c, %c1 : tensor<?x?xi32>
+  %concat_dim_ab = arith.addi %concat_dim_a, %concat_dim_b : index
+  %concat_dim_abc = arith.addi %concat_dim_ab, %concat_dim_c : index
+  %init = linalg.init_tensor [%dim_0, %concat_dim_abc] : tensor<?x?xi32>
+  %concat = gml_st.concatenate
+      ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
+      outs(%init : tensor<?x?xi32>)
+      {dimension = 1 : i64}
+  %concat_sub = gml_st.materialize %concat[%point] : tensor<?x?xi32>[!gml_st.point]
+  func.return %concat_sub : i32
+}
+
+// -----
+
 // CHECK: #[[ID_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
 #id_map = affine_map<(d0, d1) -> (d0, d1)>
 
@@ -470,7 +530,7 @@ func.func @dim_reification_materialize(%arg: tensor<?x?xf32>,
 #map = affine_map<(d0, d1) -> (d0, d1)>
 func.func @dim_reification_generic(%arg: tensor<?x?xf32>,
     %init: tensor<?x?xf32>, %idx: index) -> index {
-  // CHECK-DAG: %[[RES:.*]] = tensor.dim %[[INIT]], %[[IDX]] 
+  // CHECK-DAG: %[[RES:.*]] = tensor.dim %[[INIT]], %[[IDX]]
   // CHECK:     return %[[RES]]
   %0 = linalg.generic
       {indexing_maps = [#map, #map], iterator_types = ["parallel", "parallel"]}
