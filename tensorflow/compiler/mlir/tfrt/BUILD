@@ -577,6 +577,8 @@ cc_library(
     hdrs = ["analysis/cost_analysis.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/tfrt/fallback:op_cost_map_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
