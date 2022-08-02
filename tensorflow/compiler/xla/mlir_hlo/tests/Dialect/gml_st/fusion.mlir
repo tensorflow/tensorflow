@@ -577,3 +577,32 @@ func.func @transpose_tile(%arg: tensor<1x2x3x?xf32>,
       : tensor<2x1x?x3xf32>[!gml_st.tile<?x?x?x?>]
   return %transposed_sub : tensor<?x?x?x?xf32>
 }
+
+// -----
+
+#id_map = affine_map<(d0, d1) -> (d0, d1)>
+
+func.func @empty(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
+                 %pt: !gml_st.point)-> f32 {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %d0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
+  %d1 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
+  %init = linalg.init_tensor [%d0, %d1] : tensor<?x?xf32>
+  %result = linalg.generic {
+      indexing_maps = [#id_map, #id_map, #id_map],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%lhs, %rhs : tensor<?x?xf32>, tensor<?x?xf32>)
+      outs(%init : tensor<?x?xf32>) {
+  ^bb0(%_0: f32, %_1: f32, %arg2: f32):
+    linalg.yield %arg2 : f32
+  } -> tensor<?x?xf32>
+  %elem =  gml_st.materialize %result[%pt] : tensor<?x?xf32>[!gml_st.point]
+  return %elem : f32
+}
+// CHECK:      @empty(
+// CHECK-SAME:   %{{.*}}: tensor<?x?xf32>, %[[PT:[a-z0-9]+]]: !gml_st.point)
+// CHECK:      %[[INIT:.*]] = linalg.init_tensor
+// CHECK-NEXT: %[[RESULT:.*]] =  gml_st.materialize %[[INIT]][%[[PT]]]
+// CHECK-SAME:   : tensor<?x?xf32>[!gml_st.point]
+// CHECK-NEXT: return %[[RESULT]] : f32
