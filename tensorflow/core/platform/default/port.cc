@@ -88,9 +88,18 @@ int64_t JobUid() { return -1; }
 
 int NumSchedulableCPUs() {
 #if defined(__linux__) && !defined(__ANDROID__)
-  cpu_set_t cpuset;
-  if (sched_getaffinity(0, sizeof(cpu_set_t), &cpuset) == 0) {
-    return CPU_COUNT(&cpuset);
+  for (int ncpus = 1024; ncpus < std::numeric_limits<int>::max() / 2;
+       ncpus *= 2) {
+    size_t setsize = CPU_ALLOC_SIZE(ncpus);
+    cpu_set_t* mask = CPU_ALLOC(ncpus);
+    if (!mask) break;
+    if (sched_getaffinity(0, setsize, mask) == 0) {
+      int result = CPU_COUNT_S(setsize, mask);
+      CPU_FREE(mask);
+      return result;
+    }
+    CPU_FREE(mask);
+    if (errno != EINVAL) break;
   }
   perror("sched_getaffinity");
 #endif
