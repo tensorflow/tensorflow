@@ -15,33 +15,67 @@
 # ==============================================================================
 import collections
 
-
 from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.checkpoint import trackable_view
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base
 from tensorflow.python.training import py_checkpoint_reader
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.CheckpointView", v1=[])
 class CheckpointView(object):
-  """Gathers and serializes a checkpoint view."""
+  """Gathers and serializes a checkpoint view.
 
-  def __init__(self, checkpoint_path):
-    """Configure the trackable view.
+  This is for loading specific portions of a module from a
+  checkpoint, and be able to compare two modules by matching components.
+
+  Example usage:
+
+  >>> class SimpleModule(tf.Module):
+  ...   def __init__(self, name=None):
+  ...     super().__init__(name=name)
+  ...     self.a_var = tf.Variable(5.0)
+  ...     self.b_var = tf.Variable(4.0)
+  ...     self.vars = [tf.Variable(1.0), tf.Variable(2.0)]
+
+  >>> root = SimpleModule(name="root")
+  >>> root.leaf = SimpleModule(name="leaf")
+  >>> ckpt = tf.train.Checkpoint(root)
+  >>> save_path = ckpt.save('/tmp/tf_ckpts')
+  >>> checkpoint_view = tf.train.CheckpointView(save_path)
+
+  Pass `node_id=0` to `tf.train.CheckpointView.children()` to get the dictionary
+  of all children directly linked to the checkpoint root.
+
+  >>> for name, node_id in checkpoint_view.children(0).items():
+  ...   print(f"- name: '{name}', node_id: {node_id}")
+  - name: 'a_var', node_id: 1
+  - name: 'b_var', node_id: 2
+  - name: 'vars', node_id: 3
+  - name: 'leaf', node_id: 4
+  - name: 'root', node_id: 0
+  - name: 'save_counter', node_id: 5
+
+  """
+
+  def __init__(self, save_path):
+    """Configure the checkpoint view.
 
     Args:
-      checkpoint_path: The path to the checkpoint.
+      save_path: The path to the checkpoint.
 
     Raises:
-      ValueError: If an object graph was not found in the checkpoint.
+      ValueError: If the save_path does not lead to a TF2 checkpoint.
     """
-    reader = py_checkpoint_reader.NewCheckpointReader(checkpoint_path)
+
+    reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     try:
       object_graph_string = reader.get_tensor(base.OBJECT_GRAPH_PROTO_KEY)
     except errors_impl.NotFoundError as not_found_error:
       raise ValueError(
-          f"The specified checkpoint \"{checkpoint_path}\" does not appear to be "
+          f"The specified checkpoint \"{save_path}\" does not appear to be "
           "object-based (saved with TF2) since it is missing the key "
           f"\"{base.OBJECT_GRAPH_PROTO_KEY}\". Likely it was created with the "
           "TF1 name-based saver and does not contain an object dependency graph."
@@ -65,7 +99,8 @@ class CheckpointView(object):
     }
 
   def descendants(self):
-    """Returns a list of all node_ids from ObjectGraphProto."""
+    """Returns a list of trackables by node_id attached to obj."""
+
     all_nodes = []
     to_visit = collections.deque([0])
     all_nodes.append(0)
@@ -78,28 +113,67 @@ class CheckpointView(object):
           to_visit.append(child.node_id)
     return all_nodes
 
-  def match(self, trackable_object):
+  def match(self, obj):
     """Returns all matching trackables between CheckpointView and Trackable.
 
+    Matching trackables represents trackables with the same name and position in
+    graph.
+
     Args:
-      trackable_object: `Trackable` root.
+      obj: `Trackable` root.
 
     Returns:
       Dictionary containing all overlapping trackables that maps `node_id` to
       `Trackable`.
+
+    Example usage:
+
+    >>> class SimpleModule(tf.Module):
+    ...   def __init__(self, name=None):
+    ...     super().__init__(name=name)
+    ...     self.a_var = tf.Variable(5.0)
+    ...     self.b_var = tf.Variable(4.0)
+    ...     self.vars = [tf.Variable(1.0), tf.Variable(2.0)]
+
+    >>> root = SimpleModule(name="root")
+    >>> leaf = root.leaf = SimpleModule(name="leaf")
+    >>> leaf.leaf3 = tf.Variable(6.0, name="leaf3")
+    >>> leaf.leaf4 = tf.Variable(7.0, name="leaf4")
+    >>> ckpt = tf.train.Checkpoint(root)
+    >>> save_path = ckpt.save('/tmp/tf_ckpts')
+    >>> checkpoint_view = tf.train.CheckpointView(save_path)
+
+    >>> root2 = SimpleModule(name="root")
+    >>> leaf2 = root2.leaf2 = SimpleModule(name="leaf2")
+    >>> leaf2.leaf3 = tf.Variable(6.0)
+    >>> leaf2.leaf4 = tf.Variable(7.0)
+
+    Pass `node_id=0` to `tf.train.CheckpointView.children()` to get the
+    dictionary of all children directly linked to the checkpoint root.
+
+    >>> checkpoint_view_match = checkpoint_view.match(root2).items()
+    >>> for item in checkpoint_view_match:
+    ...   print(item)
+    (0, ...)
+    (1, <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=5.0>)
+    (2, <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=4.0>)
+    (3, ListWrapper([<tf.Variable 'Variable:0' shape=() dtype=float32,
+    numpy=1.0>, <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>]))
+    (6, <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>)
+    (7, <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>)
+
     """
-    if not isinstance(trackable_object, base.Trackable):
-      raise ValueError(f"Expected a Trackable, got {trackable_object} of type "
-                       "{type(trackable_object)}.")
+    if not isinstance(obj, base.Trackable):
+      raise ValueError(f"Expected a Trackable, got {obj} of type {type(obj)}.")
 
     overlapping_nodes = {}
     # Root node is always matched.
-    overlapping_nodes[0] = trackable_object
+    overlapping_nodes[0] = obj
 
     # Queue of tuples of node_id and trackable.
-    to_visit = collections.deque([(0, trackable_object)])
+    to_visit = collections.deque([(0, obj)])
     visited = set()
-    view = trackable_view.TrackableView(trackable_object)
+    view = trackable_view.TrackableView(obj)
     while to_visit:
       current_node_id, current_trackable = to_visit.popleft()
       trackable_children = view.children(current_trackable)

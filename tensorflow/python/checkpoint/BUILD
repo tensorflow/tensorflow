@@ -41,6 +41,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":checkpoint_options",
+        ":checkpoint_view",
         ":functional_saver",
         ":graph_view",
         ":restore",
@@ -155,12 +156,13 @@ py_library(
     srcs_version = "PY3",
     tags = ["no_pip"],
     deps = [
-        ":util",
-        "//tensorflow/python:framework_ops",
+        ":trackable_view",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/trackable:base",
-        "//tensorflow/python/trackable:converter",
+        "//tensorflow/python/training:py_checkpoint_reader",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
