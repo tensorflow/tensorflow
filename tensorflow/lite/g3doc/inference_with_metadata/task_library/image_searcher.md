@@ -103,9 +103,14 @@ for more options to configure the `ImageSearcher`.
 ```c++
 // Initialization
 ImageSearcherOptions options;
-options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_path);
 options.mutable_embedding_options()->set_l2_normalize(true);
 std::unique_ptr<ImageSearcher> image_searcher = ImageSearcher::CreateFromOptions(options).value();
+
+// Create input frame_buffer from your inputs, `image_data` and `image_dimension`.
+// See more information here: tensorflow_lite_support/cc/task/vision/utils/frame_buffer_common_utils.h
+std::unique_ptr<FrameBuffer> frame_buffer = CreateFromRgbRawBuffer(
+      image_data, image_dimension);
 
 // Run inference
 const SearchResult result = image_searcher->Search(*frame_buffer).value();
