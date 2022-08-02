@@ -39,6 +39,25 @@ def while_with_local_var(x):
   return s
 
 
+def for_with_lambda_iter(l):
+  fns = []
+  results = []
+  for i in l:
+    fns.append(lambda: i)
+  for f in fns:
+    results.append(f())
+  return results
+
+
+def for_with_lambda_iter_local_var(l):
+  fns = []
+  results = []
+  for i in l:
+    fns.append(lambda i=i: i)
+  for f in fns:
+    results.append(f())
+  return results
+
 def for_initializes_local_var(l):
   s = 0
   for i in l:
@@ -120,6 +139,22 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
   def test_for_with_local_var_range(self, l, type_):
     l = type_(l)
     self.assertFunctionMatchesEager(for_with_local_var, l)
+
+  @parameterized.parameters(*itertools.product(
+      ([], [1], [1, 2], [(1, 2), (3, 4)]),
+      (list, list),
+  ))
+  def test_for_with_lambda_iter(self, l, type_):
+    l = type_(l)
+    self.assertFunctionMatchesEager(for_with_lambda_iter, l)
+
+  @parameterized.parameters(*itertools.product(
+      ([], [1], [1, 2], [(1, 2), (3, 4)]),
+      (list, list),
+  ))
+  def test_for_with_lambda_iter_local_var(self, l, type_):
+    l = type_(l)
+    self.assertFunctionMatchesEager(for_with_lambda_iter_local_var, l)
 
   @parameterized.parameters(*itertools.product(
       (0, 1, 2),
