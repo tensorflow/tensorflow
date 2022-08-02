@@ -677,6 +677,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # b/213388775
+        "no_oss",  # b/241013307
     ],
     tpu_tags = [
         "no_oss",
