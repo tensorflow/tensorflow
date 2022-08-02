@@ -121,6 +121,7 @@ cuda_py_test(
     srcs = ["extract_image_patches_grad_test.py"],
     shard_count = 15,
     tags = [
+        "no_oss",  # b/241024908
         "no_rocm",
         "nomac",  # b/181799478
         "notap",  # b/31080670
