@@ -88,4 +88,21 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, TooLarge) {
   EXPECT_EQ(allocation_blocks[4]->offset, -1);
 }
 
+TEST_F(MemorySpaceAssignmentBestFitRepackerTest, ColocationDifferentSizes) {
+  std::vector<AllocationBlock*> allocation_blocks;
+  allocation_blocks.push_back(MakeAllocationBlock(0, 2, 5));
+  allocation_blocks.push_back(MakeAllocationBlock(10, 20, 10));
+  // Allocation blocks 0 and 1 are colocated.
+  allocation_blocks[0]->colocations.push_back(allocation_blocks[1]);
+  allocation_blocks[1]->colocations.push_back(allocation_blocks[0]);
+  allocation_blocks.push_back(MakeAllocationBlock(9, 11, 2));
+  allocation_blocks.push_back(MakeAllocationBlock(1, 2, 2));
+  EXPECT_TRUE(*repacker_.Repack(absl::MakeSpan(allocation_blocks)));
+
+  EXPECT_EQ(allocation_blocks[0]->offset, 0);
+  EXPECT_EQ(allocation_blocks[1]->offset, 0);
+  EXPECT_EQ(allocation_blocks[2]->offset, 10);
+  EXPECT_EQ(allocation_blocks[3]->offset, 5);
+}
+
 }  // namespace xla
