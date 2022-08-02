@@ -35,7 +35,7 @@ TARGETS+=" //tensorflow/core/common_runtime/eager:execute"
 # in assets/ dir (see https://github.com/bazelbuild/bazel/issues/2334)
 # TODO(gunan): remove extra flags once sandboxing is enabled for all builds.
 bazel --bazelrc=/dev/null build \
-    --compilation_mode=opt --cxxopt=-std=c++14 \
+    --compilation_mode=opt --cxxopt=-std=c++17 \
     --config=android_arm64 --fat_apk_cpu=x86,arm64-v8a \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
     --define=grpc_no_ares=true \
