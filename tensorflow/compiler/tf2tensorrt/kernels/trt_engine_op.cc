@@ -671,10 +671,11 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   //
   // In both of the above cases, setBatch here returns a boolean value to
   // indicate the result of the calibration process.
-  OP_REQUIRES_ASYNC(ctx, calib_ctx->calibrator_->setBatch(input_data, *stream),
-                    errors::Internal("Failed to feed calibration data"),
-                    dummy_async_helper);
-  VLOG(2) << "Passed calibration data";
+  if(!calib_ctx->calibrator_->setBatch(input_data, *stream)) {
+    VLOG(2) << "Failed to feed calibration data";
+  } else {
+    VLOG(2) << "Passed calibration data";
+  }
   ExecuteNativeSegment(ctx, async_helper);
 }
 
@@ -1324,6 +1325,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
     if (!s.ok()) {
       LOG(ERROR) << "Calibration failed: " << s;
       cres->calibrator_->setDone();  // Ignore further pushes
+      cache_res->cache_.emplace(shapes, std::make_unique<EngineContext>());
     } else {
       // Transfer the ownership of the engine to the engine cache, so we can
       // dump it out during conversion for TF 2.0.
