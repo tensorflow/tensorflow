@@ -1343,13 +1343,20 @@ Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
   // Prepare pointers to buffers to pass to the Xla custom call handler.
   llvm::SmallVector<void*> buffers;
   for (unsigned i = 0; i < args.size(); ++i) {
-    auto memref = args.get<jitrt::FlatMemrefView>(i);
-    if (failed(memref))
-      return MakeStringError("Failed to get arguments as memref view");
-
     // We use zero-sized memrefs to represent holes in custom calls with target
     // arguments mapping (see `CustomCallTargetArgMapping`).
-    buffers.push_back(memref->size_in_bytes == 0 ? nullptr : memref->data);
+    if (auto memref = args.get<jitrt::FlatMemrefView>(i); succeeded(memref)) {
+      buffers.push_back(memref->size_in_bytes == 0 ? nullptr : memref->data);
+      continue;
+    }
+    if (auto strided = args.get<jitrt::StridedMemrefView>(i);
+        succeeded(strided)) {
+      int64_t size_in_bytes = GetHostSize(strided->dtype);
+      for (int64_t size : strided->sizes) size_in_bytes *= size;
+      buffers.push_back(size_in_bytes == 0 ? nullptr : strided->data);
+      continue;
+    }
+    return MakeStringError("Failed to get arguments as (strided) memref view");
   }
 
   // Original custom call API version that doesn't support returning status.
