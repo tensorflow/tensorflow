@@ -80,6 +80,13 @@ autograph_ctx = lazy_loader.LazyLoader(
     "tensorflow.python.autograph.core.ag_ctx")
 
 
+# Avoid circular dependency for `type_utils` which transitively depends
+# on Autograph which in turn depends on tf.data.
+type_utils = lazy_loader.LazyLoader(
+    "type_utils", globals(),
+    "tensorflow.python.framework.type_utils")
+
+
 def _device_stack_is_empty():
   if context.executing_eagerly():
     return context.context().device_name is None
@@ -718,6 +725,20 @@ class OwnedIterator(IteratorBase):
           gen_dataset_ops.anonymous_iterator_v3(
               output_types=self._flat_output_types,
               output_shapes=self._flat_output_shapes))
+      if not context.executing_eagerly():
+        # Add full type information to the graph so host memory types inside
+        # variants stay on CPU, e.g, ragged string tensors.
+        # TODO(b/224776031) Remove this when AnonymousIterateV3 can use
+        # (reverse) type inference and all other ops that are needed to
+        # provide type information to the AnonymousIterateV3 also support
+        # type inference (esp. cross-function type inference) instead of
+        # setting the full type information manually.
+        fulltype = type_utils.iterator_full_type_from_spec(
+            self._element_spec)
+        # fulltype is PRODUCT[ITERATOR[PRODUCT[...]]]
+        assert len(fulltype.args[0].args[0].args) == len(
+            self._flat_output_types)
+        self._iterator_resource.op.experimental_set_type(fulltype)
       gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
 
   def __iter__(self):
