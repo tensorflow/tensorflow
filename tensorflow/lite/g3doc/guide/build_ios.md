@@ -54,7 +54,7 @@ Once Bazel is properly configured with iOS support, you can build the
 `TensorFlowLiteC` framework with the following command.
 
 ```sh
-bazel build --config=ios_fat -c opt \
+bazel build --config=ios_fat -c opt --cxxopt=--std=c++17 \
   //tensorflow/lite/ios:TensorFlowLiteC_framework
 ```
 
@@ -72,7 +72,7 @@ to use the static framework instead, you can build the `TensorFlowLiteC` static
 framework with the following command:
 
 ```
-bazel build --config=ios_fat -c opt \
+bazel build --config=ios_fat -c opt --cxxopt=--std=c++17 \
   //tensorflow/lite/ios:TensorFlowLiteC_static_framework
 ```
 
