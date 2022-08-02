@@ -4,11 +4,11 @@
 
 ## Limitations
 
-When AutoGraph is applied to normal Python code, you should expect no change in
-functionality. However, when applied to TensorFlow control flow (for example, an
-if statement with a `tf.Tensor` condition), there are certain limitations. This
-section describes these limitations and practices that will allow you to avoid
-them.
+When AutoGraph is applied to normal Python code, you should expect no change
+in functionality.
+However, when applied to TensorFlow control flow (for example, an if statement
+with a `tf.Tensor` condition), there are certain limitations. This section
+describes these limitations and practices that will allow you to avoid them.
 
 Key Term: Python variables refer to Python symbols (or symbols for short) and
 should not be confused with TensorFlow variables.
@@ -18,8 +18,8 @@ value (typically a `tf.Tensor`) modified by a loop. See `tf.while_loop`.
 
 ### Undefined and None values in TensorFlow
 
-TensorFlow does not support undefined or `None` values. All tensors must have a
-value.
+TensorFlow does not support undefined or `None` values. All tensors must have
+a value.
 
 Example:
 
@@ -42,8 +42,8 @@ else:
 tf.print(x)  # Error -- x may be None here
 ```
 
-For this reason, AutoGraph forbids variables to be defined in only one branch of
-a TensorFlow conditional, if the variable is used afterwards:
+For this reason, AutoGraph forbids variables to be defined in only one branch
+of a TensorFlow conditional, if the variable is used afterwards:
 
 ```
 del x
@@ -90,7 +90,7 @@ while tf.random.uniform(()) > 0.5:  # Okay -- x is not used after the loop
   x = tf.constant(1)
 ```
 
-*   New in TF 2.4 *
+* New in TF 2.4 *
 
 As long as it doesn't depend on previous iterations, the variable may also be
 used after the loop, however in that case the loop must execute at least one
@@ -121,12 +121,12 @@ tf.print(x)  # Okay -- x is either 0 or 1
 ```
 
 Note: `None` values and undefined symbols are allowed in Eager control flow,
-because Eager execution uses Python control flow, rather than TensorFlow control
-flow ops.
+because Eager execution uses Python control flow, rather than TensorFlow
+control flow ops.
 
 #### Special case: creating Tensors in a loop
 
-*   New in TF 2.4 *
+* New in TF 2.4 *
 
 A very common use-case is to run a training loop that creates some outputs:
 
@@ -141,16 +141,16 @@ impractical to initialize ahead of the loop.
 To help with this use-case, AutoGraph lets you run such loops, under certain
 conditions:
 
-*   outputs must be a Tensor, Python numeric, or a structure of these
-*   outputs must not depend on the value from a previous iteration; in other
-    words, the outputs may only appear to the left of an assignment operation
-*   the loop must run at least one iteration
+ * outputs must be a Tensor, Python numeric, or a structure of these
+ * outputs must not depend on the value from a previous iteration; in other
+   words, the outputs may only appear to the left of an assignment operation
+ * the loop must run at least one iteration
 
-If the type of outputs is not recognized, then the usual "outputs must be
-defined before the loop" is raised at graph construction.
+If the type of outputs is not recognized, then the usual
+"outputs must be defined before the loop" is raised at graph construction.
 
-AutoGraph also inserts a `tf.Assert` statement that raises a runtime error if
-the loop did not execute at least one iteration.
+AutoGraph also inserts a `tf.Assert` statement that raises a runtime error
+if the loop did not execute at least one iteration.
 
 ### Indirect modifications and hidden side effects in TensorFlow control flow
 
@@ -161,8 +161,8 @@ used for side effects.
 #### AutoGraph analyzes code to detect modifications to Python objects
 
 Note: Modifications to TensorFlow objects, such as `tf.Variable`, are tracked
-using a different mechanism (automatic control dependencies) which does not rely
-on code analysis.
+using a different mechanism (automatic control dependencies) which does not
+rely on code analysis.
 
 One of the most important functions of AutoGraph is to rewrite Python control
 flow statements into equivalent TensorFlow ops. This process requires "wiring"
@@ -171,14 +171,13 @@ variables covered by these control flow statements into the respective ops.
 The examples below use a `while` loop, but the same notions extend to all
 control flow such as `if` and `for` statements.
 
-In the example below, `x` needs to become a loop variable of the corresponding
-`tf.while_loop':
+In the example below, `x` needs to become a loop variable of the
+corresponding `tf.while_loop':
 
 ```
 while x > 0:
   x = x - 1
 ```
-
 ```
 x = tf.while_loop(..., loop_vars=(x,)
 ```
@@ -186,12 +185,12 @@ x = tf.while_loop(..., loop_vars=(x,)
 TF control ops support only a limited set of types for loop variables. At the
 same time, the efficiency of TensorFlow graphs is influenced by the number of
 loop variables, so we don't want to create them unnecessarily. AutoGraph pulls
-symbols through loop variables only if necessary to minimize the number of loop
-variables.
+symbols through loop variables only if necessary to minimize the number of
+loop variables.
 
-Note: If a symbol refers to a nested structure, such as a `dict` of `dict`s, the
-entire structure is mapped to multiple loop variables - TensorFlow automatically
-unpacks it.
+Note: If a symbol refers to a nested structure, such as a `dict` of `dict`s,
+the entire structure is mapped to multiple loop variables - TensorFlow
+automatically unpacks it.
 
 For example, the symbol 'y' below is not wired through the `tf.while_loop`'s
 `loop_vars` because it is not affected by the `while` loop:
@@ -202,21 +201,21 @@ while x > 0:
   x = x - 1
 print(y)
 ```
-
 ```
 x = tf.while_loop(..., loop_vars=(x,)  # y does not need to be a loop variable
 ```
 
 AutoGraph uses static analysis to determine which symbols are modified by the
-code, in order to transform them into control flow variables. Static analysis is
-generally performed on single functions - Python's dynamic nature limits its
+code, in order to transform them into control flow variables. Static analysis
+is generally performed on single functions - Python's dynamic nature limits its
 effectiveness across functions.
 
 #### Modifications of Python objects are not detected across functions
 
 Note: Modifications to TensorFlow objects, such as `tf.Variable`, are tracked
-using a different mechanism (automatic control dependencies). Modifications to
-`tf.Variable` objects are correctly handled even when called in other functions.
+using a different mechanism (automatic control dependencies). Modifications
+to `tf.Variable` objects are correctly handled even when called in other
+functions.
 
 Because static analysis is limited to single functions, modifications that are
 performed in other functions are not visible to AutoGraph:
@@ -244,8 +243,8 @@ while x > 0:
 ```
 
 As noted before, this limitation does not apply to most TensorFlow objects,
-although it is still a good idea to use functional programming style for better
-code readability:
+although it is still a good idea to use functional programming style for
+better code readability:
 
 ```
 def change(y_var):
@@ -256,8 +255,9 @@ while x > 0:
   change(y)  # This is still okay -- TensorFlow side effects are robust.
 ```
 
-Keep in mind however that certain types like `tf.TensorArray` don't support side
-effects and must have their result assigned, otherwise they may raise an error:
+Keep in mind however that certain types like `tf.TensorArray` don't support
+side effects and must have their result assigned, otherwise they may raise an
+error:
 
 ```
 def change(ta):
@@ -280,8 +280,8 @@ while x > 0:
 
 #### Modifications of Python objects are not detected in methods
 
-A special case of hidden side effects are methods, which are commonly used to
-change the value of objects:
+A special case of hidden side effects are methods, which are commonly used
+to change the value of objects:
 
 ```
 class MyClass(object):
@@ -332,11 +332,65 @@ time, and don't exist at graph execution.
 
 Note: TensorFlow control flow does not currently support arbitrary Python
 objects, but it does support basic collection objects such as `list`, `dict`,
-`tuple`, `namedtuple` and their subclasses. Design your objects as subclasses of
-[namedtuple](https://docs.python.org/3/library/collections.html#collections.namedtuple),
-or other types that
-[tf.nest](https://www.tensorflow.org/api_docs/python/tf/nest/map_structure)
+`tuple`, `namedtuple` and their subclasses. Design your objects as subclasses
+of [namedtuple](https://docs.python.org/3/library/collections.html#collections.namedtuple),
+or other types that [tf.nest](https://www.tensorflow.org/api_docs/python/tf/nest/map_structure)
 recognizes.
+
+#### Variables closed over by lambda functions
+
+AutoGraph assumes that variables that local functions close over may be used
+anywhere in the parent function, because in general it is possible to hide a
+function call in almost any Python statement). For this reason, these variables
+are accounted within TensorFlow loops.
+
+For example, the following code correctly captures `a` in the TensorFlow loop
+variables:
+
+```
+a = 0
+def f():
+  tf.print(a)
+for i in tf.range(3):
+  a = i
+f()  # Prints 2
+```
+
+An consequence is that these variables must be defined before the loop (see
+Undefined and None values above). So the following code will raise an error,
+even if the variable is never used after the loop:
+
+```
+def f():
+  tf.print(a)
+for i in tf.range(3):  # Error -- `a` must be defined before the loop.
+  a = i
+```
+
+However, lambda functions are handled differently, for reasons of backward
+compatibility. Lambda functions are assumed to be used in the statement where
+they are used, or at least in the same block.
+
+```
+a = 0
+foo(lambda: a)  # This lambda is not expected to be called anywhere else.
+for i in tf.range(3):  # Okay -- `a` is local to the loop.
+  a = i
+```
+
+Due to that reason, the following code will not work as expected for TensorFlow
+loops.
+
+```
+a = 0
+l = lambda: tf.print(a)
+for i in tf.range(3):
+  a = i  # `a` is considered local to the loop
+l()  # Prints 0!
+```
+
+Note that none of these restrictions only apply to TensorFlow loops; Python
+loops correctly handle closures in all cases.
 
 ### Python collections in TensorFlow control flow
 
@@ -418,22 +472,20 @@ static_list = [tf.constant(3)]
 while d.prop > 0:
   static_list[0] -= 1  # Okay -- static_list does not change structure
 ```
-
 ```
 static_object = MyClass()
 static_object.field = tf.constant(3)
 while static_object.field > 0:
   static_object.field -= 1  # Okay -- static_object does not change structure
 ```
-
 ```
 static_dict = {'field': tf.constant(3)}
 while static_dict['field'] > 0:
   static_dict['field'] -= 1  # Okay -- static_dict does not change structure
 ```
 
-However, remember to use functional programming style when these collections are
-used inside control flow.
+However, remember to use functional programming style when these collections
+are used inside control flow.
 
 #### Python collections of fixed structure with dynamic index
 
@@ -449,8 +501,8 @@ for i in tf.range(10):
     d[key] += i  # Problem -- accessing `dict` using non-constant key
 ```
 
-The code above will raises an "illegal capture" error. To remedy it, write it in
-functional programming style:
+The code above will raises an "illegal capture" error. To remedy it, write it
+in functional programming style:
 
 ```
 d = {'a': tf.constant(3)}
@@ -470,15 +522,15 @@ TensorFlow control flow ops.
 
 #### Mixing dynamic computations and static shapes
 
-Key Point: Use `.shape` on tensors of static shape, and `.shape.rank` on tensors
-of static rank; only use `tf.shape` and `tf.rank` when the shape or rank is
-dynamic.
+Key Point: Use `.shape` on tensors of static shape, and `.shape.rank` on
+tensors of static rank; only use `tf.shape` and `tf.rank` when the shape or
+rank is dynamic.
 
 TensorFlow has optional static types and shapes: the shape of tensors may be
 static (e.g. `my_tensor.shape=(3, 3)` denotes a three by three matrix) or
-dynamic (e.g. `my_tensor.shape=(None, 3)` denotes a matrix with a dynamic number
-of rows and three columns. When the shapes are dynamic, you can still query it
-at runtime by using the `tf.shape()` function.
+dynamic (e.g. `my_tensor.shape=(None, 3)` denotes a matrix with a dynamic
+number of rows and three columns. When the shapes are dynamic, you can still
+query it at runtime by using the `tf.shape()` function.
 
 Note: `tf.shape` always returns a tensor.
 
@@ -494,8 +546,8 @@ x = tf.constant([1, 2, 3])
 x[4]  # Tracing error! 4 is out of bounds.
 ```
 
-To avoid tracing errors, you can add static shape verifications, which help make
-your code more robust:
+To avoid tracing errors, you can add static shape verifications, which help
+make your code more robust:
 
 ```
 if x.shape[0] > 4:
@@ -504,9 +556,9 @@ else:
   val = some_default_value
 ```
 
-In the snippet above, the code is protected against index-out-of-bounds errors.
-The code is also efficient because the verification `x.shape[0] > 4` will not be
-included in the graph.
+In the snippet above, the code is protected against index-out-of-bounds
+errors. The code is also efficient because the verification `x.shape[0] > 4`
+will not be included in the graph.
 
 But what happens if you try to perform the index verifications using dynamic
 control flow? You might expect that the code works in the same way:
@@ -519,9 +571,9 @@ val = tf.cond(
 ```
 
 However, TensorFlow will not let you write code that could result in an error,
-even if that code appeared in a branch of a `tf.cond` statement that would never
-execute. Remember that the shape of `x` is `(3,)`, so TensorFlow performs static
-shape verification.
+even if that code appeared in a branch of a `tf.cond` statement that would
+never execute. Remember that the shape of `x` is `(3,)`, so TensorFlow performs
+static shape verification.
 
 This can lead to surprising behavior when using `tf.shape` on tensors with
 static shape in TensorFlow:
@@ -538,12 +590,12 @@ Because `tf.shape` always evaluates to a Tensor, the `if` statement above is
 converted by AutoGraph into a `tf.cond`, which performs static shape
 verification of both branches.
 
-What if you need to write code which can handle both static and dynamic shapes?
-There are a few options in this case:
+What if you need to write code which can handle both static and dynamic
+shapes? There are a few options in this case:
 
-A first option is to always work with dynamic shapes, for instance by using
-`input_signature` in `tf.function`. Many shape and shape-related checks are
-skipped when the shape is dynamic:
+A first option is to always work with dynamic shapes, for instance by
+using `input_signature` in `tf.function`. Many shape and shape-related checks
+are skipped when the shape is dynamic:
 
 ```
 @tf.function(input_signature=(tf.TensorSpec(shape=(None,))))
@@ -554,9 +606,9 @@ def f(x):  # x now has dynamic shape
     val = some_default_value
 ```
 
-A second option is to first verify whether the shape is static or dynamic. This
-can be done at tracing time, allowing to use Python `if` to only trace the code
-that is suitable for the situation:
+A second option is to first verify whether the shape is static or dynamic.
+This can be done at tracing time, allowing to use Python `if` to only trace
+the code that is suitable for the situation:
 
 ```
 if x.shape[0] is None:  # Python bool, does not use tf.cond
@@ -703,15 +755,15 @@ while i > 0:
 
 ### Access to source code
 
-Key point: AutoGraph can only handle functions whose source code can be accessed
-at runtime.
+Key point: AutoGraph can only handle functions whose source code can be
+accessed at runtime.
 
 Almost all Python functions allow access to their source code. However, a few
 exceptions exist:
 
-*   functions created in the Python interactive shell
-*   functions with native bindings (these do not have Python source code)
-*   functions created dynamically, using `exec` or `eval`
+ * functions created in the Python interactive shell
+ * functions with native bindings (these do not have Python source code)
+ * functions created dynamically, using `exec` or `eval`
 
 Use
 [inspect.findsource](https://docs.python.org/3/library/inspect.html#inspect.findsource)
@@ -734,17 +786,17 @@ inspect.findsource(simple_function)
 
 ##### TF 2.4 and newer
 
-Key Point: When nesting lambda functions, use distinguishing argument names to
-avoid parse errors.
+Key Point: When nesting lambda functions, use distinguishing argument names
+to avoid parse errors.
 
-The Python runtime exposes the source code of lambda functions, however it may
-omit parts of the actual body, or include surrounding code. This may make it
+The Python runtime exposes the source code of lambda functions, however it
+may omit parts of the actual body, or include surrounding code. This may make it
 impossible to parse the exact source code of the lambda function (see
 https://github.com/tensorflow/tensorflow/issues/39832).
 
-AutoGraph uses alternate methods to parse the source code more robustly, but in
-rare cases it may be unable to distinguish between nested lambda functions of
-identical signatures.
+AutoGraph uses alternate methods to parse the source code more robustly, but
+in rare cases it may be unable to distinguish between nested lambda functions
+of identical signatures.
 
 Example:
 
@@ -768,8 +820,8 @@ robust. Follow the guidance below to avoid errors.
 Important: Declare lambda functions on single lines to make sure their source
 code loads correctly.
 
-The Python runtime exposes the source code of lambda functions, however it may
-omit parts of the actual body, or include surrounding code. This may make it
+The Python runtime exposes the source code of lambda functions, however it
+may omit parts of the actual body, or include surrounding code. This may make it
 impossible to parse the exact source code of the lambda function.
 
 For example, consider the declaration of a lambda function below:
@@ -807,6 +859,7 @@ The reported source code contains an invalid token `)`:
 This shortcoming can be avoided by declaring the lambda in a single assignment
 or return value, and avoiding placing it inside parentheses which could cause
 auto-formatting tools to break it into multiple lines:
+
 
 ```
 # Good - single assignment

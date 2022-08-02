@@ -55,14 +55,14 @@ class Scope(object):
     function_name: Optional[str], name of the function owning this scope.
     isolated_names: Set[qual_names.QN], identifiers that are isolated to this
       scope (even if the scope is not isolated).
-    annotations: Set[qual_names.QN], identifiers used as type annotations in
-      this scope.
+    annotations: Set[qual_names.QN], identifiers used as type annotations
+      in this scope.
     read: Set[qual_names.QN], identifiers read in this scope.
     modified: Set[qual_names.QN], identifiers modified in this scope.
     deleted: Set[qual_names.QN], identifiers deleted in this scope.
     bound: Set[qual_names.QN], names that are bound to this scope. See
       https://docs.python.org/3/reference/executionmodel.html#binding-of-names
-        for a precise definition.
+      for a precise definition.
     globals: Set[qual_names.QN], names that are explicitly marked as global in
       this scope. Note that this doesn't include free read-only vars bound to
       global symbols.
@@ -71,18 +71,20 @@ class Scope(object):
       global symbols.
     free_vars: Set[qual_names.QN], the free variables in this scope. See
       https://docs.python.org/3/reference/executionmodel.html for a precise
-        definition.
+      definition.
     params: WeakValueDictionary[qual_names.QN, ast.Node], function arguments
       visible in this scope, mapped to the function node that defines them.
     enclosing_scope: Scope, the innermost isolated scope that is a transitive
       parent of this scope. May be the scope itself.
     referenced: Set[qual_names.QN], the totality of the symbols used by this
       scope and its parents.
-    is_final: bool, whether the scope is frozen or not.  Note - simple
-      statements may never delete and modify a symbol at the same time. However,
-      compound ones like if statements can. In that latter case, it's undefined
-      whether the symbol is actually modified or deleted upon statement exit.
-      Certain analyses like reaching definitions need to be careful about this.
+    is_final: bool, whether the scope is frozen or not.
+
+  Note - simple statements may never delete and modify a symbol at the same
+  time. However, compound ones like if statements can. In that latter case, it's
+  undefined whether the symbol is actually modified or deleted upon statement
+  exit. Certain analyses like reaching definitions need to be careful about
+  this.
   """
 
   # Note: this mutable-immutable pattern is used because using a builder would
@@ -631,6 +633,11 @@ class ActivityAnalyzer(transformer.Base):
 
       lambda_scope = self.scope
       self._exit_and_record_scope(node, NodeAnno.ARGS_AND_BODY_SCOPE)
+
+      # Exception: lambdas are assumed to be used in the place where
+      # they are defined. Therefore, their activity is passed on to the
+      # calling statement.
+      self.scope.read.update(lambda_scope.read - lambda_scope.bound)
 
       return node
 
