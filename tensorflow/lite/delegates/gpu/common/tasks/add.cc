@@ -16,36 +16,70 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/add.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/lite/delegates/gpu/common/util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
 namespace tflite {
 namespace gpu {
+namespace {
+GPUOperation CreateUnequalAdd(const OperationDef& op_def) {
+  GPUOperation op(op_def);
+  op.AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+  for (int i = 0; i < op_def.src_tensors.size(); ++i) {
+    const std::string tensor_name = absl::StrCat("src_tensor_", i);
+    op.AddSrcTensor(tensor_name, op_def.src_tensors[i]);
+  }
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  std::string c;
+  c += "MAIN_FUNCTION($0) {\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int linear_id = GLOBAL_ID_0;\n";
+    c += "  int X = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+    for (int i = 0; i < op_def.src_tensors.size(); ++i) {
+      const std::string tensor_name = absl::StrCat("src_tensor_", i);
+      c += "  args." + tensor_name + ".SetBatchRef(B);\n";
+    }
+  } else {
+    c += "  int X = GLOBAL_ID_0;\n";
+  }
+  c += "  int Y = GLOBAL_ID_1;\n";
+  c += "  int S = GLOBAL_ID_2;\n";
+  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
+       "S >= args.dst_tensor.Slices()) return; \n";
+  c += "  args.src_tensor_0::type src = args.src_tensor_0::zero_value;\n";
+  for (int i = 0; i < op_def.src_tensors.size(); ++i) {
+    const std::string tensor_name = absl::StrCat("src_tensor_", i);
+    c += "  if (S < args." + tensor_name + ".Slices()) {\n";
+    c += "    src += args." + tensor_name + ".Read(X, Y, S);\n";
+    c += "  }\n";
+  }
+  c += "  args.dst_tensor.Write(src, X, Y, S);\n";
+  c += "} \n";
+  op.code_ = std::move(c);
+  return op;
+}
+}  // namespace
 
 GPUOperation CreateAdd(const OperationDef& definition,
                        const std::vector<int>& channels, int dst_channels) {
-  GPUOperation add(definition);
-  int dst_depth = DivideRoundUp(dst_channels, 4);
-  int src0_depth = DivideRoundUp(channels[0], 4);
-  add.elementwise_ = true;
-  add.linkable_ = dst_depth == src0_depth;
-  if (src0_depth < dst_depth) {
-    add.check_src_channels_size_ = true;
+  if (dst_channels != channels[0]) {
+    return CreateUnequalAdd(definition);
   }
+  ElementwiseDescriptor op_desc;
+  op_desc.code = "  out_value = in_value;\n";
   for (int i = 1; i < definition.src_tensors.size(); ++i) {
-    const std::string tensor_name = absl::StrCat("src_data_", i);
-    auto src_desc = definition.src_tensors[i];
-    if (definition.IsBatchSupported()) {
-      src_desc.SetStateVar("BatchedWidth", "true");
-    }
-    add.AddSrcTensor(tensor_name, src_desc);
-    add.code_ += "if (S_COORD < args." + tensor_name + ".Slices()) {\n";
-    add.code_ += "  in_out_value += args." + tensor_name +
-                 ".Read(X_COORD, Y_COORD, S_COORD);\n";
-    add.code_ += "}\n";
+    const std::string tensor_name = absl::StrCat("src_tensor_", i);
+    op_desc.code += "if (S_COORD < args." + tensor_name + ".Slices()) {\n";
+    op_desc.code += "  out_value += args." + tensor_name +
+                    ".Read(X_COORD, Y_COORD, S_COORD);\n";
+    op_desc.code += "}\n";
   }
-  return add;
+  return CreateGpuOperation(definition, std::move(op_desc));
 }
 
 }  // namespace gpu

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/bfloat16_propagation.h"
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -364,19 +364,19 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
   // output shape of a fusion or while before propagating inside its
   // computations.
   bool postpone_processing_called_computations = false;
-  auto cleaner = tensorflow::gtl::MakeCleanup(
-      [this, hlo, &postpone_processing_called_computations] {
-        if (!postpone_processing_called_computations) {
-          if (hlo->opcode() == HloOpcode::kFusion) {
-            DetermineFusionComputationPrecision(hlo);
-          } else if (hlo->opcode() == HloOpcode::kWhile) {
-            DetermineWhileComputationsPrecision(hlo);
-          } else if (hlo->opcode() == HloOpcode::kConditional) {
-            DetermineConditionalComputationsPrecision(hlo);
-          }
-        }
-        instructions_visited_in_backward_pass_.insert(hlo);
-      });
+  absl::Cleanup cleaner = [this, hlo,
+                           &postpone_processing_called_computations] {
+    if (!postpone_processing_called_computations) {
+      if (hlo->opcode() == HloOpcode::kFusion) {
+        DetermineFusionComputationPrecision(hlo);
+      } else if (hlo->opcode() == HloOpcode::kWhile) {
+        DetermineWhileComputationsPrecision(hlo);
+      } else if (hlo->opcode() == HloOpcode::kConditional) {
+        DetermineConditionalComputationsPrecision(hlo);
+      }
+    }
+    instructions_visited_in_backward_pass_.insert(hlo);
+  };
 
   if (hlo->opcode() == HloOpcode::kWhile &&
       (caller_counts_[hlo->while_condition()] > 1 ||
@@ -693,9 +693,10 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
 }
 
 void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
-    HloModule* module) {
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   const auto& computations_topological_order =
-      module->MakeComputationPostOrder();
+      module->MakeComputationPostOrder(execution_threads);
   absl::flat_hash_set<const HloComputation*> resolved;
   for (auto comp_it = computations_topological_order.rbegin();
        comp_it != computations_topological_order.rend(); ++comp_it) {
@@ -706,7 +707,9 @@ void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
   }
 }
 
-Status BFloat16Propagation::ResolveInconsistentFusions(HloModule* module) {
+Status BFloat16Propagation::ResolveInconsistentFusions(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We could have changed a fusion computation's root shape to have a different
   // precision than the fusion node's output, if the fusion root does not
   // define a buffer (e.g., a tuple). Now we add conversions after such fusion
@@ -732,7 +735,7 @@ Status BFloat16Propagation::ResolveInconsistentFusions(HloModule* module) {
   // (1) a is F32 but tuple is BF16
   // (2) after adding conversion
   // (3) after tuple simplifier and DCE.
-  for (auto computation : module->MakeComputationPostOrder()) {
+  for (auto computation : module->MakeComputationPostOrder(execution_threads)) {
     auto insts = computation->MakeInstructionPostOrder();
     for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
       auto hlo = *inst_it;
@@ -764,10 +767,12 @@ Status BFloat16Propagation::ResolveInconsistentFusions(HloModule* module) {
       fusion_computation->set_root_instruction(copy);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
+Status BFloat16Propagation::ResolveConvertedConstants(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We may have converted some constants from F32 to BF16, so adjust the
   // constant literals in such cases. We do this here instead of when the
   // constant node's is changed because 1) the HloInstruction interface does not
@@ -778,7 +783,7 @@ Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
   // can avoid repeated conversions.
   //
   // TODO(b/73833576): Consider resetting literal in HloInstruction.
-  for (auto computation : module->MakeComputationPostOrder()) {
+  for (auto computation : module->MakeComputationPostOrder(execution_threads)) {
     for (auto hlo : computation->MakeInstructionPostOrder()) {
       if (hlo->opcode() != HloOpcode::kConstant) {
         continue;
@@ -794,11 +799,13 @@ Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
-  for (auto computation : module->computations()) {
+Status BFloat16Propagation::SkipNoopConversions(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  for (auto computation : module->computations(execution_threads)) {
     for (auto hlo : computation->MakeInstructionPostOrder()) {
       if (hlo->opcode() != HloOpcode::kConvert) {
         continue;
@@ -814,7 +821,7 @@ Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // The algorithm first does a forward pass (parameters to root) to determine a
@@ -823,7 +830,9 @@ Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
 // their users. During the backward pass, the potential changes are stored in
 // changes_to_bf16_ which are subject to further adjustments then applied to the
 // HLOs.
-StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
+StatusOr<bool> BFloat16Propagation::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   consider_using_bfloat16_.clear();
   instructions_visited_in_backward_pass_.clear();
   computations_visited_in_backward_pass_.clear();
@@ -832,7 +841,8 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
   changes_to_bf16_.clear();
   changed_ = false;
 
-  auto computations_topological_order = module->MakeComputationPostOrder();
+  auto computations_topological_order =
+      module->MakeComputationPostOrder(execution_threads);
 
   // Before running the propagation pass, we insert copies (kConvert to the same
   // type) of F32 inputs to while loops. This prevents other uses of the same
@@ -900,7 +910,7 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
   // It's possible that an instruction does not define a buffer, but the
   // defining instruction's shape has changed. So we need to adjust the output
   // shapes of instructions according to the HLO values they refer to.
-  ResolveInconsistencyOfAliasingBuffers(module);
+  ResolveInconsistencyOfAliasingBuffers(module, execution_threads);
 
   // Apply the changes in changes_to_bf16_.
   for (auto& change : changes_to_bf16_) {
@@ -949,13 +959,14 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
   // Removes redundant HLOs added by this pass, either when inserting
   // de-aliasing copies to while loop inputs, or later when converting output
   // types.
-  auto clean_up = [this, module]() {
-    TF_RETURN_IF_ERROR(SkipNoopConversions(module));
+  auto clean_up = [this, module, &execution_threads]() {
+    TF_RETURN_IF_ERROR(SkipNoopConversions(module, execution_threads));
     TupleSimplifier tuple_simplifier;
-    TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
+    TF_RETURN_IF_ERROR(
+        tuple_simplifier.Run(module, execution_threads).status());
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module).status());
-    return Status::OK();
+    TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+    return OkStatus();
   };
 
   if (!changed_) {
@@ -963,8 +974,8 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
     return false;
   }
 
-  TF_RETURN_IF_ERROR(ResolveInconsistentFusions(module));
-  TF_RETURN_IF_ERROR(ResolveConvertedConstants(module));
+  TF_RETURN_IF_ERROR(ResolveInconsistentFusions(module, execution_threads));
+  TF_RETURN_IF_ERROR(ResolveConvertedConstants(module, execution_threads));
 
   TF_RETURN_IF_ERROR(clean_up());
   return true;

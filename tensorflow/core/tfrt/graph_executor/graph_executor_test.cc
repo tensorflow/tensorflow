@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
-#include "testing/base/public/gunit.h"
+#include <gtest/gtest.h>
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/functional_ops.h"

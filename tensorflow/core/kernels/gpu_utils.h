@@ -41,6 +41,13 @@ namespace tensorflow {
 class NodeDef;
 class AutotuneResult;
 
+template <typename T>
+se::DeviceMemory<T> AsDeviceMemory(const T* gpu_memory) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(gpu_memory));
+  se::DeviceMemory<T> typed(wrapped);
+  return typed;
+}
+
 // Return whether the redzone check is disabled.
 //
 // Controlled by the TF_DISABLE_RZ_CHECK environment variable.
@@ -69,6 +76,22 @@ inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
   return typed;
 }
 
+// Returns whether cuBLASLt is enabled.
+//
+// Controlled by the TF_USE_CUBLASLT environment variable.
+bool EnableCublasLtGemm();
+
+namespace internal {
+
+template <typename Parameters>
+struct AutotuneMapHasher {
+  std::size_t operator()(const Parameters& parameter) const {
+    return parameter.hash();
+  }
+};
+
+}  // namespace internal
+
 // A helper class that looks up the best autotuned config from parameters.
 // Due to the noisy nature of autotune, especially with multiple devices, it
 // only accepts a config if its margin exceeds a threshold.
@@ -79,16 +102,9 @@ inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
 // back and forth randomly, the expected number of experiments before autotune
 // settles is O(threshold ^ 2). So we recommend that number of warmup runs
 // for any benchmarks.
-template <typename Parameters, typename Config>
+template <typename Parameters, typename Config,
+          typename Hasher = internal::AutotuneMapHasher<Parameters>>
 class AutotuneMap {
- private:
-  // Retrieves the hash code of Parameters class.
-  struct Hasher {
-    std::size_t operator()(const Parameters& parameter) const {
-      return parameter.hash();
-    }
-  };
-
  public:
   bool Find(const Parameters& params, Config* config) const {
     mutex_lock lock(mu_);
@@ -198,7 +214,7 @@ class AutotuneMap {
     autotune_global_count_ = 0;
   }
 
-  template <class Group, class Params, class Cfg>
+  template <class Group, class Params, class Cfg, class Hash>
   friend class AutotuneSingleton;
 
   std::string GetActionSummary(StringPiece action, const Parameters& params,
@@ -225,10 +241,11 @@ class AutotuneMap {
 // The caller specified arbitrary Group type that can distinguish between
 // different autotune results, even if their Parameters and Configs are the
 // same.
-template <class Group, typename Parameters, typename Config>
+template <class Group, typename Parameters, typename Config,
+          typename Hasher = internal::AutotuneMapHasher<Parameters>>
 class AutotuneSingleton {
  public:
-  typedef AutotuneMap<Parameters, Config> AutotuneType;
+  typedef AutotuneMap<Parameters, Config, Hasher> AutotuneType;
   static AutotuneType* GetInstance() {
     static AutotuneType* instance = new AutotuneType(Group::name());
     return instance;

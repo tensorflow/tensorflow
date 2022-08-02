@@ -117,7 +117,7 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
             fused_activation_function, dilation_factor, dilation_factor)
             .Union());
 
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_DEPTHWISE_CONV_2D, registration);
 
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});

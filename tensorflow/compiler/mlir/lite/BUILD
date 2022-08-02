@@ -1,8 +1,8 @@
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "filegroup", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
@@ -30,6 +30,7 @@ package_group(
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//research/language_modeling/sentence_explorer/ondevice/...",
+        "//learning/brain/research/babelfish/inference/speech_tflite/mlir/...",
     ],
 )
 
@@ -39,16 +40,16 @@ td_library(
         "ir/tfl_op_enums.td",
         "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
-        "ir/tfl_structs.td",
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//mlir:FuncTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
 )
 
@@ -76,6 +77,25 @@ td_library(
 )
 
 gentbl_cc_library(
+    name = "tensorflow_lite_passes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TensorFlowLite",
+            ],
+            "transforms/passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
     name = "tensorflow_lite_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
@@ -88,32 +108,15 @@ gentbl_cc_library(
             "ir/tfl_ops.cc.inc",
         ),
         (
-            ["-gen-dialect-doc"],
+            [
+                "-gen-dialect-doc",
+                "-dialect=tfl",
+            ],
             "g3doc/tfl_ops.md",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfl_ops.td",
-    deps = [
-        ":tensorflow_lite_ops_td_files",
-    ],
-)
-
-gentbl_cc_library(
-    name = "tensorflow_lite_structs_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
-    tbl_outs = [
-        (
-            ["-gen-struct-attr-decls"],
-            "ir/tfl_structs.h.inc",
-        ),
-        (
-            ["-gen-struct-attr-defs"],
-            "ir/tfl_structs.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "ir/tfl_structs.td",
     deps = [
         ":tensorflow_lite_ops_td_files",
     ],
@@ -301,13 +304,11 @@ cc_library(
         "ir/tfl_ops_enums.h.inc",
         "ir/tfl_ops_interface.cc.inc",
         "ir/tfl_ops_interface.h.inc",
-        "ir/tfl_structs.cc.inc",
         "runtime_verifiers.inc",
         "utils/attribute_utils.cc",
     ],
     hdrs = [
         "ir/tfl_ops.h",
-        "ir/tfl_structs.h.inc",
         "transforms/passes.h",
         "utils/attribute_utils.h",
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
@@ -317,9 +318,10 @@ cc_library(
         ":tensorflow_lite_op_enums_inc_gen",
         ":tensorflow_lite_op_interfaces_inc_gen",
         ":tensorflow_lite_ops_inc_gen",
-        ":tensorflow_lite_structs_inc_gen",
+        ":tensorflow_lite_passes_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -335,12 +337,12 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LoopLikeInterface",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -352,6 +354,7 @@ cc_library(
         "utils/variables_utils.h",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//mlir:IR",
@@ -386,6 +389,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "//tensorflow/stream_executor/lib",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
@@ -421,6 +425,7 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "@llvm-project//mlir:IR",
@@ -596,13 +601,14 @@ cc_library(
         ":perception_ops_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
+        ":tensorflow_lite_passes_inc_gen",
         ":tftext_utils",
         ":validators",
         ":variables_utils",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
-        "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -619,6 +625,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -639,7 +646,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -654,6 +660,7 @@ cc_library(
     deps = [
         ":convert_type",
         ":tensorflow_lite",
+        ":tensorflow_lite_passes_inc_gen",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -668,7 +675,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -693,10 +699,13 @@ cc_library(
     deps = [
         "convert_type",
         ":tensorflow_lite",
+        ":tensorflow_lite_passes_inc_gen",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:logging",
@@ -712,7 +721,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -725,6 +733,7 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
+        ":tensorflow_lite_passes_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//third_party/eigen3",
@@ -734,7 +743,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -746,6 +754,7 @@ cc_library(
         "transforms/lift_tflite_flex_ops.h",
     ],
     deps = [
+        ":tensorflow_lite_passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_attr",
@@ -762,8 +771,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
-    # The library contains a static initialization of a pass registration.
-    alwayslink = 1,
 )
 
 filegroup(
@@ -910,6 +917,7 @@ cc_library(
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
@@ -940,7 +948,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
 )
 
@@ -957,6 +965,7 @@ cc_library(
         ":flatbuffer_tflite_operator_lib",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
@@ -979,7 +988,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
 )
 
@@ -1032,6 +1041,7 @@ cc_library(
     deps = [
         ":flatbuffer_translate_lib",
         ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "@llvm-project//llvm:Support",
@@ -1041,7 +1051,7 @@ cc_library(
         "@llvm-project//mlir:MlirTranslateMain",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
     alwayslink = 1,
 )
@@ -1159,9 +1169,6 @@ cc_library(
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_quantize",
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:all_passes",
-        "//tensorflow/compiler/mlir/hlo:expand_hlo_tuples",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",
@@ -1172,6 +1179,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:expand_hlo_tuples",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
@@ -1234,8 +1244,17 @@ cc_library(
         "//learning/brain/models/app_benchmarks:__subpackages__",
     ],
     deps = [
+        ":tensorflow_lite_passes_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+build_test(
+    name = "tensorflow_lite_build_test",
+    targets = [
+        ":tensorflow_lite",
     ],
 )

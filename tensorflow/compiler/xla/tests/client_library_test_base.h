@@ -21,7 +21,6 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -610,8 +609,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
@@ -624,8 +622,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR1Parameter(
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
@@ -638,8 +635,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
@@ -652,8 +648,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
@@ -666,8 +661,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR4Parameter(
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
@@ -680,8 +674,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateParameter(
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
@@ -701,7 +694,7 @@ template <typename NativeT>
 std::unique_ptr<Array2D<NativeT>> ClientLibraryTestBase::CreatePseudorandomR2(
     const int rows, const int cols, NativeT min_value, NativeT max_value,
     uint32_t seed) {
-  auto result = absl::make_unique<Array2D<NativeT>>(rows, cols);
+  auto result = std::make_unique<Array2D<NativeT>>(rows, cols);
   PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
   for (int y = 0; y < rows; ++y) {
     for (int x = 0; x < cols; ++x) {

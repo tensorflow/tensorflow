@@ -15,7 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_BROADCAST_FOLDING_REWRITER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_BROADCAST_FOLDING_REWRITER_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -38,7 +39,10 @@ class GemmBroadcastFoldingRewriter : public HloModulePass {
     return "cublas-gemm-broadcast-folding-rewriter";
   }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace gpu

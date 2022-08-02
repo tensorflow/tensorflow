@@ -154,10 +154,10 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable import data_structures
 from tensorflow.python.training import checkpoint_utils
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -3159,7 +3159,8 @@ def _raise_shared_embedding_column_error():
                    '`DenseFeatures` or `LinearModel` instead.')
 
 
-class SharedEmbeddingColumnCreator(tracking.AutoTrackable):
+class SharedEmbeddingColumnCreator(autotrackable.AutoTrackable):
+  """Class that creates a `SharedEmbeddingColumn`."""
 
   def __init__(self,
                dimension,

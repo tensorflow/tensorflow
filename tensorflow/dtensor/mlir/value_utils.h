@@ -63,9 +63,16 @@ absl::optional<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
                                                   mlir::Location loc,
                                                   mlir::Type type);
 
+// Selects a scalar tensor value from a 1D array in specified index.
+StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,
+                                                 int index,
+                                                 mlir::Location location,
+                                                 mlir::Value array);
+
 // Returns the type that value holds. If value holds a Type that has a subtype,
 // then it returns the subtype.
 mlir::Type GetSubtypeOrSelf(mlir::Value value);
+
 }  // namespace dtensor
 }  // namespace tensorflow
 #endif  // TENSORFLOW_DTENSOR_MLIR_VALUE_UTILS_H_

@@ -57,16 +57,15 @@ android {
     aaptOptions {
         noCompress "tflite"
     }
-
 }
 
 dependencies {
     // Other dependencies
 
     // Import the Audio Task Library dependency (NNAPI is included)
-    implementation 'org.tensorflow:tensorflow-lite-task-audio:0.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-audio:0.4.0'
     // Import the GPU delegate plugin Library for GPU inference
-    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.0'
 }
 ```
 
@@ -102,18 +101,62 @@ See the
 [source code and javadoc](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/java/src/java/org/tensorflow/lite/task/audio/classifier/AudioClassifier.java)
 for more options to configure `AudioClassifier`.
 
+## Run inference in Python
+
+### Step 1: Install the pip package
+
+```
+pip install tflite-support
+```
+
+Note: Task Library's Audio APIs rely on [PortAudio](http://www.portaudio.com/docs/v19-doxydocs/index.html)
+to record audio from the device's microphone. If you intend to use Task
+Library's [AudioRecord](/lite/api_docs/python/tflite_support/task/audio/AudioRecord)
+for audio recording, you need to install PortAudio on your system.
+
+* Linux: Run `sudo apt-get update && apt-get install libportaudio2`
+* Mac and Windows: PortAudio is installed automatically when installing the
+`tflite-support` pip package.
+
+### Step 2: Using the model
+
+```python
+# Imports
+from tflite_support.task import audio
+from tflite_support.task import core
+from tflite_support.task import processor
+
+# Initialization
+base_options = core.BaseOptions(file_name=model_path)
+classification_options = processor.ClassificationOptions(max_results=2)
+options = audio.AudioClassifierOptions(base_options=base_options, classification_options=classification_options)
+classifier = audio.AudioClassifier.create_from_options(options)
+
+# Alternatively, you can create an audio classifier in the following manner:
+# classifier = audio.AudioClassifier.create_from_file(model_path)
+
+# Run inference
+audio_file = audio.TensorAudio.create_from_wav_file(audio_path, classifier.required_input_buffer_size)
+audio_result = classifier.classify(audio_file)
+```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/python/task/audio/audio_classifier.py)
+for more options to configure `AudioClassifier`.
+
 ## Run inference in C++
 
 ```c++
 // Initialization
 AudioClassifierOptions options;
-options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_path);
 std::unique_ptr<AudioClassifier> audio_classifier = AudioClassifier::CreateFromOptions(options).value();
 
-// Create input audio buffer from data.
-int input_buffer_size = audio_classifier->GetRequiredInputBufferSize();
+// Create input audio buffer from your `audio_data` and `audio_format`.
+// See more information here: tensorflow_lite_support/cc/task/audio/core/audio_buffer.h
+int input_size = audio_classifier->GetRequiredInputBufferSize();
 const std::unique_ptr<AudioBuffer> audio_buffer =
-    AudioBuffer::Create(audio_data.get(), input_buffer_size, kAudioFormat).value();
+    AudioBuffer::Create(audio_data, input_size, audio_format).value();
 
 // Run inference
 const ClassificationResult result = audio_classifier->Classify(*audio_buffer).value();
@@ -126,9 +169,9 @@ for more options to configure `AudioClassifier`.
 ## Model compatibility requirements
 
 The `AudioClassifier` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md). See examples of creating
-metadata for audio classifiers using the
-[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#audio_classifiers).
+[TFLite Model Metadata](../../models/convert/metadata.md). See examples of
+creating metadata for audio classifiers using the
+[TensorFlow Lite Metadata Writer API](../../models/convert/metadata_writer_tutorial.ipynb#audio_classifiers).
 
 The compatible audio classifier models should meet the following requirements:
 

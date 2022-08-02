@@ -60,6 +60,7 @@ hexagon_op_tests(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:reshape_test_common",
+        "//tensorflow/lite/kernels/internal:test_util",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",

@@ -87,6 +87,7 @@ namespace {
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBlockIndex[] = "block_index";
 constexpr char kCycleIndex[] = "cycle_index";
+constexpr char kMaxBufferedElements[] = "max_buffered_elements";
 constexpr char kEndOfInput[] = "end_of_input";
 constexpr char kElementIdCounter[] = "element_id_counter";
 constexpr char kCurrentElements[] = "current_elements";
@@ -109,7 +110,7 @@ constexpr char kParallelInterleaveDatasetV4[] = "ParallelInterleaveDatasetV4";
 // elements that will be prefetched ahead of time. The purpose of prefetching
 // future cycle elements is to overlap expensive initialization (e.g. opening of
 // a remote file) with other computation.
-constexpr double kDefaultCyclePrefetchFactor = 2.0L;
+constexpr int kDefaultCyclePrefetchFactor = 2;
 
 // `kPerIteratorPrefetchFactor * block_length + 1` is the default number of
 // per-iterator results that will be prefetched ahead of time. The `+ 1` is to
@@ -136,7 +137,18 @@ int64_t ComputePrefetchInputElements(int64_t configured_prefetch_input_elements,
   if (configured_prefetch_input_elements != model::kAutotune) {
     return configured_prefetch_input_elements;
   }
+  if (GetExperiments().contains("reduce_interleave_prefetch")) {
+    return std::min(
+        static_cast<int64_t>(8),
+        static_cast<int64_t>(kDefaultCyclePrefetchFactor * cycle_length));
+  }
   return kDefaultCyclePrefetchFactor * cycle_length;
+}
+
+int64_t ComputeMaxBufferedElements(int64_t prefetch_input_elements,
+                                   int64_t buffer_output_elements,
+                                   int64_t cycle_length) {
+  return (prefetch_input_elements + cycle_length) * buffer_output_elements;
 }
 
 int64_t OpVersionFromOpName(absl::string_view op_name) {
@@ -199,7 +211,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     params.op_version = op_version_;
     bool deterministic =
         deterministic_.IsDeterministic() || deterministic_.IsDefault();
-    return absl::make_unique<ParallelInterleaveIterator>(
+    return std::make_unique<ParallelInterleaveIterator>(
         ParallelInterleaveIterator::Params{
             this,
             name_utils::IteratorPrefix(
@@ -230,7 +242,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -302,7 +314,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     TF_RETURN_IF_ERROR(b->AddDataset(this, inputs, list_inputs, attrs, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -348,7 +360,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             GetAutotuneDefaultParallelism(ctx), dataset()->cycle_length_);
       }
       ctx_ = std::make_unique<IteratorContext>(*ctx);
-      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      cancellation_manager_ = std::make_unique<CancellationManager>();
       IteratorContext::Params params(ctx);
       params.interleave_depth += 1;
       params.cancellation_manager = cancellation_manager_.get();
@@ -383,7 +395,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
       if (!result) {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
       profiler::TraceMe traceme([&] {
         return profiler::TraceMeEncode("ParallelInterleaveConsume",
@@ -416,9 +428,15 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           std::move(args),
           {model::MakeParameter(kParallelism, num_parallel_calls_, /*min=*/min,
                                 /*max=*/dataset()->cycle_length_),
-           model::MakeParameter(kCycleLength, nullptr,
-                                /*min=*/dataset()->cycle_length_,
-                                /*max=*/dataset()->cycle_length_)});
+           model::MakeNonTunableParameter(kCycleLength,
+                                          dataset()->cycle_length_),
+           model::MakeNonTunableParameter(kDeterministic,
+                                          deterministic_ ? 1.0 : 0.0),
+           model::MakeNonTunableParameter(
+               kMaxBufferedElements,
+               ComputeMaxBufferedElements(dataset()->prefetch_input_elements_,
+                                          dataset()->buffer_output_elements_,
+                                          dataset()->cycle_length_))});
     }
 
     // TODO(aaudibert): Refactor the implementations to avoid the need for
@@ -461,7 +479,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // Wake workers back up.
       current_workers_cond_var_.notify_all();
       future_workers_cond_var_.notify_all();
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -503,7 +521,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
       VLOG(2) << "Parallel interleave iterator restored";
       VLOG(4) << "State after restore:\n" << DebugString();
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -1052,7 +1070,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           continue;
         }
         element->inputs =
-            absl::make_unique<std::vector<Tensor>>(std::move(inputs));
+            std::make_unique<std::vector<Tensor>>(std::move(inputs));
         IteratorContext::Params params(ctx_.get());
         params.interleave_depth += 1;
         IteratorContext ctx(params);
@@ -1194,7 +1212,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
             iterator_name, ErrorMessageKey(idx), status.error_message()));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status ReadStatusLocked(IteratorStateReader* reader,
@@ -1211,9 +1229,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             iterator_name, ErrorMessageKey(idx), &error_message));
         *status = Status(code, error_message);
       } else {
-        *status = Status::OK();
+        *status = OkStatus();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     string CodeKey(size_t idx) {
@@ -1263,7 +1281,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             iterator_name,
             absl::StrCat(kResultsSuffix, "[", i, "]", kIsReadySuffix), ""));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status WriteCurrentElements(SerializationContext* ctx,
@@ -1277,7 +1295,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                           kCurrentElements, writer));
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status WriteFutureElements(SerializationContext* ctx,
@@ -1291,7 +1309,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                           kFutureElements, writer));
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status ReadElement(IteratorContext* ctx, IteratorStateReader* reader,
@@ -1305,7 +1323,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             absl::StrCat(prefix(), "::", key_prefix, "::", idx);
         if (!reader->Contains(iterator_name,
                               absl::StrCat(kResultsSuffix, kSizeSuffix))) {
-          return Status::OK();
+          return OkStatus();
         }
         int64_t results_size;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
@@ -1336,7 +1354,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                               absl::StrCat(kInputsSuffix, kSizeSuffix))) {
           element->iterator.reset();
           *out = std::move(element);
-          return Status::OK();
+          return OkStatus();
         }
         int64_t inputs_size;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
@@ -1363,7 +1381,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(*mu_);
       element->iterator = std::move(iterator);
       *out = std::move(element);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status ReadCurrentElements(IteratorContext* ctx,
@@ -1389,7 +1407,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         }
       }
       if (size == 0) {
-        return Status::OK();
+        return OkStatus();
       }
       std::vector<std::shared_ptr<Element>> elements;
       TF_RETURN_IF_ERROR(
@@ -1401,7 +1419,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       for (int idx = 0; idx < size; ++idx) {
         current_elements_[idx] = std::move(elements[idx]);
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status ReadFutureElements(IteratorContext* ctx,
@@ -1414,7 +1432,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         future_elements_.resize(size);
       }
       if (size == 0) {
-        return Status::OK();
+        return OkStatus();
       }
       std::vector<std::shared_ptr<Element>> elements;
       TF_RETURN_IF_ERROR(
@@ -1426,14 +1444,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       for (int idx = 0; idx < size; ++idx) {
         future_elements_[idx] = std::move(elements[idx]);
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status ReadElementsParallel(
         IteratorContext* ctx, IteratorStateReader* reader, int64_t size,
         const string& name, std::vector<std::shared_ptr<Element>>* elements) {
       elements->resize(size);
-      Status s = Status::OK();
+      Status s = OkStatus();
       BlockingCounter counter(size);
       for (int idx = 0; idx < size; ++idx) {
         thread_pool_->Schedule([this, ctx, reader, idx, name, &s, &counter,

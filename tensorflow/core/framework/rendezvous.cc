@@ -109,7 +109,7 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
     out->src_device = StringPiece(parts[0].data(), parts[0].size());
     out->dst_device = StringPiece(parts[2].data(), parts[2].size());
     out->edge_name = StringPiece(parts[3].data(), parts[3].size());
-    return Status::OK();
+    return OkStatus();
   }
   return errors::InvalidArgument("Invalid  rendezvous key: ", key);
 }

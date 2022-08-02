@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import numpy
 
@@ -35,6 +35,7 @@ from .xla_extension import FftType as FftType
 from .xla_extension import Frame as Frame
 from .xla_extension import HostBufferSemantics as HostBufferSemantics
 from .xla_extension import OpSharding as OpSharding
+from .xla_extension import HloSharding as HloSharding
 from .xla_extension import PrimitiveType as PrimitiveType
 from .xla_extension import Traceback as Traceback
 from .xla_extension import XlaBuilder as XlaBuilder
@@ -71,7 +72,9 @@ def make_cpu_client(*, use_tfrt: bool = ...) -> Client:
 
 def make_gpu_client(
     distributed_client: Optional[DistributedRuntimeClient] = ...,
-    node_id: int = ...) -> Client:
+    node_id: int = ...,
+    platform_name: Optional[str] = ...,
+    allowed_devices: Optional[Set[int]] = ...) -> Client:
   ...
 
 

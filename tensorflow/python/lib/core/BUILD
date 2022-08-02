@@ -48,8 +48,14 @@ cc_library(
 
 cc_library(
     name = "bfloat16_lib",
-    srcs = ["bfloat16.cc"],
-    hdrs = ["bfloat16.h"],
+    srcs = [
+        "bfloat16.cc",
+        "float8_e4m3b11.cc",
+    ],
+    hdrs = [
+        "bfloat16.h",
+        "float8_e4m3b11.h",
+    ],
     deps = [
         ":numpy_lib",
         "//tensorflow/core/platform:logging",
@@ -63,7 +69,6 @@ tf_python_pybind_extension(
     name = "_pywrap_bfloat16",
     srcs = ["bfloat16_wrapper.cc"],
     hdrs = ["bfloat16.h"],
-    module_name = "_pywrap_bfloat16",
     deps = [
         "//third_party/python_runtime:headers",
         "@pybind11",
@@ -236,7 +241,6 @@ cc_library(
 tf_python_pybind_extension(
     name = "_pywrap_py_func",
     srcs = ["py_func_wrapper.cc"],
-    module_name = "_pywrap_py_func",
     deps = [
         "//tensorflow/python:py_func_headers_lib",
         "//third_party/python_runtime:headers",

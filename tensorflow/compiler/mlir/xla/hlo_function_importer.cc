@@ -30,11 +30,11 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -241,9 +242,9 @@ Value HloFunctionImporter::CreateTupleValue(
 Status HloFunctionImporter::ImportAsFunc(
     const HloComputation& computation, mlir::ModuleOp module,
     std::unordered_map<const HloComputation*, FuncOp>* function_map,
-    mlir::Builder* builder) {
+    mlir::Builder* builder, bool is_main) {
   HloFunctionImporter importer(module, function_map, builder);
-  return importer.ImportAsFunc(computation).status();
+  return importer.ImportAsFunc(computation, is_main).status();
 }
 
 Status HloFunctionImporter::ImportAsRegion(
@@ -255,18 +256,25 @@ Status HloFunctionImporter::ImportAsRegion(
 }
 
 StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
-    const HloComputation& computation) {
-  auto& imported = (*function_map_)[&computation];
-  if (imported) return imported;
+    const HloComputation& computation, bool is_main) {
+  std::string computation_name =
+      is_main ? "main" : SanitizeFunctionName(computation.name());
+
+  FuncOp* imported(nullptr);
+  if (function_map_) {
+    imported = &((*function_map_)[&computation]);
+    if (*imported) {
+      return *imported;
+    }
+  } else {
+    TF_RET_CHECK(!module_.lookupSymbol<FuncOp>(computation_name))
+        << "Attempting to redeclare an existing function named "
+        << computation.name();
+  }
   llvm::SmallVector<Type, 4> args, rets;
   TF_RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(), &args));
   TF_RETURN_IF_ERROR(GetMlirTypes({computation.root_instruction()}, &rets));
   auto func_type = mlir::FunctionType::get(context_, args, rets);
-
-  std::string computation_name =
-      computation.parent()->entry_computation() == &computation
-          ? "main"
-          : SanitizeFunctionName(computation.name());
 
   // Construct the MLIR function and map arguments.
   llvm::ArrayRef<mlir::NamedAttribute> attrs;
@@ -275,10 +283,34 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   auto visibility = computation_name == "main" ? FuncOp::Visibility::Public
                                                : FuncOp::Visibility::Private;
   function.setVisibility(visibility);
+
+  for (auto& entry : llvm::enumerate(computation.parameter_instructions())) {
+    HloInstruction* parameter = entry.value();
+    if (parameter->has_sharding()) {
+      function.setArgAttr(
+          entry.index(), kShardingAttr,
+          builder_->getStringAttr(
+              parameter->sharding().ToProto().SerializeAsString()));
+    }
+  }
+  if (computation.root_instruction()->has_sharding()) {
+    auto result = computation.root_instruction();
+    if (function.getNumResults() != 1) {
+      return tensorflow::errors::Internal(absl::StrCat(
+          "Expected only a single result but got ", function.getNumResults()));
+    }
+    function.setResultAttr(
+        0, kShardingAttr,
+        builder_->getStringAttr(
+            result->sharding().ToProto().SerializeAsString()));
+  }
+
   module_.push_back(function);
 
-  // Add to the map right away for function calls.
-  imported = function;
+  // Add to the map right away for function calls if map is set.
+  if (imported) {
+    *imported = function;
+  }
 
   mlir::Block* block = function.addEntryBlock();
   TF_RETURN_IF_ERROR(ImportInstructions(computation, block,
@@ -416,7 +448,7 @@ Status HloFunctionImporter::ImportInstructions(
 
   CleanUpTupleOps(block, &builder);
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<Value> HloFunctionImporter::ImportInstructions(
@@ -476,7 +508,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto attr = CreateDenseElementsAttrFromLiteral(literal, *builder_);
       if (!attr.ok()) return attr.status();
       mlir::Operation* new_operation =
-          func_builder->create<mlir::mhlo::ConstOp>(loc, attr.ValueOrDie());
+          func_builder->create<mlir::mhlo::ConstantOp>(loc, attr.ValueOrDie());
       for (auto attr : attributes) {
         new_operation->setAttr(attr.getName(), attr.getValue());
       }
@@ -563,8 +595,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kCall: {
-      TF_ASSIGN_OR_RETURN(FuncOp function,
-                          ImportAsFunc(*instruction->to_apply()));
+      TF_ASSIGN_OR_RETURN(
+          FuncOp function,
+          ImportAsFunc(*instruction->to_apply(), /*is_main=*/false));
       mlir::Operation* new_operation =
           func_builder->create<mlir::func::CallOp>(loc, function, operands);
       return new_operation;
@@ -584,7 +617,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         llvm::SmallVector<mlir::Attribute> callees;
         callees.reserve(called_computations.size());
         for (HloComputation* callee : called_computations) {
-          TF_ASSIGN_OR_RETURN(FuncOp function, ImportAsFunc(*callee));
+          TF_ASSIGN_OR_RETURN(FuncOp function, ImportAsFunc(*callee,
+                                                            /*is_main=*/false));
           callees.push_back(mlir::FlatSymbolRefAttr::get(builder_->getContext(),
                                                          function.getName()));
         }
@@ -770,12 +804,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "unique_indices", builder_->getBoolAttr(scatter->unique_indices())));
 
+      llvm::SmallVector<Type> flattened_types;
+      FlattenTupleType(result_type, flattened_types);
+
       auto scatter_op = func_builder->create<mlir::mhlo::ScatterOp>(
-          loc, result_type, operands, attributes);
+          loc, flattened_types, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*scatter->to_apply(),
                                         &scatter_op.update_computation(),
                                         /*flatten_region_arg_tuple=*/true));
-      return scatter_op.getOperation();
+      TF_ASSIGN_OR_RETURN(auto result_type,
+                          ConvertShapeToType<RankedTensorType>(
+                              instruction->shape(), *builder_));
+      return CreateTupleFromOpResults(func_builder, loc,
+                                      scatter_op.getOperation(), result_type);
     }
     case HloOpcode::kSelectAndScatter: {
       auto select_scatter = Cast<HloSelectAndScatterInstruction>(instruction);
@@ -1024,19 +1065,21 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kRng: {
-      auto shape = func_builder->create<mlir::mhlo::ConstOp>(
+      auto shape = func_builder->create<mlir::mhlo::ConstantOp>(
           loc, Convert(result_type.cast<RankedTensorType>().getShape()));
       switch (instruction->random_distribution()) {
         case xla::RNG_UNIFORM:
           return func_builder
-              ->create<mlir::mhlo::RngUniformOp>(loc, result_type, operands[0],
-                                                 operands[1], shape)
+              ->create<mlir::mhlo::RngOp>(
+                  loc, result_type, operands[0], operands[1], shape,
+                  ::mlir::mhlo::RngDistribution::UNIFORM)
               .getOperation();
 
         case xla::RNG_NORMAL:
           return func_builder
-              ->create<mlir::mhlo::RngNormalOp>(loc, result_type, operands[0],
-                                                operands[1], shape)
+              ->create<mlir::mhlo::RngOp>(loc, result_type, operands[0],
+                                          operands[1], shape,
+                                          ::mlir::mhlo::RngDistribution::NORMAL)
               .getOperation();
 
         default:
@@ -1052,9 +1095,11 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       llvm::SmallVector<Type> flattened_ret_types;
       FlattenTupleType(result_type, flattened_ret_types);
 
+      auto algorithm_attr = mlir::mhlo::RngAlgorithmAttr::get(
+          builder_->getContext(),
+          *mlir::mhlo::symbolizeRngAlgorithm(rng_op->algorithm()));
       auto op = func_builder->create<mlir::mhlo::RngBitGeneratorOp>(
-          loc, flattened_ret_types,
-          func_builder->getI32IntegerAttr(rng_op->algorithm()), operands[0]);
+          loc, flattened_ret_types, algorithm_attr, operands[0]);
 
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       result_type);
@@ -1149,7 +1194,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           func_builder->create<mlir::mhlo::ReduceScatterOp>(
               loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*reduce_scatter->to_apply(),
-                                        &reduce_scatter_op.computation()));
+                                        &reduce_scatter_op.computation(),
+                                        /*flatten_region_arg_tuple=*/true));
 
       return reduce_scatter_op.getOperation();
     }
@@ -1204,6 +1250,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kConvolution: {
       llvm::SmallVector<int64_t, 4> strides, lhs_dilations, rhs_dilations;
+      llvm::SmallVector<bool, 4> reversals;
       llvm::SmallVector<int64_t, 8> paddings;
       for (const auto& dim : instruction->window().dimensions()) {
         strides.push_back(dim.stride());
@@ -1211,6 +1258,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         rhs_dilations.push_back(dim.window_dilation());
         paddings.push_back(dim.padding_low());
         paddings.push_back(dim.padding_high());
+        reversals.push_back(dim.window_reversal());
       }
 
       attributes.push_back(
@@ -1220,6 +1268,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           builder_->getNamedAttr("lhs_dilation", Convert(lhs_dilations)));
       attributes.push_back(
           builder_->getNamedAttr("rhs_dilation", Convert(rhs_dilations)));
+      attributes.push_back(
+          builder_->getNamedAttr("window_reversal", Convert(reversals)));
       attributes.push_back(builder_->getNamedAttr(
           "dimension_numbers",
           ConvertConvDimensionNumbers(
@@ -1235,7 +1285,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           ConvertPrecisionConfig(&instruction->precision_config(), builder_)));
 
       return func_builder
-          ->create<mlir::mhlo::ConvOp>(loc, result_type, operands, attributes)
+          ->create<mlir::mhlo::ConvolutionOp>(loc, result_type, operands,
+                                              attributes)
           .getOperation();
     }
 
@@ -1306,7 +1357,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       TF_ASSIGN_OR_RETURN(mlir::Type type,
                           ConvertTensorShapeToType<mlir::RankedTensorType>(
                               input_shape, *func_builder));
-      auto zero = func_builder->create<mlir::mhlo::ConstOp>(
+      auto zero = func_builder->create<mlir::mhlo::ConstantOp>(
           loc, func_builder->getZeroAttr(type));
       return {func_builder->create<mlir::mhlo::CompareOp>(
           loc, operands[0], zero, mlir::mhlo::ComparisonDirection::NE)};
@@ -1323,6 +1374,43 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       operands[0].getType());
     }
+    case HloOpcode::kDomain: {
+      auto domain_kind = mlir::mhlo::symbolizeDomainKind(
+          instruction->user_side_metadata().Kind());
+      if (!domain_kind || *domain_kind != mlir::mhlo::DomainKind::sharding) {
+        return tensorflow::errors::InvalidArgument(
+            "Invalid domain kind in hlo -> mhlo import. Only 'sharding' is "
+            "supported");
+      }
+      attributes.push_back(builder_->getNamedAttr(
+          "kind", mlir::mhlo::DomainKindAttr::get(func_builder->getContext(),
+                                                  *domain_kind)));
+
+      // In XLA, DomainMetadata is open-world, but in the proto, it is hardcoded
+      // to be ShardingMetadata. Thankfully, the only other implementation of
+      // DomainMetadata is OpName, which is generally used for debugging and
+      // never for compiling production models.
+      //
+      // Since this is hardcoded as such in the proto, we must follow suit.
+      // TODO(b/208783683): The one improvement we can make on this is to move
+      // from the a serialized proto representation to a parsable string
+      auto exit_metadata = ShardingMetadata::ToShardingMetadata(
+          &instruction->operand_side_metadata());
+      auto entry_metadata = ShardingMetadata::ToShardingMetadata(
+          &instruction->user_side_metadata());
+      attributes.push_back(builder_->getNamedAttr(
+          "exit_metadata",
+          builder_->getStringAttr(
+              (*exit_metadata)->sharding()->ToProto().SerializeAsString())));
+      attributes.push_back(builder_->getNamedAttr(
+          "entry_metadata",
+          builder_->getStringAttr(
+              (*entry_metadata)->sharding()->ToProto().SerializeAsString())));
+
+      return func_builder
+          ->create<mlir::mhlo::DomainOp>(loc, result_type, operands, attributes)
+          .getOperation();
+    }
 
 #define NO_ATTRIBUTE_CASE(hlo_op_code, mlir_op)                               \
   case HloOpcode::hlo_op_code: {                                              \
@@ -1335,6 +1423,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // part of the HLO instruction. They are only a convenience in the XLA
       // builder API.
       NO_ATTRIBUTE_CASE(kAbs, AbsOp);
+      NO_ATTRIBUTE_CASE(kAddDependency, AddDependencyOp);
       NO_ATTRIBUTE_CASE(kAnd, AndOp);
       NO_ATTRIBUTE_CASE(kAtan2, Atan2Op);
       NO_ATTRIBUTE_CASE(kBitcastConvert, BitcastConvertOp);
@@ -1343,7 +1432,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kCeil, CeilOp);
       NO_ATTRIBUTE_CASE(kClamp, ClampOp);
       NO_ATTRIBUTE_CASE(kComplex, ComplexOp);
-      NO_ATTRIBUTE_CASE(kCos, CosOp);
+      NO_ATTRIBUTE_CASE(kCos, CosineOp);
       NO_ATTRIBUTE_CASE(kDivide, DivOp);
       NO_ATTRIBUTE_CASE(kExp, ExpOp);
       NO_ATTRIBUTE_CASE(kExpm1, Expm1Op);
@@ -1358,6 +1447,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kNegate, NegOp);
       NO_ATTRIBUTE_CASE(kNot, NotOp);
       NO_ATTRIBUTE_CASE(kOr, OrOp);
+      NO_ATTRIBUTE_CASE(kPartitionId, PartitionIdOp);
       NO_ATTRIBUTE_CASE(kPopulationCount, PopulationCountOp);
       NO_ATTRIBUTE_CASE(kPower, PowOp);
       NO_ATTRIBUTE_CASE(kReal, RealOp);
@@ -1369,15 +1459,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // implements it as a separate transpose.
       NO_ATTRIBUTE_CASE(kReshape, ReshapeOp);
       NO_ATTRIBUTE_CASE(kRoundNearestAfz, RoundOp);
+      NO_ATTRIBUTE_CASE(kRoundNearestEven, RoundNearestEvenOp);
       NO_ATTRIBUTE_CASE(kRsqrt, RsqrtOp);
       NO_ATTRIBUTE_CASE(kSelect, SelectOp);
       NO_ATTRIBUTE_CASE(kShiftLeft, ShiftLeftOp);
       NO_ATTRIBUTE_CASE(kShiftRightArithmetic, ShiftRightArithmeticOp);
       NO_ATTRIBUTE_CASE(kShiftRightLogical, ShiftRightLogicalOp);
       NO_ATTRIBUTE_CASE(kSign, SignOp);
-      NO_ATTRIBUTE_CASE(kSin, SinOp);
+      NO_ATTRIBUTE_CASE(kSin, SineOp);
       NO_ATTRIBUTE_CASE(kSqrt, SqrtOp);
-      NO_ATTRIBUTE_CASE(kSubtract, SubOp);
+      NO_ATTRIBUTE_CASE(kSubtract, SubtractOp);
       NO_ATTRIBUTE_CASE(kTanh, TanhOp);
       NO_ATTRIBUTE_CASE(kTuple, TupleOp);
       NO_ATTRIBUTE_CASE(kXor, XorOp);
@@ -1432,11 +1523,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           func_builder->getI32Type(), instruction->mantissa_bits()));
       return op.getOperation();
     }
-    case HloOpcode::kAddDependency:
-      // Arbitrary op code that I suspect we will not implement for quite a
-      // while and allows testing handling of unknown ops. Selected because it
-      // is not mentioned in xla client anywhere or in the hlo of our sample
-      // models.
     default: {
       mlir::OperationState result(loc, "mhlo.unknown");
       result.addOperands(operands);
@@ -1505,7 +1591,7 @@ tensorflow::Status HloFunctionImporter::GetMlirTypes(
                                            instruction->shape(), *builder_));
     types->push_back(ret_type);
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<Value> HloFunctionImporter::GetMlirValue(
@@ -1557,6 +1643,12 @@ mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
       elements);
 }
 
+mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
+    llvm::ArrayRef<bool> elements) {
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get(elements.size(), builder_->getI1Type()), elements);
+}
+
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
     llvm::ArrayRef<int64_t> padding) {
   auto ty =
@@ -1604,7 +1696,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
-    absl::optional<int64_t> channel_id) {
+    std::optional<int64_t> channel_id) {
   xla::ChannelHandle channel_handle;
   if (channel_id) channel_handle.set_handle(*channel_id);
   return ConvertChannelHandle(channel_handle);
@@ -1613,10 +1705,8 @@ mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
     const xla::ChannelHandle& channel) {
   return builder_->getNamedAttr(
-      "channel_handle",
-      mlir::mhlo::ChannelHandle::get(
-          builder_->getI64IntegerAttr(channel.handle()),
-          builder_->getI64IntegerAttr(channel.type()), context_));
+      "channel_handle", mlir::mhlo::ChannelHandleAttr::get(
+                            context_, channel.handle(), channel.type()));
 }
 
 void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,
@@ -1634,7 +1724,7 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
     const xla::Shape& shape,
     llvm::SmallVectorImpl<mlir::Attribute>& flattened_attr) {
   if (shape.IsToken()) {
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (shape.IsTuple()) {
     std::vector<mlir::Attribute> tuple_layouts;
@@ -1642,7 +1732,7 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
       TF_RETURN_IF_ERROR(
           ConvertShapeToMlirLayout(shape.tuple_shapes(i), flattened_attr));
     }
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (shape.IsArray()) {
     const xla::Layout l = shape.layout();
@@ -1652,7 +1742,7 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
     }
     llvm::ArrayRef<mlir::Attribute> array_ref(minor_to_major);
     flattened_attr.push_back(builder_->getArrayAttr(array_ref));
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   return tensorflow::errors::Internal("Couldn't convert layout.");
 }

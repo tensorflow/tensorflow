@@ -11,7 +11,7 @@ module {
     // CHECK:   %[[A0]] = s64[] parameter(0)
     // CHECK:   ROOT %compare.7 = pred[] compare(s64[] %[[A0]], s64[] %[[A0]]), direction=LT
     ^bb0(%arg1: tensor<i64>):
-      %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+      %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i64>, tensor<i64>) -> tensor<i1>
       "mhlo.return"(%1) : (tensor<i1>) -> ()
     },  {
     ^bb0(%arg1: tensor<i64>):
@@ -70,7 +70,7 @@ func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
   %3:4 = "mhlo.while"(%0, %1, %2, %arg0) ({
   ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<f32>):
     %4 = mhlo.constant dense<0> : tensor<i32>
-    %5 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %5 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%5) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<f32>):
@@ -139,7 +139,7 @@ func.func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
       %8 = mhlo.add %arg5, %arg6 : tensor<i32>
       "mhlo.return"(%8) : (tensor<i32>) -> ()
     }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<2xi32>, tensor<i32>) -> tensor<i32>
-    %7 = "mhlo.compare"(%5, %6) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %7 = "mhlo.compare"(%5, %6) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
@@ -155,12 +155,12 @@ func.func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 // CHECK-LABEL: HloModule main
 
 // CHECK: [[BODY:%.+]] ([[TUPLE:.+]]: (s32[], s32[], s32[])) -> (s32[], s32[], s32[]) {
-// CHECK_NEXT: %[[TUPLE:.*]] = (s32[], s32[], s32[]) parameter(0)
-// CHECK_NEXT: %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TU{LE]]), index=0
-// CHECK_NEXT: %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TU{LE]]), index=1
-// CHECK_NEXT: %[[ADD:.*]] = s32[] add(s32[] %[[GTE_0]], s32[] %[[GTE_1]])
-// CHECK_NEXT: %[[GTE_2:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=2
-// CHECK_NEXT: ROOT %[[TUPLE_RES:.*]] = (s32[], s32[], s32[]) tuple(s32[] %[[ADD]], s32[] %[[GTE_1]], s32[] %[[GTE_2]])
+// CHECK-NEXT: %[[TUPLE:.*]] = (s32[], s32[], s32[]) parameter(0)
+// CHECK-NEXT: %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=0
+// CHECK-NEXT: %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=1
+// CHECK-NEXT: %[[ADD:.*]] = s32[] add(s32[] %[[GTE_0]], s32[] %[[GTE_1]])
+// CHECK-NEXT: %[[GTE_2:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=2
+// CHECK-NEXT: ROOT %[[TUPLE_RES:.*]] = (s32[], s32[], s32[]) tuple(s32[] %[[ADD]], s32[] %[[GTE_1]], s32[] %[[GTE_2]])
 // CHECK: }
 
 // CHECK: [[COND:%.+]] ([[TUPLE:.+]]: (s32[], s32[], s32[])) -> pred[] {
@@ -195,7 +195,7 @@ func.func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %4 = "mhlo.get_tuple_element"(%3) {index = 0 : i32} : (tuple<tensor<i32>>) -> tensor<i32>
     %5:3 = "mhlo.while"(%0, %2, %4) ({
     ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
-      %9 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      %9 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "mhlo.return"(%9) : (tensor<i1>) -> ()
     },  {
     ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
@@ -253,7 +253,7 @@ func.func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
       "mhlo.return"(%8) : (tensor<f32>) -> ()
     }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<3x3xf32>, tensor<f32>) -> tensor<f32>
     %5 = mhlo.constant dense<1.000000e+02> : tensor<f32>
-    %6 = "mhlo.compare"(%4, %5) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %6 = "mhlo.compare"(%4, %5) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%6) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<3x3xf32>):
@@ -300,7 +300,7 @@ func.func @main(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
   %1:2 = "mhlo.while"(%0, %arg0) ({
   ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
-    %2 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %2 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%2) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):

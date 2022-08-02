@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_DTENSOR_MLIR_PASSES_CLASSES_H_
 #define TENSORFLOW_DTENSOR_MLIR_DTENSOR_MLIR_PASSES_CLASSES_H_
 
-#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 
 namespace tensorflow {
 namespace dtensor {

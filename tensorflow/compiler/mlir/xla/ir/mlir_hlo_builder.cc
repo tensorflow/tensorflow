@@ -18,15 +18,19 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -88,7 +92,7 @@ XlaOp MlirHloBuilder::ConstantLiteral(const LiteralSlice& literal) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(mlir::DenseElementsAttr attr,
                         CreateDenseElementsAttrFromLiteral(literal, builder_));
-    auto op = builder_.create<mlir::mhlo::ConstOp>(loc_, attr);
+    auto op = builder_.create<mlir::mhlo::ConstantOp>(loc_, attr);
     return MakeXlaOp(op);
   });
 }
@@ -107,7 +111,7 @@ StatusOr<XlaOp> MlirHloBuilder::ConvGeneralDilatedInternal(
   mlir::ArrayAttr config_attr;
   if (precision_config)
     config_attr = ConvertPrecisionConfig(precision_config, &builder_);
-  auto op = builder_.create<mlir::mhlo::ConvOp>(
+  auto op = builder_.create<mlir::mhlo::ConvolutionOp>(
       loc_, ty, GetValue(lhs), GetValue(rhs),
       GetI64ElementsAttr(window_strides, &builder_),
       ConvertPadding(padding, &builder_),
@@ -134,15 +138,17 @@ StatusOr<XlaOp> MlirHloBuilder::FftInternal(
   return MakeXlaOp(op);
 }
 
+// TODO(b/235207091) Add actual support for the called computation.
 StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     const std::string& call_target_name, absl::Span<const XlaOp> operands,
-    const Shape& shape, const std::string& opaque,
-    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+    const XlaComputation* computation, const Shape& shape,
+    const std::string& opaque,
+    std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing,
-    const Literal* literal, absl::optional<Window> window,
-    absl::optional<ConvolutionDimensionNumbers> dnums,
+    const Literal* literal, std::optional<Window> window,
+    std::optional<ConvolutionDimensionNumbers> dnums,
     CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   TF_RET_CHECK(output_operand_aliasing.empty())
       << "MLIR CustomCallOp does not support output_operand_aliasing yet";
@@ -154,6 +160,10 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
       << "MLIR CustomCallOp does not support ConvolutionDimensionNumbers yet";
   TF_RET_CHECK(schedule == CustomCallSchedule::SCHEDULE_NONE)
       << "MLIR CustomCallOp does not support custom-call-schedule yet";
+  TF_RET_CHECK(computation == nullptr || computation->IsNull() ||
+               build_functions_ == true)
+      << "MLIR CustomCallOp with computation isn't supported when not allowed "
+         "to create functions";
 
   llvm::SmallVector<mlir::NamedAttribute> attributes;
   if (operand_shapes_with_layout.has_value()) {
@@ -174,14 +184,11 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     attributes.push_back(
         builder_.getNamedAttr("result_layouts", result_layouts));
   }
-  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
-                                         shape, builder_));
   TF_ASSIGN_OR_RETURN(auto mlir_api_version,
                       ConvertCustomCallApiVersion(api_version));
   attributes.push_back(builder_.getNamedAttr(
       "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                          builder_.getContext(), mlir_api_version)));
-
   attributes.push_back(builder_.getNamedAttr(
       "call_target_name", builder_.getStringAttr(call_target_name)));
   attributes.push_back(builder_.getNamedAttr(
@@ -189,6 +196,26 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
   attributes.push_back(
       builder_.getNamedAttr("backend_config", builder_.getStringAttr(opaque)));
 
+  if (computation && !computation->IsNull()) {
+    llvm::SmallVector<mlir::Attribute> computation_names;
+    for (const auto& computation_proto : computation->proto().computations()) {
+      computation_names.push_back(mlir::SymbolRefAttr::get(
+          builder_.getContext(), computation_proto.name()));
+    }
+    attributes.push_back(builder_.getNamedAttr(
+        "called_computations", builder_.getArrayAttr(computation_names)));
+
+    // Create new function(s) to represent the called computations. As a result,
+    // this legalization may only be called during a module pass rather than the
+    // typical parallelized func pass which is not permitted to create
+    // functions.
+    TF_RETURN_IF_ERROR(ImportComputation(
+        computation->proto(),
+        builder_.getBlock()->getParent()->getParentOfType<mlir::ModuleOp>()));
+  }
+
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
   auto op = builder_.create<mlir::mhlo::CustomCallOp>(
       loc_, ty, GetValues(operands), attributes);
   return MakeXlaOp(op.getResult(0));
@@ -365,21 +392,26 @@ StatusOr<XlaOp> MlirHloBuilder::GatherInternal(
 }
 
 StatusOr<XlaOp> MlirHloBuilder::ScatterInternal(
-    const Shape& shape, XlaOp input, XlaOp scatter_indices, XlaOp updates,
-    const XlaComputation& update_computation,
+    const Shape& shape, absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+    absl::Span<const XlaOp> updates, const XlaComputation& update_computation,
     const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
     bool unique_indices) {
+  // TODO(b/230137437): Allow variadic scatter after adding mhlo support.
+  if (inputs.size() != 1) {
+    return Unimplemented("Variadic scatter not implemented in mhlo yet.");
+  }
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
   auto op = builder_.create<mlir::mhlo::ScatterOp>(
-      loc_, ty, GetValue(input), GetValue(scatter_indices), GetValue(updates),
+      loc_, ty, GetValue(inputs[0]), GetValue(scatter_indices),
+      GetValue(updates[0]),
       ConvertScatterDimensionNumbers(dimension_numbers, &builder_),
       builder_.getBoolAttr(indices_are_sorted),
       builder_.getBoolAttr(unique_indices));
 
   TF_RETURN_IF_ERROR(
       ImportComputation(update_computation.proto(), &op.update_computation()));
-  return MakeXlaOp(op);
+  return MakeXlaOp(op.getResult(0));
 }
 
 StatusOr<XlaOp> MlirHloBuilder::SetDimensionSizeInternal(const Shape& shape,
@@ -397,24 +429,30 @@ StatusOr<XlaOp> MlirHloBuilder::SetDimensionSizeInternal(const Shape& shape,
 StatusOr<XlaOp> MlirHloBuilder::RngOpInternal(
     RandomDistribution distribution, absl::Span<const XlaOp> parameters,
     const Shape& shape) {
-  // TODO(hinsu): Introduce RngOp in the HLO dialect in MLIR and then RngUniform
-  // and RngNormal can be mapped to the new op.
-  std::string op_name;
+  mlir::mhlo::RngDistributionAttr attr;
   if (distribution == xla::RandomDistribution::RNG_UNIFORM) {
-    op_name = "mhlo.rng_uniform";
+    attr = mlir::mhlo::RngDistributionAttr::get(
+        builder_.getContext(), mlir::mhlo::RngDistribution::UNIFORM);
   } else {
     TF_RET_CHECK(distribution == xla::RandomDistribution::RNG_NORMAL)
         << "Unexpected distribution: " << distribution;
-    op_name = "mhlo.rng_normal";
+    attr = mlir::mhlo::RngDistributionAttr::get(
+        builder_.getContext(), mlir::mhlo::RngDistribution::NORMAL);
   }
+  llvm::SmallVector<mlir::NamedAttribute, 1> attributes = {
+      builder_.getNamedAttr("rng_distribution", attr)};
 
   if (shape.is_dynamic())
     return Unimplemented("RngOp with dynamic dims not supported");
-  llvm::SmallVector<XlaOp, 3> operands;
-  operands.append(parameters.begin(), parameters.end());
-  operands.push_back(
-      ConstantLiteral(LiteralUtil::CreateR1<int64_t>(shape.dimensions())));
-  return CreateOp(op_name, shape, operands);
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+
+  auto op = builder_.create<mlir::mhlo::RngOp>(
+      loc_, ty, GetValue(parameters[0]), GetValue(parameters[1]),
+      GetValue(
+          ConstantLiteral(LiteralUtil::CreateR1<int64_t>(shape.dimensions()))),
+      attr);
+  return MakeXlaOp(op.getResult());
 }
 
 StatusOr<XlaOp> MlirHloBuilder::RngBitGeneratorInternal(
@@ -426,9 +464,10 @@ StatusOr<XlaOp> MlirHloBuilder::RngBitGeneratorInternal(
   llvm::SmallVector<mlir::Type> flattened_ret_types;
   HloFunctionImporter::FlattenTupleType(ty, flattened_ret_types);
 
+  auto algorithm_attr = mlir::mhlo::RngAlgorithmAttr::get(
+      builder_.getContext(), *mlir::mhlo::symbolizeRngAlgorithm(algorithm));
   auto op = builder_.create<mlir::mhlo::RngBitGeneratorOp>(
-      loc_, flattened_ret_types, builder_.getI32IntegerAttr(algorithm),
-      GetValue(initial_state));
+      loc_, flattened_ret_types, algorithm_attr, GetValue(initial_state));
 
   if (ty.isa<mlir::TupleType>()) {
     llvm::SmallVector<mlir::Value> flattened_results = op->getResults();
@@ -685,18 +724,33 @@ StatusOr<XlaOp> MlirHloBuilder::CreateOp(
   return MakeXlaOp(op->getResult(0));
 }
 
+StatusOr<std::unique_ptr<xla::HloModule>> CreateHloModuleFromProto(
+    const HloModuleProto& proto) {
+  TF_ASSIGN_OR_RETURN(
+      auto module_config,
+      xla::HloModule::CreateModuleConfigFromProto(proto, xla::DebugOptions()));
+  TF_ASSIGN_OR_RETURN(auto hlo_module,
+                      xla::HloModule::CreateFromProto(proto, module_config));
+  return hlo_module;
+}
+
 Status MlirHloBuilder::ImportComputation(const HloModuleProto& computation,
                                          mlir::Region* region,
                                          bool flatten_region_arg_tuple) {
-  TF_ASSIGN_OR_RETURN(auto module_config,
-                      xla::HloModule::CreateModuleConfigFromProto(
-                          computation, xla::DebugOptions()));
-  TF_ASSIGN_OR_RETURN(auto hlo_module, xla::HloModule::CreateFromProto(
-                                           computation, module_config));
+  TF_ASSIGN_OR_RETURN(auto hlo_module, CreateHloModuleFromProto(computation));
 
   return HloFunctionImporter::ImportAsRegion(*hlo_module->entry_computation(),
                                              region, &builder_,
                                              flatten_region_arg_tuple);
+}
+
+Status MlirHloBuilder::ImportComputation(const HloModuleProto& computation,
+                                         mlir::ModuleOp module) {
+  TF_ASSIGN_OR_RETURN(auto hlo_module, CreateHloModuleFromProto(computation));
+
+  return HloFunctionImporter::ImportAsFunc(*hlo_module->entry_computation(),
+                                           module, {}, &builder_,
+                                           /*is_main=*/false);
 }
 
 StatusOr<const Shape*> MlirHloBuilder::GetShapePtr(XlaOp op) const {

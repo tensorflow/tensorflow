@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 
 namespace mlir {
 namespace {
@@ -53,10 +55,6 @@ tensorflow::Status RunTFXLABridge(
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
   PassManager bridge(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(bridge);
-  if (enable_logging || VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile("tf_xla_bridge_before", module);
-    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
-  }
 
   // Populate a passmanager with the list of passes that implement the bridge.
   pipeline_builder(bridge);
@@ -68,10 +66,14 @@ tensorflow::Status RunTFXLABridge(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
+  if (enable_logging || VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile("tf_xla_bridge_before", module, "", &bridge);
+    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
+  }
   LogicalResult result = bridge.run(module);
   (void)result;
   if (enable_logging || VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("tf_xla_bridge_after", module);
+    tensorflow::DumpMlirOpToFile("tf_xla_bridge_after", module, "", &bridge);
   return diag_handler.ConsumeStatus();
 }
 
@@ -97,6 +99,7 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   pm.addPass(TF::CreateTFShapeInferencePass());
   pm.addNestedPass<func::FuncOp>(
       CreateTPUReorderReplicateAndPartitionedInputsPass());
+  pm.addNestedPass<func::FuncOp>(TF::CreateDecomposeReduceDatasetPass());
   pm.addPass(CreateTPUClusterFormationPass());
   // Run TPU cluster cleanup attributes so ops with no outside compiled
   // attribute have no host device attribute.
@@ -227,7 +230,10 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
       RunTFXLABridge(module, enable_logging, CreateTPUBridgePipeline);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v2", fallback_enabled,
-      status == Status::OK() ? "success" : "failure");
+      status == ::tensorflow::OkStatus() ? "success" : "failure");
+  OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
+      status);
   return status;
 }
 tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
@@ -236,7 +242,7 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
       RunTFXLABridge(module, enable_logging, CreateTPUBridgePipelineV1);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v1", fallback_enabled,
-      status == Status::OK() ? "success" : "failure");
+      status == ::tensorflow::OkStatus() ? "success" : "failure");
   return status;
 }
 
@@ -268,10 +274,6 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_logging,
                                                  bool enable_inliner) {
   PassManager bridge(module.getContext());
-  if (enable_logging || VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile("standard_pipeline_before", module);
-    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
-  }
 
   StandardPipelineOptions pipeline_options;
   pipeline_options.enable_inliner.setValue(enable_inliner);
@@ -281,10 +283,16 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
+  if (enable_logging || VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile("standard_pipeline_before", module, "",
+                                 &bridge);
+    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
+  }
   LogicalResult result = bridge.run(module);
   (void)result;
   if (enable_logging || VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("standard_pipeline_after", module);
+    tensorflow::DumpMlirOpToFile("standard_pipeline_after", module, "",
+                                 &bridge);
   return diag_handler.ConsumeStatus();
 }
 
@@ -304,14 +312,14 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
   pm.addPass(TF::CreateTFShapeInferencePass());
+  // Encapsulate PartitionedCall ops within a cluster so that the composite
+  // resource ops can be decomposed.
+  pm.addPass(TFDevice::CreateXlaClusterFormationPass());
   // Running canonicalizer before decomposing resource ops in cluster helps the
   // latter pass to converge faster as it does not have to spend time folding
   // away dead ops.
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
-  // Encapsulate StatefulPartitionedCallOp within a cluster so that the
-  // composite resource ops can be decomposed.
-  pm.addPass(TFDevice::CreateXlaClusterFormationPass());
-  // Place DecomposeResourceOpsPass.
+  // Decompose resource ops.
   pm.addPass(TFDevice::CreateDecomposeResourceOpsInClusterPass());
   // Run another shape inference pass because resource decomposition might have
   // created new partial types. Also, after dropping `shape_invariant` attribute
@@ -341,7 +349,7 @@ tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging) {
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
       /*fallback_enabled*/ false,
-      /*result*/ status == Status::OK() ? "success" : "failure");
+      /*result*/ status == ::tensorflow::OkStatus() ? "success" : "failure");
   return status;
 }
 

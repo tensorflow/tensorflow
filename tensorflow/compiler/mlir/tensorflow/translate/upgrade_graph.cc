@@ -120,18 +120,12 @@ Status GenerateResourceSharedNameIfEmpty(
     }
   }
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 bool IsCompiledNode(const Node* n) {
-  // TODO(b/229028654) remove casts once C++17 is available
-  absl::string_view kTPUReplicateAttrStr(mlir::TF::kTPUReplicateAttr.data(),
-                                         mlir::TF::kTPUReplicateAttr.size());
-  absl::string_view kCompileDeviceTypeAttrStr(
-      mlir::TF::kCompileDeviceTypeAttr.data(),
-      mlir::TF::kCompileDeviceTypeAttr.size());
-  return n->attrs().Find(kTPUReplicateAttrStr) ||
-         n->attrs().Find(kCompileDeviceTypeAttrStr);
+  return n->attrs().Find(tensorflow::kTpuReplicateAttr) ||
+         n->attrs().Find(tensorflow::kCompileDeviceTypeAttr);
 }
 
 Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
@@ -145,7 +139,7 @@ Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
       "Failed to functionalize Control Flow V1 ops. Consider using Control "
       "Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/tf/"
       "compat/v1/enable_control_flow_v2.");
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

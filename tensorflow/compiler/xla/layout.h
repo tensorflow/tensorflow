@@ -185,9 +185,7 @@ class Layout {
     return *this;
   }
   absl::Span<const int64_t> minor_to_major() const { return minor_to_major_; }
-  absl::InlinedVector<int64_t, 6>* mutable_minor_to_major() {
-    return &minor_to_major_;
-  }
+  DimensionVector* mutable_minor_to_major() { return &minor_to_major_; }
 
   // Methods for accessing the tile field.
   int tiles_size() const { return tiles_.size(); }
@@ -248,7 +246,7 @@ class Layout {
   // The second most minor is [8,100,100,3][0], which is size 8.
   // The third most minor is [8,100,100,3][2], which is size 100.
   // And the major dim is [8,100,100,3][1], which is size 100.
-  absl::InlinedVector<int64_t, 6> minor_to_major_;
+  DimensionVector minor_to_major_;
 
   // The tiles used in tiling-based layout.
   absl::InlinedVector<Tile, 2> tiles_;

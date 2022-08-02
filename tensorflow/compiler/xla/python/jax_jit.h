@@ -34,7 +34,7 @@ namespace jax {
 
 // Flags, such as JIT disable and the x64 mode, are controlled by:
 // - a global flag value, e.g., associated to --jax_enable_x64
-// - possibly a thread-local value, which initially is absl::nullopt and
+// - possibly a thread-local value, which initially is std::nullopt and
 //   overrides the global value if set. The thread-local state is
 //   used to implement context managers that locally override the global state.
 struct JitState {
@@ -44,24 +44,26 @@ struct JitState {
       // hand the Python object to the global reference manager to destroy.
       pybind11::object o = std::move(*extra_jit_context);
       xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&o, 1));
-      extra_jit_context = absl::nullopt;
+      extra_jit_context = std::nullopt;
     }
   }
 
-  absl::optional<bool> disable_jit;
-  absl::optional<bool> enable_x64;
+  std::optional<bool> disable_jit;
+  std::optional<bool> enable_x64;
 
   // Used to manually set the default device jax should use. May be unset even
   // in global state, indicating there is no manual override.
-  absl::optional<xla::ClientAndPtr<xla::PjRtDevice>> default_device;
+  // TODO(skyewm): make this a C++ type when all JAX backends support a single
+  // C++ device interface
+  std::optional<pybind11::object> default_device;
 
   // Extra context that should be included in the JIT cache key. Must be
   // hashable and have an equality defined.
-  absl::optional<pybind11::object> extra_jit_context;
+  std::optional<pybind11::object> extra_jit_context;
 
   // A callback that, if present, is called when a JITted function is executed
   // from cache. May be unset even in global state.
-  absl::optional<pybind11::function> post_hook;
+  std::optional<pybind11::function> post_hook;
 };
 
 JitState& GetGlobalState();
@@ -71,8 +73,10 @@ JitState& GetLocalState();
 // fallback to global state.
 bool GetDisableJit();
 bool GetEnableX64();
-absl::optional<xla::ClientAndPtr<xla::PjRtDevice>> GetDefaultDevice();
-absl::optional<pybind11::function> GetPostHook();
+// TODO(skyewm): return a C++ type when all JAX backends support a single C++
+// device interface
+std::optional<pybind11::object> GetDefaultDevice();
+std::optional<pybind11::function> GetPostHook();
 
 // The signature of Python jitted function call, partitioned into:
 // - dynamic positional arguments (i.e. positional args which are not static)
@@ -112,8 +116,8 @@ struct CallSignature {
   bool jax_enable_x64;
 
   // Opaque additional context that should be included as part of the cache key.
-  absl::optional<pybind11::object> global_extra_jit_context;
-  absl::optional<pybind11::object> thread_local_extra_jit_context;
+  std::optional<pybind11::object> global_extra_jit_context;
+  std::optional<pybind11::object> thread_local_extra_jit_context;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
@@ -150,7 +154,7 @@ struct ParsedArgumentsAsBuffers {
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
 xla::Status ParseArguments(pybind11::handle args,
-                           const absl::optional<pybind11::kwargs>& py_kwargs,
+                           const std::optional<pybind11::kwargs>& py_kwargs,
                            absl::Span<int const> static_argnums,
                            absl::Span<pybind11::str const> static_argnames,
                            ParsedArgumentsAsBuffers& arguments);

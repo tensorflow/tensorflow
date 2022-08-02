@@ -126,6 +126,7 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef HWLOC_HAVE_ATTRIBUTE_ALIGNED": "#define HWLOC_HAVE_ATTRIBUTE_ALIGNED 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_ALWAYS_INLINE": "#define HWLOC_HAVE_ATTRIBUTE_ALWAYS_INLINE 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_COLD": "#define HWLOC_HAVE_ATTRIBUTE_COLD 1",
+    "#undef HWLOC_HAVE_ATTRIBUTE_CONSTRUCTOR": "#define HWLOC_HAVE_ATTRIBUTE_CONSTRUCTOR 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_CONST": "#define HWLOC_HAVE_ATTRIBUTE_CONST 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_DEPRECATED": "#define HWLOC_HAVE_ATTRIBUTE_DEPRECATED 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_FORMAT": "#define HWLOC_HAVE_ATTRIBUTE_FORMAT 1",
@@ -195,9 +196,9 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
 }
 
 _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_CUDA_SUBS = {
-    "#undef HAVE_CUDA": "#undef HAVE_CUDA 1",
-    "#undef HAVE_CUDA_H": "#undef HAVE_CUDA_H 1",
-    "#undef HAVE_CUDA_RUNTIME_API_H": "#undef HAVE_CUDA_RUNTIME_API_H 1",
+    "#undef HAVE_CUDA_RUNTIME_API_H": "#define HAVE_CUDA_RUNTIME_API_H 1",
+    "#undef HAVE_CUDA_H": "#define HAVE_CUDA_H 1",
+    "#undef HAVE_CUDA": "#define HAVE_CUDA 1",
 }
 
 _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS = {
@@ -223,7 +224,7 @@ template_rule(
     name = "move_static_components_h",
     src = "@org_tensorflow//third_party/hwloc:static-components.h",
     out = "hwloc/static-components.h",
-    substitutions = {},
+    substitutions = {"&hwloc_linuxio_component": "//&hwloc_linuxio_component"},
 )
 
 cc_library(
@@ -233,8 +234,10 @@ cc_library(
         "hwloc/bind.c",
         "hwloc/bitmap.c",
         "hwloc/components.c",
+        "hwloc/cpukinds.c",
         "hwloc/diff.c",
         "hwloc/distances.c",
+        "hwloc/memattrs.c",
         "hwloc/misc.c",
         "hwloc/pci-common.c",
         "hwloc/shmem.c",
@@ -281,12 +284,14 @@ cc_library(
         "include/hwloc.h",
         "include/hwloc/autogen/config.h",
         "include/hwloc/bitmap.h",
+        "include/hwloc/cpukinds.h",
         "include/hwloc/deprecated.h",
         "include/hwloc/diff.h",
         "include/hwloc/distances.h",
         "include/hwloc/export.h",
         "include/hwloc/helper.h",
         "include/hwloc/inlines.h",
+        "include/hwloc/memattrs.h",
         "include/hwloc/rename.h",
     ],
     copts = COMMON_INCLUDE_COPTS + DISABLE_WARNINGS_COPTS + VAR_SETTINGS_COPTS,

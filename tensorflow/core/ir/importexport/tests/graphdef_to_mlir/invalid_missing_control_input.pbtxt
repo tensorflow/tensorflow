@@ -1,0 +1,27 @@
+# RUN: not tfg-translate -graphdef-to-mlir %s 2>&1 | FileCheck %s
+
+# CHECK: Non-existent input ^case/cond/cond/Merge in node ConstantFolding/case/cond/cond/Merge_const
+
+node {
+  name: "ConstantFolding/case/cond/cond/Merge_const"
+  op: "Const"
+  input: "^case/cond/cond/Merge"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_DOUBLE
+        tensor_shape {
+        }
+        tensor_content: "\342\351\225\262\014q\274?"
+      }
+    }
+  }
+}

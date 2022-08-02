@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
@@ -115,7 +116,7 @@ ParallelTaskAssignment::ParallelTaskAssignment(
     : target_machine_features_(*target_machine_features) {
   VLOG(1) << "ParallelTaskAssignment max_parallelism: " << max_parallelism;
   // Run cost analysis on 'module'.
-  auto cost_analysis = absl::make_unique<HloCostAnalysis>(shape_size);
+  auto cost_analysis = std::make_unique<HloCostAnalysis>(shape_size);
   HloComputation* computation = module->entry_computation();
   Status status = computation->root_instruction()->Accept(cost_analysis.get());
   if (status.ok()) {
@@ -171,7 +172,9 @@ int64_t ParallelTaskAssignment::GetTargetParallelTaskCount(
   return 1;
 }
 
-StatusOr<bool> ParallelTaskAssigner::Run(HloModule* module) {
+StatusOr<bool> ParallelTaskAssigner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "ParallelTaskAssigner ENTRY");
   XLA_VLOG_LINES(3, module->ToString());
   // Compute target parallel task counts for all instructions in 'module'.

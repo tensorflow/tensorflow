@@ -32,12 +32,20 @@ upper_tabs:
           path: /lite/inference_with_metadata/task_library/object_detector
         - title: "ImageSegmenter"
           path: /lite/inference_with_metadata/task_library/image_segmenter
+        - title: "ImageEmbedder"
+          path: /lite/inference_with_metadata/task_library/image_embedder
+        - title: "ImageSearcher"
+          path: /lite/inference_with_metadata/task_library/image_searcher
         - title: "NLClassifier"
           path: /lite/inference_with_metadata/task_library/nl_classifier
         - title: "BertNLClassifier"
           path: /lite/inference_with_metadata/task_library/bert_nl_classifier
         - title: "BertQuestionAnswerer"
           path: /lite/inference_with_metadata/task_library/bert_question_answerer
+        - title: "TextEmbedder"
+          path: /lite/inference_with_metadata/task_library/text_embedder
+        - title: "TextSearcher"
+          path: /lite/inference_with_metadata/task_library/text_searcher
         - title: "AudioClassifier"
           path: /lite/inference_with_metadata/task_library/audio_classifier
         - title: "Customized API"
@@ -79,17 +87,19 @@ upper_tabs:
 
     - name: "Android"
       contents:
+      - title: "Overview"
+        path: /lite/android/index
       - title: "Quickstart"
         path: /lite/android/quickstart
-
       - title: "Run with Play Services"
         path: /lite/android/play_services
         status: experimental
+      - title: "Development tools"
+        path: /lite/android/development
 
       - heading: "Images & video"
       - title: "Object detection"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android
-        status: external
+        path: /lite/android/tutorials/object_detection
       - title: "Image classification"
         path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/
         status: external
@@ -106,12 +116,8 @@ upper_tabs:
         status: external
 
       - heading: "Audio"
-      - title: "Voice commands"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/speech_commands/android
-        status: external
-      - title: "Sound classification"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/sound_classification/android
-        status: external
+      - title: "Sound and word recognition"
+        path: /lite/android/tutorials/audio_classification
 
       - heading: "Hardware acceleration"
       - title: "NNAPI delegate"
@@ -200,33 +206,38 @@ upper_tabs:
 
     - name: "Models"
       contents:
-      - heading: "Use built models"
-      - title: "Model catalog"
-        path: /lite/guide/hosted_models
+      - title: "Overview"
+        path: /lite/models
+
+      - heading: "Use trained models"
+      - title: "Guide"
+        path: /lite/models/trained/index
 
       - heading: "Modify models"
       - title: "Model Maker"
         status: experimental
         section:
         - title: "Overview"
-          path: /lite/guide/model_maker
+          path: /lite/models/modify/model_maker
         - heading: "Images & video"
         - title: "Image classification"
-          path: /lite/tutorials/model_maker_image_classification
+          path: /lite/models/modify/model_maker/image_classification
         - title: "Object detection"
-          path: /lite/tutorials/model_maker_object_detection
+          path: /lite/models/modify/model_maker/object_detection
 
         - heading: "Text"
         - title: "Text classification"
-          path: /lite/tutorials/model_maker_text_classification
+          path: /lite/models/modify/model_maker/text_classification
         - title: "BERT question & answer"
-          path: /lite/tutorials/model_maker_question_answer
-
+          path: /lite/models/modify/model_maker/question_answer
+        - title: "Text search"
+          path: /lite/models/modify/model_maker/text_searcher
+          status: New
         - heading: "Audio"
         - title: "Audio classification"
-          path: /lite/tutorials/model_maker_audio_classification
+          path: /lite/models/modify/model_maker/audio_classification
         - title: "Speech recognition"
-          path: /lite/tutorials/model_maker_speech_recognition
+          path: /lite/models/modify/model_maker/speech_recognition
 
       - heading: "Design and build models"
       - title: "Performance best practices"
@@ -238,7 +249,9 @@ upper_tabs:
 
       - heading: "Convert models"
       - title: "Overview"
-        path: /lite/convert/
+        path: /lite/models/convert/
+      - title: "TensorFlow Lite converter"
+        path: /lite/models/convert/convert_models
       - title: "Model compatibility"
         section:
         - title: "Overview"
@@ -248,14 +261,14 @@ upper_tabs:
         - title: "Custom operators"
           path: /lite/guide/ops_custom
         - title: "Fused operators"
-          path: /lite/convert/operation_fusion
+          path: /lite/models/convert/operation_fusion
         - title: "Operator versions"
           path: /lite/guide/ops_version
           status: experimental
         - title: "Select operators Allowlist"
           path: /lite/guide/op_select_allowlist
         - title: "RNN models"
-          path: /lite/convert/rnn
+          path: /lite/models/convert/rnn
         - title: "TensorFlow Text"
           path: /text/guide/text_tf_lite
           status: external
@@ -288,9 +301,9 @@ upper_tabs:
       - title: "Add model metadata"
         section:
         - title: "Overview"
-          path: /lite/convert/metadata
+          path: /lite/models/convert/metadata
         - title: "Metadata Writer API"
-          path: /lite/convert/metadata_writer_tutorial
+          path: /lite/models/convert/metadata_writer_tutorial
       - title: "Add Signatures"
         path: /lite/guide/signatures
         status: experimental

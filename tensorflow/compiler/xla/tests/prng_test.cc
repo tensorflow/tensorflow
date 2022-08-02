@@ -56,8 +56,7 @@ Literal PrngTest::UniformTest(T a, T b, absl::Span<const int64_t> dims,
       ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<T>(), dims));
 
   SetSeed(seed);
-  auto actual =
-      ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
+  auto actual = ExecuteAndTransfer(&builder, /*arguments=*/{}).value();
   EXPECT_THAT(dims, ::testing::ElementsAreArray(actual.shape().dimensions()));
   actual.EachCell<T>([=](absl::Span<const int64_t>, T value) {
     EXPECT_LE(a, value);
@@ -154,8 +153,7 @@ double PrngTest::UniformChiSquared(int32_t range_size, int32_t expected_count,
              ShapeUtil::MakeShape(S32, {sample_size}));
 
   SetSeed(seed);
-  auto actual =
-      ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
+  auto actual = ExecuteAndTransfer(&builder, /*arguments=*/{}).value();
   std::vector<int32_t> counts(range_size, 0);
   actual.EachCell<int32_t>(
       [&counts](absl::Span<const int64_t>, int32_t value) { ++counts[value]; });
@@ -329,7 +327,7 @@ XLA_TEST_F(PrngTest, TenValuesN01) {
             ShapeUtil::MakeShape(F32, {10}));
 
   SetSeed(42);
-  ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
+  ExecuteAndTransfer(&builder, /*arguments=*/{}).value();
   // TODO(b/25995601): Test that resultant values are reasonable
 }
 
@@ -341,7 +339,7 @@ XLA_TEST_F(PrngTest, RngUniformCrash) {
              ConstantR0<int32_t>(&builder, 1000 * 1000),
              ShapeUtil::MakeShape(S32, {}));
   SetSeed(0);
-  ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
+  ExecuteAndTransfer(&builder, /*arguments=*/{}).value();
 }
 
 }  // namespace

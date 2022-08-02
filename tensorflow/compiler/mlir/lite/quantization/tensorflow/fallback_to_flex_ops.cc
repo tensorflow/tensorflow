@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -149,7 +150,7 @@ inline bool IsFusibleWithBiasOp(Operation *op) {
 inline void CreateFlexOpCustomOptions(const std::string &op_name,
                                       const std::string &node_def_str,
                                       std::string &custom_option_buffer) {
-  auto flex_builder = absl::make_unique<flexbuffers::Builder>();
+  auto flex_builder = std::make_unique<flexbuffers::Builder>();
   flex_builder->Vector([&]() {
     flex_builder->String(op_name);
     flex_builder->String(node_def_str);

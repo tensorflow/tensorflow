@@ -346,7 +346,7 @@ struct RestoreOp {
     }
     VLOG(1) << "Done restoring tensor " << idx << " : " << tensor_name << " : "
             << restored_full_shape.num_elements();
-    return Status::OK();
+    return OkStatus();
   }
 
   OpKernelContext* context;
@@ -444,7 +444,7 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

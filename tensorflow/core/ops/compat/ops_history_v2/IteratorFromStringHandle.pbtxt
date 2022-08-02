@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "IteratorFromStringHandle"
   input_arg {
     name: "string_handle"

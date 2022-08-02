@@ -7,7 +7,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
-    "get_cc_shared_library_target_name",
+    "VERSION_MAJOR",
     "if_google",
     "if_oss",
     "tf_cc_shared_object",
@@ -89,6 +89,7 @@ PACKAGE_STATIC_DEPS = [
     "@local_execution_config_platform//:__subpackages__",
     "@mkl_dnn_acl_compatible//:__subpackages__",
     "@mkl_dnn_v1//:__subpackages__",
+    "@nccl_archive//:__subpackages__",
     "@org_sqlite//:__subpackages__",
     "@platforms//:__subpackages__",
     "@snappy//:__subpackages__",
@@ -448,6 +449,16 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This condition takes precedence over :linux_x86_64
+config_setting(
+    name = "linux_x86_64_no_sse",
+    values = {
+        "cpu": "k8",
+        "copt": "-mno-sse4.2",
+    },
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "linux_ppc64le",
     values = {"cpu": "ppc"},
@@ -732,9 +743,29 @@ config_setting(
 )
 
 # This flag enables experimental TPU support
+bool_flag(
+    name = "enable_tpu_support",
+    build_setting_default = False,
+)
+
 config_setting(
-    name = "with_tpu_support",
+    name = "with_tpu_support_define",
     define_values = {"with_tpu_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_tpu_support_flag",
+    flag_values = {":enable_tpu_support": "True"},
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "with_tpu_support",
+    match_any = [
+        ":with_tpu_support_define",
+        ":with_tpu_support_flag",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -757,9 +788,27 @@ selects.config_setting_group(
 # TODO(timshen): Currently this option only disables some dependencies.
 # See b/122528503.
 # copybara:uncomment_begin(google-only)
+# bool_flag(
+#     name = "tf_no_prod_deps",
+#     build_setting_default = False,
+# )
+#
 # config_setting(
-#     name = "no_prod_deps",
+#     name = "no_prod_deps_define",
 #     define_values = {"tf_no_prod_deps": "1"},
+# )
+#
+# config_setting(
+#     name = "no_prod_deps_flag",
+#     flag_values = {":tf_no_prod_deps": "True"},
+# )
+#
+# selects.config_setting_group(
+#     name = "no_prod_deps",
+#     match_any = [
+#         ":no_prod_deps_define",
+#         ":no_prod_deps_flag",
+#     ],
 # )
 #
 # config_setting(
@@ -849,14 +898,17 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//devtools/python/indexer/...",
         "//learning/brain/keras/...",
         "//learning/brain/mlir/...",
         "//learning/brain/tfrt/...",
         "//learning/lib/ami/simple_ml/...",
+        "//smartass/brain/configure/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
         "//third_party/py/keras/...",
         "//third_party/yggdrasil_decision_forests/...",
@@ -893,6 +945,7 @@ bzl_library(
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
+        "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
@@ -1003,10 +1056,7 @@ tf_cc_shared_library(
     }),
     linkstatic = 1,
     per_os_targets = True,
-    soversion = VERSION,
-    static_deps = PACKAGE_STATIC_DEPS,
-    visibility = ["//visibility:public"],
-    deps = [
+    roots = [
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/c:env",
@@ -1014,8 +1064,10 @@ tf_cc_shared_library(
         "//tensorflow/c:kernels_experimental",
         "//tensorflow/c:logging",
         "//tensorflow/c:ops",
+        "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",
+        "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
         "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
@@ -1027,6 +1079,9 @@ tf_cc_shared_library(
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/stream_executor:stream_executor_impl",
     ] + tf_additional_binary_deps(),
+    soversion = VERSION,
+    static_deps = PACKAGE_STATIC_DEPS,
+    visibility = ["//visibility:public"],
 )
 
 # This is intended to be the same as tf_binary_additional_srcs:
@@ -1037,7 +1092,7 @@ cc_import(
     name = "libtensorflow_framework_import_lib",
     shared_library = select({
         "//tensorflow:macos": ":libtensorflow_framework.dylib",
-        "//conditions:default": ":libtensorflow_framework.so",
+        "//conditions:default": ":libtensorflow_framework.so.%s" % VERSION_MAJOR,
     }),
 )
 
@@ -1107,10 +1162,10 @@ tf_cc_shared_library(
         "//tensorflow:tf_private_symbols.lds",
         "//tensorflow:tf_version_script.lds",
     ],
-    dynamic_deps = [
-        # TODO(b/229550590): Replace the following target name with libtensorflow_framework.so.2.
-        get_cc_shared_library_target_name("//tensorflow:libtensorflow_framework.so.%s" % VERSION),
-    ],
+    dynamic_deps = select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+    }),
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
@@ -1142,6 +1197,7 @@ tf_cc_shared_library(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
+        "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",
         "//tensorflow/core:framework_internal_impl",

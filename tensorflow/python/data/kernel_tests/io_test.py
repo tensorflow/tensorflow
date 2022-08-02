@@ -15,10 +15,8 @@
 """Tests for the `tf.data.experimental.{save,load}` operations."""
 import os
 import shutil
-
 from absl.testing import parameterized
 import numpy as np
-
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -36,7 +34,6 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     tmpdir = os.path.join(tmpdir, "io_test")
     os.mkdir(tmpdir)
     self._test_dir = tmpdir
-
     self._checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
     os.mkdir(self._checkpoint_prefix)
     self._save_dir = os.path.join(self.get_temp_dir(), "save")
@@ -93,11 +90,9 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
                          combinations.combine(compression=[None, "GZIP"])))
   def testSaveInsideFunction(self, compression):
     dataset = dataset_ops.Dataset.range(42)
-
     @def_function.function
     def save_fn():
       dataset.save(self._test_dir, compression=compression)
-
     save_fn()
     dataset = dataset_ops.Dataset.load(
         self._test_dir, dataset.element_spec, compression=compression)
@@ -153,20 +148,6 @@ class LoadCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):
 
 class SaveCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):
 
-  def _build_ds(self):
-    dataset = dataset_ops.Dataset.range(42)
-    return dataset_ops._SaveDataset(
-        dataset=dataset, path=self._save_dir, shard_func=None, compression=None)
-
-  # This tests checkpointing for the _SaveDataset, which is internally
-  # consumed in the save() function. The purpose of this test is to
-  # thoroughly test the checkpointing functionality of the internal dataset.
-  @combinations.generate(
-      combinations.times(test_base.v2_only_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
-    verify_fn(self, self._build_ds, num_outputs=42)
-
   @combinations.generate(test_base.eager_only_combinations())
   def testSaveCheckpointingAPI(self):
     dataset = dataset_ops.Dataset.range(40)
@@ -203,7 +184,6 @@ class SaveCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):
     with self.assertRaises(TypeError):
       dataset.save(
           dataset, self._save_dir, checkpoint_args=checkpoint_args)
-
 
 if __name__ == "__main__":
   test.main()

@@ -141,7 +141,7 @@ Status ExtractEquationRelations(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // For a set of layouts and mappings from labels to offsets in the layouts,
@@ -560,7 +560,7 @@ Status EinsumSPMDExpander::MaybeRelayoutInputs(
     reduce_dims.emplace(
         input_label_to_sharding_spec[contracting].sharding_spec());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace dtensor

@@ -94,7 +94,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
 tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %Index, %ctl = Index : () -> (tensor<i32>)
   %Arg, %ctl_0 = Arg : () -> (tensor<*xf32>)
-  // expected-error@+1 {{expected first body block argument to be tensor<i32>}}
+  // expected-error@+1 {{expected first body block argument to be an i32 tensor}}
   %For, %ctl_1 = ForRegion(%Arg) [%ctl] from %Index to %Index by %Index {
   ^bb0(%arg0: tensor<i64>, %arg1: tensor<*xf32>, %arg2: !tf_type.control, %arg3: !tf_type.control):
     yield(%arg1) [%arg3] : tensor<*xf32>

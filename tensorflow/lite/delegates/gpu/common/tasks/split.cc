@@ -17,16 +17,15 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
 
-Split::Split(const OperationDef& definition, const SplitAttributes& attr,
-             const std::vector<int>& channels)
+Split::Split(const GpuInfo& gpu_info, const OperationDef& definition,
+             const SplitAttributes& attr, const std::vector<int>& channels)
     : GPUOperation(definition), attr_(attr) {
   work_group_size_ = int3(8, 4, 1);
-  code_ = attr.axis == Axis::CHANNELS ? GetSplitChannelsCode(channels)
+  code_ = attr.axis == Axis::CHANNELS ? GetSplitChannelsCode(gpu_info, channels)
                                       : GetSplitCode();
 }
 
@@ -118,7 +117,8 @@ std::string Split::GetSplitCode() {
   return c;
 }
 
-std::string Split::GetSplitChannelsCode(const std::vector<int>& channels) {
+std::string Split::GetSplitChannelsCode(const GpuInfo& gpu_info,
+                                        const std::vector<int>& channels) {
   AddSrcTensor("src_tensor", definition_.src_tensors[0]);
   for (int i = 0; i < definition_.dst_tensors.size(); ++i) {
     AddDstTensor("dst_tensor_" + std::to_string(i), definition_.dst_tensors[i]);
@@ -161,7 +161,7 @@ std::string Split::GetSplitChannelsCode(const std::vector<int>& channels) {
   for (int s = 0; s < src_slices; ++s) {
     c += "  if (" + std::to_string(s) + " < args.src_tensor.Slices()) {\n";
     c += "    args.src_tensor::type src_val = args.src_tensor.Read(" + coords +
-         ", " + std::to_string(s) + ");\n";
+         ", " + std::to_string(s) + batch_coord + ");\n";
     for (int k = 0; k < 4; ++k) {
       c += "    dst_val" + postfix[dst_ch % 4] + " = src_val" + postfix[k] +
            ";\n";
@@ -183,7 +183,14 @@ std::string Split::GetSplitChannelsCode(const std::vector<int>& channels) {
         dst_slice += 1;
       }
     }
-    c += "  }\n";
+    if (gpu_info.IsMali()) {
+      // workaround for Mali
+      // without it, kernel can fail with CL_OUT_OF_RESOURCES with big enough
+      // src channels count.
+      c += "  } else { return; }\n";
+    } else {
+      c += "  }\n";
+    }
   }
   c += "}\n";
   return c;
@@ -201,9 +208,10 @@ int3 Split::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Split CreateSplit(const OperationDef& definition, const SplitAttributes& attr,
+Split CreateSplit(const GpuInfo& gpu_info, const OperationDef& definition,
+                  const SplitAttributes& attr,
                   const std::vector<int>& channels) {
-  return Split(definition, attr, channels);
+  return Split(gpu_info, definition, attr, channels);
 }
 
 }  // namespace gpu

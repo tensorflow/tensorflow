@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_ACTIVATIONS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_ACTIVATIONS_H_
 
+#include <algorithm>
+
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -23,9 +25,9 @@ namespace tflite {
 namespace reference_ops {
 
 inline int16_t SaturatingLeftShift(int16_t value, int amount) {
-  int32_t result = static_cast<int32_t>(value) * (1 << amount);
-  result = std::min<int32_t>(result, std::numeric_limits<int16_t>::max());
-  result = std::max<int32_t>(result, std::numeric_limits<int16_t>::min());
+  int64_t result = static_cast<int64_t>(value) * (1 << amount);
+  result = std::min<int64_t>(result, std::numeric_limits<int16_t>::max());
+  result = std::max<int64_t>(result, std::numeric_limits<int16_t>::min());
   return result;
 }
 

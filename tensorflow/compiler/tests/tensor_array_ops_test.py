@@ -120,13 +120,13 @@ class TensorArrayTest(xla_test.XLATestCase):
 
         w0 = ta.write(0, convert([[4.0, 5.0], [104.0, 105.0]]))
         w1 = w0.write(1, convert([[6.0, 7.0], [106.0, 107.0]]))
-        w2 = w1.write(2, convert([[8.0, 9.0], [204.0, 205.0]]))
+        w2 = w1.write(2, convert([[8.0, 9.0], [124.0, 125.0]]))
 
         return w2.concat()
 
       self.assertAllEqual(
           convert([[4.0, 5.0], [104.0, 105.0], [6.0, 7.0], [106.0, 107.0],
-                   [8.0, 9.0], [204.0, 205.0]]),
+                   [8.0, 9.0], [124.0, 125.0]]),
           self.evaluate(xla.compile(fn)[0]))
 
   @test_util.disable_control_flow_v2("b/122315751 (concat)")

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/str_replace.h"
@@ -633,7 +634,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
           executor->device_ordinal(), buffer_compare_ptx,
           PtxOptsFromDebugOptions(config.debug_options()));
   if (compiled_ptx_or.ok()) {
-    compiled_ptx = compiled_ptx_or.ConsumeValueOrDie();
+    compiled_ptx = std::move(compiled_ptx_or).value();
   } else {
     static absl::once_flag ptxas_not_found_logged;
     absl::call_once(ptxas_not_found_logged, [&]() {
@@ -675,11 +676,11 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
 
   LaunchDimensions::Dim3D thread_counts = dim.thread_counts_per_block();
   LaunchDimensions::Dim3D block_counts = dim.block_counts();
-  stream->ThenLaunch(
+  TF_RETURN_IF_ERROR(stream->ThenLaunch(
       se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
       se::BlockDim(block_counts.x, block_counts.y, block_counts.z),
       *comparison_kernel, lhs_typed, rhs_typed, static_cast<float>(kTolerance),
-      buffer_size, out_param.cref());
+      buffer_size, out_param.cref()));
 
   uint64_t result = -1;
   CHECK_EQ(out_param->size(), sizeof(result));

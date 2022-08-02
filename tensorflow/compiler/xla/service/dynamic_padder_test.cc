@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/llvm_irgen_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -76,7 +77,7 @@ Status CustomCallDynamicDimensionInference(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 class DynamicPadderTest : public HloTestBase {
@@ -499,6 +500,27 @@ ENTRY test {
                                               m::Op().WithShape(S8, {32, 64}))
                                            .WithShape(S32, {16, 64}),
                                        m::Op(), m::Op())));
+}
+
+TEST_F(DynamicPadderTest, PadToStaticForCustomCall) {
+  const std::string hlo_text = R"(
+HloModule test
+ENTRY test {
+  a = f32[64] parameter(0)
+  ROOT c = f32[<=128] custom-call(a),
+    custom_call_target="UnknownOp"
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+
+  EXPECT_THAT(
+      module_->entry_computation()->root_instruction(),
+      GmockMatch(m::CustomCall("SliceToDynamic",
+                               m::GetTupleElement(m::CustomCall(
+                                   "PadToStatic", m::CustomCall("UnknownOp"))),
+                               m::Op())));
 }
 
 // Test that dynamic padder has the same result as if not padded.
@@ -1177,6 +1199,32 @@ ENTRY main {
   Literal expected = LiteralUtil::CreateR3<float>({{{15}}});
 
   EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(LlvmIrGenTestBase, LargeDynamicInput) {
+#ifndef XLA_TEST_BACKEND_GPU
+  GTEST_SKIP();
+#endif
+  const std::string hlo_text = R"( // NOLINT: Will be executed for GPU.
+HloModule LargeDynamicInput
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = f32[<=20,<=20,<=20,<=20,<=20,<=20,<=20,<=20] parameter(0)
+  zero = f32[] constant(0)
+  ROOT out = reduce(param, zero), to_apply=add, dimensions={0,1,2,3,4,5,6,7}
+}
+)";
+
+  CompileAndVerifyIr(hlo_text, R"(
+CHECK: ret void
+)",
+                     /*match_optimized_ir=*/true);
 }
 
 XLA_TEST_F(ExecutionTest, DynamicDimensionReshapeUnchanged) {

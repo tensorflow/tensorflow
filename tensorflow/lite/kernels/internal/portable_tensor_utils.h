@@ -324,7 +324,7 @@ void ApplySigmoidFloat(const int16_t* input, int32_t n_batch, int32_t n_input,
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
 // The input is in Qm.15-m format and the output is in Q0.15 format.
-void ApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+void ApplyTanh(int32_t intger_bits, const int16_t* input, int32_t n_batch,
                int32_t n_input, int16_t* output);
 
 // Apply Tanh to a quantized vector. Tbe internal calculation is in float.

@@ -60,7 +60,7 @@ Status GroupShape(const VarDimArray& input_shape, ShapeArray* grouped_shape) {
   }
   // grouped_shape is input_shape[:-1]
   *grouped_shape = ShapeArray(input_shape.begin(), input_shape.end() - 1);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Build `SparseTensor` from indices, values, and shape in inputs
@@ -70,8 +70,12 @@ Status SparseTensorFromContext(OpKernelContext* ctx, const int32_t base_index,
                                sparse::SparseTensor* tensor) {
   // Assume row-major order.
   TensorShape shape;
-  TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape(
-      ctx->input(base_index + 2).vec<int64_t>(), &shape));
+  const Tensor& shape_tensor = ctx->input(base_index + 2);
+  if (shape_tensor.dims() != 1) {
+    return errors::InvalidArgument("Shape must be a 1D tensor.");
+  }
+  TF_RETURN_IF_ERROR(
+      TensorShape::BuildTensorShape(shape_tensor.vec<int64_t>(), &shape));
   CheckRankAtLeast2(ctx, shape);
   std::vector<int64_t> order(shape.dims());
   std::iota(order.begin(), order.end(), 0);
@@ -418,7 +422,7 @@ Status CheckShapesMatch(VarDimArray shape1, VarDimArray shape2) {
                                    absl::StrJoin(shape1, ","), "] vs [",
                                    absl::StrJoin(shape2, ","), "]");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validate ranks are the same, and all but last dimension are the same.
@@ -431,7 +435,7 @@ Status GroupShapeFromInputs(VarDimArray shape1, VarDimArray shape2,
   TF_RETURN_IF_ERROR(GroupShape(shape2, &group_shape_2));
   TF_RETURN_IF_ERROR(CheckShapesMatch(group_shape_1, group_shape_2));
   *group_shape = group_shape_1;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Split `flat_group_index` into separate dimensions based on `group_shape`.

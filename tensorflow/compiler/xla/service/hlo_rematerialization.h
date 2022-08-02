@@ -105,13 +105,21 @@ class HloRematerialization : public HloModulePass {
   // Get the next available channel id and increment count.
   int64_t NextChannelId() { return next_channel_id_++; }
 
+  // Get the peak memory for the computation.
+  int64_t ComputationPeakMemory(const HloComputation* computation) const {
+    return computation_peak_memory_.at(computation);
+  }
+
   // Runs rematerialization on the given module. Returns whether the module was
   // changed. Requires that the module has a schedule set
   // (HloModule::has_schedule() is true) before running. Returns whether any
   // instructions were rematerialized. If memory use is already below the limit
   // specified in the constructor then no instructions are rematerialized and
   // false is returned.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
   // Rematerializes instructions within the given computation. 'order' is the

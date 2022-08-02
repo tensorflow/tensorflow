@@ -260,8 +260,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status AsyncWait() override { return SyncExecutors(); }
 
   core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
+  Device* GetCachedDevice(Fprint128 device_cache_key);
 
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
+  void AddDeviceToCache(Fprint128 device_cache_key, Device* device);
 
   bool LogDevicePlacement() const { return log_device_placement_; }
   void SetLogDevicePlacement(bool enable) override {
@@ -706,6 +708,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::function<void(std::function<void()>)> runner_;
 
   mutex cache_mu_;
+  mutex device_cache_mu_;
   struct RegisteredFunction : public core::RefCounted {
     ~RegisteredFunction() override {}
 
@@ -716,6 +719,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       kernel_cache_ TF_GUARDED_BY(cache_mu_);
   std::unordered_map<string, RegisteredFunction*> registered_functions_
       TF_GUARDED_BY(cache_mu_);
+  absl::flat_hash_map<Fprint128, Device*, Fprint128Hasher> device_cache_
+      TF_GUARDED_BY(device_cache_mu_);
 
   // Whether we should compute RunMetadata.
   std::atomic<bool> should_store_graphs_{false};

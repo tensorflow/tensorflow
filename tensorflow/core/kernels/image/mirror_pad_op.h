@@ -114,8 +114,7 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
   typedef internal::TensorBlockNotImplemented TensorBlock;
   //===--------------------------------------------------------------------===//
 
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorEvaluator(const XprType& op,
-                                                        const Device& device)
+  EIGEN_STRONG_INLINE TensorEvaluator(const XprType& op, const Device& device)
       : impl_(op.expression(), device), padding_(op.padding()) {
     EIGEN_STATIC_ASSERT(Dims > 0, YOU_MADE_A_PROGRAMMING_MISTAKE)
 
@@ -156,12 +155,12 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
     return dimensions_;
   }
 
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool evalSubExprsIfNeeded(Scalar*) {
+  EIGEN_STRONG_INLINE bool evalSubExprsIfNeeded(Scalar*) {
     impl_.evalSubExprsIfNeeded(nullptr);
     return true;
   }
 
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void cleanup() { impl_.cleanup(); }
+  EIGEN_STRONG_INLINE void cleanup() { impl_.cleanup(); }
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE CoeffReturnType
   coeff(Index index) const {

@@ -143,7 +143,7 @@ Status ShapeRefiner::InferShapesForFunctionSubNode(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(cwhipkey): When an inference context inside function has
@@ -154,9 +154,9 @@ Status ShapeRefiner::InferShapesForFunctionSubNode(
 // NOTE: Recursive user-defined functions are not supported.
 // Maybe we won't support recursive functions at all in TF, because of
 // other maintainability issues.
-Status ShapeRefiner::InferShapesForFunction(
-    const FunctionDef* function_def, AttrSlice attributes,
-    ExtendedInferenceContext* outer_context) {
+Status ShapeRefiner::InferShapesForFunction(const FunctionDef* function_def,
+                                            AttrSlice attributes,
+                                            InferenceContext* outer_context) {
   const Graph* graph;
   auto it = functions_.find(function_def);
   if (it != functions_.end()) {
@@ -180,13 +180,12 @@ Status ShapeRefiner::InferShapesForFunction(
   }
 
   std::unordered_set<const Node*> function_nodes;
-  Status inference_status = Status::OK();
+  Status inference_status = OkStatus();
   {
     auto node_shape_inference_lambda = [this, &outer_context, &function_nodes,
                                         &inference_status](const Node* node) {
       if (!inference_status.ok()) return;
-      inference_status =
-          InferShapesForFunctionSubNode(node, outer_context->get_context());
+      inference_status = InferShapesForFunctionSubNode(node, outer_context);
       function_nodes.insert(node);
     };
 
@@ -268,7 +267,7 @@ Status ShapeRefiner::AddNodeInternal(
   // Store the resulting context object in the map.
   node_to_context_[node].swap(ec);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShapeRefiner::SetShape(const Node* node, int output_port,
@@ -301,7 +300,7 @@ Status ShapeRefiner::SetShape(const Node* node, int output_port,
   // TODO(vrv): We might need to keep track of the fact that the
   // existing shape is invalidated, in case we need to propagate
   // this information to remote workers.
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
@@ -386,7 +385,7 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
 
   if (!*refined) {
     // No input shape has changed, we're done
-    return Status::OK();
+    return OkStatus();
   }
 
   // Get and run the shape function for this node to update the shapes of the
@@ -402,7 +401,7 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
 
   if (!op_reg_data->shape_inference_fn) {
     // There is nothing more we can infer
-    return Status::OK();
+    return OkStatus();
   }
 
   return RunShapeFn(node, op_reg_data, node_ext_context);
@@ -444,7 +443,7 @@ Status ShapeRefiner::EvaluateConstantIntScalarEdge(
       *result = scalar.scalar<int64_t>()();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShapeRefiner::ConstantPartialShape(
@@ -475,10 +474,10 @@ Status ShapeRefiner::ConstantPartialShape(
     if (t.dims() == 0) {
       if (t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) {
         *result = target_context->UnknownShape();
-        return Status::OK();
+        return OkStatus();
       } else if (t.dtype() == DT_INT64 && t.scalar<int64_t>()() == -1) {
         *result = target_context->UnknownShape();
-        return Status::OK();
+        return OkStatus();
       }
     }
     return errors::InvalidArgument(
@@ -504,7 +503,7 @@ Status ShapeRefiner::ConstantPartialShape(
             .ok()) {
       if (evaluated &&
           target_context->MakeShapeFromTensor(&t, src_shape, result).ok()) {
-        return Status::OK();
+        return OkStatus();
       }
     }
 
@@ -519,7 +518,7 @@ Status ShapeRefiner::ConstantPartialShape(
     if (!target_context->RankKnown(pre_cast_shape)) {
       // Failed to evaluate. Treat the output as completely unknown.
       *result = target_context->UnknownShape();
-      return Status::OK();
+      return OkStatus();
     }
     auto* dest_type = input_edge->src()->attrs().Find("DstT");
     if (dest_type == nullptr || dest_type->value_case() != AttrValue::kType ||
@@ -527,7 +526,7 @@ Status ShapeRefiner::ConstantPartialShape(
       // Casting to a weird type. Do not attempt to infer across it.
       *result = target_context->MakeShape(std::vector<DimensionHandle>(
           target_context->Rank(pre_cast_shape), target_context->UnknownDim()));
-      return Status::OK();
+      return OkStatus();
     }
     *result = pre_cast_shape;
   } else if (src_op == "Shape") {
@@ -567,7 +566,7 @@ Status ShapeRefiner::ConstantPartialShape(
         // TODO(cwhipkey): we could rely on all inputs being the same rank, so
         // figure that rank out and append the right number of unknown dims.
         *result = target_context->UnknownShape();
-        return Status::OK();
+        return OkStatus();
       }
       TF_RETURN_IF_ERROR(
           target_context->Concatenate(*result, sub_result, result));
@@ -590,7 +589,7 @@ Status ShapeRefiner::ConstantPartialShape(
     TF_RETURN_IF_ERROR(target_context->MakeShapeFromTensor(
         evaluated ? &t : nullptr, src_shape, result));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShapeRefiner::PartialStridedSliceShape(
@@ -601,7 +600,7 @@ Status ShapeRefiner::PartialStridedSliceShape(
     ShapeHandle input_shape = ctx->input(i);
     if (ctx->Value(ctx->Dim(input_shape, 0)) != 1) {
       *result = ctx->UnknownShape();
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -622,7 +621,7 @@ Status ShapeRefiner::PartialStridedSliceShape(
       !(end_mask == 0 || end_mask == 1) || ellipsis_mask != 0 ||
       new_axis_mask != 0 || shrink_axis_mask != 0) {
     *result = ctx->UnknownShape();
-    return Status::OK();
+    return OkStatus();
   }
 
   bool evaluated;
@@ -634,7 +633,7 @@ Status ShapeRefiner::PartialStridedSliceShape(
                                                      &begin, outer_context));
     if (!evaluated) {
       *result = ctx->UnknownShape();
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -646,7 +645,7 @@ Status ShapeRefiner::PartialStridedSliceShape(
                                                      &end, outer_context));
     if (!evaluated) {
       *result = ctx->UnknownShape();
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -655,7 +654,7 @@ Status ShapeRefiner::PartialStridedSliceShape(
                                                    &stride, outer_context));
   if (!evaluated) {
     *result = ctx->UnknownShape();
-    return Status::OK();
+    return OkStatus();
   }
 
   // Apply stride to input interpreted as a partial shape.
@@ -663,7 +662,7 @@ Status ShapeRefiner::PartialStridedSliceShape(
   TF_RETURN_IF_ERROR(
       ConstantPartialShape(ctx, slice_node, 0, &input, outer_context));
   TF_RETURN_IF_ERROR(ctx->Subshape(input, begin, end, stride, result));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShapeRefiner::RunShapeFn(const Node* node,
@@ -704,7 +703,7 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
           auto const_tensor_map_copy = const_tensor_map_;
           const_tensor_map_.clear();
           Status function_inference_status = InferShapesForFunction(
-              function_def, AttrSlice(&function.attr()), ec);
+              function_def, AttrSlice(&function.attr()), c);
           const_tensor_map_ = const_tensor_map_copy;
           return function_inference_status;
         }
@@ -716,7 +715,7 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
     } else {
       TF_RETURN_IF_ERROR(c->Run(shape_inference::UnknownShape));
     }
-    return Status::OK();
+    return OkStatus();
   };
   TF_RETURN_IF_ERROR(run_inference_lambda());
 
@@ -783,7 +782,7 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
     }
   } while (rerun_shape_fn);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool ShapeRefiner::SameDefinedShape(InferenceContext* c, ShapeHandle s0,

@@ -120,7 +120,7 @@ XlaOp AggregateToTopKBuilder(XlaBuilder* builder,
     if (!status_or_optypes.ok()) {
       return builder->ReportError(status_or_optypes.status());
     }
-    auto op_types = status_or_optypes.ConsumeValueOrDie();
+    auto op_types = status_or_optypes.value();
 
     auto reduction_computation =
         BuildReductionComputation(builder, op_types, comparator);
@@ -172,7 +172,7 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   if (!status_or_optypes.ok()) {
     return builder->ReportError(status_or_optypes.status());
   }
-  auto op_types = status_or_optypes.ConsumeValueOrDie();
+  auto op_types = status_or_optypes.value();
   int64_t rank = operands_shapes[0].rank();
   if (reduction_dim < 0 || reduction_dim >= rank) {
     return builder->ReportError(
@@ -220,13 +220,14 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   for (const auto& op : init_values) {
     partial_reduce_args.push_back(op);
   }
-  std::vector<Shape> approx_output_shapes;
+  std::vector<const Shape*> approx_output_shapes;
   approx_output_shapes.reserve(operands_shapes.size());
-  for (auto op_shape : operands_shapes) {
+  for (auto& op_shape : operands_shapes) {
     op_shape.mutable_dimensions()[reduction_dim] = approx_output_size;
-    approx_output_shapes.push_back(op_shape);
+    approx_output_shapes.push_back(&op_shape);
   }
-  auto approx_output_shape = ShapeUtil::MakeTupleShape(approx_output_shapes);
+  auto approx_output_shape =
+      ShapeUtil::MakeTupleShapeWithPtrs(approx_output_shapes);
   // PartialReduce option in JSON form
   std::string partial_reduce_option = absl::StrFormat(
       "{\"log2_reduction\": %d, \"reduction_dim\": %d, \"to_apply_type\": "
@@ -265,7 +266,7 @@ XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   if (!status_or_approx_output_size.ok()) {
     return builder->ReportError(status_or_approx_output_size.status());
   }
-  auto output_size = status_or_approx_output_size.ConsumeValueOrDie().first;
+  auto output_size = status_or_approx_output_size.value().first;
   return AggregateToTopKBuilder(builder, operands, init_values, output_size,
                                 reduction_dim, comparator);
 }

@@ -153,7 +153,7 @@ Status BFloat16NormalizationVisitor::InsertConvertAfterOutput(
 
   TF_ASSIGN_OR_RETURN(auto new_hlo, ConvertType(hlo, from, to, computation));
   if (new_hlo == hlo) {
-    return Status::OK();
+    return OkStatus();
   }
 
   for (auto* user : materialized_users) {
@@ -163,7 +163,7 @@ Status BFloat16NormalizationVisitor::InsertConvertAfterOutput(
     computation->set_root_instruction(new_hlo, /*accept_different_shape=*/true);
   }
   changed_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BFloat16NormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
@@ -171,7 +171,7 @@ Status BFloat16NormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
     HloComputation* computation) {
   auto original_shape = hlo->shape();
   if (CountSubshapesWithMatchingType(original_shape, from) == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   ShapeUtil::ForEachMutableSubshape(
       hlo->mutable_shape(), [&](Shape* subshape, const xla::ShapeIndex& index) {
@@ -211,7 +211,7 @@ Status BFloat16NormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
     computation->set_root_instruction(new_hlo, /*accept_different_shape=*/true);
   }
   changed_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BFloat16NormalizationVisitor::InsertConvertBeforeOperand(
@@ -221,12 +221,12 @@ Status BFloat16NormalizationVisitor::InsertConvertBeforeOperand(
   TF_ASSIGN_OR_RETURN(auto new_operand,
                       ConvertType(operand, from, to, computation));
   if (new_operand == operand) {
-    return Status::OK();
+    return OkStatus();
   }
   TF_RETURN_IF_ERROR(
       hlo->ReplaceOperandWithDifferentShape(operand_idx, new_operand));
   changed_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BFloat16NormalizationVisitor::ConvertCalledComputations(
@@ -254,7 +254,7 @@ Status BFloat16NormalizationVisitor::ConvertCalledComputations(
           ChangeOutputTypeThenInsertConvertBack(param, BF16, F32, comp));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
@@ -289,7 +289,7 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
   }
 
   if (bf16_count == 0) {
-    return Status::OK();
+    return OkStatus();
   }
 
   auto should_convert_operand = [&](int64_t i) {
@@ -318,7 +318,7 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
   if (!has_unsupported_bf16_output &&
       (bfloat16_support_->SupportsMixedPrecisions(*hlo) || f32_count == 0 ||
        bf16_count == 0)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<HloComputation*> bf16_called_comps;
@@ -447,7 +447,7 @@ Status BFloat16NormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
   // operands/output may have changed.
   if (bfloat16_support_->SupportsMixedPrecisions(*hlo) || bf16_count == 0 ||
       f32_count == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   // See if we can change everything to BF16.
   if (hlo->called_computations().empty() &&
@@ -473,7 +473,7 @@ Status BFloat16NormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
         TF_RETURN_IF_ERROR(
             InsertConvertBeforeOperand(hlo, i, F32, BF16, computation_));
       }
-      return Status::OK();
+      return OkStatus();
     }
   }
   TF_RETURN_IF_ERROR(
@@ -502,7 +502,7 @@ Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
       hlo->opcode() == HloOpcode::kConditional ||      //
       hlo->opcode() == HloOpcode::kBitcastConvert ||   //
       hlo->HasSideEffectNoRecurse()) {
-    return Status::OK();
+    return OkStatus();
   }
   // TODO(b/112040122): Correctly normalize variadic reduce.
   if ((hlo->opcode() == HloOpcode::kSort ||
@@ -516,16 +516,18 @@ Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
 
 Status BFloat16NormalizationVisitor::Preprocess(HloInstruction* hlo) {
   computation_ = hlo->parent();
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
 
-StatusOr<bool> BFloat16Normalization::Run(HloModule* module) {
+StatusOr<bool> BFloat16Normalization::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       2, "BFloat16Normalization::Run(), before:\n" + module->ToString());
   BFloat16NormalizationVisitor visitor(bfloat16_support_, this);
-  for (auto* comp : module->MakeComputationPostOrder()) {
+  for (auto* comp : module->MakeComputationPostOrder(execution_threads)) {
     TF_RETURN_IF_ERROR(comp->Accept(&visitor));
   }
   XLA_VLOG_LINES(2,

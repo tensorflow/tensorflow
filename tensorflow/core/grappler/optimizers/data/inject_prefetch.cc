@@ -35,10 +35,14 @@ constexpr char kPrefetchDataset[] = "PrefetchDataset";
 constexpr std::array<const char*, 5> kAsyncTransforms = {
     "MapAndBatchDataset", "ParallelBatchDataset", "ParallelInterleaveDataset",
     "ParallelMapDataset", "PrefetchDataset"};
-constexpr std::array<const char*, 7> kDatasetsToSkip = {
-    "AssertNextDataset",        "ExperimentalAssertNextDataset",
-    "OptionsDataset",           "ModelDataset",
-    "OptimizeDataset",          "MaxIntraOpParallelismDataset",
+constexpr std::array<const char*, 8> kDatasetsToSkip = {
+    "AssertNextDataset",
+    "ExperimentalAssertNextDataset",
+    "IgnoreErrorsDataset",
+    "OptionsDataset",
+    "ModelDataset",
+    "OptimizeDataset",
+    "MaxIntraOpParallelismDataset",
     "PrivateThreadPoolDataset",
 };
 
@@ -82,13 +86,13 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
   if (!autotune_) {
     VLOG(1) << "The optimization inject_prefetch is not applied if autotune is "
                "off.";
-    return Status::OK();
+    return OkStatus();
   }
   MutableGraphView graph(output);
 
   // If the GrapplerItem is derived from a FunctionDef, we don't optimize it.
   if (graph_utils::IsItemDerivedFromFunctionDef(item, graph)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (item.fetch.size() != 1) {
@@ -100,7 +104,7 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
   NodeDef* sink_node = graph.GetNode(item.fetch.at(0));
   NodeDef* last_node = graph_utils::GetInputNode(*sink_node, graph);
   if (!ShouldInjectPrefetch(last_node, graph)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Insert `prefetch(AUTOTUNE)` after the last node.
@@ -120,7 +124,7 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
   // attrs from the input node. If we fail to set the attributes, we abort the
   // rewrite.
   if (!graph_utils::CopyShapesAndTypesAttrs(*last_node, &prefetch_node))
-    return Status::OK();
+    return OkStatus();
 
   TF_RETURN_IF_ERROR(
       graph_utils::SetMetadataName(prefetch_node.name(), &prefetch_node));
@@ -130,43 +134,10 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
       graph.UpdateFanouts(last_node->name(), added_node->name()));
 
   stats->num_changes++;
-  return Status::OK();
-}
-
-Status InjectPrefetchEligible::OptimizeAndCollectStats(
-    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
-    OptimizationStats* stats) {
-  *output = item.graph;
-  if (!autotune_) {
-    VLOG(1) << "The optimization inject_prefetch_eligible is not applied if "
-               "autotune is off.";
-    return Status::OK();
-  }
-  MutableGraphView graph(output);
-
-  // If the GrapplerItem is derived from a FunctionDef, we don't optimize it.
-  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph)) {
-    return Status::OK();
-  }
-
-  if (item.fetch.size() != 1) {
-    return errors::InvalidArgument(
-        "Expected only one fetch node but there were ", item.fetch.size(), ": ",
-        absl::StrJoin(item.fetch, ", "));
-  }
-
-  NodeDef* sink_node = graph.GetNode(item.fetch.at(0));
-  NodeDef* last_node = graph_utils::GetInputNode(*sink_node, graph);
-  if (!ShouldInjectPrefetch(last_node, graph)) {
-    return Status::OK();
-  }
-
-  stats->num_changes++;
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(InjectPrefetch, "inject_prefetch");
-REGISTER_GRAPH_OPTIMIZER_AS(InjectPrefetchEligible, "inject_prefetch_eligible");
 
 }  // namespace grappler
 }  // namespace tensorflow

@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tools to work with checkpoints."""
+"""Tools to work with name-based checkpoints.
+
+While some of these symbols also work with the TF2 object-based checkpoints,
+they are not recommended for TF2. Please check  `tensorflow/python/checkpoint`
+for newer utilities built to work with TF2 checkpoints.
+"""
 
 from collections import abc
 import os
@@ -20,6 +25,7 @@ import time
 
 import six
 
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
@@ -28,7 +34,6 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util.tf_export import tf_export

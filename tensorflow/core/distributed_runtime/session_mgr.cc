@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
@@ -216,8 +217,10 @@ Status SessionMgr::CreateSession(
     TF_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
         worker_env_->env, server_def, std::move(agent_cache),
         std::move(coordination_error_callback)));
+    activity_watcher::MaybeEnableMultiWorkersWatching(
+        coordination_service_agent_.get());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
@@ -284,7 +287,7 @@ Status SessionMgr::UpdateSession(
   TF_RETURN_IF_ERROR(worker_session->UpdateWorkerCacheAndDevices(
       std::unique_ptr<WorkerCacheInterface>(worker_cache),
       std::move(added_remote_devices), removed_remote_devices));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SessionMgr::DeleteSession(const std::string& session) {
@@ -293,7 +296,7 @@ Status SessionMgr::DeleteSession(const std::string& session) {
   if (it != sessions_.end()) {
     sessions_.erase(it);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SessionMgr::WorkerSessionForSessionLocked(
@@ -316,7 +319,7 @@ Status SessionMgr::WorkerSessionForSessionLocked(
       *out_session = it->second;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SessionMgr::WorkerSessionForSession(

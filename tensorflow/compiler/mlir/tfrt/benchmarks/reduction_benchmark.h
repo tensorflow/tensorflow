@@ -56,7 +56,7 @@ auto GetEigenSumF32Function(
     auto in = inputs[0].tensor<float, INPUT_RANK>();
     auto out = output.tensor<float, INPUT_RANK - N_DIMS_TO_REDUCE>();
     out.setZero();
-    if (device.hasValue()) {
+    if (device.has_value()) {
       out.device(*device) = in.sum(dims_to_reduce);
     } else {
       out = in.sum(dims_to_reduce);
@@ -74,7 +74,7 @@ auto GetEigenMeanF32Function(
     auto in = inputs[0].tensor<float, INPUT_RANK>();
     auto out = output.tensor<float, INPUT_RANK - N_DIMS_TO_REDUCE>();
     out.setZero();
-    if (device.hasValue()) {
+    if (device.has_value()) {
       out.device(*device) = in.mean(dims_to_reduce);
     } else {
       out = in.mean(dims_to_reduce);

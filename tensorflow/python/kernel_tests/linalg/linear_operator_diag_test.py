@@ -39,6 +39,14 @@ class LinearOperatorDiagTest(
     self.tf32_keep_ = config.tensor_float_32_execution_enabled()
     config.enable_tensor_float_32_execution(False)
 
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
+
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
@@ -242,6 +250,13 @@ class LinearOperatorDiagTest(
     diag = variables_module.Variable([[2.]])
     operator = linalg.LinearOperatorDiag(diag)
     self.check_tape_safe(operator)
+
+  def test_convert_variables_to_tensors(self):
+    diag = variables_module.Variable([[2.]])
+    operator = linalg.LinearOperatorDiag(diag)
+    with self.cached_session() as sess:
+      sess.run([diag.initializer])
+      self.check_convert_variables_to_tensors(operator)
 
 
 if __name__ == "__main__":

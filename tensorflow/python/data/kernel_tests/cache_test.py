@@ -21,7 +21,8 @@ import tempfile
 
 from absl.testing import parameterized
 import numpy as np
-
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -32,12 +33,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class FileCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -411,24 +409,6 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
     manager.restore_or_initialize()
     with self.assertRaises(StopIteration):
       next(iterator)
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testCheckpointLargeCache(self):
-    # Tensor of size 100M
-    dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
-    # Repeat 25 times to exceed the 2G proto limit
-    dataset = dataset.repeat(25)
-    dataset = dataset.cache()
-
-    # Iterate to fill the cache.
-    iterator = iter(dataset)
-    for _ in range(23):
-      next(iterator)
-    ckpt = trackable_utils.Checkpoint(iterator=iterator)
-    manager = checkpoint_management.CheckpointManager(
-        ckpt, self.get_temp_dir(), max_to_keep=1)
-    manager.save()
 
   @combinations.generate(test_base.default_test_combinations())
   def testName(self):

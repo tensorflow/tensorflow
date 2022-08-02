@@ -18,7 +18,7 @@ import functools
 import os
 
 from absl.testing import parameterized
-
+from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
@@ -38,7 +38,7 @@ from tensorflow.python.ops import stateful_random_ops as rng
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
-from tensorflow.python.training.tracking import util as tracking_util
+from tensorflow.python.util import deprecation
 
 
 def get_num_local_replicas(strat, values=None):
@@ -359,4 +359,5 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
-  multi_process_runner.test_main()
+  with deprecation.silence():
+    multi_process_runner.test_main()

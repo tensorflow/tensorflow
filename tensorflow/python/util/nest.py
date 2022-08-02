@@ -213,9 +213,10 @@ def _sequence_like(instance, args):
   elif _is_mapping(instance):
     result = dict(zip(_sorted(instance), args))
     instance_type = type(instance)
-    tf_logging.log_first_n(
-        tf_logging.WARN, "Mapping types may not work well with tf.nest. Prefer"
-        " using MutableMapping for {}".format(instance_type), 1)
+    if not getattr(instance_type, "__supported_by_tf_nest__", False):
+      tf_logging.log_first_n(
+          tf_logging.WARN, "Mapping types may not work well with tf.nest. "
+          "Prefer using MutableMapping for {}".format(instance_type), 1)
     try:
       return instance_type((key, result[key]) for key in instance)
     except TypeError as err:

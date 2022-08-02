@@ -1,4 +1,4 @@
-# Repository initialized in in tensorflow/workspace2.bzl
+# Repository initialized in tensorflow/workspace2.bzl
 load(":cc_config.bzl", "cc_toolchain_config")
 
 package(default_visibility = ["//visibility:public"])

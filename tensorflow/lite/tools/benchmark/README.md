@@ -124,12 +124,14 @@ running the benchmark tool:
     A map-like string representing files that contain input values. Each
     item is separated by ',', and the item value consists of input layer name
     and the file path separated by ':',
-    e.g. 'input1:file_path1,input2:file_path2'. If a input name appears in both
-    `input_layer_value_range` and `input_layer_value_files`,
-    the corresponding input value range specified by`input_layer_value_range`
-    will be ignored. The file format is binary, and the content should be either
-    a byte array or null-separated strings. Note that the inpput layer name must
-    also exist in the list of names specified by `input_layer`.
+    e.g. 'input1:file_path1,input2:file_path2'. In case the input layer name
+    contains ':' e.g. "input:0", escape it with "\:" literal,
+    e.g. `input\:0:file_path1`. If a input name appears in both
+    `input_layer_value_range` and `input_layer_value_files`, the corresponding
+    input value range specified by`input_layer_value_range` will be ignored.
+    The file format is binary, and the content should be either a byte array or
+    null-separated strings. Note that the input layer name must also exist in
+    the list of names specified by `input_layer`.
 
 ### TFLite delegate parameters
 The tool supports all runtime/delegate parameters introduced by
@@ -175,6 +177,11 @@ Note enabling this option will not produce profiling results outputs unless
 `enable_op_profiling` is also turned on. When both parameters are set to true,
 the profile of ops on hexagon DSP will be added to the profile table. Note that,
 the reported data on hexagon is in cycles, not in ms like on cpu.
+* `hexagon_lib_path`: `string` (default="/data/local/tmp/") \
+The library path for the underlying Hexagon libraries.
+This is where libhexagon_nn_skel*.so files should be.
+For libhexagon_interface.so it needs to be on a path that can be loaded from
+example: put it in LD_LIBRARY_PATH.
 
 #### XNNPACK delegate
 *   `use_xnnpack`: `bool` (default=false) \

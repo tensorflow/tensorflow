@@ -43,7 +43,7 @@ TEST(RamFileBlockCacheTest, IsCacheEnabled) {
   auto fetcher = [](const string& filename, size_t offset, size_t n,
                     char* buffer, size_t* bytes_transferred) {
     // Do nothing.
-    return Status::OK();
+    return OkStatus();
   };
   RamFileBlockCache cache1(0, 0, 0, fetcher);
   RamFileBlockCache cache2(16, 0, 0, fetcher);
@@ -63,7 +63,7 @@ TEST(RamFileBlockCacheTest, ValidateAndUpdateFileSignature) {
     calls++;
     memset(buffer, 'x', n);
     *bytes_transferred = n;
-    return Status::OK();
+    return OkStatus();
   };
   string filename = "file";
   RamFileBlockCache cache(16, 32, 0, fetcher);
@@ -99,7 +99,7 @@ TEST(RamFileBlockCacheTest, PassThrough) {
     calls++;
     memset(buffer, 'x', got_n);
     *bytes_transferred = got_n;
-    return Status::OK();
+    return OkStatus();
   };
   // If block_size, max_bytes, or both are zero, or want_n is larger than
   // max_bytes the cache is a pass-through.
@@ -136,7 +136,7 @@ TEST(RamFileBlockCacheTest, BlockAlignment) {
     } else {
       *bytes_transferred = 0;
     }
-    return Status::OK();
+    return OkStatus();
   };
   for (size_t block_size = 2; block_size <= 4; block_size++) {
     // Make a cache of N-byte block size (1 block) and verify that reads of
@@ -181,7 +181,7 @@ TEST(RamFileBlockCacheTest, CacheHits) {
     calls.insert(offset);
     memset(buffer, 'x', n);
     *bytes_transferred = n;
-    return Status::OK();
+    return OkStatus();
   };
   const uint32 block_count = 256;
   RamFileBlockCache cache(block_size, block_count * block_size, 0, fetcher);
@@ -222,7 +222,7 @@ TEST(RamFileBlockCacheTest, OutOfRange) {
       second_block = true;
     }
     *bytes_transferred = bytes_to_copy;
-    return Status::OK();
+    return OkStatus();
   };
   RamFileBlockCache cache(block_size, block_size, 0, fetcher);
   std::vector<char> out;
@@ -255,7 +255,7 @@ TEST(RamFileBlockCacheTest, Inconsistent) {
     EXPECT_GE(n, 1);
     memset(buffer, 'x', 1);
     *bytes_transferred = 1;
-    return Status::OK();
+    return OkStatus();
   };
   RamFileBlockCache cache(block_size, 2 * block_size, 0, fetcher);
   std::vector<char> out;
@@ -282,7 +282,7 @@ TEST(RamFileBlockCacheTest, LRU) {
     }
     memset(buffer, 'x', n);
     *bytes_transferred = n;
-    return Status::OK();
+    return OkStatus();
   };
   const uint32 block_count = 2;
   RamFileBlockCache cache(block_size, block_count * block_size, 0, fetcher);
@@ -324,7 +324,7 @@ TEST(RamFileBlockCacheTest, MaxStaleness) {
     calls++;
     memset(buffer, 'x', n);
     *bytes_transferred = n;
-    return Status::OK();
+    return OkStatus();
   };
   std::vector<char> out;
   std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
@@ -369,7 +369,7 @@ TEST(RamFileBlockCacheTest, RemoveFile) {
     }
     memset(buffer, c, n);
     *bytes_transferred = n;
-    return Status::OK();
+    return OkStatus();
   };
   // This cache has space for 4 blocks; we'll read from two files.
   const size_t n = 3;
@@ -426,7 +426,7 @@ TEST(RamFileBlockCacheTest, Prune) {
     calls++;
     memset(buffer, 'x', n);
     *bytes_transferred = n;
-    return Status::OK();
+    return OkStatus();
   };
   std::vector<char> out;
   // Our fake environment is initialized with the current timestamp.
@@ -493,7 +493,7 @@ TEST(RamFileBlockCacheTest, ParallelReads) {
     }
     memset(buffer, 'x', n);
     *bytes_transferred = n;
-    return Status::OK();
+    return OkStatus();
   };
   const int block_size = 8;
   RamFileBlockCache cache(block_size, 2 * callers * block_size, 0, fetcher);
@@ -529,7 +529,7 @@ TEST(RamFileBlockCacheTest, CoalesceConcurrentReads) {
     notification.Notify();
     // Wait for other thread to issue read.
     Env::Default()->SleepForMicroseconds(100000);  // 0.1 secs
-    return Status::OK();
+    return OkStatus();
   };
   RamFileBlockCache cache(block_size, block_size, 0, fetcher);
   // Fork off thread for parallel read.
@@ -554,7 +554,7 @@ TEST(RamFileBlockCacheTest, Flush) {
     calls++;
     memset(buffer, 'x', n);
     *bytes_transferred = n;
-    return Status::OK();
+    return OkStatus();
   };
   RamFileBlockCache cache(16, 32, 0, fetcher);
   std::vector<char> out;

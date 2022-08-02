@@ -40,22 +40,8 @@ class MetalExecutionEnvironment : public TestExecutionEnvironment {
   std::vector<CalculationsPrecision> GetSupportedPrecisions() const override;
   std::vector<TensorStorageType> GetSupportedStorages(
       DataType data_type) const override;
-  std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport(
-      DataType data_type) const override;
 
   const GpuInfo& GetGpuInfo() const { return device_.GetInfo(); }
-
-  absl::Status ExecuteGPUOperation(
-      const std::vector<TensorFloat32>& src_cpu,
-      std::unique_ptr<GPUOperation>&& operation,
-      const std::vector<BHWC>& dst_sizes,
-      const std::vector<TensorFloat32*>& dst_cpu) override;
-
-  absl::Status ExecuteGPUOperation(
-      const std::vector<Tensor5DFloat32>& src_cpu,
-      std::unique_ptr<GPUOperation>&& operation,
-      const std::vector<BHWDC>& dst_sizes,
-      const std::vector<Tensor5DFloat32*>& dst_cpu) override;
 
   absl::Status ExecuteGPUOperation(
       const std::vector<TensorDescriptor*>& src_cpu,

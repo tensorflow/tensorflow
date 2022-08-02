@@ -32,6 +32,12 @@ load(
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
+# Platform specific build config
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
+
 package(
     default_visibility = ["//visibility:public"],
     features = [
@@ -200,6 +206,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -211,7 +218,7 @@ cc_library(
         "utils/trt_testutils.h",
     ],
     copts = tf_copts(),
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
     deps = [
         ":trt_conversion",
         "@com_google_absl//absl/strings",
@@ -411,6 +418,7 @@ tf_cuda_library(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core:stream_executor_headers_lib",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
@@ -586,9 +594,29 @@ tf_cuda_library(
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
+# This rule contains static variables for the converter registry. Do not depend
+# on it directly; use :op_converter_registry, and link against
+# libtensorflow_framework.so for the registry symbols. The library
+# libtensorflow_framework.so depends on this target so that users can
+# register custom op converters without the need to incorporate Tensorflow into
+# their build system.
+tf_cuda_library(
+    name = "op_converter_registry_impl",
+    srcs = ["convert/op_converter_registry.cc"],
+    hdrs = [
+        "convert/op_converter_registry.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":utils",
+        ":op_converter",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
 tf_cuda_library(
     name = "op_converter_registry",
-    srcs = ["convert/op_converter_registry.cc"],
     hdrs = [
         "convert/op_converter_registry.h",
     ],
@@ -596,9 +624,8 @@ tf_cuda_library(
     deps = [
         ":utils",
         ":op_converter",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
-    ] + if_tensorrt([":tensorrt_lib"]),
+    ] + if_static([":op_converter_registry_impl"]),
 )
 
 tf_cuda_cc_test(
@@ -649,10 +676,13 @@ tf_cuda_library(
         "convert/ops/data_format_vec_permute.cc",
         "convert/ops/einsum.cc",
         "convert/ops/fill_ops.cc",
+        "convert/ops/like_ops.cc",
         "convert/ops/quantization_ops.cc",
         "convert/ops/slice_ops.cc",
         "convert/ops/tile.cc",
         "convert/ops/unary_ops.cc",
+        "convert/ops/variable_ops.cc",
+        "convert/timing_cache.cc",
         "convert/trt_optimization_pass.cc",
     ],
     hdrs = [
@@ -661,6 +691,7 @@ tf_cuda_library(
         "convert/ops/layer_utils.h",
         "convert/ops/quantization_ops.h",
         "convert/ops/slice_ops.h",
+        "convert/timing_cache.h",
         "convert/trt_optimization_pass.h",
     ],
     copts = tf_copts() + select({
@@ -778,6 +809,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
@@ -939,11 +973,10 @@ tf_proto_library(
     protodeps = tf_additional_all_protos(),
 )
 
-cc_library(
+tf_cuda_library(
     name = "py_utils",
     srcs = ["utils/py_utils.cc"],
     hdrs = ["utils/py_utils.h"],
-    copts = tf_copts(),
     local_defines = select({
         "@local_config_tensorrt//:use_static_tensorrt": ["TF_USE_TENSORRT_STATIC=1"],
         "//conditions:default": [],
@@ -951,6 +984,7 @@ cc_library(
     deps = if_tensorrt([
         ":common_utils",
         ":tensorrt_lib",
+        ":op_converter_registry",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
 )
@@ -959,42 +993,42 @@ pybind_extension(
     name = "_pywrap_py_utils",
     srcs = ["utils/py_utils_wrapper.cc"],
     link_in_framework = True,
-    module_name = "_pywrap_py_utils",
     static_deps = [
-        "@bazel_tools//:__subpackages__",
-        "@boringssl//:__subpackages__",
-        "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-        "@com_google_absl//:__subpackages__",
-        "@com_google_googleapis//:__subpackages__",
-        "@com_google_protobuf//:__subpackages__",
-        "@com_googlesource_code_re2//:__subpackages__",
-        "@curl//:__subpackages__",
-        "@double_conversion//:__subpackages__",
-        "@eigen_archive//:__subpackages__",
-        "@farmhash_archive//:__subpackages__",
-        "@fft2d//:__subpackages__",
-        "@gif//:__subpackages__",
-        "@highwayhash//:__subpackages__",
-        "@hwloc//:__subpackages__",
-        "@jsoncpp_git//:__subpackages__",
-        "@libjpeg_turbo//:__subpackages__",
-        "@libxsmm_archive//:__subpackages__",
-        "@llvm_openmp//:__subpackages__",
-        "@llvm-project//:__subpackages__",
-        "@llvm_terminfo//:__subpackages__",
-        "@llvm_zlib//:__subpackages__",
-        "@local_config_cuda//:__subpackages__",
-        "@local_config_git//:__subpackages__",
-        "@local_config_python//:__subpackages__",
-        "@local_config_rocm//:__subpackages__",
-        "@local_config_tensorrt//:__subpackages__",
-        "@local_execution_config_platform//:__subpackages__",
-        "@nsync//:__subpackages__",
-        "@platforms//:__subpackages__",
-        "@pybind11//:__subpackages__",
-        "@snappy//:__subpackages__",
-        "//:__subpackages__",
-        "@zlib//:__subpackages__",
+        # TODO(b/229550590): Uncomment to use cc_shared_library instead of cc_binary.
+        # "@bazel_tools//:__subpackages__",
+        # "@boringssl//:__subpackages__",
+        # "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
+        # "@com_google_absl//:__subpackages__",
+        # "@com_google_googleapis//:__subpackages__",
+        # "@com_google_protobuf//:__subpackages__",
+        # "@com_googlesource_code_re2//:__subpackages__",
+        # "@curl//:__subpackages__",
+        # "@double_conversion//:__subpackages__",
+        # "@eigen_archive//:__subpackages__",
+        # "@farmhash_archive//:__subpackages__",
+        # "@fft2d//:__subpackages__",
+        # "@gif//:__subpackages__",
+        # "@highwayhash//:__subpackages__",
+        # "@hwloc//:__subpackages__",
+        # "@jsoncpp_git//:__subpackages__",
+        # "@libjpeg_turbo//:__subpackages__",
+        # "@libxsmm_archive//:__subpackages__",
+        # "@llvm_openmp//:__subpackages__",
+        # "@llvm-project//:__subpackages__",
+        # "@llvm_terminfo//:__subpackages__",
+        # "@llvm_zlib//:__subpackages__",
+        # "@local_config_cuda//:__subpackages__",
+        # "@local_config_git//:__subpackages__",
+        # "@local_config_python//:__subpackages__",
+        # "@local_config_rocm//:__subpackages__",
+        # "@local_config_tensorrt//:__subpackages__",
+        # "@local_execution_config_platform//:__subpackages__",
+        # "@nsync//:__subpackages__",
+        # "@platforms//:__subpackages__",
+        # "@pybind11//:__subpackages__",
+        # "@snappy//:__subpackages__",
+        # "//:__subpackages__",
+        # "@zlib//:__subpackages__",
     ],
     deps = [
         ":common_utils",

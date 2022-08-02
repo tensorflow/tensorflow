@@ -40,7 +40,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.trackable import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 

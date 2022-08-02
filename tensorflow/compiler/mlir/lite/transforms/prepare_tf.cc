@@ -31,6 +31,7 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
@@ -42,9 +43,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -55,8 +54,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -70,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"
 
@@ -96,10 +98,11 @@ static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
 // TODO(hinsu): Add and use TensorFlow dialect ops for the ops created in this
 // pass.
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass
-    : public PassWrapper<PrepareTFPass, OperationPass<func::FuncOp>> {
+class PrepareTFPass : public PrepareTFPassBase<PrepareTFPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareTFPass)
 
@@ -108,43 +111,13 @@ class PrepareTFPass
   explicit PrepareTFPass(bool unfold_batch_matmul,
                          bool allow_bf16_and_f16_type_legalization,
                          bool use_fake_quant_num_bits = false) {
-    unfold_batch_matmul_ = unfold_batch_matmul;
-    allow_bf16_and_f16_type_legalization_ =
+    this->unfold_batch_matmul_ = unfold_batch_matmul;
+    this->allow_bf16_and_f16_type_legalization_ =
         allow_bf16_and_f16_type_legalization;
-    use_fake_quant_num_bits_ = use_fake_quant_num_bits;
-  }
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-prepare-tf";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Prepare TF for legalization to TensorFlow Lite dialect";
+    this->use_fake_quant_num_bits_ = use_fake_quant_num_bits;
   }
 
   void runOnOperation() override;
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, quant::QuantizationDialect,
-                    TFL::TensorFlowLiteDialect>();
-  }
-
- private:
-  Option<bool> unfold_batch_matmul_{
-      *this, "tfl-unfold-batch-matmul",
-      llvm::cl::desc("Unfold BatchMatMul into individual MatMul ops."),
-      llvm::cl::init(true)};
-
-  Option<bool> allow_bf16_and_f16_type_legalization_{
-      *this, "tfl-allow-bf16-and-f16-type-legalization",
-      llvm::cl::desc("Allow bf16 type legalization."), llvm::cl::init(false)};
-
-  Option<bool> use_fake_quant_num_bits_{
-      *this, "tfl-use-fake-quant-num-bits",
-      llvm::cl::desc("Use quantization calculated from fake quant attributes."),
-      llvm::cl::init(false)};
 };
 
 // Transient state for preserving data from match to rewrite
@@ -1232,7 +1205,7 @@ LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
   target.addLegalDialect<TF::TensorFlowDialect>();
   target.addLegalOp<ModuleOp>();
   target.addLegalOp<func::FuncOp>();
-  target.addIllegalOp<TF::XlaConvOp>();
+  target.addIllegalOp<TF::XlaConvV2Op>();
   target.addIllegalOp<TF::XlaGatherOp>();
 
   RewritePatternSet patterns(context);
@@ -1398,6 +1371,8 @@ void PrepareTFPass::runOnOperation() {
 
   patterns.add<RemoveIdentity>(ctx);
   TFL::populateWithGenerated(patterns);
+  // Remove redundant reshape ops.
+  TF::ReshapeOp::getCanonicalizationPatterns(patterns, ctx);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
@@ -1427,6 +1402,8 @@ void PrepareTFPass::runOnOperation() {
            ConvertRfftToRfft2d, RemoveIdentity>(ctx);
   phase_2_patterns.add<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       ctx, allow_bf16_and_f16_type_legalization_);
+  // Remove redundant reshape ops.
+  TF::ReshapeOp::getCanonicalizationPatterns(phase_2_patterns, ctx);
 
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
@@ -1442,7 +1419,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
                                          use_fake_quant_num_bits);
 }
 
-static PassRegistration<PrepareTFPass> pass;
+// Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass() {
+  return std::make_unique<PrepareTFPass>();
+}
 
 }  // namespace TFL
 }  // namespace mlir

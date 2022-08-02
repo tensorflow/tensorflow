@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/stream.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -131,14 +133,6 @@ std::string ToVlogString(int64_t i) { return absl::StrCat(i); }
 std::string ToVlogString(float f) { return absl::StrCat(f); }
 
 std::string ToVlogString(double d) { return absl::StrCat(d); }
-
-template <typename T>
-std::string ToVlogString(const HostOrDeviceScalar<T> &memory_or_constant) {
-  if (memory_or_constant.is_pointer()) {
-    return ToVlogString(memory_or_constant.pointer());
-  }
-  return ToVlogString(memory_or_constant.value());
-}
 
 template <class T>
 std::string ToVlogString(port::ArraySlice<T> elements) {
@@ -258,16 +252,6 @@ Stream::Stream(StreamExecutor *parent)
   VLOG_CALL(PARAM(parent));
 }
 
-Stream::Stream(StreamExecutor *parent,
-               internal::StreamInterface *implementation)
-    : parent_(parent),
-      implementation_(implementation),
-      allocated_(false),
-      status_(port::InternalError("Uninitialized stream")),
-      temporary_memory_manager_(this) {
-  VLOG_CALL(PARAM(parent), PARAM(implementation));
-}
-
 Stream::~Stream() {
   VLOG_CALL();
 
@@ -307,7 +291,7 @@ Stream &Stream::Init() {
   if (parent_->AllocateStream(this)) {
     // Successful initialization!
     allocated_ = true;
-    status_ = port::Status::OK();
+    status_ = ::tensorflow::OkStatus();
   } else {
     LOG(ERROR) << "failed to allocate stream during initialization";
   }
@@ -3692,80 +3676,6 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
               scratch_allocator);
 }
 
-template <typename ABType, typename CType>
-Stream &Stream::ThenBlasLtMatmulImpl(
-    const blas::IBlasLtMatmulPlan *plan, const HostOrDeviceScalar<CType> &alpha,
-    const DeviceMemory<ABType> &a, const DeviceMemory<ABType> &b,
-    const HostOrDeviceScalar<CType> &beta, DeviceMemory<CType> *c,
-    ScratchAllocator *scratch_allocator,
-    const blas::IBlasLtMatmulAlgorithm *algorithm,
-    const DeviceMemory<CType> &bias,
-    blas::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(plan), PARAM(alpha), PARAM(a), PARAM(b), PARAM(beta),
-            PARAM(scratch_allocator), PARAM(c), PARAM(algorithm), PARAM(bias));
-
-  ThenBlasWithProfileImpl<
-      const blas::IBlasLtMatmulPlan *, const HostOrDeviceScalar<CType> &,
-      const DeviceMemory<ABType> &, const DeviceMemory<ABType> &,
-      const HostOrDeviceScalar<CType> &, DeviceMemory<CType> *,
-      ScratchAllocator *, const blas::IBlasLtMatmulAlgorithm *,
-      const DeviceMemory<CType> &>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasLtMatmul, plan, alpha, a, b, beta,
-              c, scratch_allocator, algorithm, bias, output_profile_result);
-}
-
-// Explicit template instantiations for each supported type combination.
-template Stream &Stream::ThenBlasLtMatmulImpl<int8, int32>(
-    const blas::IBlasLtMatmulPlan *, const HostOrDeviceScalar<int32> &,
-    const DeviceMemory<int8> &, const DeviceMemory<int8> &,
-    const HostOrDeviceScalar<int32> &, DeviceMemory<int32> *,
-    ScratchAllocator *, const blas::IBlasLtMatmulAlgorithm *,
-    const DeviceMemory<int32> &, blas::ProfileResult *);
-
-template Stream &Stream::ThenBlasLtMatmulImpl<Eigen::half, Eigen::half>(
-    const blas::IBlasLtMatmulPlan *, const HostOrDeviceScalar<Eigen::half> &,
-    const DeviceMemory<Eigen::half> &, const DeviceMemory<Eigen::half> &,
-    const HostOrDeviceScalar<Eigen::half> &, DeviceMemory<Eigen::half> *,
-    ScratchAllocator *, const blas::IBlasLtMatmulAlgorithm *,
-    const DeviceMemory<Eigen::half> &, blas::ProfileResult *);
-
-template Stream &Stream::ThenBlasLtMatmulImpl<float, float>(
-    const blas::IBlasLtMatmulPlan *, const HostOrDeviceScalar<float> &,
-    const DeviceMemory<float> &, const DeviceMemory<float> &,
-    const HostOrDeviceScalar<float> &, DeviceMemory<float> *,
-    ScratchAllocator *, const blas::IBlasLtMatmulAlgorithm *,
-    const DeviceMemory<float> &, blas::ProfileResult *);
-
-template Stream &Stream::ThenBlasLtMatmulImpl<double, double>(
-    const blas::IBlasLtMatmulPlan *, const HostOrDeviceScalar<double> &,
-    const DeviceMemory<double> &, const DeviceMemory<double> &,
-    const HostOrDeviceScalar<double> &, DeviceMemory<double> *,
-    ScratchAllocator *, const blas::IBlasLtMatmulAlgorithm *,
-    const DeviceMemory<double> &, blas::ProfileResult *);
-
-template Stream &
-Stream::ThenBlasLtMatmulImpl<std::complex<float>, std::complex<float>>(
-    const blas::IBlasLtMatmulPlan *,
-    const HostOrDeviceScalar<std::complex<float>> &,
-    const DeviceMemory<std::complex<float>> &,
-    const DeviceMemory<std::complex<float>> &,
-    const HostOrDeviceScalar<std::complex<float>> &,
-    DeviceMemory<std::complex<float>> *, ScratchAllocator *,
-    const blas::IBlasLtMatmulAlgorithm *,
-    const DeviceMemory<std::complex<float>> &, blas::ProfileResult *);
-
-template Stream &
-Stream::ThenBlasLtMatmulImpl<std::complex<double>, std::complex<double>>(
-    const blas::IBlasLtMatmulPlan *,
-    const HostOrDeviceScalar<std::complex<double>> &,
-    const DeviceMemory<std::complex<double>> &,
-    const DeviceMemory<std::complex<double>> &,
-    const HostOrDeviceScalar<std::complex<double>> &,
-    DeviceMemory<std::complex<double>> *, ScratchAllocator *,
-    const blas::IBlasLtMatmulAlgorithm *,
-    const DeviceMemory<std::complex<double>> &, blas::ProfileResult *);
-
 Stream &Stream::ThenSetRngSeed(const uint8 *seed, uint64_t seed_bytes) {
   VLOG_CALL(PARAM(seed), PARAM(seed_bytes));
 
@@ -4236,6 +4146,14 @@ Stream &Stream::ThenRunAfterNextBlockHostUntilDone(
   absl::MutexLock lock(&mu_);
   after_block_host_until_done_callbacks_.push_back(std::move(callback));
   return *this;
+}
+
+void Stream::CheckError(bool operation_retcode) {
+  if (operation_retcode) {
+    return;
+  }
+  absl::MutexLock lock(&mu_);
+  status_ = port::InternalError("Unknown error");
 }
 
 Stream &Stream::ThenFft(fft::Plan *plan,

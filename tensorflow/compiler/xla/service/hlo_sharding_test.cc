@@ -107,7 +107,7 @@ TEST_F(HloShardingTest, ProtoRoundTrip) {
   *replicated->add_metadata() = GetMetadata("c");
   auto* manual = proto.add_tuple_shardings();
   manual->set_type(OpSharding::MANUAL);
-  HloSharding sharding = HloSharding::FromProto(proto).ConsumeValueOrDie();
+  HloSharding sharding = HloSharding::FromProto(proto).value();
   EXPECT_TRUE(protobuf_util::ProtobufEquals(proto, sharding.ToProto()));
 }
 
@@ -172,8 +172,7 @@ TEST_F(HloShardingTest, NestedTuple) {
   *proto.add_tuple_shardings() = HloSharding::Replicate().ToProto();
   *proto.add_tuple_shardings() = HloSharding::AssignDevice(0).ToProto();
   *proto.add_tuple_shardings() = tiled_sharding.ToProto();
-  HloSharding tuple_sharding =
-      HloSharding::FromProto(proto).ConsumeValueOrDie();
+  HloSharding tuple_sharding = HloSharding::FromProto(proto).value();
 
   ShapeTree<HloSharding> shape_tree =
       tuple_sharding.GetAsShapeTree(nested_tuple_shape);

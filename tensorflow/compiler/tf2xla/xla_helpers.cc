@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 
+#include <string>
+
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
@@ -82,7 +84,7 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
 
   *output = input.Clone();
   output->mutable_shape_do_not_use()->Swap(&shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
@@ -106,7 +108,7 @@ Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
       xla::Eq(indices, xla::Iota(builder, iota_shape, axis), broadcast_dims),
       xla::Broadcast(on_value, output_shape.dim_sizes()),
       xla::Broadcast(off_value, output_shape.dim_sizes()));
-  return Status::OK();
+  return OkStatus();
 }
 
 DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
@@ -168,6 +170,9 @@ Status ResolveDeviceAssignment(
   // devices otherwise.
   params->instance.shape = TensorShape({1});
 
+  VLOG(5) << "Using collective params to resolve device assignment: "
+          << params->ToString();
+
   Status st;
   absl::Notification n;
   ctx->collective_executor()->CompleteParamsAsync(
@@ -180,8 +185,7 @@ Status ResolveDeviceAssignment(
     return errors::InvalidArgument("Timeout reached");
   }
   TF_RETURN_IF_ERROR(st);
-  VLOG(5) << "Using collective params to resolve device assignment: "
-          << params->ToString();
+  VLOG(5) << "Collective params completed: " << params->ToString();
 
   // Identify the physical device associated with each replica.
   device_assignment = xla::DeviceAssignment(params->group.group_size, 1);
@@ -240,9 +244,13 @@ Status ResolveDeviceAssignment(
     }
     gpu_options.set_gpu_global_device_ids(global_device_ids);
   }
+  const std::string& communicator_key =
+      params->group.runtime_details.communicator_key;
+  gpu_options.set_nccl_unique_id_callback(
+      [=](const xla::gpu::NcclCliqueKey& key) { return communicator_key; });
   run_options.set_device_assignment(&device_assignment);
   run_options.set_gpu_executable_run_options(&gpu_options);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace tensorflow

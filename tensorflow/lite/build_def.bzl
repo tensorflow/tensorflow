@@ -23,6 +23,10 @@ def tflite_copts():
         clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
         ],
+        clean_dep("//tensorflow:linux_x86_64"): [
+            "-msse4.2",
+        ],
+        clean_dep("//tensorflow:linux_x86_64_no_sse"): [],
         clean_dep("//tensorflow:windows"): [
             "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
@@ -44,6 +48,12 @@ def tflite_copts():
         "//conditions:default": [
             "-fno-exceptions",  # Exceptions are unused in TFLite.
         ],
+    }) + select({
+        clean_dep("//tensorflow/lite:tflite_with_xnnpack_explicit_false"): ["-DTFLITE_WITHOUT_XNNPACK"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/lite:tensorflow_profiler_config"): ["-DTF_LITE_TENSORFLOW_PROFILER"],
+        "//conditions:default": [],
     })
 
     return copts + tflite_copts_extra()
@@ -380,6 +390,10 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "no_gpu",  # Executing with TF GPU configurations is redundant.
                 "no_oss",
                 "no_windows",
+                # Disable sanitizer runs as models can be huge and can timeout.
+                "noasan",
+                "nomsan",
+                "notsan",
             ] + tags + coverage_tags,
             deps = [
                 "//third_party/py/tensorflow",

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -139,6 +140,9 @@ void TrtShapeOptimizationProfile::OptimalStrategy(
 // Collects the values of tensors that are ShapeTensorCompatible to. The values
 // are stored in the actual_shape_values_ member variable.
 Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
+  tensorflow::profiler::TraceMe activity(
+      "TrtShapeOptimizationProfile::CollectShapeValues",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   const cudaStream_t* stream = CHECK_NOTNULL(
       reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
                                                 ->stream()
@@ -318,9 +322,52 @@ void TrtShapeOptimizationProfile::InitProfiles(
   }
 }
 
+void TrtShapeOptimizationProfile::InitCalibProfile(
+    const std::vector<TensorShape>& shapes) {
+  VLOG(1) << "Collected shape(s) " << DebugString(shapes) << " for "
+          << " calibration profile.";
+  auto shape_vec = shapes;
+  if (!shape_vec.empty()) {
+    std::vector<nvinfer1::Dims> dimvec = GetDimVec(shape_vec);
+    dimvec.insert(dimvec.end(), actual_shape_values_.begin(),
+                  actual_shape_values_.end());
+    VLOG(2) << "Initializing calibration optimization profile config with "
+            << "min=opt=max " << DebugString(dimvec);
+
+    OptimizationProfileConfig profConfig{dimvec, dimvec, dimvec};
+    calib_profiles_ = std::move(profConfig);
+  } else {
+    VLOG(2) << "Failed to initialize calibration optimization profile.";
+  }
+}
+
 Status TrtShapeOptimizationProfile::AddProfiles(
     nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
     const nvinfer1::INetworkDefinition* network) {
+  // Create optimization profile for calibration if necessary.
+  if (!calib_profiles_.min.empty()) {
+    VLOG(2) << "Setting up calibration profies";
+    auto* calibProfile = builder->createOptimizationProfile();
+    Status status = calib_profiles_.SetDimensions(network, calibProfile);
+    if (!status.ok()) {
+      return status;
+    }
+    bool result = false;
+    if (calibProfile->isValid()) {
+      result = config->setCalibrationProfile(calibProfile);
+    } else {
+      VLOG(2) << "Calibration profile is not valid";
+    }
+    if (result) {
+      VLOG(2) << "Added calibration optimization profile "
+              << calib_profiles_.DebugString() << " to builder config.";
+    } else {
+      VLOG(2) << "FAILED TO ADD PROFILE";
+      LOG(ERROR) << "Failed to add calibration optimization profile "
+                 << calib_profiles_.DebugString()
+                 << ". This usually happens when profile is invalid.";
+    }
+  }
   // Create a vector of optimization profiles.
   for (int i = 0; i < profiles_.size(); i++) {
     auto* optProfile = builder->createOptimizationProfile();
@@ -351,7 +398,7 @@ Status TrtShapeOptimizationProfile::AddProfiles(
     return errors::Internal("Failure in adding an optimization profile.");
   }
   need_profiles_ = config->getNbOptimizationProfiles() > 0;
-  // Update the the mask that flag shape tensors. The network is known now,
+  // Update the mask that flag shape tensors. The network is known now,
   // the mask will be correct.
   SetShapeTensorMask(network);
   is_pruned_input_.resize(network->getNbInputs());
@@ -423,6 +470,9 @@ void TrtShapeOptimizationProfile::SetShapeTensorMask(
 
 int TrtShapeOptimizationProfile::GetProfileNumber(
     const std::vector<TensorShape>& shapes) {
+  tensorflow::profiler::TraceMe activity(
+      "TrtShapeOptimizationProfile::GetProfileNumber",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   if (!need_profiles_) return 0;
   // TODO(tfeher): Return the best profile not just the first compatible.
   for (int i = 0; i < profiles_.size(); i++) {
@@ -466,6 +516,9 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
 Status TrtShapeOptimizationProfile::SetInputShapeBinding(
     int input_index, int binding_index, nvinfer1::ICudaEngine* cuda_engine,
     nvinfer1::IExecutionContext* exec_context) const {
+  tensorflow::profiler::TraceMe activity(
+      "TrtShapeOptimizationProfile::SetInputShapeBinding",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   if (cuda_engine->isShapeBinding(binding_index)) {
     // Input shape binding data has to be in host memory. That is the reason
     // we can't use input_tensor.flat().data(). which contains the same

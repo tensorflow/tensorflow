@@ -611,7 +611,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:              "tf._XlaHostComputeMlir"(%[[B_OUTPUT]], %[[A_OUTPUT]])
     // CHECK-SAME:         recv_key = "host_compute_channel_0_retvals"
     // CHECK-SAME:         send_key = "host_compute_channel_0_args"
-    // CHECK-SAME:         tpu_core = 0
     // CHECK-NEXT:         "tf.Yield"() : () -> ()
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
       %2 = "tf_device.cluster"() ({
@@ -666,7 +665,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:              "tf._XlaHostComputeMlir"(%[[B_OUTPUT]], %[[A_OUTPUT]])
     // CHECK-SAME:         recv_key = "host_compute_channel_0_retvals"
     // CHECK-SAME:         send_key = "host_compute_channel_0_args"
-    // CHECK-SAME:         tpu_core = 0
     // CHECK-NEXT:         "tf.Yield"() : () -> ()
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
       %2 = "tf_device.cluster"() ({
@@ -769,7 +767,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:            "tf._XlaHostComputeMlir"(%[[B_OUTPUT]], %[[A_OUTPUT]], %[[G_OUTPUT]])
     // CHECK-SAME:       recv_key = "host_compute_channel_0_retvals"
     // CHECK-SAME:       send_key = "host_compute_channel_0_args"
-    // CHECK-SAME:       tpu_core = 0
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     %7 = "tf.F"() : () -> tensor<2xi32>
 
@@ -833,7 +830,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:              "tf._XlaHostComputeMlir"(%[[D_OUT]], %[[F_OUT]])
     // CHECK-SAME:         recv_key = "host_compute_channel_0_retvals"
     // CHECK-SAME:         send_key = "host_compute_channel_0_args"
-    // CHECK-SAME:         tpu_core = 0
     // CHECK:              "tf.Yield"() : () -> ()
     // CHECK:              "tf.Yield"() : () -> ()
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
@@ -902,7 +898,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:              %[[HOST_COMPUTE_OUT:[0-9]*]] = "tf._XlaHostComputeMlir"(%[[B_OUTPUT]], %[[A_OUTPUT]])
     // CHECK-SAME:         recv_key = "host_compute_channel_0_retvals"
     // CHECK-SAME:         send_key = "host_compute_channel_0_args"
-    // CHECK-SAME:         tpu_core = 0
     // CHECK-NEXT:         "tf.Yield"(%[[HOST_COMPUTE_OUT]])
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
       %2 = "tf_device.cluster"() ({
@@ -1312,7 +1307,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:            "tf._XlaHostComputeMlir"(%[[B_OUTPUT]], %[[A_OUTPUT]], %[[G_OUTPUT]])
     // CHECK-SAME:       recv_key = "host_compute_channel_0_retvals"
     // CHECK-SAME:       send_key = "host_compute_channel_0_args"
-    // CHECK-SAME:       tpu_core = 0
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     %7 = "tf.F"() : () -> tensor<2xi32>
 
@@ -1552,7 +1546,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]]
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[HOST_OUTPUT:[0-9]*]] = "tf._XlaHostComputeMlir"()
-    // CHECK-SAME:       host_mlir_module = "module  {\0A  func @host_func() -> tensor<?xi32> {\0A    %0 = \22tf.B\22() {_xla_outside_compilation = \22cluster1\22} : () -> tensor<?xi32> loc(#loc1)\0A    return %0 : tensor<?xi32> loc(#loc1)\0A  }
+    // CHECK-SAME:       host_mlir_module = "module  {\0A  func.func @host_func() -> tensor<?xi32> {\0A    %0 = \22tf.B\22() {_xla_outside_compilation = \22cluster1\22} : () -> tensor<?xi32> loc(#loc1)\0A    return %0 : tensor<?xi32> loc(#loc1)\0A  }
     // CHECK:            "tf.C"(%[[HOST_OUTPUT]])
     "tf_device.cluster"() ({
       %0 = "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> (tensor<?xi32>)

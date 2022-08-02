@@ -144,7 +144,7 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutForward(
@@ -180,7 +180,7 @@ Status RunSPMDExpansion(mlir::Operation* op, mlir::Operation** output) {
     VLOG(1) << "No expansion found for " << OpName(op) << "\n";
     *output = op;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace dtensor

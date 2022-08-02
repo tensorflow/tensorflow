@@ -17,7 +17,9 @@ package_group(
 package_group(
     name = "dtensor-internal",
     packages = [
+        "//learning/brain/experimental/jax_tpu_embedding/...",
         "//learning/brain/public/...",
+        "//tensorflow/core/...",
         "//tensorflow/dtensor/...",
         "//tensorflow/python/...",
     ],

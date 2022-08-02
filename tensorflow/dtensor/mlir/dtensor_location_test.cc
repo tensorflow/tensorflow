@@ -18,8 +18,8 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/core/platform/test.h"
-
 
 namespace {
 
@@ -70,6 +70,43 @@ TEST(DTensorLocationTest, HandlesMultipleCalls) {
 >> test.cc:22:0
 >> test.cc:23:0
 >> test.cc:24:0)stack";
+  EXPECT_EQ(tensorflow::dtensor::DTensorLocationToString(test_loc), stack);
+}
+
+TEST(DTensorLocationTest, HandlesNameLoc) {
+  mlir::MLIRContext ctx;
+  mlir::Location test_loc =
+      mlir::NameLoc::get(mlir::StringAttr::get(&ctx, "op@"),
+                         mlir::FileLineColLoc::get(&ctx, "test.cc", 10, 20));
+  test_loc = tensorflow::dtensor::DTensorLocation(test_loc, "test.cc", 21);
+  ASSERT_EQ(mlir::GetNameFromLoc(test_loc), "op");
+  ASSERT_TRUE(test_loc.isa<mlir::CallSiteLoc>());
+  auto callsite_loc = test_loc.cast<mlir::CallSiteLoc>();
+  mlir::Location caller_loc = test_loc.cast<mlir::CallSiteLoc>().getCaller();
+  ASSERT_TRUE(caller_loc.isa<mlir::NameLoc>());
+  CheckFileLineColLocation(caller_loc.cast<mlir::NameLoc>().getChildLoc(), 10,
+                           20);
+
+  mlir::Location callee_loc = callsite_loc.getCallee();
+  ASSERT_TRUE(callee_loc.isa<mlir::NameLoc>());
+  CheckFileLineColLocation(callee_loc.cast<mlir::NameLoc>().getChildLoc(), 21,
+                           0);
+
+  constexpr char stack[] = R"stack(>> test.cc:10:20
+>> test.cc:21:0)stack";
+  EXPECT_EQ(tensorflow::dtensor::DTensorLocationToString(test_loc), stack);
+}
+
+TEST(DTensorLocationTest, HandlesNameLocWithName) {
+  mlir::MLIRContext ctx;
+  mlir::Location test_loc =
+      mlir::NameLoc::get(mlir::StringAttr::get(&ctx, "op@"),
+                         mlir::FileLineColLoc::get(&ctx, "test.cc", 10, 20));
+  test_loc =
+      tensorflow::dtensor::DTensorLocation(test_loc, "test.cc", 21, "nested");
+  EXPECT_EQ(mlir::GetNameFromLoc(test_loc), "op/nested");
+  constexpr char stack[] = R"stack(>> test.cc:10:20
+>> test.cc:21:0)stack";
   EXPECT_EQ(tensorflow::dtensor::DTensorLocationToString(test_loc), stack);
 }
 

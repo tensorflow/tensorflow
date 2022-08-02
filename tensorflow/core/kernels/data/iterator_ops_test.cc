@@ -76,11 +76,17 @@ class IteratorOpsTest : public DatasetOpsTestBase {
   }
 };
 
-TEST_F(IteratorOpsTest, RecordMetrics) {
-  CellReader<Histogram> latency_metric("/tensorflow/data/getnext_duration");
-  CellReader<int64_t> throughput_metric("/tensorflow/data/bytes_fetched");
-  EXPECT_FLOAT_EQ(latency_metric.Delta().num(), 0.0);
-  EXPECT_EQ(throughput_metric.Delta(), 0.0);
+TEST_F(IteratorOpsTest, CollectMetrics) {
+  CellReader<Histogram> latency("/tensorflow/data/getnext_duration");
+  CellReader<Histogram> iterator_gap("/tensorflow/data/iterator_gap");
+  CellReader<int64_t> throughput("/tensorflow/data/bytes_fetched");
+  CellReader<int64_t> iterator_lifetime("/tensorflow/data/iterator_lifetime");
+  CellReader<int64_t> iterator_busy("/tensorflow/data/iterator_busy");
+  EXPECT_FLOAT_EQ(latency.Delta().num(), 0.0);
+  EXPECT_FLOAT_EQ(iterator_gap.Delta().num(), 0.0);
+  EXPECT_EQ(throughput.Delta(), 0.0);
+  EXPECT_EQ(iterator_lifetime.Delta(), 0.0);
+  EXPECT_EQ(iterator_busy.Delta(), 0.0);
 
   RangeDatasetParams dataset_params = RangeDatasetParams(0, 10, 3);
   TF_ASSERT_OK(Initialize(dataset_params));
@@ -90,10 +96,15 @@ TEST_F(IteratorOpsTest, RecordMetrics) {
                           GetIteratorOutput(*iter_resource));
   EXPECT_EQ(output.size(), 4);
 
-  Histogram histogram = latency_metric.Delta();
-  EXPECT_FLOAT_EQ(histogram.num(), 5.0);
-  EXPECT_GT(histogram.sum(), 0.0);
-  EXPECT_GT(throughput_metric.Delta(), 0);
+  Histogram latency_histogram = latency.Delta();
+  EXPECT_FLOAT_EQ(latency_histogram.num(), 5.0);
+  EXPECT_GT(latency_histogram.sum(), 0.0);
+  Histogram iterator_gap_histogram = iterator_gap.Delta();
+  EXPECT_FLOAT_EQ(iterator_gap_histogram.num(), 5.0);
+  EXPECT_GT(iterator_gap_histogram.sum(), 0.0);
+  EXPECT_GT(throughput.Delta(), 0);
+  EXPECT_GT(iterator_lifetime.Delta(), 0);
+  EXPECT_GT(iterator_busy.Delta(), 0.0);
 }
 
 }  // namespace

@@ -18,6 +18,7 @@ import functools
 import time
 from typing import List, Optional, Dict
 
+from absl import flags
 import numpy as np
 
 from tensorflow.dtensor.python import api
@@ -33,6 +34,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -148,6 +150,11 @@ def dtensor_shutdown_tpu_system():
 def dtensor_initialize_tpu_system(enable_coordination_service=False):
   """Initialize the TPU devices.
 
+  This functions performs additional TPU related initialization after
+  calling `dtensor.initialize_multi_client` to initialize multi-client DTensor.
+  Refer to `dtensor.initialize_multi_client` for relevant environment
+  variables that controls the initialization of multi-client DTensor.
+
   Args:
     enable_coordination_service: If true, enable distributed coordination
       service to make sure that workers know the devices on each other, a
@@ -159,16 +166,13 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
   """
 
   assert context.executing_eagerly()
-  in_multi_client_mode = api.job_name() != "localhost"
+
+  # Reconfigure TensorFlow to use TFRT TPU runtime if requested.
+  _configure_tpu_runtime()
 
   # Collective GRPC servers are only necessary in mutli-client setup.
-  # Single clients (e.g. Forge) can use local mode of collectives.
-  if in_multi_client_mode:
-    if api.jobs() is None:
-      raise ValueError(
-          "DTENSOR_JOBS environment variable is required when"
-          "using multi-client to properly set up communications between servers"
-      )
+  # Single clients can use local mode of collectives.
+  if api.num_clients() > 1 and not multi_client_util.is_initialized():
     multi_client_util.initialize_multi_client_cluster(
         job_name=api.job_name(),
         dtensor_jobs=api.jobs(),
@@ -185,6 +189,10 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
   @function.defun
   def _tpu_init_fn():
     return gen_dtensor_ops.configure_and_initialize_global_tpu()
+
+  @def_function.function
+  def _set_global_tpu_array_fn(topology_proto):
+    gen_dtensor_ops.d_tensor_set_global_tpu_array(topology_proto)
 
   try:
     with ops.device("/job:" + api.full_job_name() + "/device:TPU_SYSTEM:0"):  # pylint: disable=protected-access
@@ -275,6 +283,8 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
 
     tpu_topology = _create_tpu_topology(all_core_locations, num_tasks,
                                         num_devices_per_task)
+
+    _set_global_tpu_array_fn(tpu_topology.serialized())
     global _tpu_topology
     _tpu_topology = tpu_topology
     logging.vlog(1, "TPU Topology: %s, %s", tpu_topology.mesh_shape,
@@ -287,7 +297,8 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
 
   except errors.InvalidArgumentError as e:
     raise errors.NotFoundError(
-        None, None, "Initialization failed, no valid TPUs found. " + str(e))
+        None, None,
+        "Initialization failed, no valid TPUs found. " + str(e)) from e
 
   except errors.InternalError as e:
     logging.error("Hit internal error during TPU system initialization. "
@@ -297,7 +308,7 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
     raise e
 
   # Optionally exchange heartbeats between workers every minute.
-  if in_multi_client_mode and api.heartbeat_enabled():
+  if api.num_clients() > 1 and api.heartbeat_enabled():
     logging.info(
         "Starting DTensor heartbeat service exchanging signals every 10 minutes"
     )
@@ -595,7 +606,6 @@ def _build_orthogonal_rings(
   return untransposed
 
 
-@tf_export("experimental.dtensor.create_tpu_mesh", v1=[])
 def create_tpu_mesh(mesh_dim_names: List[str],
                     mesh_shape: List[int],
                     mesh_name: str,
@@ -611,8 +621,6 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   used to build rings, as long as the subslice formed by these axes have enough
   cores to contain a ring of the required size. The leftover axes in `ring_axes`
   won't affect results.
-
-  See go/dtensor-device-assignment-api for details and performance tuning tips.
 
   Args:
     mesh_dim_names: List of mesh dimension names.
@@ -663,10 +671,9 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   logging.info("Actual ring_axes: %s", ring_axes)
 
   # Validate ring_bounds values.
-  global _tpu_topology
   if _tpu_topology is None:
     raise ValueError(
-        "Invalid TPU topology, run dtensor_initialize_tpu_system() first")
+        "Invalid TPU topology, run dtensor.initialize_tpu_system() first")
   topology_shape = list(_tpu_topology.mesh_shape)
   if ring_bounds is None:
     ring_bounds = topology_shape
@@ -717,10 +724,9 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   # For this point on, change from List[CoreLocation] to List[List[int]] for
   # easier interaction with the C++ API.
   global_core_locations = [l.to_list() for l in global_core_locations]
-  global _dtensor_device
   if _dtensor_device is None:
     raise ValueError(
-        "Invalid system device, run dtensor_initialize_tpu_system() first")
+        "Invalid system device, run dtensor.initialize_tpu_system() first")
   global_core_ids = _dtensor_device.tpu_core_locations_to_ids(
       global_core_locations)
 
@@ -799,3 +805,11 @@ def get_device_locations(
   # their device locations.
   raise NotImplementedError(
       "Looking up other clients' device locations is not supported")
+
+
+def _configure_tpu_runtime():
+  was_enabled = context.is_tfrt_enabled()
+  if ("tpu_use_tfrt" in flags.FLAGS and flags.FLAGS["tpu_use_tfrt"].value):
+    tfrt_utils.set_tfrt_enabled(True)
+  if not was_enabled:
+    context._reset_context()  # pylint:disable=protected-access

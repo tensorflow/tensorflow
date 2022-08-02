@@ -102,6 +102,18 @@ def get_canonical_name_for_symbol(
     add_prefix_to_v1_names=False):
   """Get canonical name for the API symbol.
 
+  Example:
+  ```python
+  from tensorflow.python.util import tf_export
+  cls = tf_export.get_symbol_from_name('keras.optimizers.Adam')
+
+  # Gives `<class 'keras.optimizer_v2.adam.Adam'>`
+  print(cls)
+
+  # Gives `keras.optimizers.Adam`
+  print(tf_export.get_canonical_name_for_symbol(cls, api_name='keras'))
+  ```
+
   Args:
     symbol: API function or class.
     api_name: API name (tensorflow or estimator).

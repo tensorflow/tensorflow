@@ -15,10 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_combiner.h"
 
+#include <algorithm>
+
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
@@ -84,10 +83,6 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
   dst->set_host_count(dst->hostnames_size());
   if (src.device_type() != "CPU") {
     dst->set_device_type(src.device_type());
-    // TODO(b/111402648): Batch size may differ per-core. Currently, we report
-    // the max batch size. We need to come up with a better measure.
-    dst->set_per_core_batch_size(
-        std::max(src.per_core_batch_size(), dst->per_core_batch_size()));
     dst->set_device_core_count(src.device_core_count() +
                                dst->device_core_count());
     // Replica count and num cores per replica must be same for all copies.
@@ -130,7 +125,10 @@ void CombineOpStats(
     OpMetricsDbCombiner* hlo_metrics_db_complete_steps_only_combiner,
     std::vector<OpMetricsDbCombiner>* hlo_metrics_db_per_step_combiners) {
   // Combine host_metrics_db.
-  host_op_metrics_db_combiner->Combine(src.host_op_metrics_db());
+  // Host OpMetricsDb does not need to update the number of cores a certain op
+  // occurs.
+  host_op_metrics_db_combiner->Combine(src.host_op_metrics_db(),
+                                       /*update_num_cores=*/false);
   // Combine device_metrics_db.
   device_op_metrics_db_combiner->Combine(src.device_op_metrics_db());
 
@@ -217,9 +215,6 @@ void CombineAllOpStats(const std::vector<OpStatsInfo>& all_op_stats_info,
   combined_step_db->set_num_steps_dropped(step_intersection.StepsDropped());
 
   combined_step_db->set_empty_intersect(step_intersection.EmptyIntersect());
-
-  // Set the default value of per_core_batch_size in <combined_op_stats>
-  combined_op_stats->mutable_run_environment()->set_per_core_batch_size(-1);
 
   // Initialize all the OpMetricsDbCombiners.
   OpMetricsDbCombiner host_op_metrics_db_combiner(

@@ -23,7 +23,9 @@ import typing
 from absl.testing import parameterized
 import typing_extensions
 
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -36,6 +38,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.saving import save as keras_save
@@ -1059,6 +1062,17 @@ class ExtensionTypeIntegrationTest(test_util.TensorFlowTestCase):
     ds = ds.batch(3, drop_remainder=True)
     self.assertEqual(next(iter(ds)), xs)
 
+  @test_util.run_v2_only
+  def testDistributedDataset(self):
+    strategy = mirrored_strategy.MirroredStrategy(['GPU:0', 'GPU:1'])
+    mt = MaskedTensorV3([[1], [2], [3], [4]], [[True], [False], [True], [True]])
+    ds = dataset_ops.DatasetV2.from_tensor_slices(mt).batch(2)
+    dist_dataset = strategy.experimental_distribute_dataset(ds)
+    expect = MaskedTensorV3([[1]], [[True]])
+    per_replica_result = next(iter(dist_dataset))
+    self.assertEqual(per_replica_result.values[0].values, expect.values[0])
+    self.assertEqual(per_replica_result.values[0].mask, expect.mask[0])
+
   # TODO(edloper): Move this test to Keras.
   @test_util.run_v2_only
   def testKerasModel(self):
@@ -1465,6 +1479,26 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
     self.assertIsInstance(v4, MaskedTensorV1)
     self.assertAllEqual(v4.values, [11, 22, 33])
     self.assertAllEqual(v4.mask, [True, True, False])
+
+  def testFlatTensorSpecs(self):
+    x = MaskedTensorV2([4, 5], [True, False])
+    spec = type_spec.type_spec_from_value(x)
+    flat_specs = spec._flat_tensor_specs
+    self.assertEqual(flat_specs, [
+        tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.int32, name=None),
+        tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.bool, name=None)
+    ])
+
+  def testFullTypesForFlatTensors(self):
+    x = MaskedTensorV2([4, 5], [True, False])
+    spec = type_spec.type_spec_from_value(x)
+    full_type_list = fulltypes_for_flat_tensors(spec)
+    expect = [
+        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET),
+        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET)
+    ]
+    self.assertEqual(len(spec._flat_tensor_specs), len(full_type_list))
+    self.assertEqual(expect, full_type_list)
 
 
 def replace_tensors_with_placeholders(value):

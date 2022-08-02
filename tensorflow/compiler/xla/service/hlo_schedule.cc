@@ -42,8 +42,11 @@ namespace xla {
     int64_t computation_id = id_sequence.first;
 
     auto comp_it = id_to_computation.find(computation_id);
-    TF_RET_CHECK(comp_it != id_to_computation.end())
-        << "No computation exists in HLO module with id " << computation_id;
+    // Computation could have been removed if unused, so
+    // skip if not found.
+    if (comp_it == id_to_computation.end()) {
+      continue;
+    }
     const HloComputation* computation = comp_it->second;
 
     absl::flat_hash_map<int64_t, HloInstruction*> id_to_instruction;
@@ -194,7 +197,7 @@ Status HloSchedule::UpdateComputationSchedule(
   }
 
   set_sequence(computation, std::move(new_sequence));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloSchedule::Update() {
@@ -229,7 +232,7 @@ Status HloSchedule::Update() {
   }
 
   TF_RETURN_IF_ERROR(Verify());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloSchedule::Verify() const {
@@ -290,7 +293,7 @@ Status HloSchedule::Verify() const {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {

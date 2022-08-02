@@ -35,7 +35,7 @@ static Device* CreateDevice(const string& type, int n) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-    Status Sync() override { return Status::OK(); }
+    Status Sync() override { return OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
   DeviceAttributes attr;
@@ -62,7 +62,7 @@ class EagerContextTest : public ::testing::Test {
  protected:
   void InitDeviceManager() {
     ASSERT_EQ(device_manager_, nullptr);
-    device_manager_ = absl::make_unique<DynamicDeviceMgr>();
+    device_manager_ = std::make_unique<DynamicDeviceMgr>();
     std::vector<std::unique_ptr<Device>> added_devices;
     added_devices.emplace_back(CreateDevice(DEVICE_CPU, 0));
     added_devices.emplace_back(CreateDevice(DEVICE_CPU, 1));

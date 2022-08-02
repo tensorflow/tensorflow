@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -92,7 +93,34 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
         " expected: ", DataTypeSliceString(expected_inputs), "->",
         DataTypeSliceString(expected_outputs));
   }
-  return Status::OK();
+  return OkStatus();
+}
+
+const absl::flat_hash_set<std::string>* GetOpNodeDefsToLogFromEnv() {
+  auto* result = new absl::flat_hash_set<std::string>;
+  const char* env = getenv("TF_DEBUG_OPS_TO_LOG_NODEDEFS");
+  if (!env) {
+    return result;
+  }
+
+  std::vector<absl::string_view> ops = absl::StrSplit(env, ',');
+  LOG(INFO) << "Will log NodeDefs from the following ops: ";
+  for (absl::string_view op : ops) {
+    result->insert(std::string(op));
+    LOG(INFO) << "  |" << op << "|";
+  }
+
+  return result;
+}
+
+// Returns true if the NodeDef for the OpKernel should be logged. The
+// envionrmental variable TF_DEBUG_OPS_TO_LOG_NODEDEFS can be set to a
+// comma-separated list of op types. The NodeDef for each is printed, which is
+// useful for debugging purposes.
+bool ShouldLogNodeDef(OpKernel* op_kernel) {
+  static const absl::flat_hash_set<std::string>& ops_to_log_nodedefs =
+      *GetOpNodeDefsToLogFromEnv();
+  return ops_to_log_nodedefs.count(op_kernel->type_string());
 }
 
 }  // namespace
@@ -124,6 +152,10 @@ OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
   expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
                !DeviceFactory::IsPluggableDevice(
                    DeviceTypeString(context->device_type()));
+
+  if (ShouldLogNodeDef(this)) {
+    LOG(INFO) << "NodeDef for " << name() << ":\n" << def().ShortDebugString();
+  }
 }
 
 OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
@@ -164,7 +196,7 @@ Status OpKernel::InputRange(StringPiece input_name, int* start,
   } else {
     *start = result->second.first;
     *stop = result->second.second;
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -176,7 +208,7 @@ Status OpKernel::OutputRange(StringPiece output_name, int* start,
   } else {
     *start = result->second.first;
     *stop = result->second.second;
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -270,7 +302,7 @@ Status OpKernelConstruction::allocate_temp(DataType type,
         def().name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
   }
   *out_temp = new_temp;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelConstruction::allocate_temp(DataType type,
@@ -295,7 +327,7 @@ Status OpKernelConstruction::allocate_temp(DataType type,
         def().name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
   }
   *out_temp = new_temp;
-  return Status::OK();
+  return OkStatus();
 }
 
 // OpKernelContext -----------------------------------------------------------
@@ -378,30 +410,30 @@ Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
     return errors::InvalidArgument("OpKernel used ref input name '", name,
                                    "' when non-ref input was expected");
   }
-  *tensor = (*params_->inputs)[index].tensor;
-  return Status::OK();
+  *tensor = params_->inputs[index].tensor;
+  return OkStatus();
 }
 
 Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
-  const TensorValue& value((*params_->inputs)[index]);
+  const TensorValue& value(params_->inputs[index]);
   *dtype = value.dtype();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   *out_mutex = input_ref_mutex(index);
-  return Status::OK();
+  return OkStatus();
 }
 
 const Tensor& OpKernelContext::input(int index) const {
   CHECK_GE(index, 0);
   CHECK_LT(index, num_inputs()) << " name: " << op_kernel().name();
   CHECK(!input_is_ref(index));
-  const Tensor& tensor = *((*params_->inputs)[index].tensor);
+  const Tensor& tensor = *params_->inputs[index].tensor;
   return tensor;
 }
 
@@ -411,11 +443,11 @@ Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
   CHECK(input_is_ref(index));
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
-    Tensor& tensor = *((*params_->inputs)[index].tensor);
+    Tensor& tensor = *params_->inputs[index].tensor;
     return tensor;
   } else {
     tf_shared_lock l(*input_ref_mutex(index));
-    Tensor& tensor = *((*params_->inputs)[index].tensor);
+    Tensor& tensor = *params_->inputs[index].tensor;
     return tensor;
   }
 }
@@ -427,10 +459,10 @@ void OpKernelContext::replace_ref_input(int index, const Tensor& tensor,
   CHECK(input_is_ref(index));
   // should only modify the tensor while holding the mutex
   if (lock_held) {
-    *(*params_->inputs)[index].tensor = tensor;
+    *params_->inputs[index].tensor = tensor;
   } else {
     mutex_lock l(*input_ref_mutex(index));
-    *(*params_->inputs)[index].tensor = tensor;
+    *params_->inputs[index].tensor = tensor;
   }
 }
 
@@ -439,8 +471,8 @@ void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
   CHECK_GE(input_index, 0);
   CHECK_LT(input_index, num_inputs());
   CHECK(input_is_ref(input_index));
-  set_output_ref(output_index, (*params_->inputs)[input_index].mutex_if_ref,
-                 (*params_->inputs)[input_index].tensor);
+  set_output_ref(output_index, params_->inputs[input_index].mutex_if_ref,
+                 params_->inputs[input_index].tensor);
 }
 
 bool OpKernelContext::forward_input_to_output_with_shape(
@@ -473,7 +505,7 @@ Status OpKernelContext::forward_input_to_output_with_shape(
     return errors::FailedPrecondition("OpKernel could not forward input '",
                                       input_name, "' to output '", output_name);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::unique_ptr<Tensor> OpKernelContext::forward_input(
@@ -482,7 +514,7 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
     const AllocatorAttributes& output_attr) {
   CHECK_GE(input_index, 0);
   CHECK_LT(input_index, num_inputs());
-  const TensorValue& input = (*params_->inputs)[input_index];
+  const TensorValue& input = params_->inputs[input_index];
   // Check whether at graph construction time this output was marked
   // either for no forwarding or with a reservation for this input.
   // If it's reserved for this input we'll skip the refcount and
@@ -531,7 +563,7 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
     }
     // Check that output allocator attributes are not more restrictive than
     // input allocator attributes.
-    const auto input_attr = params_->input_alloc_attrs == nullptr
+    const auto input_attr = params_->input_alloc_attrs.empty()
                                 ? AllocatorAttributes()
                                 : input_alloc_attr(input_index);
     if (!output_attr.IsEqualOrLessRestrictiveThan(input_attr)) {
@@ -554,7 +586,7 @@ Status OpKernelContext::forward_input_or_allocate_temp(
                       type, shape, DEVICE_MEMORY, allocator_attr);
     if (new_tensor != nullptr) {
       *out_temp = std::move(*new_tensor);
-      return Status::OK();
+      return OkStatus();
     }
   }
   return allocate_temp(type, shape, out_temp, allocator_attr);
@@ -566,10 +598,10 @@ void OpKernelContext::delete_ref_input(int index, bool lock_held) {
   CHECK(input_is_ref(index));
   // should only modify the tensor while holding the mutex
   if (lock_held) {
-    delete (*params_->inputs)[index].tensor;
+    delete params_->inputs[index].tensor;
   } else {
     mutex_lock l(*input_ref_mutex(index));
-    delete (*params_->inputs)[index].tensor;
+    delete params_->inputs[index].tensor;
   }
 }
 
@@ -583,12 +615,12 @@ Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
   }
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
-    *tensor = *(*params_->inputs)[index].tensor;
+    *tensor = *params_->inputs[index].tensor;
   } else {
     tf_shared_lock l(*input_ref_mutex(index));
-    *tensor = *(*params_->inputs)[index].tensor;
+    *tensor = *params_->inputs[index].tensor;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::replace_ref_input(StringPiece name,
@@ -601,14 +633,14 @@ Status OpKernelContext::replace_ref_input(StringPiece name,
                                    "' when ref input was expected");
   }
   replace_ref_input(index, tensor, lock_held);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::input_list(StringPiece name, OpInputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   *list = OpInputList(this, start, stop);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::mutable_input_list(StringPiece name,
@@ -616,14 +648,14 @@ Status OpKernelContext::mutable_input_list(StringPiece name,
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   *list = OpMutableInputList(this, start, stop);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::output_list(StringPiece name, OpOutputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   *list = OpOutputList(this, start, stop);
-  return Status::OK();
+  return OkStatus();
 }
 
 void OpKernelContext::maybe_initialize_scope_id_set() {
@@ -705,7 +737,7 @@ Status OpKernelContext::allocate_tensor(
                                       params_->step_id, new_tensor);
   }
   *out_tensor = std::move(new_tensor);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
@@ -803,7 +835,7 @@ Status OpKernelContext::get_input_index(StringPiece name,
                                    "expected");
   }
   *out_index = start;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::get_output_index(StringPiece name,
@@ -817,21 +849,21 @@ Status OpKernelContext::get_output_index(StringPiece name,
                                    "expected");
   }
   *out_index = start;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output(index, tensor);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::set_output(StringPiece name, Tensor&& tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output(index, std::move(tensor));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
@@ -939,18 +971,18 @@ Status OpKernelContext::set_output_ref(StringPiece name, mutex* mu,
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output_ref(index, mu, tensor_for_ref);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpKernelContext::mutable_output(StringPiece name, Tensor** tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   *tensor = mutable_output(index);
-  return Status::OK();
+  return OkStatus();
 }
 
 bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
-  const auto& inputs = *params_->inputs;
+  const auto& inputs = params_->inputs;
   for (size_t i = 1; i < inputs.size(); ++i) {
     if (!inputs[0]->IsSameSize(*(inputs[i].tensor))) {
       SetStatus(errors::InvalidArgument(
@@ -967,7 +999,7 @@ bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
 Status OpKernelContext::MatchSignature(const DataTypeSlice expected_inputs,
                                        const DataTypeSlice expected_outputs) {
   DataTypeVector inputs;
-  for (const TensorValue& t : *params_->inputs) {
+  for (const TensorValue& t : params_->inputs) {
     inputs.push_back(t.dtype());
   }
   DataTypeVector outputs = params_->op_kernel->output_types();
@@ -1112,9 +1144,9 @@ static Status IsProbablySafeToLoad(const string& path) {
   if (!missing_features.empty()) {
     string errmsg = "Missing CPU features: ";
     errmsg.append(absl::StrJoin(missing_features, ", "));
-    return Status(errors::Code::FAILED_PRECONDITION, errmsg);
+    return errors::FailedPrecondition(errmsg);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void LoadDynamicKernelsInternal() {
@@ -1361,7 +1393,7 @@ Status FindKernelRegistration(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FindKernelRegistration(const DeviceType& device_type,
@@ -1422,7 +1454,7 @@ Status FindKernelDef(
   }
   if (def != nullptr) *def = &reg->def;
   if (kernel_class_name != nullptr) *kernel_class_name = reg->kernel_class_name;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
@@ -1501,7 +1533,7 @@ Status SupportedDeviceTypesForNode(
       prioritized_device_types->push_back(std::make_pair(device_type, 0));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void LogAllRegisteredKernels() {
@@ -1687,7 +1719,7 @@ Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>

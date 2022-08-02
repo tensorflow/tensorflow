@@ -502,13 +502,13 @@ func.func @broadcast_to_ui32(%arg0: tensor<ui32>, %arg1: tensor<1xi64>) -> tenso
 // CHECK:  return [[MUL]] : tensor<10xui32>
 }
 
-// CHECK-LABEL: xla_conv
-func.func @xla_conv(%arg0: tensor<4x8x8x16xf32>) -> tensor<4x8x8x16xf32> {
+// CHECK-LABEL: xla_conv_v2
+func.func @xla_conv_v2(%arg0: tensor<4x8x8x16xf32>) -> tensor<4x8x8x16xf32> {
   %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<3x3x16x16xf32>} : () -> tensor<3x3x16x16xf32> loc("Const_1")
   %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32> loc("XlaConv/feature_group_count")
   %2 = "tf.Const"() {value = dense<1> : tensor<2x2xi32>} : () -> tensor<2x2xi32> loc("XlaConv/padding")
   %3 = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> tensor<2xi32> loc("XlaConv/window_strides")
-  %4 = "tf.XlaConv"(%arg0, %0, %3, %2, %3, %3, %1) {device = "", dimension_numbers = "\18\02 \032\02\00\01@\03P\03Z\02\01\02b\02\01\02", precision_config = ""} : (tensor<4x8x8x16xf32>, tensor<3x3x16x16xf32>, tensor<2xi32>, tensor<2x2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<i32>) -> tensor<4x8x8x16xf32>
+  %4 = "tf.XlaConvV2"(%arg0, %0, %3, %2, %3, %3, %1) {batch_group_count = 1 : i64, device = "", dimension_numbers = "\18\02 \032\02\00\01@\03P\03Z\02\01\02b\02\01\02", precision_config = ""} : (tensor<4x8x8x16xf32>, tensor<3x3x16x16xf32>, tensor<2xi32>, tensor<2x2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<i32>) -> tensor<4x8x8x16xf32>
   func.return %4 : tensor<4x8x8x16xf32>
   // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : tensor<16xf32>
   // CHECK-DAG: %[[CST0:.*]] = arith.constant dense<1.000000e+00> : tensor<16x3x3x16xf32>
@@ -550,8 +550,8 @@ func.func @lower_rfft_to_rfft2d(%input: tensor<10x20x30xf32>, %fft_len: tensor<1
 // CHECK:  %[[SQE:.*]] = "tf.Squeeze"(%[[RFF]]) {squeeze_dims = [-2]} : (tensor<10x20x1x30xcomplex<f64>>) -> tensor<10x20x30xcomplex<f64>>
 }
 
-// CHECK-LABEL: xla_gather_to_slice
-func.func @xla_gather_to_slice(%arg0 : tensor<1x9x104x768xf32>) -> tensor<*xf32> {
+// CHECK-LABEL: xla_gather_to_strided_slice
+func.func @xla_gather_to_strided_slice(%arg0 : tensor<1x9x104x768xf32>) -> tensor<*xf32> {
   %0 = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
   %1 = "tf.Const"() {value = dense<[1, 9, 23, 768]> : tensor<4xi32>} : () -> tensor<4xi32>
   %2 = "tf.XlaGather"(%arg0, %0, %1) {device = "", dimension_numbers = "\0A\04\00\01\02\03\1A\01\02", indices_are_sorted = false} : (tensor<1x9x104x768xf32>, tensor<1xi32>, tensor<4xi32>) -> tensor<*xf32>
@@ -559,7 +559,8 @@ func.func @xla_gather_to_slice(%arg0 : tensor<1x9x104x768xf32>) -> tensor<*xf32>
 
 // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0> : tensor<4xi64>
 // CHECK-DAG: %[[CST0:.*]] = arith.constant dense<[1, 9, 23, 768]> : tensor<4xi64>
-// CHECK: %[[V0:.*]] = "tf.Slice"(%arg0, %[[CST]], %[[CST0]]) : (tensor<1x9x104x768xf32>, tensor<4xi64>, tensor<4xi64>) -> tensor<*xf32>
+// CHECK-DAG: %[[CST1:.*]] = arith.constant dense<1> : tensor<4xi64>
+// CHECK: %[[V0:.*]] = "tf.StridedSlice"(%arg0, %[[CST]], %[[CST0]], %[[CST1]]) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<1x9x104x768xf32>, tensor<4xi64>, tensor<4xi64>, tensor<4xi64>) -> tensor<*xf32>
 // CHECK: return %[[V0]] : tensor<*xf32>
 }
 

@@ -17,7 +17,7 @@
 
 # Keep in sync with tensorflow_estimator and configure.py.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=5.1.0
+LATEST_BAZEL_VERSION=5.1.1
 # LINT.ThenChange(
 #   //tensorflow_estimator/google/kokoro/common.sh,
 #   //tensorflow/tools/ci_build/install/install_bazel.sh,
@@ -61,7 +61,12 @@ function install_bazelisk {
   date
   case "$(uname -s)" in
     Darwin) local name=bazelisk-darwin-amd64 ;;
-    Linux)  local name=bazelisk-linux-amd64  ;;
+    Linux)
+      case "$(uname -m)" in
+       x86_64) local name=bazelisk-linux-amd64 ;;
+       aarch64) local name=bazelisk-linux-arm64 ;;
+       *) die "Unknown machine type: $(uname -m)" ;;
+      esac ;;
     *) die "Unknown OS: $(uname -s)" ;;
   esac
   mkdir -p "$HOME/bin"
@@ -361,7 +366,7 @@ function copy_to_new_project_name {
   NEW_PROJECT_NAME_DASH="${NEW_PROJECT_NAME//_/-}"
 
   # We need to change the name in the METADATA file, but we need to ensure that
-  # all other occurences of the name stay the same, otherwise things such as
+  # all other occurrences of the name stay the same, otherwise things such as
   # URLs and depedencies might be broken (for example, replacing without care
   # might transform a `tensorflow_estimator` dependency into
   # `tensorflow_gpu_estimator`, which of course does not exist -- except by
@@ -422,10 +427,10 @@ function test_xml_summary_exit {
 # https://github.com/tensorflow/build/blob/master/tf_sig_build_dockerfiles/devel.usertools/wheel_verification.bats
 # instead. See go/tf-devinfra/docker.
 # CPU size
-MAC_CPU_MAX_WHL_SIZE=225M
+MAC_CPU_MAX_WHL_SIZE=240M
 WIN_CPU_MAX_WHL_SIZE=170M
 # GPU size
-WIN_GPU_MAX_WHL_SIZE=345M
+WIN_GPU_MAX_WHL_SIZE=360M
 
 function test_tf_whl_size() {
   WHL_PATH=${1}

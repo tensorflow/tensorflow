@@ -56,7 +56,7 @@ class DeviceProfilerSession {
     profiler::XSpace space;
     TF_RETURN_IF_ERROR(profiler_session_.CollectDataInternal(&space));
     profiler::ConvertGpuXSpaceToStepStats(space, step_stats);
-    return Status::OK();
+    return OkStatus();
 #endif
   }
 

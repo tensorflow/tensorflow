@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TESTING_TFLITE_DIFF_UTIL_H_
 #define TENSORFLOW_LITE_TESTING_TFLITE_DIFF_UTIL_H_
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/string_type.h"

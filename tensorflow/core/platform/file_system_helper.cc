@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
@@ -131,7 +132,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
   // By design, we don't match anything on empty pattern
   results->clear();
   if (pattern.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // The pattern can contain globbing characters at multiple levels, e.g.:
@@ -154,7 +155,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
     if (fs->FileExists(pattern).ok()) {
       results->emplace_back(pattern);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // To expand the globbing, we do a BFS from `dirs[matching_index-1]`.
@@ -262,7 +263,16 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
     std::swap(expand_queue, next_expand_queue);
   }
 
-  return Status::OK();
+  return OkStatus();
+}
+
+StatusOr<bool> FileExists(Env* env, const string& fname) {
+  Status status = env->FileExists(fname);
+  if (errors::IsNotFound(status)) {
+    return false;
+  }
+  TF_RETURN_IF_ERROR(status);
+  return true;
 }
 
 }  // namespace internal

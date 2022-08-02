@@ -25,39 +25,50 @@ include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 //===----------------------------------------------------------------------===//
 
 class IsFusedOpEndsWith<string OpName> : AttrConstraint<
-    CPred<"!$_self.cast<ArrayAttr>().empty() && "
-          "$_self.cast<ArrayAttr>()[$_self.cast<ArrayAttr>().size() - 1]."
-          "cast<::mlir::StringAttr>().str() == \"" # OpName # "\"">,
-    "Matching fused '" # OpName # "' op at the end">;
+  CPred<"!$_self.cast<ArrayAttr>().empty() && "
+        "$_self.cast<ArrayAttr>()[$_self.cast<ArrayAttr>().size() - 1]."
+        "cast<::mlir::StringAttr>().str() == \"" # OpName # "\"">,
+  "Matching fused '" # OpName # "' op at the end">;
 
 //===----------------------------------------------------------------------===//
 // Pattern rules for lifting ops as functions
 //===----------------------------------------------------------------------===//
 
 def LiftConv : Pat<
-  (TF_Conv2DOp:$res $input, $filter, $strides, $use_cudnn, $padding,
-     $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-  (LiftAsFunctionCall<"fused_conv2d_fn">
-     (ArgumentList $input, $filter),
-     (ResultList $res),
-     (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
+  (TF_Conv2DOp:$res $input, $filter, $strides, $use_cudnn_on_gpu, $padding,
+    $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
+  (LiftAsFunctionCall<"composite_conv2d_fn">
+    (ArgumentList $input, $filter),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"strides"> $strides),
+      (NamedAttr<"use_cudnn_on_gpu"> $use_cudnn_on_gpu),
+      (NamedAttr<"padding"> $padding),
+      (NamedAttr<"explicit_paddings"> $explicit_paddings),
+      (NamedAttr<"dilations"> $dilations))),
   [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
 
 def LiftDepthwiseConv : Pat<
   (TF_DepthwiseConv2dNativeOp:$res $input, $filter, $strides, $padding,
-     $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-  (LiftAsFunctionCall<"fused_depthwise_conv2d_fn">
-     (ArgumentList $input, $filter),
-     (ResultList $res),
-     (AttributeList $strides, $padding, $explicit_padding, $dilations)),
+    $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
+  (LiftAsFunctionCall<"composite_depthwise_conv2d_fn">
+    (ArgumentList $input, $filter),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"strides"> $strides),
+      (NamedAttr<"padding"> $padding),
+      (NamedAttr<"explicit_paddings"> $explicit_paddings),
+      (NamedAttr<"dilations"> $dilations))),
   [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
 
 def LiftMatMul : Pat<
   (TF_MatMulOp:$res $a, $b, $transpose_a, $transpose_b),
-  (LiftAsFunctionCall<"fused_matmul_fn">
-     (ArgumentList $a, $b),
-     (ResultList $res),
-     (AttributeList $transpose_a, $transpose_b)),
+  (LiftAsFunctionCall<"composite_matmul_fn">
+    (ArgumentList $a, $b),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"transpose_a"> $transpose_a),
+      (NamedAttr<"transpose_b"> $transpose_b))),
   [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
 
 //===----------------------------------------------------------------------===//
@@ -65,35 +76,46 @@ def LiftMatMul : Pat<
 //===----------------------------------------------------------------------===//
 
 def LiftDepthwiseConv2dNativeWithBias : Pat<
-    (TF_BiasAddOp:$res
-      (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
-         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-      $bias, IsDataFormatNHWC:$bias_data_format),
-  (LiftAsFunctionCall<"fused_depthwise_conv2d_with_bias_fn">
-     (ArgumentList $input, $filter, $bias),
-     (ResultList $res),
-     (AttributeList $strides, $padding, $explicit_padding, $dilations)),
+  (TF_BiasAddOp:$res
+    (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
+      $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
+    $bias, IsDataFormatNHWC:$bias_data_format),
+  (LiftAsFunctionCall<"composite_depthwise_conv2d_with_bias_fn">
+    (ArgumentList $input, $filter, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"strides"> $strides),
+      (NamedAttr<"padding"> $padding),
+      (NamedAttr<"explicit_paddings"> $explicit_paddings),
+      (NamedAttr<"dilations"> $dilations))),
   [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
 
 def LiftConv2dWithBias : Pat<
   (TF_BiasAddOp:$res
-      (TF_Conv2DOp $input, $filter, $strides, $use_cudnn, $padding,
-         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-       $bias, IsDataFormatNHWC:$bias_data_format),
-  (LiftAsFunctionCall<"fused_conv2d_with_bias_fn">
-     (ArgumentList $input, $filter, $bias),
-     (ResultList $res),
-     (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
-    [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
+    (TF_Conv2DOp $input, $filter, $strides, $use_cudnn_on_gpu, $padding,
+      $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
+    $bias, IsDataFormatNHWC:$bias_data_format),
+  (LiftAsFunctionCall<"composite_conv2d_with_bias_fn">
+    (ArgumentList $input, $filter, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"strides"> $strides),
+      (NamedAttr<"use_cudnn_on_gpu"> $use_cudnn_on_gpu),
+      (NamedAttr<"padding"> $padding),
+      (NamedAttr<"explicit_paddings"> $explicit_paddings),
+      (NamedAttr<"dilations"> $dilations))),
+  [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
 
 def LiftMatmulWithBias : Pat<
   (TF_BiasAddOp:$res
-      (TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
-      $bias, IsDataFormatNHWC:$bias_data_format),
-  (LiftAsFunctionCall<"fused_matmul_with_bias_fn">
-     (ArgumentList $a, $b, $bias),
-     (ResultList $res),
-     (AttributeList $transpose_a, $transpose_b)),
+    (TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
+    $bias, IsDataFormatNHWC:$bias_data_format),
+  (LiftAsFunctionCall<"composite_matmul_with_bias_fn">
+    (ArgumentList $a, $b, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"transpose_a"> $transpose_a),
+      (NamedAttr<"transpose_b"> $transpose_b))),
   [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
 
 //===----------------------------------------------------------------------===//
@@ -103,66 +125,88 @@ def LiftMatmulWithBias : Pat<
 multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName> {
   def LiftConvWith#ActivationOp : Pat<
     (ActivationOp:$res
-      (TF_Conv2DOp $input, $filter, $strides, $use_cudnn, $padding,
-         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations)),
-    (LiftAsFunctionCall<"fused_conv2d_with_"# ActivationName #"_fn">
-       (ArgumentList $input, $filter),
-       (ResultList $res),
-       (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
+      (TF_Conv2DOp $input, $filter, $strides, $use_cudnn_on_gpu, $padding,
+        $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations)),
+    (LiftAsFunctionCall<"composite_conv2d_with_"# ActivationName #"_fn">
+      (ArgumentList $input, $filter),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"strides"> $strides),
+        (NamedAttr<"use_cudnn_on_gpu"> $use_cudnn_on_gpu),
+        (NamedAttr<"padding"> $padding),
+        (NamedAttr<"explicit_paddings"> $explicit_paddings),
+        (NamedAttr<"dilations"> $dilations))),
     [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
 
   def LiftConv2dWithBiasAnd#LastFusedOp : Pat<
     (ActivationOp:$res
-     (TF_BiasAddOp
-        (TF_Conv2DOp $input, $filter, $strides, $use_cudnn, $padding,
-           $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-         $bias, IsDataFormatNHWC:$bias_data_format)),
-    (LiftAsFunctionCall<"fused_conv2d_with_bias_and_"# ActivationName #"_fn">
-       (ArgumentList $input, $filter, $bias),
-       (ResultList $res),
-       (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
+      (TF_BiasAddOp
+        (TF_Conv2DOp $input, $filter, $strides, $use_cudnn_on_gpu, $padding,
+          $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
+        $bias, IsDataFormatNHWC:$bias_data_format)),
+    (LiftAsFunctionCall<"composite_conv2d_with_bias_and_"# ActivationName #"_fn">
+      (ArgumentList $input, $filter, $bias),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"strides"> $strides),
+        (NamedAttr<"use_cudnn_on_gpu"> $use_cudnn_on_gpu),
+        (NamedAttr<"padding"> $padding),
+        (NamedAttr<"explicit_paddings"> $explicit_paddings),
+        (NamedAttr<"dilations"> $dilations))),
     [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
 
   def LiftDepthwiseConv2dNativeWith#ActivationOp : Pat<
     (ActivationOp:$res
       (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
-         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations)),
-    (LiftAsFunctionCall<"fused_depthwise_conv2d_with_"# ActivationName #"_fn">
-       (ArgumentList $input, $filter),
-       (ResultList $res),
-       (AttributeList $strides, $padding, $explicit_padding, $dilations)),
+        $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations)),
+    (LiftAsFunctionCall<"composite_depthwise_conv2d_with_"# ActivationName #"_fn">
+      (ArgumentList $input, $filter),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"strides"> $strides),
+        (NamedAttr<"padding"> $padding),
+        (NamedAttr<"explicit_paddings"> $explicit_paddings),
+        (NamedAttr<"dilations"> $dilations))),
     [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
 
   def LiftDepthwiseConv2dNativeWithBiasAnd#LastFusedOp : Pat<
-      (ActivationOp:$res
-        (TF_BiasAddOp
-          (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
-             $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-          $bias, IsDataFormatNHWC:$bias_data_format)),
-      (LiftAsFunctionCall<"fused_depthwise_conv2d_with_bias_and_"# ActivationName #"_fn">
-         (ArgumentList $input, $filter, $bias),
-         (ResultList $res),
-         (AttributeList $strides, $padding, $explicit_padding, $dilations)),
-      [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+    (ActivationOp:$res
+      (TF_BiasAddOp
+        (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
+          $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
+        $bias, IsDataFormatNHWC:$bias_data_format)),
+    (LiftAsFunctionCall<"composite_depthwise_conv2d_with_bias_and_"# ActivationName #"_fn">
+      (ArgumentList $input, $filter, $bias),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"strides"> $strides),
+        (NamedAttr<"padding"> $padding),
+        (NamedAttr<"explicit_paddings"> $explicit_paddings),
+        (NamedAttr<"dilations"> $dilations))),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
 
   def LiftMatmulWith#ActivationOp : Pat<
     (ActivationOp:$res
       (TF_MatMulOp $a, $b, $transpose_a, $transpose_b)),
-    (LiftAsFunctionCall<"fused_matmul_with_"# ActivationName #"_fn">
-       (ArgumentList $a, $b),
-       (ResultList $res),
-       (AttributeList $transpose_a, $transpose_b)),
+    (LiftAsFunctionCall<"composite_matmul_with_"# ActivationName #"_fn">
+      (ArgumentList $a, $b),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"transpose_a"> $transpose_a),
+        (NamedAttr<"transpose_b"> $transpose_b))),
     [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
 
   def LiftMatmulWithBiasAnd#LastFusedOp : Pat<
     (ActivationOp:$res
-     (TF_BiasAddOp
+      (TF_BiasAddOp
         (TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
       $bias, IsDataFormatNHWC:$bias_data_format)),
-    (LiftAsFunctionCall<"fused_matmul_with_bias_and_"# ActivationName #"_fn">
-       (ArgumentList $a, $b, $bias),
-       (ResultList $res),
-       (AttributeList $transpose_a, $transpose_b)),
+    (LiftAsFunctionCall<"composite_matmul_with_bias_and_"# ActivationName #"_fn">
+      (ArgumentList $a, $b, $bias),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"transpose_a"> $transpose_a),
+        (NamedAttr<"transpose_b"> $transpose_b))),
     [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
 
 }

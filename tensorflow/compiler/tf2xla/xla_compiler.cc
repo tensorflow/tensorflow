@@ -83,7 +83,7 @@ Status CheckSignature(const DataTypeVector& types,
           " but function parameter has type ", DataTypeString(types[i]));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Uses the _Arg and _Retval nodes in the graph to determine an OpSharding for
@@ -92,7 +92,7 @@ StatusOr<
     std::pair<std::map<int, xla::OpSharding>, std::map<int, xla::OpSharding>>>
 ComputeArgAndRetvalShardings(const Graph& graph) {
   auto get_sharding_for_node =
-      [](const Node* n) -> StatusOr<absl::optional<xla::OpSharding>> {
+      [](const Node* n) -> StatusOr<std::optional<xla::OpSharding>> {
     TF_ASSIGN_OR_RETURN(
         auto sharding,
         ParseShardingFromDevice(*n, std::numeric_limits<int32>::max(),
@@ -133,7 +133,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   // unique_ptr so we can capture the cleanup status in the end.
   xla_context->Ref();
   Status status;
-  auto step_container = absl::make_unique<ScopedStepContainer>(
+  auto step_container = std::make_unique<ScopedStepContainer>(
       step_id, [&status, device](const string& name) {
         status = device->resource_manager()->Cleanup(name);
       });
@@ -190,9 +190,8 @@ Status BuildComputation(
   // Builds a no-op XLA computation. We need to set the sharding of outputs, but
   // cannot change the sharding of the existing output op. To do this, we build
   // a new identity op to which shardings can be applied.
-  auto identity_op = [builder](
-                         xla::XlaOp op,
-                         const absl::optional<xla::OpSharding>& sharding) {
+  auto identity_op = [builder](xla::XlaOp op,
+                               const std::optional<xla::OpSharding>& sharding) {
     xla::XlaScopedShardingAssignment assign_sharding(builder, sharding);
     return xla::Copy(op);
   };
@@ -227,8 +226,8 @@ Status BuildComputation(
         TF_ASSIGN_OR_RETURN(output.shape, retval.GetShape());
         xla::XlaOp value = retval.handle();
         auto it = retval_shardings.find(i);
-        absl::optional<xla::OpSharding> sharding =
-            it == retval_shardings.end() ? absl::optional<xla::OpSharding>()
+        std::optional<xla::OpSharding> sharding =
+            it == retval_shardings.end() ? std::optional<xla::OpSharding>()
                                          : it->second;
         if (it != retval_shardings.end()) {
           retval_index_and_sharding[elems.size()] = it->second;
@@ -329,7 +328,7 @@ Status BuildComputation(
       xla::XlaOp handle;
       TF_RETURN_IF_ERROR(resource->Pack(&handle, builder));
       auto sharding = it == arg_shardings.end()
-                          ? absl::optional<xla::OpSharding>()
+                          ? std::optional<xla::OpSharding>()
                           : it->second;
       // Set layout of the retval to device representation layout.
       if (shape_determination_fns.layout_preference_fn &&
@@ -420,16 +419,11 @@ Status BuildComputation(
     builder->SetUpAlias(alias.output_index, alias.param_number,
                         alias.param_index);
   }
-
-  StatusOr<xla::XlaComputation> computation_status = builder->Build();
-  if (!computation_status.ok()) {
-    return computation_status.status();
-  }
-  *computation = computation_status.ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(*computation, builder->Build());
 
   TF_ASSIGN_OR_RETURN(auto program_shape, computation->GetProgramShape());
   *output_shape = program_shape.result();
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -478,34 +472,33 @@ string XlaCompiler::Argument::HumanString() const {
 
 std::vector<int64_t> XlaCompiler::Argument::DimensionSizes() const {
   if (absl::holds_alternative<TensorShape>(shape)) {
-    return xla::InlinedVectorToVector(
-        absl::get<TensorShape>(shape).dim_sizes());
+    return xla::InlinedVectorToVector(std::get<TensorShape>(shape).dim_sizes());
   } else {
-    return xla::SpanToVector(absl::get<xla::Shape>(shape).dimensions());
+    return xla::SpanToVector(std::get<xla::Shape>(shape).dimensions());
   }
 }
 
 absl::InlinedVector<int64_t, 4>
 XlaCompiler::Argument::DimensionSizesAsInlinedVector() const {
   if (absl::holds_alternative<TensorShape>(shape)) {
-    return absl::get<TensorShape>(shape).dim_sizes();
+    return std::get<TensorShape>(shape).dim_sizes();
   } else {
-    auto v = absl::get<xla::Shape>(shape).dimensions();
+    auto v = std::get<xla::Shape>(shape).dimensions();
     return absl::InlinedVector<int64_t, 4>(v.begin(), v.end());
   }
 }
 
 string XlaCompiler::Argument::ShapeHumanString() const {
   if (absl::holds_alternative<TensorShape>(shape)) {
-    return absl::get<TensorShape>(shape).DebugString();
+    return std::get<TensorShape>(shape).DebugString();
   } else {
-    return absl::get<xla::Shape>(shape).DebugString();
+    return std::get<xla::Shape>(shape).DebugString();
   }
 }
 
 XlaCompiler::XlaCompiler(XlaCompiler::Options options)
     : options_(options),
-      initialization_status_(Status::OK()),
+      initialization_status_(OkStatus()),
       next_step_id_(1),
       device_(new XlaCompilationDevice(SessionOptions(), options_.device_type)),
       device_mgr_(absl::WrapUnique(device_)) {
@@ -558,7 +551,7 @@ static Status GetFunctionBody(const NameAttrList& function,
 
   *fbody = flib_runtime->GetFunctionBody(handle);
   TF_RET_CHECK(*fbody);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
@@ -585,7 +578,7 @@ Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
     }
     VLOG(4) << "Function " << function.name() << " in local_flib_runtime_";
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
@@ -746,14 +739,14 @@ Status XlaCompiler::CompileFunction(
   auto it = cache_.find({function_id, arg_vector});
   if (it != cache_.end()) {
     *result = it->second;
-    return Status::OK();
+    return OkStatus();
   }
 
   const FunctionBody* fbody;
   const ConfigProto* config = nullptr;
   TF_RETURN_IF_ERROR(FindFunctionBody(fn_name_attrs, &fbody, &config));
 
-  absl::optional<ConfigProto> config_proto;
+  std::optional<ConfigProto> config_proto;
   if (config) {
     config_proto = *config;
   }
@@ -774,7 +767,7 @@ Status XlaCompiler::CompileFunction(
     }
 
     if (absl::holds_alternative<xla::Shape>(args[i].shape)) {
-      xla::Shape xla_shape = absl::get<xla::Shape>(args[i].shape);
+      xla::Shape xla_shape = std::get<xla::Shape>(args[i].shape);
       TensorShape tensor_shape;
       // If xla_shape is dynamic, prevent constant folding by not setting
       // output_shapes.
@@ -785,7 +778,7 @@ Status XlaCompiler::CompileFunction(
                                      std::vector<TensorShape>{tensor_shape});
       }
     } else {
-      TensorShape tensor_shape = absl::get<TensorShape>(args[i].shape);
+      TensorShape tensor_shape = std::get<TensorShape>(args[i].shape);
       fbody->arg_nodes[i]->ClearAttr("_output_shapes");
       fbody->arg_nodes[i]->AddAttr("_output_shapes",
                                    std::vector<TensorShape>{tensor_shape});
@@ -820,38 +813,43 @@ Status XlaCompiler::CompileFunction(
   }
 
   VLOG(1) << "====================================================";
-  MlirBridgeRolloutPolicy policy = MlirBridgeRolloutPolicy::kDisabledByUser;
-  if (options.is_entry_computation) {
-    policy = GetMlirBridgeRolloutPolicy(
-        *graph, /*function_library=*/nullptr, config_proto,
-        /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
-  }
-  if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
-    VLOG(1) << "Using MLIR bridge to compile the function";
-    GraphDebugInfo debug_info;
 
+  auto state = ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
+  if (options.is_entry_computation) {
+    state = GetMlirBridgeRolloutState(config_proto);
+  }
+
+  if (state == ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
+    GraphDebugInfo debug_info;
+    VLOG(1) << "Using the MLIR bridge to compile the function.";
     std::vector<std::string> valid_control_rets =
         GetValidControlRets(fbody->control_ret_nodes, *graph);
-    TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
+    auto mlir_result = CompileGraphToXlaHlo(
         std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
         valid_control_rets, options_.device_type.type_string(),
         options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
-        debug_info, options_.shape_determination_fns, result));
+        debug_info, options_.shape_determination_fns, result);
+    if (mlir_result.ok()) {
+      VLOG(1) << "MLIR bridge was successfull";
+    } else {
+      VLOG(1) << "MLIR failed, no fallback";
+      return mlir_result;
+    }
   } else {
-    VLOG(1) << "Using the old bridge to compile the function";
+    VLOG(1) << "MLIR bridge off. Using the old bridge to compile the function";
     TF_RETURN_IF_ERROR(
         CompileGraph(options, function_id, std::move(graph), args, result));
   }
   VLOG(1) << "====================================================";
 
   cache_[{function_id, arg_vector}] = *result;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Computes the XLA shape for argument 'arg'.
 Status XlaCompiler::XLAShapeForArgument(
     const XlaCompiler::Argument& arg, bool is_entry_computation,
-    const absl::optional<xla::HloSharding>& arg_sharding,
+    const std::optional<xla::HloSharding>& arg_sharding,
     xla::Shape* xla_shape) const {
   switch (arg.kind) {
     case XlaCompiler::Argument::kConstant:
@@ -860,10 +858,10 @@ Status XlaCompiler::XLAShapeForArgument(
       if (is_entry_computation) {
         TensorShape shape;
         if (absl::holds_alternative<TensorShape>(arg.shape)) {
-          shape = absl::get<TensorShape>(arg.shape);
+          shape = std::get<TensorShape>(arg.shape);
         } else {
           TF_RETURN_IF_ERROR(
-              XLAShapeToTensorShape(absl::get<xla::Shape>(arg.shape), &shape));
+              XLAShapeToTensorShape(std::get<xla::Shape>(arg.shape), &shape));
         }
         auto layout_preference =
             options_.shape_determination_fns.layout_preference_fn(
@@ -878,18 +876,18 @@ Status XlaCompiler::XLAShapeForArgument(
             options_.shape_determination_fns, xla_shape));
       } else {
         if (absl::holds_alternative<xla::Shape>(arg.shape)) {
-          *xla_shape = absl::get<xla::Shape>(arg.shape);
+          *xla_shape = std::get<xla::Shape>(arg.shape);
         } else {
           TF_RETURN_IF_ERROR(TensorShapeToXLAShape(
-              arg.type, absl::get<TensorShape>(arg.shape), xla_shape));
+              arg.type, std::get<TensorShape>(arg.shape), xla_shape));
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
     case XlaCompiler::Argument::kTensorList: {
       TF_RET_CHECK(absl::holds_alternative<xla::Shape>(arg.shape));
-      *xla_shape = absl::get<xla::Shape>(arg.shape);
-      return Status::OK();
+      *xla_shape = std::get<xla::Shape>(arg.shape);
+      return OkStatus();
     }
     case XlaCompiler::Argument::kConstantResource:
     case XlaCompiler::Argument::kResource: {
@@ -900,16 +898,16 @@ Status XlaCompiler::XLAShapeForArgument(
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           auto layout_preference =
               options_.shape_determination_fns.layout_preference_fn(
-                  absl::get<TensorShape>(arg.shape), arg.type, arg.kind);
+                  std::get<TensorShape>(arg.shape), arg.type, arg.kind);
           TF_ASSIGN_OR_RETURN(
               *xla_shape,
               options_.shape_determination_fns.shape_representation_fn(
-                  absl::get<TensorShape>(arg.shape), arg.type,
+                  std::get<TensorShape>(arg.shape), arg.type,
                   /*use_fast_memory=*/arg.fast_mem, layout_preference));
           TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
               arg_sharding, arg.fast_mem, options_.shape_determination_fns,
               xla_shape));
-          return Status::OK();
+          return OkStatus();
         }
         case XlaResource::kTensorArray: {
           if (arg.max_array_size < 0) {
@@ -919,7 +917,7 @@ Status XlaCompiler::XLAShapeForArgument(
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TensorShape shape;
           shape.AddDim(arg.max_array_size);
-          shape.AppendShape(absl::get<TensorShape>(arg.shape));
+          shape.AppendShape(std::get<TensorShape>(arg.shape));
           TF_RETURN_IF_ERROR(TensorShapeToXLAShape(arg.type, shape, xla_shape));
 
           if (!arg.tensor_array_gradients.empty()) {
@@ -927,7 +925,7 @@ Status XlaCompiler::XLAShapeForArgument(
                 arg.tensor_array_gradients.size() + 1, *xla_shape);
             *xla_shape = xla::ShapeUtil::MakeTupleShape(tuple_shape);
           }
-          return Status::OK();
+          return OkStatus();
         }
         case XlaResource::kStack: {
           if (arg.max_array_size < 0) {
@@ -937,13 +935,13 @@ Status XlaCompiler::XLAShapeForArgument(
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TensorShape shape;
           shape.AddDim(arg.max_array_size);
-          shape.AppendShape(absl::get<TensorShape>(arg.shape));
+          shape.AppendShape(std::get<TensorShape>(arg.shape));
           xla::Shape buffer_shape;
           TF_RETURN_IF_ERROR(
               TensorShapeToXLAShape(arg.type, shape, &buffer_shape));
           *xla_shape = xla::ShapeUtil::MakeTupleShape(
               {buffer_shape, xla::ShapeUtil::MakeShape(xla::S32, {})});
-          return Status::OK();
+          return OkStatus();
         }
 
         case XlaResource::kInvalid:
@@ -953,7 +951,7 @@ Status XlaCompiler::XLAShapeForArgument(
     }
     case XlaCompiler::Argument::kToken: {
       *xla_shape = xla::ShapeUtil::MakeTokenShape();
-      return Status::OK();
+      return OkStatus();
     }
     case XlaCompiler::Argument::kInvalid:
       return errors::Internal("Invalid argument type in XLAShapeForArgument()");
@@ -1006,9 +1004,9 @@ Status XlaCompiler::BuildArguments(
         // TODO(phawkins): this code assumes that resource arguments do not
         // alias.
         XlaResource* resource =
-            context->AddResource(absl::make_unique<XlaResource>(
+            context->AddResource(std::make_unique<XlaResource>(
                 arg.resource_kind, i, arg.name, arg.type,
-                absl::get<TensorShape>(arg.shape), xla::XlaOp(),
+                std::get<TensorShape>(arg.shape), xla::XlaOp(),
                 /*max_array_size=*/arg.max_array_size,
                 /*tensor_array_gradients=*/arg.tensor_array_gradients,
                 /*tensor_array_multiple_writes_aggregate=*/true,
@@ -1038,7 +1036,7 @@ Status XlaCompiler::BuildArguments(
   }
 
   if (input_to_args->empty() && !use_tuple_arg) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // `arg_to_inputs[c] = d` means that the c'th original arg index corresponds
@@ -1053,7 +1051,7 @@ Status XlaCompiler::BuildArguments(
   for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
     // Computes the shapes of non-constant arguments.
     auto arg_sharding = arg_shardings.find((*input_to_args)[i]);
-    absl::optional<xla::HloSharding> sharding;
+    std::optional<xla::HloSharding> sharding;
     if (arg_sharding != arg_shardings.end()) {
       TF_ASSIGN_OR_RETURN(auto hlo_sharding,
                           xla::HloSharding::FromProto(arg_sharding->second));
@@ -1099,7 +1097,7 @@ Status XlaCompiler::BuildArguments(
             args[input_to_args->at(i)].is_same_data_across_replicas);
       }
       xla::XlaScopedShardingAssignment assign_tuple_sharding(
-          builder, input_to_args->empty() ? absl::optional<xla::OpSharding>()
+          builder, input_to_args->empty() ? std::optional<xla::OpSharding>()
                                           : tuple_sharding);
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple",
                              is_same_across_replicas);
@@ -1110,7 +1108,7 @@ Status XlaCompiler::BuildArguments(
     for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
       auto it = arg_shardings.find(i);
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, it == arg_shardings.end() ? absl::optional<xla::OpSharding>()
+          builder, it == arg_shardings.end() ? std::optional<xla::OpSharding>()
                                              : it->second);
       auto& arg = args[input_to_args->at(i)];
 
@@ -1123,7 +1121,7 @@ Status XlaCompiler::BuildArguments(
     for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
       auto it = arg_shardings.find(i);
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, it == arg_shardings.end() ? absl::optional<xla::OpSharding>()
+          builder, it == arg_shardings.end() ? std::optional<xla::OpSharding>()
                                              : it->second);
       if (is_entry_computation) {
         // Add an entry to is_same_across_replicas for every leaf buffer.
@@ -1199,7 +1197,7 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -1215,7 +1213,7 @@ Status ValidateFunctionDef(const FunctionDef* fdef,
     const OpDef* op_def;
     TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(op, &op_def));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // If node is PartitionedCall or StatefulPartitionedCall, returns the
@@ -1234,10 +1232,10 @@ Status GetPotentialFunctionName(const Node& node, const string** name) {
           " does not have 'func' field set");
     }
     *name = &attr_value->func().name();
-    return Status::OK();
+    return OkStatus();
   }
   *name = &node.type_string();
-  return Status::OK();
+  return OkStatus();
 }
 
 // Check that the graph doesn't have any invalid nodes (e.g. incompatible with
@@ -1273,7 +1271,7 @@ Status ValidateGraph(const Graph* graph,
 
       return errors::InvalidArgument(errmsg);
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   for (const Node* node : graph->nodes()) {
@@ -1296,7 +1294,7 @@ Status ValidateGraph(const Graph* graph,
     s = FindKernelDef(device_type, node->def(), nullptr, nullptr);
     TF_RETURN_IF_ERROR(maybe_error(node, s));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void ConvertConstantsToExpressions(xla::XlaBuilder* builder,
@@ -1436,7 +1434,7 @@ Status XlaCompiler::CompileGraph(
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanStringWithLayout(result->xla_output_shape);
   result->collective_info = context->GetCollectiveInfo();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCompiler::GetChannelHandle(const string& key,
@@ -1447,7 +1445,7 @@ Status XlaCompiler::GetChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Channel: " << key << " " << channel->DebugString();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCompiler::GetHostToDeviceChannelHandle(const string& key,
@@ -1459,7 +1457,7 @@ Status XlaCompiler::GetHostToDeviceChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Host to device channel: " << key << " " << channel->DebugString();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCompiler::GetDeviceToHostChannelHandle(const string& key,
@@ -1471,7 +1469,7 @@ Status XlaCompiler::GetDeviceToHostChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Device to host channel: " << key << " " << channel->DebugString();
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -1498,7 +1496,7 @@ Status XlaCompiler::SetDeviceToHostMetadata(
     tf2xla::HostTransferMetadata new_transfer;
     SetTransfer(key, types, shapes, &new_transfer);
     if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
-      return Status::OK();
+      return OkStatus();
     } else {
       return errors::InvalidArgument(
           "Duplicate calls to SetDeviceToHostMetadata with key ", key);
@@ -1506,7 +1504,7 @@ Status XlaCompiler::SetDeviceToHostMetadata(
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_sends_[key];
   SetTransfer(key, types, shapes, &transfer);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCompiler::GetDeviceToHostShapes(
@@ -1521,7 +1519,7 @@ Status XlaCompiler::GetDeviceToHostShapes(
     TensorShape shape(iter->second.metadata(i).shape());
     shapes->push_back(shape);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCompiler::SetHostToDeviceMetadata(
@@ -1532,7 +1530,7 @@ Status XlaCompiler::SetHostToDeviceMetadata(
     tf2xla::HostTransferMetadata new_transfer;
     SetTransfer(key, types, shapes, &new_transfer);
     if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
-      return Status::OK();
+      return OkStatus();
     } else {
       return errors::InvalidArgument(
           "Duplicate calls to SetHostToDeviceMetadata with key ", key);
@@ -1540,7 +1538,7 @@ Status XlaCompiler::SetHostToDeviceMetadata(
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_recvs_[key];
   SetTransfer(key, types, shapes, &transfer);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCompiler::GetHostComputeControlDependency(
@@ -1553,7 +1551,7 @@ Status XlaCompiler::GetHostComputeControlDependency(
   } else {
     *handle = iter->second;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCompiler::SetHostComputeControlDependency(
@@ -1561,11 +1559,11 @@ Status XlaCompiler::SetHostComputeControlDependency(
   if (host_compute_control_output_.find(host_compute_name) !=
       host_compute_control_output_.end()) {
     return errors::InvalidArgument(
-        "Duplicate control handles registered for for host compute Op ",
+        "Duplicate control handles registered for host compute Op ",
         host_compute_name);
   }
   host_compute_control_output_[host_compute_name] = handle;
-  return Status::OK();
+  return OkStatus();
 }
 
 void XlaCompiler::PushNodeTokenMapping() {
@@ -1579,7 +1577,7 @@ Status XlaCompiler::PopNodeTokenMapping() {
         "empty.");
   }
   node_token_mapping_stack_.pop();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCompiler::SetNodeToken(const string& node_name,
@@ -1594,7 +1592,7 @@ Status XlaCompiler::SetNodeToken(const string& node_name,
     return errors::FailedPrecondition("Token mapping already exists for node ",
                                       node_name);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {

@@ -125,7 +125,7 @@ body:
   - type: textarea
     id: code-to-reproduce
     attributes:
-      label: Standlone code to reproduce the issue
+      label: Standalone code to reproduce the issue
       description: Provide a reproducible test case that is the bare minimum necessary to generate the problem. If possible, please share a link to Colab/Jupyter/any notebook.
       placeholder: Tell us what you see!
       value: 

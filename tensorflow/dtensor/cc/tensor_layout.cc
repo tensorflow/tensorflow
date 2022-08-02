@@ -17,32 +17,30 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <numeric>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/ascii.h"
-#include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -341,6 +339,24 @@ StatusOr<const std::vector<DeviceNameUtils::ParsedName>> Mesh::ParsedDevices()
       return errors::InvalidArgument("Failed to parse local_devices");
 
   return parsed_devices;
+}
+
+StatusOr<Mesh> Mesh::ToDeviceType(const std::string& device_type) const {
+  std::vector<std::string> to_local_devices;
+  DeviceNameUtils::ParsedName parsed_dev;
+  for (const std::string& local_dev : local_devices_) {
+    if (!DeviceNameUtils::ParseFullOrLocalName(absl::string_view(local_dev),
+                                               &parsed_dev)) {
+      return errors::InvalidArgument("Failed to parse local devices");
+    }
+    // Converted mesh using full task name with job, replica and task ids.
+    to_local_devices.push_back(
+        DeviceNameUtils::FullName(parsed_dev.job, parsed_dev.replica,
+                                  parsed_dev.task, device_type, parsed_dev.id));
+    parsed_dev.Clear();
+  }
+  return GetMesh(name_, mesh_dims_, global_device_ids_, local_device_ids_,
+                 to_local_devices, /*global_devices=*/{});
 }
 
 namespace {
@@ -931,6 +947,20 @@ LayoutProto Layout::ToProto() const {
     *proto.add_sharding_specs() = dim;
   }
   return proto;
+}
+
+bool Layout::IsEquivalent(const Layout& b) const {
+  if (this->rank() != b.rank()) return false;
+  if (this->mesh() != b.mesh()) return false;
+  for (int i = 0; i < this->rank(); ++i) {
+    if (this->sharding_specs_[i].sharding_spec() !=
+        b.sharding_specs_[i].sharding_spec()) {
+      if ((this->num_shards_for_dim(this->sharding_specs_[i]) != 1) ||
+          (b.num_shards_for_dim(b.sharding_specs_[i]) != 1))
+        return false;
+    }
+  }
+  return true;
 }
 
 bool Layout::operator==(const Layout& b) const {

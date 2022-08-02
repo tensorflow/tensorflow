@@ -27,6 +27,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/onednn_env_vars.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 using dnnl::inner_product_forward;
 using dnnl::primitive_attr;
@@ -122,6 +125,9 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   void Execute(const Tinput* src_data, const Tweight* weight_data,
                const Tbias* bias_data, Toutput* dst_data, void* sp_data,
                std::shared_ptr<stream> fwd_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<Tinput*>(src_data)), *fwd_stream);
@@ -339,6 +345,11 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   }
 
   struct MklDnnMatMulFwdContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  // Guards Execution()
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T, typename Tinput, typename Tweight, typename Tbias,
@@ -569,6 +580,7 @@ using dnnl::matmul;
 namespace {
 
 struct MklMatMulParams {
+  string prefix;
   memory::dims a_dims;
   memory::dims b_dims;
   memory::dims c_dims;
@@ -587,10 +599,11 @@ struct MklMatMulParams {
   };
   std::vector<PostOpParam> post_op_params;
 
-  MklMatMulParams(memory::dims a_dims, memory::dims b_dims, memory::dims c_dims,
-                  memory::dims a_strides, memory::dims b_strides,
-                  memory::dims c_strides)
-      : a_dims(a_dims),
+  MklMatMulParams(string prefix, memory::dims a_dims, memory::dims b_dims,
+                  memory::dims c_dims, memory::dims a_strides,
+                  memory::dims b_strides, memory::dims c_strides)
+      : prefix(prefix),
+        a_dims(a_dims),
         b_dims(b_dims),
         c_dims(c_dims),
         a_strides(a_strides),
@@ -615,6 +628,9 @@ class MklMatMulPrimitive : public MklPrimitive {
   void Execute(const std::shared_ptr<stream>& stream, const Tlhs* a_data,
                const Trhs* b_data, const Toutput* c_data, void* sp_data,
                void* mul_data = nullptr, void* add_data = nullptr) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.a_mem->set_data_handle(
         static_cast<void*>(const_cast<Tlhs*>(a_data)), *stream);
@@ -783,6 +799,9 @@ class MklMatMulPrimitive : public MklPrimitive {
   }
 
   struct MklMatMulContext context_;
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T, typename Tlhs, typename Trhs, typename Toutput>
@@ -820,9 +839,8 @@ class MklMatMulPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 
   static string CreateKey(const MklMatMulParams& params) {
-    string prefix = "matmul_";
     FactoryKeyCreator key_creator;
-    key_creator.AddAsKey(prefix);
+    key_creator.AddAsKey(params.prefix);
     key_creator.AddAsKey(params.a_dims);
     key_creator.AddAsKey(params.b_dims);
     key_creator.AddAsKey(params.c_dims);
@@ -884,8 +902,8 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
   DCHECK_EQ(alpha, 1.0f);
   DCHECK_EQ(beta, 0.f);
 
-  MklMatMulParams params(a_dims, b_dims, c_dims, a_strides, b_strides,
-                         c_strides);
+  MklMatMulParams params("dnnl_gemm", a_dims, b_dims, c_dims, a_strides,
+                         b_strides, c_strides);
   MklMatMulPrimitive<T, T, T>* matmul_prim =
       MklMatMulPrimitiveFactory<T, T, T, T>::Get(params, 0);
 

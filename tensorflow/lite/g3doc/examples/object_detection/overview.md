@@ -30,7 +30,7 @@ accompanying labels.
 starter model with Metadata</a>
 
 For more information about Metadata and associated fields (eg: `labels.txt`) see
-<a href="https://www.tensorflow.org/lite/convert/metadata#read_the_metadata_from_models">Read
+<a href="../../models/convert/metadata#read_the_metadata_from_models">Read
 the metadata from models</a>
 
 If you want to train a custom detection model for your own task, see
@@ -340,7 +340,7 @@ SSD models from the
 can also be converted to TensorFlow Lite using the instructions
 [here](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tf2.md).
 It is important to note that detection models cannot be converted directly using
-the [TensorFlow Lite Converter](https://www.tensorflow.org/lite/convert), since
+the [TensorFlow Lite Converter](../../models/convert), since
 they require an intermediate step of generating a mobile-friendly source model.
 The scripts linked above perform this step.
 

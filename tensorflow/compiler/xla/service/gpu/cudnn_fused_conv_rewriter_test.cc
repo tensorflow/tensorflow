@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/convert_mover.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
@@ -70,7 +71,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
     config.set_debug_options(debug_opts);
 
     auto result = backend().compiler()->RunHloPasses(
-        ParseAndReturnVerifiedModule(hlo_string, config).ConsumeValueOrDie(),
+        ParseAndReturnVerifiedModule(hlo_string, config).value(),
         backend().default_stream_executor(), backend().memory_allocator());
     if (!result.status().ok()) {
       TF_EXPECT_OK(result.status())
@@ -357,9 +358,9 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
           .compiler()
           ->RunHloPasses(
               ParseAndReturnVerifiedModule(kHloString, GetModuleConfigForTest())
-                  .ConsumeValueOrDie(),
+                  .value(),
               backend().default_stream_executor(), backend().memory_allocator())
-          .ConsumeValueOrDie()
+          .value()
           ->ToString();
   EXPECT_THAT(optimized_hlo_string,
               ::testing::ContainsRegex(
@@ -619,6 +620,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, Int8SideInputWithScaleAndReshape) {
   HloPassFix<HloPassPipeline> simplify("simplify");
   simplify.AddPass<AlgebraicSimplifier>(AlgebraicSimplifierOptions{});
   simplify.AddPass<ReshapeMover>();
+  simplify.AddPass<ConvertMover>();
   TF_ASSERT_OK(RunHloPass(&simplify, m.get()).status());
 
   SCOPED_TRACE(m->ToString());

@@ -40,13 +40,15 @@ from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training.tracking import base
+from tensorflow.python.trackable import base
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -297,6 +299,10 @@ class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
             else 0)
 
 
+def _is_gpu_device(device):
+  return tf_device.DeviceSpec.from_string(device).device_type == "GPU"
+
+
 class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   """Implementation of CollectiveAllReduceStrategy."""
 
@@ -315,10 +321,14 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   _check_health_timeout = 10
 
   def __init__(self, container_strategy, cluster_resolver,
-               communication_options):
+               communication_options, devices=None):
     if not isinstance(communication_options, collective_util.Options):
       raise ValueError("communication_options must be an instance of "
                        "tf.distribute.experimental.CommunicationOptions")
+    if cluster_resolver and devices:
+      raise ValueError(
+          "cluster_resolver and devices cannot be set at the same time")
+
     self._cluster_resolver = cluster_resolver or TFConfigClusterResolver()
     if not isinstance(self._cluster_resolver, ClusterResolver):
       raise ValueError("cluster_resolver must be an instance of "
@@ -326,21 +336,26 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     distribute_lib.StrategyExtendedV1.__init__(self, container_strategy)
     self._communication_options = communication_options
     self._collective_key_base = container_strategy._collective_key_base  # pylint: disable=protected-access
-    self._initialize_strategy(self._cluster_resolver)
+    self._initialize_strategy(self._cluster_resolver, devices=devices)
     self._cfer_fn_cache = weakref.WeakKeyDictionary()
     self.experimental_enable_get_next_as_optional = True
     assert isinstance(self._cross_device_ops,
                       cross_device_ops_lib.CollectiveAllReduce)
 
   def _use_merge_call(self):
-    """XLA is not supported for multi-worker strategy."""
-    return True
+    # We currently only disable merge_call when XLA is used to compile the `fn`
+    # passed to `strategy.run` and all devices are GPU.
+    return not control_flow_util.GraphOrParentsInXlaContext(
+        ops.get_default_graph()) or not all(
+            [_is_gpu_device(d) for d in self._devices])
 
-  def _initialize_strategy(self, cluster_resolver):
-    if cluster_resolver.cluster_spec().as_dict():
-      self._initialize_multi_worker(cluster_resolver)
+  def _initialize_strategy(self, cluster_resolver, devices):
+    # If devices are provided or cluster_spec is not specified, initialize
+    # single worker. Otherwise initialize multi workers.
+    if devices or not cluster_resolver.cluster_spec().as_dict():
+      self._initialize_local(cluster_resolver, devices=devices)
     else:
-      self._initialize_local(cluster_resolver)
+      self._initialize_multi_worker(cluster_resolver)
 
   def _initialize_local_devices(self, cluster_resolver, worker_device):
     # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in

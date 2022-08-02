@@ -84,7 +84,7 @@ Status CreateTestFiles(const std::vector<tstring>& filenames,
   for (int i = 0; i < filenames.size(); ++i) {
     TF_RETURN_IF_ERROR(WriteDataToFile(filenames[i], contents[i].data()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -151,6 +151,29 @@ DatasetDef RangeDatasetWithShardHint(const int64_t range) {
   return dataset_def;
 }
 
+DatasetDef InfiniteDataset() {
+  DatasetDef dataset_def;
+  *dataset_def.mutable_graph() = GDef(
+      {NDef("start", "Const", /*inputs=*/{},
+            {{"value", AsScalar<int64_t>(0)}, {"dtype", DT_INT64}}),
+       NDef("stop", "Const", /*inputs=*/{},
+            {{"value", AsScalar<int64_t>(100000000)}, {"dtype", DT_INT64}}),
+       NDef("step", "Const", /*inputs=*/{},
+            {{"value", AsScalar<int64_t>(1)}, {"dtype", DT_INT64}}),
+       NDef("range", "RangeDataset", /*inputs=*/{"start", "stop", "step"},
+            {{"output_shapes", gtl::ArraySlice<TensorShape>{TensorShape()}},
+             {"output_types", gtl::ArraySlice<DataType>{DT_INT64}}}),
+       NDef("count", "Const", /*inputs=*/{},
+            {{"value", AsScalar<int64_t>(-1)}, {"dtype", DT_INT64}}),
+       NDef("repeat", "RepeatDataset", /*inputs=*/{"range", "count"},
+            {{"output_shapes", gtl::ArraySlice<TensorShape>{TensorShape()}},
+             {"output_types", gtl::ArraySlice<DataType>{DT_INT64}}}),
+       NDef("dataset", "_Retval", /*inputs=*/{"repeat"},
+            {{"T", DT_VARIANT}, {"index", 0}})},
+      {});
+  return dataset_def;
+}
+
 StatusOr<DatasetDef> InterleaveTextlineDataset(
     const std::vector<tstring>& filenames,
     const std::vector<tstring>& contents) {
@@ -173,7 +196,7 @@ Status WaitWhile(std::function<StatusOr<bool>()> f) {
   while (true) {
     TF_ASSIGN_OR_RETURN(bool result, f());
     if (!result) {
-      return Status::OK();
+      return OkStatus();
     }
     Env::Default()->SleepForMicroseconds(10 * 1000);  // 10ms.
   }

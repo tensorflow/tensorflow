@@ -26,8 +26,8 @@ namespace segment {
 
 namespace {
 template <typename T>
-inline bool CheckIfCompatible(const absl::optional<T>& a,
-                              const absl::optional<T>& b) {
+inline bool CheckIfCompatible(const std::optional<T>& a,
+                              const std::optional<T>& b) {
   if (a.has_value() && b.has_value()) {
     return *a == *b;
   }
@@ -35,7 +35,7 @@ inline bool CheckIfCompatible(const absl::optional<T>& a,
 }
 
 template <typename T>
-inline bool UnifyValues(absl::optional<T>& a, absl::optional<T>& b) {
+inline bool UnifyValues(std::optional<T>& a, std::optional<T>& b) {
   if (a.has_value()) {
     b = a;
   } else {
@@ -45,8 +45,8 @@ inline bool UnifyValues(absl::optional<T>& a, absl::optional<T>& b) {
 }
 
 template <typename T>
-inline absl::optional<T> MergeCompatible(const absl::optional<T>& a,
-                                         const absl::optional<T>& b) {
+inline std::optional<T> MergeCompatible(const std::optional<T>& a,
+                                        const std::optional<T>& b) {
   DCHECK(CheckIfCompatible(a, b));
   return a.has_value() ? a : b;
 }
@@ -54,7 +54,7 @@ inline absl::optional<T> MergeCompatible(const absl::optional<T>& a,
 }  // namespace
 
 ClusterBatchSize::ClusterBatchSize()
-    : batch_size_(absl::nullopt), max_batch_size_(absl::nullopt) {}
+    : batch_size_(std::nullopt), max_batch_size_(std::nullopt) {}
 
 bool ClusterBatchSize::operator==(const ClusterBatchSize& other) {
   return batch_size_ == other.batch_size_ &&
@@ -62,12 +62,12 @@ bool ClusterBatchSize::operator==(const ClusterBatchSize& other) {
 }
 
 ClusterBatchSize& ClusterBatchSize::SetBatchSize(int batch_size) {
-  SetBatchSize(static_cast<absl::optional<int>>(batch_size));
+  SetBatchSize(static_cast<std::optional<int>>(batch_size));
   return *this;
 }
 
 ClusterBatchSize& ClusterBatchSize::SetBatchSize(
-    const absl::optional<int>& batch_size) {
+    const std::optional<int>& batch_size) {
   batch_size_ = MergeCompatible<int>(batch_size_, batch_size);
   if (batch_size_.has_value() && batch_size_.value() >= 0) {
     SetMaxBatchSize(batch_size_);
@@ -83,17 +83,17 @@ int ClusterBatchSize::GetBatchSize() const {
 }
 
 ClusterBatchSize& ClusterBatchSize::SetMaxBatchSize(int max_batch_size) {
-  SetBatchSize(static_cast<absl::optional<int>>(max_batch_size));
+  SetBatchSize(static_cast<std::optional<int>>(max_batch_size));
   return *this;
 }
 
 ClusterBatchSize& ClusterBatchSize::SetMaxBatchSize(
-    const absl::optional<int>& max_batch_size) {
+    const std::optional<int>& max_batch_size) {
   max_batch_size_ = MergeCompatible<int>(max_batch_size_, max_batch_size);
   return *this;
 }
 
-absl::optional<int> ClusterBatchSize::GetOptionalMaxBatchSize() const {
+std::optional<int> ClusterBatchSize::GetOptionalMaxBatchSize() const {
   return max_batch_size_;
 }
 
@@ -110,7 +110,7 @@ bool ClusterBatchSize::MergeIfCompatible(const ClusterBatchSize& other) {
 
 string ClusterBatchSize::ToString() const {
   string s;
-  const auto append_optional_num = [&](const absl::optional<int>& num) {
+  const auto append_optional_num = [&](const std::optional<int>& num) {
     if (num.has_value()) {
       absl::StrAppendFormat(&s, "%d", num.value());
     } else {
@@ -135,7 +135,7 @@ Status ClusterProperty::Merge(const ClusterProperty& other) {
         "trying to merge clusters with incompatible batch sizes.");
   }
 
-  absl::optional<DeviceNameUtils::ParsedName> merged_device_name =
+  std::optional<DeviceNameUtils::ParsedName> merged_device_name =
       MergeIfCompatible(device_name_, other.device_name_);
   if (!merged_device_name.has_value()) {
     return errors::Internal(

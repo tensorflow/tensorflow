@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_CC_DTENSOR_DEVICE_H_
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -113,6 +114,12 @@ TFE_TensorHandle* SparsePack(TFE_Context* context, int num_inputs,
 // SparseTensor.
 bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
                      void* device_info, TF_Status* status);
+
+// Returns a dictionary with cache hits and cache miss information.
+// Cache hit count is mapped under 'hit', and cache miss count is mapped under
+// 'miss'.
+std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
+    TFE_Context* context, void* device_info, TF_Status* status);
 }  // namespace dtensor
 }  // namespace tensorflow
 

@@ -16,7 +16,7 @@ limitations under the License.
 
 namespace tflite {
 
-const constexpr char* NnapiAccelerationTestParams::kAccelerationTestConfig =
+const char* const NnapiAccelerationTestParams::kAccelerationTestConfig =
     R"(
 ## Every Test can be allowlisted or denylisted using a regexp on its test_id
 
@@ -413,6 +413,7 @@ SelectOpTest/.+,29
 -SliceOpTest/SliceOpTest/SliceInt64/.+
 -SliceOpTest/SliceOpTest/SliceBool/.+
 -SliceOpTest/SliceOpTest/SliceInt16/.+
+-SliceOpTest/SliceOpTest/SliceInt64StaticOutput/.*
 # Only constant tensors
 SliceOpTest/SliceOpTest/.+/0,29
 

@@ -69,7 +69,7 @@ HloModule SelectAndScatter
 // CHECK: %[[GLOBAL_MEMREF:.*]] = memref.get_global @[[$GLOBAL]] : memref<f32>
 // CHECK: "lmhlo.select_and_scatter"(%{{.*}}, %{{.*}}, %[[GLOBAL_MEMREF]], %{{.*}})
 // CHECK: ^bb0(%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>):
-// CHECK: %[[COMPARE:.*]] = "mhlo.compare"(%[[ARG0]], %[[ARG1]]) {comparison_direction = #mhlo<"comparison_direction GE">}
+// CHECK: %[[COMPARE:.*]] = "mhlo.compare"(%[[ARG0]], %[[ARG1]]) {comparison_direction = #mhlo<comparison_direction GE>}
 // CHECK: "mhlo.return"(%[[COMPARE]]) : (tensor<i1>) -> ()
 // CHECK: ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
 // CHECK: %[[ADD:.*]] = mhlo.add %[[ARG2]], %[[ARG3]]
@@ -131,68 +131,19 @@ HloModule Gemm
 // CHECK-SAME: algorithm = 7 : i64
 // CHECK-SAME: alpha_imag = 0.000000e+00 : f64
 // CHECK-SAME: alpha_real = 1.000000e+00 : f64
-// CHECK-SAME: batch_size = 1 : i64
+// CHECK-SAME: beta = 0.000000e+00 : f64
 // CHECK-NOT: lhs_batching_dimensions
 // CHECK-NOT: rhs_batching_dimensions
 // CHECK-SAME: lhs_contracting_dimensions = [1]
 // CHECK-SAME: rhs_contracting_dimensions = [0]
+// CHECK-SAME: precision_config = [#mhlo<precision HIGH>, #mhlo<precision HIGHEST>]
 // CHECK: (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 ENTRY main {
   %A = f32[2,2]{1,0} parameter(0)
   %B = f32[2,2]{1,0} parameter(1)
   ROOT %sgemm = f32[2,2]{1,0} custom-call(f32[2,2]{1,0} %A, f32[2,2]{1,0} %B),
                               custom_call_target="__cublas$gemm",
-  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"7\"}"
-}
-
-// -----
-
-HloModule GemmBias
-
-// CHECK-LABEL: func @main
-// CHECK: "lmhlo_gpu.gemm_bias"
-// CHECK-SAME: algorithm = 0 : i64
-// CHECK-SAME: alpha_imag = 0.000000e+00 : f64
-// CHECK-SAME: alpha_real = 1.000000e+00 : f64
-// CHECK-SAME: batch_size = 1 : i64
-// CHECK-SAME: beta = 1.000000e+00 : f64
-// CHECK-NOT: lhs_batching_dimensions
-// CHECK-NOT: rhs_batching_dimensions
-// CHECK-SAME: lhs_contracting_dimensions = [1]
-// CHECK-SAME: rhs_contracting_dimensions = [0]
-// CHECK: (memref<1x1xf32>, memref<1x4xf32>, memref<1x4xf32>, memref<1x4xf32>)
-ENTRY main {
-  %A = f32[1,1]{1,0} parameter(0)
-  %B = f32[1,4]{1,0} parameter(1)
-  %C = f32[1,4]{1,0} parameter(2)
-  ROOT %sgemm_add = f32[1,4]{1,0} custom-call(f32[1,1]{0,1} %A, f32[1,4]{1,0} %B, f32[1,4]{1,0} %C),
-                                  custom_call_target="__cublas$gemm",
-  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"0\"}"
-}
-
-// -----
-
-HloModule GemmBias
-
-// CHECK-LABEL: func @main
-// CHECK: "lmhlo_gpu.gemm_bias"
-// CHECK-SAME: algorithm = 0 : i64
-// CHECK-SAME: alpha_imag = 0.000000e+00 : f64
-// CHECK-SAME: alpha_real = 1.000000e+00 : f64
-// CHECK-SAME: batch_size = 1 : i64
-// CHECK-SAME: beta = 1.000000e+00 : f64
-// CHECK-NOT: lhs_batching_dimensions
-// CHECK-NOT: rhs_batching_dimensions
-// CHECK-SAME: lhs_contracting_dimensions = [1]
-// CHECK-SAME: rhs_contracting_dimensions = [0]
-// CHECK: (memref<1x1xf32>, memref<1x4xf32>, memref<1x4xf32>, memref<1x4xf32>)
-ENTRY main {
-  %A = f32[1,1]{1,0} parameter(0)
-  %B = f32[1,4]{1,0} parameter(1)
-  %C = f32[1,4]{1,0} parameter(2)
-  ROOT %sgemm_add = f32[1,4]{1,0} custom-call(f32[1,1]{0,1} %A, f32[1,4]{1,0} %B, f32[1,4]{1,0} %C),
-                                  custom_call_target="__cublas$gemm",
-  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"0\"}"
+  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"HIGH\",\"HIGHEST\"]},\"selected_algorithm\":\"7\"}"
 }
 
 // -----
@@ -216,7 +167,7 @@ add {
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
-  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
 }
@@ -267,7 +218,7 @@ add {
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
-  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, -1], [3, 4, 5, 6]]> : tensor<2x4xi64>
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2}, {3,4,5,6}}, to_apply=add
 }
@@ -294,7 +245,7 @@ add {
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
-  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
   // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[OUTPUT]])
   start = f32[8] all-reduce-start(param0),
@@ -328,7 +279,7 @@ add {
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
   // CHECK:  }) {
-  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
   // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[OUTPUT0]], [[OUTPUT1]])
   start = (f32[8], f32[9]) all-reduce-start(param0, param1),
@@ -344,14 +295,14 @@ HloModule ConvForward
 // CHECK: lmhlo_gpu.conv_forward
 // CHECK-SAME: dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
 // CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [0, 0], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [1, 1]}
-// CHECK-SAME: algorithm = 2 : i64
+// CHECK-SAME: algorithm = 2
+// CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: operand_0_layout = [3, 2, 1, 0]
 // CKECK-SAME: operand_1_layout = [3, 2, 1, 0]
 // CHECK-SAME: result_layout = [3, 2, 1, 0]
-// CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: batch_group_count = 1 : i64
 // CHECK-SAME: feature_group_count = 1 : i64
-// CHECK_SAME: result_scale = 1.000000e+00 : f64
+// CHECK-SAME: result_scale = 1.000000e+00 : f64
 // CHECK: (memref<4x256x3x3xf32>, memref<256x256x2x2xf32>, memref<4x256x2x2xf32>, memref<65536xui8>)
 ENTRY main {
   %input = f32[4,256,3,3]{3,2,1,0} parameter(0)
@@ -368,15 +319,15 @@ ENTRY main {
 // CHECK: lmhlo_gpu.conv_forward_fused
 // CHECK-SAME: dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, f, 0, 1]
 // CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [1, 1], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [0, 0]}
-// CHECK-SAME: activation_mode = #lmhlo_gpu<"activation Relu">
-// CHECK-SAME: algorithm = 0 : i64
+// CHECK-SAME: activation_mode = #lmhlo_gpu<activation Relu>
+// CHECK-SAME: algorithm = 0
+// CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: operand_0_layout = [1, 3, 2, 0]
 // CHECK-SAME: operand_1_layout = [2, 1, 0, 3]
 // CHECK-SAME: result_layout = [1, 3, 2, 0]
-// CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: batch_group_count = 1 : i64
 // CHECK-SAME: feature_group_count = 1 : i64
-// CHECK-SAME: precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+// CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
 // CHECK-SAME: result_scale = 1.000000e+00 : f64
 // CHECK-SAME: (memref<1x17x9x9xf16, #map{{.*}}>, memref<3x3x17x32xf16, #map{{.*}}>, memref<32xf16>, memref<1x32x9x9xf16, #{{.*}}>, memref<0xui8>) -> ()
 
@@ -395,15 +346,15 @@ ENTRY main {
 // CHECK: lmhlo_gpu.conv_forward_fused_with_side_input
 // CHECK-SAME: dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, f, 0, 1]
 // CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [1, 1], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [0, 0]}
-// CHECK-SAME: activation_mode = #lmhlo_gpu<"activation Relu">
-// CHECK-SAME: algorithm = 0 : i64
+// CHECK-SAME: activation_mode = #lmhlo_gpu<activation Relu>
+// CHECK-SAME: algorithm = 0
+// CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: operand_0_layout = [1, 3, 2, 0]
 // CHECK-SAME: operand_1_layout = [2, 1, 0, 3]
 // CHECK-SAME: result_layout = [1, 3, 2, 0]
-// CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: batch_group_count = 1 : i64
 // CHECK-SAME: feature_group_count = 1 : i64
-// CHECK-SAME: precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+// CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
 // CHECK-SAME: result_scale = 1.000000e+00 : f64
 // CHECK-SAME: side_input_scale = 1.000000e+00
 // CHECK-SAME: (memref<1x17x9x9xf16, #map{{.*}}>, memref<3x3x17x32xf16, #map{{.*}}>, memref<32xf16>, memref<1x32x9x9xf16, #{{.*}}>, memref<0xui8>) -> ()
@@ -472,7 +423,7 @@ HloModule Test
 // CHECK-SAME:   rhs_batching_dimensions = [0]
 // CHECK-SAME:   lhs_contracting_dimensions = [2]
 // CHECK-SAME:   rhs_contracting_dimensions = [1]
-// CHECK-SAME: precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+// CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
 // CHECK-SAME:   : (tensor<1x3x4xf32>, tensor<1x4x5xf32>) -> tensor<1x4x5xf32>
 ENTRY main {
   %arg0 = f32[1,3,4]{2,1,0} parameter(0)
@@ -577,7 +528,7 @@ HloModule TestAllGather
 
 // CHECK: func @main
 // CHECK: "lmhlo.all_gather"
-// CHECK_SAME: all_gather_dimension = 1 : i64
+// CHECK-SAME: all_gather_dimension = 1 : i64
 // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
 // CHECK-SAME: use_global_device_ids = false
 ENTRY main {
@@ -604,7 +555,7 @@ ENTRY entry {
 
 // CHECK: func @main
 // CHECK: "lmhlo.collective_permute"
-// CHECK-SAME:  channel_id = {handle = 2 : i64, type = 0 : i64}
+// CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 2, type = 0>
 // CHECK-SAME{LITERAL}: source_target_pairs = dense<[[0, 1], [1, 2], [2, 0]]> : tensor<3x2xi64>
 HloModule TestCollectivePermute
 ENTRY main {
@@ -631,7 +582,7 @@ HloModule fft
 // CHECK: func @main
 // CHECK: "lmhlo.fft"
 // CHECK-SAME: fft_length = dense<[8, 32]> : tensor<2xi64>
-// CHECK-SAME: fft_type = #mhlo<"fft_type IFFT">
+// CHECK-SAME: fft_type = #mhlo<fft_type IFFT>
 ENTRY main {
   %input = c64[5,8,32] parameter(0)
   ROOT %fft = c64[5,8,32] fft(c64[5,8,32] %input), fft_type=IFFT, fft_length={8,32}
@@ -648,7 +599,7 @@ HloModule TriangularSolve_module
 // CHECK-SAME: layout_output = dense<[1, 0]> : tensor<2xindex>
 // CHECK-SAME: left_side = false
 // CHECK-SAME: lower = true
-// CHECK-SAME: transpose_a = #mhlo<"transpose NO_TRANSPOSE">
+// CHECK-SAME: transpose_a = #mhlo<transpose NO_TRANSPOSE>
 // CHECK-SAME: unit_diagonal = false
 ENTRY main {
   %a = f32[4,4]{1,0} parameter(0)
@@ -662,9 +613,9 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: args_to_target_args = []
 // CHECK-SAME: num_args = 1
 // CHECK-SAME: num_results = 2
+// CHECK-SAME: args_to_target_args = []
 // CHECK-SAME: results_to_target_results = [0]
 ENTRY main {
   %tok = token[] parameter(0)
@@ -678,9 +629,9 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: args_to_target_args = [1]
 // CHECK-SAME: num_args = 3
 // CHECK-SAME: num_results = 3
+// CHECK-SAME: args_to_target_args = [1]
 // CHECK-SAME: results_to_target_results = [0, 2]
 ENTRY main {
   %tok = token[] parameter(0)
@@ -696,9 +647,9 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: args_to_target_args = [1]
 // CHECK-SAME: num_args = 3
 // CHECK-SAME: num_results = 1
+// CHECK-SAME: args_to_target_args = [1]
 // CHECK-SAME: results_to_target_results = [0]
 ENTRY main {
   %tok = token[] parameter(0)
@@ -714,9 +665,9 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: args_to_target_args = [0]
 // CHECK-SAME: num_args = 1
 // CHECK-SAME: num_results = 4
+// CHECK-SAME: args_to_target_args = [0]
 // CHECK-SAME: results_to_target_results = [1]
 ENTRY main {
   %input = f32[5,8,32] parameter(0)

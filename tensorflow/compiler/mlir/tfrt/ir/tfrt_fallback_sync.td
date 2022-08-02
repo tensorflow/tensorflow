@@ -83,6 +83,33 @@ def GetResourceOp : FallbackSync_Op<"get_resource",
   let assemblyFormat = "attr-dict `:` type($results)";
 }
 
+def CreateOp: FallbackSync_Op<"createop", [CoreRT_TypedAttributeTrait]> {
+  let summary = "The Fallback CreateOp";
+
+  let description = [{
+    The CreateOp creates the tensorflow::OpKernel in the fallback context.
+
+    op_key: The unique key to identify this op.
+    num_args: The number of inputs.
+    device: The tensorflow device. eg. "/CPU:0"
+    op_attrs: The tensorflow attributes excluding the func attrs.
+    op_name: The tensorflow op name. eg. "tf.AddV2"
+
+    Example:
+      tfrt_fallback_async.createop() key(0) device("/CPU:0")
+        "some.op"() {attr1 = value, attr2 = value2} {f_attr1 = "fn1", f_attr2 = "fn2"} num_args(1)
+  }];
+
+  let arguments = (ins
+    I64Attr:$num_args,
+    ArrayAttr:$op_attrs,
+    I64Attr:$op_key,
+    StrAttr:$op_name
+  );
+
+  let results = (outs);
+}
+
 def ExecuteOp : FallbackSync_Op<"executeop",
     [NoSideEffect, CoreRT_TypedAttributeTrait]> {
   let summary = "The Fallback Sync ExecuteOp";
@@ -98,6 +125,7 @@ def ExecuteOp : FallbackSync_Op<"executeop",
   let arguments = (ins
     Variadic<TensorType>:$operands,
     ArrayAttr:$op_attrs,
+    I64Attr:$op_key,
     StrAttr:$op_name
   );
 
@@ -115,7 +143,75 @@ def ExecuteOp : FallbackSync_Op<"executeop",
       "StringRef":$op_name)>];
 
   let hasVerifier = 1;
+
   let hasCustomAssemblyFormat = 1;
+}
+
+
+def ConvertDhtToFallbackTensorOp : FallbackSync_Op<"convert_dht_to_fallback_tensor",
+    [CoreRT_TypedAttributeTrait]> {
+  let summary = "convert a DHT to a fallback tensor";
+
+  let description = [{
+    Convert a TFRT DHT to a fallback tensor.
+
+    dht: the input DHT.
+    fallback_tensor: The output fallback tensor
+  }];
+
+  let arguments = (ins
+    TensorType:$dht
+  );
+
+  let results = (outs
+    TFTensorType:$fallback_tensor
+  );
+
+  let assemblyFormat = "operands attr-dict `:` type($fallback_tensor)";
+}
+
+def ConvertShtToFallbackTensorOp : FallbackSync_Op<"convert_sht_to_fallback_tensor",
+    [CoreRT_TypedAttributeTrait]> {
+  let summary = "convert a SHT to a fallback tensor";
+
+  let description = [{
+    Convert a TFRT SHT to a fallback tensor.
+
+    sht: the input SHT.
+    fallback_tensor: The output fallback tensor
+  }];
+
+  let arguments = (ins
+    TensorType:$sht
+  );
+
+  let results = (outs
+    TFTensorType:$fallback_tensor
+  );
+
+  let assemblyFormat = "operands attr-dict `:` type($fallback_tensor)";
+}
+
+def ConvertFallbackTensorToDhtOp : FallbackSync_Op<"convert_fallback_tensor_to_dht",
+    [CoreRT_TypedAttributeTrait]> {
+  let summary = "convert fallback tensor to a DHT";
+
+  let description = [{
+    Convert a fallback tensor to a TFRT DHT.
+
+    fallback_tensor: The input fallback tensor
+    dht: the output DHT.
+  }];
+
+  let arguments = (ins
+    TFTensorType:$fallback_tensor
+  );
+
+  let results = (outs
+    TensorType:$dht
+  );
+
+  let assemblyFormat = "operands attr-dict `:` type($dht)";
 }
 
 #endif

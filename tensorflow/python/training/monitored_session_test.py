@@ -25,6 +25,7 @@ import traceback
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import debug_pb2
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribute_coordinator
@@ -43,7 +44,6 @@ from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import load as saved_model_load
 from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as saver_lib

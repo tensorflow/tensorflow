@@ -1,7 +1,7 @@
 // RUN: tfg-translate -mlir-to-graphdef %s | FileCheck %s
 
 tfg.graph #tf_type.version<producer = 34, min_consumer = 5> {
-  %ctl = tfg.Add(%Placeholder, %Placeholder_1) name("SomeAdd") {T = i32, _mlir_fulltype = #tf_type.full_type<tensor>, tfg.tpu_replicate = "cluster"} : (!tf_type.tensor, !tf_type.tensor) -> ()
+  %ctl = tfg.Add(%Placeholder, %Placeholder_1) name("SomeAdd") {T = i32, _mlir_fulltype = #tf_type.full_type<tensor>, _tpu_replicate = "cluster"} : (!tf_type.tensor, !tf_type.tensor) -> ()
   %Placeholder, %ctl_0 = tfg.Placeholder name("Placeholder1") {dtype = i32} : () -> (!tf_type.tensor)
   %Placeholder_1, %ctl_2 = tfg.Placeholder name("Placeholder2") {dtype = i32} : () -> (!tf_type.tensor)
 }

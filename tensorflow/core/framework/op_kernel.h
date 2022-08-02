@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
@@ -640,11 +641,10 @@ class OpKernelContext {
     CancellationManager* cancellation_manager = nullptr;
 
     // Inputs to this op kernel.
-    const gtl::InlinedVector<TensorValue, 4>* inputs = nullptr;
+    absl::Span<const TensorValue> inputs;
     bool is_input_dead = false;
 
-    const gtl::InlinedVector<AllocatorAttributes, 4>* input_alloc_attrs =
-        nullptr;
+    absl::Span<const AllocatorAttributes> input_alloc_attrs;
 
     // Device context.
     DeviceContext* op_device_context = nullptr;
@@ -708,7 +708,7 @@ class OpKernelContext {
 
   // Input/output signature.
 
-  int num_inputs() const { return params_->inputs->size(); }
+  int num_inputs() const { return params_->inputs.size(); }
   DataType input_dtype(int index) const;
   Status input_dtype(StringPiece name, DataType* dtype) const;
   MemoryType input_memory_type(int index) const;
@@ -1035,12 +1035,12 @@ class OpKernelContext {
   }
 
   AllocatorAttributes input_alloc_attr(int index) const {
-    if (params_->input_alloc_attrs == nullptr) {
+    if (params_->input_alloc_attrs.empty()) {
       return AllocatorAttributes();
     } else {
       DCHECK_GE(index, 0);
-      DCHECK_LT(index, params_->input_alloc_attrs->size());
-      return (*params_->input_alloc_attrs)[index];
+      DCHECK_LT(index, params_->input_alloc_attrs.size());
+      return params_->input_alloc_attrs[index];
     }
   }
 
@@ -1543,7 +1543,7 @@ Status OpKernelConstruction::GetAttr(StringPiece attr_name, T* value) const {
 inline DataType OpKernelContext::input_dtype(int index) const {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_inputs());
-  const TensorValue& value((*params_->inputs)[index]);
+  const TensorValue& value(params_->inputs[index]);
   return value.dtype();
 }
 
@@ -1566,7 +1566,7 @@ inline MemoryType OpKernelContext::output_memory_type(int index) const {
 }
 
 inline bool OpKernelContext::input_is_ref(int index) const {
-  const TensorValue& value((*params_->inputs)[index]);
+  const TensorValue& value(params_->inputs[index]);
   return value.is_ref();
 }
 
@@ -1574,14 +1574,14 @@ inline bool OpKernelContext::input_is_ref(int index) const {
 inline bool OpKernelContext::has_input(int index) const {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_inputs());
-  return (*params_->inputs)[index].tensor != nullptr;
+  return params_->inputs[index].tensor != nullptr;
 }
 
 inline mutex* OpKernelContext::input_ref_mutex(int index) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_inputs());
   DCHECK(input_is_ref(index));
-  return (*params_->inputs)[index].mutex_if_ref;
+  return params_->inputs[index].mutex_if_ref;
 }
 
 inline Tensor* OpKernelContext::mutable_output(int index) {
@@ -1607,7 +1607,7 @@ inline Status OpKernelContext::forward_input_or_allocate_output(
       if (forwarded_input != nullptr) {
         *forwarded_input = input_index;
       }
-      return Status::OK();
+      return OkStatus();
     }
   }
   if (forwarded_input != nullptr) {
@@ -1623,7 +1623,7 @@ inline Status OpKernelContext::forward_input_or_allocate_output(
     if (forward_input_to_output_with_shape(input_name, output_name,
                                            output_shape, output)
             .ok()) {
-      return Status::OK();
+      return OkStatus();
     }
   }
   return allocate_output(output_name, output_shape, output);

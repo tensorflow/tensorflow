@@ -16,7 +16,6 @@
 import abc
 import functools
 import multiprocessing
-import os
 import sys
 import threading
 import warnings
@@ -29,7 +28,6 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
@@ -65,11 +63,9 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.platform import gfile
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import tracking as tracking_util
-from tensorflow.python.training.tracking import base as tracking_base
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import base as tracking_base
+from tensorflow.python.trackable import resource as resource_lib
 from tensorflow.python.types import trace
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
@@ -100,6 +96,7 @@ parsing_ops = lazy_loader.LazyLoader(
     "parsing_ops", globals(),
     "tensorflow.python.ops.parsing_ops")
 
+
 ops.NotDifferentiable("ReduceDataset")
 
 # A constant that can be used to enable auto-tuning.
@@ -116,10 +113,6 @@ COMPRESSION_SNAPPY = "NONE"
 DATASET_SPEC_FILENAME = "dataset_spec.pb"
 tf_export("data.INFINITE_CARDINALITY").export_constant(__name__, "INFINITE")
 tf_export("data.UNKNOWN_CARDINALITY").export_constant(__name__, "UNKNOWN")
-# TODO(b/176933539): Use the regular import.
-nested_structure_coder = lazy_loader.LazyLoader(
-    "nested_structure_coder", globals(),
-    "tensorflow.python.saved_model.nested_structure_coder")
 
 
 def _validate_and_encode(name):
@@ -319,7 +312,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
     Returns:
       A dictionary mapping the node name of an asset constant to a tracked
-      `tracking.Asset` object.
+      `asset.Asset` object.
     """
     asset_tracker = {}
     for node in graph_def.node:
@@ -336,7 +329,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
           node_value = parsing_ops.parse_tensor(
               tensor_proto.SerializeToString(), dtypes.string).numpy()
         asset_tracker[node.name] = ([
-            self._track_trackable(tracking.Asset(n),
+            self._track_trackable(asset.Asset(n),
                                   name=node.name + "_" + str(i), overwrite=True)
             for i, n in enumerate(node_value)
         ])
@@ -622,9 +615,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       raise RuntimeError("`tf.data.Dataset.as_numpy_iterator()` is only "
                          "supported in eager mode.")
     for component_spec in nest.flatten(self.element_spec):
-      if not isinstance(
-          component_spec,
-          (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec)):
+      if not isinstance(component_spec,
+                        (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec,
+                         structure.NoneTensorSpec)):
         raise TypeError(
             f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
             f"datasets that produce values of type {component_spec.value_type}")
@@ -1459,8 +1452,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
 
     max_value = np.iinfo(dtypes.int64.as_numpy_dtype).max
-    return Dataset.zip((Dataset.range(start, max_value, name=name), self),
-                       name=name)
+    range_dataset = Dataset.range(start, max_value, name=name)
+    # Replicate the range component so that each split is enumerated
+    # independently. This avoids the need for prohibitively expensive
+    # cross-split coordination.
+    range_dataset = _apply_rewrite(range_dataset, "replicate_on_split")
+    return Dataset.zip((range_dataset, self), name=name)
 
   def shuffle(self,
               buffer_size,
@@ -1695,6 +1692,157 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         in an error during a session.run call.)
     """
     return ShardDataset(self, num_shards, index, name=name)
+
+  def save(self,
+           path,
+           compression=None,
+           shard_func=None,
+           checkpoint_args=None):
+    """Saves the content of the given dataset.
+
+      Example usage:
+
+      >>> import tempfile
+      >>> path = os.path.join(tempfile.gettempdir(), "saved_data")
+      >>> # Save a dataset
+      >>> dataset = tf.data.Dataset.range(2)
+      >>> dataset.save(path)
+      >>> new_dataset = tf.data.Dataset.load(path)
+      >>> for elem in new_dataset:
+      ...   print(elem)
+      tf.Tensor(0, shape=(), dtype=int64)
+      tf.Tensor(1, shape=(), dtype=int64)
+
+      The saved dataset is saved in multiple file "shards". By default, the
+      dataset output is divided to shards in a round-robin fashion but custom
+      sharding can be specified via the `shard_func` function. For example, you
+      can save the dataset to using a single shard as follows:
+
+      ```python
+      dataset = make_dataset()
+      def custom_shard_func(element):
+        return 0
+      dataset.save(
+          path="/path/to/data", ..., shard_func=custom_shard_func)
+      ```
+
+      To enable checkpointing, pass in `checkpoint_args` to the `save` method
+      as follows:
+
+      ```python
+      dataset = tf.data.Dataset.range(100)
+      save_dir = "..."
+      checkpoint_prefix = "..."
+      step_counter = tf.Variable(0, trainable=False)
+      checkpoint_args = {
+        "checkpoint_interval": 50,
+        "step_counter": step_counter,
+        "directory": checkpoint_prefix,
+        "max_to_keep": 20,
+      }
+      dataset.save(dataset, save_dir, checkpoint_args=checkpoint_args)
+      ```
+
+      NOTE: The directory layout and file format used for saving the dataset is
+      considered an implementation detail and may change. For this reason,
+      datasets saved through `tf.data.Dataset.save` should only be consumed
+      through `tf.data.Dataset.load`, which is guaranteed to be
+      backwards compatible.
+
+    Args:
+     path: Required. A directory to use for saving the dataset.
+     compression: Optional. The algorithm to use to compress data when writing
+          it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
+     shard_func: Optional. A function to control the mapping of dataset
+          elements to file shards. The function is expected to map elements of
+          the input dataset to int64 shard IDs. If present, the function will be
+          traced and executed as graph computation.
+     checkpoint_args: Optional args for checkpointing which will be passed into
+          the `tf.train.CheckpointManager`. If `checkpoint_args` are not
+          specified, then checkpointing will not be performed. The `save()`
+          implementation creates a `tf.train.Checkpoint` object internally, so
+          users should not set the `checkpoint` argument in `checkpoint_args`.
+
+    Raises:
+      ValueError if `checkpoint` is passed into `checkpoint_args`.
+    """
+    # Loaded lazily due to a circular dependency
+    # dataset_ops->save_ops->dataset_ops
+    from tensorflow.python.data.ops import save_op  # pylint: disable=g-import-not-at-top
+    save_op.save(self, path, compression, shard_func, checkpoint_args)
+
+  @staticmethod
+  def load(path, element_spec=None, compression=None, reader_func=None):
+    """Loads a previously saved dataset.
+
+    Example usage:
+
+    >>> import tempfile
+    >>> path = os.path.join(tempfile.gettempdir(), "saved_data")
+    >>> # Save a dataset
+    >>> dataset = tf.data.Dataset.range(2)
+    >>> tf.data.Dataset.save(dataset, path)
+    >>> new_dataset = tf.data.Dataset.load(path)
+    >>> for elem in new_dataset:
+    ...   print(elem)
+    tf.Tensor(0, shape=(), dtype=int64)
+    tf.Tensor(1, shape=(), dtype=int64)
+
+
+    Note that to load a previously saved dataset, you need to specify
+    `element_spec` -- a type signature of the elements of the saved dataset,
+    which can be obtained via `tf.data.Dataset.element_spec`. This requirement
+    exists so that shape inference of the loaded dataset does not need to
+    perform I/O.
+
+    If the default option of sharding the saved dataset was used, the element
+    order of the saved dataset will be preserved when loading it.
+
+    The `reader_func` argument can be used to specify a custom order in which
+    elements should be loaded from the individual shards. The `reader_func` is
+    expected to take a single argument -- a dataset of datasets, each containing
+    elements of one of the shards -- and return a dataset of elements. For
+    example, the order of shards can be shuffled when loading them as follows:
+
+    ```python
+    def custom_reader_func(datasets):
+      datasets = datasets.shuffle(NUM_SHARDS)
+      return datasets.interleave(lambda x: x, num_parallel_calls=AUTOTUNE)
+
+    dataset = tf.data.Dataset.load(
+        path="/path/to/data", ..., reader_func=custom_reader_func)
+    ```
+
+    Args:
+      path: Required. A path pointing to a previously saved dataset.
+      element_spec: Optional. A nested structure of `tf.TypeSpec` objects
+        matching the structure of an element of the saved dataset and specifying
+        the type of individual element components. If not provided, the nested
+        structure of `tf.TypeSpec` saved with the saved dataset is used. This
+        argument needs to be provided if the method is executed in graph mode.
+      compression: Optional. The algorithm to use to decompress the data when
+        reading it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
+      reader_func: Optional. A function to control how to read data from shards.
+        If present, the function will be traced and executed as graph
+        computation.
+
+    Returns:
+      A `tf.data.Dataset` instance.
+
+    Raises:
+      FileNotFoundError: If `element_spec` is not specified and the saved nested
+        structure of `tf.TypeSpec` can not be located with the saved dataset.
+      ValueError: If `element_spec` is not specified and the method is executed
+        in graph mode.
+    """
+    # Loaded lazily due to a circular dependency
+    # dataset_ops->load_ops->dataset_ops
+    from tensorflow.python.data.ops import load_op  # pylint: disable=g-import-not-at-top
+    return load_op.load(
+        path=path,
+        element_spec=element_spec,
+        compression=compression,
+        reader_func=reader_func)
 
   def batch(self,
             batch_size,
@@ -2085,8 +2233,7 @@ name=None))
 
     >>> dataset = tf.data.Dataset.from_tensor_slices(
     ...     [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-    >>> dataset = dataset.flat_map(
-    ...     lambda x: tf.data.Dataset.from_tensor_slices(x))
+    >>> dataset = dataset.flat_map(tf.data.Dataset.from_tensor_slices)
     >>> list(dataset.as_numpy_iterator())
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
@@ -3324,11 +3471,11 @@ name=None))
         seed that will be used to create the distribution. See
         `tf.random.set_seed` for behavior.
       stop_on_empty_dataset: If `True`, sampling stops if it encounters an empty
-        dataset. If `False`, it skips empty datasets. It is recommended to set
-        it to `True`. Otherwise, the distribution of samples starts off as the
-        user intends, but may change as input datasets become empty. This can be
-        difficult to detect since the dataset starts off looking correct.
-        Default to `False` for backward compatibility.
+        dataset. If `False`, it continues sampling and skips any empty datasets.
+        It is recommended to set it to `True`. Otherwise, the distribution of
+        samples starts off as the user intends, but may change as input datasets
+        become empty. This can be difficult to detect since the dataset starts
+        off looking correct. Default to `False` for backward compatibility.
 
     Returns:
       A dataset that interleaves elements from `datasets` at random, according
@@ -3478,181 +3625,13 @@ name=None))
       raise TypeError(f"Invalid `choice_dataset`. Elements of `choice_dataset` "
                       f"must be scalar `tf.int64` tensors but are "
                       f"{choice_dataset.element_spec}.")
+    # Replicate the `choice_dataset` component so that each split makes choices
+    # independently. This avoids the need for prohibitively expensive
+    # cross-split coordination.
+    choice_dataset = _apply_rewrite(choice_dataset, "replicate_on_split")
     # pylint: disable=protected-access
     return _DirectedInterleaveDataset(choice_dataset, datasets,
                                       stop_on_empty_dataset)
-
-  def save(self,
-           path,
-           compression=None,
-           shard_func=None,
-           checkpoint_args=None):
-    """Saves the content of the given dataset.
-
-    Example usage:
-
-    >>> import tempfile
-    >>> path = os.path.join(tempfile.gettempdir(), "saved_data")
-    >>> # Save a dataset
-    >>> dataset = tf.data.Dataset.range(2)
-    >>> dataset.save(path)
-    >>> new_dataset = tf.data.Dataset.load(path)
-    >>> for elem in new_dataset:
-    ...   print(elem)
-    tf.Tensor(0, shape=(), dtype=int64)
-    tf.Tensor(1, shape=(), dtype=int64)
-
-    The saved dataset is saved in multiple file "shards". By default, the
-    dataset output is divided to shards in a round-robin fashion but custom
-    sharding can be specified via the `shard_func` function. For example, you
-    can save the dataset to using a single shard as follows:
-
-    ```python
-    dataset = make_dataset()
-    def custom_shard_func(element):
-      return 0
-    dataset.save(
-        path="/path/to/data", ..., shard_func=custom_shard_func)
-    ```
-
-    To enable checkpointing, pass in `checkpoint_args` to the `save` method
-    as follows:
-
-    ```python
-    dataset = tf.data.Dataset.range(100)
-    save_dir = "..."
-    checkpoint_prefix = "..."
-    step_counter = tf.Variable(0, trainable=False)
-    checkpoint_args = {
-      "checkpoint_interval": 50,
-      "step_counter": step_counter,
-      "directory": checkpoint_prefix,
-      "max_to_keep": 20,
-    }
-    dataset.save(dataset, save_dir, checkpoint_args=checkpoint_args)
-    ```
-
-    NOTE: The directory layout and file format used for saving the dataset is
-    considered an implementation detail and may change. For this reason,
-    datasets saved through `tf.data.Dataset.save` should only be consumed
-    through `tf.data.Dataset.load`, which is guaranteed to be
-    backwards compatible.
-
-    Args:
-      path: Required. A directory to use for saving the dataset.
-      compression: Optional. The algorithm to use to compress data when writing
-        it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
-      shard_func: Optional. A function to control the mapping of dataset
-        elements to file shards. The function is expected to map elements of the
-        input dataset to int64 shard IDs. If present, the function will be
-        traced and executed as graph computation.
-      checkpoint_args: Optional args for checkpointing which will be passed into
-        the `tf.train.CheckpointManager`. If `checkpoint_args` are not
-        specified, then checkpointing will not be performed. The `save()`
-        implementation creates a `tf.train.Checkpoint` object internally, so
-        users should not set the `checkpoint` argument in `checkpoint_args`.
-
-    Raises:
-      ValueError if `checkpoint` is passed into `checkpoint_args`.
-    """
-    if context.executing_eagerly() and checkpoint_args:
-      save_dataset = _SaveDataset(self, path, shard_func, compression)
-      save_iterator = iter(save_dataset)
-
-      if "checkpoint" in checkpoint_args:
-        raise ValueError(
-            "'Invalid `checkpoint_args`. `checkpoint_args` are not allowed "
-            "to include 'checkpoint'."
-        )
-      checkpoint = tracking_util.util.Checkpoint(iterator=save_iterator)
-      checkpoint_args["checkpoint"] = checkpoint
-      manager = checkpoint_management.CheckpointManager(**checkpoint_args)
-      checkpoint.restore(manager.latest_checkpoint)
-
-      for _ in enumerate(save_iterator):
-        if "step_counter" in checkpoint_args:
-          checkpoint_args["step_counter"].assign_add(delta=1)
-        manager.save(check_interval=True)
-    else:
-      dataset, shard_func, use_shard_func, path = _set_save_dataset_attributes(
-          self, shard_func, path)
-      ged_ops.save_dataset(
-          dataset._variant_tensor,   # pylint: disable=protected-access
-          path=path,
-          shard_func_other_args=shard_func.captured_inputs,
-          compression=compression,
-          shard_func=shard_func,
-          use_shard_func=use_shard_func)
-
-  @staticmethod
-  def load(path, element_spec=None, compression=None, reader_func=None):
-    """Loads a previously saved dataset.
-
-    Example usage:
-
-    >>> import tempfile
-    >>> path = os.path.join(tempfile.gettempdir(), "saved_data")
-    >>> # Save a dataset
-    >>> dataset = tf.data.Dataset.range(2)
-    >>> tf.data.Dataset.save(dataset, path)
-    >>> new_dataset = tf.data.Dataset.load(path)
-    >>> for elem in new_dataset:
-    ...   print(elem)
-    tf.Tensor(0, shape=(), dtype=int64)
-    tf.Tensor(1, shape=(), dtype=int64)
-
-
-    Note that to load a previously saved dataset, you need to specify
-    `element_spec` -- a type signature of the elements of the saved dataset,
-    which can be obtained via `tf.data.Dataset.element_spec`. This requirement
-    exists so that shape inference of the loaded dataset does not need to
-    perform I/O.
-
-    If the default option of sharding the saved dataset was used, the element
-    order of the saved dataset will be preserved when loading it.
-
-    The `reader_func` argument can be used to specify a custom order in which
-    elements should be loaded from the individual shards. The `reader_func` is
-    expected to take a single argument -- a dataset of datasets, each containing
-    elements of one of the shards -- and return a dataset of elements. For
-    example, the order of shards can be shuffled when loading them as follows:
-
-    ```python
-    def custom_reader_func(datasets):
-      datasets = datasets.shuffle(NUM_SHARDS)
-      return datasets.interleave(lambda x: x, num_parallel_calls=AUTOTUNE)
-
-    dataset = tf.data.Dataset.load(
-        path="/path/to/data", ..., reader_func=custom_reader_func)
-    ```
-
-    Args:
-      path: Required. A path pointing to a previously saved dataset.
-      element_spec: Optional. A nested structure of `tf.TypeSpec` objects
-        matching the structure of an element of the saved dataset and specifying
-        the type of individual element components. If not provided, the nested
-        structure of `tf.TypeSpec` saved with the saved dataset is used. This
-        argument needs to be provided if the method is executed in graph mode.
-      compression: Optional. The algorithm to use to decompress the data when
-        reading it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
-      reader_func: Optional. A function to control how to read data from shards.
-        If present, the function will be traced and executed as graph
-        computation.
-
-    Returns:
-      A `tf.data.Dataset` instance.
-
-    Raises:
-      FileNotFoundError: If `element_spec` is not specified and the saved nested
-        structure of `tf.TypeSpec` can not be located with the saved dataset.
-      ValueError: If `element_spec` is not specified and the method is executed
-        in graph mode.
-    """
-    return _LoadDataset(
-        path=path,
-        element_spec=element_spec,
-        compression=compression,
-        reader_func=reader_func)
 
 
 @tf_export(v1=["data.Dataset"])
@@ -4665,7 +4644,7 @@ class _NumpyIterator(object):
     return self.__next__()
 
 
-class _VariantTracker(tracking.CapturableResource):
+class _VariantTracker(resource_lib.CapturableResource):
   """Allows export of functions capturing a Dataset in SavedModels.
 
   When saving a SavedModel, `tf.saved_model.save` traverses the object
@@ -6452,108 +6431,12 @@ class _DirectedInterleaveDataset(DatasetV2):
     return self._element_spec
 
 
-class _SaveDataset(UnaryDataset):
-  """"A dataset that loads previously saved dataset."""
-
-  def __init__(self, dataset, path, shard_func, compression):
-    self._element_spec = dataset.element_spec
-    self._shard_func = shard_func
-    dataset, shard_func, use_shard_func, path = _set_save_dataset_attributes(
-        dataset, shard_func, path)
-    variant_tensor = ged_ops.save_dataset_v2(
-        dataset._variant_tensor,  # pylint: disable=protected-access
-        path=path,
-        shard_func_other_args=shard_func.captured_inputs,
-        shard_func=shard_func,
-        use_shard_func=use_shard_func,
-        compression=compression,
-        output_types=structure.get_flat_tensor_types(dataset.element_spec),
-        output_shapes=structure.get_flat_tensor_shapes(dataset.element_spec),
-    )
-    super(_SaveDataset, self).__init__(dataset, variant_tensor)
-
-  def _functions(self):
-    return [self._shard_func]
-
-  @property
-  def element_spec(self):
-    return self._element_spec
-
-
-def _set_save_dataset_attributes(dataset, shard_func, path):
-  """Sets parameters for SaveDatasetOp and SaveDatasetV2Op."""
-  if shard_func is None:
-    use_shard_func = False
-    shard_func = lambda *x: None  # a dummy function that will not be used
-  else:
-    use_shard_func = True
-
-  wrapped_func = structured_function.StructuredFunctionWrapper(
-      shard_func,
-      "save()",
-      input_structure=dataset.element_spec,
-      add_to_graph=False)
-
-  encoded = nested_structure_coder.encode_structure(dataset.element_spec)
-  gfile.MakeDirs(path)
-  with gfile.GFile(os.path.join(path, DATASET_SPEC_FILENAME), "wb") as f:
-    f.write(encoded.SerializeToString())
-
-  path = ops.convert_to_tensor(path, dtype=dtypes.string, name="path")
-  shard_func = wrapped_func.function
-  shard_func.add_to_graph(ops.get_default_graph())
-
+def _apply_rewrite(dataset, rewrite):
   # pylint: disable=protected-access
-  dataset._apply_debug_options()
-  return dataset, shard_func, use_shard_func, path
-
-
-class _LoadDataset(DatasetSource):
-  """A dataset that loads previously saved dataset."""
-
-  def __init__(self, path, element_spec=None, compression=None,
-               reader_func=None):
-    if reader_func is None:
-      reader_func = lambda datasets: datasets.interleave(  # pylint:disable=g-long-lambda
-          lambda x: x,
-          cycle_length=multiprocessing.cpu_count(),
-          num_parallel_calls=dataset_ops.AUTOTUNE)
-
-    self._path = path
-    if element_spec is None:
-      if not context.executing_eagerly():
-        raise ValueError(
-            "In graph mode the `element_spec` argument must be provided.")
-      with gfile.GFile(os.path.join(path, DATASET_SPEC_FILENAME), "rb") as f:
-        encoded_spec = f.read()
-      struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
-      struct_pb.ParseFromString(encoded_spec)
-      spec = nested_structure_coder.decode_proto(struct_pb)
-      self._element_spec = spec
-    else:
-      self._element_spec = element_spec
-    self._compression = compression
-    self._reader_func = structured_function.StructuredFunctionWrapper(
-        reader_func,
-        "load()",
-        # Dataset of datasets of input elements
-        input_structure=dataset_ops.DatasetSpec(
-            dataset_ops.DatasetSpec(self._element_spec)))
-
-    variant_tensor = ged_ops.load_dataset(
-        path,
-        reader_func_other_args=self._reader_func.function.captured_inputs,
-        compression=compression,
-        reader_func=self._reader_func.function,
-        **self._flat_structure)
-    super(_LoadDataset, self).__init__(variant_tensor)
-
-  def _functions(self):
-    return [self._reader_func]
-
-  @property
-  def element_spec(self):
-    return self._element_spec
+  return _VariantDataset(
+      gen_dataset_ops.rewrite_dataset(dataset._variant_tensor, rewrite,
+                                      **dataset._flat_structure),
+      dataset.element_spec)
 
 
 def _collect_resource_inputs(op):

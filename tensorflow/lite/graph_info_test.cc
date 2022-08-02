@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -100,8 +101,22 @@ void PartitionGraph(const SimpleTestGraph& graph,
                     std::vector<NodeSubset>* subgraphs) {
   TfLiteIntArray* nodes_to_partition_int_array =
       ConvertVector(nodes_to_partition);
-  PartitionGraphIntoIndependentNodeSubsets(&graph, nodes_to_partition_int_array,
-                                           subgraphs);
+  ASSERT_EQ(PartitionGraphIntoIndependentNodeSubsets(
+                &graph, nodes_to_partition_int_array, subgraphs),
+            kTfLiteOk);
+  TfLiteIntArrayFree(nodes_to_partition_int_array);
+}
+
+// Same as above, but with explicitly specified control dependencies.
+void PartitionGraph(const SimpleTestGraph& graph,
+                    const std::vector<int>& nodes_to_partition,
+                    std::vector<NodeSubset>* subgraphs,
+                    const std::vector<std::pair<int, int>>& control_deps) {
+  TfLiteIntArray* nodes_to_partition_int_array =
+      ConvertVector(nodes_to_partition);
+  ASSERT_EQ(PartitionGraphIntoIndependentNodeSubsets(
+                &graph, nodes_to_partition_int_array, control_deps, subgraphs),
+            kTfLiteOk);
   TfLiteIntArrayFree(nodes_to_partition_int_array);
 }
 
@@ -367,6 +382,46 @@ TEST(PartitionTest, Nodes4PartitionNodes3_WithControlDependency) {
   std::vector<NodeSubset> generated_subgraphs;
   PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
 
+  NodeSubset expected_subgraph0;
+  expected_subgraph0.type = NodeSubset::kTfPartition;
+  expected_subgraph0.nodes = {0, 1};
+  expected_subgraph0.input_tensors = {0};
+  expected_subgraph0.output_tensors = {1, 2};
+  NodeSubset expected_subgraph1;
+  expected_subgraph1.type = NodeSubset::kTfNonPartition;
+  expected_subgraph1.nodes = {2};
+  expected_subgraph1.input_tensors = {2};
+  expected_subgraph1.output_tensors = {3};
+  NodeSubset expected_subgraph2;
+  expected_subgraph2.type = NodeSubset::kTfPartition;
+  expected_subgraph2.nodes = {3, 4};
+  expected_subgraph2.input_tensors = {1, 3};
+  expected_subgraph2.output_tensors = {4};
+  CheckPartitionSubgraphs(
+      generated_subgraphs,
+      {expected_subgraph0, expected_subgraph1, expected_subgraph2});
+}
+
+// This is the same as Nodes4PartitionNodes3_WithControlDependency,
+// but the control dependency is given by an external edge set.
+TEST(PartitionTest, Nodes4PartitionNodes3_WithExternalControlDependency) {
+  SimpleTestGraph graph;
+  // Construct graph.
+  {
+    graph.AddTensors(5);
+    graph.AddNode({0}, {1});
+    graph.AddNode({1}, {2});
+    graph.AddNode({2}, {3});
+    graph.AddNode({1, 3}, {});
+    graph.AddNode({1}, {4});
+  }
+  graph.SetInputsAndOutputs({0}, {4});
+  std::vector<int> nodes_to_partition = {0, 1, 3, 4};
+  std::vector<NodeSubset> generated_subgraphs;
+
+  // Nodes {0,1,3,4} are stateful.
+  PartitionGraph(graph, nodes_to_partition, &generated_subgraphs,
+                 {{0, 1}, {1, 3}, {3, 4}});
   NodeSubset expected_subgraph0;
   expected_subgraph0.type = NodeSubset::kTfPartition;
   expected_subgraph0.nodes = {0, 1};

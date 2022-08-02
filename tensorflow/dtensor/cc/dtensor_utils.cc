@@ -97,5 +97,9 @@ int ReduceInBfloat16MaxGroupSize() {
   return 8;
 }
 
+bool DTensorCheckpointV2Enabled() {
+  return std::getenv("DTENSOR_ENABLE_CHECKPOINT_V2");
+}
+
 }  // namespace dtensor
 }  // namespace tensorflow

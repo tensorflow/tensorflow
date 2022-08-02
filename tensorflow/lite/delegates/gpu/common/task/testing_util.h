@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TESTING_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TESTING_UTIL_H_
 
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -38,29 +39,24 @@ class TestExecutionEnvironment {
   virtual std::vector<CalculationsPrecision> GetSupportedPrecisions() const = 0;
   virtual std::vector<TensorStorageType> GetSupportedStorages(
       DataType data_type) const = 0;
-  // returns storage types that support zero clamping when reading OOB in HW
-  // (Height/Width) dimensions.
-  virtual std::vector<TensorStorageType>
-  GetSupportedStoragesWithHWZeroClampSupport(DataType data_type) const = 0;
 
   virtual const GpuInfo& GetGpuInfo() const = 0;
-
-  virtual absl::Status ExecuteGPUOperation(
-      const std::vector<TensorFloat32>& src_cpu,
-      std::unique_ptr<GPUOperation>&& operation,
-      const std::vector<BHWC>& dst_sizes,
-      const std::vector<TensorFloat32*>& dst_cpu) = 0;
-
-  virtual absl::Status ExecuteGPUOperation(
-      const std::vector<Tensor5DFloat32>& src_cpu,
-      std::unique_ptr<GPUOperation>&& operation,
-      const std::vector<BHWDC>& dst_sizes,
-      const std::vector<Tensor5DFloat32*>& dst_cpu) = 0;
 
   virtual absl::Status ExecuteGPUOperation(
       const std::vector<TensorDescriptor*>& src_cpu,
       const std::vector<TensorDescriptor*>& dst_cpu,
       std::unique_ptr<GPUOperation>&& operation) = 0;
+
+  absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
+                                   std::unique_ptr<GPUOperation>&& operation,
+                                   const std::vector<BHWC>& dst_sizes,
+                                   const std::vector<TensorFloat32*>& dst_cpu);
+
+  absl::Status ExecuteGPUOperation(
+      const std::vector<Tensor5DFloat32>& src_cpu,
+      std::unique_ptr<GPUOperation>&& operation,
+      const std::vector<BHWDC>& dst_sizes,
+      const std::vector<Tensor5DFloat32*>& dst_cpu);
 
   absl::Status ExecuteGPUOperation(const TensorFloat32& src_cpu,
                                    std::unique_ptr<GPUOperation>&& operation,

@@ -1,6 +1,7 @@
 path: "tensorflow.experimental.DynamicRaggedShape"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.ragged.dynamic_ragged_shape.DynamicRaggedShape\'>"
+  is_instance: "<class \'tensorflow.python.framework.extension_type.BatchableExtensionType\'>"
   is_instance: "<class \'tensorflow.python.framework.extension_type.ExtensionType\'>"
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
@@ -34,7 +35,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'row_partitions\', \'inner_shape\', \'dtype\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'self\', \'row_partitions\', \'inner_shape\', \'dtype\', \'validate\', \'static_inner_shape\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "from_lengths"

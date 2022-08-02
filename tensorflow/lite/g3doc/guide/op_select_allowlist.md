@@ -721,6 +721,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.UnsortedSegmentProd`
 *   `raw_ops.UnsortedSegmentSum`
 *   `raw_ops.UnwrapDatasetVariant`
+*   `raw_ops.UpperBound`
 *   `raw_ops.VarHandleOp`
 *   `raw_ops.Variable`
 *   `raw_ops.VariableShape`

@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/call_once.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -61,12 +60,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -312,14 +309,14 @@ Status LinkWithBitcodeVector(
                                 bitcode_path);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Links libdevice into the given module if the module needs libdevice.
 Status LinkLibdeviceIfNecessary(llvm::Module* module,
                                 const std::string& libdevice_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // CUDA 9+ uses a single libdevice file for all devices, and we don't support
@@ -356,7 +353,7 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
@@ -457,7 +454,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   function_passes.doFinalization();
   module_passes.run(*module);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // One-time module initializer.
@@ -536,7 +533,7 @@ StatusOr<std::string> CompileToPtx(
     }
 
     auto compute_capability =
-        absl::get_if<se::CudaComputeCapability>(&gpu_version);
+        std::get_if<se::CudaComputeCapability>(&gpu_version);
     if (!compute_capability) {
       return xla::InternalError(
           "Incompatible compute capability was specified.");
@@ -781,7 +778,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 Status LinkROCDLIfNecessary(llvm::Module* module, std::string gcn_arch_name,
                             const std::string& rocdl_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   return LinkWithBitcodeVector(module,
@@ -794,7 +791,7 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
   // Link the input module with ROCDL.
 
   auto compute_capability =
-      absl::get_if<se::RocmComputeCapability>(&gpu_version);
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
   if (!compute_capability) {
     return xla::InternalError("Incompatible compute capability was specified.");
   }
@@ -810,7 +807,7 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // The following routine maps a feature token extracted from the
@@ -864,7 +861,7 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config) {
   auto compute_capability =
-      absl::get_if<se::RocmComputeCapability>(&gpu_version);
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
 
   std::string gcn_arch_name = compute_capability->gcn_arch_name();
   auto arch = GetFeatureStrFromGCNArchName(gcn_arch_name);
@@ -924,7 +921,7 @@ StatusOr<std::vector<uint8_t>> CompileToHsaco(
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
     auto compute_capability =
-        absl::get_if<se::RocmComputeCapability>(&gpu_version);
+        std::get_if<se::RocmComputeCapability>(&gpu_version);
     if (!compute_capability) {
       return xla::InternalError(
           "Incompatible compute capability was specified.");

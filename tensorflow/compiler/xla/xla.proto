@@ -112,6 +112,9 @@ message DebugOptions {
   // Generate calls to MKL-DNN in the CPU backend.
   bool xla_cpu_use_mkl_dnn = 97;
 
+  // Enable JitRt in the CPU backend.
+  bool xla_cpu_use_jitrt = 177;
+
   // Maximum kernel unroll factor for the GPU backend.
   int32 xla_gpu_max_kernel_unroll_factor = 98;
 
@@ -190,6 +193,29 @@ message DebugOptions {
 
   // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
   bool xla_gpu_disable_gpuasm_optimizations = 103;
+
+  enum ShapeChecks {
+    // Do not insert any shape checks for dynamically shaped operations; output
+    // buffers might contain garbage data if shapes don't match.
+    IGNORE = 0;
+
+    // Check shapes at runtime, will insert an extra synchronization if shapes
+    // cannot be proven correct at compile time.
+    RUNTIME = 1;
+
+    // Will refuse to compile any program where shape correctness can not be
+    // established at compile time.
+    COMPILE_TIME = 2;
+  }
+
+  ShapeChecks xla_gpu_shape_checks = 170;
+
+  // Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters.
+  bool xla_cpu_enable_mlir_lowering = 171;
+
+  // If true, use MLIR instead of IR emitter to generate device code for
+  // supported lmhlo.fusion ops. See xla::gpu::RewriteFusionOps() for details.
+  bool xla_gpu_enable_mlir_lowering = 173;
 
   // Enable fast math with eigen in the HLO evaluator.
   bool xla_hlo_evaluator_use_fast_path = 106;
@@ -328,6 +354,11 @@ message DebugOptions {
   // Compilation errors out if these ops are encountered.
   bool xla_gpu_deterministic_ops = 148;
 
+  // Simplify all Scatter ops to the form described in scatter_simplifier.h.
+  bool xla_gpu_simplify_scatters = 176;
+  // Simplify all Gather ops to the form described in gather_simplifier.h.
+  bool xla_gpu_simplify_gathers = 178;
+
   // Paths to files with LLVM code.
   repeated string xla_gpu_llvm_ir_file = 150;
 
@@ -362,12 +393,11 @@ message DebugOptions {
   // logging a warning and proceeding with fallback.
   bool xla_gpu_strict_conv_algorithm_picker = 156;
 
-  // If true, enable XLIR to compile gpu programs to TFRT BEF.
-  bool xla_gpu_bef_executable = 161;
+  reserved 161;  // Was xla_gpu_bef_executable
+  reserved 162;  // Was xla_gpu_bef_thunk
 
-  // If true, enable XLIR to compile thunks to TFRT BEF.
-  // This flag has no effect when xla_gpu_bef_executable is true.
-  bool xla_gpu_bef_thunk = 162;
+  // If true, enable XLIR to compile gpu programs to JitRt.
+  bool xla_gpu_jitrt_executable = 169;
 
   // Timeout in seconds before terminating jobs that are stuck in a NCCL
   // Rendezvous. Negative value disables the timeout and will not terminate.
@@ -390,7 +420,20 @@ message DebugOptions {
   // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.
   bool xla_gpu_simplify_all_fp_conversions = 168;
 
-  // Next id: 169
+  // An experimental option to force all layouts present in the
+  // after-optimizations HLO to be descending, e.g.
+  // ShapeUtil::MakeShapeWithDescendingLayout is an identity on all
+  // instructions.
+  bool xla_gpu_normalize_layouts = 172;
+
+  // Generate calls to Arm Compute Library in the CPU backend.
+  bool xla_cpu_use_acl = 174;
+
+  // By default, XLA:CPU will run fp16 dot/conv as fp32, as this is generally
+  // (much) faster on our hardware.  Set this flag to disable this behavior.
+  bool xla_cpu_strict_dot_conv_math = 175;
+
+  // Next id: 179
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -114,8 +114,9 @@ namespace tensorflow {
       Name("XlaGather").HostMemory("slice_sizes").Device(DEVICE),              \
       XlaCompileOnDemandOp);                                                   \
   REGISTER_KERNEL_BUILDER(Name("XlaScatter").Device(DEVICE),                   \
+                          XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("XlaCallModule").Device(DEVICE),                \
                           XlaCompileOnDemandOp);
-
 REGISTER_XLA_OPS_ON_DEVICE(DEVICE_CPU);
 REGISTER_XLA_OPS_ON_DEVICE(DEVICE_GPU);
 

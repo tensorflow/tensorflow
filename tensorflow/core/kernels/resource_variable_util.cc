@@ -27,7 +27,7 @@ Status ValidateAssignUpdateVariableOpShapes(const TensorShape& variable_shape,
         " using a Tensor with shape ", value_shape.DebugString(),
         ", shapes must be equal.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

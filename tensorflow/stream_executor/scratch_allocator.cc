@@ -15,23 +15,16 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/scratch_allocator.h"
 
-#include "tensorflow/stream_executor/lib/status_macros.h"
+#include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/stream.h"
 
 namespace stream_executor {
 
-ScratchAllocator::~ScratchAllocator() {}
-
-OneTimeScratchAllocator::OneTimeScratchAllocator(Stream* stream)
-    : stream_(stream) {}
-OneTimeScratchAllocator::~OneTimeScratchAllocator() {}
-
-int64_t OneTimeScratchAllocator::GetMemoryLimitInBytes() { return -1; }
-
 port::StatusOr<DeviceMemory<uint8>> OneTimeScratchAllocator::AllocateBytes(
     int64_t byte_size) {
   CHECK(temporary_ == nullptr);
-  SE_ASSIGN_OR_RETURN(temporary_,
+  TF_ASSIGN_OR_RETURN(temporary_,
                       stream_->AllocateTemporaryArray<uint8>(byte_size));
   return temporary_->device_memory();
 }

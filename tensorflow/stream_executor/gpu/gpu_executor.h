@@ -27,10 +27,11 @@ limitations under the License.
 #include <type_traits>
 #include <unordered_map>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/gpu/gpu_kernel.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -255,8 +256,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   static port::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
-  bool SupportsBlasPlans() const override;
-
   bool SupportsBlas() const override;
 
   blas::BlasSupport* CreateBlas() override;
@@ -299,6 +298,15 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   template <typename T>
   T* getOrCreateXLAState(StreamExecutor* se) {
     return xla_state_.getOrCreate<T>(se);
+  }
+
+  Stream* FindAllocatedStream(void* gpu_stream) override {
+    absl::MutexLock lock(&alive_gpu_streams_mu_);
+    auto it = alive_gpu_streams_.find(gpu_stream);
+    if (it == alive_gpu_streams_.end()) {
+      return nullptr;
+    }
+    return it->second;
   }
 
  private:
@@ -414,6 +422,12 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   // Type erased XLA specific state attached to GpuExecutor.
   Object xla_state_;
+
+  absl::Mutex alive_gpu_streams_mu_;
+
+  // Lookup map for alive streams, from raw stream pointers.
+  absl::flat_hash_map<void*, Stream*> alive_gpu_streams_
+      TF_GUARDED_BY(alive_gpu_streams_mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(GpuExecutor);
 };

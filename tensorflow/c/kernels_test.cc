@@ -121,6 +121,32 @@ static std::unique_ptr<OpKernel> GetFakeKernel(const char* device_name,
                         status);
 }
 
+static std::unique_ptr<OpKernel> GetFakeKernel2(const char* device_name,
+                                                const char* op_name,
+                                                const char* node_name,
+                                                Status* status) {
+  NodeDef def;
+  def.set_op(op_name);
+  def.set_name(node_name);
+  def.set_device(device_name);
+  def.add_input("input1");
+  def.add_input("input2");
+  def.add_input("input3");
+  def.add_input("input3");
+  def.add_input("input3");
+
+  AttrValue v0;
+  v0.set_type(DataType::DT_INT32);
+  v0.set_i(3);
+  (*def.mutable_attr())["NumInput3"] = v0;
+  AttrValue v1;
+  v1.set_type(DataType::DT_FLOAT);
+  (*def.mutable_attr())["SomeDataTypeAttr"] = v1;
+
+  return CreateOpKernel(DeviceType(device_name), nullptr, nullptr, def, 1,
+                        status);
+}
+
 // Tests registration of a single C kernel and checks that calls through the
 // C/C++ boundary are being made.
 TEST(TestKernel, TestRegisterKernelBuilder) {
@@ -140,6 +166,52 @@ TEST(TestKernel, TestRegisterKernelBuilder) {
   {
     TF_Status* status = TF_NewStatus();
     TF_RegisterKernelBuilder(node_name, builder, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    KernelList list;
+    list.ParseFromArray(buf->data, buf->length);
+    ASSERT_EQ(1, list.kernel_size());
+    ASSERT_EQ(device_name, list.kernel(0).device_type());
+    TF_DeleteBuffer(buf);
+    TF_DeleteStatus(status);
+  }
+
+  {
+    Status status;
+    std::unique_ptr<OpKernel> kernel =
+        GetFakeKernel(device_name, op_name, node_name, &status);
+    TF_EXPECT_OK(status);
+    ASSERT_NE(nullptr, kernel.get());
+    kernel->Compute(nullptr);
+  }
+
+  ASSERT_TRUE(delete_called);
+}
+
+TEST(TestKernel, TF_RegisterKernelBuilderWithKernelDef) {
+  const char* node_name = "SomeNodeName";
+  const char* op_name = "FooOp1";
+  const char* device_name = "FakeDeviceName2";
+
+  REGISTER_OP(op_name)
+      .Input("input1: double")
+      .Input("input2: uint8")
+      .Output("output1: uint8")
+      .Attr("SomeDataTypeAttr: type");
+
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(
+      op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc);
+
+  KernelDef kernel_def;
+  kernel_def.set_op(op_name);
+  kernel_def.set_device_type(device_name);
+  std::string kernel_def_str = kernel_def.SerializePartialAsString();
+
+  {
+    TF_Status* status = TF_NewStatus();
+    TF_RegisterKernelBuilderWithKernelDef(kernel_def_str.data(), node_name,
+                                          builder, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status));
     TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status));
@@ -712,7 +784,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
     // Simulate 2 inputs
     inputs.emplace_back(&t);
     inputs.emplace_back();
-    p.inputs = &inputs;
+    p.inputs = inputs;
 
     Status status;
     std::unique_ptr<OpKernel> kernel =
@@ -1087,6 +1159,94 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSize2x3) {
             output->DebugString(100));
 }
 
+REGISTER_OP("DoNothingOp")
+    .Input("input1: float")
+    .Input("input2: float")
+    .Attr("NumInput3: int >= 0")
+    .Input("input3: NumInput3 * float")
+    .Output("output1: float")
+    .Attr("SomeDataTypeAttr: type");
+
+TEST_F(DeviceKernelOpTest, TestGetKernelInfo) {
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    TF_Status* s = TF_NewStatus();
+    int64_t dim[1] = {1};
+    TF_AllocatorAttributes alloc_attrs;
+    alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    alloc_attrs.on_host = 0;
+#else
+    alloc_attrs.on_host = 1;
+#endif
+
+    // Test if the C API returns expected strings.
+    TF_StringView sv = TF_GetOpKernelName(ctx);
+    EXPECT_STREQ(sv.data, "TestGetKernelInfoNode");
+
+    sv = TF_GetOpKernelRequestedInput(ctx, 0);
+    EXPECT_STREQ(sv.data, "input1");
+
+    sv = TF_GetOpKernelRequestedInput(ctx, 1);
+    EXPECT_STREQ(sv.data, "input2");
+
+    TF_InputRange_Args args;
+    args.status = s;
+    TF_InputRange(ctx, "input3", &args);
+    EXPECT_EQ(TF_OK, TF_GetCode(s));
+    EXPECT_EQ(args.start, 2);
+    EXPECT_EQ(args.stop, 5);
+
+    TF_Tensor* output = TF_AllocateTemp(
+        /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/dim,
+        /*num_dims=*/1, /*allocator_attributes*/ &alloc_attrs, s);
+    TF_SetOutput(ctx, 0, output, s);
+    TF_DeleteStatus(s);
+    TF_DeleteTensor(output);
+  };
+
+  const char* node_name = "TestGetKernelInfoNode";
+  const char* op_name = "DoNothingOp";
+  const char* device_name = "FakeDeviceName";
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(op_name, device_name, nullptr,
+                                                  my_compute_func, nullptr);
+
+  TF_Status* status = TF_NewStatus();
+  TF_RegisterKernelBuilder(node_name, builder, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+  TF_DeleteStatus(status);
+
+  {
+    OpKernelContext::Params p;
+    DummyDevice dummy_device(nullptr);
+    p.device = &dummy_device;
+    AllocatorAttributes alloc_attrs;
+    p.output_attr_array = &alloc_attrs;
+
+    gtl::InlinedVector<TensorValue, 4> inputs;
+    Tensor t0(1.0f);
+    Tensor t1(2.0f);
+    Tensor t2_0(2.0f);
+    Tensor t2_1(2.1f);
+    Tensor t2_2(2.2f);
+    inputs.emplace_back(&t0);
+    inputs.emplace_back(&t1);
+    inputs.emplace_back(&t2_0);
+    inputs.emplace_back(&t2_1);
+    inputs.emplace_back(&t2_2);
+
+    Status status;
+    std::unique_ptr<OpKernel> kernel =
+        GetFakeKernel2(device_name, op_name, node_name, &status);
+    TF_EXPECT_OK(status);
+    ASSERT_NE(nullptr, kernel.get());
+
+    p.op_kernel = kernel.get();
+    p.inputs = inputs;
+    OpKernelContext ctx(&p);
+    kernel->Compute(&ctx);
+  }
+}
+
 TEST_F(DeviceKernelOpTest, TestForwardInputOrAllocateOutput) {
   const char* node_name = "TestForwardInputOrAllocateOutputKernel";
   const char* op_name = "BazOp";
@@ -1140,7 +1300,7 @@ TEST_F(DeviceKernelOpTest, TestForwardInputOrAllocateOutput) {
     // GetFakeKernel requires a NodeDef with two inputs
     inputs.emplace_back(&t);
     inputs.emplace_back();
-    p.inputs = &inputs;
+    p.inputs = inputs;
 
     Status status;
     std::unique_ptr<OpKernel> kernel =

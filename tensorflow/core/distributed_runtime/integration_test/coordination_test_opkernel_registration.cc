@@ -62,16 +62,23 @@ REGISTER_KERNEL_BUILDER(Name("TestSetConfigKeyValue").Device(DEVICE_DEFAULT),
 
 REGISTER_OP("TestGetConfigKeyValue")
     .Input("key: string")
+    .Attr("blocking: bool = true")
     .Output("value: string")
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .Doc(R"doc(
 Test op getting distributed configs using coordination service.
+
+blocking: If true, wait for the config key to become available and return its
+          value; otherwise, error out of the key does not exist.
 )doc");
 
 // Kernel that gets distributed configures using coordination service.
 class TestGetConfigKeyValueOp : public OpKernel {
  public:
-  explicit TestGetConfigKeyValueOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit TestGetConfigKeyValueOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("blocking", &blocking_));
+  }
+
   void Compute(OpKernelContext* ctx) override {
     const Tensor* key_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
@@ -87,7 +94,8 @@ class TestGetConfigKeyValueOp : public OpKernel {
                            "initialized properly."));
       return;
     }
-    auto status_or_val = coord_agent->GetKeyValue(config_key);
+    auto status_or_val = blocking_ ? coord_agent->GetKeyValue(config_key)
+                                   : coord_agent->TryGetKeyValue(config_key);
     OP_REQUIRES_OK(ctx, status_or_val.status());
 
     Tensor* val_tensor;
@@ -96,6 +104,9 @@ class TestGetConfigKeyValueOp : public OpKernel {
     auto value = val_tensor->scalar<tstring>()();
     val_tensor->scalar<tstring>()() = status_or_val.ValueOrDie();
   }
+
+ private:
+  bool blocking_;
 };
 REGISTER_KERNEL_BUILDER(Name("TestGetConfigKeyValue").Device(DEVICE_DEFAULT),
                         TestGetConfigKeyValueOp);

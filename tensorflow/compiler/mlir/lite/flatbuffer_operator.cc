@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -181,7 +182,7 @@ static bool ConvertBoolAttrForOptionWriter(
 // an input. If value is not specified, false is set for the attribute.
 static bool ConvertBoolAttrForOptionWriter(
     mlir::Optional<bool> b, flatbuffers::FlatBufferBuilder* builder) {
-  return b.hasValue() ? b.getValue() : false;
+  return b.has_value() ? b.getValue() : false;
 }
 
 static flatbuffers::Offset<flatbuffers::String> ConvertStrAttrForOptionWriter(
@@ -329,7 +330,7 @@ Status mlir::CustomOptionsToAttributes(
       OpaqueElementsAttr::get(builder.getContext()->getLoadedDialect("tfl"),
                               type, content)));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Pull in FlatBuffer writers for TFLite generated using TableGen

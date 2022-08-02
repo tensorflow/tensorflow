@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -297,7 +298,7 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
   auto begin = get_const_int(slice_op.begin(), /*expected_rank=*/1);
   auto end = get_const_int(slice_op.end(), /*expected_rank=*/1);
   auto strides = get_const_int(slice_op.strides(), /*expected_rank=*/1);
-  if (!begin.hasValue() || !end.hasValue() || !strides.hasValue() ||
+  if (!begin.has_value() || !end.has_value() || !strides.has_value() ||
       *begin != 0 || *end != 1 || *strides != 1)
     return {};
 
@@ -461,14 +462,11 @@ LogicalResult ParseExampleV2Op::verify() {
 // PartitionedCallOp
 //===----------------------------------------------------------------------===//
 
-template <class OpClass>
-static LogicalResult VerifyPartitionedCall(OpClass op) {
-  auto module = op->template getParentOfType<ModuleOp>();
+template <typename CallOpClass>
+static LogicalResult VerifyPartitionedCall(CallOpClass op,
+                                           SymbolTableCollection &symbolTable) {
   SymbolRefAttr func = op->getAttr("f").template cast<SymbolRefAttr>();
-
-  auto function =
-      dyn_cast_or_null<func::FuncOp>(SymbolTable::lookupSymbolIn(module, func));
-
+  auto function = symbolTable.lookupNearestSymbolFrom<func::FuncOp>(op, func);
   if (!function) {
     return op.emitError("'f' attribute refers to an undefined function: ")
            << func;
@@ -487,14 +485,17 @@ static LogicalResult VerifyPartitionedCall(OpClass op) {
   return success();
 }
 
-LogicalResult PartitionedCallOp::verify() {
-  return VerifyPartitionedCall(*this);
+LogicalResult PartitionedCallOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  return VerifyPartitionedCall(*this, symbolTable);
 }
-LogicalResult StatefulPartitionedCallOp::verify() {
-  return VerifyPartitionedCall(*this);
+LogicalResult StatefulPartitionedCallOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  return VerifyPartitionedCall(*this, symbolTable);
 }
-LogicalResult TPUPartitionedCallOp::verify() {
-  return VerifyPartitionedCall(*this);
+LogicalResult TPUPartitionedCallOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  return VerifyPartitionedCall(*this, symbolTable);
 }
 
 //===----------------------------------------------------------------------===//
@@ -724,6 +725,15 @@ void RealDivOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
   return IdentityArithmeticOpFolder<RealDivOp>(*this, operands);
+}
+
+//===----------------------------------------------------------------------===//
+// ReluOp
+//===----------------------------------------------------------------------===//
+
+void ReluOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                         MLIRContext *context) {
+  results.add<ReluOfMinimum6ToRelu6>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2298,6 +2308,43 @@ void TPUExecuteAndUpdateVariablesOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// TensorListGetItemOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+// If the input of TensorListGetItemOp is TensorListFromTensorOp and the
+// TensorListFromTensorOp is only used by TensorListGetItemOp (not modified by
+// other TensorList ops), we can convert it to a GatherOp.
+class ConvertTensorListGetItemOpOfTensorListFromTensorOpToGather
+    : public OpRewritePattern<TensorListGetItemOp> {
+  using OpRewritePattern<TensorListGetItemOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TensorListGetItemOp op,
+                                PatternRewriter &rewriter) const override {
+    // Checks that the input is created by TensorListFromTensorOp and the input
+    // is only used by TensorListGetItemOp.
+    auto tensor_list_from_tensor_op = dyn_cast_or_null<TensorListFromTensorOp>(
+        op.input_handle().getDefiningOp());
+    if (!tensor_list_from_tensor_op ||
+        llvm::any_of(
+            tensor_list_from_tensor_op->getUsers(),
+            [](Operation *user) { return !isa<TensorListGetItemOp>(user); })) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<GatherOp>(
+        op, op.getType(), tensor_list_from_tensor_op.tensor(), op.index());
+    return success();
+  }
+};
+}  // namespace
+
+void TensorListGetItemOp::getCanonicalizationPatterns(
+    RewritePatternSet &results, MLIRContext *context) {
+  results.add<ConvertTensorListGetItemOpOfTensorListFromTensorOpToGather>(
+      context);
+}
+
+//===----------------------------------------------------------------------===//
 // TensorListReserveOp
 //===----------------------------------------------------------------------===//
 
@@ -2359,9 +2406,6 @@ LogicalResult TensorScatterUpdateOp::verify() {
   if (!HasRankAtLeast(op.indices(), 1))
     return op.emitOpError(
         "requires indices operand to have at least 1 dimension");
-  if (!HasRankAtLeast(op.updates(), 1))
-    return op.emitOpError(
-        "requires updates operand to have at least 1 dimension");
 
   auto tensor_ty = op.tensor().getType().dyn_cast<RankedTensorType>();
   auto indices_ty = op.indices().getType().dyn_cast<RankedTensorType>();
@@ -3068,9 +3112,6 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
 }
 
 LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
-  // TODO(jpienaar): Remove.
-  if (failed(WhileOpAdaptor(*this).verify(getLoc()))) return failure();
-
   auto cond_fn =
       symbol_table.lookupNearestSymbolFrom<func::FuncOp>(*this, condAttr());
   auto body_fn =
@@ -3255,12 +3296,7 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
     MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
-  auto loc = location ? *location : mlir::UnknownLoc::get(context);
   XlaBroadcastHelperOpAdaptor op(operands.getValues(), attributes);
-  if (failed(op.verify(loc))) {
-    return failure();
-  }
-
   Value lhs = op.lhs();
   Value rhs = op.rhs();
   auto set_unranked_results = [&]() {
@@ -3330,6 +3366,67 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
 }
 
 //===----------------------------------------------------------------------===//
+// XlaConvOp
+//===----------------------------------------------------------------------===//
+
+class XlaConvToV2 : public OpRewritePattern<TF::XlaConvOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaConvOp op,
+                                PatternRewriter &rewriter) const override {
+    SmallVector<Type> result_types{op.getResult().getType()};
+    rewriter.replaceOpWithNewOp<TF::XlaConvV2Op>(
+        op, op.getResult().getType(), op.lhs(), op.rhs(), op.window_strides(),
+        op.padding(), op.lhs_dilation(), op.rhs_dilation(),
+        op.feature_group_count(), op.dimension_numbers(), op.precision_config(),
+        1);
+    return ::mlir::success();
+  };
+};
+
+void XlaConvOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                            MLIRContext *context) {
+  results.insert<XlaConvToV2>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaConvV2Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult XlaConvV2Op::verify() {
+  XlaConvV2Op op = *this;
+  DenseElementsAttr window_strides_attr, padding_attr, lhs_dilation_attr,
+      rhs_dilation_attr, feature_group_count_attr;
+  if (!(matchPattern(op.window_strides(), m_Constant(&window_strides_attr)) &&
+        matchPattern(op.padding(), m_Constant(&padding_attr)) &&
+        matchPattern(op.lhs_dilation(), m_Constant(&lhs_dilation_attr)) &&
+        matchPattern(op.rhs_dilation(), m_Constant(&rhs_dilation_attr)) &&
+        matchPattern(op.feature_group_count(),
+                     m_Constant(&feature_group_count_attr))))
+    return success();
+
+  if (window_strides_attr.getType().getRank() != 1)
+    return op.emitOpError() << "expects window_stride to be a vector";
+
+  const ShapedType &padding_ty = padding_attr.getType();
+  if (padding_ty.getRank() != 2 || padding_ty.getDimSize(1) != 2)
+    return op.emitOpError()
+           << "expects padding to be a matrix with minor dimension 2";
+
+  if (lhs_dilation_attr.getType().getRank() != 1)
+    return op.emitOpError() << "expects lhs_dilation to be a vecotr";
+
+  if (rhs_dilation_attr.getType().getRank() != 1)
+    return op.emitOpError() << "expects rhs_dilation to be a vecotr";
+
+  if (feature_group_count_attr.getType().getRank())
+    return op.emitOpError() << "expects feature_group_count to be a scalar";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // XlaSetDynamicDimensionSizeOp
 //===----------------------------------------------------------------------===//
 
@@ -3337,9 +3434,7 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
     MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
-  auto loc = location ? *location : mlir::UnknownLoc::get(context);
   XlaSetDynamicDimensionSizeOpAdaptor op(operands.getValues(), attributes);
-  if (failed(op.verify(loc))) return failure();
 
   TensorType operand_ty = op.input().getType().cast<TensorType>();
   Type element_ty = operand_ty.getElementType();

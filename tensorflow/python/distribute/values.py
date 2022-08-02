@@ -34,9 +34,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
-from tensorflow.python.saved_model import save_context
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saving import saveable_object
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.types import distribute as ds_types
 from tensorflow.python.types import trace
@@ -558,7 +557,8 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
   def _use_packed_variable(self):
     # Don't use packed variable when under a SaveContext to avoid explicit
     # device placement on variable consuming ops.
-    return self._packed_var is not None and not save_context.in_save_context()
+    return self._packed_var is not None and (
+        not values_util.is_saving_non_distributed())
 
   def is_initialized(self, name=None):
     """Identifies if all the component variables are initialized.
@@ -1739,6 +1739,8 @@ class PerWorkerResource():
   """
 
   def __init__(self, strategy, host_to_resources):
+    distribute_lib.distribution_strategy_input_api_counter.get_cell(
+        "PerWorkerResource", "TPUDistributedLookupTable").increase_by(1)
     self._strategy = strategy
     self._host_to_resources = host_to_resources
 
@@ -1747,6 +1749,11 @@ class PerWorkerResource():
                     "_strategy", "local_resource"):
       return getattr(self.local_resource(), name)
     return super(PerWorkerResource, self).__getattribute__(name)
+
+  def __setattr__(self, name, value):
+    if name not in ("_strategy", "_host_to_resources"):
+      return setattr(self.local_resource(), name, value)
+    return super(PerWorkerResource, self).__setattr__(name, value)
 
   def local_resource(self):
     """Returns the resource on the local worker."""

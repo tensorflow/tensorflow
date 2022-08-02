@@ -42,11 +42,11 @@ def TFTypeDialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::tf_type";
-  let useDefaultTypePrinterParser = 0;
   let extraClassDeclaration = [{
      ::mlir::Type parseType(::mlir::DialectAsmParser &parser) const;
      void printType(::mlir::Type type, ::mlir::DialectAsmPrinter &printer) const;
   }];
+  let useDefaultAttributePrinterParser = 1;
 }
 
 //===----------------------------------------------------------------------===//

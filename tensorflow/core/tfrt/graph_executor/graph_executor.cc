@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/native_lowering/saved_model/saved_model_translate.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
@@ -87,8 +88,10 @@ StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
   // Create request context and prepare deadline tracker.
   // TODO(tfrt-devs): Consider using an ID unique within each model to reduce
   // contention.
-  tfrt::RequestContextBuilder request_context_builder(host, resource_context,
-                                                      tfrt::GetUniqueInt());
+  int64_t request_id = work_queue->id();
+  if (request_id == 0) request_id = tfrt::GetUniqueInt();
+  tfrt::RequestContextBuilder request_context_builder(
+      host, resource_context, request_id, run_options.enable_cost_measurement);
 
   // TODO(b/198671794): `intra_op_threadpool` should be passed through Run()
   // directly.
@@ -373,10 +376,11 @@ tensorflow::Status GraphExecutor::Run(
   std::sort(sorted_target_node_names.begin(), sorted_target_node_names.end());
 
   // Load the client graph.
-  TF_ASSIGN_OR_RETURN(const LoadedClientGraph& loaded_client_graph,
-                      GetOrCreateLoadedClientGraph(
-                          sorted_input_names, sorted_input_dtypes,
-                          sorted_output_names, sorted_target_node_names));
+  TF_ASSIGN_OR_RETURN(
+      const LoadedClientGraph& loaded_client_graph,
+      GetOrCreateLoadedClientGraph(
+          sorted_input_names, sorted_input_dtypes, sorted_output_names,
+          sorted_target_node_names, run_options.work_queue));
 
   const auto* func = loaded_client_graph.bef_file->GetFunction(
       tensorflow::kImportModelDefaultGraphFuncName);
@@ -406,7 +410,7 @@ tensorflow::Status GraphExecutor::Run(
     ++flat_output_iter;
   }
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status GraphExecutor::Extend(const GraphDef& graph) {
@@ -414,27 +418,65 @@ tensorflow::Status GraphExecutor::Extend(const GraphDef& graph) {
 }
 
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
-GraphExecutor::LoadClientGraph(const GraphExecutor::ClientGraph& client_graph) {
+GraphExecutor::ImportAndCompileClientGraph(
+    const GraphExecutor::ClientGraph& client_graph) {
   auto loaded_client_graph = std::make_unique<LoadedClientGraph>();
   loaded_client_graph->name = client_graph.name;
   loaded_client_graph->resource_context = CreateResourceContext(
       runtime(), tpu_model_resource_, options_.compile_options.tpu_target);
 
-  // Step 1: Import the client graph from proto to an MLIR module.
+  // Step 1 of loading: Import the client graph from proto to an MLIR module.
+  auto import_start_time = absl::Now();
   mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(auto module,
-                      ImportClientGraphToMlirModule(client_graph, &context));
+  ASSIGN_OR_RETURN_IN_IMPORT(
+      auto module, ImportClientGraphToMlirModule(client_graph, &context));
+  auto import_duration = absl::Now() - import_start_time;
+  LOG(INFO) << "TFRT finished importing client graph (" << &client_graph
+            << "). Took " << absl::ToInt64Milliseconds(import_duration)
+            << " ms. Client graph name: " << client_graph.name;
 
-  // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
-  TF_ASSIGN_OR_RETURN(loaded_client_graph->bef,
-                      CompileMlirModuleToBef(module.get()));
-
-  // Step 3: Initialize runtime states using special BEF functions.
-  TF_ASSIGN_OR_RETURN(
+  // Step 2 of loading: Compile the MLIR module from TF dialect to TFRT dialect
+  // (in BEF).
+  // TODO(b/229261464): Unify the sync and async lowering passes so we do not
+  // need this branch.
+  auto compile_start_time = absl::Now();
+  if (options_.compile_options.compile_to_sync_tfrt_dialect) {
+    ASSIGN_OR_RETURN_IN_COMPILE(
+        loaded_client_graph->bef,
+        tfrt::CompileTfMlirModuleToSyncBef(module.get()));
+  } else {
+    ASSIGN_OR_RETURN_IN_COMPILE(loaded_client_graph->bef,
+                                CompileMlirModuleToBef(module.get()));
+  }
+  ASSIGN_OR_RETURN_IN_COMPILE(
       loaded_client_graph->bef_file,
       tfrt::CreateBefFileFromBefBuffer(runtime(), loaded_client_graph->bef));
-  TF_RETURN_IF_ERROR(InitBef(loaded_client_graph->bef_file.get(),
-                             loaded_client_graph->resource_context.get()));
+  auto compile_duration = absl::Now() - compile_start_time;
+  LOG(INFO) << "TFRT finished compiling client graph (" << &client_graph
+            << "). Took " << absl::ToInt64Milliseconds(compile_duration)
+            << " ms. Client graph name: " << client_graph.name;
+
+  return loaded_client_graph;
+}
+
+StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
+GraphExecutor::LoadClientGraph(
+    const GraphExecutor::ClientGraph& client_graph,
+    tensorflow::tfrt_stub::WorkQueueInterface* work_queue) {
+  LOG(INFO) << "TFRT loading client graph (" << &client_graph << ") "
+            << client_graph.name;
+  TF_ASSIGN_OR_RETURN(auto loaded_client_graph,
+                      ImportAndCompileClientGraph(client_graph));
+
+  // Step 3 of loading: Initialize runtime states using special BEF functions.
+  auto init_start_time = absl::Now();
+  RETURN_IF_ERROR_IN_INIT(InitBef(loaded_client_graph->bef_file.get(),
+                                  loaded_client_graph->resource_context.get(),
+                                  work_queue));
+  auto init_duration = absl::Now() - init_start_time;
+  LOG(INFO) << "TFRT finished initializing client graph (" << &client_graph
+            << "). Took " << absl::ToInt64Milliseconds(init_duration)
+            << " ms. Client graph name: " << client_graph.name;
 
   return loaded_client_graph;
 }
@@ -455,6 +497,16 @@ GraphExecutor::ImportClientGraphToMlirModule(
       auto optimized_graph,
       graph_execution_state_->CreateOptimizedGraph(graph_import_config));
 
+  LOG(INFO) << "TFRT import client graph (" << &client_graph
+            << "): Functionalization took "
+            << absl::ToInt64Milliseconds(
+                   optimized_graph.functionalization_duration)
+            << " ms. Client graph name: " << client_graph.name;
+  LOG(INFO) << "TFRT import client graph (" << &client_graph
+            << "): Grappler took "
+            << absl::ToInt64Milliseconds(optimized_graph.grappler_duration)
+            << " ms. Client graph name: " << client_graph.name;
+
   // Convert the optimized graph to an MLIR module.
   return tensorflow::ConvertGraphToMlir(
       *optimized_graph.graph, /*debug_info=*/{},
@@ -470,13 +522,14 @@ StatusOr<tfrt::BefBuffer> GraphExecutor::CompileMlirModuleToBef(
 }
 
 tensorflow::Status GraphExecutor::InitBef(
-    tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context) {
+    tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context,
+    tensorflow::tfrt_stub::WorkQueueInterface* work_queue) {
   auto* host = runtime().core_runtime()->GetHostContext();
   TF_ASSIGN_OR_RETURN(
       auto request_info,
       SetUpRequestContext(/*run_options=*/{}, /*model_metadata=*/{}, host,
-                          runtime().work_queue(), resource_context,
-                          fallback_state_));
+                          work_queue ? work_queue : runtime().work_queue(),
+                          resource_context, fallback_state_));
 
   tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
 
@@ -492,7 +545,7 @@ tensorflow::Status GraphExecutor::InitBef(
   TF_RETURN_IF_ERROR(
       RunRuntimeInitializer(exec_ctx, bef_file, "_tfrt_resource_init"));
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::reference_wrapper<const GraphExecutor::LoadedClientGraph>>
@@ -500,7 +553,8 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
     absl::Span<const std::string> input_tensor_names,
     absl::Span<const tensorflow::DataType> input_tensor_dtypes,
     absl::Span<const std::string> output_tensor_names,
-    absl::Span<const std::string> target_tensor_names) {
+    absl::Span<const std::string> target_tensor_names,
+    tensorflow::tfrt_stub::WorkQueueInterface* work_queue) {
   // The format of the joined name is illustrated as in the following example:
   // input1-input2^output1-output2^target1-target2
   const auto joined_name = absl::StrCat(
@@ -533,7 +587,8 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
       std::move(input_nodes),
       {output_tensor_names.begin(), output_tensor_names.end()},
       {target_tensor_names.begin(), target_tensor_names.end()}};
-  TF_ASSIGN_OR_RETURN(auto loaded_client_graph, LoadClientGraph(client_graph));
+  TF_ASSIGN_OR_RETURN(auto loaded_client_graph,
+                      LoadClientGraph(client_graph, work_queue));
 
   // Store the new loaded client graph in cache and return.
   const auto* loaded_client_graph_ptr = loaded_client_graph.get();

@@ -34,9 +34,12 @@ import time
 TF_SRC_DIR = "tensorflow"
 VERSION_H = "%s/core/public/version.h" % TF_SRC_DIR
 SETUP_PY = "%s/tools/pip_package/setup.py" % TF_SRC_DIR
+SETUP_PARTNER_BUILD_PY = "%s/tools/pip_package/setup_partner_builds.py" % TF_SRC_DIR
 README_MD = "./README.md"
 TENSORFLOW_BZL = "%s/tensorflow.bzl" % TF_SRC_DIR
-RELEVANT_FILES = [TF_SRC_DIR, VERSION_H, SETUP_PY, README_MD]
+RELEVANT_FILES = [
+    TF_SRC_DIR, VERSION_H, SETUP_PY, SETUP_PARTNER_BUILD_PY, README_MD
+]
 
 # Version type parameters.
 NIGHTLY_VERSION = 1
@@ -203,6 +206,13 @@ def update_setup_dot_py(old_version, new_version):
                          "_VERSION = '%s'" % new_version.string, SETUP_PY)
 
 
+def update_setup_partner_builds_dot_py(old_version, new_version):
+  """Update setup_partner_builds.py."""
+  replace_string_in_line("_VERSION = '%s'" % old_version.string,
+                         "_VERSION = '%s'" % new_version.string,
+                         SETUP_PARTNER_BUILD_PY)
+
+
 def update_readme(old_version, new_version):
   """Update README."""
   pep_440_str = new_version.pep_440_str
@@ -304,6 +314,7 @@ def main():
 
   update_version_h(old_version, new_version)
   update_setup_dot_py(old_version, new_version)
+  update_setup_partner_builds_dot_py(old_version, new_version)
   update_readme(old_version, new_version)
   update_tensorflow_bzl(old_version, new_version)
 

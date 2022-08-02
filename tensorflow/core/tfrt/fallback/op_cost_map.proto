@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package tensorflow.tfrt_stub;
+
+// For serializing and restoring the cost of op, see cost_recorder.h for
+// details.
+// NEXT_ID: 2
+message OpCostMapProto {
+  map<string, uint64> op_cost_map = 1;
+}

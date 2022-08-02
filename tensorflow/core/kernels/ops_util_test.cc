@@ -133,7 +133,7 @@ class OpsUtilTest : public ::testing::Test {
 
   static void VerifyBcastValues(bcast_struct bcast) {
     int new_index, new_size;
-    EXPECT_EQ(Status::OK(),
+    EXPECT_EQ(OkStatus(),
               GetBroadcastSize(bcast.input.index, bcast.input.in_size,
                                bcast.input.ksize, bcast.input.stride,
                                bcast.input.pad_size, &new_index, &new_size));

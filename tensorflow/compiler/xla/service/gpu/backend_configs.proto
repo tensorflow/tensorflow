@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "tensorflow/compiler/xla/stream_executor/dnn.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
-import "tensorflow/stream_executor/dnn.proto";
 
 // Backend configs for XLA:GPU.
 //
@@ -56,10 +56,15 @@ message GemmBackendConfig {
 
   xla.DotDimensionNumbers dot_dimension_numbers = 7;
 
-  int64 batch_size = 8;
+  xla.PrecisionConfig precision_config = 12;
 
-  int64 lhs_stride = 10;
-  int64 rhs_stride = 11;
+  // cublasLt matmul epilogue.
+  enum Epilogue {
+    DEFAULT = 0;
+    BIAS = 1;
+  }
+
+  Epilogue epilogue = 13;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.

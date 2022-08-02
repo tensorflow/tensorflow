@@ -57,6 +57,10 @@ tf_module {
     argspec: "args=[\'x_type\', \'y_type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "dispatch_for_binary_elementwise_assert_apis"
+    argspec: "args=[\'x_type\', \'y_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "dispatch_for_unary_elementwise_apis"
     argspec: "args=[\'x_type\'], varargs=None, keywords=None, defaults=None"
   }

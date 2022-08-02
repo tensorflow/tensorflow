@@ -118,7 +118,7 @@ Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
   hipLaunchKernelGGL(function, grid_dim, block_dim, shared_memory_size_bytes,
                      stream, std::forward<Args>(arguments)...);
 #endif
-  return Status::OK();
+  return OkStatus();
 }
 
 // Perfect forwarding to make CudaLaunchKernel available to both ROCm and CUDA
@@ -297,6 +297,10 @@ class alignas(alignof(T) * N) AlignedVector {
 // Returns the maximum power-of-two alignment (in units of elements, not bytes)
 // of a stride or pointer value.
 inline int64_t alignment_of(int64_t element_stride) {
+  // A zero/nullptr value means that the stride/pointer is not used, so it
+  // effectively has infinite alignment.
+  constexpr int64_t kMaxAlignment = 512;
+  if (element_stride == 0) return kMaxAlignment;
   return element_stride & -element_stride;
 }
 
@@ -314,28 +318,49 @@ int64_t MinAlignmentOf(Args... args) {
   return std::min({alignment_of(args)...});
 }
 
+namespace detail {
+
+template <int64_t VecSize, template <int vec_size> class Functor>
+struct DispatchToVectorizedHelper {
+  template <typename... Args>
+  Status operator()(int64_t max_vec_size, Args&&... args) const {
+    if (max_vec_size >= VecSize) {
+      return Functor<VecSize>()(std::forward<Args>(args)...);
+    }
+    return DispatchToVectorizedHelper<VecSize / 2, Functor>()(
+        max_vec_size, std::forward<Args>(args)...);
+  }
+};
+template <template <int vec_size> class Functor>
+struct DispatchToVectorizedHelper<1, Functor> {
+  template <typename... Args>
+  Status operator()(int64_t max_vec_size, Args&&... args) const {
+    return Functor<1>()(std::forward<Args>(args)...);
+  }
+};
+
+}  // namespace detail
+
 // Calls Functor<vec_size>()(args...) with vec_size set to the optimal GPU
 // vector instruction size for type T that is <= max_vec_size. The max_vec_size
 // argument should be set to the minimum alignment of all relevant parameters.
+// Requires sizeof(T) to be a power of 2.
 template <typename T, template <int vec_size> class Functor, typename... Args>
 Status DispatchToVectorized(int64_t max_vec_size, Args&&... args) {
+  static_assert((sizeof(T) & (sizeof(T) - 1)) == 0,
+                "sizeof(T) must be a power of 2");
+  if (max_vec_size <= 0) {
+    return errors::InvalidArgument("DispatchToVectorized: max_vec_size (",
+                                   max_vec_size,
+                                   ") must be greater than zero.");
+  }
   constexpr const int kOptimalVecSizeBytes = 16;
   // The optimal number of (aligned) elements of T to load/store in a
   // single instruction inside a kernel.
   constexpr const int optimal_vec_size =
       (kOptimalVecSizeBytes - 1) / sizeof(T) + 1;
-  int64_t vec_size = std::min((int64_t)optimal_vec_size, max_vec_size);
-  if (vec_size >= 16) {
-    return Functor<16>()(std::forward<Args>(args)...);
-  } else if (vec_size >= 8) {
-    return Functor<8>()(std::forward<Args>(args)...);
-  } else if (vec_size >= 4) {
-    return Functor<4>()(std::forward<Args>(args)...);
-  } else if (vec_size >= 2) {
-    return Functor<2>()(std::forward<Args>(args)...);
-  } else {
-    return Functor<1>()(std::forward<Args>(args)...);
-  }
+  return detail::DispatchToVectorizedHelper<optimal_vec_size, Functor>()(
+      max_vec_size, std::forward<Args>(args)...);
 }
 
 // Similar to std::upper_bound, this returns the index of the first element in
@@ -388,6 +413,96 @@ __device__ OutType lower_bound(Iterator first, OutType count, T val) {
 #ifndef TENSORFLOW_USE_ROCM
 namespace cuda_helper = gpu_helper;
 #endif
+
+// For int division, we can substitute the fast multiplication for slow
+// division. For detailed information see:
+//   https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
+//
+// Warning: This implementation only works when the divisor is [1, INT32_MAX]
+//          and the numerator has to be [0, INT32_MAX]. This is enough for our
+//          purpose for computing integer indices.
+// Basics: the typical int division can be written as:
+//   n / d = (m * n) / 2^(32 + s)
+// where 'n' is the numerator and 'd' is the divisor. For a given 'd', we
+// need to find a magic number 'm' and a shift 's'. See update_magic().
+struct FastDividerUint32 {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC FastDividerUint32(uint32_t d)
+      : divisor(d) {
+    assert(divisor >= 1 && divisor <= INT32_MAX);
+    update_magic();
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void update_magic() {
+    // (1). The shift 's' is calculated by log2ceil(d).
+#if defined(__CUDA_ARCH__)
+    shift = 32 - __clz(divisor - 1);
+#else
+    for (shift = 0; shift < 32; shift++) {
+      if ((1U << shift) >= divisor) break;
+    }
+#endif
+
+    // (2). The magic number 'm' is calculated by:
+    //   m = 2^(32 + s) / d + 1
+    // Note, the digit '1' is to round up 'm * n', which will be rounded down
+    // later by dividing two. In practice, 'm' is a 33-bit value. To fit the
+    // 32-bit range, we introduce:
+    //   magic = m - 2^32
+    //         = 2^(32 + s) / d - 2^32 + 1
+    //         = 2^32 * 2^s / d - 2^32 * d / d + 1
+    //         = (2^32 * (2^s - d)) / d + 1, where 'magic' will be in 32-bit.
+    uint64_t m = (0x100000000ull * ((0x1ull << shift) - divisor)) / divisor + 1;
+    magic = static_cast<uint32_t>(m);
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC FastDividerUint32& operator=(
+      uint32_t d) {
+    assert(divisor >= 1 && divisor <= INT32_MAX);
+    this->divisor = d;
+    update_magic();
+    return *this;
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC operator uint32_t() const {
+    return divisor;
+  }
+
+  uint32_t divisor;
+  uint32_t magic;
+  uint32_t shift;
+};
+
+EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC uint32_t
+operator/(const uint32_t n, const FastDividerUint32& fdiv) {
+  // (3). We use the 32-bit 'magic' instead of 'm' in the formula:
+  //   n / d = (m * n) / 2^(32 + s)
+  //         = (magic + 2^32) * n / 2^(32 + s)
+  //         = (magic * n) / 2^(32 + s) + n / 2^s
+  //         = (magic * n) / 2^32 / 2^s + n / 2^s
+  //         = (magic * n / 2^32 + n) / 2^s
+#if defined(__CUDA_ARCH__)
+  uint32_t q = __umulhi(n, fdiv.magic);
+#else
+  uint32_t q =
+      static_cast<uint32_t>((static_cast<uint64_t>(n) * fdiv.magic) >> 32);
+#endif
+  return (n + q) >> fdiv.shift;
+}
+
+EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC uint32_t
+operator%(const uint32_t n, const FastDividerUint32& fdiv) {
+  return n - (n / fdiv) * fdiv.divisor;
+}
+
+EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC uint32_t
+operator/(const int n, const FastDividerUint32& fdiv) {
+  return static_cast<uint32_t>(n) / fdiv;
+}
+
+EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC uint32_t
+operator%(const int n, const FastDividerUint32& fdiv) {
+  return static_cast<uint32_t>(n) % fdiv;
+}
 
 }  // namespace tensorflow
 

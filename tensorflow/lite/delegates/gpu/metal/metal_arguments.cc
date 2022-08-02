@@ -343,8 +343,13 @@ std::string MetalArguments::GetArgumentBufferStructDefinition(
   int index = 0;
   for (auto& t : buffers_) {
     std::string mem_type = MemoryTypeToMetalType(t.second.desc.memory_type);
-    std::string metal_type =
-        ToMetalDataType(t.second.desc.data_type, t.second.desc.element_size);
+    std::string metal_type;
+    if (t.second.desc.data_type == DataType::BOOL) {
+      metal_type = ToMetalDataType(DataType::UINT8, t.second.desc.element_size);
+    } else {
+      metal_type =
+          ToMetalDataType(t.second.desc.data_type, t.second.desc.element_size);
+    }
     result += absl::StrCat("  ", mem_type, " ", metal_type, "* ", t.first,
                            "[[id(", index, ")]];\n");
     index++;
@@ -558,11 +563,17 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset,
                                           int textures_offset) {
   std::string result;
   for (auto& t : buffers_) {
+    std::string metal_type;
+    if (t.second.desc.data_type == DataType::BOOL) {
+      metal_type = ToMetalDataType(DataType::UINT8, t.second.desc.element_size);
+    } else {
+      metal_type =
+          ToMetalDataType(t.second.desc.data_type, t.second.desc.element_size);
+    }
     AppendArgument(
         absl::StrCat(MemoryTypeToMetalType(t.second.desc.memory_type), " ",
-                     ToMetalDataType(t.second.desc.data_type,
-                                     t.second.desc.element_size),
-                     "* ", t.first, "[[buffer(", buffer_offset, ")]]"),
+                     metal_type, "* ", t.first, "[[buffer(", buffer_offset,
+                     ")]]"),
         &result);
     buffer_offset++;
   }
@@ -618,10 +629,10 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset,
 
 absl::Status MetalArguments::SetGPUResources(
     const std::string& name, const GPUResourcesWithValue& resources) {
-  for (const auto& r : resources.ints) {
+  for (const auto& r : resources.generic.ints) {
     RETURN_IF_ERROR(SetInt(absl::StrCat(name, "_", r.first), r.second));
   }
-  for (const auto& r : resources.floats) {
+  for (const auto& r : resources.generic.floats) {
     RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
   }
   for (const auto& r : resources.buffers) {

@@ -205,11 +205,11 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, FusedDot) {
       this->client_
           ->TransferToServer(LiteralUtil::CreateR2FromArray2D<T>(
               {{1.0f, 2.0f, 3.0f, 4.0f}, {-1.0f, -2.0f, -3.0f, -4.0f}}))
-          .ConsumeValueOrDie();
+          .value();
   auto rhs_handle = this->client_
                         ->TransferToServer(LiteralUtil::CreateR2FromArray2D<T>(
                             {{1.0f}, {2.0f}, {3.0f}, {4.0f}}))
-                        .ConsumeValueOrDie();
+                        .value();
 
   if (std::is_same<Eigen::half, T>::value) {
     this->error_spec_ = ErrorSpec{0.0001, 1e-3};
@@ -230,14 +230,14 @@ class SquareMatrixDot : public DotOperationTest {
                 {{1.0f, 2.0f}, {3.0f, -4.0f}},
                 LayoutUtil::MakeLayout(
                     MinorToMajorForIsRowMajor(lhs_row_major))))
-            .ConsumeValueOrDie();
+            .value();
     auto rhs_handle =
         client_
             ->TransferToServer(LiteralUtil::CreateFromArrayWithLayout<T>(
                 {{1.0f, 6.0f}, {7.0f, -4.0f}},
                 LayoutUtil::MakeLayout(
                     MinorToMajorForIsRowMajor(rhs_row_major))))
-            .ConsumeValueOrDie();
+            .value();
     XlaBuilder builder(TestName());
     auto prim_type = primitive_util::NativeToPrimitiveType<T>();
     Dot(Parameter(&builder, 0, ShapeUtil::MakeShape(prim_type, {2, 2}), "lhs"),
@@ -325,7 +325,7 @@ void ParametricDotTest::TestImpl() {
       *dot_lhs_data, LayoutUtil::MakeLayout(
                          MinorToMajorForIsRowMajor(param.dot_lhs_row_major)));
   std::unique_ptr<GlobalData> dot_lhs_handle =
-      client_->TransferToServer(dot_lhs_lit).ConsumeValueOrDie();
+      client_->TransferToServer(dot_lhs_lit).value();
 
   std::unique_ptr<Array2D<NativeT>> dot_rhs_data =
       MakeLinspaceArray2D<NativeT>(0.0, 1.0, param.k, param.n);
@@ -334,7 +334,7 @@ void ParametricDotTest::TestImpl() {
   Literal dot_rhs_lit =
       LiteralUtil::CreateR2FromArray2DWithLayout(*dot_rhs_data, rhs_layout);
   std::unique_ptr<GlobalData> dot_rhs_handle =
-      client_->TransferToServer(dot_rhs_lit).ConsumeValueOrDie();
+      client_->TransferToServer(dot_rhs_lit).value();
 
   std::unique_ptr<Array2D<NativeT>> addend_data;
   Literal addend_lit;
@@ -345,7 +345,7 @@ void ParametricDotTest::TestImpl() {
     addend_lit = LiteralUtil::CreateR2FromArray2DWithLayout(
         *addend_data, LayoutUtil::MakeLayout(
                           MinorToMajorForIsRowMajor(param.addend_row_major)));
-    addend_handle = client_->TransferToServer(addend_lit).ConsumeValueOrDie();
+    addend_handle = client_->TransferToServer(addend_lit).value();
   }
 
   XlaBuilder builder(TestName());
@@ -515,14 +515,14 @@ class NonsquareMatrixDot : public DotOperationTest {
                 {{1.0f, 2.0f, 3.0f}, {3.0f, -4.0f, -1.0f}},
                 LayoutUtil::MakeLayout(
                     MinorToMajorForIsRowMajor(lhs_row_major))))
-            .ConsumeValueOrDie();
+            .value();
     auto rhs_handle =
         client_
             ->TransferToServer(LiteralUtil::CreateFromArrayWithLayout<T>(
                 {{1.0f, 6.0f}, {2.0f, 3.0f}, {7.0f, -4.0f}},
                 LayoutUtil::MakeLayout(
                     MinorToMajorForIsRowMajor(rhs_row_major))))
-            .ConsumeValueOrDie();
+            .value();
 
     XlaBuilder builder(TestName());
     auto prim_type = primitive_util::NativeToPrimitiveType<T>();
@@ -547,13 +547,13 @@ XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
       client_
           ->TransferToServer(LiteralUtil::CreateR2WithLayout<complex64>(
               {{1.0, 2.0, 3.0, -4.0}}, LayoutUtil::MakeLayout({1, 0})))
-          .ConsumeValueOrDie();
+          .value();
   auto rhs_handle =
       client_
           ->TransferToServer(LiteralUtil::CreateR2WithLayout<complex64>(
               {{1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}, {-4.0, 4.0}},
               LayoutUtil::MakeLayout({1, 0})))
-          .ConsumeValueOrDie();
+          .value();
 
   XlaBuilder builder(TestName());
   auto prim_type = primitive_util::NativeToPrimitiveType<complex64>();
@@ -625,14 +625,14 @@ XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
                           {{2000.0f, 200.0f}, {20.0f, 2.0f}}},
                          {{{3000.0f, 300.0f}, {30.0f, 3.0f}},
                           {{4000.0f, 400.0f}, {40.0f, 4.0f}}}}))
-                    .ConsumeValueOrDie();
+                    .value();
   auto y_data =
       this->client_
           ->TransferToServer(LiteralUtil::CreateR4FromArray4D<T>(
               {{{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
                {{{11.0f, 22.0f}, {33.0f, 44.0f}},
                 {{55.0f, 66.0f}, {77.0f, 88.0f}}}}))
-          .ConsumeValueOrDie();
+          .value();
 
   if (std::is_same<Eigen::half, T>::value) {
     this->error_spec_ = ErrorSpec{0.0001, 1e-3};
@@ -668,13 +668,13 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       this->client_
           ->TransferToServer(LiteralUtil::CreateR3FromArray3D<T>(
               {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}}))
-          .ConsumeValueOrDie();
+          .value();
 
   auto y_data =
       this->client_
           ->TransferToServer(LiteralUtil::CreateR3FromArray3D<T>(
               {{{1.0f, 0.0f}, {0.0f, 1.0f}}, {{1.0f, 0.0f}, {0.0f, 1.0f}}}))
-          .ConsumeValueOrDie();
+          .value();
 
   this->template ComputeAndCompareR3<T>(
       &builder,
@@ -703,12 +703,12 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
       this->client_
           ->TransferToServer(LiteralUtil::CreateR3FromArray3D<T>(
               {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}}))
-          .ConsumeValueOrDie();
+          .value();
 
   auto y_data = this->client_
                     ->TransferToServer(LiteralUtil::CreateR2FromArray2D<T>(
                         {{1.0f, 0.0f}, {0.0f, 1.0f}}))
-                    .ConsumeValueOrDie();
+                    .value();
 
   this->template ComputeAndCompareR2<T>(
       &builder,
@@ -735,13 +735,13 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR2LhsR3Rhs) {
   auto x_data = this->client_
                     ->TransferToServer(LiteralUtil::CreateR2FromArray2D<T>(
                         {{1.0f, 0.0f}, {0.0f, 1.0f}}))
-                    .ConsumeValueOrDie();
+                    .value();
 
   auto y_data =
       this->client_
           ->TransferToServer(LiteralUtil::CreateR3FromArray3D<T>(
               {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}}))
-          .ConsumeValueOrDie();
+          .value();
 
   this->template ComputeAndCompareR2<T>(
       &builder,
@@ -774,14 +774,14 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulMultipleBatch) {
               {{{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
                {{{9.0f, 10.0f}, {11.0f, 12.0f}},
                 {{13.0f, 14.0f}, {15.0f, 16.0f}}}}))
-          .ConsumeValueOrDie();
+          .value();
 
   auto y_data =
       this->client_
           ->TransferToServer(LiteralUtil::CreateR4FromArray4D<T>(
               {{{{1.0f, 0.0f}, {0.0f, 1.0f}}, {{1.0f, 0.0f}, {0.0f, 1.0f}}},
                {{{0.0f, 1.0f}, {1.0f, 0.0f}}, {{0.0f, 1.0f}, {1.0f, 0.0f}}}}))
-          .ConsumeValueOrDie();
+          .value();
 
   this->template ComputeAndCompareR4<T>(
       &builder,
@@ -813,14 +813,14 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, TransposeFolding) {
                     LiteralUtil::CreateR2FromArray2DWithLayout<T>(
                         *lhs, LayoutUtil::MakeLayout(
                                   MinorToMajorForIsRowMajor(row_major))))
-                .ConsumeValueOrDie();
+                .value();
         auto rhs_handle =
             this->client_
                 ->TransferToServer(
                     LiteralUtil::CreateR2FromArray2DWithLayout<T>(
                         *rhs, LayoutUtil::MakeLayout(
                                   MinorToMajorForIsRowMajor(row_major))))
-                .ConsumeValueOrDie();
+                .value();
 
         XlaBuilder builder(this->TestName());
         auto prim_type = primitive_util::NativeToPrimitiveType<T>();
@@ -1680,7 +1680,7 @@ ENTRY jaxpr_computation__5.33 {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));
-  EXPECT_TRUE(RunAndCompare(std::move(module), /*error=*/absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(std::move(module), /*error=*/std::nullopt));
 }
 
 XLA_TEST_F(DotOperationTest, ReorderContractingDimsConstLHS_RL) {
@@ -1839,12 +1839,11 @@ void DOT_ReorderContracting(::testing::benchmark::State& state) {
   auto lhs = Reshape(t1, {d0, d2 * d1});
   auto rhs = ConstantR2FromArray2D(&builder, const_arr);
   Dot(lhs, rhs);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   auto input_literal = LiteralUtil::CreateR3FromArray3D<float>(input_arr);
   ScopedShapedBuffer buffer0 =
-      client->LiteralToShapedBuffer(input_literal, device_ordinal)
-          .ConsumeValueOrDie();
+      client->LiteralToShapedBuffer(input_literal, device_ordinal).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables, client->Compile(computation, {&buffer0.on_host_shape()},

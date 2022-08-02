@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/common.h"
+
 #include "tensorflow/lite/c/c_api_types.h"
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+#include "tensorflow/lite/tensorflow_profiler_logger.h"
+#endif
 
 #ifndef TF_LITE_STATIC_MEMORY
 #include <stdlib.h>
@@ -99,7 +103,12 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
 void TfLiteTensorDataFree(TfLiteTensor* t) {
   if (t->allocation_type == kTfLiteDynamic ||
       t->allocation_type == kTfLitePersistentRo) {
-    free(t->data.raw);
+    if (t->data.raw) {
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+      tflite::OnTfLiteTensorDealloc(t);
+#endif
+      free(t->data.raw);
+    }
   }
   t->data.raw = nullptr;
 }
@@ -161,7 +170,7 @@ void TfLiteTensorFree(TfLiteTensor* t) {
   t->dims = nullptr;
 
   if (t->dims_signature) {
-    TfLiteIntArrayFree((TfLiteIntArray *) t->dims_signature);
+    TfLiteIntArrayFree((TfLiteIntArray*)t->dims_signature);
   }
   t->dims_signature = nullptr;
 
@@ -191,16 +200,12 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 }
 
 TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
-  if (!src || !dst)
-    return kTfLiteOk;
-  if (src->bytes != dst->bytes)
-    return kTfLiteError;
-  if (src == dst)
-    return kTfLiteOk;
+  if (!src || !dst) return kTfLiteOk;
+  if (src->bytes != dst->bytes) return kTfLiteError;
+  if (src == dst) return kTfLiteOk;
 
   dst->type = src->type;
-  if (dst->dims)
-    TfLiteIntArrayFree(dst->dims);
+  if (dst->dims) TfLiteIntArrayFree(dst->dims);
   dst->dims = TfLiteIntArrayCopy(src->dims);
   memcpy(dst->data.raw, src->data.raw, src->bytes);
   dst->buffer_handle = src->buffer_handle;
@@ -218,8 +223,17 @@ void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   // TODO(b/145340303): Tensor data should be aligned.
   if (!tensor->data.raw) {
     tensor->data.raw = (char*)malloc(num_bytes);
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    tflite::OnTfLiteTensorAlloc(tensor, num_bytes);
+#endif
   } else if (num_bytes > tensor->bytes) {
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    tflite::OnTfLiteTensorDealloc(tensor);
+#endif
     tensor->data.raw = (char*)realloc(tensor->data.raw, num_bytes);
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    tflite::OnTfLiteTensorAlloc(tensor, num_bytes);
+#endif
   }
   tensor->bytes = num_bytes;
 }

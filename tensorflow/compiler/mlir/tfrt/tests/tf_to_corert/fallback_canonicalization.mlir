@@ -33,23 +33,23 @@ func.func @test_const_tensor_canonicalization_multiple_operands() -> (!tfrt_fall
 func.func @test_const_tensor_canonicalization_mixed_operands(%arg0: !corert.tensorhandle, %arg1: !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor) {
   %a = corert.const_dense_tensor dense<[true, false]> : tensor<2xi1>
   %b = corert.const_dense_tensor dense<[false, true]> : tensor<2xi1>
-  // CHECK:      [[a:%.*]] = tfrt_fallback_async.const_dense_tensor dense<[true, false]> : tensor<2xi1>
+  // CHECK: [[b:%.*]] = tfrt_fallback_async.const_dense_tensor dense<[false, true]> : tensor<2xi1>
+  // CHECK-NEXT:      [[a:%.*]] = tfrt_fallback_async.const_dense_tensor dense<[true, false]> : tensor<2xi1>
   // CHECK-NEXT: tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[arg0]]
-  // CHECK-NEXT: [[b:%.*]] = tfrt_fallback_async.const_dense_tensor dense<[false, true]> : tensor<2xi1>
   // CHECK-NEXT: tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[arg1]]
   %ra, %rarg0, %rb, %rarg1 = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %a, %arg0, %b, %arg1 {_tfrt_cost = 1 : i64, device = "/CPU:0"} : (!corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 
   tfrt.return %ra, %rarg0, %rb, %rarg1 : !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor
 }
 
-// Tests that if the conversion op is partially canonicalizable, the non-canonicalizable operands are always seperated into individual conversion ops.
+// Tests that if the conversion op is partially canonicalizable, the non-canonicalizable operands are always separated into individual conversion ops.
 // CHECK-LABEL: func @test_const_tensor_canonicalization_mixed_operands_no_consolidation
 // CHECK-SAME: ([[arg0:%.*]]: !corert.tensorhandle, [[arg1:%.*]]: !corert.tensorhandle)
 func.func @test_const_tensor_canonicalization_mixed_operands_no_consolidation(%arg0: !corert.tensorhandle, %arg1: !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor) {
+  // CHECK-NEXT: tfrt_fallback_async.const_dense_tensor dense<[true, false]> : tensor<2xi1>
   // CHECK-NEXT: tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[arg0]]
   // CHECK-NEXT: tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[arg1]]
 
-  // CHECK-NEXT: tfrt_fallback_async.const_dense_tensor dense<[true, false]> : tensor<2xi1>
   %a = corert.const_dense_tensor dense<[true, false]> : tensor<2xi1>
   %rarg0, %rarg1, %ra = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %arg0, %arg1, %a {_tfrt_cost = 1 : i64, device = "/CPU:0"} : (!corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 

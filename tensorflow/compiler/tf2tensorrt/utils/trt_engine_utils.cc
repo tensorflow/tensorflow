@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
@@ -60,6 +61,8 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
                           const nvinfer1::IExecutionContext* execution_context,
                           int binding_index, bool use_implicit_batch,
                           int batch_size, TensorShape& shape) {
+  tensorflow::profiler::TraceMe activity(
+      "getBindingDimensions", tensorflow::profiler::TraceMeLevel::kInfo);
   nvinfer1::Dims dims =
       use_implicit_batch
           ? cuda_engine->getBindingDimensions(binding_index)
@@ -73,12 +76,14 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
   }
   TF_RETURN_IF_ERROR(DimsAdapter(dims).TensorShape(
       &shape,
-      use_implicit_batch ? absl::optional<int>(batch_size) : absl::nullopt));
+      use_implicit_batch ? std::optional<int>(batch_size) : std::nullopt));
   return Status::OK();
 }
 
 Status SetupBindings(nvinfer1::ICudaEngine* cuda_engine, const Tensor& tensor,
                      std::vector<void*>& buffers, int binding_index) {
+  tensorflow::profiler::TraceMe activity(
+      "SetBindingPointers", tensorflow::profiler::TraceMeLevel::kInfo);
   const auto dtype = cuda_engine->getBindingDataType(binding_index);
   VLOG(2) << "<<<<<<<<< SetupBindings with dtype = " << (int)dtype;
   switch (dtype) {
@@ -114,6 +119,8 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
                           int num_batch,
                           const TrtShapeOptimizationProfile& profiles,
                           OpKernelContext* ctx, const DataVec* input_vec) {
+  tensorflow::profiler::TraceMe activity(
+      "SetTrtEngineInputs", tensorflow::profiler::TraceMeLevel::kInfo);
   int n_inputs = ctx ? ctx->num_inputs() : (input_vec ? input_vec->size() : 0);
   // Setup engine inputs.
   for (int i = 0; i < n_inputs; i++) {
@@ -150,17 +157,23 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
           i, binding_index, cuda_engine, execution_context));
 
       if (cuda_engine->isExecutionBinding(binding_index)) {
-        nvinfer1::Dims trt_dims;
+        tensorflow::profiler::TraceMe activity(
+            "SetTrtEngineInputs::setBindingDimensions",
+            tensorflow::profiler::TraceMeLevel::kInfo);
         auto adap = DimsAdapter::Create(input_shape);
         TRT_ENSURE_OK(adap);
-        VLOG(2) << "Setting binding dimensions for idx " << binding_index;
-        bool ret = execution_context->setBindingDimensions(binding_index,
-                                                           adap->AsTrtDims());
-        if (!ret) {
-          VLOG(2) << "Error setting engine input " << binding_index << " "
-                  << DebugString(trt_dims);
-          return errors::Internal(
-              "Binding dimension does not fit selected profile.");
+        nvinfer1::Dims trt_dims = adap->AsTrtDims();
+        if (execution_context->getBindingDimensions(binding_index) !=
+            trt_dims) {
+          VLOG(2) << "Setting binding dimensions for idx " << binding_index;
+          bool ret =
+              execution_context->setBindingDimensions(binding_index, trt_dims);
+          if (!ret) {
+            VLOG(2) << "Error setting engine input " << binding_index << " "
+                    << DebugString(trt_dims);
+            return errors::Internal(
+                "Binding dimension does not fit selected profile.");
+          }
         }
       }
     }
@@ -187,6 +200,8 @@ Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
                            int trt_profile_idx, std::vector<void*>& buffers,
                            bool use_implicit_batch, int batch_size,
                            OpKernelContext* ctx, DataVec* outputs) {
+  tensorflow::profiler::TraceMe activity(
+      "SetTrtEngineOutputs", tensorflow::profiler::TraceMeLevel::kInfo);
   // Either one of ctx or outpus should be specified
   int n_outputs = ctx ? ctx->num_outputs() : (outputs ? outputs->size() : 0);
   for (int i = 0; i < n_outputs; i++) {
@@ -205,6 +220,8 @@ Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
     // Allocate output tensor of TRTEngineOp.
     Tensor* output_tensor = nullptr;
     if (ctx) {
+      tensorflow::profiler::TraceMe activity(
+          "AllocateOutput", tensorflow::profiler::TraceMeLevel::kInfo);
       TF_RETURN_IF_ERROR(ctx->allocate_output(i, output_shape, &output_tensor));
     } else {
       // This path is used for unit tests. The tensor is already allocated.
@@ -231,6 +248,8 @@ Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
 Status TrtEnqueue(nvinfer1::IExecutionContext* execution_context,
                   std::vector<void*>& buffers, cudaStream_t stream,
                   bool use_implicit_batch, int batch_size) {
+  tensorflow::profiler::TraceMe activity(
+      "TrtEnqueue", tensorflow::profiler::TraceMeLevel::kInfo);
   bool ret = false;
   if (use_implicit_batch) {
     ret = execution_context->enqueue(batch_size, &buffers[0], stream, nullptr);

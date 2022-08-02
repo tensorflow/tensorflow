@@ -41,7 +41,7 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensor(
     TFGraphDialect* tfgDialect);
 
 // Converts a shape from MLIR to a TensorFlow tensor shape proto.
-void ConvertToTensorShapeProto(llvm::ArrayRef<int64_t> shape,
+void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
                                tensorflow::TensorShapeProto* output_shape);
 
 // Converts an MLIR type to a TensorFlow tensor shape.

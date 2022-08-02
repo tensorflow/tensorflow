@@ -224,7 +224,7 @@ class DeviceBase {
                                        PerOpGpuDevice* /*device*/,
                                        DeviceContext* /*dc*/,
                                        Allocator* /*allocator*/) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Unimplemented by default

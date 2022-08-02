@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "MultiDeviceIteratorToStringHandle"
   input_arg {
     name: "multi_device_iterator"

@@ -44,6 +44,10 @@ namespace full_type {
 // should be set by external means (typically by the user).
 OpTypeConstructor NoOp();
 
+// Helper for a trivial type constructor that indicates a node has no
+// outputs (that is, its output type is an empty TFT_PRODUCT).
+OpTypeConstructor NoOutputs();
+
 // Helper for a type constructor of <t>[] (with no parameters).
 OpTypeConstructor Nullary(FullTypeId t);
 
@@ -103,6 +107,17 @@ inline bool IsHostMemoryType(const FullTypeDef& t) {
       return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
     case TFT_STRING:
       return true;
+    case TFT_ITERATOR:
+      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
+    case TFT_OPTIONAL:
+      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
+    case TFT_PRODUCT:
+      for (int i = 0; i < t.args_size(); i++) {
+        if (IsHostMemoryType(full_type::GetArgDefaultAny(t, i))) {
+          return true;
+        }
+      }
+      return false;
     default:
       return false;
   }

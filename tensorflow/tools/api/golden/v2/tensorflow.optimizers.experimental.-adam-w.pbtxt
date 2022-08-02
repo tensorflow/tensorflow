@@ -3,9 +3,8 @@ tf_class {
   is_instance: "<class \'keras.optimizers.optimizer_experimental.adamw.AdamW\'>"
   is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer.Optimizer\'>"
   is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer._BaseOptimizer\'>"
-  is_instance: "<class \'tensorflow.python.module.module.Module\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.autotrackable.AutoTrackable\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "iterations"
@@ -17,30 +16,6 @@ tf_class {
   }
   member {
     name: "lr"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "name"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "name_scope"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "non_trainable_variables"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "submodules"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "trainable_variables"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "variables"
     mtype: "<type \'property\'>"
   }
   member_method {
@@ -65,7 +40,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'var_list\', \'exclude_from_weight_decay\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'var_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "compute_gradients"
@@ -73,7 +48,7 @@ tf_class {
   }
   member_method {
     name: "exclude_from_weight_decay"
-    argspec: "args=[\'self\', \'var_list\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'var_list\', \'var_names\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "finalize_variable_values"
@@ -96,7 +71,7 @@ tf_class {
     argspec: "args=[\'self\', \'gradient\', \'variable\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "with_name_scope"
-    argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
+    name: "variables"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
 }

@@ -1066,15 +1066,19 @@ tf_module {
   }
   member_method {
     name: "DataServiceDataset"
-    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'None\'], "
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'cross_trainer_cache_options\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'\', \'None\'], "
   }
   member_method {
     name: "DataServiceDatasetV2"
-    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'None\'], "
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'cross_trainer_cache_options\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'\', \'None\'], "
   }
   member_method {
     name: "DataServiceDatasetV3"
-    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'uncompress_fn\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'uncompress\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'False\', \'None\'], "
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'uncompress_fn\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'uncompress\', \'cross_trainer_cache_options\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'False\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "DataServiceDatasetV4"
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'uncompress_fn\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'uncompress\', \'cross_trainer_cache_options\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'False\', \'\', \'None\'], "
   }
   member_method {
     name: "DatasetCardinality"
@@ -2217,6 +2221,10 @@ tf_module {
     argspec: "args=[\'start\', \'stop\', \'num\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ListDataset"
+    argspec: "args=[\'tensors\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
     name: "ListDiff"
     argspec: "args=[\'x\', \'y\', \'out_idx\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
@@ -2570,7 +2578,7 @@ tf_module {
   }
   member_method {
     name: "MergeV2Checkpoints"
-    argspec: "args=[\'checkpoint_prefixes\', \'destination_prefix\', \'delete_old_dirs\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'checkpoint_prefixes\', \'destination_prefix\', \'delete_old_dirs\', \'allow_missing_files\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
   }
   member_method {
     name: "Mfcc"
@@ -3362,7 +3370,7 @@ tf_module {
   }
   member_method {
     name: "RangeDataset"
-    argspec: "args=[\'start\', \'stop\', \'step\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+    argspec: "args=[\'start\', \'stop\', \'step\', \'output_types\', \'output_shapes\', \'metadata\', \'replicate_on_split\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'False\', \'None\'], "
   }
   member_method {
     name: "Rank"
@@ -3519,6 +3527,10 @@ tf_module {
   member_method {
     name: "RegisterDataset"
     argspec: "args=[\'dataset\', \'address\', \'protocol\', \'external_state_policy\', \'element_spec\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "RegisterDatasetV2"
+    argspec: "args=[\'dataset\', \'address\', \'protocol\', \'external_state_policy\', \'element_spec\', \'requested_dataset_id\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "Relu"
@@ -3871,6 +3883,10 @@ tf_module {
   member_method {
     name: "ReverseV2"
     argspec: "args=[\'tensor\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "RewriteDataset"
+    argspec: "args=[\'input_dataset\', \'rewrite_name\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "RightShift"
@@ -4705,6 +4721,10 @@ tf_module {
     argspec: "args=[\'image_size\', \'bounding_boxes\', \'min_object_covered\', \'seed\', \'aspect_ratio_range\', \'area_range\', \'max_attempts\', \'use_image_if_no_bounding_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'[0.75, 1.33]\', \'[0.05, 1]\', \'100\', \'False\', \'None\'], "
   }
   member_method {
+    name: "StatelessShuffle"
+    argspec: "args=[\'value\', \'key\', \'counter\', \'alg\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "StatelessTruncatedNormal"
     argspec: "args=[\'shape\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
@@ -4874,7 +4894,7 @@ tf_module {
   }
   member_method {
     name: "TPUReplicateMetadata"
-    argspec: "args=[\'num_replicas\', \'num_cores_per_replica\', \'topology\', \'use_tpu\', \'device_assignment\', \'computation_shape\', \'host_compute_core\', \'padding_map\', \'step_marker_location\', \'allow_soft_placement\', \'use_spmd_for_xla_partitioning\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'\', \'True\', \'[]\', \'[]\', \'[]\', \'[]\', \'STEP_MARK_AT_ENTRY\', \'False\', \'False\', \'None\'], "
+    argspec: "args=[\'num_replicas\', \'num_cores_per_replica\', \'topology\', \'use_tpu\', \'device_assignment\', \'computation_shape\', \'host_compute_core\', \'padding_map\', \'step_marker_location\', \'allow_soft_placement\', \'use_spmd_for_xla_partitioning\', \'tpu_compile_options_proto\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'\', \'True\', \'[]\', \'[]\', \'[]\', \'[]\', \'STEP_MARK_AT_ENTRY\', \'False\', \'False\', \'\', \'None\'], "
   }
   member_method {
     name: "TPUReplicatedInput"
@@ -5146,7 +5166,7 @@ tf_module {
   }
   member_method {
     name: "TensorSliceDataset"
-    argspec: "args=[\'components\', \'output_shapes\', \'is_files\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
+    argspec: "args=[\'components\', \'output_shapes\', \'is_files\', \'metadata\', \'replicate_on_split\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'False\', \'None\'], "
   }
   member_method {
     name: "TensorStridedSliceUpdate"

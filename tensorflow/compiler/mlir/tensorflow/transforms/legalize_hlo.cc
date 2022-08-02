@@ -28,12 +28,15 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLForwardCompat.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -51,14 +54,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/broadcast_utils.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
 
@@ -97,12 +98,304 @@ LogicalResult GetConstantSplatValue(Value value, SplatValueType &splat_value) {
   return success();
 }
 
-class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
+struct PermutationAndShape {
+  DenseIntElementsAttr permutation;
+  ShapedType shape;
+};
+
+// Returns a DenseIntElementsAttr for a permutation and the shape after
+// applying the permutation to a given shape through a transpose.
+PermutationAndShape GetPermutationAndTransposedShape(
+    llvm::ArrayRef<int64_t> permutation_array, ShapedType input_type,
+    ConversionPatternRewriter &rewriter) {
+  assert(permutation_array.size() == input_type.getRank());
+  llvm::SmallVector<int64_t> transposed_shape(permutation_array.size());
+  for (int64_t i = 0; i < permutation_array.size(); ++i) {
+    transposed_shape[i] = input_type.getDimSize(permutation_array[i]);
+  }
+  auto transposed_type =
+      RankedTensorType::get(transposed_shape, input_type.getElementType());
+  DenseIntElementsAttr permutation = DenseIntElementsAttr::get(
+      RankedTensorType::get(permutation_array.size(), rewriter.getI64Type()),
+      permutation_array);
+  return {permutation, transposed_type};
+}
+
+// Returns the inverse permutation array for a permutation array.
+llvm::SmallVector<int64_t> GetInversePermutationArray(
+    llvm::ArrayRef<int64_t> permutation_array) {
+  llvm::SmallVector<int64_t> inverse_permutation_array(
+      permutation_array.size());
+  const auto permutation_array_size = permutation_array.size();
+  for (int64_t i = 0; i < permutation_array_size; ++i) {
+    inverse_permutation_array[permutation_array[i]] = i;
+  }
+  return inverse_permutation_array;
+}
+
+// Returns the DenseIntElementsAttr for an inverse permutation given a
+// permutation_array.
+DenseIntElementsAttr GetInversePermutation(
+    llvm::ArrayRef<int64_t> permutation_array,
+    ConversionPatternRewriter &rewriter) {
+  SmallVector<int64_t, 4> inverse_permutation_array =
+      GetInversePermutationArray(permutation_array);
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get(inverse_permutation_array.size(),
+                            rewriter.getI64Type()),
+      inverse_permutation_array);
+}
+
+// Returns a DenseIntElementsAttr for an inverse permutation and the shape after
+// applying the inverse permutation to a given shape through a transpose.
+PermutationAndShape GetInversePermutationAndShape(
+    llvm::ArrayRef<int64_t> permutation_array, ShapedType input_type,
+    ConversionPatternRewriter &rewriter) {
+  SmallVector<int64_t, 4> inverse_permutation_array =
+      GetInversePermutationArray(permutation_array);
+  return GetPermutationAndTransposedShape(inverse_permutation_array, input_type,
+                                          rewriter);
+}
+
+// Common functionality for ConvertConvOp classes.
+template <int SupportedSpatialDims>
+struct ConvertNdConvOp {
+  bool IsSupportedConvOp(mhlo::ConvolutionOp conv_op) const {
+    if (!conv_op.lhs().getType().cast<ShapedType>().hasStaticShape() ||
+        !conv_op.rhs().getType().cast<ShapedType>().hasStaticShape() ||
+        !conv_op.getType().cast<ShapedType>().hasStaticShape())
+      return false;
+
+    // All ones in "lhs_dilation" means this "mhlo.conv" op should be
+    // converted to "tf.Conv2D" or "tf.DepthwiseConv2dNativeOp".
+    if (conv_op.lhs_dilation().has_value()) {
+      auto lhs_dilation = conv_op.lhs_dilation().getValue();
+      if (!lhs_dilation.isSplat() || lhs_dilation.getSplatValue<int64_t>() != 1)
+        return false;
+    }
+
+    if (!conv_op.window_strides().has_value() || conv_op.window_strides()
+                                                         .getValue()
+                                                         .getType()
+                                                         .cast<ShapedType>()
+                                                         .getRank() != 1)
+      return false;
+
+    auto num_spatial_dims =
+        conv_op.dimension_numbers().getInputSpatialDimensions().size();
+    // TODO(b/158636600): Currently we don't support 3D Convolution.
+    if (num_spatial_dims != SupportedSpatialDims) return false;
+
+    return true;
+  }
+};
+
+// Convert a 1-D convolution into a 2-D convolution (which TF supports) so that
+// it can be rewritten by the pattern `Convert2DConvOp`.
+class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
+                        ConvertNdConvOp<1> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConvOp conv_op, OpAdaptor adaptor,
+      mhlo::ConvolutionOp conv_op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const final {
+    //
+    // Check that input is a supported 1d convolution.
+    //
+
+    if (!IsSupportedConvOp(conv_op) || conv_op->getNumResults() != 1)
+      return rewriter.notifyMatchFailure(conv_op, "unsupported conv op.");
+
+    const mhlo::ConvDimensionNumbersAttr dnums = conv_op.dimension_numbers();
+
+    // Group convolution is not supported yet.
+    const int64_t input_feature_dimension = dnums.getInputFeatureDimension();
+    const int64_t input_channels =
+        conv_op.lhs().getType().cast<ShapedType>().getDimSize(
+            input_feature_dimension);
+    const int64_t feature_group_count = conv_op.feature_group_count();
+    if (feature_group_count != 1 && feature_group_count != input_channels)
+      return rewriter.notifyMatchFailure(conv_op,
+                                         "Group convolution is not supported,");
+
+    //
+    // Transpose and reshape the input and kernel
+    //
+
+    // Reshape input image to add a new spatial dimension.
+    auto image_type = conv_op.lhs().getType().cast<ShapedType>();
+    SmallVector<int64_t, 4> image_2d_shape(image_type.getShape().begin(),
+                                           image_type.getShape().end());
+    image_2d_shape.push_back(1);
+    auto image_2d_type =
+        RankedTensorType::get(image_2d_shape, image_type.getElementType());
+    auto image_2d_op = rewriter.create<mhlo::ReshapeOp>(
+        conv_op.getLoc(), image_2d_type, conv_op.lhs());
+
+    // Transpose image to get it into NWHC form (where H is the added dim).
+    SmallVector<int64_t, 4> image_permutation = {
+        dnums.getInputBatchDimension(), dnums.getInputSpatialDimensions()[0],
+        3,  // The trailing dim that we added.
+        dnums.getInputFeatureDimension()};
+    auto image_permutation_and_shape = GetPermutationAndTransposedShape(
+        image_permutation, image_2d_type, rewriter);
+    auto transposed_image_2d_op = rewriter.create<mhlo::TransposeOp>(
+        conv_op.getLoc(), image_permutation_and_shape.shape,
+        image_2d_op->getResult(0), image_permutation_and_shape.permutation);
+
+    // Reshape kernel to add a new spatial dimension.
+    auto kernel_type = conv_op.rhs().getType().cast<ShapedType>();
+    SmallVector<int64_t, 4> kernel_2d_shape;
+    for (int64_t dim : kernel_type.getShape()) {
+      kernel_2d_shape.push_back(dim);
+    }
+    kernel_2d_shape.push_back(1);
+    auto kernel_2d_type =
+        RankedTensorType::get(kernel_2d_shape, kernel_type.getElementType());
+    auto kernel_2d_op = rewriter.create<mhlo::ReshapeOp>(
+        conv_op.getLoc(), kernel_2d_type, conv_op.rhs());
+
+    // Transpose kernel to get it into WHIO form (where H is the added dim).
+    SmallVector<int64_t, 4> kernel_permutation = {
+        dnums.getKernelSpatialDimensions()[0],
+        3,  // The trailing dim that we added.
+        dnums.getKernelInputFeatureDimension(),
+        dnums.getKernelOutputFeatureDimension()};
+    auto kernel_permutation_and_shape = GetPermutationAndTransposedShape(
+        kernel_permutation, kernel_2d_type, rewriter);
+    auto transposed_kernel_2d_op = rewriter.create<mhlo::TransposeOp>(
+        conv_op.getLoc(), kernel_permutation_and_shape.shape,
+        kernel_2d_op->getResult(0), kernel_permutation_and_shape.permutation);
+
+    //
+    // Create 2d equivalents for 1d convolution attributes.
+    //
+
+    // Window Strides
+    SmallVector<int64_t, 2> window_strides_2d_array;
+    for (const auto v : conv_op.window_strides()->getValues<int64_t>()) {
+      window_strides_2d_array.emplace_back(v);
+    }
+    window_strides_2d_array.push_back(1);
+    auto window_strides_2d = DenseIntElementsAttr::get(
+        RankedTensorType::get({2}, rewriter.getI64Type()),
+        window_strides_2d_array);
+
+    // Padding
+    SmallVector<int64_t, 4> padding_2d_array;
+    for (const auto v : conv_op.padding().getValue().getValues<int64_t>()) {
+      padding_2d_array.emplace_back(v);
+    }
+    // The newly added spatial dimension requires zero left and right padding.
+    padding_2d_array.push_back(0);
+    padding_2d_array.push_back(0);
+    auto padding_2d = DenseIntElementsAttr::get(
+        RankedTensorType::get({2, 2}, rewriter.getI64Type()), padding_2d_array);
+
+    // LHS dilation
+    SmallVector<int64_t, 4> lhs_dilation_array_2d;
+    for (const auto v :
+         conv_op.lhs_dilation().getValue().getValues<int64_t>()) {
+      lhs_dilation_array_2d.emplace_back(v);
+    }
+    lhs_dilation_array_2d.push_back(1);
+    auto lhs_dilation_2d = DenseIntElementsAttr::get(
+        RankedTensorType::get({2}, rewriter.getI64Type()),
+        lhs_dilation_array_2d);
+
+    // RHS dilation
+    SmallVector<int64_t, 4> rhs_dilation_array_2d;
+    for (const auto v :
+         conv_op.rhs_dilation().getValue().getValues<int64_t>()) {
+      rhs_dilation_array_2d.emplace_back(v);
+    }
+    rhs_dilation_array_2d.push_back(1);
+    auto rhs_dilation_2d = DenseIntElementsAttr::get(
+        RankedTensorType::get({2}, rewriter.getI64Type()),
+        rhs_dilation_array_2d);
+
+    // Window reversal is unsupported.
+    if (conv_op.window_reversal().has_value() &&
+        conv_op.window_reversal()->getValues<bool>()[0] == true)
+      return failure();
+    auto window_reversal_2d = DenseIntElementsAttr::get(
+        RankedTensorType::get({2}, rewriter.getI64Type()),
+        SmallVector<int64_t>({0, 0}));
+
+    // Precision config
+    if (!conv_op.precision_config().has_value()) return failure();
+
+    // Dimension numbers reflect the form of the 2d conv op NWHC * WHIO -> NWHC
+    auto dnums_2d =
+        mhlo::ConvDimensionNumbersAttr::get(rewriter.getContext(),
+                                            /*inputBatchDimension=*/0,
+                                            /*inputFeatureDimension=*/3,
+                                            /*inputSpatialDimensions=*/{1, 2},
+                                            /*kernelInputDimension=*/2,
+                                            /*kernelOutputDimension=*/3,
+                                            /*kernelSpatialDimensions=*/{0, 1},
+                                            /*outputBatchDimension=*/0,
+                                            /*outputFeatureDimension=*/3,
+                                            /*outputSpatialDimensions=*/{1, 2});
+    //
+    // Generate a 2-D convolution
+    //
+
+    // Determine the 2-D convolution output shape.
+    auto output_type = conv_op->getResult(0).getType().cast<ShapedType>();
+    SmallVector<int64_t, 4> output_2d_shape;
+    for (int64_t dim : output_type.getShape()) {
+      output_2d_shape.push_back(dim);
+    }
+    output_2d_shape.push_back(1);
+    auto output_2d_type =
+        RankedTensorType::get(output_2d_shape, output_type.getElementType());
+    SmallVector<int64_t, 4> output_permutation = {
+        dnums.getOutputBatchDimension(), dnums.getOutputSpatialDimensions()[0],
+        3,  // The trailing dim that we added.
+        dnums.getOutputFeatureDimension()};
+    auto transposed_output_2d_shape =
+        GetPermutationAndTransposedShape(output_permutation, output_2d_type,
+                                         rewriter)
+            .shape;
+
+    auto conv2d_op = rewriter.create<mhlo::ConvolutionOp>(
+        conv_op.getLoc(), transposed_output_2d_shape,
+        transposed_image_2d_op.getResult(), transposed_kernel_2d_op.getResult(),
+        window_strides_2d, padding_2d, lhs_dilation_2d, rhs_dilation_2d,
+        window_reversal_2d, dnums_2d, conv_op.feature_group_count(),
+        conv_op.batch_group_count(), *conv_op.precision_config());
+
+    OpResult conv2d_output = conv2d_op->getResult(0);
+    auto conv2d_output_type = conv2d_output.getType().cast<ShapedType>();
+
+    //
+    // Transpose and reshape the output
+    //
+
+    // Since output is in NWHC form we need to undo the permutation we have
+    // affectively applied.
+    auto output_permutation_and_shape = GetInversePermutationAndShape(
+        output_permutation, conv2d_output_type, rewriter);
+    auto transposed_output_2d_op = rewriter.create<mhlo::TransposeOp>(
+        conv_op.getLoc(), output_permutation_and_shape.shape, conv2d_output,
+        output_permutation_and_shape.permutation);
+
+    // Drop the trailing spatial dimension from the output.
+    rewriter.replaceOpWithNewOp<mhlo::ReshapeOp>(
+        conv_op, output_type, transposed_output_2d_op.getResult());
+    return success();
+  }
+};
+
+class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
+                        ConvertNdConvOp<2> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ConvolutionOp conv_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (!IsSupportedConvOp(conv_op)) {
       return failure();
@@ -146,7 +439,7 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
     const bool is_depthwise_conv = input_channels == feature_group_count;
     std::string padding;
     SmallVector<int64_t, 8> explicit_padding;
-    if (!conv_op.padding().hasValue() ||
+    if (!conv_op.padding().has_value() ||
         (conv_op.padding().getValue().isSplat() &&
          conv_op.padding()->getSplatValue<int64_t>() == 0)) {
       padding = "VALID";
@@ -176,7 +469,7 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
   };
 
  private:
-  bool IsSamePadding(mhlo::ConvOp conv_op, int num_spatial_dims,
+  bool IsSamePadding(mhlo::ConvolutionOp conv_op, int num_spatial_dims,
                      ArrayRef<int64_t> strides, ArrayRef<int64_t> dilation,
                      ArrayRef<int64_t> padding_array) const {
     mhlo::ConvDimensionNumbersAttr dnums = conv_op.dimension_numbers();
@@ -309,7 +602,7 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
                                     start_attr, size_attr);
   }
 
-  void CreateConvOp(mhlo::ConvOp conv_op, ArrayRef<int64_t> strides,
+  void CreateConvOp(mhlo::ConvolutionOp conv_op, ArrayRef<int64_t> strides,
                     StringRef padding, ArrayRef<int64_t> explicit_padding,
                     ArrayRef<int64_t> dilation, bool is_depthwise_conv,
                     int input_channels, int num_spatial_dims,
@@ -403,43 +696,15 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
     }
     rewriter.replaceOp(conv_op, {output});
   }
-
-  bool IsSupportedConvOp(mhlo::ConvOp conv_op) const {
-    if (!conv_op.lhs().getType().cast<ShapedType>().hasStaticShape() ||
-        !conv_op.rhs().getType().cast<ShapedType>().hasStaticShape() ||
-        !conv_op.getType().cast<ShapedType>().hasStaticShape())
-      return false;
-
-    // All ones in "lhs_dilation" means this "mhlo.conv" op should be
-    // converted to "tf.Conv2D" or "tf.DepthwiseConv2dNativeOp".
-    if (conv_op.lhs_dilation().hasValue()) {
-      auto lhs_dilation = conv_op.lhs_dilation().getValue();
-      if (!lhs_dilation.isSplat() || lhs_dilation.getSplatValue<int64_t>() != 1)
-        return false;
-    }
-
-    if (!conv_op.window_strides().hasValue() || conv_op.window_strides()
-                                                        .getValue()
-                                                        .getType()
-                                                        .cast<ShapedType>()
-                                                        .getRank() != 1)
-      return false;
-
-    auto num_spatial_dims =
-        conv_op.dimension_numbers().getInputSpatialDimensions().size();
-    // TODO(b/158636600): Currently we don't support 3D Convolution.
-    if (num_spatial_dims != 2) return false;
-
-    return true;
-  }
 };
 
-class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
+class ConvertNonTrivialConvOp
+    : public OpConversionPattern<mhlo::ConvolutionOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConvOp conv_op, OpAdaptor adaptor,
+      mhlo::ConvolutionOp conv_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (IsSupportedConvOp(conv_op, rewriter).failed()) {
       return rewriter.notifyMatchFailure(
@@ -481,7 +746,7 @@ class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
 
     mhlo::ConvDimensionNumbersAttr dnums = conv_op.dimension_numbers();
     std::string padding;
-    if (!conv_op.padding().hasValue() ||
+    if (!conv_op.padding().has_value() ||
         (conv_op.padding().getValue().isSplat() &&
          conv_op.padding()->getSplatValue<int64_t>() == 0)) {
       padding = "VALID";
@@ -524,7 +789,7 @@ class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
   };
 
  private:
-  bool IsSamePadding(mhlo::ConvOp conv_op, int num_spatial_dims,
+  bool IsSamePadding(mhlo::ConvolutionOp conv_op, int num_spatial_dims,
                      ArrayRef<int64_t> strides) const {
     for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
       int dim = i + 1;
@@ -540,7 +805,7 @@ class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
     return true;
   }
 
-  LogicalResult IsSupportedConvOp(mhlo::ConvOp conv_op,
+  LogicalResult IsSupportedConvOp(mhlo::ConvolutionOp conv_op,
                                   ConversionPatternRewriter &rewriter) const {
     if (!conv_op.lhs().getType().cast<ShapedType>().hasStaticShape() ||
         !conv_op.rhs().getType().cast<ShapedType>().hasStaticShape() ||
@@ -560,7 +825,7 @@ class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
     }
 
     // Checks lhs_dilation is non-trivial.
-    if (!conv_op.lhs_dilation().hasValue()) {
+    if (!conv_op.lhs_dilation().has_value()) {
       return rewriter.notifyMatchFailure(conv_op,
                                          "requires lhs_dilation attribute");
     }
@@ -569,11 +834,11 @@ class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
       return rewriter.notifyMatchFailure(conv_op,
                                          "requires non-trivial lhs_dilation");
 
-    if (!conv_op.window_strides().hasValue() || conv_op.window_strides()
-                                                        .getValue()
-                                                        .getType()
-                                                        .cast<ShapedType>()
-                                                        .getRank() != 1)
+    if (!conv_op.window_strides().has_value() || conv_op.window_strides()
+                                                         .getValue()
+                                                         .getType()
+                                                         .cast<ShapedType>()
+                                                         .getRank() != 1)
       return rewriter.notifyMatchFailure(
           conv_op, "requires window_strides to equal to one");
 
@@ -624,7 +889,7 @@ class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
     return success();
   }
 
-  void CreateResizeBilinearOp(mhlo::ConvOp conv_op,
+  void CreateResizeBilinearOp(mhlo::ConvolutionOp conv_op,
                               llvm::ArrayRef<int32_t> output_sizes,
                               bool align_corners,
                               ConversionPatternRewriter &rewriter) const {
@@ -644,7 +909,7 @@ class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
     rewriter.replaceOp(conv_op, {output});
   }
 
-  LogicalResult MatchResizeOp(mhlo::ConvOp conv_op, bool &align_corners,
+  LogicalResult MatchResizeOp(mhlo::ConvolutionOp conv_op, bool &align_corners,
                               llvm::SmallVector<int, 2> &output_sizes,
                               ConversionPatternRewriter &rewriter) const {
     mhlo::ConvDimensionNumbersAttr dnums = conv_op.dimension_numbers();
@@ -662,7 +927,7 @@ class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
     // When "lhs_dilation" is 2D and contains at least "1", and "rhs_dilation"
     // are all "1"s, this "mhlo.conv" op can potentially be converted to
     // "tf.ResizeBilinearOp".
-    if (!conv_op.rhs_dilation().hasValue() || !conv_op.padding().hasValue())
+    if (!conv_op.rhs_dilation().has_value() || !conv_op.padding().has_value())
       return rewriter.notifyMatchFailure(
           conv_op, "resize op requires rhs_dilation and padding");
 
@@ -756,61 +1021,15 @@ class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
   LogicalResult matchAndRewrite(
       mhlo::SliceOp slice_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    // Strides must be 1 otherwise we cannot legalize this `mhlo.slice` op.
-    if (!AreStridesLegal(slice_op)) return failure();
-
-    rewriter.setInsertionPointAfter(slice_op.getOperation());
-    auto start_indices = slice_op.start_indices();
-    auto limit_indices = slice_op.limit_indices();
-    std::vector<int64_t> size_values;
-    for (auto pair : llvm::zip(start_indices.getValues<APInt>(),
-                               limit_indices.getValues<APInt>())) {
-      size_values.emplace_back(std::get<1>(pair).getSExtValue() -
-                               std::get<0>(pair).getSExtValue());
-    }
-
-    RankedTensorType ty =
-        RankedTensorType::get({static_cast<int64_t>(size_values.size())},
-                              rewriter.getIntegerType(64));
-    auto start = rewriter.create<ConstOp>(slice_op.getLoc(), start_indices);
-    auto size = rewriter.create<ConstOp>(
-        slice_op.getLoc(), DenseIntElementsAttr::get(ty, size_values));
-    rewriter.replaceOpWithNewOp<SliceOp>(slice_op, slice_op.getType(),
-                                         slice_op.operand(), start, size);
+    auto begin =
+        rewriter.create<ConstOp>(slice_op.getLoc(), slice_op.start_indices());
+    auto end =
+        rewriter.create<ConstOp>(slice_op.getLoc(), slice_op.limit_indices());
+    auto strides =
+        rewriter.create<ConstOp>(slice_op.getLoc(), slice_op.strides());
+    rewriter.replaceOpWithNewOp<StridedSliceOp>(
+        slice_op, slice_op.getType(), slice_op.operand(), begin, end, strides);
     return success();
-  }
-
- private:
-  // Strides are legal if stride is 1, or equals to the entire input dimension
-  // length and output dimension length is 1.
-  bool AreStridesLegal(mhlo::SliceOp slice_op) const {
-    DenseIntElementsAttr strides = slice_op.strides();
-    if (strides.isSplat() && strides.getSplatValue<APInt>() == 1) {
-      return true;
-    }
-
-    auto input_type = slice_op.operand().getType().cast<ShapedType>();
-    auto output_type = slice_op.getResult().getType().cast<ShapedType>();
-    if (!input_type.hasStaticShape() || !output_type.hasStaticShape()) {
-      return false;
-    }
-
-    for (auto p : llvm::enumerate(strides.getValues<APInt>())) {
-      const int dim = p.index();
-      const int64_t stride = p.value().getSExtValue();
-      if (stride == 1) {
-        continue;
-      }
-
-      if (stride == input_type.getDimSize(dim) &&
-          output_type.getDimSize(dim) == 1) {
-        continue;
-      }
-
-      return false;
-    }
-
-    return true;
   }
 };
 
@@ -1090,10 +1309,10 @@ bool MatchIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
 //
 // Where $dimensions is of size 1 and $dimensions[0] = 2.
 //
-// In general matches an Iota with multiple leading dimensions of size 1 added
-// through a reshape so that $dimensions[0] is the trailing dimension of the
-// reshaped tensor ($dimensions is of size 1).
+// In general matches a 1-D Iota with multiple dimensions of size 1 added
+// through a reshape.
 bool MatchReshapedIota(DenseIntElementsAttr dimensions, Value iota) {
+  if (dimensions.getNumElements() != 1) return false;
   auto reshape_op = dyn_cast_or_null<mhlo::ReshapeOp>(iota.getDefiningOp());
   if (!reshape_op) return false;
   auto operand_type =
@@ -1101,24 +1320,21 @@ bool MatchReshapedIota(DenseIntElementsAttr dimensions, Value iota) {
   if (!operand_type || !operand_type.hasStaticShape()) return false;
   auto reshape_type = reshape_op.getType().cast<RankedTensorType>();
 
-  // Allow multiple leading dims of size 1 to be added.
-  int64_t extra_reshape_dims = reshape_type.getRank() - operand_type.getRank();
-  if (extra_reshape_dims < 0) return false;
-  for (int64_t i = 0; i < extra_reshape_dims; ++i) {
-    if (reshape_type.getDimSize(i) != 1) return false;
-  }
-  // Remaining dims must match
-  for (int64_t i = 0; i < operand_type.getRank(); ++i) {
-    if (operand_type.getDimSize(i) !=
-        reshape_type.getDimSize(i + extra_reshape_dims))
-      return false;
-  }
+  // Reshape can take a 1-D iota input and add extra dims of size one.
+  if (operand_type.getRank() != 1) return false;
+  if (!dyn_cast_or_null<mhlo::IotaOp>(reshape_op.operand().getDefiningOp()))
+    return false;
 
-  auto iota_op =
-      dyn_cast_or_null<mhlo::IotaOp>(reshape_op.operand().getDefiningOp());
-  if (!iota_op || dimensions.getNumElements() != 1) return false;
-  auto dim = *dimensions.value_begin<APInt>();
-  return dim == iota_op.iota_dimension() + extra_reshape_dims;
+  int64_t iota_dim = (*dimensions.value_begin<APInt>()).getSExtValue();
+  for (int64_t i = 0, e = reshape_type.getRank(); i < e; ++i) {
+    if (i == iota_dim) {
+      if (reshape_type.getDimSize(i) != operand_type.getDimSize(0))
+        return false;
+    } else if (reshape_type.getDimSize(i) != 1) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // It matches %iota generated from the following mlir codes:
@@ -1145,48 +1361,165 @@ bool MatchConstIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
   return true;
 }
 
-// It matches %iota generated from the following mlir codes (rank 2 example):
+// Facilitate access to 1-d backing data for a tensor so that values in a 1-d
+// slice of the tensor can be accessed as if part of an ArrayView.
+class StridedArrayViewBase {
+ protected:
+  StridedArrayViewBase(ArrayRef<int64_t> shape, ArrayRef<int64_t> index,
+                       int64_t axis) {
+    assert(shape.size() == index.size());
+    assert(axis < shape.size());
+    assert(axis >= 0);
+    assert(index[axis] == 0);
+    offset_ = IndexToOffset(shape, index);
+    stride_ = StrideForAxis(shape, axis);
+    size_ = shape[axis];
+  }
+
+  // Returns the size of the 1-d slice across the tensor.
+  int64_t size() const { return size_; }
+
+  // Calculates the next index in a tensor excluding a specified axis.
+  //
+  // Returns the next index where one exists.
+  // If there is no valid next index, returns `std::nullopt`.
+  //
+  // `index` should have the same size as `shape`.
+  // Each value `dim` in `index` should be in [0, shape[dim]).
+  static llvm::Optional<SmallVector<int64_t>> NextTensorIndex(
+      SmallVector<int64_t> index, ArrayRef<int64_t> shape, int64_t fixed_axis) {
+#ifndef NDEBUG
+    assert(shape.size() == index.size());
+    assert(fixed_axis < shape.size());
+    assert(fixed_axis >= 0);
+    assert(index[fixed_axis] == 0);
+    for (size_t i = 0; i < shape.size(); ++i) {
+      assert(index[i] < shape[i]);
+      assert(index[i] >= 0);
+    }
+#endif  // NDEBUG
+    for (int64_t dim = shape.size() - 1; dim >= 0; --dim) {
+      if (dim == fixed_axis) continue;
+      ++index[dim];
+      if (index[dim] < shape[dim]) return std::move(index);
+      index[dim] = 0;
+    }
+    return llvm::None;
+  }
+
+ protected:
+  // Calculates how many values to skip across a 1-D contiguous array that holds
+  // backing data for a given shape to access the value at a given index along a
+  // StridedArrayView across a higher dimensional shape.
+  //
+  // The index `i` must be in [0, shape[axis])` where `shape` is the shape
+  // of the tensor and `axis` is the axis along the tensor that the
+  // StridedArrayView indexes along.
+  int64_t OffsetForIndex(int64_t i) const { return offset_ + i * stride_; }
+
+ private:
+  // Calculates how many values to skip across a 1-D contiguous array that holds
+  // backing data for a given shape to access the next value along a given axis.
+  //
+  // `axis` should be a valid dimension in `shape`.
+  static int64_t StrideForAxis(ArrayRef<int64_t> shape, int64_t axis) {
+    int64_t stride = 1;  // Start with the trailing dimension.
+    for (int64_t dim = shape.size() - 1; dim > axis; --dim) {
+      stride *= shape[dim];
+    }
+    return stride;
+  }
+
+  // Calculates how many values to skip across a 1-D contiguous array that holds
+  // backing data for a given shape to access data at a specified index.
+  //
+  // `index` should have the same size as `shape`.
+  // Each value `dim` in `index` should be in [0, shape[dim]).
+  static int64_t IndexToOffset(ArrayRef<int64_t> shape,
+                               ArrayRef<int64_t> index) {
+#ifndef NDEBUG
+    assert(shape.size() == index.size());
+    for (size_t i = 0; i < shape.size(); ++i) {
+      assert(index[i] < shape[i]);
+      assert(index[i] >= 0);
+    }
+#endif  // NDEBUG
+    int64_t offset = 0;
+    int64_t stride = 1;
+    for (int64_t dim = shape.size() - 1; dim >= 0; --dim) {
+      offset += index[dim] * stride;
+      stride *= shape[dim];
+    }
+    return offset;
+  }
+
+  int64_t offset_;
+  int64_t stride_;
+  int64_t size_;
+};
+
+template <typename T>
+class StridedArrayView;  // Class requires specialization.
+
+// Wraps a DenseIntElementsAttr that holds backing data for a tensor so that
+// int64_t values in a 1-d slice of the tensor can be accessed as if part of an
+// ArrayView.
+template <>
+class StridedArrayView<DenseIntElementsAttr> : StridedArrayViewBase {
+ public:
+  StridedArrayView(const DenseIntElementsAttr &data, ArrayRef<int64_t> shape,
+                   ArrayRef<int64_t> index, int64_t axis)
+      : StridedArrayViewBase(shape, index, axis), data_(data) {
+    int64_t element_count = 1;
+    for (int64_t i = 0, e = shape.size(); i < e; ++i) {
+      element_count *= shape[i];
+    }
+    assert(data.getNumElements() == element_count);
+  }
+
+  using StridedArrayViewBase::NextTensorIndex;
+  using StridedArrayViewBase::size;
+
+  int64_t operator[](int64_t i) const {
+    return data_.getValues<APInt>()[OffsetForIndex(i)].getSExtValue();
+  }
+
+ private:
+  const DenseIntElementsAttr &data_;
+};
+
+// Matches %iota generated from the following mlir codes (rank 2 example):
 //
 // %iota = mhlo.constant dense<[[0, 1, 2, ..., L],
 //                              [0, 1, 2, ..., L]
 //                              ...
 //                              [0, 1, 2, ..., L]]>,
-// where $dimensions is of size 1 and iota dimension = dimensions[0] = rank - 1.
-// In other words, %iota[s1][s2]...[sr][i] = i holds for each i in 0, ..., L.
-// It ususally comes from a fully folded IotaOp.
-// Currently we only support the case where dimensions[0] = rank - 1.
-// TODO(renjieliu): Support non-inner dimension as well.
+// where $dimensions is of size 1.
+//
+// StridedArrayViews are used to check the iota property across the constant
+// data so that the iota dimension does not need to be the (inner) z-dimension.
 bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
-  DenseElementsAttr iota_const_attr;
-  if (matchPattern(iota, m_Constant(&iota_const_attr))) {
-    // The inner most dimension must match the reduce dimension.
-    auto iota_type = iota_const_attr.getType();
-    auto reduce_dim = *dimensions.value_begin<APInt>();
-    if (reduce_dim.isNegative()) reduce_dim += iota_type.getRank();
-    if (!iota_type.hasRank() || (iota_type.getRank() < 1) ||
-        (iota_type.getRank() - 1) != reduce_dim) {
-      return false;
-    }
+  DenseIntElementsAttr iota_const_attr;
+  if (!matchPattern(iota, m_Constant(&iota_const_attr))) return false;
 
-    // The inner dimension must match [0, 1, ...., size];
-    const int64_t inner_dim = iota_type.getDimSize(iota_type.getRank() - 1);
-    if (inner_dim < 1) return false;
+  auto iota_type = iota_const_attr.getType();
+  auto iota_shape = iota_type.getShape();
+  auto reduce_dim = (*dimensions.value_begin<APInt>()).getSExtValue();
+  if (reduce_dim < 0) reduce_dim += iota_type.getRank();
 
-    int64_t index = 0;
-    // We are checking whether the iota_const values are having the pattern
-    // like:
-    // 0 1 2 ... n - 1    <= inner most.   -------
-    // 0 1 2 ... n - 1                       |
-    //  ....                             outer_loop
-    //  ....                                 |
-    // 0 1 2 ... n - 1                    ---------
-    for (auto value : iota_const_attr.getValues<APInt>()) {
-      if (value != index) return false;
-      index = (index + 1) % inner_dim;
+  auto index =
+      llvm::Optional<SmallVector<int64_t>>(llvm::in_place, iota_type.getRank());
+  while (index.has_value()) {
+    StridedArrayView<DenseIntElementsAttr> array_view(
+        iota_const_attr, iota_shape, *index, reduce_dim);
+    for (int64_t i = 0; i < array_view.size(); ++i) {
+      if (array_view[i] != i) return false;
     }
-    return true;
+    index = StridedArrayView<DenseIntElementsAttr>::NextTensorIndex(
+        std::move(*index), iota_shape, reduce_dim);
   }
-  return false;
+
+  return true;
 }
 
 // The following 5 different forms of mhlo::iota will be matched:
@@ -1419,7 +1752,7 @@ Value ConvertDot(PatternRewriter &rewriter, Value lhs, Value rhs,
                           lhs_dot_dimensions_info.FlattenedOutDimensionSize()},
                       llvm::ArrayRef<int64_t>{
                           rhs_dot_dimensions_info.FlattenedOutDimensionSize()});
-  auto matmul = rewriter.create<TF::BatchMatMulV2Op>(
+  auto matmul = rewriter.create<TF::BatchMatMulV3Op>(
       loc, RankedTensorType::get(matmul_shape, result_type.getElementType()),
       lhs_flattend.getResult(), rhs_flattend.getResult());
   auto reshaped =
@@ -1540,12 +1873,12 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
   LogicalResult matchAndRewrite(
       mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (failed(MatchReduceOpInput(reduce_op))) return failure();
+    if (failed(MatchReduceOpOperand(reduce_op))) return failure();
 
     if (failed(MatchBinaryReduceFunction<BinaryOp>(reduce_op.body())))
       return failure();
 
-    auto input = reduce_op.inputs()[0];
+    auto operand = reduce_op.operands()[0];
 
     // Get reduction dimension.
     DenseIntElementsAttr dimension = reduce_op.dimensions();
@@ -1558,20 +1891,20 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
     auto reduction_indices = rewriter.create<ConstOp>(
         reduce_op.getLoc(), dim_type, rewriter.getI64TensorAttr(reduce_dims));
 
-    // In `MatchReduceOpInput` function, we already match that the
-    // "mhlo::ReduceOp" only has one input, one init_value and one result.
+    // In `MatchReduceOpOperand` function, we already match that the
+    // "mhlo::ReduceOp" only has one operand, one init_value and one result.
 
     // If the init value matches with the init value expected for the target
     // TfReduceOp, then replace the BinaryOp with a TfReduceOp. Otherwise,
     // replace the BinaryOp with a TfBinaryOp and a TfReduceOp.
     if (succeeded(MatchInitValue(reduce_op.init_values()[0]))) {
       rewriter.replaceOpWithNewOp<TfReduceOp>(
-          reduce_op, reduce_op.getType(0), input, reduction_indices,
+          reduce_op, reduce_op.getType(0), operand, reduction_indices,
           /*keep_dim=*/rewriter.getBoolAttr(false));
       return success();
     }
     return rewriteNonMatchInitValue<TfReduceOp, TfBinaryOp>(
-        reduce_op, input, reduction_indices, rewriter);
+        reduce_op, operand, reduction_indices, rewriter);
   }
 
  private:
@@ -1580,13 +1913,14 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
   virtual LogicalResult MatchInitValue(Value init_value) const = 0;
 
   // This function tries to match that the "mhlo::ReduceOp" only has one
-  // input, one init_value and one result.
-  LogicalResult MatchReduceOpInput(mhlo::ReduceOp reduce_op) const {
-    if (reduce_op.inputs().size() != 1 || reduce_op.init_values().size() != 1 ||
+  // operand, one init_value and one result.
+  LogicalResult MatchReduceOpOperand(mhlo::ReduceOp reduce_op) const {
+    if (reduce_op.operands().size() != 1 ||
+        reduce_op.init_values().size() != 1 ||
         reduce_op.getResults().size() != 1)
       return failure();
 
-    if (!reduce_op.inputs()[0].getType().isa<RankedTensorType>())
+    if (!reduce_op.operands()[0].getType().isa<RankedTensorType>())
       return failure();
     if (!reduce_op.getType(0).isa<RankedTensorType>()) return failure();
     return success();
@@ -1707,14 +2041,15 @@ class ConvertReduceOpToTfArgMinMax
   LogicalResult matchAndRewrite(
       mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (reduce_op.inputs().size() != 2) return failure();
+    if (reduce_op.operands().size() != 2) return failure();
     if (reduce_op.dimensions().getNumElements() != 1) return failure();
 
-    // Check that the input init is the expected value.
-    DenseElementsAttr input_init;
-    if (!matchPattern(reduce_op.init_values().front(), m_Constant(&input_init)))
+    // Check that the operand init is the expected value.
+    DenseElementsAttr operand_init;
+    if (!matchPattern(reduce_op.init_values().front(),
+                      m_Constant(&operand_init)))
       return failure();
-    if (!IsValueInitValue(input_init)) return failure();
+    if (!IsValueInitValue(operand_init)) return failure();
 
     // Check that the iota init is zero.
     DenseElementsAttr iota_init;
@@ -1724,15 +2059,15 @@ class ConvertReduceOpToTfArgMinMax
 
     // Verify that the second argument is an Iota op along the same dimension
     // as the reduction.
-    Value iota = reduce_op.inputs().back();
+    Value iota = reduce_op.operands().back();
     if (!MatchIota(reduce_op.dimensions(), iota)) return failure();
 
     // Match the reduction computation.
-    const bool is_float = input_init.getElementType().isa<FloatType>();
+    const bool is_float = operand_init.getElementType().isa<FloatType>();
     if (failed(matchReduceComputation(reduce_op.body(), is_float)))
       return failure();
 
-    Value input = reduce_op.inputs().front();
+    Value operand = reduce_op.operands().front();
     int64_t axis = reduce_op.dimensions().getValues<int64_t>()[0];
 
     auto dim_type = RankedTensorType::get({1}, rewriter.getI64Type());
@@ -1743,11 +2078,11 @@ class ConvertReduceOpToTfArgMinMax
     // we have separate ops for them. If only one of them is used then the other
     // one will be garbage collected later.
     auto tf_reduce_op = rewriter.create<TfReduce>(
-        reduce_op.getLoc(), reduce_op->getResult(0).getType(), input,
+        reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
         reduction_indices,
         /*keep_dim=*/rewriter.getBoolAttr(false));
     auto tf_argreduce_op = rewriter.create<TfArgReduce>(
-        reduce_op.getLoc(), reduce_op->getResult(1).getType(), input,
+        reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
         reduction_indices);
 
     rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
@@ -1962,7 +2297,7 @@ bool IsSpatialPoolingWithoutDilation(
   const uint64_t rank = rw.window_dimensions().size();
   if (rank <= 2) return false;
 
-  if (rw.window_strides().hasValue()) {
+  if (rw.window_strides().has_value()) {
     window_strides->insert(window_strides->end(),
                            rw.window_strides()->getValues<int64_t>().begin(),
                            rw.window_strides()->getValues<int64_t>().end());
@@ -1971,7 +2306,7 @@ bool IsSpatialPoolingWithoutDilation(
   }
 
   llvm::SmallVector<int64_t, 10> padding;
-  if (rw.padding().hasValue()) {
+  if (rw.padding().has_value()) {
     padding.insert(padding.begin(), rw.padding()->getValues<int64_t>().begin(),
                    rw.padding()->getValues<int64_t>().end());
   } else {
@@ -1990,12 +2325,12 @@ bool IsSpatialPoolingWithoutDilation(
       padding[2 * channel_dim + 1] != 0)
     return false;
 
-  if (rw.window_dilations().hasValue() &&
+  if (rw.window_dilations().has_value() &&
       !(rw.window_dilations()->isSplat() &&
         rw.window_dilations()->getSplatValue<APInt>() == 1))
     return false;
 
-  if (rw.base_dilations().hasValue() &&
+  if (rw.base_dilations().has_value() &&
       !(rw.base_dilations()->isSplat() &&
         rw.base_dilations()->getSplatValue<APInt>() == 1))
     return false;
@@ -2007,17 +2342,16 @@ bool IsSpatialPoolingWithoutDilation(
 
   // Check that the individual padding values are corresponding to SAME
   // padding from TensorFlow.
-  RankedTensorType input_type =
-      rw.inputs()[0].getType().dyn_cast<RankedTensorType>();
+  auto operand_type = rw.operands()[0].getType().dyn_cast<RankedTensorType>();
   RankedTensorType output_type =
       rw.getResult(0).getType().dyn_cast<RankedTensorType>();
-  if (!input_type || !output_type) return false;
+  if (!operand_type || !output_type) return false;
 
   for (uint64_t i = 1; i < rank - 1; ++i) {
     int64_t padding_size =
         (output_type.getShape()[i] - 1) * (*window_strides)[i] +
         rw.window_dimensions().getValues<int64_t>()[i] -
-        input_type.getShape()[i];
+        operand_type.getShape()[i];
     if (padding[2 * i] != tensorflow::MathUtil::FloorOfRatio(
                               padding_size, static_cast<int64_t>(2)) ||
         padding[2 * i + 1] != tensorflow::MathUtil::CeilOfRatio(
@@ -2041,7 +2375,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
   LogicalResult matchAndRewrite(
       mhlo::ReduceWindowOp rw, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (rw.getNumResults() != 1 || rw.inputs().size() != 1 ||
+    if (rw.getNumResults() != 1 || rw.operands().size() != 1 ||
         rw.init_values().size() != 1)
       return failure();
 
@@ -2049,7 +2383,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
       return failure();
 
     // Ensure that initial_values are as expected.
-    auto const_op = llvm::dyn_cast_or_null<mhlo::ConstOp>(
+    auto const_op = llvm::dyn_cast_or_null<mhlo::ConstantOp>(
         rw.init_values()[0].getDefiningOp());
     if (!const_op) return failure();
     auto const_op_dense_value = const_op.value().cast<DenseElementsAttr>();
@@ -2057,15 +2391,17 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
       return failure();
     }
 
-    ShapedType input_type = rw.inputs()[0].getType().cast<ShapedType>();
+    auto operand_type = rw.operands()[0].getType().cast<ShapedType>();
 
     // For a cumulative op, require a tensor of 1s for each dimension in
-    // input.
+    // operand.
     auto is_splat_int64_ones =
         [&rewriter,
-         &input_type](const ::llvm::Optional<DenseIntElementsAttr> &attr) {
-          if (!attr.hasValue()) return false;
-          if (attr->getType().getShape()[0] != input_type.getRank())
+         &operand_type](const ::llvm::Optional<DenseIntElementsAttr> &attr) {
+          // According to the definition, the default value of these attributes
+          // are all ones when unspecified.
+          if (!attr.has_value()) return true;
+          if (attr->getType().getShape()[0] != operand_type.getRank())
             return false;
           if (!attr->isSplat()) return false;
           if (attr->getElementType() != rewriter.getIntegerType(64))
@@ -2086,7 +2422,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     // and there is a 1-entry for each input dimension not being operated
     // over.
     const auto &window_dimensions = rw.window_dimensions();
-    if (window_dimensions.size() != input_type.getRank()) return failure();
+    if (window_dimensions.size() != operand_type.getRank()) return failure();
     int64_t cumulative_axis = -1;
     for (int64_t i = 0, e = window_dimensions.size(); i < e; ++i) {
       int64_t window_dimension = window_dimensions.getValues<int64_t>()[i];
@@ -2094,8 +2430,12 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
       // Cumulative axis already set.
       if (cumulative_axis != -1) return failure();
       // Potential cumulative axis is not the right size.
-      if (window_dimension != input_type.getShape()[i]) return failure();
+      if (window_dimension != operand_type.getShape()[i]) return failure();
       cumulative_axis = i;
+    }
+
+    if (cumulative_axis == -1) {
+      return rewriter.notifyMatchFailure(rw, "no reduced dimension is found.");
     }
 
     // For a cumulative op, padding (expressed as a list of left-padding and
@@ -2104,9 +2444,9 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     // where N is the size of the input dimension being operated over.
     if (!rw.padding()) return failure();
     const auto &padding = rw.padding()->getValues<int64_t>();
-    if (padding.size() != input_type.getRank() * 2) return failure();
-    int64_t padding_value = input_type.getShape()[cumulative_axis] - 1;
-    for (int64_t dim = 0; dim < input_type.getRank(); ++dim) {
+    if (padding.size() != operand_type.getRank() * 2) return failure();
+    int64_t padding_value = operand_type.getShape()[cumulative_axis] - 1;
+    for (int64_t dim = 0; dim < operand_type.getRank(); ++dim) {
       int64_t left_padding = padding[2 * dim];
       int64_t right_padding = padding[2 * dim + 1];
       if (dim == cumulative_axis) {
@@ -2121,7 +2461,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
         rw->getLoc(),
         rewriter.getIntegerAttr(rewriter.getIntegerType(64), cumulative_axis));
 
-    rewriter.replaceOpWithNewOp<TfCumOp>(rw, rw.getType(0), rw.inputs()[0],
+    rewriter.replaceOpWithNewOp<TfCumOp>(rw, rw.getType(0), rw.operands()[0],
                                          axis, /* exclusive */ false,
                                          /* reverse */ false);
     return success();
@@ -2219,7 +2559,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       }
 
       return replaceWithAvgPool(
-          div_op, rw.inputs()[0],
+          div_op, rw.operands()[0],
           llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
           window_strides, "VALID", rewriter);
     }
@@ -2231,13 +2571,13 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(rw_rhs.body())))
         return failure();
 
-      // Check that the RHS is a reduce_window over a constant 1 input with 0 as
-      // the init value.
-      DenseFPElementsAttr rhs_input;
+      // Check that the RHS is a reduce_window over a constant 1 operand with 0
+      // as the init value.
+      DenseFPElementsAttr rhs_operand;
       if (!isFloatZero(rw_rhs.init_values()[0]) ||
-          !matchPattern(rw_rhs.inputs()[0], m_Constant(&rhs_input)) ||
-          !rhs_input.isSplat() ||
-          !rhs_input.getSplatValue<APFloat>().isExactlyValue(1.0))
+          !matchPattern(rw_rhs.operands()[0], m_Constant(&rhs_operand)) ||
+          !rhs_operand.isSplat() ||
+          !rhs_operand.getSplatValue<APFloat>().isExactlyValue(1.0))
         return failure();
 
       // Check that the two reduce window have the same window configuration.
@@ -2249,7 +2589,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
         return failure();
 
       return replaceWithAvgPool(
-          div_op, rw.inputs()[0],
+          div_op, rw.operands()[0],
           llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
           window_strides, padding_mode, rewriter);
     }
@@ -2317,7 +2657,7 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     }
 
     return replaceWithMaxPool(
-        rw, rw.inputs()[0],
+        rw, rw.operands()[0],
         llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
         window_strides, padding_mode, rewriter);
   }
@@ -2414,42 +2754,6 @@ bool IsIotaAttr(ArrayRef<int64_t> arr, int64_t size) {
     ++iota;
   }
   return true;
-}
-
-DenseIntElementsAttr GetInversePermutation(
-    llvm::ArrayRef<int64_t> permutation_array,
-    ConversionPatternRewriter &rewriter) {
-  llvm::SmallVector<int64_t, 4> inverse_permutation_array(
-      permutation_array.size());
-  const auto permutation_array_size = permutation_array.size();
-  for (int64_t i = 0; i < permutation_array_size; ++i) {
-    inverse_permutation_array[permutation_array[i]] = i;
-  }
-  return DenseIntElementsAttr::get(
-      RankedTensorType::get(inverse_permutation_array.size(),
-                            rewriter.getI64Type()),
-      inverse_permutation_array);
-}
-
-struct PermutationAndShape {
-  DenseIntElementsAttr permutation;
-  ShapedType shape;
-};
-
-PermutationAndShape GetPermutationAndTransposedShape(
-    llvm::ArrayRef<int64_t> permutation_array, ShapedType input_type,
-    ConversionPatternRewriter &rewriter) {
-  assert(permutation_array.size() == input_type.getRank());
-  llvm::SmallVector<int64_t, 4> transposed_shape(permutation_array.size());
-  for (int64_t i = 0; i < permutation_array.size(); ++i) {
-    transposed_shape[i] = input_type.getDimSize(permutation_array[i]);
-  }
-  auto transposed_type =
-      RankedTensorType::get(transposed_shape, input_type.getElementType());
-  DenseIntElementsAttr permutation = DenseIntElementsAttr::get(
-      RankedTensorType::get(permutation_array.size(), rewriter.getI64Type()),
-      permutation_array);
-  return {permutation, transposed_type};
 }
 
 // Convert updates into canonical form as expected by tf.scatter ops.
@@ -2827,12 +3131,16 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
   LogicalResult matchAndRewrite(
       mhlo::ScatterOp scatter_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    Value operand = scatter_op.operand();
+    OperandRange operands = scatter_op.operands();
     Value indices = scatter_op.scatter_indices();
-    Value updates = scatter_op.updates();
-    ShapedType operand_type = operand.getType().cast<ShapedType>();
+    OperandRange updates = scatter_op.updates();
+    if (operands.size() != 1 || updates.size() != 1) return failure();
+
+    ShapedType operand_type = operands[0].getType().cast<ShapedType>();
     ShapedType indices_type = indices.getType().cast<ShapedType>();
-    ShapedType updates_type = updates.getType().cast<ShapedType>();
+    ShapedType updates_type = updates[0].getType().cast<ShapedType>();
+
+    Value new_updates = updates[0];
 
     // Can only convert with static shaped scatter.
     if (!operand_type.hasStaticShape() || !indices_type.hasStaticShape() ||
@@ -2859,7 +3167,7 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
     // in the update tensor.
     auto update_window_dims = scatter_dimension_numbers.getUpdateWindowDims();
     if (failed(CanonicalizeScatterUpdates(scatter_op, update_window_dims,
-                                          indices, indices_type, updates,
+                                          indices, indices_type, new_updates,
                                           updates_type, rewriter))) {
       return failure();
     }
@@ -2873,8 +3181,8 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
         IsIotaAttr(scatter_dims_to_operand_dims,
                    indices_type.getShape().back())) {
       rewriter.replaceOpWithNewOp<TfOp>(scatter_op,
-                                        scatter_op.getResult().getType(),
-                                        operand, indices, updates);
+                                        scatter_op.getResult(0).getType(),
+                                        operands[0], indices, new_updates);
       return success();
     }
     // Insert tranposes to support scatter operations generated from
@@ -2906,19 +3214,20 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
 
     Location loc = scatter_op.getLoc();
     auto transposed_operand = rewriter.create<mhlo::TransposeOp>(
-        loc, permutation_and_shape.shape, operand,
+        loc, permutation_and_shape.shape, operands[0],
         permutation_and_shape.permutation);
 
     // Apply TF scatter to update the trailing dimensions of the
     // transposed operand.
-    auto tf_scatter_op = rewriter.create<TfOp>(
-        loc, permutation_and_shape.shape, transposed_operand, indices, updates);
+    auto tf_scatter_op =
+        rewriter.create<TfOp>(loc, permutation_and_shape.shape,
+                              transposed_operand, indices, new_updates);
 
     // Reverse the earlier transpose.
     auto inverse_permutation =
         GetInversePermutation(permutation_array, rewriter);
     rewriter.replaceOpWithNewOp<mhlo::TransposeOp>(
-        scatter_op, scatter_op.getResult().getType(), tf_scatter_op,
+        scatter_op, scatter_op.getResult(0).getType(), tf_scatter_op,
         inverse_permutation);
 
     return success();
@@ -2931,7 +3240,7 @@ using ConvertScatterMaxOp =
 using ConvertScatterMinOp =
     ConvertScatterOp<mhlo::MinOp, TF::TensorScatterMinOp>;
 using ConvertScatterSubOp =
-    ConvertScatterOp<mhlo::SubOp, TF::TensorScatterSubOp>;
+    ConvertScatterOp<mhlo::SubtractOp, TF::TensorScatterSubOp>;
 using ConvertScatterUpdateOp =
     ConvertScatterOp<void, TF::TensorScatterUpdateOp>;
 
@@ -3019,9 +3328,10 @@ void LegalizeHloToTf::runOnOperation() {
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet *patterns,
                                      MLIRContext *context) {
   patterns->add<
-      ConvertAvgPoolOp, ConvertConvOp, ConvertNonTrivialConvOp,
-      ConvertDynamicSliceOp, ConvertDynamicUpdateSliceOp, ConvertGatherOp,
-      ConvertIfOp, ConvertMaxPoolOp, ConvertScatterAddOp, ConvertScatterMaxOp,
+      ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
+      ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
+      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
+      ConvertMaxPoolOp, ConvertScatterAddOp, ConvertScatterMaxOp,
       ConvertScatterMinOp, ConvertScatterSubOp, ConvertScatterUpdateOp,
       ConvertSliceOp, ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
       ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,

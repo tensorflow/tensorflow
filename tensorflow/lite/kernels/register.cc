@@ -40,6 +40,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU(), /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());
+  AddBuiltin(BuiltinOperator_RELU_0_TO_1, Register_RELU_0_TO_1());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6(), /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_TANH, Register_TANH(), /* min_version = */ 1,
@@ -342,6 +343,16 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_DYNAMIC_UPDATE_SLICE,
              Register_DYNAMIC_UPDATE_SLICE());
+  AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_PROD,
+             Register_UNSORTED_SEGMENT_PROD());
+  AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_MAX,
+             Register_UNSORTED_SEGMENT_MAX());
+  AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_MIN,
+             Register_UNSORTED_SEGMENT_MIN());
+  AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_SUM,
+             Register_UNSORTED_SEGMENT_SUM());
+  AddBuiltin(BuiltinOperator_ATAN2, Register_ATAN2());
+  AddBuiltin(BuiltinOperator_SIGN, Register_SIGN());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

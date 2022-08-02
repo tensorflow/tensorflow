@@ -59,7 +59,9 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
@@ -322,7 +324,7 @@ Status SetNodeDeviceForTPUCommunication(DeviceNameUtils::ParsedName device,
   device.id = 0;
 
   node->set_assigned_device_name(DeviceNameUtils::ParsedNameToString(device));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Iterate over the nodes in the original graph and find all the TPUReplicate
@@ -414,7 +416,7 @@ Status FindTaggedNodes(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Helper class to spread TPU computation arguments and return values
@@ -511,7 +513,7 @@ Status ValidateCoreNumber(int64_t core, int64_t num_cores_per_replica) {
                                                ". The valid core IDs are [0..",
                                                num_cores_per_replica, ")");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FindHostComputeKeyPlaceholderNodes(
@@ -545,7 +547,7 @@ Status FindHostComputeKeyPlaceholderNodes(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReplaceCompilationResultNodeWithIdentity(Graph* graph, Node** node) {
@@ -580,7 +582,7 @@ Status ReplaceCompilationResultNodeWithIdentity(Graph* graph, Node** node) {
   graph->RemoveNode(old_node);
 
   *node = id_node;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetStepMarkerLocation(const Node& replicate_node,
@@ -597,7 +599,7 @@ Status GetStepMarkerLocation(const Node& replicate_node,
                                      step_marker_location_attr);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Extracts a map of dimension and number of splits for tiled input from xla
@@ -619,7 +621,7 @@ Status GetDimensionIndicesAndNumSplitsFromSharding(
     return errors::InvalidArgument("Arg has unnecessary tiled sharding: ",
                                    sharding.DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Updates contents of the function with `function_name` in function library
@@ -631,7 +633,7 @@ Status UpdateFunctionLibDefinition(const Graph& new_graph,
   FunctionDef graph_fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(new_graph, function_name, &graph_fdef));
   TF_RETURN_IF_ERROR(flib_def->ReplaceFunction(function_name, graph_fdef));
-  return Status::OK();
+  return OkStatus();
 }
 
 struct NodeOut {
@@ -1353,7 +1355,7 @@ Status SetPaddingNodesDevices(Graph* graph) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 const string& AssignedOrRequestedDevice(const Node* node) {
@@ -1445,7 +1447,7 @@ Status ParseAndValidateSharding(const NodeAndSharding& node_and_sharding,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // As XlaSharding node may be followed by Cast op or an Identity op,
@@ -1520,7 +1522,7 @@ Status ParseAndValidateShardingFromNeighbors(
   if (node_and_sharding.has_value()) {
     TF_RETURN_IF_ERROR(ParseAndValidateSharding(
         *node_and_sharding, num_cores_per_replica, inferred_core_id, result));
-    return Status::OK();
+    return OkStatus();
   }
 
   // When we use variable in TPU computation, we always have a
@@ -1543,11 +1545,11 @@ Status ParseAndValidateShardingFromNeighbors(
         TF_RETURN_IF_ERROR(ParseAndValidateSharding(*node_and_sharding,
                                                     num_cores_per_replica,
                                                     inferred_core_id, result));
-        return Status::OK();
+        return OkStatus();
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -1583,7 +1585,7 @@ static Status GetTPUDeviceNames(
   TF_RETURN_IF_ERROR(DistributedTPURewriteHelpers::GetTPUDevices(
       replication_spec, device_set, num_tpus_per_task, tpu_devices));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Parses the topology attribute of TPUReplicate, and populates *topology with
@@ -1640,7 +1642,7 @@ static Status ParseTopologyAttr(const string& topology_attr,
       (*topology)(x, y, z, core) = {task, device};
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Parses the value of the device_assignment attribute to TPUReplicate.
@@ -1701,7 +1703,7 @@ static Status ParseDeviceAssignmentAttr(
       (*device_assignment)(replica, logical_core) = core_location;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Builds TensorFlow device assignments for the special case of a single core
@@ -1724,7 +1726,7 @@ static Status BuildFullMeshDeviceAssignment(
     (*tf_device_assignment)[i] = {tpu_devices[task][device]->name()};
     devices_to_lock->push_back(i);
   }
-  return Status::OK();
+  return OkStatus();
 }
 // LINT.ThenChange(//tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.cc)
 
@@ -1767,7 +1769,7 @@ static Status BuildGeneralDeviceAssignment(
       devices_to_lock->push_back((task * tpu_devices[task].size()) + device);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status DistributedTPURewritePass::BuildDeviceAssignment(
@@ -1841,7 +1843,7 @@ static Status BuildGeneralDeviceAssignment(
     if (num_replicas == 1) {
       (*tf_device_assignment)[0] = {tpu_devices[0][0]->name()};
       devices_to_lock->push_back(0);
-      return Status::OK();
+      return OkStatus();
     }
 
     // Otherwise, num_replicas is equal to the number of cores, and we build a
@@ -1883,7 +1885,7 @@ Status DistributedTPURewritePass::GetComputationForTPUReplicateOp(
   CopyGraph(*fbody->graph, computation);
   *arg_types = fbody->arg_types;
   *retval_types = fbody->ret_types;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Grab the InferredShape corresponding to an edge input.
@@ -1897,7 +1899,7 @@ static Status GetEdgeShape(const GraphShapeInfo& shape_info, const Edge& edge,
   }
   TF_RET_CHECK(it->second.size() > edge.src_output());
   *info = &it->second[edge.src_output()];
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DistributedTPURewritePass::GetArgAndRetvalShapes(
@@ -1937,7 +1939,7 @@ Status DistributedTPURewritePass::GetArgAndRetvalShapes(
           info->shape.DebugString());
     }
     (*arg_shapes)[input_index] = status.ValueOrDie();
-    return Status::OK();
+    return OkStatus();
   };
 
   for (int64_t i = 0; i < params_info.NumReplicas(); ++i) {
@@ -2017,7 +2019,7 @@ Status DistributedTPURewritePass::GetArgAndRetvalShapes(
         "Replicated TPU computation is missing InferredShape: ",
         FormatNodeForError(node));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Verifies that all nodes have legal sharding.
@@ -2028,7 +2030,7 @@ static Status ValidateCoreNumbers(const Graph& graph,
                         ParseShardingFromDevice(*n, num_cores_per_replica,
                                                 /*add_metadata=*/true));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static Status InferXlaShardingFromNeighbors(
@@ -2085,12 +2087,12 @@ static Status InferXlaShardingFromNeighbors(
               }
             }
           }
-          return Status::OK();
+          return OkStatus();
         };
     TF_RETURN_IF_ERROR(parse_sharding_from_function(edge));
   }
   *output_node_and_sharding = result;
-  return Status::OK();
+  return OkStatus();
 }
 
 bool UseSpmdForXlaPartitioning(const Node* replicate_node) {
@@ -2453,7 +2455,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
         "XLA SPMD only supports cases where all inputs/outputs "
         "exist on every partition (sharded or replicated).");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Builds Shape nodes that compute the shapes of arguments whose shapes are not
@@ -2547,7 +2549,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -2605,6 +2607,12 @@ Status DistributedTPURewritePass::BuildCompileNode(
   VLOG(1) << "BuildCompileNode";
 
   tpu::TPUCompileMetadataProto proto;
+  if (replicate_node) {
+    std::string str;
+    TF_RETURN_IF_ERROR(GetNodeAttr(replicate_node->attrs(),
+                                   "tpu_compile_options_proto", &str));
+    TF_RET_CHECK(proto.mutable_compile_options()->ParseFromString(str));
+  }
   proto.set_num_replicas(params_info.NumReplicas());
   proto.set_num_cores_per_replica(num_cores_per_replica);
   proto.set_function_library_fingerprint(library_fingerprint);
@@ -2735,7 +2743,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
                    dynamic_shape_nodes.size() + i);
   }
   VLOG(1) << "BuildCompileNode()";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DistributedTPURewritePass::FindGuaranteedConstantInputs(
@@ -2748,7 +2756,7 @@ Status DistributedTPURewritePass::FindGuaranteedConstantInputs(
   for (int i = variables_limits.first; i < variables_limits.second; ++i) {
     guaranteed_constants->push_back(input_edges[i]->src());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DistributedTPURewritePass::FindVariableInputs(
@@ -2804,7 +2812,7 @@ Status DistributedTPURewritePass::FindVariableInputs(
           node->DebugString());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Builds a NoOp node, used for building control dependencies.
@@ -2821,7 +2829,7 @@ static Status BuildNoopNode(const Node& source, StringPiece name,
   if (!device.empty()) {
     (*node)->set_assigned_device_name(device);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DistributedTPURewritePass::ConnectHostComputeNodes(
@@ -2857,7 +2865,7 @@ Status DistributedTPURewritePass::ConnectHostComputeNodes(
     graph->AddEdge(compile_node, 1, node, input_index);
   }
   graph->RemoveNode(key_placeholder_node);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DistributedTPURewritePass::BuildVariableReads(
@@ -2886,7 +2894,7 @@ Status DistributedTPURewritePass::BuildVariableReads(
 
     graph->AddControlEdge(control_predecessor, read_node);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool DistributedTPURewritePass::ContainsResourceWriteOp(
@@ -2960,7 +2968,7 @@ Status DistributedTPURewritePass::BuildVariableWrites(
     graph->AddEdge(write.predicate, write.predicate_output, cb.pred(), 0);
     graph->AddEdge(write.value, write.value_output, switch_val, 0);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -2969,7 +2977,7 @@ namespace {
 Status ComputeShardedArgShapes(TensorShape* shape,
                                const xla::OpSharding& sharding) {
   if (sharding.type() != xla::OpSharding::OTHER) {
-    return Status::OK();
+    return OkStatus();
   }
   if (!shape->IsFullyDefined()) {
     return errors::Internal(
@@ -2990,7 +2998,7 @@ Status ComputeShardedArgShapes(TensorShape* shape,
                  << ", sharding: " << sharding.DebugString();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Creates nodes for zero-initialized dummy arguments for TPUExecute nodes.
@@ -3075,7 +3083,7 @@ Status CreatePartitionedDummyVarArgs(
   ShardedInputIndex input_index{replica_id, orig_arg_num};
   auto iter = arg_index_to_sharded_input_map->find(input_index);
   if (iter != arg_index_to_sharded_input_map->end()) {
-    return Status::OK();
+    return OkStatus();
   }
   const int repeat = sharding.replicate_on_last_tile_dim()
                          ? *sharding.tile_assignment_dimensions().rbegin()
@@ -3116,7 +3124,7 @@ Status CreatePartitionedDummyVarArgs(
         sharded_input_info;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Helper that creates an IdentityN node containing all of the variables
@@ -3904,7 +3912,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   for (Node* node : to_be_removed_nodes) {
     graph->RemoveNode(node);
   }
-  return Status::OK();
+  return OkStatus();
 }  // NOLINT(readability/fn_size)
 
 /* static */ Status DistributedTPURewritePass::CopyOutsideCompilationNodes(
@@ -3947,7 +3955,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
     node_image_vector.resize(replica_index + 1);
     node_image_vector[replica_index] = image;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status DistributedTPURewritePass::ReplicateOutsideCompilationNodes(
@@ -3997,7 +4005,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status DistributedTPURewritePass::CopyOutsideCompilationEdges(
@@ -4125,7 +4133,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
       // when iterating over in_edges of dst.
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status DistributedTPURewritePass::ReplicateOutsideCompilationEdges(
@@ -4138,7 +4146,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
         CopyOutsideCompilationEdges(oc_cluster_iter.second, node_images,
                                     outside_compilation_inputs, graph));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status DistributedTPURewritePass::RemoveOutsideCompilationNodes(
@@ -4150,7 +4158,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
       graph->RemoveNode(node);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status
@@ -4270,7 +4278,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
           node->AddAttr(kXlaReplicaIdAttrName, replica_id);
         }
       }
-      return Status::OK();
+      return OkStatus();
     };
 
     for (Node* n : nodes_to_lower) {
@@ -4338,7 +4346,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
     g->RemoveNode(n);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status DistributedTPURewritePass::ParseHostComputeCores(
@@ -4357,7 +4365,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
       (*host_compute_core)[oc_cluster_name] = 0;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status DistributedTPURewritePass::GetDeviceTopology(
@@ -4412,7 +4420,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
       *num_cores_per_replica, topology, device_assignment, tf_device_assignment,
       devices_to_lock, xla_device_assignment));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status DistributedTPURewritePass::GetIOTypes(
@@ -4487,7 +4495,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
       params_info->mutable_mirrored_variable_indices()->insert(index);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status DistributedTPURewritePass::BuildSequencingNodes(
@@ -4537,7 +4545,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
       graph->AddControlEdge(*control_after, successor);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status DistributedTPURewritePass::DealWithConstantsAndVariables(
@@ -4555,7 +4563,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   if (host_transfer_sequencer != nullptr) {
     graph->AddControlEdge(host_transfer_sequencer, control_after);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status
@@ -4662,7 +4670,7 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
                     /*device=*/"", graph, control_after_compilation));
   graph->AddControlEdge(last_node_before_sequencer, *control_after_compilation);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Updates the head and tail outside compiled nodes so that nodes have the
@@ -4695,7 +4703,7 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
     node->ClearAttr(kTPUReplicateAttr);
     node->ClearAttr(kOutsideCompilationAttr);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Performs the rewrite on a single TPUReplicate node.
@@ -4860,7 +4868,7 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
       outside_compilation_node_images, graph));
 
   graph->RemoveNode(replicate_node);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Adds sharded weight update optimization for each host training loop.
@@ -4879,7 +4887,7 @@ DistributedTPURewritePass::PerformHostTrainingLoopOptimization(
   if (!s.ok()) {
     VLOG(2) << "No valid host training loop found. Skipping sharded weight "
             << "update optimization.";
-    return Status::OK();
+    return OkStatus();
   }
 
   for (const auto& host_loop : host_training_loops_info) {
@@ -4909,16 +4917,24 @@ DistributedTPURewritePass::PerformHostTrainingLoopOptimization(
       TF_RETURN_IF_ERROR(tpu::AddReshardOp(graph, host_loop));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DistributedTPURewritePass::PlaceUnassignedDeviceNodesOnTPUIfPossible(
     Graph* graph) {
   PropagateDevices(CanAcceptTPUDevicePropagation, IsTpuDevice, graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DistributedTPURewritePass::Run(
+    const GraphOptimizationPassOptions& options) {
+  Status status = InternalRun(options);
+  OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::TF_XLA_BRIDGE, status);
+  return status;
+}
+
+Status DistributedTPURewritePass::InternalRun(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "DistributedTPURewritePass::Run";
 
@@ -4961,7 +4977,7 @@ Status DistributedTPURewritePass::Run(
                                options.flib_def);
     VLOG(1) << "Replicate nodes are empty. DistributedTPURewritePass::Run() "
                "finished";
-    return Status::OK();
+    return OkStatus();
   }
 
   std::unordered_map<string, Node*> host_compute_key_placeholder_map;
@@ -5037,7 +5053,7 @@ Status DistributedTPURewritePass::Run(
     VLOG(1) << "Host training loop optimization finished.";
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool DistributedTPURewritePass::distribute_vars_ = false;

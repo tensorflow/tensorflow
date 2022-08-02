@@ -19,14 +19,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 
 namespace tensorflow {
 
@@ -48,8 +46,7 @@ struct ConvertLmhloToGpuBinaryPass
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
-    registry.insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
-                    mlir::gpu::GPUDialect>();
+    xla::gpu::IrEmitterUnnested::GetDependentDialects(registry);
   }
 };
 

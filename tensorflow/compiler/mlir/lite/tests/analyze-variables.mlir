@@ -121,7 +121,7 @@ module {
     func.return
   }
 
-  func private @__reduce_func(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}) -> (tensor<i32>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+  func.func private @__reduce_func(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}) -> (tensor<i32>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
     %0 = "tf.JustPretend"() : () -> (tensor<i32>)
     func.return %0: tensor<i32>
   }

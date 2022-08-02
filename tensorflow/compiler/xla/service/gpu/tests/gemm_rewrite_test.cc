@@ -13,14 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -33,6 +37,8 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+namespace m = ::xla::match;
 
 class GemmRewriteTest : public GpuCodegenTest {
  public:
@@ -65,9 +71,9 @@ TEST_F(GemmRewriteTest, SimpleRewrite) {
 HloModule SimpleGemm
 
 ENTRY AddDotsFunc {
-  x = f32[2,2] parameter(0)
-  y = f32[2,2] parameter(1)
-  ROOT dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  ROOT dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 )";
@@ -76,10 +82,10 @@ ENTRY AddDotsFunc {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
-; CHECK-NEXT:    [[INSTR_0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
-; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[INSTR_2:%[^ ]+]] = f32[2,2]{1,0} custom-call([[INSTR_0]], [[INSTR_1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"lhs_stride\":\"4\",\"rhs_stride\":\"4\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,3], y: f32[3,4]) -> f32[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
 }
 
@@ -97,7 +103,6 @@ ENTRY %test {
 
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK: \"batch_size\":\"70\"
 ; CHECK: selected_algorithm
       )");
 }
@@ -149,15 +154,41 @@ ENTRY AddDotsFunc {
   }
 }
 
+TEST_F(GemmRewriteTest, MultipleContractingDims) {
+  const char* hlo_text = R"(
+HloModule MultipleContractingCheckGemm
+
+ENTRY AddDotsFunc {
+  x = f32[3,4,2] parameter(0)
+  y = f32[3,4,5] parameter(1)
+  ROOT dot_a = f32[2,5] dot(x, y), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-NOT:     copy
+;
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[3,4,2], y: f32[3,4,5]) -> f32[2,5] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,4,2]{2,1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4,5]{2,1,0} parameter(1)
+; CHECK-DAG:     [[BITCAST0:%[^ ]+]] = f32[2,12]{0,1} bitcast([[P0]])
+; CHECK-DAG:     [[BITCAST1:%[^ ]+]] = f32[12,5]{1,0} bitcast([[P1]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,5]{1,0} custom-call([[BITCAST0]], [[BITCAST1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
+}
+
 TEST_F(GemmRewriteTest, ArgTransposeFoldCheck) {
   const char* hlo_text = R"(
 HloModule ArgTransposeFoldGemm
 
 ENTRY AddDotsFunc {
-  x = f32[2,2] parameter(0)
-  y = f32[2,2] parameter(1)
-  x_transposed = f32[2,2] transpose(x), dimensions={1, 0}
-  ROOT dot_a = f32[2,2] dot(x_transposed, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  x = f32[3,2] parameter(0)
+  y = f32[3,4] parameter(1)
+  x_transposed = f32[2,3] transpose(x), dimensions={1, 0}
+  ROOT dot_a = f32[2,4] dot(x_transposed, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 )";
@@ -166,10 +197,10 @@ ENTRY AddDotsFunc {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
-; CHECK-NEXT:    [[INSTR_0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
-; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[INSTR_2:%[^ ]+]] = f32[2,2]{1,0} custom-call([[INSTR_0]], [[INSTR_1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"lhs_stride\":\"4\",\"rhs_stride\":\"4\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[3,2], y: f32[3,4]) -> f32[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,2]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
 }
 
@@ -191,21 +222,21 @@ ENTRY AddDotsFunc {
                     R"(
 
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,3,2], y: f32[5,3,4]) -> f32[5,2,4] {
-; CHECK-NEXT:    [[INSTR_0:%[^ ]+]] = f32[5,3,2]{2,1,0} parameter(0)
-; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[INSTR_2:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[INSTR_0]], [[INSTR_1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"batch_size\":\"5\",\"lhs_stride\":\"6\",\"rhs_stride\":\"12\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[5,3,2]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
 }
 
-TEST_F(GemmRewriteTest, InstrTransposeFoldCheck) {
+TEST_F(GemmRewriteTest, BatchRowTransposeFoldCheck) {
   const char* hlo_text = R"(
-HloModule InstrTransposeFoldGemm
+HloModule BatchRowTransposeFoldCheck
 
 ENTRY AddDotsFunc {
-  x = f32[2,2] parameter(0)
-  y = f32[2,2] parameter(1)
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT out = f32[2,2] transpose(dot_a), dimensions={1, 0}
+  x = f32[2,5,3] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  x_transposed = f32[5,2,3] transpose(x), dimensions={1, 0, 2}
+  ROOT dot_a = f32[5,2,4] dot(x_transposed, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
 }
 
 )";
@@ -214,10 +245,119 @@ ENTRY AddDotsFunc {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
-; CHECK-NEXT:    [[INSTR_0:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
-; CHECK-NEXT:    ROOT [[INSTR_2:%[^ ]+]] = f32[2,2]{1,0} custom-call([[INSTR_0]], [[INSTR_1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"lhs_stride\":\"4\",\"rhs_stride\":\"4\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,5,3], y: f32[5,3,4]) -> f32[5,2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,5,3]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"1\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
+}
+
+TEST_F(GemmRewriteTest, BatchFromMinorDimTransposeIsNotFolded) {
+  const char* hlo_text = R"(
+HloModule BatchFromMinorDimTransposeDoesntFold
+
+ENTRY AddDotsFunc {
+  x = f32[3,2,5] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  x_transposed = f32[5,2,3] transpose(x), dimensions={2, 1, 0}
+  ROOT dot_a = f32[5,2,4] dot(x_transposed, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[3,2,5], y: f32[5,3,4]) -> f32[5,2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,2,5]{2,1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
+; CHECK-DAG:     [[FUSION:%[^ ]+]] = f32[5,2,3]{2,1,0} fusion([[P0]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[FUSION]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$gemm",
+; CHECK:           backend_config="{
+; CHECK:           \"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,
+; CHECK:           \"dot_dimension_numbers\":{
+; CHECK:             \"lhs_contracting_dimensions\":[\"2\"],
+; CHECK:             \"rhs_contracting_dimensions\":[\"1\"],
+; CHECK:             \"lhs_batch_dimensions\":[\"0\"],
+; CHECK:             \"rhs_batch_dimensions\":[\"0\"]},
+; CHECK:             \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},
+; CHECK:             \"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
+}
+
+TEST_F(GemmRewriteTest, InstrTransposeFoldCheck) {
+  const char* hlo_text = R"(
+HloModule InstrTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT out = f32[4,2] transpose(dot_a), dimensions={1, 0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,3], y: f32[3,4]) -> f32[4,2] {
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,2]{1,0} custom-call([[P1]], [[P0]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
+}
+
+TEST_F(GemmRewriteTest, BatchedInstrLayoutTransposed) {
+  const char* hlo_text = R"(
+HloModule BatchedInstrLayoutCheck
+
+ENTRY AddDotsFunc {
+  x = f32[5,2,3] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  dot_a = f32[5,2,4] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+  ROOT out = f32[2,5,4] transpose(dot_a), dimensions={1, 0, 2}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,2,3], y: f32[5,3,4]) -> f32[2,5,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[5,2,3]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[5,2,4]{2,0,1} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,5,4]{2,1,0} bitcast([[GEMM]])
+      )");
+}
+
+TEST_F(GemmRewriteTest, BatchedInstrLayoutBatchNotInMinorDim) {
+  const char* hlo_text = R"(
+HloModule BatchedInstrLayoutBatchNotInMinorDim
+
+ENTRY AddDotsFunc {
+  x = f32[5,2,3] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  dot_a = f32[5,2,4] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+  ROOT out = f32[2,4,5] transpose(dot_a), dimensions={1, 2, 0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,2,3], y: f32[5,3,4]) -> f32[2,4,5] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[5,2,3]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4,5]{2,1,0} [[OP:[^ ]+]]([[GEMM]])
       )");
 }
 
@@ -241,9 +381,9 @@ ENTRY AddDotsFunc {
                     R"(
 
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
-; CHECK-NEXT:    [[INSTR_0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
-; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[INSTR_2:%[^ ]+]] = f32[2,2]{1,0} custom-call([[INSTR_0]], [[INSTR_1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":3,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"lhs_stride\":\"4\",\"rhs_stride\":\"4\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":3,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
 }
 
@@ -272,9 +412,9 @@ ENTRY AddDotsFunc {
                     R"(
 
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: c64[2,2], y: c64[2,2]) -> c64[2,2] {
-; CHECK-NEXT:    [[INSTR_0:%[^ ]+]] = c64[2,2]{1,0} parameter(0)
-; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = c64[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[INSTR_2:%[^ ]+]] = c64[2,2]{1,0} custom-call([[INSTR_0]], [[INSTR_1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":3,\"alpha_imag\":3,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"lhs_stride\":\"4\",\"rhs_stride\":\"4\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-NEXT:    [[P0:%[^ ]+]] = c64[2,2]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = c64[2,2]{1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = c64[2,2]{1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":3,\"alpha_imag\":3,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
 }
 
@@ -297,7 +437,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK:    [[INSTR_0:%[^ ]+]] = f32[2,2]{1,0} custom-call([[INSTR_1:%[^ ]+]], [[INSTR_2:%[^ ]+]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"lhs_stride\":\"4\",\"rhs_stride\":\"4\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK:    [[C:%[^ ]+]] = f32[2,2]{1,0} custom-call([[A:%[^ ]+]], [[B:%[^ ]+]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
 }
 
@@ -320,9 +460,9 @@ ENTRY AddDotsFunc {
                     R"(
 
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
-; CHECK-NEXT:    [[INSTR_0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
-; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    [[INSTR_2:%[^ ]+]] = f32[2,2]{1,0} custom-call([[INSTR_0]], [[INSTR_1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"lhs_stride\":\"4\",\"rhs_stride\":\"4\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
 }
 
@@ -348,10 +488,11 @@ ENTRY AddDotsFunc {
                     R"(
 
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], bias: f32[2,2]) -> f32[2,2] {
-; CHECK-NEXT:    [[INSTR_0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
-; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    [[INSTR_2:%[^ ]+]] = f32[2,2]{1,0} parameter(2)
-; CHECK-NEXT:    ROOT [[INSTR_3:%[^ ]+]] = f32[2,2]{1,0} custom-call([[INSTR_0]], [[INSTR_1]], [[INSTR_2]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":3,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"lhs_stride\":\"4\",\"rhs_stride\":\"4\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2,2]{1,0} parameter(2)
+; CHECK-NEXT:    [[P2_COPY:%[^ ]+]] = f32[2,2]{1,0} copy([[P2]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]], [[P2_COPY]]), custom_call_target="__cublas$gemm", output_to_operand_aliasing={{{{}: \(2, {}\)}}}, backend_config="{\"alpha_real\":3,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
 }
 
@@ -378,10 +519,10 @@ ENTRY AddDotsFunc {
                     R"(
 
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], bias: f32[2,2]) -> f32[2,2] {
-; CHECK-NEXT:    [[INSTR_0:%[^ ]+]] = f32[2,2]{1,0} parameter(2)
-; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
-; CHECK-NEXT:    [[INSTR_2:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    [[INSTR_3:%[^ ]+]] = f32[2,2]{1,0} custom-call([[INSTR_1]], [[INSTR_2]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":3,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"lhs_stride\":\"4\",\"rhs_stride\":\"4\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2,2]{1,0} parameter(2)
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":3,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
 }
 
@@ -425,7 +566,7 @@ ENTRY bf16gemm {
   } else {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: bf16[12,8]{1,0} custom-call(bf16[12,4]{1,0} [[INSTR_0:%[^ ]+]], bf16[4,8]{1,0} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm"
+; CHECK: bf16[12,8]{1,0} custom-call(bf16[12,4]{1,0} [[P0:%[^ ]+]], bf16[4,8]{1,0} [[P1:%[^ ]+]]), custom_call_target="__cublas$gemm"
 
   )",
                       /*print_operand_shape=*/true);
@@ -454,7 +595,7 @@ ENTRY bf16gemm {
   } else {
     MatchOptimizedHlo(hlo_text,
                       R"(
-    ; CHECK: ROOT [[INSTR_0:%[^ ]+]] = bf16[3,4,2]{2,1,0} custom-call(bf16[3,3,4]{2,1,0} [[INSTR_1:%[^ ]+]], bf16[3,3,2]{2,1,0} [[INSTR_2:%[^ ]+]]), custom_call_target="__cublas$gemm"
+    ; CHECK: ROOT [[OUT:%[^ ]+]] = bf16[3,4,2]{2,1,0} custom-call(bf16[3,3,4]{2,1,0} [[A:%[^ ]+]], bf16[3,3,2]{2,1,0} [[B:%[^ ]+]]), custom_call_target="__cublas$gemm"
     )",
                       /*print_operand_shape=*/true);
   }
@@ -472,10 +613,10 @@ ENTRY bf16gemm {
   )";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK:  [[INSTR_0:%[^ ]+]] = bf16[2]{0} parameter(1)
-; CHECK:  [[INSTR_1:%[^ ]+]] = f32[2]{0} convert([[INSTR_0]])
-; CHECK:  [[INSTR_2:%[^ ]+]] = bf16[2]{0} parameter(0)
-; CHECK:  [[INSTR_3:%[^ ]+]] = f32[2]{0} convert([[INSTR_2]])
+; CHECK:  [[P1:%[^ ]+]] = bf16[2]{0} parameter(1)
+; CHECK:  [[INSTR_1:%[^ ]+]] = f32[2]{0} convert([[P1]])
+; CHECK:  [[P0:%[^ ]+]] = bf16[2]{0} parameter(0)
+; CHECK:  [[INSTR_3:%[^ ]+]] = f32[2]{0} convert([[P0]])
 ; CHECK:  [[INSTR_4:%[^ ]+]] = f32[2]{0} multiply([[INSTR_1]], [[INSTR_3]])
 ; CHECK:  [[INSTR_5:%[^ ]+]] = f32[] constant(0)
 ; CHECK:  [[INSTR_6:%[^ ]+]] = f32[] reduce([[INSTR_4]], [[INSTR_5]]), dimensions={0}, to_apply=[[INSTR_7:%[^ ]+]]
@@ -518,13 +659,13 @@ ENTRY int8gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[INSTR_0:%[^ ]+]], s8[4,8]{0,1} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm"
+; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]), custom_call_target="__cublas$gemm"
   )",
                       /*print_operand_shape=*/true);
   } else {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} [[INSTR_0:%[^ ]+]], s32[4,8]{1,0} [[INSTR_1:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} [[A:%[^ ]+]], s32[4,8]{1,0} [[B:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 
   )",
                       /*print_operand_shape=*/true);
@@ -549,13 +690,13 @@ ENTRY int8gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[INSTR_0:%[^ ]+]], s8[4,8]{0,1} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0
+; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0
   )",
                       /*print_operand_shape=*/true);
   } else {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} [[INSTR_0:%[^ ]+]], s32[4,8]{1,0} [[INSTR_1:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} [[A:%[^ ]+]], s32[4,8]{1,0} [[B:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 
   )",
                       /*print_operand_shape=*/true);
@@ -579,13 +720,13 @@ ENTRY int8gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[INSTR_0:%[^ ]+]], s8[4,8]{0,1} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0
+; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0
   )",
                       /*print_operand_shape=*/true);
   } else {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} [[INSTR_0:%[^ ]+]], s32[4,8]{1,0} [[INSTR_1:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} [[A:%[^ ]+]], s32[4,8]{1,0} [[B:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 
   )",
                       /*print_operand_shape=*/true);
@@ -607,13 +748,13 @@ ENTRY int8gemm {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[16,12]{1,0} custom-call(s8[16,4]{1,0} [[INSTR_0:%[^ ]+]], s8[4,12]{0,1} [[INSTR_1:%[^ ]+]]), custom_call_target="__cublas$gemm"
+; CHECK: s32[16,12]{1,0} custom-call(s8[16,4]{1,0} [[A:%[^ ]+]], s8[4,12]{0,1} [[B:%[^ ]+]]), custom_call_target="__cublas$gemm"
   )",
                       /*print_operand_shape=*/true);
   } else {
     MatchOptimizedHlo(hlo_text,
                       R"(
-; CHECK: s32[13,9]{1,0} dot(s32[13,4]{1,0} [[INSTR_0:%[^ ]+]], s32[4,9]{1,0} [[INSTR_1:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+; CHECK: s32[13,9]{1,0} dot(s32[13,4]{1,0} [[A:%[^ ]+]], s32[4,9]{1,0} [[B:%[^ ]+]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 
   )",
                       /*print_operand_shape=*/true);
@@ -637,12 +778,260 @@ ENTRY BF16GemmWithBias {
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %BF16GemmWithBias (x: bf16[8,8], y: bf16[8,8], bias: bf16[8,8]) -> bf16[8,8] {
-; CHECK-NEXT:    [[INSTR_0:%[^ ]+]] = bf16[8,8]{1,0} parameter(0)
-; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = bf16[8,8]{1,0} parameter(1)
-; CHECK-NEXT:    [[INSTR_2:%[^ ]+]] = bf16[8,8]{1,0} parameter(2)
-; CHECK-NEXT:    ROOT [[INSTR_3:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[INSTR_0]], [[INSTR_1]], [[INSTR_2]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"lhs_stride\":\"64\",\"rhs_stride\":\"64\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[8,8]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[8,8]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = bf16[8,8]{1,0} parameter(2)
+; CHECK-NEXT:    [[P2_COPY:%[^ ]+]] = bf16[8,8]{1,0} copy([[P2]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2_COPY]]), custom_call_target="__cublas$gemm", output_to_operand_aliasing={{{{}: \(2, {}\)}}}, backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
 }
+
+#if GOOGLE_CUDA
+
+class CublasLtMatmulRewriteTest : public GpuCodegenTest {
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_cublaslt(true);
+    return debug_options;
+  }
+};
+
+TEST_F(CublasLtMatmulRewriteTest, Simple) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  ROOT dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4]) -> f32[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, MatrixBias) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  z = f32[2,4] parameter(2)
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT out = f32[2,4] add(dot_a, z)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2,4]) -> f32[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2,4]{1,0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, VectorBias) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  z = f32[4] parameter(2)
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = f32[2,4] broadcast(z), dimensions={1}
+  ROOT out = f32[2,4] add(dot_a, z_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[4]) -> f32[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"BIAS\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, VectorBiasIncorrectAxisFusedAsMatrix) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  z = f32[2] parameter(2)
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = f32[2,4] broadcast(z), dimensions={0}
+  ROOT out = f32[2,4] add(dot_a, z_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2]) -> f32[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2]{0} parameter(2)
+; CHECK-NEXT:    [[P2_BCAST:%[^ ]+]] = f32[2,4]{1,0} broadcast([[P2]]), dimensions={0}
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2_BCAST]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, VectorBiasTransposed) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  z = f32[2] parameter(2)
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = f32[2,4] broadcast(z), dimensions={0}
+  add = f32[2,4] add(dot_a, z_bcast)
+  ROOT out = f32[4,2] transpose(add), dimensions={1,0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2]) -> f32[4,2] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2]{0} parameter(2)
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[2,4]{0,1} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"BIAS\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,2]{1,0} bitcast([[MATMUL]])
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, VectorBiasThenMatrixBias) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  z = f32[4] parameter(2)
+  z2 = f32[2,4] parameter(3)
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = f32[2,4] broadcast(z), dimensions={1}
+  add0 = f32[2,4] add(dot_a, z_bcast)
+  ROOT add1 = f32[2,4] add(add0, z2)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[4], z2: f32[2,4]) -> f32[2,4] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-DAG:     [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
+; CHECK-DAG:     [[P3:%[^ ]+]] = f32[2,4]{1,0} parameter(3)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P3]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"BIAS\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
+}
+
+#endif  // GOOGLE_CUDA
+
+using GemmRewriteHloTest = HloTestBase;
+
+TEST_F(GemmRewriteHloTest, MergeBitcastAndAdd) {
+  const char* hlo_text = R"(
+HloModule test
+ENTRY test {
+  x = f32[2,2] parameter(0)
+  y = f32[2,2] parameter(1)
+  bias = f32[4] parameter(2)
+  dot = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT out = f32[4] add(f32[4] bitcast(dot), bias)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Bitcast(
+              m::CustomCall("__cublas$gemm", m::Parameter(0), m::Parameter(1),
+                            m::Bitcast(m::Parameter(2)).WithShape(F32, {2, 2})))
+              .WithShape(F32, {4})));
+}
+
+TEST_F(GemmRewriteHloTest, FoldConstantBias) {
+  const char* hlo_text = R"(
+HloModule test
+ENTRY test {
+  x = f32[2,2] parameter(0)
+  y = f32[2,2] parameter(1)
+  bias = f32[2,2] broadcast(f32[2] constant({0, 0})), dimensions={0}
+
+  dot1 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias1 = f32[2,2] broadcast(f32[2] constant({0, 0})), dimensions={0}
+  sum1 = add(dot1, bias1)
+
+  dot2 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  sum2 = add(dot2, f32[2,2] reshape(bias))
+
+  dot3 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias3 = f32[2,2] transpose(bias), dimensions={1,0}
+  sum3 = add(dot3, bias3)
+
+  dot4 = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  sum4 = add(dot4, f32[2,2] bitcast(bias))
+
+  ROOT root = tuple(sum1, sum2, sum3, sum4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  SCOPED_TRACE(module->ToString());
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()),
+          m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()))));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

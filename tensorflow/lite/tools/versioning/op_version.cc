@@ -776,6 +776,16 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_SELECT: {
+      if (op_sig.inputs.at(0).dims.size() == 5 ||
+          op_sig.inputs.at(1).dims.size() == 5 ||
+          op_sig.inputs.at(2).dims.size() == 5)
+        return 3;
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+    }
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_SUM:
@@ -785,7 +795,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_GREATER_EQUAL:
     case BuiltinOperator_LESS:
     case BuiltinOperator_LESS_EQUAL:
-    case BuiltinOperator_SELECT:
     case BuiltinOperator_RSQRT:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_DEPTH_TO_SPACE:

@@ -153,7 +153,7 @@ inline bool ShouldCreateLazyDelegateProviders(int num_fp32_tensors) {
 
 }  // namespace
 
-const char* kEmptyTensorName = "";
+constexpr const char* kEmptyTensorName = "";
 
 // Using weak symbols to create a delegate allows automatic injection of the
 // delegate simply by adding it as a dependency.
@@ -758,7 +758,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     return cleanup_and_error();
   }
 
-  interpreter->reset(new Interpreter(error_reporter_));
+  *interpreter = std::make_unique<Interpreter>(error_reporter_);
   if (subgraphs->size() > 1) {
     (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }

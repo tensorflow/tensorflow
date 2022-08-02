@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
-#include "tensorflow/core/transforms/toposort/toposort_pass.h"
+#include "tensorflow/core/transforms/toposort/pass.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {

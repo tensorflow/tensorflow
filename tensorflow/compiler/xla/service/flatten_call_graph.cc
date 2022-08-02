@@ -26,8 +26,8 @@ namespace xla {
 
 namespace {
 
-// Helper to replace the called computation at a while-, call-, case-, or
-// conditional-instruction. This function replaces exactly one instance of
+// Helper to replace the called computation at a while, call, conditional or
+// async instruction. This function replaces exactly one instance of
 // 'computation' with 'new_computation' even if 'instruction' calls
 // 'computation' more than once.
 void ReplaceCalledComputation(HloInstruction* instruction,
@@ -60,6 +60,15 @@ void ReplaceCalledComputation(HloInstruction* instruction,
       }
       break;
     }
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone: {
+      computation->RemoveAsyncInstruction(instruction);
+      instruction->ReplaceCalledComputations(
+          [&](HloComputation*) { return new_computation; });
+      new_computation->AddAsyncInstruction(instruction);
+      break;
+    }
     default:
       LOG(FATAL) << "unexpected opcode: "
                  << HloOpcodeString(instruction->opcode());
@@ -69,6 +78,11 @@ void ReplaceCalledComputation(HloInstruction* instruction,
 // Flatten a single call graph node. Expects to visit nodes in postorder.
 Status FlattenNode(const CallGraphNode& node) {
   HloComputation* computation = node.computation();
+  // Flatten async computations so that different async ops that belong to the
+  // same async group id call the same computation but async ops that have
+  // different async group ids call a different computation. This map maps from
+  // the async group id to the associated computation.
+  absl::flat_hash_map<int64_t, HloComputation*> async_computations;
   HloModule* module = computation->parent();
   // Clone callee for all call-sites except the first one.
   for (int i = 0; i < node.caller_callsites().size(); ++i) {
@@ -85,10 +99,33 @@ Status FlattenNode(const CallGraphNode& node) {
       continue;
     }
 
-    // Clone computation for the remaining sequential context call sites.
-    HloComputation* clone =
-        module->AddEmbeddedComputation(computation->Clone());
-    ReplaceCalledComputation(call_site.instruction(), computation, clone);
+    // For async computations, look up in the async computations map and use the
+    // computation for the group id, if available. Otherwise, clone the
+    // computation.
+    HloComputation* clone;
+    if (computation->IsAsyncComputation()) {
+      HloInstruction* caller = call_site.instruction();
+      TF_RET_CHECK(caller->async_group_id().has_value());
+      auto async_computation_it =
+          async_computations.find(*caller->async_group_id());
+      if (async_computation_it != async_computations.end()) {
+        if (computation != async_computation_it->second) {
+          ReplaceCalledComputation(call_site.instruction(), computation,
+                                   async_computation_it->second);
+        }
+        continue;
+      } else if (async_computations.empty()) {
+        async_computations[*caller->async_group_id()] = computation;
+        continue;
+      }
+      clone = module->AddEmbeddedComputation(computation->Clone());
+      ReplaceCalledComputation(call_site.instruction(), computation, clone);
+      async_computations[*call_site.instruction()->async_group_id()] = clone;
+    } else {
+      // Clone computation for the remaining sequential context call sites.
+      clone = module->AddEmbeddedComputation(computation->Clone());
+      ReplaceCalledComputation(call_site.instruction(), computation, clone);
+    }
     // Clone the sub-tree of all computations called from this node.
     std::vector<HloComputation*> worklist;
     worklist.push_back(clone);
@@ -109,12 +146,14 @@ Status FlattenNode(const CallGraphNode& node) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
 
-StatusOr<bool> FlattenCallGraph::Run(HloModule* module) {
+StatusOr<bool> FlattenCallGraph::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3, "Before flatten call graph:\n" + module->ToString());
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);

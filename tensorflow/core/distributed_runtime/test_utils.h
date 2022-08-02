@@ -187,7 +187,7 @@ class TestWorkerCache : public WorkerCacheInterface {
     auto it = localities_.find(device);
     if (it != localities_.end()) {
       *locality = it->second;
-      done(Status::OK());
+      done(OkStatus());
       return;
     }
     done(errors::Internal("Device not found: ", device));

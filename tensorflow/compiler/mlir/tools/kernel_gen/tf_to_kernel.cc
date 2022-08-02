@@ -109,13 +109,8 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
            llvm::ArrayRef<int64_t> tile_sizes,
            llvm::ArrayRef<int64_t> unroll_factors, int64_t max_supported_rank,
            bool embed_memref_prints, bool print_ptx, bool print_llvmir,
-           bool enable_ftz, bool index_64bit, bool cpu_codegen,
-           bool jit_compile) {
-  // 64 bit indexing is not incorporated yet
-  if (index_64bit) {
-    return tensorflow::errors::Unimplemented(
-        "64 bit indexing is not supported yet");
-  }
+           bool enable_ftz, bool index_64bit, bool jit_compile,
+           bool jit_i64_indexed_for_large_tensors) {
   // Read TF code.
   std::string tf_code;
   TF_RETURN_IF_ERROR(
@@ -127,16 +122,17 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
       GenerateKernelForTfCode(context, tf_code, architectures, tile_sizes,
                               unroll_factors, max_supported_rank,
                               embed_memref_prints, print_ptx, print_llvmir,
-                              enable_ftz, index_64bit, cpu_codegen, jit_compile,
-                              /*jit_i64_indexed_for_large_tensors=*/false,
+                              enable_ftz, index_64bit, jit_compile,
+                              jit_i64_indexed_for_large_tensors,
                               /*apply_cl_options=*/true));
+
   // Get binary.
   TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));
 
   // Write .a file.
   TF_RETURN_IF_ERROR(
       WriteStringToFile(Env::Default(), output_file.str(), binary));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -150,9 +146,6 @@ int main(int argc, char** argv) {
   llvm::cl::opt<std::string> output_file(
       "output", llvm::cl::desc("output file"), llvm::cl::value_desc("filename"),
       llvm::cl::init("foo.bin"));
-  llvm::cl::opt<bool> cpu_codegen("cpu_codegen",
-                                  llvm::cl::desc("enable CPU code generation"),
-                                  llvm::cl::init(false));
   llvm::cl::opt<bool> index_64bit("index_64bit",
                                   llvm::cl::desc("enable 64 bit indexing"),
                                   llvm::cl::init(false));
@@ -190,6 +183,11 @@ int main(int argc, char** argv) {
       "unroll_factors",
       llvm::cl::desc("factors to unroll by, separated by commas"),
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
+  llvm::cl::opt<bool> jit_i64_indexed_for_large_tensors(
+      "jit_i64_indexed_for_large_tensors",
+      llvm::cl::desc(
+          "Enable JIT compilation of i64-indexed kernels for large inputs."),
+      llvm::cl::init(false));
 
   tensorflow::InitMlir y(&argc, &argv);
   llvm::InitializeNativeTarget();
@@ -201,7 +199,7 @@ int main(int argc, char** argv) {
   auto status = tensorflow::kernel_gen::Run(
       input_file, output_file, architectures, tile_sizes, unroll_factors,
       max_supported_rank, embed_memref_prints, print_ptx, print_llvmir,
-      enable_ftz, index_64bit, cpu_codegen, jit_compile);
+      enable_ftz, index_64bit, jit_compile, jit_i64_indexed_for_large_tensors);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;

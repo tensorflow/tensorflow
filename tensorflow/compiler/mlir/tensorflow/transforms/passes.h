@@ -108,6 +108,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateRewriteTPUEmbeddingOpsPass();
 // Performs specific fusion for GPU targets.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateGpuOpFusionPass();
 
+// Creates a pass that decomposes to be compiled ReduceDataset ops into a while
+// loop that iterates the dataset and calls the reduction function.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDecomposeReduceDatasetPass();
+
 // Create a pass that convert ops that copy tensors between devices, e.g.
 // tf.Identity.
 std::unique_ptr<OperationPass<mlir::func::FuncOp>>
@@ -158,12 +162,14 @@ void CreateTFStandardPipeline(OpPassManager& pm,
 // Propagates device attributes of resources from callers to callees.
 std::unique_ptr<OperationPass<ModuleOp>> CreateResourceDeviceInferencePass();
 
-// Creates a pass that promotes resource reads/writes in the main function to
-// inputs and outputs of the main function, assuming that resource operations
-// have already been decomposed and function calls have already been inlined.
-// The pass also annotates the input arguments for resources with the indices
-// of their aliasing output arguments.
-std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass();
+// Creates a pass that promotes resource reads/writes in `functions` to inputs
+// and outputs of `functions`, assuming that resource operations have already
+// been decomposed and function calls have already been inlined. If `functions`
+// is empty, the pass is applied to the main function by default. The pass also
+// annotates the input arguments for resources with the indices of their
+// aliasing output arguments.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass(
+    llvm::ArrayRef<std::string> functions = {});
 
 // Creates a pass that promotes tf.VarHandleOp to resource arguments for all
 // functions.
@@ -177,6 +183,11 @@ CreateConvertReadonlyReferenceVariablesToResourceVariablesPass();
 // Creates a simple device assignment pass on TF dialect for CoreRT use case.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateSimpleTFDeviceAssignmentPass(
     llvm::StringRef default_device = "cpu");
+
+// Creates a pass to perform device assignment for TF dialect ops that do not
+// have device assignment, by using the device attribute of the function.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTFDeviceAssignmentByFuncAttrPass();
 
 // Performs resource lifting on the function body to hoist resource variable
 // accesses outside all control flow statements.

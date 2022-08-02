@@ -251,6 +251,12 @@ void ArenaPlanner::DumpDebugInfo(const std::vector<int>& execution_plan) const {
                                   execution_plan);
 }
 
+void ArenaPlanner::GetAllocInfo(size_t* arena_size,
+                                size_t* arena_persist_size) const {
+  *arena_size = arena_.GetBufferSize();
+  *arena_persist_size = persistent_arena_.GetBufferSize();
+}
+
 TfLiteStatus ArenaPlanner::Commit() {
   TF_LITE_ENSURE_STATUS(arena_.Commit(context_));
   TF_LITE_ENSURE_STATUS(persistent_arena_.Commit(context_));

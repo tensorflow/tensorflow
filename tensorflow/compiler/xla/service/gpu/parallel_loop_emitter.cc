@@ -302,7 +302,7 @@ Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
        EmitIndexAndSetExitBasicBlock(loop_name, index_type, base_indvar)) {
     TF_RETURN_IF_ERROR(body_emitter_(array_index));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
@@ -336,7 +336,7 @@ Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
   if (exit_bb_ != nullptr) {
     b_->SetInsertPoint(exit_bb_);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

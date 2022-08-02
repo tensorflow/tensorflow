@@ -54,7 +54,7 @@ Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
     return errors::FailedPrecondition(
         "GetTpuMeshStateInterface: The TPU system has not been initialized.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
@@ -64,11 +64,11 @@ Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
       rmgr->default_container(), tpu::kFingerprintLookupResourceName,
       &fingerprint_lookup, [&](tpu::TpuFingerprintLookup** new_lookup) {
         *new_lookup = tpu::TpuFingerprintLookup::Create();
-        return Status::OK();
+        return OkStatus();
       }));
 
   core::ScopedUnref fingerprint_lookup_ref(fingerprint_lookup);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Attempt to delete resource_name from resource_manager's default_container.
@@ -82,11 +82,11 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
-    return Status::OK();
+    return OkStatus();
   }
   if (status.code() == error::NOT_FOUND) {
     VLOG(1) << "No resource " << resource_name << " to remove";
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Error removing resource " << resource_name << " : " << status;
   return status;
@@ -99,7 +99,7 @@ Status CreateTpuCompilationCache(
       rmgr->default_container(), tpu::kCompilationCacheResourceName,
       compilation_cache, [&](tpu::TpuCompilationCacheInterface** new_cache) {
         *new_cache = tpu::GetCompilationCacheCreateFn()();
-        return Status::OK();
+        return OkStatus();
       });
 }
 

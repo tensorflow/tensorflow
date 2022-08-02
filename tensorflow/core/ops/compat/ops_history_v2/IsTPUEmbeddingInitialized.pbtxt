@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "IsTPUEmbeddingInitialized"
   output_arg {
     name: "is_tpu_embedding_initialized"

@@ -43,7 +43,20 @@ ENTRY entry {
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  CompileAndVerifyIr(hlo_text, R"(
+  auto expected_ir = is_built_with_rocm_ ? R"(
+; CHECK:  %[[block_id:.*]] = call i32 @llvm.amdgcn.workgroup.id.x(), !range !1
+; CHECK:  %[[thread_id:.*]] = call i32 @llvm.amdgcn.workitem.id.x(), !range !2
+; CHECK:  %[[block_start_index:.*]] = mul nuw nsw i32 %[[block_id]], [[block_size:.*]]
+; CHECK:  %[[linear_index:.*]] = add nuw nsw i32 %[[block_start_index]], %[[thread_id]]
+; CHECK:  %[[index_1:.*]] = urem i32 %[[linear_index]], 64
+; CHECK:  %[[base_1:.*]] = udiv i32 %[[linear_index]], 64
+; CHECK:  %[[index_3:.*]] = urem i32 %[[base_1]], 400
+; CHECK:  %[[base_3:.*]] = udiv i32 %[[base_1]], 400
+; CHECK:  %[[index_2:.*]] = urem i32 %[[base_3]], 480
+; CHECK:  %[[pointer:.*]] = getelementptr inbounds [1 x [64 x [480 x [400 x float]]]], ptr %2, i32 0, i32 0, i32 %[[index_1]], i32 %[[index_2]], i32 %[[index_3]]
+; CHECK:  store float %[[result_value:.*]], ptr %[[pointer]], align 4
+  )"
+                                         : R"(
 ; CHECK:  %[[block_id:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x()
 ; CHECK:  %[[thread_id:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
 ; CHECK:  %[[block_start_index:.*]] = mul nuw nsw i32 %[[block_id]], [[block_size:.*]]
@@ -53,9 +66,11 @@ ENTRY entry {
 ; CHECK:  %[[index_3:.*]] = urem i32 %[[base_1]], 400
 ; CHECK:  %[[base_3:.*]] = udiv i32 %[[base_1]], 400
 ; CHECK:  %[[index_2:.*]] = urem i32 %[[base_3]], 480
-; CHECK:  %[[pointer:.*]] = getelementptr inbounds [1 x [64 x [480 x [400 x float]]]], [1 x [64 x [480 x [400 x float]]]]* %5, i32 0, i32 0, i32 %[[index_1]], i32 %[[index_2]], i32 %[[index_3]]
-; CHECK:  store float %[[result_value:.*]], float* %[[pointer]], align 4
-)");
+; CHECK:  %[[pointer:.*]] = getelementptr inbounds [1 x [64 x [480 x [400 x float]]]], ptr %2, i32 0, i32 0, i32 %[[index_1]], i32 %[[index_2]], i32 %[[index_3]]
+; CHECK:  store float %[[result_value:.*]], ptr %[[pointer]], align 4
+  )";
+
+  CompileAndVerifyIr(hlo_text, expected_ir);
 }
 
 }  // namespace

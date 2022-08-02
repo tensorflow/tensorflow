@@ -32,9 +32,6 @@ _DT_CLIENT_ID = "DTENSOR_CLIENT_ID"
 _DT_NUM_CLIENTS = "DTENSOR_NUM_CLIENTS"
 _DT_JOB_NAME = "DTENSOR_JOB_NAME"
 _DT_JOBS = "DTENSOR_JOBS"
-_DT_CPU_COUNT = "DTENSOR_CPU_CORE_COUNT"
-_DT_GPU_COUNT = "DTENSOR_GPU_CORE_COUNT"
-_DT_TPU_COUNT = "DTENSOR_TPU_CORE_COUNT"
 _DT_HEARTBEAT_ENABLED = "DTENSOR_ENABLE_HEARTBEAT"
 
 _dtensor_singleton = None
@@ -86,28 +83,23 @@ def call_with_layout(fn: Callable[...,
 
 @tf_export("experimental.dtensor.run_on", v1=[])
 @contextlib.contextmanager
-def run_on(layout_or_mesh: Union[layout_lib.Layout, layout_lib.Mesh]):
+def run_on(mesh: layout_lib.Mesh):
   """Runs enclosed functions in the DTensor device scope.
 
   This function returns a scope. All the ops and tf.functions in this scope will
-  run on the DTensor device using the mesh provided or attached to the layout.
+  run on the DTensor device using the mesh provided.
   This is useful for wrapping any tf.function that doesn't take a DTensor as
   input but would like to produce DTensor as result. The scope will also make
   sure all small constants be replicated as DTensor.
 
   Args:
-    layout_or_mesh: A Layout or Mesh instance to extract a default mesh from.
+    mesh: A Mesh instance to extract a default mesh from.
 
   Yields:
     A context in which all ops and tf.functions will run on the DTensor device.
   """
-  if isinstance(layout_or_mesh, layout_lib.Layout):
-    mesh = layout_or_mesh.mesh
-  elif isinstance(layout_or_mesh, layout_lib.Mesh):
-    mesh = layout_or_mesh
-  else:
-    raise ValueError("Expect `layout_or_mesh` to be either `Layout` or `Mesh`, "
-                     f"got {type(layout_or_mesh)}")
+  if not isinstance(mesh, layout_lib.Mesh):
+    raise ValueError(f"Expect `mesh` to be `Mesh`, got {type(mesh)}")
 
   with _dtensor_device()._experimental_default_mesh(mesh):  # pylint: disable=protected-access
     with ops.device(device_name()):
@@ -478,23 +470,7 @@ def num_local_devices(device_type: str) -> int:
 @tf_export("experimental.dtensor.num_global_devices", v1=[])
 def num_global_devices(device_type: str) -> int:
   """Returns the number of devices of device_type in this DTensor cluster."""
-  num_devices = 0
-
-  if device_type.upper() == "CPU":
-    num_devices = int(os.environ.get(_DT_CPU_COUNT, "0"))
-  elif device_type.upper() == "GPU":
-    num_devices = int(os.environ.get(_DT_GPU_COUNT, "0"))
-  elif device_type.upper() == "TPU":
-    num_devices = int(os.environ.get(_DT_TPU_COUNT, "0"))
-  else:
-    raise ValueError(f"Device type {device_type} is not CPU, GPU, or TPU.")
-
-  if num_devices > 0:
-    return num_devices
-
-  # If missing, likely in unit tests and local runs, assume there is only one
-  # client and all global devices are local.
-  return num_local_devices(device_type)
+  return num_local_devices(device_type) * num_clients()
 
 
 @tf_export("experimental.dtensor.job_name", v1=[])
@@ -512,7 +488,7 @@ def full_job_name(task_id: Optional[int] = None) -> str:
     task_id = client_id()
   # In local runs and unit tests, there should be exactly one client running
   # on one TF task.
-  if job_name() == "localhost" and task_id != 0:
+  if num_clients() == 1 and task_id != 0:
     raise ValueError(f"Unexpected task ID {task_id} in local runs")
   return f"{job_name()}/replica:0/task:{task_id}"
 
@@ -559,11 +535,15 @@ def heartbeat_enabled() -> bool:
 # Private methods.
 
 
-def _dtensor_device() -> dtensor_device.DTensorDevice:
+def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
   global _dtensor_singleton
+  _dtensor_singleton = device
+
+
+def _dtensor_device() -> dtensor_device.DTensorDevice:
   with _dtensor_singleton_lock:
     if _dtensor_singleton is None:
-      _dtensor_singleton = dtensor_device.DTensorDevice(meshes=[])
+      _set_dtensor_device(dtensor_device.DTensorDevice(meshes=[]))
   return _dtensor_singleton
 
 

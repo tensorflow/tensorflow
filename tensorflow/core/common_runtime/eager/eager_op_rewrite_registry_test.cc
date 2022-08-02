@@ -22,7 +22,8 @@ namespace tensorflow {
 class TestEagerOpRewrite : public EagerOpRewrite {
  public:
   TestEagerOpRewrite(string name, string file, string line)
-      : EagerOpRewrite(name, file, line), executor_(/*async=*/false) {}
+      : EagerOpRewrite(name, file, line),
+        executor_(/*async=*/false, /*enable_streaming_enqueue=*/true) {}
   static int count_;
   EagerExecutor executor_;
   Status Run(EagerOperation* orig_op,
@@ -33,7 +34,7 @@ class TestEagerOpRewrite : public EagerOpRewrite {
         new tensorflow::EagerOperation(&orig_op->EagerContext());
     TF_RETURN_IF_ERROR(op->Reset("NoOp", nullptr, false, &executor_));
     out_op->reset(op);
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -55,7 +56,7 @@ TEST(EagerOpRewriteRegistryTest, RegisterRewritePass) {
       &device_mgr, false, nullptr, nullptr);
   EagerOperation orig_op(ctx);
   std::unique_ptr<tensorflow::EagerOperation> out_op;
-  EXPECT_EQ(Status::OK(),
+  EXPECT_EQ(OkStatus(),
             EagerOpRewriteRegistry::Global()->RunRewrite(
                 EagerOpRewriteRegistry::PRE_EXECUTION, &orig_op, &out_op));
   EXPECT_EQ(2, TestEagerOpRewrite::count_);

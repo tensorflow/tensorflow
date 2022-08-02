@@ -38,7 +38,7 @@ tf_module {
   }
   member {
     name: "DType"
-    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DTypeMeta\'>"
   }
   member {
     name: "DeviceSpec"
@@ -2514,7 +2514,7 @@ tf_module {
   }
   member_method {
     name: "vectorized_map"
-    argspec: "args=[\'fn\', \'elems\', \'fallback_to_while_loop\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    argspec: "args=[\'fn\', \'elems\', \'fallback_to_while_loop\', \'warn\'], varargs=None, keywords=None, defaults=[\'True\', \'True\'], "
   }
   member_method {
     name: "verify_tensor_all_finite"

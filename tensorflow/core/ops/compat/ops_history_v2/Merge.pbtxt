@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "Merge"
   input_arg {
     name: "inputs"

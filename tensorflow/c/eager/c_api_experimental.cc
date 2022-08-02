@@ -567,11 +567,11 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TF_Status* status) {
   tensorflow::unwrap(op)->SetCancellationManager(
       tensorflow::unwrap(cancellation_manager));
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
-TFE_Executor* TFE_NewExecutor(bool is_async) {
-  return new TFE_Executor(is_async);
+TFE_Executor* TFE_NewExecutor(bool is_async, bool enable_streaming_enqueue) {
+  return new TFE_Executor(is_async, enable_streaming_enqueue);
 }
 
 void TFE_DeleteExecutor(TFE_Executor* executor) { delete executor; }
@@ -626,7 +626,7 @@ void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
 TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
@@ -752,7 +752,7 @@ void TFE_GetExecutedOpNames(TFE_Context* ctx, TF_Buffer* buf,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
 void TFE_SetLogicalCpuDevices(TFE_Context* ctx, int num_cpus,

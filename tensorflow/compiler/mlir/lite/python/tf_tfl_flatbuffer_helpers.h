@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_TF_TFL_FLATBUFFER_HELPERS_H_
 
 #include <ostream>
+#include <string>
 #include <unordered_set>
 #include <utility>
 

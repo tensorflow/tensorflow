@@ -84,7 +84,7 @@ def validation_model(
     zeropoint_arg = ""
     if scale:
         scale_arg = "--scale=" + scale
-        zeropoint_arg = "--zeropoint=" + zeropoint
+        zeropoint_arg = "--zero_point=" + zeropoint
     native.genrule(
         name = name,
         testonly = testonly,
@@ -98,7 +98,7 @@ def validation_model(
         cmd = """
           JPEGS='$(locations %s)'
           JPEGS=$${JPEGS// /,}
-          $(location //tensorflow/lite/experimental/acceleration/mini_benchmark:embedder_cmdline) \
+          $(location //tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:embedder_cmdline) \
               --schema=$(location //tensorflow/lite/schema:schema.fbs) \
               --main_model=$(location %s) \
               --metrics_model=$(location %s) \
@@ -113,18 +113,20 @@ def validation_model(
           rm $(@D)/tmp
         """ % (jpegs, main_model, metrics_model, scale_arg, zeropoint_arg, use_ondevice_cpu_for_golden, main_model, name),
         tools = [
-            "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedder_cmdline",
+            "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:embedder_cmdline",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:copy_associated_files",
         ],
     )
 
-def validation_test(name, validation_model, tags = []):
+def validation_test(name, validation_model, tags = [], copts = [], deps = []):
     """Create a test binary for the given model with validation.
 
     Args:
         name: name of the target.
         validation_model: tflite model with validation target.
         tags: to be passed to cc_test.
+        copts: to be passed to cc_test.
+        deps: to be passed to cc_test.
     """
     embed_name = name + "_embed_model"
     embedded_binary(
@@ -136,20 +138,21 @@ def validation_test(name, validation_model, tags = []):
         name = name,
         srcs = ["//tensorflow/lite/experimental/acceleration/mini_benchmark:model_validation_test.cc"],
         tags = tags + ["no_mac", "no_windows", "tflite_not_portable_ios"],
-        copts = [
+        copts = copts + [
             "-DTENSORFLOW_ACCELERATION_MODEL_DATA_VARIABLE=\"g_tflite_acceleration_%s_model\"" % name,
             "-DTENSORFLOW_ACCELERATION_MODEL_LENGTH_VARIABLE=\"g_tflite_acceleration_%s_model_len\"" % name,
         ],
-        deps = [
+        deps = deps + [
             embed_name,
             "@com_google_googletest//:gtest_main",
             "@flatbuffers",
             "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
             "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
             "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
+            "//tensorflow/lite/experimental/acceleration/mini_benchmark:big_little_affinity",
+            "//tensorflow/lite/experimental/acceleration/mini_benchmark:model_loader",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator",
-            "//tensorflow/lite/experimental/acceleration/mini_benchmark:big_little_affinity",
         ] + select({
             clean_dep("//tensorflow:android"): [
                 "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin",

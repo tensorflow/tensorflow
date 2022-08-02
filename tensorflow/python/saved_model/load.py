@@ -20,12 +20,17 @@ import os
 import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.python.checkpoint import checkpoint
+from tensorflow.python.checkpoint import checkpoint_options
+from tensorflow.python.checkpoint import graph_view
+from tensorflow.python.checkpoint import restore
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import function_saved_model_utils
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -43,15 +48,13 @@ from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
-from tensorflow.python.training.saving import checkpoint_options
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import base
+from tensorflow.python.trackable import data_structures
+from tensorflow.python.trackable import resource
+from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object_util
-from tensorflow.python.training.tracking import base
-from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import graph_view
-from tensorflow.python.training.tracking import resource
-from tensorflow.python.training.tracking import trackable_utils
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -62,7 +65,7 @@ _LOAD_V2_LABEL = "load_v2"
 # functionality as the registered_name, but only contains built-in TensorFlow
 # types (like variable, functions, assets).
 _BUILT_IN_REGISTRATIONS = {
-    "asset": tracking.Asset,
+    "asset": asset.Asset,
     "resource": resource.RestoredResource,
     "constant": function_saved_model_utils.TrackableConstant}
 
@@ -158,7 +161,7 @@ class Loader(object):
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
 
-    self._pretty_printer = util.ObjectGraphProtoPrettyPrinter(self._proto)
+    self._pretty_printer = checkpoint.ObjectGraphProtoPrettyPrinter(self._proto)
 
     # Stores user-defined node_filters argument.
     self._node_filters = filters
@@ -188,7 +191,7 @@ class Loader(object):
     if not save_options.experimental_skip_checkpoint:
       self._restore_checkpoint()
     for node in self._nodes:
-      if isinstance(node, tracking.CapturableResource):
+      if isinstance(node, resource.CapturableResource):
         init_op = node._initialize()  # pylint: disable=protected-access
         if not context.executing_eagerly():
           ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
@@ -286,17 +289,32 @@ class Loader(object):
     # Set up concrete functions that aren't part of the object graph
     # (e.g. gradient functions)
     self._setup_remaining_functions()
-    self._create_saveable_object_factories()
+    self._load_checkpoint_save_and_restore_functions()
 
-  def _create_saveable_object_factories(self):
+  def _load_checkpoint_save_and_restore_functions(self):
+    """Restores the checkpoint-related save/restore functions to all nodes."""
     for node_id, proto in self._iter_all_nodes():
       node = self.get(node_id)
-      node._self_saveable_object_factories = {}  # pylint: disable=protected-access
-      for name, saveable_object_proto in proto.saveable_objects.items():
-        node._self_saveable_object_factories[name] = (  # pylint: disable=protected-access
-            saveable_object_util.restored_saved_object_factory(
-                self.get(saveable_object_proto.save_function),
-                self.get(saveable_object_proto.restore_function)))
+      if proto.saveable_objects.keys() == {
+          trackable_utils.SERIALIZE_TO_TENSORS_NAME}:
+        # Restore Trackable serialize- and restore-from-tensor functions.
+        assert len(proto.saveable_objects) == 1
+        saveable_object_proto = next(iter(proto.saveable_objects.values()))
+        save_fn_id = saveable_object_proto.save_function
+        restore_fn_id = saveable_object_proto.restore_function
+        node._serialize_to_tensors = self.get(save_fn_id)  # pylint: disable=protected-access
+        node._restore_from_tensors = self.get(restore_fn_id)  # pylint: disable=protected-access
+      else:
+        # Restore legacy SaveableObject functions.
+        saveable_fn_by_name = {}
+        for name, saveable_object_proto in proto.saveable_objects.items():
+          save_fn_id = saveable_object_proto.save_function
+          restore_fn_id = saveable_object_proto.restore_function
+          saveable_fn_by_name[name] = (self.get(save_fn_id),
+                                       self.get(restore_fn_id))
+
+        node._self_saveable_object_factories = (  # pylint: disable=protected-access
+            saveable_object_util.recreate_saveable_objects(saveable_fn_by_name))
 
   def _load_edges(self):
     """Adds edges from objects to other objects and functions."""
@@ -496,7 +514,7 @@ class Loader(object):
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
     # TODO(b/205010730): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
-    saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
+    saver = checkpoint.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
     with ops.device("CPU"):
       saver._file_prefix_placeholder = constant_op.constant(variables_path)
     if self._save_options.allow_partial_checkpoint:
@@ -506,7 +524,7 @@ class Loader(object):
     else:
       load_status = saver.restore(variables_path, self._checkpoint_options)
       load_status.assert_existing_objects_matched()
-    checkpoint = load_status._checkpoint
+    ckpt = load_status._checkpoint
 
     if not context.executing_eagerly():
       # When running in eager mode, the `restore` call above has already run and
@@ -516,9 +534,9 @@ class Loader(object):
       # wire them in the initializers of the objects so that they get
       # initialized properly when using common practices (e.g. the ones used by
       # ManagedSession) without further user action.
-      for object_id, obj in dict(checkpoint.object_by_proto_id).items():
-        position = base.CheckpointPosition(checkpoint=checkpoint,
-                                           proto_id=object_id)
+      for object_id, obj in dict(ckpt.object_by_proto_id).items():
+        position = restore.CheckpointPosition(checkpoint=ckpt,
+                                              proto_id=object_id)
         registered_saver = position.get_registered_saver_name()
         if registered_saver:
           raise NotImplementedError(
@@ -628,7 +646,7 @@ class Loader(object):
     # individually callable by adding a `__call__` method to the classes of
     # the objects instances that have a `__call__` property.
 
-    class _UserObject(tracking.AutoTrackable):
+    class _UserObject(autotrackable.AutoTrackable):
       pass
 
     return _UserObject(), setattr
@@ -668,13 +686,28 @@ class Loader(object):
     with ops.get_default_graph()._variable_creator_scope(  # pylint: disable=protected-access
         uninitialized_variable_creator,
         priority=50):
-      return variables.Variable(
-          shape=proto.shape,
-          dtype=proto.dtype,
-          name=name,
-          trainable=trainable,
-          synchronization=synchronization,
-          aggregation=aggregation), setattr
+      saved_device = proto.device
+      load_with_device = (
+          self._save_options.experimental_variable_policy
+          ._save_variable_devices() and config.get_soft_device_placement() and
+          saved_device)
+      if load_with_device:
+        with ops.device(saved_device):
+          return variables.Variable(
+              shape=proto.shape,
+              dtype=proto.dtype,
+              name=name,
+              trainable=trainable,
+              synchronization=synchronization,
+              aggregation=aggregation), setattr
+      else:
+        return variables.Variable(
+            shape=proto.shape,
+            dtype=proto.dtype,
+            name=name,
+            trainable=trainable,
+            synchronization=synchronization,
+            aggregation=aggregation), setattr
 
   def _get_tensor_from_fn(self, proto):
     outer_graph = self._concrete_functions[proto.concrete_function].graph

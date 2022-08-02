@@ -20,17 +20,19 @@ from absl import logging
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
+from tensorflow.dtensor.python import api
 from tensorflow.python.eager import context
+from tensorflow.python.platform import remote_utils
+
+_is_multi_client_initialized = False
 
 
-def initialize_multi_client_cluster(
-    job_name: str,
-    dtensor_jobs: List[str],
-    client_id: int,
-    collective_leader: str,
-    port: Optional[int] = None,
-    protocol: Optional[str] = "grpc+loas",
-    enable_coordination_service: bool = False):
+def initialize_multi_client_cluster(job_name: str,
+                                    dtensor_jobs: List[str],
+                                    client_id: int,
+                                    collective_leader: str,
+                                    port: Optional[int] = None,
+                                    enable_coordination_service: bool = False):
   """Initialize GRPC servers and collectives for multi-client DTensor setup.
 
   While single clients (e.g. Forge) can use local mode of collectives, GRPC
@@ -46,7 +48,6 @@ def initialize_multi_client_cluster(
     client_id: The ID of the DTensor client this function is being called in.
     collective_leader: The job/task that will be used to run collectives.
     port: The port this client's GRPC server will run on.
-    protocol: The protocol to be used by this server.
     enable_coordination_service: If true, enable distributed coordination
       service to make sure that workers know the devices on each other, a
       prerequisite for data transfer through cross-worker rendezvous.
@@ -54,7 +55,25 @@ def initialize_multi_client_cluster(
   Raises:
     RuntimeError: If running inside a tf.function.
   """
+  global _is_multi_client_initialized
   assert context.executing_eagerly()
+
+  if _is_multi_client_initialized:
+    raise ValueError("Multi-client mode has already been initialized.")
+
+  if api.num_clients() <= 1:
+    raise ValueError(
+        "DTENSOR_NUM_CLIENTS must be set greater than 1 for multi-client mode.")
+
+  if not api.jobs() or len(api.jobs()) <= 1:
+    raise ValueError(
+        "DTENSOR_JOBS environment variable is required when using multi-client "
+        "mode to properly set up communications between servers.")
+
+  if len(api.jobs()) != api.num_clients():
+    raise ValueError(
+        "DTENSOR_JOBS environment variable must be configured with the same "
+        "number of items as DTENSOR_NUM_CLIENTS.")
 
   if not collective_leader.startswith("/job:"):
     collective_leader = "/job:" + collective_leader
@@ -79,7 +98,7 @@ def initialize_multi_client_cluster(
       default_session_config=config_proto,
       job_name=job_name,
       task_index=client_id,
-      protocol=protocol,
+      protocol=remote_utils.get_default_communication_protocol(),
       port=port)
   server_def.default_session_config.rpc_options.num_channels_per_target = 4
   server_def.default_session_config.experimental.recv_buf_max_chunk = -1
@@ -87,3 +106,10 @@ def initialize_multi_client_cluster(
   logging.info("Enabling collectives with server_def: %s", server_def)
   context.context().enable_collective_ops(server_def)
   context.ensure_initialized()
+
+  _is_multi_client_initialized = True
+
+
+def is_initialized() -> bool:
+  """Returns whether multi-client mode has been initialized."""
+  return _is_multi_client_initialized

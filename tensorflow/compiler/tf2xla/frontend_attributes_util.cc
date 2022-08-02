@@ -14,19 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 
+#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
-const char kXlaFrontendAttributesAttrName[] = "_XlaFrontendAttributes";
-
-StatusOr<absl::optional<xla::FrontendAttributes>>
+StatusOr<std::optional<xla::FrontendAttributes>>
 GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs) {
   const AttrValue* attr = attrs.Find(kXlaFrontendAttributesAttrName);
   if (attr == nullptr) {
-    return StatusOr<absl::optional<xla::FrontendAttributes>>(absl::nullopt);
+    return StatusOr<std::optional<xla::FrontendAttributes>>(std::nullopt);
   }
   xla::FrontendAttributes attributes;
   if (!attributes.ParseFromString(attr->s())) {
@@ -34,7 +33,7 @@ GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs) {
         "Experimental _XlaFrontendAttributes attribute was not a valid encoded "
         "xla::FrontendAttributes proto.");
   }
-  return absl::optional<xla::FrontendAttributes>(attributes);
+  return std::optional<xla::FrontendAttributes>(attributes);
 }
 
 }  // namespace tensorflow

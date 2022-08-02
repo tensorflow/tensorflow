@@ -74,7 +74,6 @@ class DfsHloVisitorBase {
 
   virtual Status HandleClamp(HloInstructionPtr hlo) = 0;
   virtual Status HandleSelect(HloInstructionPtr hlo) = 0;
-  virtual Status HandleTupleSelect(HloInstructionPtr hlo) = 0;
   virtual Status HandleMaximum(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }

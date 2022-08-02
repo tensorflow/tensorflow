@@ -9,9 +9,10 @@ func.func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>
   func.return %3 : tensor<2x1xf32>
 }
 
-// CHECK:  [[VAL_0:%.*]] = "tfl.reshape"(%1, %cst) {tac.device = "GPU",  tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<4xi32>) -> tensor<1x1x1x1xf32>
-// CHECK:  [[VAL_1:%.*]] = "tfl.reshape"(%2, %cst) {tac.device = "GPU",  tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<4xi32>) -> tensor<1x1x1x1xf32>
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<4xi32>
+// CHECK:  [[VAL_0:%.*]] = "tfl.reshape"(%1, %[[CST]]) {tac.device = "GPU",  tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<4xi32>) -> tensor<1x1x1x1xf32>
+// CHECK:  [[VAL_1:%.*]] = "tfl.reshape"(%2, %[[CST]]) {tac.device = "GPU",  tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<4xi32>) -> tensor<1x1x1x1xf32>
 // CHECK:  [[VAL_2:%.*]] = "tfl.concatenation"([[VAL_0]], [[VAL_1]]) {axis = 3 : i32, fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<1x1x1x2xf32>
-// CHECK:  [[VAL_3:%.*]] = "tfl.reshape"([[VAL_2]], %cst_0) : (tensor<1x1x1x2xf32>, tensor<2xi32>) -> tensor<2x1xf32>
+// CHECK:  [[VAL_3:%.*]] = "tfl.reshape"([[VAL_2]], %{{.*}}) : (tensor<1x1x1x2xf32>, tensor<2xi32>) -> tensor<2x1xf32>
 
 }

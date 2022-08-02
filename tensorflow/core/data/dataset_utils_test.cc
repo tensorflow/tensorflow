@@ -409,6 +409,15 @@ INSTANTIATE_TEST_SUITE_P(
              "test_only_experiment_100"}},
         GetExperimentsOptTestCase{
             /*opt_ins=*/{"test_only_experiment_0", "test_only_experiment_100"},
+            /*opt_outs=*/{"all_except_opt_in"},
+            /*expected_in=*/
+            {"test_only_experiment_0", "test_only_experiment_100"},
+            /*expected_out=*/
+            {"test_only_experiment_1", "test_only_experiment_5",
+             "test_only_experiment_10", "test_only_experiment_50",
+             "test_only_experiment_99"}},
+        GetExperimentsOptTestCase{
+            /*opt_ins=*/{"test_only_experiment_0", "test_only_experiment_100"},
             /*opt_outs=*/{},
             /*expected_in=*/
             {"test_only_experiment_0", "test_only_experiment_1",
@@ -495,7 +504,8 @@ GetOptimizationsTestCase GetOptimizationTestCase2() {
   Options options;
   options.mutable_optimization_options()->set_apply_default_optimizations(
       false);
-  return {options, /*expected_enabled=*/{}, /*expected_disabled=*/{}, {}};
+  return {options, /*expected_enabled=*/{}, /*expected_disabled=*/{},
+          /*expected_default=*/{}};
 }
 
 // Tests explicitly enabling / disabling some default and non-default
@@ -506,11 +516,11 @@ GetOptimizationsTestCase GetOptimizationTestCase3() {
   options.mutable_optimization_options()->set_map_and_batch_fusion(true);
   options.mutable_optimization_options()->set_map_parallelization(false);
   options.mutable_optimization_options()->set_parallel_batch(false);
-  return {
-      options,
-      /*expected_enabled=*/{"make_sloppy", "map_and_batch_fusion"},
-      /*expected_disabled=*/{"parallel_batch", "map_parallelization"},
-      /*expected_default=*/{"noop_elimination", "shuffle_and_repeat_fusion"}};
+  return {options,
+          /*expected_enabled=*/{"make_sloppy", "map_and_batch_fusion"},
+          /*expected_disabled=*/{"parallel_batch", "map_parallelization"},
+          /*expected_default=*/
+          {"noop_elimination", "shuffle_and_repeat_fusion"}};
 }
 
 // Test enabling all / most available optimizations.
@@ -526,13 +536,14 @@ GetOptimizationsTestCase GetOptimizationTestCase4() {
   options.mutable_optimization_options()->set_noop_elimination(true);
   options.mutable_optimization_options()->set_parallel_batch(true);
   options.mutable_optimization_options()->set_shuffle_and_repeat_fusion(true);
+  options.mutable_optimization_options()->set_inject_prefetch(true);
   options.set_slack(true);
   return {options,
           /*expected_enabled=*/
           {"filter_fusion", "filter_parallelization", "make_sloppy",
            "map_and_batch_fusion", "map_and_filter_fusion", "map_fusion",
            "map_parallelization", "noop_elimination", "parallel_batch",
-           "shuffle_and_repeat_fusion", "slack"},
+           "shuffle_and_repeat_fusion", "slack", "inject_prefetch"},
           /*expected_disabled=*/{},
           /*expected_default=*/{}};
 }

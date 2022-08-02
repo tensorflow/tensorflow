@@ -1671,7 +1671,7 @@ Status OpLevelCostEstimator::PredictDefaultNodeCosts(
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HasZeroDim(const OpInfo& op_info) {
@@ -1896,7 +1896,7 @@ Status OpLevelCostEstimator::PredictSparseTensorDenseMatMul(
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpLevelCostEstimator::PredictNoOp(const OpContext& op_context,
@@ -1904,7 +1904,7 @@ Status OpLevelCostEstimator::PredictNoOp(const OpContext& op_context,
   const auto& op_info = op_context.op_info;
   VLOG(1) << "Op:" << op_info.op() << " Execution Time 0 (ns)";
   // By default, NodeCosts is initialized to zero ops and bytes.
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpLevelCostEstimator::PredictPureMemoryOp(const OpContext& op_context,
@@ -1933,7 +1933,7 @@ Status OpLevelCostEstimator::PredictIdentity(const OpContext& op_context,
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpLevelCostEstimator::PredictVariable(const OpContext& op_context,
@@ -1952,7 +1952,7 @@ Status OpLevelCostEstimator::PredictVariable(const OpContext& op_context,
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpLevelCostEstimator::PredictBatchMatMul(const OpContext& op_context,
@@ -1978,7 +1978,7 @@ Status OpLevelCostEstimator::PredictMetadata(const OpContext& op_context,
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpLevelCostEstimator::PredictGatherOrSlice(const OpContext& op_context,
@@ -2031,7 +2031,7 @@ Status OpLevelCostEstimator::PredictGatherOrSlice(const OpContext& op_context,
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpLevelCostEstimator::PredictScatter(const OpContext& op_context,
@@ -2079,7 +2079,7 @@ Status OpLevelCostEstimator::PredictScatter(const OpContext& op_context,
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpLevelCostEstimator::PredictFusedOp(
@@ -2110,7 +2110,7 @@ Status OpLevelCostEstimator::PredictFusedOp(
         fused_node_costs.num_nodes_with_pure_memory_op;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */
@@ -2239,7 +2239,7 @@ Status OpLevelCostEstimator::PredictMaxPool(const OpContext& op_context,
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpLevelCostEstimator::PredictMaxPoolGrad(const OpContext& op_context,
@@ -2291,7 +2291,7 @@ Status OpLevelCostEstimator::PredictMaxPoolGrad(const OpContext& op_context,
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* This predict function handles three types of tensorflow ops
@@ -2323,7 +2323,7 @@ Status OpLevelCostEstimator::PredictAssignVariableOps(
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpLevelCostEstimator::PredictAvgPool(const OpContext& op_context,
@@ -2360,7 +2360,7 @@ Status OpLevelCostEstimator::PredictAvgPool(const OpContext& op_context,
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpLevelCostEstimator::PredictAvgPoolGrad(const OpContext& op_context,
@@ -2457,7 +2457,7 @@ Status OpLevelCostEstimator::PredictFusedBatchNorm(
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpLevelCostEstimator::PredictFusedBatchNormGrad(
@@ -2495,7 +2495,7 @@ Status OpLevelCostEstimator::PredictFusedBatchNormGrad(
     node_costs->inaccurate = true;
     node_costs->num_nodes_with_unknown_shapes = 1;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpLevelCostEstimator::PredictNaryOp(const OpContext& op_context,

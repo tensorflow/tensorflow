@@ -23,7 +23,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
+#include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/lib/monitoring/test_utils.h"
+#include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 
@@ -36,6 +38,7 @@ namespace {
 // Returns the labels of `point` as a vector of strings.
 std::vector<std::string> GetLabels(const monitoring::Point& point) {
   std::vector<std::string> labels;
+  labels.reserve(point.labels.size());
   for (const monitoring::Point::Label& label : point.labels) {
     labels.push_back(label.value);
   }
@@ -46,6 +49,15 @@ std::vector<std::string> GetLabels(const monitoring::Point& point) {
 std::unique_ptr<CollectedMetrics> CollectMetrics() {
   CollectionRegistry::CollectMetricsOptions options;
   return CollectionRegistry::Default()->CollectMetrics(options);
+}
+
+MetricKind GetMetricKind(const CollectedMetrics& metrics,
+                         const std::string& metric_name) {
+  auto metric_descriptor = metrics.metric_descriptor_map.find(metric_name);
+  if (metric_descriptor == metrics.metric_descriptor_map.end()) {
+    return MetricKind::kCumulative;
+  }
+  return metric_descriptor->second->metric_kind;
 }
 
 StatusOr<std::vector<Point>> GetPoints(const CollectedMetrics& metrics,
@@ -113,8 +125,23 @@ int64_t GetValue(const Point& point) {
 }
 
 template <>
+std::string GetValue(const Point& point) {
+  return point.string_value;
+}
+
+template <>
+bool GetValue(const Point& point) {
+  return point.bool_value;
+}
+
+template <>
 Histogram GetValue(const Point& point) {
   return Histogram(point.histogram_value);
+}
+
+template <>
+Percentiles GetValue(const Point& point) {
+  return Percentiles(point.percentiles_value);
 }
 
 template <>
@@ -130,6 +157,23 @@ Histogram GetDelta(const Histogram& a, const Histogram& b) {
                << result.status();
   }
   return *result;
+}
+
+template <>
+Percentiles GetDelta(const Percentiles& a, const Percentiles& b) {
+  return a.Subtract(b);
+}
+
+template <>
+std::string GetDelta(const std::string& a, const std::string& b) {
+  LOG(FATAL) << "`CellReader<std::string>` does not support `Delta`. "
+             << "Please use `Read` instead.";
+}
+
+template <>
+bool GetDelta(const bool& a, const bool& b) {
+  LOG(FATAL) << "`CellReader<bool>` does not support `Delta`. "
+             << "Please use `Read` instead.";
 }
 
 }  // namespace internal

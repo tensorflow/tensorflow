@@ -225,7 +225,7 @@ class MergeTfIfOpsPass
     results.reserve(branch_function_type.getNumResults());
 
     for (auto if_op : if_ops) {
-      // Create the the call op to the original branch. The arguments are simply
+      // Create the call op to the original branch. The arguments are simply
       // the arguments from the wrapper function.
       auto call_op = builder.create<mlir::TF::PartitionedCallOp>(
           if_op.getLoc(), if_op.getResultTypes(), block->getArguments(),

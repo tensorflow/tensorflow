@@ -42,7 +42,7 @@ class XlaDotOp : public XlaOpKernel {
         context,
         precision_config_.ParsePartialFromString(precision_config_attr),
         errors::InvalidArgument("Error parsing convolution dimension numbers"));
-    preferred_element_type_ = absl::nullopt;
+    preferred_element_type_ = std::nullopt;
   }
 
   void Compile(XlaOpKernelContext* context) override {
@@ -58,7 +58,7 @@ class XlaDotOp : public XlaOpKernel {
   }
 
  protected:
-  absl::optional<xla::PrimitiveType> preferred_element_type_;
+  std::optional<xla::PrimitiveType> preferred_element_type_;
 
  private:
   xla::DotDimensionNumbers dnums_;

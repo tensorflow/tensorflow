@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 #include <unordered_set>
+#include <utility>
 
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
@@ -96,10 +97,10 @@ Status RegisterExtraTfOpDefs(absl::Span<const std::string> extra_tf_opdefs) {
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
+          return OkStatus();
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -181,7 +182,7 @@ Status ApplyDynamicRangeQuantizationFromOldQuantizer(
   *result =
       string(reinterpret_cast<const char*>(q_buffer), q_builder.GetSize());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
@@ -226,7 +227,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Freeze variables if a session is provided.
-  if (session.hasValue()) {
+  if (session.has_value()) {
     mlir::TFL::ErrorCollectorInstrumentation collector(module.getContext());
     if (failed(mlir::tf_saved_model::FreezeVariables(module,
                                                      session.getValue()))) {
@@ -307,7 +308,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   if (mlir::failed(module.verifyInvariants())) {
     return tensorflow::errors::Unknown("Final module is invalid");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
@@ -326,7 +327,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
         input_filename, tags, exported_names, context,
         /*unconditionally_use_set_output_shapes=*/true);
     if (!module_or.status().ok()) return module_or.status();
-    return module_or.ConsumeValueOrDie();
+    return std::move(module_or).value();
   } else if (saved_model_version == 1) {
     MLIRImportOptions options;
     options.upgrade_legacy = specs.upgrade_legacy;
@@ -336,7 +337,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
         enable_variable_lifting, saved_model_bundle);
 
     if (!module_or.status().ok()) return module_or.status();
-    return module_or.ConsumeValueOrDie();
+    return std::move(module_or).value();
   } else {
     return tensorflow::errors::InvalidArgument(
         "Should be either saved model v1 or v2");

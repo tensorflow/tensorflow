@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -520,8 +519,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::round,
                                           {operand_value},
                                           {operand_value->getType()}, b_);
+    // TODO(b/238238423): llvm::Intrinsic::nearbyint is equivalent to roundeven
+    // as TF and JAX default to FE_TONEAREST. Call llvm::Intrinsic::roundeven
+    // instead once GPU emitter supports lowering LLVM.
     case HloOpcode::kRoundNearestEven:
-      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::roundeven,
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nearbyint,
                                           {operand_value},
                                           {operand_value->getType()}, b_);
     case HloOpcode::kSign: {
@@ -2268,7 +2270,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   // Emit:
   // if (slice_intersection) -> return data from 'update'.
   // else                    -> return data from 'input'.
-  llvm::Value* ret_value_addr = llvm_ir::EmitAllocaAtFunctionEntry(
+  llvm::AllocaInst* ret_value_addr = llvm_ir::EmitAllocaAtFunctionEntry(
       llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(), module_),
       "ret_value_addr", b_);
   llvm_ir::LlvmIfData if_data =
@@ -2294,7 +2296,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   Store(false_value, ret_value_addr);
 
   SetToFirstInsertPoint(if_data.after_block, b_);
-  return Load(ret_value_addr);
+  return Load(ret_value_addr->getAllocatedType(), ret_value_addr);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
@@ -2332,7 +2334,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
   // } else {
   //   ret_value = *operand1;        // padding
   // }
-  llvm::Value* ret_value_addr = llvm_ir::EmitAllocaAtFunctionEntry(
+  llvm::AllocaInst* ret_value_addr = llvm_ir::EmitAllocaAtFunctionEntry(
       llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(), module_),
       "pad_result_addr", b_);
   llvm_ir::LlvmIfData if_data =
@@ -2355,7 +2357,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
   // operand_to_generator may create new basic blocks, making the parent
   // of operand_value or padding_value no longer a predecessor of
   // if_data.after_block.
-  return Load(ret_value_addr);
+  return Load(ret_value_addr->getAllocatedType(), ret_value_addr);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
@@ -2387,7 +2389,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   PrimitiveType primitive_type = hlo->shape().element_type();
   llvm::Type* primitive_type_llvm =
       llvm_ir::PrimitiveTypeToIrType(primitive_type, module_);
-  llvm::Value* accumulator_alloca =
+  llvm::AllocaInst* accumulator_alloca =
       llvm_ir::EmitAllocaAtFunctionEntry(primitive_type_llvm, "dot_acc", b_);
   Store(llvm::Constant::getNullValue(primitive_type_llvm), accumulator_alloca);
 
@@ -2421,7 +2423,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   IrArray::Index rhs_index(rhs_multi_index, hlo->operand(1)->shape(),
                            index_type);
 
-  llvm::Value* current_accumulator = Load(accumulator_alloca);
+  llvm::Value* current_accumulator =
+      Load(accumulator_alloca->getAllocatedType(), accumulator_alloca);
   TF_ASSIGN_OR_RETURN(llvm::Value * lhs_value, lhs_generator(lhs_index));
   TF_ASSIGN_OR_RETURN(llvm::Value * rhs_value, rhs_generator(rhs_index));
   llvm::Value* next_accumulator =
@@ -2429,7 +2432,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   Store(next_accumulator, accumulator_alloca);
 
   SetToFirstInsertPoint(inner_loop->GetExitBasicBlock(), b_);
-  return Load(accumulator_alloca);
+  return Load(accumulator_alloca->getAllocatedType(), accumulator_alloca);
 }
 
 llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
@@ -2883,7 +2886,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
     TF_ASSIGN_OR_RETURN(llvm::Value * input_value,
                         input_generators[operand_idx](input_index));
     input_values[input_count + operand_idx] = input_value;
-    input_values[operand_idx] = Load(accum_ptrs[operand_idx]);
+    input_values[operand_idx] =
+        Load(llvm::cast<llvm::AllocaInst>(accum_ptrs[operand_idx])
+                 ->getAllocatedType(),
+             accum_ptrs[operand_idx]);
   }
   TF_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accum_values,
                       EmitThreadLocalCall(*reduce_window->to_apply(),
@@ -2967,7 +2973,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduce(
 
   std::vector<llvm::Value*> reduction_operands;
   for (llvm::Value* accum : accumulator_addrs) {
-    llvm::Value* accum_value = Load(accum);
+    llvm::Value* accum_value =
+        Load(llvm::cast<llvm::AllocaInst>(accum)->getAllocatedType(), accum);
     reduction_operands.push_back(accum_value);
   }
 
@@ -2999,14 +3006,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitAccumResult(
     llvm::Value* returned_structure = llvm::UndefValue::get(
         llvm::StructType::get(b()->getContext(), accumulator_types));
     for (int64_t i = 0; i < accumulator_addrs.size(); i++) {
-      llvm::Value* accumulator_value = Load(accumulator_addrs[i]);
+      llvm::Value* accumulator_value =
+          Load(accumulator_types[i], accumulator_addrs[i]);
       returned_structure =
           b()->CreateInsertValue(returned_structure, accumulator_value, i);
     }
     return returned_structure;
   } else {
     CHECK_EQ(accumulator_addrs.size(), 1);
-    return Load(accumulator_addrs[0]);
+    return Load(accumulator_types[0], accumulator_addrs[0]);
   }
 }
 
@@ -3039,7 +3047,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
   // Upcast the accumulator to F32 from F16 for increased precision.
   llvm::Type* accumulator_type =
       lhs_element_type == F16 ? b_->getFloatTy() : lhs_llvm_type;
-  llvm::Value* sum_address = llvm_ir::EmitAllocaAtFunctionEntry(
+  llvm::AllocaInst* sum_address = llvm_ir::EmitAllocaAtFunctionEntry(
       accumulator_type, "convolution_sum_address", b_);
   llvm::Value* constant_zero = llvm::Constant::getNullValue(accumulator_type);
   Store(constant_zero, sum_address);
@@ -3157,12 +3165,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
                                        b_->getInt64Ty());
   TF_ASSIGN_OR_RETURN(llvm::Value* const kernel_value,
                       kernel_generator(kernel_index));
-  llvm::Value* sum = EmitMulAdd(input_value, kernel_value, Load(sum_address),
-                                convolution->shape().element_type());
+  llvm::Value* sum =
+      EmitMulAdd(input_value, kernel_value,
+                 Load(sum_address->getAllocatedType(), sum_address),
+                 convolution->shape().element_type());
   Store(sum, sum_address);
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), b_);
-  return FPCast(Load(sum_address), lhs_llvm_type);
+  return FPCast(Load(sum_address->getAllocatedType(), sum_address),
+                lhs_llvm_type);
 }
 
 // Evaluate polynomial using Horner's method.

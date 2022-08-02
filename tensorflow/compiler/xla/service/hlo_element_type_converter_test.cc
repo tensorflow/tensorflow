@@ -132,11 +132,10 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_TRUE(converted);
 
-  std::function<bool(const HloInstruction*)> is_bf16_rng =
-      [](const HloInstruction* inst) {
-        return inst->shape().element_type() == BF16 &&
-               inst->opcode() == HloOpcode::kRng;
-      };
+  HloPredicate is_bf16_rng = [](const HloInstruction* inst) {
+    return inst->shape().element_type() == BF16 &&
+           inst->opcode() == HloOpcode::kRng;
+  };
 
   EXPECT_THAT(module->entry_computation()->instructions(),
               Not(Contains(ResultOf(is_bf16_rng, Eq(true)))));

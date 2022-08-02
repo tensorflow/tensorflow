@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
@@ -311,6 +312,90 @@ TEST(HistogramTest, DifferentBuckets) {
       Histogram(histogram1).Subtract(Histogram(histogram2)),
       StatusIs(error::INVALID_ARGUMENT,
                HasSubstr("Subtracting a histogram with different buckets.")));
+}
+
+TEST(PercentilesTest, Percentiles) {
+  tensorflow::monitoring::Percentiles percentiles_value;
+  percentiles_value.total_samples = 100;
+  percentiles_value.accumulator = -100;
+  Percentiles percentiles(percentiles_value);
+  EXPECT_EQ(percentiles.num(), 100);
+  EXPECT_FLOAT_EQ(percentiles.sum(), -100);
+
+  Percentiles delta = percentiles.Subtract(percentiles);
+  EXPECT_EQ(delta.num(), 0);
+  EXPECT_FLOAT_EQ(delta.sum(), 0);
+
+  delta = delta.Subtract(percentiles);
+  EXPECT_EQ(delta.num(), -100);
+  EXPECT_FLOAT_EQ(delta.sum(), 100);
+}
+
+TEST(PercentilesTest, Subtract) {
+  tensorflow::monitoring::Percentiles percentiles_value1;
+  percentiles_value1.total_samples = 100;
+  percentiles_value1.accumulator = 100;
+  Percentiles percentiles1(percentiles_value1);
+  EXPECT_EQ(percentiles1.num(), 100);
+  EXPECT_FLOAT_EQ(percentiles1.sum(), 100);
+
+  tensorflow::monitoring::Percentiles percentiles_value2;
+  percentiles_value2.total_samples = 90;
+  percentiles_value2.accumulator = 90;
+  Percentiles percentiles2(percentiles_value2);
+  EXPECT_EQ(percentiles2.num(), 90);
+  EXPECT_FLOAT_EQ(percentiles2.sum(), 90);
+
+  Percentiles delta = percentiles1.Subtract(percentiles2);
+  EXPECT_EQ(delta.num(), 10);
+  EXPECT_FLOAT_EQ(delta.sum(), 10);
+}
+
+TEST(PercentilesTest, ReverseSubtract) {
+  tensorflow::monitoring::Percentiles percentiles_value1;
+  percentiles_value1.total_samples = 100;
+  percentiles_value1.accumulator = 100;
+  Percentiles percentiles1(percentiles_value1);
+  EXPECT_EQ(percentiles1.num(), 100);
+  EXPECT_FLOAT_EQ(percentiles1.sum(), 100);
+
+  tensorflow::monitoring::Percentiles percentiles_value2;
+  percentiles_value2.total_samples = 90;
+  percentiles_value2.accumulator = 90;
+  Percentiles percentiles2(percentiles_value2);
+  EXPECT_EQ(percentiles2.num(), 90);
+  EXPECT_FLOAT_EQ(percentiles2.sum(), 90);
+
+  Percentiles delta = percentiles2.Subtract(percentiles1);
+  EXPECT_EQ(delta.num(), -10);
+  EXPECT_FLOAT_EQ(delta.sum(), -10);
+}
+
+TEST(PercentilesTest, SubtractEmptyPercentile) {
+  tensorflow::monitoring::Percentiles percentiles_value;
+  percentiles_value.total_samples = 1;
+  percentiles_value.accumulator = 1;
+  Percentiles percentiles(percentiles_value);
+  EXPECT_EQ(percentiles.num(), 1);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 1);
+
+  Percentiles empty_percentile((tensorflow::monitoring::Percentiles()));
+  EXPECT_EQ(empty_percentile.num(), 0);
+  EXPECT_FLOAT_EQ(empty_percentile.sum(), 0);
+
+  Percentiles delta = percentiles.Subtract(empty_percentile);
+  EXPECT_EQ(delta.num(), 1);
+  EXPECT_FLOAT_EQ(delta.sum(), 1);
+}
+
+TEST(PercentilesTest, EmptyPercentiles) {
+  Percentiles empty_percentile((tensorflow::monitoring::Percentiles()));
+  EXPECT_EQ(empty_percentile.num(), 0);
+  EXPECT_FLOAT_EQ(empty_percentile.sum(), 0);
+
+  Percentiles delta = empty_percentile.Subtract(empty_percentile);
+  EXPECT_EQ(delta.num(), 0);
+  EXPECT_FLOAT_EQ(delta.sum(), 0);
 }
 
 }  // namespace

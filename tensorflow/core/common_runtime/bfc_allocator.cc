@@ -524,6 +524,12 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                 memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
             const auto& annotation =
                 profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
+            const auto op_name = annotation.pending_op_name
+                                     ? annotation.pending_op_name
+                                     : "(null)";
+            const auto region_type = annotation.pending_region_type
+                                         ? annotation.pending_region_type
+                                         : "(null)";
             return tensorflow::profiler::TraceMeEncode(
                 traceme_name, {{"allocator_name", name_},
                                {"bytes_reserved", stats_.bytes_reserved},
@@ -534,9 +540,9 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                                {"requested_bytes", req_bytes},
                                {"allocation_bytes", alloc_bytes},
                                {"addr", reinterpret_cast<uint64>(chunk_ptr)},
-                               {"tf_op", annotation.pending_op_name},
+                               {"tf_op", op_name},
                                {"id", annotation.pending_step_id},
-                               {"region_type", annotation.pending_region_type},
+                               {"region_type", region_type},
                                {"data_type", annotation.pending_data_type},
                                {"shape", annotation.pending_shape_func()}});
           },

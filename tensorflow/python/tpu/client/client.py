@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Lint as: python3
 """Cloud TPU Client."""
 
 import datetime
@@ -41,6 +40,7 @@ flags.DEFINE_bool('hbm_oom_exit', True,
                   'Exit the script when the TPU HBM is OOM.')
 
 _GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
+_DEFAULT_TPUCONFIG_VARIABLE = 'TPU_CONFIG'
 _ENDPOINTS_SEPARATOR = ','
 _DEFAULT_ENV_VARIABLE = 'TPU_NAME'
 _DISCOVERY_SERVICE_URL_ENV_VARIABLE = 'TPU_API_DISCOVERY_URL'
@@ -96,6 +96,13 @@ def _environment_var_to_network_endpoints(endpoints):
     }
 
 
+def _get_tpu_node_config():
+  tpu_config_env = os.environ.get(_DEFAULT_TPUCONFIG_VARIABLE)
+  if tpu_config_env:
+    return json.loads(tpu_config_env)
+  return None
+
+
 def _get_tpu_name(tpu):
   if tpu:
     return tpu
@@ -139,7 +146,13 @@ class Client(object):
     tpu = _get_tpu_name(tpu)
 
     if tpu is None:
-      raise ValueError('Please provide a TPU Name to connect to.')
+      tpu_node_config = _get_tpu_node_config()
+      if tpu_node_config:
+        tpu = tpu_node_config.get('tpu_node_name')
+        project = project or tpu_node_config.get('project')
+        zone = zone or tpu_node_config.get('zone')
+      else:
+        raise ValueError('Please provide a TPU Name to connect to.')
 
     self._tpu = _as_text(tpu)
 
@@ -181,12 +194,13 @@ class Client(object):
                                                 '%Y-%m-%dT%H:%M:%S')
       time_diff = _utcnow() - oom_datetime
       if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
-        logging.warning(self._symptom_msg(
-            'a recent runtime OOM has occured ~{} seconds ago. The model '
-            'script will terminate automatically. To prevent future OOM '
-            'events, please consider reducing the model size. To disable this '
-            'behavior, set flag --runtime_oom_exit=false when starting the '
-            'script.'.format(time_diff.seconds)))
+        logging.warning(
+            self._symptom_msg(
+                'a recent runtime OOM has occurred ~{} seconds ago. The model '
+                'script will terminate automatically. To prevent future OOM '
+                'events, please consider reducing the model size. To disable this '
+                'behavior, set flag --runtime_oom_exit=false when starting the '
+                'script.'.format(time_diff.seconds)))
         return True
     return False
 
@@ -202,12 +216,13 @@ class Client(object):
                                                 '%Y-%m-%dT%H:%M:%S')
       time_diff = _utcnow() - oom_datetime
       if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
-        logging.warning(self._symptom_msg(
-            'a recent HBM OOM has occured ~{} seconds ago. The model '
-            'script will terminate automatically. To prevent future HBM OOM '
-            'events, please consider reducing the model size. To disable this '
-            'behavior, set flag --hbm_oom_exit=false when starting the '
-            'script.'.format(time_diff.seconds)))
+        logging.warning(
+            self._symptom_msg(
+                'a recent HBM OOM has occurred ~{} seconds ago. The model '
+                'script will terminate automatically. To prevent future HBM OOM '
+                'events, please consider reducing the model size. To disable this '
+                'behavior, set flag --hbm_oom_exit=false when starting the '
+                'script.'.format(time_diff.seconds)))
         return True
     return False
 

@@ -1,9 +1,7 @@
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize -tfl-post-quantize  --tfl-enable-dynamic-range-quantization | FileCheck %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize -tfl-post-quantize  --tfl-enable-dynamic-range-quantization --tfl-enable-custom-op-quantization="CustomTestOp=1" --tfl-enable-custom-op-weight-only="CustomTestOp=false" --tfl-enable-no-side-effect="CustomTestOp=false" | FileCheck --check-prefix=NotPrune %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize -tfl-post-quantize  --tfl-enable-dynamic-range-quantization --tfl-enable-custom-op-quantization="CustomTestOp=1" --tfl-enable-custom-op-weight-only="CustomTestOp=false" --tfl-enable-no-side-effect="CustomTestOp=true" | FileCheck --check-prefix=NoSideEffect %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize -tfl-post-quantize  --tfl-enable-dynamic-range-quantization --tfl-enable-custom-op-quantization="CustomTestOp=1" --tfl-enable-custom-op-weight-only="CustomTestOp=true" --tfl-enable-no-side-effect="CustomTestOp=true" | FileCheck --check-prefix=NoSideEffectWeightOnly %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize -tfl-post-quantize  --tfl-enable-dynamic-range-quantization --tfl-enable-custom-op-quantization="CustomTestOp=1-3,CustomTestOp3=3" --tfl-enable-custom-op-weight-only="CustomTestOp=true,CustomTestOp3=false" --tfl-enable-no-side-effect="CustomTestOp=true,CustomTestOp3=true" | FileCheck --check-prefix=CustomOp %s
-
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize="enable-dynamic-range-quantization=true" -tfl-post-quantize  | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=false" -tfl-post-quantize="enable-no-side-effect=CustomTestOp=false" | FileCheck --check-prefix=NotPrune %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=false" -tfl-post-quantize="enable-no-side-effect=CustomTestOp=true" | FileCheck --check-prefix=NoSideEffect %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=true"  -tfl-post-quantize="enable-no-side-effect=CustomTestOp=true" | FileCheck --check-prefix=NoSideEffectWeightOnly %s
 
 // CHECK-LABEL: PruneUnusedCustomOp
 func.func @PruneUnusedCustomOp(%arg0: tensor<1x1x1x1xf32>) -> tensor<*xf32> attributes {tf.entry_function = {inputs = "input", outputs = "custom_op"}} {
@@ -42,7 +40,7 @@ func.func @NotPruneUnusedCustomOp(%arg0: tensor<1x1x1x1xf32>) -> tensor<*xf32> a
 // NoSideEffect-LABEL: PruneQuantizedCustomOp
 // NoSideEffectWeightOnly-LABEL: PruneQuantizedCustomOp
 func.func @PruneQuantizedCustomOp(%arg0: tensor<1x1x1x1xf32>) -> tensor<*xf32> attributes {tf.entry_function = {inputs = "input", outputs = "custom_op"}} {
-  %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 2.550000e+02]> : tensor<2xf32>} : (tensor<1x1x1x1xf32>) -> tensor<1x1x1x1xf32>
+  %0 = "quantfork.stats"(%arg0) {layerStats = dense<[0.000000e+00, 2.550000e+02]> : tensor<2xf32>} : (tensor<1x1x1x1xf32>) -> tensor<1x1x1x1xf32>
   %w = arith.constant dense<127.0> : tensor<1024x1x1x1xf32>
   %custom = "tfl.custom"(%0, %w) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<1024x1x1x1xf32>) -> tensor<*xf32>
   func.return %custom : tensor<*xf32>
@@ -70,7 +68,7 @@ func.func @PruneQuantizedCustomOp(%arg0: tensor<1x1x1x1xf32>) -> tensor<*xf32> a
 // CHECK-LABEL: QuantizeCustomOp
 // CustomOp-LABEL: QuantizeCustomOp
 func.func @QuantizeCustomOp(%arg0: tensor<1x1x1x1xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) attributes {tf.entry_function = {inputs = "input", outputs = "custom_op"}} {
-  %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 2.550000e+02]> : tensor<2xf32>} : (tensor<1x1x1x1xf32>) -> tensor<1x1x1x1xf32>
+  %0 = "quantfork.stats"(%arg0) {layerStats = dense<[0.000000e+00, 2.550000e+02]> : tensor<2xf32>} : (tensor<1x1x1x1xf32>) -> tensor<1x1x1x1xf32>
   %w_1 = arith.constant dense<127.0> : tensor<4096x1x1x1xf32>
   %w_2 = arith.constant dense<127.0> : tensor<128x1x1x1xf32>
   %b = arith.constant dense<127.0> : tensor<2048x1x1x1xf32>

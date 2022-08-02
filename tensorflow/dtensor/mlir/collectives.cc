@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -52,7 +51,7 @@ StatusOr<mlir::Value> EmitAllGather(
     mlir::OpBuilder& builder, mlir::Value input,
     const dtensor::Layout& src_layout, const dtensor::Layout& tgt_layout,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops) {
-  if (src_layout == tgt_layout) return input;
+  if (src_layout.IsEquivalent(tgt_layout)) return input;
 
   if (src_layout.rank() != tgt_layout.rank()) {
     return errors::InvalidArgument(
@@ -90,9 +89,10 @@ StatusOr<mlir::Value> EmitAllGather(
   TF_ASSIGN_OR_RETURN(mlir::TensorType output_type,
                       LocalTypeFromGlobalType(tgt_layout, global_type));
 
+  mlir::Location loc = DT_LOC2(input.getLoc(), "DTensorAllGatherOp");
   mlir::TF::DTensorAllGatherOp all_gather =
       builder.create<mlir::TF::DTensorAllGatherOp>(
-          input.getLoc(), output_type, input,
+          loc, output_type, input,
           mlir::dtensor::LayoutAttr::get(builder.getContext(), src_layout),
           mlir::dtensor::LayoutAttr::get(builder.getContext(), tgt_layout));
   SetSingleLayoutOnOp(all_gather, tgt_layout);
@@ -106,7 +106,7 @@ StatusOr<const mlir::Value> EmitAllScatter(
     mlir::OpBuilder& builder, const mlir::Value& original_value,
     const Layout& original_layout, const Layout& desired_layout,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops) {
-  if (original_layout == desired_layout) return original_value;
+  if (original_layout.IsEquivalent(desired_layout)) return original_value;
 
   // Have an early return if desired layout is not more sharded then the
   // original_layout.
@@ -133,9 +133,10 @@ StatusOr<const mlir::Value> EmitAllScatter(
   TF_ASSIGN_OR_RETURN(const mlir::TensorType output_type,
                       LocalTypeFromGlobalType(desired_layout, global_type));
 
+  mlir::Location loc = DT_LOC2(original_value.getLoc(), "DTensorAllScatterOp");
   mlir::TF::DTensorAllScatterOp all_scatter =
       builder.create<mlir::TF::DTensorAllScatterOp>(
-          original_value.getLoc(), output_type, original_value,
+          loc, output_type, original_value,
           mlir::dtensor::LayoutAttr::get(builder.getContext(), original_layout),
           mlir::dtensor::LayoutAttr::get(builder.getContext(), desired_layout));
   SetSingleLayoutOnOp(all_scatter, desired_layout);
@@ -209,6 +210,8 @@ StatusOr<mlir::Value> EmitRelayout(
   // that does not agree with the sharding on the output axis.
   // This produces intermediate layout 2.
   // A split is performed from intermediate layout 2 to the tgt layout.
+
+  if (src_layout.IsEquivalent(tgt_layout)) return input;
 
   // Save whether the input is from a SparseToDenseOp. If it is, then we will
   // emit a DenseToSparse and a SparseToDense op.
@@ -315,7 +318,7 @@ StatusOr<mlir::Operation*> EmitAllReduce(
   TF_ASSIGN_OR_RETURN(std::string device_type,
                       DeviceTypeFromMesh(output_layout.mesh()));
 
-  mlir::Location loc = DT_LOC(input);
+  mlir::Location loc = DT_LOC2(input->getLoc(), "DTensorAllReduceOp");
   auto all_reduce = builder.create<mlir::TF::DTensorAllReduceOp>(
       loc, input->getResultTypes()[0], input->getOpResult(0),
       builder.create<mlir::TF::ConstOp>(loc, group_assignment),
@@ -329,30 +332,6 @@ StatusOr<mlir::Operation*> EmitAllReduce(
 }
 
 namespace {
-
-// Selects a scalar tensor value from a 1D array in specified index.
-mlir::Value SelectScalarValueFromArray(int index, mlir::OpBuilder& builder,
-                                       mlir::Location location,
-                                       mlir::Value array) {
-  mlir::TF::SliceOp sliced_value = builder.create<mlir::TF::SliceOp>(
-      location,
-      mlir::RankedTensorType::get(
-          {1, 1}, array.getType().cast<mlir::TensorType>().getElementType()),
-      /*input=*/array,
-      /*begin=*/IntConst(builder, location, {0, index}),
-      /*size=*/IntConst(builder, location, {1, 1}));
-
-  // Reshape the sliced shape (1,1) tensor to shape 0 scalar.
-  auto scalar_size_type =
-      mlir::RankedTensorType::get({}, builder.getIntegerType(32));
-  mlir::Value scalar_shape = mlir::TF::collection_ops_util::GetR1Const(
-      scalar_size_type.getShape(), builder, location);
-  mlir::Value scalar_sliced_value = builder.create<mlir::TF::ReshapeOp>(
-      location, mlir::ArrayRef<mlir::Type>{scalar_size_type},
-      mlir::ArrayRef<mlir::Value>{sliced_value.output(), scalar_shape},
-      mlir::ArrayRef<mlir::NamedAttribute>{});
-  return scalar_sliced_value;
-}
 
 // Returns a offset multiplier to calculate device id / mesh coordinate.
 int GetMeshDimensionOffsetWithNeighbor(const Mesh& mesh,
@@ -450,10 +429,13 @@ StatusOr<mlir::Value> CreateConstSrcTargetPair(const Mesh& mesh,
 
 }  // namespace
 
-StatusOr<mlir::Value> EmitHaloExchange(
-    int halo_size, const std::string& mesh_dim, const Layout& layout,
-    mlir::OpBuilder& builder, mlir::tf_device::ClusterOp cluster,
-    mlir::Location location, mlir::Value tensor) {
+StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
+                                       const std::string& mesh_dim,
+                                       const Layout& layout,
+                                       mlir::Value mesh_coordinates,
+                                       mlir::tf_device::ClusterOp cluster,
+                                       mlir::Location location,
+                                       mlir::Value tensor) {
   const Mesh& mesh = layout.mesh();
 
   // Check mesh dimension requirements for halo exchange.
@@ -482,12 +464,9 @@ StatusOr<mlir::Value> EmitHaloExchange(
 
   TF_ASSIGN_OR_RETURN(const int mesh_dim_index, mesh.idx_for_dim(mesh_dim));
 
-  // Calculate the index in mesh dimension based on device id.
-  TF_ASSIGN_OR_RETURN(mlir::Value mesh_coordinates,
-                      GetMeshCoordinatesFromCluster(cluster));
-
-  mlir::Value scalar_mesh_coordinate = SelectScalarValueFromArray(
-      mesh_dim_index, builder, location, mesh_coordinates);
+  TF_ASSIGN_OR_RETURN(mlir::Value scalar_mesh_coordinate,
+                      SelectScalarValueFromArray(builder, mesh_dim_index,
+                                                 location, mesh_coordinates));
 
   llvm::SmallVector<int64_t, 4> halo_exchange_tensor_shape;
   for (const auto& size_and_index : llvm::enumerate(input_tensor_shape)) {
@@ -551,9 +530,11 @@ StatusOr<mlir::Value> EmitHaloExchange(
       location, is_on_right_edge, ghost_tensor_left, sliced_tensor_left);
 
   // Invoke collective permute to receive the tensor from neighboring processor.
+  // Halo slices from the left neighbor are received on each processor (they
+  // are shifted right).
   TF_ASSIGN_OR_RETURN(
       mlir::Value src_target_pair_left,
-      CreateConstSrcTargetPair(mesh, mesh_dim, /*shift_left=*/true, location,
+      CreateConstSrcTargetPair(mesh, mesh_dim, /*shift_left=*/false, location,
                                builder));
 
   mlir::Value left_concat_value = builder.create<mlir::TF::CollectivePermuteOp>(
@@ -579,9 +560,11 @@ StatusOr<mlir::Value> EmitHaloExchange(
       location, is_on_left_edge, ghost_tensor_right, sliced_tensor_right);
 
   // Invoke collective permute to receive the tensor from neighboring processor.
+  // Halo slices from the right neighbor are received on each processor (they
+  // are shifted left).
   TF_ASSIGN_OR_RETURN(
       mlir::Value src_target_pair_right,
-      CreateConstSrcTargetPair(mesh, mesh_dim, /*shift_left=*/false, location,
+      CreateConstSrcTargetPair(mesh, mesh_dim, /*shift_left=*/true, location,
                                builder));
   mlir::Value right_concat_value =
       builder.create<mlir::TF::CollectivePermuteOp>(

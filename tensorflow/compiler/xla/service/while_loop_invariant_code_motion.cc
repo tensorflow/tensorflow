@@ -316,13 +316,15 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   return true;
 }
 
-StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
+StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "HLO module before WhileLoopInvariantCodeMotion:";
   XLA_VLOG_LINES(2, module->ToString());
 
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
-  for (auto* comp : module->MakeComputationPostOrder()) {
+  for (auto* comp : module->MakeComputationPostOrder(execution_threads)) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
                     [](const HloInstruction* instr) {
                       return instr->opcode() == HloOpcode::kWhile;

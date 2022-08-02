@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace mhlo {
@@ -44,10 +44,10 @@ void BuildReduceBody(Type element_type, Region* body, OpBuilder* builder) {
   builder->create<ReturnOp>(loc, reducer.getResult());
 }
 
-ConstOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
-                             OpBuilder* builder);
+ConstantOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
+                                OpBuilder* builder);
 
-ConstOp GetScalarNegZeroOfType(Type ty, Location loc, OpBuilder* builder);
+ConstantOp GetScalarNegZeroOfType(Type ty, Location loc, OpBuilder* builder);
 
 // Converts an ArrayAttr to a 1D 64-bit dense elements attribute.
 DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr);

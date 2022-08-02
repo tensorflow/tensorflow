@@ -12,6 +12,7 @@ package(
     default_visibility = [
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/profiler/backends/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
@@ -42,6 +43,30 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_embedding_errors",
+    srcs = ["tpu_embedding_errors.cc"],
+    hdrs = ["tpu_embedding_errors.h"],
+    deps = [
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "tpu_embedding_errors_test",
+    srcs = ["tpu_embedding_errors_test.cc"],
+    deps = [
+        ":tpu_embedding_errors",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "tpu_embedding_optimization_parameters_utils",
     srcs = ["tpu_embedding_optimization_parameters_utils.cc"],
     hdrs = ["tpu_embedding_optimization_parameters_utils.h"],
@@ -65,8 +90,8 @@ cc_library(
     hdrs = ["tpu_embedding_output_layout_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/lib/core:status",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
     ],
 )
@@ -156,6 +181,7 @@ cc_library(
     name = "tpu_initializer_helper",
     srcs = ["tpu_initializer_helper.cc"],
     hdrs = ["tpu_initializer_helper.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
         ":tpu_api",
@@ -197,6 +223,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_api",
+    srcs = ["pjrt_api.cc"],
+    hdrs = ["pjrt_api.h"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "tpu_api_dlsym_initializer",
     srcs = if_windows(
         ["tpu_api_dlsym_initializer_windows.cc"],
@@ -207,29 +242,7 @@ cc_library(
         ":tpu_initializer_helper",
     ],
     # Always link this in, because even if we don't use it directly we want its
-    #static initializers to dynamically load API symbols exported from libtpu.so
-    alwayslink = True,
-)
-
-# This is an alternative to "tpu_api_dlsym_initializer" that only initializes
-# methods needed for the base TPU executor APIs (and thus has fewer deps). Do
-# not link in both this and "tpu_api_dlsym_initializer".
-cc_library(
-    name = "tpu_executor_dlsym_initializer",
-    srcs = if_windows(
-        ["tpu_executor_dlsym_initializer_windows.cc"],
-        otherwise = ["tpu_executor_dlsym_initializer.cc"],
-    ),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":tpu_api_dlsym_set_fn",
-        ":tpu_executor_init_fns",
-        ":tpu_initializer_helper",
-        "//tensorflow/compiler/xla/service:tpu_computation_placer",
-        "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/tpu:tpu_executor",
-        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
-    ],
+    # static initializers to dynamically load API symbols exported from libtpu.so
     alwayslink = True,
 )
 

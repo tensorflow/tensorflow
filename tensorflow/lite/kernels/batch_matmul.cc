@@ -180,6 +180,7 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
     TfLiteTensor* scratch_buffer;
     TF_LITE_ENSURE_OK(
         context, GetTemporarySafe(context, node, /*index=*/1, &scratch_buffer));
+    scratch_buffer->name = "BatchMatMul_scratch_buffer";
     const TfLiteTensor* rhs = op_context->rhs;
     int rhs_rank = NumDimensions(rhs);
     TfLiteIntArray* scratch_buffer_size = TfLiteIntArrayCreate(rhs_rank);
@@ -350,11 +351,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, (lhs_data->type == kTfLiteFloat32 &&
                            rhs_data->type == kTfLiteInt8) ||
                               lhs_data->type == rhs_data->type);
-  // Support dimensions between 2 and 4, inclusive.
+  // Support dimensions between 2 and 5, inclusive.
   TF_LITE_ENSURE(context, NumDimensions(lhs_data) >= 2);
-  TF_LITE_ENSURE(context, NumDimensions(lhs_data) <= 4);
+  TF_LITE_ENSURE(context, NumDimensions(lhs_data) <= 5);
   TF_LITE_ENSURE(context, NumDimensions(rhs_data) >= 2);
-  TF_LITE_ENSURE(context, NumDimensions(rhs_data) <= 4);
+  TF_LITE_ENSURE(context, NumDimensions(rhs_data) <= 5);
 
   const int lhs_rank = NumDimensions(lhs_data);
   const int rhs_rank = NumDimensions(rhs_data);

@@ -29,7 +29,7 @@ namespace quant {
 
 constexpr char kAttrMapAttribute[] = "attr_map";
 // This attribute will be set for functions created by this pass.
-constexpr char kFusedFunctionAttr[] = "tf_quant.fused_function";
+constexpr char kFusedFunctionAttr[] = "tf_quant.composite_function";
 // The keyword to detect if this is a `NullAttribute`.
 constexpr char kNullAttributeValue[] = "N/A";
 
@@ -121,45 +121,53 @@ llvm::SmallVector<Operation *> FindOpsFromArgumentsToResults(
 // identifier is the order of that attribute in `attributes`. This map
 // is then used to set attributes in the quantized functions in the
 // QuantizeCompositeFunctionsPass.
+// For example, for tf.MatMul with `attributes` = {{"transpose_a", false},
+// {"transpose_b", false}}, the generated attr_map is
+// "0:transpose_a,1:transpose_b", where 0 and 1 are the respective attribute
+// identifiers.
 // This function returns success if all attributes could be found.
-LogicalResult SetAttributeMap(MLIRContext *context,
-                              const llvm::SmallVector<Attribute> &attributes,
-                              const llvm::SmallVector<Operation *> &ops) {
+LogicalResult SetAttributeMap(
+    MLIRContext *context, const llvm::SmallVector<NamedAttribute> &attributes,
+    const llvm::SmallVector<Operation *> &ops) {
   // A map to find which operation an attribute belongs to.
-  llvm::SmallDenseMap<Attribute, Operation *> attr_to_op_map;
-  // A map from the attribute to its name.
-  llvm::SmallDenseMap<Attribute, llvm::StringRef> attr_to_name_map;
+  // The key for this map uses the entire NamedAttribute object, i.e. the
+  // {attribute_name, attribute_value} pair.
+  llvm::SmallDenseMap<NamedAttribute, Operation *> attr_to_op_map;
   for (Operation *op : ops) {
     for (const auto &named_attr : op->getAttrs()) {
-      attr_to_op_map.insert({named_attr.getValue(), op});
-      attr_to_name_map.insert(
-          {named_attr.getValue(), named_attr.getName().getValue()});
+      attr_to_op_map.insert({named_attr, op});
     }
   }
 
   for (int idx : llvm::seq<int>(0, attributes.size())) {
-    const Attribute &attribute = attributes[idx];
-    // Skip following steps if this attribute is a `NullAttribute`.
-    auto string_attr = attribute.dyn_cast_or_null<StringAttr>();
-    if (string_attr != nullptr &&
+    const NamedAttribute &attribute = attributes[idx];
+
+    // Skip the following steps if the attribute value is `NullAttribute`.
+    if (const auto string_attr =
+            attribute.getValue().dyn_cast_or_null<StringAttr>();
+        string_attr != nullptr &&
         string_attr.getValue().equals(kNullAttributeValue)) {
       continue;
     }
 
     if (attr_to_op_map.count(attribute) == 0) {
+      mlir::emitError(UnknownLoc::get(context),
+                      "Could not find attribute: " + attribute.getName().str());
       return failure();
     }
 
-    llvm::StringRef attribute_name = attr_to_name_map[attribute];
-    std::string identifier = std::to_string(idx);
-
     Operation *owner_op = attr_to_op_map[attribute];
-    std::string new_attr_map_str;
+
+    std::string new_attr_map_str{};
     if (owner_op->hasAttr(kAttrMapAttribute)) {
       new_attr_map_str =
           owner_op->getAttrOfType<StringAttr>(kAttrMapAttribute).str();
       absl::StrAppend(&new_attr_map_str, ",");
     }
+
+    // Append "<identifier>:<attribute_name>". Ex) "0:transpose_a".
+    const std::string identifier = std::to_string(idx);
+    const mlir::StringAttr attribute_name = attribute.getName();
     absl::StrAppend(&new_attr_map_str, identifier, ":", attribute_name.str());
     owner_op->setAttr(kAttrMapAttribute,
                       StringAttr::get(context, new_attr_map_str));
@@ -172,7 +180,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
     OpBuilder builder, Location location, StringRef func_name,
     const llvm::SmallVector<Value> &arguments,
     const llvm::SmallVector<Value> &results,
-    const llvm::SmallVector<Attribute> &attributes) {
+    const llvm::SmallVector<NamedAttribute> &attributes) {
   MLIRContext *context = builder.getContext();
   if (results.empty()) {
     mlir::emitError(UnknownLoc::get(context), "No result values specified");
@@ -185,9 +193,8 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   auto current_func = result_op->getParentOfType<func::FuncOp>();
   auto guard = OpBuilder::InsertionGuard(builder);
   builder.setInsertionPointAfter(current_func);
-  TypeRange arg_types(
-      llvm::ArrayRef<Value>(arguments.begin(), arguments.end()));
-  TypeRange result_types(llvm::ArrayRef<Value>(results.begin(), results.end()));
+  TypeRange arg_types{ValueRange{arguments}};
+  TypeRange result_types{ValueRange{results}};
   auto func_type = FunctionType::get(context, arg_types, result_types);
 
   llvm::SmallVector<Location> arg_locs;
@@ -232,7 +239,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
     OpBuilder builder, Location location, StringRef func_name,
     const llvm::SmallVector<Value> &arguments,
     const llvm::SmallVector<Value> &results) {
-  llvm::SmallVector<Attribute> attributes;
+  llvm::SmallVector<NamedAttribute> attributes;
   return LiftAsFunctionCall(builder, location, func_name, arguments, results,
                             attributes);
 }

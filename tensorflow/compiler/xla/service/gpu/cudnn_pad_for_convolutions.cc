@@ -322,9 +322,9 @@ StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   // The input/kernel/output might already be vectorized (i.e. cudnn layout
   // NCHW_VECT_C).  If so, we pad the features dim so that
   // size(features_dim) * size(vect_dim) is a multiple of pad_to.
-  absl::optional<int64_t> input_vect_dim;
-  absl::optional<int64_t> kernel_vect_dim;
-  absl::optional<int64_t> result_vect_dim;
+  std::optional<int64_t> input_vect_dim;
+  std::optional<int64_t> kernel_vect_dim;
+  std::optional<int64_t> result_vect_dim;
   std::tie(input_vect_dim, kernel_vect_dim, result_vect_dim) =
       FindVectorizedFeatureDims(dnums, input_shape, kernel_shape, result_shape);
 
@@ -463,9 +463,12 @@ StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   return changed;
 }
 
-StatusOr<bool> CudnnPadForConvolutions::Run(HloModule* module) {
+StatusOr<bool> CudnnPadForConvolutions::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
       // On Turing and later (sm75+), pad to multiples of 32 bytes if possible,
       // because that lets us use the fast int8x32 data type.

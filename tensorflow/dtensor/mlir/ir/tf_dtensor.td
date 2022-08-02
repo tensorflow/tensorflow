@@ -155,114 +155,6 @@ def TF_CopyToMeshOp : TF_Op<"CopyToMesh", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF__ConfigureTPUEmbeddingHostOp : TF_Op<"_ConfigureTPUEmbeddingHost", []> {
-  let summary = [{
-An op that configures the TPUEmbedding software on a host. If used in a
-  }];
-
-  let description = [{
-multi-chip simulation, this Op must be run after the simulation has been initialized.
-  }];
-
-  let arguments = (ins
-    Arg<TF_StrTensor, [{A string-encoded barna_core::CommonConfiguration proto containing
-metadata about the embedding partitioner output.}]>:$common_config,
-    Arg<Variadic<TF_StrTensor>, [{A string-encoded barna_core::PerHostConfiguration proto from
-each host containing metadata about the memory allocations reserved for
-TPUEmbedding.}]>:$task_host_config,
-
-    StrAttr:$config
-  );
-
-  let results = (outs
-    TF_StrTensor:$host_config
-  );
-
-  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
-}
-
-def TF__ConfigureTPUEmbeddingMemoryOp : TF_Op<"_ConfigureTPUEmbeddingMemory", []> {
-  let summary = [{
-An op that configures the TPUEmbedding software on a host. If used in a
-  }];
-
-  let description = [{
-multi-chip simulation, this Op must be run after the simulation has been initialized.
-  }];
-
-  let arguments = (ins
-    Arg<TF_StrTensor, [{A string-encoded barna_core::CommonConfiguration proto containing
-metadata about the embedding partitioner output and the HBM size (in bytes)
-required for operation.}]>:$common_config,
-
-    StrAttr:$config
-  );
-
-  let results = (outs
-    Res<TF_StrTensor, [{A string-encoded barna_core::PerHostConfiguration proto containing
-metadata about the memory allocations reserved for TPUEmbedding.}]>:$task_host_config
-  );
-}
-
-def TF__ConnectInterTPUEmbeddingCommunicationOp : TF_Op<"_ConnectInterTPUEmbeddingCommunication", []> {
-  let summary = [{
-An op that sets up communication between TPUEmbedding host software instances after
-  }];
-
-  let description = [{
-Embedding host configuration has been called on each host.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_StrTensor>, [{A string-encoded barna_core::PerHostConfiguration proto read from each
-host containing metadata about the RPC port used for communication with that host.}]>:$host_config
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
-}
-
-def TF__ExecuteTPUEmbeddingPartitionerOp : TF_Op<"_ExecuteTPUEmbeddingPartitioner", []> {
-  let summary = [{
-An op that executes the TPUEmbedding partitioner on the central configuration
-  }];
-
-  let description = [{
-device and computes the HBM size (in bytes) required for embedding operation.
-  }];
-
-  let arguments = (ins
-    StrAttr:$config
-  );
-
-  let results = (outs
-    Res<TF_StrTensor, [{A string-encoded barna_core::CommonConfiguration proto containing
-metadata about the embedding partitioner output and the HBM size (in bytes)
-required for operation.}]>:$common_config
-  );
-}
-
-def TF__FinalizeTPUEmbeddingSystemConfigurationOp : TF_Op<"_FinalizeTPUEmbeddingSystemConfiguration", []> {
-  let summary = [{
-An op that finalizes the TPUEmbedding system configuration after
-  }];
-
-  let description = [{
-ConfigureTPUEmbeddingHost has been called on each host.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_StrTensor>, [{A string-encoded tpu_embedding PerHostConfiguration proto read
-from each host containing metadata about the HBM base byte address reserved for
-the TPUEmbedding on that host.}]>:$host_config
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
-}
-
 def TF_SetEmbeddingConfigOp : TF_Op<"SetEmbeddingConfig", []> {
   let summary = "";
 
@@ -490,6 +382,22 @@ def TF_DTensorRetrieveTPUEmbeddingParametersOp : TF_Op<"DTensorRetrieveTPUEmbedd
   TF_DerivedResultSizeAttr num_tables = TF_DerivedResultSizeAttr<0>;
 }
 
+def TF_DTensorSendEmbeddingGradientsOp : TF_Op<"DTensorSendEmbeddingGradients", [AttrSizedOperandSegments]> {
+  let summary = "";
+
+  let arguments = (ins
+    Variadic<TF_Float32Tensor>:$gradients,
+    Variadic<TF_Float32Tensor>:$learning_rates,
+
+    StrAttr:$config
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr num_lr_tags = TF_DerivedOperandSizeAttr<1>;
+  TF_DerivedOperandSizeAttr num_tables = TF_DerivedOperandSizeAttr<0>;
+}
+
 // Op has no outputs, so we do not inlude the NosideEffect tag so that it will
 // not get pruned.
 def TF_ApplyEmbeddingOptimizerOp : TF_Op<"ApplyEmbeddingOptimizer", []> {
@@ -505,6 +413,23 @@ def TF_ApplyEmbeddingOptimizerOp : TF_Op<"ApplyEmbeddingOptimizer", []> {
   let results = (outs);
 
   TF_DerivedOperandSizeAttr num_scalars = TF_DerivedOperandSizeAttr<1>;
+}
+
+
+def TF_ApplyEmbeddingOptimizerV2Op : TF_Op<"ApplyEmbeddingOptimizerV2", []> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Float32Tensor:$gradient,
+    TF_Float32Tensor:$variable,
+    Variadic<TF_Float32Tensor>:$slot_variables,
+
+    StrAttr:$optimization_parameters
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr num_slots = TF_DerivedOperandSizeAttr<2>;
 }
 
 def TF_EmbeddingDequeueOp : TF_Op<"EmbeddingDequeue", [NoSideEffect]> {
@@ -552,6 +477,20 @@ def TF_TPUDenseEmbeddingLookUpOp : TF_Op<"TPUDenseEmbeddingLookUp", [NoSideEffec
   let summary = "";
 
   let arguments = (ins
+    TF_Int32Tensor:$ids,
+    TF_Float32Tensor:$table
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$output
+  );
+}
+
+def TF_TPUDenseEmbeddingLookUpGradOp : TF_Op<"TPUDenseEmbeddingLookUpGrad", [NoSideEffect]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Float32Tensor:$gradients,
     TF_Int32Tensor:$ids,
     TF_Float32Tensor:$table
   );

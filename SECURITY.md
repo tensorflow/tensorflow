@@ -15,13 +15,13 @@ as computation
 The model's parameters are often stored separately in **checkpoints**.
 
 At runtime, TensorFlow executes the computation graph using the parameters
-provided. Note that the behavior of the computation graph may change
-depending on the parameters provided. TensorFlow itself is not a sandbox. When
-executing the computation graph, TensorFlow may read and write files, send and
-receive data over the network, and even spawn additional processes. All these
-tasks are performed with the permissions of the TensorFlow process. Allowing
-for this flexibility makes for a powerful machine learning platform,
-but it has implications for security.
+provided. Note that the behavior of the computation graph may change depending
+on the parameters provided. TensorFlow itself is not a sandbox. When executing
+the computation graph, TensorFlow may read and write files, send and receive
+data over the network, and even spawn additional processes. All these tasks are
+performed with the permission of the TensorFlow process. Allowing for this
+flexibility makes for a powerful machine learning platform, but it has security
+implications.
 
 The computation graph may also accept **inputs**. Those inputs are the
 data you supply to TensorFlow to train a model, or to use a model to run
@@ -62,12 +62,12 @@ your model, and we recommend you run the TensorFlow process in a sandbox.
 
 ## Accepting untrusted Inputs
 
-It is possible to write models that are secure in a sense that they can safely
+It is possible to write models that are secure in the sense that they can safely
 process untrusted inputs assuming there are no bugs. There are two main reasons
 to not rely on this: First, it is easy to write models which must not be exposed
 to untrusted inputs, and second, there are bugs in any software system of
 sufficient complexity. Letting users control inputs could allow them to trigger
-bugs either in TensorFlow or in dependent libraries.
+bugs either in TensorFlow or in dependencies.
 
 In general, it is good practice to isolate parts of any system which is exposed
 to untrusted (e.g., user-provided) inputs in a sandbox.
@@ -122,9 +122,9 @@ any breach.
 
 TensorFlow is a large and complex system. It also depends on a large set of
 third party libraries (e.g., `numpy`, `libjpeg-turbo`, PNG parsers, `protobuf`).
-It is possible that TensorFlow or its dependent libraries contain
-vulnerabilities that would allow triggering unexpected or dangerous behavior
-with specially crafted inputs.
+It is possible that TensorFlow or its dependencies may contain vulnerabilities
+that would allow triggering unexpected or dangerous behavior with specially
+crafted inputs.
 
 ### What is a vulnerability?
 
@@ -160,11 +160,8 @@ a vulnerability.
 ### Reporting vulnerabilities
 
 Please email reports about any security related issues you find to
-`security@tensorflow.org`. This mail is delivered to a small security team. Your
-email will be acknowledged within one business day, and you'll receive a more
-detailed response to your email within 7 days indicating the next steps in
-handling your report. For critical problems, you may encrypt your report (see
-below).
+`security@tensorflow.org`. This mail is delivered to a small security team. For
+critical problems, you may encrypt your report (see below).
 
 Please use a descriptive subject line for your report email. After the initial
 reply to your report, the security team will endeavor to keep you informed of
@@ -172,23 +169,33 @@ the progress being made towards a fix and announcement.
 
 In addition, please include the following information along with your report:
 
-* Your name and affiliation (if any).
-* A description of the technical details of the vulnerabilities. It is very
-  important to let us know how we can reproduce your findings.
-* An explanation who can exploit this vulnerability, and what they gain when
-  doing so -- write an attack scenario. This will help us evaluate your report
-  quickly, especially if the issue is complex.
-* Whether this vulnerability public or known to third parties. If it is, please
-  provide details.
+*   Your name and affiliation (if any).
+*   A description of the technical details of the vulnerabilities. It is very
+    important to let us know how we can reproduce your findings.
+*   An explanation of who can exploit this vulnerability, and what they gain
+    when doing so -- write an attack scenario. This will help us evaluate your
+    report quickly, especially if the issue is complex.
+*   Whether this vulnerability is public or known to third parties. If it is,
+    please provide details.
 
 If you believe that an existing (public) issue is security-related, please send
 an email to `security@tensorflow.org`. The email should include the issue ID and
 a short description of why it should be handled according to this security
 policy.
 
+For each vulnerability, we try to ingress it as soon as possible, given the size
+of the team and the number of reports. If the vulnerability is not high impact,
+we will delay ingress during the period before a branch cut and the final
+release. For these cases, vulnerabilities will always be batched to be fixed at
+the same time as a quarterly release.
+
+If a vulnerability is high impact, we will acknowledge reception and issue
+patches within an accelerated timeline and not wait for the patch release.
+
 Once an issue is reported, TensorFlow uses the following disclosure process:
 
-* When a report is received, we confirm the issue and determine its severity.
+* When a report is received, we confirm the issue and determine its severity,
+  according to the timeline listed above.
 * If we know of specific third-party services or software based on TensorFlow
   that require mitigation before publication, those projects will be notified.
 * An advisory is prepared (but not published) which details the problem and

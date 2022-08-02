@@ -419,6 +419,7 @@ class ImageTest(PForTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.run_all_without_tensor_float_32("Uses matmul")
 class NNTest(PForTestCase):
 
   def test_conv2d(self):
@@ -2827,6 +2828,18 @@ class VariableTest(PForTestCase):
       return resource_variable_ops.variable_shape(v.handle)
 
     self._test_loop_fn(loop_fn, 2)
+
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_variable_input(self):
+    v = resource_variable_ops.ResourceVariable([1, 2])
+    self.evaluate(v.initializer)
+
+    def loop_fn(x):
+      return x + 1
+
+    result = pfor_control_flow_ops.vectorized_map(loop_fn, v)
+    expected_result = [2, 3]
+    self.assertAllEqual(result, expected_result)
 
 
 if __name__ == "__main__":

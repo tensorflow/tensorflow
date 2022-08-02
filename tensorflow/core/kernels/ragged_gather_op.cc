@@ -111,7 +111,7 @@ class RaggedGatherOpBase : public OpKernel {
             " is not in [0, ", num_params, ")");
       }
     }
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
 
   // Construct the `splits` output tensors, encoded using a nested vector.
@@ -188,7 +188,7 @@ class RaggedGatherOpBase : public OpKernel {
         *num_values += limit - start;
       }
     }
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
 
   ::tensorflow::Status ValidateSplits(
@@ -216,7 +216,7 @@ class RaggedGatherOpBase : public OpKernel {
         }
       }
     }
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
 
   ::tensorflow::Status WriteSplits(
@@ -234,7 +234,7 @@ class RaggedGatherOpBase : public OpKernel {
       std::copy_n(out_splits[i].data(), out_splits[i].size(),
                   splits_flat.data());
     }
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
 
   ::tensorflow::Status WriteValues(
@@ -253,7 +253,7 @@ class RaggedGatherOpBase : public OpKernel {
                           : (num_elements / params_dense_values_in.dim_size(0));
     CallWriteValueSlices(params_dense_values_in, value_slices, value_size,
                          values_out);
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
 
  protected:

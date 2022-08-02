@@ -26,8 +26,10 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
 #define PASS_NAME "tosa-fuse-bias-tf"
 #define DEBUG_TYPE PASS_NAME
@@ -35,8 +37,6 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 namespace {
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 class FuseBiasTF : public TosaFusebiasTFPassBase<FuseBiasTF> {
  public:

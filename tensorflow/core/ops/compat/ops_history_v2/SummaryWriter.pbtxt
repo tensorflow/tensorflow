@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SummaryWriter"
   output_arg {
     name: "writer"

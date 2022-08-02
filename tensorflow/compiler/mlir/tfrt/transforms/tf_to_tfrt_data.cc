@@ -301,7 +301,7 @@ Status TFDataGraphDefToTFDataMLIR(
                                        graph_def, tensorflow::GraphDebugInfo(),
                                        std::move(import_config), mlir_ctx));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CompileTFDataMLIRToBEF(mlir::ModuleOp module,
@@ -324,7 +324,7 @@ Status CompileTFDataMLIRToBEF(mlir::ModuleOp module,
     return diag_handler.Combine(
         errors::Internal("failed to convert MLIR to BEF."));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -341,7 +341,7 @@ Status TFDataGraphDefToHostBEF(const GraphDef &graph_def,
       TFDataGraphDefToTFDataMLIR(graph_def, &mlir_ctx, &module_ref));
   TF_RETURN_IF_ERROR(CompileTFDataMLIRToBEF(module_ref.get(), bef));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 static mlir::PassRegistration<TFToTFRTDataRewritePass> pass;

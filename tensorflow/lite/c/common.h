@@ -846,27 +846,7 @@ typedef struct TfLiteContext {
 // for C API which doesn't use internal types (such as `TfLiteContext`) but only
 // uses stable API types (such as `TfLiteOpaqueContext`). The purpose of each
 // field is the exactly the same as with `TfLiteRegistration`.
-typedef struct TfLiteRegistrationExternal {
-  // Custom op name.
-  const char* custom_name;
-
-  // The version of the op. The verion should be higher than 0.
-  const int version;
-
-  // Initializes the op from serialized data.
-  void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
-                size_t length);
-
-  // The pointer `buffer` is the data previously returned by an init invocation.
-  void (*free)(TfLiteOpaqueContext* context, void* buffer);
-
-  // Called when the inputs that this node depends on have been resized.
-  TfLiteStatus (*prepare)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
-
-  // Called when the node is executed. (should read node->inputs and output to
-  // node->outputs).
-  TfLiteStatus (*invoke)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
-} TfLiteRegistrationExternal;
+typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
 
 typedef struct TfLiteRegistration {
   // Initializes the op from serialized data.

@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -41,7 +42,7 @@ class FuseBinaryIntoPrecedingAffineTest : public ::testing::Test {
  protected:
   FuseBinaryIntoPrecedingAffineTest() {}
 
-  void SetUp() override { model_.reset(new Model); }
+  void SetUp() override { model_ = std::make_unique<Model>(); }
 
   void CreateArray(const std::string& name, const std::vector<int>& shape) {
     Array& array = model_->GetOrCreateArray(name);

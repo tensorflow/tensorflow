@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
-#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
@@ -55,6 +54,10 @@ class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
   xla::StatusOr<std::string> BlockingKeyValueGet(
       std::string key, absl::Duration timeout) override;
   xla::Status KeyValueSet(std::string key, std::string value) override;
+  xla::Status WaitAtBarrier(std::string barrier_id,
+                            absl::Duration timeout) override;
+  xla::StatusOr<tensorflow::CoordinationServiceAgent*>
+  GetCoordinationServiceAgent() override;
 
  private:
   // Entry point for the heartbeat thread.
@@ -118,6 +121,10 @@ class DistributedRuntimeCoordinationServiceClient
   xla::StatusOr<std::string> BlockingKeyValueGet(
       std::string key, absl::Duration timeout) override;
   xla::Status KeyValueSet(std::string key, std::string value) override;
+  xla::Status WaitAtBarrier(std::string barrier_id,
+                            absl::Duration timeout) override;
+  xla::StatusOr<tensorflow::CoordinationServiceAgent*>
+  GetCoordinationServiceAgent() override;
 
  private:
   std::unique_ptr<tensorflow::CoordinationServiceAgent> coord_agent_;
@@ -225,7 +232,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
       tensorflow::ThreadOptions(), "pjrt_distributed_heartbeat",
       [this]() { HeartbeatLoop(); }));
   LOG(INFO) << "Connected to distributed JAX controller";
-  return xla::Status::OK();
+  return OkStatus();
 }
 
 xla::Status DistributedRuntimeClientImpl::EnumerateDevices(
@@ -254,7 +261,7 @@ xla::Status DistributedRuntimeClientImpl::EnumerateDevices(
   }
   VLOG(10) << "EnumerateDevices() response: " << response.DebugString();
   response.mutable_global_topology()->Swap(global_topology);
-  return xla::Status::OK();
+  return OkStatus();
 }
 
 xla::Status DistributedRuntimeClientImpl::Shutdown() {
@@ -286,7 +293,7 @@ xla::Status DistributedRuntimeClientImpl::Shutdown() {
   VLOG(10) << "Shutdown() response: " << response.DebugString();
   absl::MutexLock lock(&mu_);
   state_ = State::kClosed;
-  return xla::Status::OK();
+  return OkStatus();
 }
 
 xla::StatusOr<std::string> DistributedRuntimeClientImpl::BlockingKeyValueGet(
@@ -305,7 +312,7 @@ xla::StatusOr<std::string> DistributedRuntimeClientImpl::BlockingKeyValueGet(
   request.set_session_id(session_id_);
   request.set_key(std::move(key));
   timeout = std::min(timeout, absl::Minutes(10));  // Avoid overflow
-  request.set_timeout_milliseconds(timeout / absl::Milliseconds(1));
+  request.set_timeout_milliseconds(absl::ToInt64Milliseconds(timeout));
   VLOG(10) << "BlockingKeyValueGet: " << request.DebugString();
   KeyValueGetResponse response;
   ::grpc::Status status = stub_->KeyValueGet(&ctx, request, &response);
@@ -335,6 +342,40 @@ xla::Status DistributedRuntimeClientImpl::KeyValueSet(std::string key,
   KeyValueSetResponse response;
   ::grpc::Status status = stub_->KeyValueSet(&ctx, request, &response);
   return FromGrpcStatus(status);
+}
+
+xla::Status DistributedRuntimeClientImpl::WaitAtBarrier(
+    std::string barrier_id, absl::Duration timeout) {
+  {
+    absl::MutexLock lock(&mu_);
+    if (state_ != State::kConnected) {
+      return xla::FailedPrecondition(
+          "WaitAtBarrier() called when client not connected.");
+    }
+  }
+  ::grpc::ClientContext ctx;
+  ctx.set_fail_fast(false);
+  ctx.set_deadline(absl::ToChronoTime(absl::Now() + timeout));
+  WaitAtBarrierRequest request;
+  request.set_session_id(session_id_);
+  request.set_barrier_id(std::move(barrier_id));
+  request.set_node_id(options_.node_id);
+  // TODO(yashkatariya,hanyuangtay): Change timeout_milliseconds to int64 in
+  // protocol.proto so that we don't need a minimum timeout here.
+  timeout = std::min(timeout, absl::Minutes(10));  // Avoid overflow
+  request.set_timeout_milliseconds(absl::ToInt64Milliseconds(timeout));
+  VLOG(10) << "WaitAtBarrier: " << request.DebugString();
+  WaitAtBarrierResponse response;
+  ::grpc::Status status = stub_->WaitAtBarrier(&ctx, request, &response);
+  return FromGrpcStatus(status);
+}
+
+xla::StatusOr<tensorflow::CoordinationServiceAgent*>
+DistributedRuntimeClientImpl::GetCoordinationServiceAgent() {
+  return xla::Internal(
+      "Invoking GetCoordinationServiceAgent() while coordination service is "
+      "not enabled. Enable coordination service via "
+      "--jax_coordination_service.");
 }
 
 void DistributedRuntimeClientImpl::HeartbeatLoop() {
@@ -447,7 +488,7 @@ xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
            // Retries are only made for RPC errors. If a valid service error is
            // returned, fail immediately.
            s.GetPayload(tensorflow::CoordinationErrorPayloadKey()) ==
-               absl::nullopt);
+               std::nullopt);
   if (s.ok()) {
     LOG(INFO) << "Connected to distributed JAX controller";
   } else {
@@ -474,7 +515,7 @@ xla::Status DistributedRuntimeCoordinationServiceClient::EnumerateDevices(
   Status s = coord_agent_->WaitForAllTasks(devices);
   if (!s.ok()) return s;
   *global_topology = coord_agent_->GetClusterDeviceInfo().xla().devices();
-  return xla::Status::OK();
+  return OkStatus();
 }
 
 xla::StatusOr<std::string>
@@ -486,6 +527,16 @@ DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
 xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
     std::string key, std::string value) {
   return coord_agent_->InsertKeyValue(key, value);
+}
+
+xla::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
+    std::string barrier_id, absl::Duration timeout) {
+  return coord_agent_->WaitAtBarrier(barrier_id, timeout, /*tasks=*/{});
+}
+
+xla::StatusOr<tensorflow::CoordinationServiceAgent*>
+DistributedRuntimeCoordinationServiceClient::GetCoordinationServiceAgent() {
+  return coord_agent_.get();
 }
 
 std::unique_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(

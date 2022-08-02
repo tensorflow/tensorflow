@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 
+#include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -141,7 +141,7 @@ class HloShapeAndLayoutMatcher
 class HloShardingMatcher
     : public ::testing::MatcherInterface<const HloInstruction*> {
  public:
-  explicit HloShardingMatcher(const absl::optional<HloSharding>& sharding)
+  explicit HloShardingMatcher(const std::optional<HloSharding>& sharding)
       : sharding_(sharding) {}
 
   bool MatchAndExplain(const HloInstruction* instruction,
@@ -149,7 +149,7 @@ class HloShardingMatcher
   void DescribeTo(std::ostream* os) const override;
 
  private:
-  absl::optional<HloSharding> sharding_;
+  std::optional<HloSharding> sharding_;
 };
 
 // Matches a Dot HLO instruction with specific LHS and RHS contracting
@@ -237,6 +237,9 @@ HLO_MATCHER(Abs);
 HLO_MATCHER(Add);
 HLO_MATCHER(AddDependency);
 HLO_MATCHER(AfterAll);
+HLO_MATCHER(AsyncStart);
+HLO_MATCHER(AsyncUpdate);
+HLO_MATCHER(AsyncDone);
 HLO_MATCHER(AllGather);
 HLO_MATCHER(AllReduce);
 HLO_MATCHER(AllToAll);
@@ -313,7 +316,6 @@ HLO_MATCHER(Subtract);
 HLO_MATCHER(Tanh);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(Tuple);
-HLO_MATCHER(TupleSelect);
 HLO_MATCHER(While);
 HLO_MATCHER(Xor);
 HLO_MATCHER(OptimizationBarrier);
@@ -464,7 +466,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
 // Verifies that no HloSharding is set for an HLO instruction.
 inline ::testing::Matcher<const ::xla::HloInstruction*> NoSharding() {
   return ::testing::MakeMatcher(
-      new ::xla::testing::HloShardingMatcher(absl::nullopt));
+      new ::xla::testing::HloShardingMatcher(std::nullopt));
 }
 
 inline ::testing::Matcher<const ::xla::HloInstruction*> Dot() {

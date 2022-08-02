@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/local_client.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -113,7 +113,7 @@ Status LocalExecutable::ValidateExecutionOptions(
         backend.platform()->Name());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>>
@@ -398,7 +398,7 @@ StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> LocalClient::Compile(
   local_executables.reserve(executables.size());
 
   for (auto& executable : executables) {
-    local_executables.push_back(absl::make_unique<LocalExecutable>(
+    local_executables.push_back(std::make_unique<LocalExecutable>(
         std::move(executable), local_service_->mutable_backend(),
         updated_options));
   }
@@ -438,9 +438,9 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       aot_result->LoadExecutable(compiler, executor));
-  return absl::make_unique<LocalExecutable>(std::move(executable),
-                                            local_service_->mutable_backend(),
-                                            updated_options);
+  return std::make_unique<LocalExecutable>(std::move(executable),
+                                           local_service_->mutable_backend(),
+                                           updated_options);
 }
 
 StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(

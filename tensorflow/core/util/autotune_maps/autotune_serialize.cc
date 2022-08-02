@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/util/activation_mode.h"
 #include "tensorflow/core/util/autotune_maps/autotune_map.pb.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
 #include "tensorflow/stream_executor/dnn.h"
-#include "tensorflow/stream_executor/dnn.pb.h"
 
 namespace tensorflow {
 
@@ -90,7 +90,7 @@ Status PopulateConvMap(
     const ConvMapProto &m,
     AutotuneMap<ConvParameters, AutotuneEntry<Op>> *autotune_map) {
   if (m.kv_pairs().size() == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   std::set<std::string> unmatched_device_ids;
   // Map device_id's to corresponding device_identifiers.
@@ -172,7 +172,7 @@ Status PopulateConvMap(
     return errors::NotFound("No matching devices found for ",
                             str_util::Join(device_ids_map, ", "));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -186,7 +186,7 @@ Status SerializeAutotuneMaps(std::string *output) {
       ConvMapToProto(*FusedConvAutotuneMap::GetInstance());
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   *output = autotune_maps_utils::SerializeProtoDeterministic(proto);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoadSerializedAutotuneMaps(absl::string_view s) {
@@ -205,7 +205,7 @@ Status LoadSerializedAutotuneMaps(absl::string_view s) {
                                      FusedConvAutotuneMap::GetInstance()));
   // TODO(b/189530096): Populate autotune maps for more ops.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return Status::OK();
+  return OkStatus();
 }
 
 void ResetAutotuneMaps() {

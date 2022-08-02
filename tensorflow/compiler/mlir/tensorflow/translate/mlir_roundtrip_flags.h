@@ -29,13 +29,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct ArrayInfo {
+struct ArrayInfoBase {
   // The node type when the input node is imported. Typically needs to be
   // specified when passing arbitrary nodes (some node attributes are removed).
   DataType imported_dtype;
 
   // Node "shape" attribute value.
   TensorShapeProto shape;
+};
+
+struct ArrayInfo : public ArrayInfoBase {
+  using SubTypeInfo = ArrayInfoBase;
+  // DT_RESOURCE and DT_VARIANT have subtypes
+  std::vector<SubTypeInfo> subtypes;
 };
 
 struct GraphImportConfig {

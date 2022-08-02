@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
@@ -76,12 +75,18 @@ void ShardedDeviceArray::Delete() {
   if (is_deleted_) {
     return;
   }
-  for (xla::PjRtBuffer* pjrt_buffer : GetPjRtBuffers().ConsumeValueOrDie()) {
+  // We can't inline this expression into the for loop! Here, .value()
+  // returns an rvalue reference to the Span embedded in the StatusOr.
+  // Binding the reference would extend the lifetime of the Span itself,
+  // but not of the StatusOr, causing stack-use-after-scope errors. Also see
+  // https://en.cppreference.com/w/cpp/language/range-for#Temporary_range_expression
+  auto buffers = GetPjRtBuffers().value();
+  for (xla::PjRtBuffer* pjrt_buffer : buffers) {
     pjrt_buffer->Delete();
   }
-  device_buffers_ = absl::nullopt;
-  cpp_device_buffers_ = absl::nullopt;
-  npy_value_ = absl::nullopt;
+  device_buffers_ = std::nullopt;
+  cpp_device_buffers_ = std::nullopt;
+  npy_value_ = std::nullopt;
   is_deleted_ = true;
 }
 
@@ -273,7 +278,7 @@ py::handle ShardedDeviceArray::AsHandle() {
       [](ShardedDeviceArray::object self) { return self.sda()->is_deleted(); },
       py::is_method(type));
 
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace jax

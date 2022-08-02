@@ -26,6 +26,7 @@ import numpy as np
 import six
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
@@ -106,6 +107,9 @@ _TT_HOSTCALL_KEY = 'tensor_tracer_host_call'
 _TT_EVENT_FILE_SUFFIX = '.tensor_tracer'
 
 _TT_SUMMARY_MAX_QUEUE = 10
+
+tt_gauge = monitoring.BoolGauge('/tensorflow/api/tensor_tracer/v1',
+                                'tensor tracer usage', 'method')
 
 
 def _graph_summary_tag(graph):
@@ -432,7 +436,10 @@ class TensorTracer(object):
   def is_enabled():
     """Returns True if TensorTracer is enabled."""
     try:
-      return tensor_tracer_flags.TTParameters().is_enabled()
+      enable = tensor_tracer_flags.TTParameters().is_enabled()
+      # Add metrics to determine API usage.
+      if enable: tt_gauge.get_cell('is_enabled').set(True)
+      return enable
     except (ValueError, RuntimeError) as e:
       logging.warning(
           'Tensor Tracer V1 flags processing error encountered in is_enabled '
@@ -1670,7 +1677,8 @@ class TensorTracer(object):
         local_tpu_cache_tensor.shape.as_list())
     return tpu_ops.all_to_all(
         x, concat_dimension=0, split_dimension=0,
-        split_count=self._tt_config.num_replicas)
+        split_count=self._tt_config.num_replicas,
+        group_assignment=[list(range(self._tt_config.num_replicas))])
 
   def aggregate_global_cache(self, global_tt_summary_cache):
     """Merges the given caches on tpu.
@@ -1793,7 +1801,7 @@ class TensorTracer(object):
               value = self.aggregate_global_cache(value)
           with ops.control_dependencies([summary_writer.init()]):
             summary_write_ops.append(summary.write(
-                _TT_SUMMARY_TAG + '/' + key + '#' + graph_summary_tag + '#',
+                _TT_SUMMARY_TAG + '/' + key + '.' + graph_summary_tag,
                 value, metadata=summary_metadata,
                 step=step_value))
       return control_flow_ops.group(summary_write_ops)

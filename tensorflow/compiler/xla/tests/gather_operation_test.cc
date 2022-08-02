@@ -25,7 +25,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using absl::nullopt;
+using std::nullopt;
 
 class GatherOperationTest : public HloTestBase {
  protected:

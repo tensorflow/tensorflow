@@ -30,6 +30,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/mkl/mkl_conv_ops.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 using dnnl::convolution_backward_data;
 using dnnl::prop_kind;
@@ -90,6 +93,9 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
   void Execute(const T* diff_src_data, const T* filter_data,
                const T* diff_dst_data,
                std::shared_ptr<stream> bwd_input_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     // TODO(intel-tf): Create a common function and avoid the duplicate code
     context_.diff_src_mem->set_data_handle(
@@ -219,6 +225,9 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
   }
 
   struct ConvBwdInputContext context_;
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -299,6 +308,12 @@ class MklConvCustomBackpropInputOp
       const Tensor& src_tensor = MklGetInput(context, kInputIdx);
       const Tensor& filter_tensor = MklGetInput(context, kFilterIdx);
       const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
+
+      OP_REQUIRES(
+          context, diff_dst_tensor.dims() == 4 || diff_dst_tensor.dims() == 5,
+          errors::InvalidArgument("input_sizes must be 4 or 5-dimensional, "
+                                  "got: ",
+                                  diff_dst_tensor.dims()));
 
       MklDnnShape src_mkl_shape, filter_mkl_shape, diff_dst_mkl_shape;
       GetMklShape(context, kInputIdx, &src_mkl_shape, native_format);

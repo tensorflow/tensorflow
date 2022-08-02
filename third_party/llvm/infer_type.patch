@@ -1,0 +1,16 @@
+diff --git a/mlir/lib/Interfaces/InferTypeOpInterface.cpp b/mlir/lib/Interfaces/InferTypeOpInterface.cpp
+index 237aa0dedc51..65bab982b46c 100644
+--- a/mlir/lib/Interfaces/InferTypeOpInterface.cpp
++++ b/mlir/lib/Interfaces/InferTypeOpInterface.cpp
+@@ -204,6 +204,11 @@ LogicalResult mlir::detail::inferReturnTensorTypes(
+ }
+ 
+ LogicalResult mlir::detail::verifyInferredResultTypes(Operation *op) {
++  // TODO(b/231285230): Temporary hack to disable verification as ops previously
++  // were using SameOperandsAndResultType without realizing its exact
++  // un-verified semantics.
++  if (op->hasTrait<mlir::OpTrait::SameOperandsAndResultType>())
++    return success();
+   SmallVector<Type, 4> inferredReturnTypes(op->getResultTypes());
+   auto retTypeFn = cast<InferTypeOpInterface>(op);
+   return retTypeFn.refineReturnTypes(op->getContext(), op->getLoc(),

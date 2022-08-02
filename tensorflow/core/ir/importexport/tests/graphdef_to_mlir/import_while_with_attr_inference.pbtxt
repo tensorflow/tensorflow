@@ -1,7 +1,7 @@
 # RUN: tfg-translate -graphdef-to-mlir %s | FileCheck %s
 
 # CHECK: While
-# CHECK-SAME: -> (tensor<4xi32>, tensor<4xf32>)
+# CHECK-SAME: -> (tensor<*xi32>, tensor<*xf32>)
 
 node {
   name: "StatefulWhile"

@@ -341,6 +341,18 @@ class TRTNetworkBuilder {
     return const_layer;
   }
 
+  Status get_tensor4TensorOrWeights(const TRT_TensorOrWeights& input,
+                                    ITensorProxyPtr* pTensor) {
+    if (input.is_weights()) {
+      StatusOr<nvinfer1::IConstantLayer*> const_layer = WeightsToConstant(
+          input.weights().GetTrtWeights(), input.GetTrtDims());
+      if (!const_layer.status().ok()) return const_layer.status();
+      *pTensor = (*const_layer)->getOutput(0);
+    } else {
+      *pTensor = input.tensor();
+    }
+    return Status::OK();
+  }
   // Creates a nvinfer1::Weights object containing a single scalar.
   template <typename T,
             typename std::enable_if<std::is_pod<T>::value>::type* = nullptr>
@@ -477,6 +489,50 @@ class TRTNetworkBuilder {
     TRT_ENSURE((*scale_layer).getShift().count == 0);
     TRT_ENSURE((*scale_layer).getScale().count == 1);
     return scale_layer;
+  }
+
+  StatusOr<nvinfer1::ILayer*> AddFill(const TRT_TensorOrWeights& value_input,
+                                      const TRT_TensorOrWeights& dims_input,
+                                      bool is_value_static, bool is_dims_static,
+                                      int nbDims,
+                                      const nvinfer1::Dims& trt_dims,
+                                      ITensorProxyPtr scalar_tensor = nullptr,
+                                      ITensorProxyPtr beta_tensor = nullptr,
+                                      const float delta = 0) {
+    // TensorRT IFillLayer requires a rank 0 scalar.
+    nvinfer1::Dims scalar_dims;
+    scalar_dims.nbDims = 0;
+    if (is_value_static) {
+      StatusOr<nvinfer1::IConstantLayer*> const_layer =
+          WeightsToConstant(value_input.weights().GetTrtWeights(), scalar_dims);
+      if (!const_layer.status().ok()) return const_layer.status();
+      scalar_tensor = (*const_layer)->getOutput(0);
+    } else {
+      if (scalar_tensor == nullptr) {
+        StatusOr<nvinfer1::IShuffleLayer*> shuffler_layer =
+            Reshape(value_input.tensor()->trt_tensor(), scalar_dims);
+        if (!shuffler_layer.status().ok()) return shuffler_layer.status();
+        scalar_tensor = (*shuffler_layer)->getOutput(0);
+      }
+    }
+
+    if (beta_tensor == nullptr) {
+      nvinfer1::Dims beta_shape{1, {nbDims}};
+      StatusOr<nvinfer1::IConstantLayer*> const_layer =
+          Constant(delta, beta_shape, value_input.TrtDType());
+      TF_RETURN_IF_ERROR(const_layer.status());
+      beta_tensor = (*const_layer)->getOutput(0);
+    }
+
+    nvinfer1::IFillLayer* layer =
+        network_->addFill(trt_dims, nvinfer1::FillOperation::kLINSPACE);
+    TRT_ENSURE(layer);
+    if (!is_dims_static) {
+      layer->setInput(0, *dims_input.tensor()->trt_tensor());
+    }
+    layer->setInput(1, *scalar_tensor->trt_tensor());
+    layer->setInput(2, *beta_tensor->trt_tensor());
+    return layer;
   }
 
   // Adds a quantization layer that uniformly scales the input tensor

@@ -19,9 +19,9 @@ limitations under the License.
 #define DIALECT_TFR_OPS_
 
 include "mlir/Dialect/Shape/IR/ShapeBase.td"
-include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/FunctionInterfaces.td"
+include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -518,7 +518,7 @@ def TFR_TFRQuantActRangeOp : TFR_Op<"quant_act_range", [NoSideEffect]> {
 
 def TFR_TFRQuantRescaleOp : TFR_Op<"quant_rescale", [NoSideEffect]> {
   let description = [{
-   The `quant_rescale` rescales the elements of the integer tensor by the the
+   The `quant_rescale` rescales the elements of the integer tensor by the
    floating-point rescale factor. This op needs to be legalized to the preferred
    operations of the backends.
 

@@ -466,7 +466,7 @@ Status MergeApiDefs(ApiDef* base_api_def, const ApiDef& new_api_def) {
         strings::StrCat(description, "\n", new_api_def.description_suffix());
   }
   base_api_def->set_description(description);
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -484,11 +484,11 @@ Status ApiDefMap::LoadFileList(Env* env, const std::vector<string>& filenames) {
   for (const auto& filename : filenames) {
     TF_RETURN_IF_ERROR(LoadFile(env, filename));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ApiDefMap::LoadFile(Env* env, const string& filename) {
-  if (filename.empty()) return Status::OK();
+  if (filename.empty()) return OkStatus();
   string contents;
   TF_RETURN_IF_ERROR(ReadFileToString(env, filename, &contents));
   Status status = LoadApiDef(contents);
@@ -498,7 +498,7 @@ Status ApiDefMap::LoadFile(Env* env, const string& filename) {
         status, strings::StrCat("Error parsing ApiDef file ", filename, ": ",
                                 status.error_message()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ApiDefMap::LoadApiDef(const string& api_def_file_contents) {
@@ -514,7 +514,7 @@ Status ApiDefMap::LoadApiDef(const string& api_def_file_contents) {
       TF_RETURN_IF_ERROR(MergeApiDefs(&map_[api_def.graph_op_name()], api_def));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void ApiDefMap::UpdateDocs() {

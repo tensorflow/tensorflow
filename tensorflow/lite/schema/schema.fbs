@@ -220,6 +220,10 @@ table Tensor {
   // Encodes `shape` with unknown dimensions. Unknown dimensions are
   // represented with -1.
   shape_signature:[int]; // Optional.
+
+  // If false, the rank or the number of tensor dimensions is unknown.
+  // If false, "shape" must be [].
+  has_rank: bool = false;
 }
 
 // A list of builtin operators. Builtin operators are slightly faster than custom
@@ -386,6 +390,13 @@ enum BuiltinOperator : int32 {
   MULTINOMIAL = 149,
   GELU = 150,
   DYNAMIC_UPDATE_SLICE = 151,
+  RELU_0_TO_1 = 152,
+  UNSORTED_SEGMENT_PROD = 153,
+  UNSORTED_SEGMENT_MAX = 154,
+  UNSORTED_SEGMENT_SUM = 155,
+  ATAN2 = 156,
+  UNSORTED_SEGMENT_MIN = 157,
+  SIGN = 158
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -508,6 +519,12 @@ union BuiltinOptions {
   BucketizeOptions,
   GeluOptions,
   DynamicUpdateSliceOptions,
+  UnsortedSegmentProdOptions,
+  UnsortedSegmentMaxOptions,
+  UnsortedSegmentMinOptions,
+  UnsortedSegmentSumOptions,
+  ATan2Options,
+  SignOptions
 }
 
 // LINT.IfChange
@@ -1118,6 +1135,25 @@ table GeluOptions {
 
 table DynamicUpdateSliceOptions {
 }
+
+table UnsortedSegmentProdOptions {
+}
+
+table UnsortedSegmentMaxOptions {
+}
+
+table UnsortedSegmentSumOptions {
+}
+
+table ATan2Options {
+}
+
+table UnsortedSegmentMinOptions{
+}
+
+table SignOptions {
+}
+
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.

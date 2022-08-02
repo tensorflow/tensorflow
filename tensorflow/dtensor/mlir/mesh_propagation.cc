@@ -95,7 +95,7 @@ mlir::LogicalResult ExtractMeshFromOpOutput(mlir::Value value,
       llvm::dyn_cast<mlir::tf_device::ClusterOp>(value.getDefiningOp());
   if (!operand_cluster) {
     return mlir::emitError(value.getLoc())
-           << "operand must be from from different device cluster.";
+           << "operand must be from different device cluster.";
   }
 
   auto mesh_or_status = ExtractDeviceMeshFromOp(operand_cluster);

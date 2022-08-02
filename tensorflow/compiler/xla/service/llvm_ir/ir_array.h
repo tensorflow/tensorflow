@@ -224,13 +224,6 @@ class IrArray {
   // of the array.
   IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape);
 
-  // This constructor is deprecated.  getPointerElementType() cannot be used
-  // when pointers are opaque.  Use the other constructor which explicitly
-  // pass in the pointee type.
-  IrArray(llvm::Value* base_ptr, Shape shape)
-      : IrArray(base_ptr, base_ptr->getType()->getPointerElementType(), shape) {
-  }
-
   // Default implementations of copying and moving.
   IrArray(IrArray&& other) = default;
   IrArray(const IrArray& other) = default;
@@ -238,6 +231,7 @@ class IrArray {
   IrArray& operator=(const IrArray& other) = default;
 
   llvm::Value* GetBasePointer() const { return base_ptr_; }
+  llvm::Type* GetBasePointeeType() const { return pointee_type_; }
   llvm::Type* GetElementLlvmType() const { return element_type_; }
 
   const Shape& GetShape() const { return shape_; }

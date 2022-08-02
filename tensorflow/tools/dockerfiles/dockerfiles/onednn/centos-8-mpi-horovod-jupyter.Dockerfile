@@ -23,6 +23,11 @@ ARG CENTOS_VERSION=8
 
 FROM centos:${CENTOS_VERSION} as base
 
+# Intel Optimizations specific Envs
+ENV KMP_AFFINITY='granularity=fine,verbose,compact,1,0' \
+    KMP_BLOCKTIME=1 \
+    KMP_SETTINGS=1
+
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
 ARG PYTHON=python3

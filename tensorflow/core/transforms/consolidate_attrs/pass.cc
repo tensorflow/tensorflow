@@ -112,7 +112,7 @@ class ConsolidateAttributesPassImpl
  private:
   // Reify `tf._input_shapes`, `tf._output_shapes` and `tfg.handle_data` into
   // the types of the function arguments. Drop the attributes `tfg.dtype` and
-  // `tfg.is_ref`. Return the the new argument attributes.
+  // `tfg.is_ref`. Return the new argument attributes.
   ArrayAttr reifyAndDropFunctionArgumentAttributes(GraphFuncOp func);
   // Reify `tf._output_shapes` and `tfg.handle_data` into the types of the
   // function results. Drop the attribute `tfg.dtype`. Return the new result
@@ -192,11 +192,13 @@ ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionArgumentAttributes(
 
 ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionResultAttributes(
     GraphFuncOp func) {
+  ArrayAttr res_attrs = func.getAllResultAttrs();
+  if (!res_attrs) return ArrayAttr::get(&getContext(), {});
+
   SmallVector<Attribute> ret_attrs;
   // The result types are propagated to the data operands to `return`.
   auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
-  for (auto &it :
-       llvm::enumerate(func.getAllResultAttrs().getAsRange<DictionaryAttr>())) {
+  for (auto &it : llvm::enumerate(res_attrs.getAsRange<DictionaryAttr>())) {
     NamedAttrList attrs(it.value());
     Value ret = ret_op.getOperand(it.index());
     Type ret_type = ret.getType();
@@ -400,9 +402,11 @@ void PrepareAttributesForExportPassImpl::prepareFunctionAttributes(
     GraphFuncOp func) {
   NamedAttrList attrs(func->getAttrDictionary());
   SmallVector<Attribute> input_shapes, arg_attrs, res_attrs;
-  for (auto it :
-       llvm::zip(func.getArgumentTypes(),
-                 func.getAllArgAttrs().getAsRange<DictionaryAttr>())) {
+
+  ArrayAttr func_arg_attrs = func.getAllArgAttrs();
+  if (!func_arg_attrs) func_arg_attrs = ArrayAttr::get(&getContext(), {});
+  for (auto it : llvm::zip(func.getArgumentTypes(),
+                           func_arg_attrs.getAsRange<DictionaryAttr>())) {
     Type type = std::get<0>(it);
     DictionaryAttr attrs = std::get<1>(it);
     if (type == control_type_) {
@@ -416,9 +420,11 @@ void PrepareAttributesForExportPassImpl::prepareFunctionAttributes(
       input_shapes.push_back(ShapeAttr::get(&getContext(), llvm::None));
     }
   }
-  for (auto it :
-       llvm::zip(func.getResultTypes(),
-                 func.getAllResultAttrs().getAsRange<DictionaryAttr>()))
+
+  ArrayAttr func_res_attrs = func.getAllResultAttrs();
+  if (!func_res_attrs) func_res_attrs = ArrayAttr::get(&getContext(), {});
+  for (auto it : llvm::zip(func.getResultTypes(),
+                           func_res_attrs.getAsRange<DictionaryAttr>()))
     res_attrs.push_back(prepareAttributesFor(std::get<0>(it), std::get<1>(it)));
 
   // Add input shapes only if its regeneration is required.

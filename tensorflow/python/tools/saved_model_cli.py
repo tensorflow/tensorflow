@@ -817,11 +817,11 @@ def convert_with_tensorrt(args):
         max_workspace_size_bytes=args.max_workspace_size_bytes,
         precision_mode=args.precision_mode,
         minimum_segment_size=args.minimum_segment_size)
-    converter = trt.TrtGraphConverterV2(
-        input_saved_model_dir=args.dir,
-        input_saved_model_tags=args.tag_set.split(','),
-        **params._asdict())
     try:
+      converter = trt.TrtGraphConverterV2(
+          input_saved_model_dir=args.dir,
+          input_saved_model_tags=args.tag_set.split(','),
+          **params._asdict())
       converter.convert()
     except Exception as e:
       raise RuntimeError(

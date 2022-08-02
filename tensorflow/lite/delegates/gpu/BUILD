@@ -104,9 +104,7 @@ objc_library(
     hdrs = ["metal_delegate_internal.h"],
     copts = ["-std=c++17"],
     sdk_frameworks = ["Metal"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu:metal_delegate",
-    ],
+    deps = ["//tensorflow/lite/delegates/gpu:metal_delegate"],
     alwayslink = 1,
 )
 
@@ -240,6 +238,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl:util",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
+        "//tensorflow/lite/delegates/gpu/common:model_builder_helper",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:quantization_util",
         "//tensorflow/lite/delegates/gpu/common:status",

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <memory>
 #include <type_traits>
+#include <utility>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/macros.h"
@@ -114,7 +115,7 @@ TEST(StatusOr, TestMoveOnlyStatusCtr) {
 TEST(StatusOr, TestMoveOnlyValueExtraction) {
   StatusOr<std::unique_ptr<int>> thing(ReturnUniquePtr());
   ASSERT_TRUE(thing.ok());
-  std::unique_ptr<int> ptr = thing.ConsumeValueOrDie();
+  std::unique_ptr<int> ptr = std::move(thing).value();
   EXPECT_EQ(0, *ptr);
 
   thing = std::move(ptr);
@@ -477,7 +478,7 @@ class BenchmarkFactory {
   // the user provided pointer result.
   Status ArgumentFactory(T** result) TF_ATTRIBUTE_NOINLINE {
     *result = value_;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ArgumentFactoryFail(T** result) TF_ATTRIBUTE_NOINLINE {

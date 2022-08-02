@@ -44,7 +44,7 @@ ENTRY main {
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: HloModule bitcast_to_smaller
-// CHECK: %xla.bitcast_convert_s32_10__2_s8_10_4_.17. (a.1: s32[10]) -> s8[10,4] {
+// CHECK: %xla.bitcast_convert_s32_10__2_s8_10_4_.17 (a.1: s32[10]) -> s8[10,4] {
 // CHECK:  %a.1 = s32[10]{0} parameter(0)
 // CHECK:  %reshape.2 = s32[10,1]{1,0} reshape(s32[10]{0} %a.1)
 // CHECK:  %broadcast.3 = s32[10,1]{1,0} broadcast(s32[10,1]{1,0} %reshape.2), dimensions={0,1}
@@ -64,7 +64,7 @@ ENTRY main {
 // CHECK: }
 // CHECK: ENTRY %main (p: s32[10]) -> s8[10,4] {
 // CHECK:  %p = s32[10]{0} parameter(0)
-// CHECK:  ROOT %call = s8[10,4]{1,0} call(s32[10]{0} %p), to_apply=%xla.bitcast_convert_s32_10__2_s8_10_4_.17.
+// CHECK:  ROOT %call = s8[10,4]{1,0} call(s32[10]{0} %p), to_apply=%xla.bitcast_convert_s32_10__2_s8_10_4_.17
 // CHECK: }
 )"));
 }
@@ -89,7 +89,7 @@ ENTRY main {
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: HloModule bitcast_to_larger
-// CHECK: %xla.bitcast_convert_s8_10_4__2_s32_10_.16. (a.1: s8[10,4]) -> s32[10] {
+// CHECK: %xla.bitcast_convert_s8_10_4__2_s32_10_.16 (a.1: s8[10,4]) -> s32[10] {
 // CHECK:  %a.1 = s8[10,4]{1,0} parameter(0)
 // CHECK:  %bitcast-convert.2 = u8[10,4]{1,0} bitcast-convert(s8[10,4]{1,0} %a.1)
 // CHECK:  %convert.3 = u32[10,4]{1,0} convert(u8[10,4]{1,0} %bitcast-convert.2)
@@ -99,12 +99,12 @@ ENTRY main {
 // CHECK:  %multiply.7 = u32[10,4]{1,0} multiply(u32[10,4]{1,0} %broadcast.6, u32[10,4]{1,0} %iota{{\.?[0-9]*}})
 // CHECK:  %shift-left.8 = u32[10,4]{1,0} shift-left(u32[10,4]{1,0} %convert.3, u32[10,4]{1,0} %multiply.7)
 // CHECK:  %constant.9 = u32[] constant(0)
-// CHECK:  %reduce.14 = u32[10]{0} reduce(u32[10,4]{1,0} %shift-left.8, u32[] %constant.9), dimensions={1}, to_apply=%or_U32.10.
+// CHECK:  %reduce.14 = u32[10]{0} reduce(u32[10,4]{1,0} %shift-left.8, u32[] %constant.9), dimensions={1}, to_apply=%or_U32.10
 // CHECK:  ROOT %bitcast-convert.15 = s32[10]{0} bitcast-convert(u32[10]{0} %reduce.14)
 // CHECK: }
 // CHECK: ENTRY %main (p: s8[10,4]) -> s32[10] {
 // CHECK:  %p = s8[10,4]{1,0} parameter(0)
-// CHECK:  ROOT %call = s32[10]{0} call(s8[10,4]{1,0} %p), to_apply=%xla.bitcast_convert_s8_10_4__2_s32_10_.16.
+// CHECK:  ROOT %call = s32[10]{0} call(s8[10,4]{1,0} %p), to_apply=%xla.bitcast_convert_s8_10_4__2_s32_10_.16
 // CHECK: }
 )"));
 }

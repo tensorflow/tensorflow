@@ -172,10 +172,6 @@ bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
   if (!IsMKLEnabled()) {
     return false;
   }
-  // Don't rewrite the op if it should run as a function.
-  if (op->EagerContext().RunEagerOpAsFunction()) {
-    return false;
-  }
   DataType data_type;
   if (op->Attrs().Get("T", &data_type) != Status::OK()) {
     return false;

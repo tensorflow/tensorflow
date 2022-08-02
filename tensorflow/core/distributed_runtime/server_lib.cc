@@ -52,7 +52,7 @@ Status ServerFactory::GetFactory(const ServerDef& server_def,
   for (const auto& server_factory : *server_factories()) {
     if (server_factory.second->AcceptsOptions(server_def)) {
       *out_factory = server_factory.second;
-      return Status::OK();
+      return OkStatus();
     }
   }
 

@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/shim/tf_op_shim.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -84,7 +86,7 @@ ConstTensorViewOr TfInvokeContext::GetInput(const int idx) const {
   const auto tf_tensor = context_->input(idx);
   SH_ASSIGN_OR_RETURN(const TfTensorView& tensor_view,
                       TensorView::New(&tf_tensor));
-  return absl::make_unique<const TfTensorView>(tensor_view);
+  return std::make_unique<const TfTensorView>(tensor_view);
 }
 
 TensorViewOr TfInvokeContext::GetOutput(const int idx,
@@ -99,7 +101,7 @@ TensorViewOr TfInvokeContext::GetOutput(const int idx,
   if (!status.ok()) return ToAbslStatus(status);
   SH_ASSIGN_OR_RETURN(const TfTensorView& tensor_view,
                       TensorView::New(output_t));
-  return absl::make_unique<TfTensorView>(std::move(tensor_view));
+  return std::make_unique<TfTensorView>(std::move(tensor_view));
 }
 
 int TfInvokeContext::NumInputs() const { return context_->num_inputs(); }
@@ -144,7 +146,7 @@ ConstTensorViewOr TfShapeInferenceContext::GetInputTensor(const int idx) const {
   }
   SH_ASSIGN_OR_RETURN(const TfTensorView& tensor_view,
                       TensorView::New(tf_tensor));
-  return absl::make_unique<const TfTensorView>(tensor_view);
+  return std::make_unique<const TfTensorView>(tensor_view);
 }
 
 absl::StatusOr<AttrValue> TfShapeInferenceContext::GetAttr(

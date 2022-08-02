@@ -385,6 +385,8 @@ proto::TFLiteSettings ConvertTfliteSettings(const TFLiteSettings& settings) {
     *(proto_settings.mutable_fallback_settings()) =
         ConvertFallbackSettings(*settings.fallback_settings());
   }
+  proto_settings.set_disable_default_delegates(
+      settings.disable_default_delegates());
   return proto_settings;
 }
 

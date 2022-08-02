@@ -58,11 +58,11 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
-    return Status::OK();
+    return OkStatus();
   }
   if (status.code() == error::NOT_FOUND) {
     VLOG(1) << "No resource " << resource_name << " to remove";
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Error removing resource " << resource_name << " : " << status;
   return status;
@@ -143,7 +143,7 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
     }
 
     auto start = absl::Now();
-    auto init_status = Status::OK();
+    auto init_status = OkStatus();
 
     // Keep trying to initialize underlying TPU system until either TPU system
     // is initialized or initialization times out.
@@ -232,7 +232,7 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
                      tpu::kTpuEmbeddingEngineStateInterfaceResourceName,
                      tpu::TpuEmbeddingEngineStateInterface::Create()));
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -272,6 +272,24 @@ class ShutdownTPUSystemOpKernel : public OpKernel {
   }
 };
 
+class SetGlobalTPUArrayOpKernel : public OpKernel {
+ public:
+  explicit SetGlobalTPUArrayOpKernel(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "SetGlobalTPUArrayOpKernel op";
+    auto tpu_topology = ctx->input(0).scalar<tstring>()();
+    TF_Status* status = TF_NewStatus();
+
+    tpu::OpsApiFn()->SetGlobalTPUArrayOp_DoWorkFn(tpu_topology.size(),
+                                                  tpu_topology.data(), status);
+    OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
+    TF_DeleteStatus(status);
+
+    VLOG(1) << "SetGlobalTPUArrayOpKernel done";
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("ConfigureAndInitializeGlobalTPU")
                             .Device(DEVICE_TPU_SYSTEM)
                             .HostMemory("output"),
@@ -279,6 +297,11 @@ REGISTER_KERNEL_BUILDER(Name("ConfigureAndInitializeGlobalTPU")
 
 REGISTER_KERNEL_BUILDER(Name("ShutdownTPUSystem").Device(DEVICE_TPU_SYSTEM),
                         ShutdownTPUSystemOpKernel);
+
+REGISTER_KERNEL_BUILDER(Name("DTensorSetGlobalTPUArray")
+                            .Device(DEVICE_TPU_SYSTEM)
+                            .HostMemory("topology"),
+                        SetGlobalTPUArrayOpKernel);
 
 }  // namespace dtensor
 }  // namespace tensorflow

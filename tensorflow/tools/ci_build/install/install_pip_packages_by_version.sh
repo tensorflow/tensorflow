@@ -24,7 +24,6 @@ wget "https://bootstrap.pypa.io/get-pip.py"
 rm "get-pip.py"
 "${PYTHON}" -m ensurepip --upgrade
 
-# TODO(mihaimaruseac): Assume Python3. Need to redo logic when Python4 is released
 PYTHON_VERSION=$(echo ${PIP##*.})  # only the last number, eg. 10
 
 PACKAGES=(
@@ -44,6 +43,7 @@ PACKAGES=(
   "libclang"
   "markdown"
   "pandas"
+  "packaging"
   "portpicker"
   "protobuf"
   "psutil"

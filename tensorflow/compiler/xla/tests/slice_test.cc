@@ -216,7 +216,9 @@ class SliceR1Test : public ClientLibraryTestBase,
     // This can't be an std::vector, since you can't grab a Span of a
     // vector<bool>.
     absl::InlinedVector<NativeT, 1> input(spec.input_dim0);
-    std::iota(input.begin(), input.end(), NativeT());
+    for (size_t i = 0; i < input.size(); ++i) {
+      input[i] = static_cast<NativeT>(i);
+    }
     auto literal = LiteralUtil::CreateR1<NativeT>(input);
 
     XlaBuilder builder(TestName());

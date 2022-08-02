@@ -15,13 +15,12 @@
 #include <cmath>
 
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace sign {
 
 // Performs common preparation for pointwise, unary ops, i.e., type checks and
@@ -74,10 +73,8 @@ TfLiteStatus PointwiseUnaryOpEval(TfLiteContext* context, TfLiteNode* node) {
           (PointwiseUnaryOpDoEval<Op, double>(context, input, output)));
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Unsupported datatype for atan2 output: %s",
-          TfLiteTypeGetName(output->type));
+      TF_LITE_KERNEL_LOG(context, "Unsupported datatype for sign output: %s",
+                         TfLiteTypeGetName(output->type));
   }
 
   return TfLiteStatus::kTfLiteOk;
@@ -106,6 +103,6 @@ TfLiteRegistration* Register_SIGN() {
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

@@ -407,7 +407,6 @@ TF::_XlaHostComputeMlirOp CreateHostCompute(
       loc, device_output_types, inputs.getArrayRef(),
       builder.getStringAttr(args_communication_key),
       builder.getStringAttr(retvals_communication_key),
-      /*tpu_core=*/builder.getI64IntegerAttr(0),
       /*host_mlir_module=*/builder.getStringAttr(serialized_func_module));
   return host_compute;
 }
@@ -581,7 +580,7 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
   }
 }
 
-// Move outside compiled ops in `src` to to `insertion_point` in host
+// Move outside compiled ops in `src` to `insertion_point` in host
 // computation (may be temporarily with `tpu_cluster` but moved in subsequent
 // call to this method).  Communication ops are added in both `src` and at
 // `insertion_point` using `compilation_key`, `device_ordinal` and
@@ -817,7 +816,7 @@ void TPUExtractOutsideCompilation::runOnOperation() {
   // Remove `_xla_outside_compilation` attribute from all ops.  These ops will
   // be outside of the device cluster. The `_xla_outside_compilation` attribute
   // on ops outside of tf_device.cluster don't have any meaning and can lead to
-  // errors later on.  These ops were likely lifted out of the the
+  // errors later on.  These ops were likely lifted out of the
   // tf_device.cluster in an earlier pass.
   module.walk(
       [](Operation* op) { op->removeAttr("_xla_outside_compilation"); });

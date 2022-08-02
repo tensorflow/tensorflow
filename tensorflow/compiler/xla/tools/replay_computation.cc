@@ -142,9 +142,8 @@ StatusOr<std::unique_ptr<LocalExecutable>> CompileExecutable(
   return std::move(executables[0]);
 }
 
-absl::optional<Shape> GetXfeedShape(bool is_infeed,
-                                    const HloModuleProto& module,
-                                    const Options& opts) {
+std::optional<Shape> GetXfeedShape(bool is_infeed, const HloModuleProto& module,
+                                   const Options& opts) {
   std::vector<HloInstructionProto> xfeed_instrs;
   for (const auto& comp : module.computations()) {
     for (const auto& instruction : comp.instructions()) {
@@ -174,7 +173,7 @@ absl::optional<Shape> GetXfeedShape(bool is_infeed,
     LOG(FATAL) << "No instruction with id " << id;
   };
 
-  absl::optional<Shape> xfeed_shape;
+  std::optional<Shape> xfeed_shape;
   std::string xfeed_name = is_infeed ? "infeed" : "outfeed";
   std::string fake_xfeed_shape =
       is_infeed ? opts.fake_infeed_shape : opts.fake_outfeed_shape;
@@ -273,12 +272,12 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   }
 
   std::shared_ptr<Literal> infeed_data;
-  if (absl::optional<Shape> infeed_shape = GetXfeedShape(
+  if (std::optional<Shape> infeed_shape = GetXfeedShape(
           /*is_infeed=*/true, computation.proto(), opts)) {
     infeed_data = std::make_shared<Literal>(
         std::move(MakeFakeLiteral(*infeed_shape)).ValueOrDie());
   }
-  absl::optional<Shape> outfeed_shape =
+  std::optional<Shape> outfeed_shape =
       GetXfeedShape(/*is_infeed=*/false, computation.proto(), opts);
 
   // Do not attempt to run the executable if num_runs is less than 1.
@@ -292,7 +291,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   se::StreamExecutorMemoryAllocator allocator(
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
-  absl::optional<ScopedShapedBuffer> final_result;
+  std::optional<ScopedShapedBuffer> final_result;
   LOG(ERROR) << "Running " << opts.num_runs << " number of times\n";
   for (int i = 0; i < opts.num_runs; ++i) {
     // If xla_hlo_profile is enabled, print a noisy message before the last run,
@@ -518,8 +517,7 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
               result.ToString().c_str());
       auto& snapshot = snapshots[i];
       if (snapshot.has_result()) {
-        Literal literal =
-            Literal::CreateFromProto(snapshot.result()).ConsumeValueOrDie();
+        Literal literal = Literal::CreateFromProto(snapshot.result()).value();
         fprintf(
             stdout, "was %s:%s\n",
             ShapeUtil::HumanString(Shape(snapshot.result().shape())).c_str(),

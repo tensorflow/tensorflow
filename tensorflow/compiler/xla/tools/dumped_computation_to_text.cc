@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client.h"
@@ -48,11 +49,11 @@ void RealMain(absl::Span<char* const> args, bool compile) {
               computation_status.status().ToString().c_str());
       continue;
     }
-    XlaComputation computation = computation_status.ConsumeValueOrDie();
+    XlaComputation computation = std::move(computation_status).value();
 
     if (compile) {
       std::unique_ptr<ProgramShape> program_shape =
-          client->GetComputationShape(computation).ConsumeValueOrDie();
+          client->GetComputationShape(computation).value();
 
       std::vector<const Shape*> layouts;
       layouts.reserve(program_shape->parameters_size());
@@ -65,7 +66,7 @@ void RealMain(absl::Span<char* const> args, bool compile) {
       build_options.set_result_layout(program_shape->result());
       auto executables =
           local_service->CompileExecutables(computation, layouts, build_options)
-              .ConsumeValueOrDie();
+              .value();
       CHECK_EQ(executables.size(), 1);
       const HloModule& module = executables[0]->module();
 
@@ -75,10 +76,9 @@ void RealMain(absl::Span<char* const> args, bool compile) {
     } else {
       auto config = HloModule::CreateModuleConfigFromProto(computation.proto(),
                                                            DebugOptions())
-                        .ConsumeValueOrDie();
+                        .value();
       std::unique_ptr<HloModule> module =
-          HloModule::CreateFromProto(computation.proto(), config)
-              .ConsumeValueOrDie();
+          HloModule::CreateFromProto(computation.proto(), config).value();
 
       fprintf(stdout, "%s\n",
               module->ToString(HloPrintOptions::ShortParsable()).c_str());

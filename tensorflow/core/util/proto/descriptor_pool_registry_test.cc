@@ -24,7 +24,7 @@ struct Value {
   static Status Function(
       tensorflow::protobuf::DescriptorPool const** desc_pool,
       std::unique_ptr<tensorflow::protobuf::DescriptorPool>* owned_desc_pool) {
-    return Status::OK();
+    return OkStatus();
   }
 };
 

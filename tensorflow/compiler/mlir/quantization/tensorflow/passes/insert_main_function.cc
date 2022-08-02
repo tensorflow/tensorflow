@@ -167,8 +167,12 @@ bool CreateMainFunction(ModuleOp& module) {
 
   if (input_names.size() != main_func.getNumArguments() ||
       output_names.size() != main_func.getNumResults()) {
-    module.emitError() << "number of inputs and outputs in the "
-                          "tf.entry_function attribute mismatched.";
+    module.emitError()
+        << "Number of inputs and outputs in the tf.entry_function attribute "
+           "mismatched. [Input] Expected: "
+        << input_names.size() << ", got: " << main_func.getNumArguments()
+        << ". [Output] Expected: " << output_names.size()
+        << ", got: " << main_func.getNumResults();
     return false;
   }
 

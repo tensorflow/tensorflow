@@ -18,7 +18,7 @@ import os
 
 from absl.testing import parameterized
 import numpy as np
-
+from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import combinations
@@ -50,9 +50,8 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training.server_lib import ClusterSpec
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 
 # We create one cluster to share between tests. The cluster should be large
@@ -354,7 +353,7 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
 
   def test_delayed_restore(self):
     fname = os.path.join(self.get_temp_dir(), 'checkpoint')
-    model = tracking.AutoTrackable()
+    model = autotrackable.AutoTrackable()
     variables = [
         variables_lib.Variable([0]),
         variables_lib.Variable([1]),
@@ -365,7 +364,7 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     cp = util.Checkpoint(model=model)
     cp.write(fname)
 
-    model2 = tracking.AutoTrackable()
+    model2 = autotrackable.AutoTrackable()
     cp2 = util.Checkpoint(model=model2)
     cp2.restore(fname)
     variables2 = [
@@ -382,7 +381,7 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
 
   def test_delayed_restore_4_to_2_partitions(self):
     fname = os.path.join(self.get_temp_dir(), 'checkpoint')
-    model = tracking.AutoTrackable()
+    model = autotrackable.AutoTrackable()
     variables = [
         variables_lib.Variable([0]),
         variables_lib.Variable([1]),
@@ -393,7 +392,7 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     cp = util.Checkpoint(model=model)
     cp.write(fname)
 
-    model2 = tracking.AutoTrackable()
+    model2 = autotrackable.AutoTrackable()
     cp2 = util.Checkpoint(model=model2)
     cp2.restore(fname)
     variables2 = [
@@ -405,7 +404,7 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(self.evaluate(model2.s.variables[1]), [2, 3])
 
   def test_save_graph_def(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     v1 = variables_lib.Variable([3.])
     v2 = variables_lib.Variable([2.])
     root.v = sharded_variable.ShardedVariable([v1, v2])

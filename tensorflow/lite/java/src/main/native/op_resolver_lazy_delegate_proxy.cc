@@ -92,6 +92,17 @@ OpResolverLazyDelegateProxy::GetDelegateCreators() const {
       {&OpResolverLazyDelegateProxy::createXNNPackDelegate}};
 }
 
+OpResolver::TfLiteOpaqueDelegateCreators
+OpResolverLazyDelegateProxy::GetOpaqueDelegateCreators() const {
+  // Early exit if not using the XNNPack delegate by default
+  if (!use_xnnpack_) {
+    return OpResolver::TfLiteOpaqueDelegateCreators();
+  }
+
+  return OpResolver::TfLiteOpaqueDelegateCreators{
+      {&OpResolverLazyDelegateProxy::createXNNPackOpaqueDelegate}};
+}
+
 bool OpResolverLazyDelegateProxy::MayContainUserDefinedOps() const {
   return OpResolverInternal::MayContainUserDefinedOps(*op_resolver_);
 }
@@ -100,6 +111,39 @@ std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>
 OpResolverLazyDelegateProxy::createXNNPackDelegate(int num_threads) {
   TfLiteDelegate* delegate = nullptr;
   void (*delegate_deleter)(TfLiteDelegate*) = nullptr;
+#if !TFLITE_DISABLE_SELECT_JAVA_APIS
+  // We use dynamic loading to avoid taking a hard dependency on XNNPack.
+  // This allows clients that use trimmed builds to save on binary size.
+
+  if (IsDlsymSafeForSymbolCheck()) {
+    auto xnnpack_options_default =
+        reinterpret_cast<decltype(TfLiteXNNPackDelegateOptionsDefault)*>(
+            dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateOptionsDefault"));
+    auto xnnpack_create =
+        reinterpret_cast<decltype(TfLiteXNNPackDelegateCreate)*>(
+            dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateCreate"));
+    auto xnnpack_delete =
+        reinterpret_cast<decltype(TfLiteXNNPackDelegateDelete)*>(
+            dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateDelete"));
+
+    if (xnnpack_options_default && xnnpack_create && xnnpack_delete) {
+      TfLiteXNNPackDelegateOptions options = xnnpack_options_default();
+      if (num_threads > 0) {
+        options.num_threads = num_threads;
+      }
+      delegate = xnnpack_create(&options);
+      delegate_deleter = xnnpack_delete;
+    }
+  }
+#endif  // !TFLITE_DISABLE_SELECT_JAVA_APIS
+  return std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(
+      delegate, delegate_deleter);
+}
+
+OpResolver::TfLiteOpaqueDelegatePtr
+OpResolverLazyDelegateProxy::createXNNPackOpaqueDelegate(int num_threads) {
+  TfLiteOpaqueDelegateStruct* delegate = nullptr;
+  void (*delegate_deleter)(TfLiteOpaqueDelegateStruct*) = nullptr;
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
   // Construct a FlatBuffer containing
   //   TFLiteSettings {
@@ -127,37 +171,10 @@ OpResolverLazyDelegateProxy::createXNNPackDelegate(int num_threads) {
   // Create an XNNPack delegate plugin using the settings from the flatbuffer.
   const TfLiteOpaqueDelegatePlugin* delegate_plugin =
       TfLiteXnnpackDelegatePluginCApi();
-  delegate = reinterpret_cast<TfLiteDelegate*>(
-      delegate_plugin->create(tflite_settings_flatbuffer));
-  delegate_deleter =
-      reinterpret_cast<void (*)(TfLiteDelegate*)>(delegate_plugin->destroy);
-#else
-  // We use dynamic loading to avoid taking a hard dependency on XNNPack.
-  // This allows clients that use trimmed builds to save on binary size.
-
-  if (IsDlsymSafeForSymbolCheck()) {
-    auto xnnpack_options_default =
-        reinterpret_cast<decltype(TfLiteXNNPackDelegateOptionsDefault)*>(
-            dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateOptionsDefault"));
-    auto xnnpack_create =
-        reinterpret_cast<decltype(TfLiteXNNPackDelegateCreate)*>(
-            dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateCreate"));
-    auto xnnpack_delete =
-        reinterpret_cast<decltype(TfLiteXNNPackDelegateDelete)*>(
-            dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateDelete"));
-
-    if (xnnpack_options_default && xnnpack_create && xnnpack_delete) {
-      TfLiteXNNPackDelegateOptions options = xnnpack_options_default();
-      if (num_threads > 0) {
-        options.num_threads = num_threads;
-      }
-      delegate = xnnpack_create(&options);
-      delegate_deleter = xnnpack_delete;
-    }
-  }
+  delegate = delegate_plugin->create(tflite_settings_flatbuffer);
+  delegate_deleter = delegate_plugin->destroy;
 #endif
-  return std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(
-      delegate, delegate_deleter);
+  return OpResolver::TfLiteOpaqueDelegatePtr(delegate, delegate_deleter);
 }
 
 }  // namespace jni

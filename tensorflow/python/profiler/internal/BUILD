@@ -81,7 +81,6 @@ tf_python_pybind_extension(
     name = "_pywrap_traceme",
     srcs = ["traceme_wrapper.cc"],
     copts = tf_profiler_copts(),
-    module_name = "_pywrap_traceme",
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
         "//tensorflow/python/profiler:__subpackages__",
@@ -112,7 +111,6 @@ tf_python_pybind_extension(
     name = "_pywrap_profiler",
     srcs = ["profiler_wrapper.cc"],
     copts = tf_profiler_copts(),
-    module_name = "_pywrap_profiler",
     visibility = [
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/profiler:__pkg__",

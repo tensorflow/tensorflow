@@ -5212,40 +5212,50 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
     score_threshold_np = float("-inf")
     # Note: There are multiple versions of non_max_suppression v2, v3, v4.
     # gen_image_ops.non_max_suppression_v2:
-    for dtype in [np.float16, np.float32]:
-      with self.cached_session():
-        boxes = constant_op.constant(boxes_np, dtype=dtype)
-        scores = constant_op.constant(scores_np, dtype=dtype)
-        max_output_size = constant_op.constant(max_output_size_np)
-        iou_threshold = constant_op.constant(iou_threshold_np, dtype=dtype)
-        selected_indices = gen_image_ops.non_max_suppression_v2(
-            boxes, scores, max_output_size, iou_threshold)
-        selected_indices = self.evaluate(selected_indices)
-        self.assertAllClose(selected_indices, [3, 0, 5])
+    for input_dtype in [np.float16, np.float32]:
+      for threshold_dtype in [np.float16, np.float32]:
+        with self.cached_session():
+          boxes = constant_op.constant(boxes_np, dtype=input_dtype)
+          scores = constant_op.constant(scores_np, dtype=input_dtype)
+          max_output_size = constant_op.constant(max_output_size_np)
+          iou_threshold = constant_op.constant(
+              iou_threshold_np, dtype=threshold_dtype)
+          selected_indices = gen_image_ops.non_max_suppression_v2(
+              boxes, scores, max_output_size, iou_threshold)
+          selected_indices = self.evaluate(selected_indices)
+          self.assertAllClose(selected_indices, [3, 0, 5])
     # gen_image_ops.non_max_suppression_v3
-    for dtype in [np.float16, np.float32]:
-      with self.cached_session():
-        boxes = constant_op.constant(boxes_np, dtype=dtype)
-        scores = constant_op.constant(scores_np, dtype=dtype)
-        max_output_size = constant_op.constant(max_output_size_np)
-        iou_threshold = constant_op.constant(iou_threshold_np, dtype=dtype)
-        score_threshold = constant_op.constant(score_threshold_np, dtype=dtype)
-        selected_indices = gen_image_ops.non_max_suppression_v3(
-            boxes, scores, max_output_size, iou_threshold, score_threshold)
-        selected_indices = self.evaluate(selected_indices)
-        self.assertAllClose(selected_indices, [3, 0, 5])
+    for input_dtype in [np.float16, np.float32]:
+      for threshold_dtype in [np.float16, np.float32]:
+        # XLA currently requires dtypes to be equal.
+        if input_dtype == threshold_dtype or not test_util.is_xla_enabled():
+          with self.cached_session():
+            boxes = constant_op.constant(boxes_np, dtype=input_dtype)
+            scores = constant_op.constant(scores_np, dtype=input_dtype)
+            max_output_size = constant_op.constant(max_output_size_np)
+            iou_threshold = constant_op.constant(
+                iou_threshold_np, dtype=threshold_dtype)
+            score_threshold = constant_op.constant(
+                score_threshold_np, dtype=threshold_dtype)
+            selected_indices = gen_image_ops.non_max_suppression_v3(
+                boxes, scores, max_output_size, iou_threshold, score_threshold)
+            selected_indices = self.evaluate(selected_indices)
+            self.assertAllClose(selected_indices, [3, 0, 5])
     # gen_image_ops.non_max_suppression_v4.
-    for dtype in [np.float16, np.float32]:
-      with self.cached_session():
-        boxes = constant_op.constant(boxes_np, dtype=dtype)
-        scores = constant_op.constant(scores_np, dtype=dtype)
-        max_output_size = constant_op.constant(max_output_size_np)
-        iou_threshold = constant_op.constant(iou_threshold_np, dtype=dtype)
-        score_threshold = constant_op.constant(score_threshold_np, dtype=dtype)
-        selected_indices, _ = gen_image_ops.non_max_suppression_v4(
-            boxes, scores, max_output_size, iou_threshold, score_threshold)
-        selected_indices = self.evaluate(selected_indices)
-        self.assertAllClose(selected_indices, [3, 0, 5])
+    for input_dtype in [np.float16, np.float32]:
+      for threshold_dtype in [np.float16, np.float32]:
+        with self.cached_session():
+          boxes = constant_op.constant(boxes_np, dtype=input_dtype)
+          scores = constant_op.constant(scores_np, dtype=input_dtype)
+          max_output_size = constant_op.constant(max_output_size_np)
+          iou_threshold = constant_op.constant(
+              iou_threshold_np, dtype=threshold_dtype)
+          score_threshold = constant_op.constant(
+              score_threshold_np, dtype=threshold_dtype)
+          selected_indices, _ = gen_image_ops.non_max_suppression_v4(
+              boxes, scores, max_output_size, iou_threshold, score_threshold)
+          selected_indices = self.evaluate(selected_indices)
+          self.assertAllClose(selected_indices, [3, 0, 5])
     # gen_image_ops.non_max_suppression_v5.
     soft_nms_sigma_np = float(0.0)
     for dtype in [np.float16, np.float32]:

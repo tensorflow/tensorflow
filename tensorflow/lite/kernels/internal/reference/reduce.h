@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REDUCE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REDUCE_H_
 
+#include <algorithm>
+
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
@@ -45,17 +47,6 @@ inline bool IsFirstReduction(const int* index, const int num_axis,
 namespace tflite {
 
 namespace reference_ops {
-
-// When the number of axis is zero, the reduction is simply a copy.
-template <typename T>
-void ReduceIsCopy(const T* input_data, const int* input_dims,
-                  const int input_num_dims, T* output_data) {
-  int num_elems = 1;
-  for (int i = 0; i < input_num_dims; ++i) {
-    num_elems *= input_dims[i];
-  }
-  memcpy(output_data, input_data, num_elems * sizeof(T));
-}
 
 // A generic reduce method that can be used for reduce_sum, reduce_mean, etc.
 // This method iterates through input data and reduce elements along the
@@ -228,10 +219,6 @@ inline bool Mean(const T* input_data, const int* input_dims,
                  const int* output_dims, const int output_num_dims,
                  const int* axis, const int num_axis_dimensions, bool keep_dims,
                  int* temp_index, int* resolved_axis, U* temp_sum) {
-  if (num_axis_dimensions == 0) {
-    ReduceIsCopy(input_data, input_dims, input_num_dims, output_data);
-    return true;
-  }
   ruy::profiler::ScopeLabel label("Mean");
   // Reset output data.
   size_t num_outputs = 1;
@@ -397,10 +384,6 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
                                const int num_axis_dimensions, bool keep_dims,
                                int* temp_index, int* resolved_axis, U* temp_sum,
                                bool compute_sum) {
-  if (num_axis_dimensions == 0) {
-    ReduceIsCopy(input_data, input_dims, input_num_dims, output_data);
-    return true;
-  }
   const bool uint8_case = std::is_same<T, uint8_t>::value;
   const bool int16_case = std::is_same<T, int16_t>::value;
   if (uint8_case) {

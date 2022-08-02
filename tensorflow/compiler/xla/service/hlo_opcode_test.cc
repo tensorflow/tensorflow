@@ -70,6 +70,7 @@ TEST(HloOpcodeTest, OpcodeProperties) {
       case HloOpcode::kMap:
       case HloOpcode::kReduce:
       case HloOpcode::kRng:
+      case HloOpcode::kScatter:
       case HloOpcode::kSort:
       case HloOpcode::kTuple:
       case HloOpcode::kReduceWindow:

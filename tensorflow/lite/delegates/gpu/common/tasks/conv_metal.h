@@ -29,16 +29,21 @@ namespace gpu {
 class ConvolutionMetal : public GPUOperation {
  public:
   enum class WeightsUploadType {
-    PRIVATE_MEM_SIMD8_BROADCAST,
-    PRIVATE_MEM_SIMD16_BROADCAST,
-    PRIVATE_MEM_SIMD32_BROADCAST,
     LOCAL_MEM_BY_THREADS,
     GLOBAL_MEM,
     CONSTANT_MEM,
   };
 
   struct ConvParams {
-    int3 block_size;
+    struct BlockSize {
+      int b =
+          1;  // block size for batch dimension, must be equal to 1, reserved
+      int x = 1;  // block size for width dimension
+      int y = 1;  // block size for height dimension
+      int z =
+          1;  // block size for depth dimension, must be equal to 1, reserved
+      int s = 1;  // block size for slice(grouped channels) dimension
+    } block_size;
     int3 work_group_size;
     int3 work_group_launch_order;
     int src_depth_loop_size;
@@ -49,9 +54,15 @@ class ConvolutionMetal : public GPUOperation {
     WeightsUploadType weights_upload_type;
     WeightsLayout weights_layout;
     bool different_weights_for_height = false;
-    bool x_kernel_is_1;
-    bool y_kernel_is_1;
+    bool x_kernel_is_1 = false;
+    bool y_kernel_is_1 = false;
     bool groups_support = false;  // convolution groups
+
+    MemoryType GetMemoryType() const {
+      return weights_upload_type == WeightsUploadType::CONSTANT_MEM
+                 ? MemoryType::CONSTANT
+                 : MemoryType::GLOBAL;
+    }
   };
 
   ConvolutionMetal() = default;
@@ -74,20 +85,27 @@ class ConvolutionMetal : public GPUOperation {
     WeightsDescription desc;
     desc.type = DeduceDataTypeFromPrecision(definition_.precision);
     desc.layout = params_.weights_layout;
-    desc.output_group_size = params_.block_size.z;
+    desc.output_group_size = params_.block_size.s;
     return desc;
   }
 
  private:
-  explicit ConvolutionMetal(const OperationDef& definition)
-      : GPUOperation(definition) {}
+  ConvolutionMetal(const OperationDef& definition, const ConvParams& params,
+                   const Convolution2DAttributes* attr = nullptr);
   friend ConvolutionMetal CreateConvolutionMetal(
       const OperationDef& definition, const BHWC& dst_shape,
       const Convolution2DAttributes& attr, const GpuInfo& gpu_info);
 
+  friend ConvolutionMetal CreateConvolutionMetalBatchedMatMul(
+      const OperationDef& definition, const BHWC& dst_shape,
+      const OHWI& weights_shape, const GpuInfo& gpu_info);
+
   friend ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
       const OperationDef& definition, const BHWC& dst_shape,
       const Convolution2DAttributes& attr, const GpuInfo& gpu_info);
+
+  void UploadWeights(const Tensor<OHWI, DataType::FLOAT32>& weights);
+  void UploadBiases(const Tensor<Linear, DataType::FLOAT32>& biases);
 
   int2 padding_;
   int2 dilation_;
@@ -98,6 +116,10 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
                                         const BHWC& dst_shape,
                                         const Convolution2DAttributes& attr,
                                         const GpuInfo& gpu_info);
+
+ConvolutionMetal CreateConvolutionMetalBatchedMatMul(
+    const OperationDef& definition, const BHWC& dst_shape,
+    const OHWI& weights_shape, const GpuInfo& gpu_info);
 
 ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
     const OperationDef& definition, const BHWC& dst_shape,

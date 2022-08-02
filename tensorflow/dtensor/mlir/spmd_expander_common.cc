@@ -34,12 +34,12 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -137,7 +137,7 @@ Status CreateSplitOp(const int num_split, const int split_dimension,
   llvm::SmallVector<mlir::Type, 4> output_types(num_split, output_type);
   *split_op = builder->create<mlir::TF::SplitOp>(
       location, output_types, split_dimension_op.output(), src_input);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Given layouts + shapes, determines if the two are broadcasting compatible.
@@ -472,7 +472,7 @@ mlir::LogicalResult PopulateConsumersFromModule(
 // If the mesh shape is [a, b, c, d], then the mesh coordinates are
 // [device_id/b/c/d, device_id/c/d%b, device_id/d%c, device_id%d]
 // for convenience, since device_id < a*b*c*d, we can apply %a on the first
-// coordinate as well for simplicies sake.
+// coordinate as well for simplicity's sake.
 // Thus we can decompose this calculation into the following tf ops:
 // tf.FloorMod(tf.Div(device_id, [b*c*d, c*d, d, 1]), [a, b, c, d]) where
 // [a, b, c, d] and [b*c*d, c*d, d, 1] are simply precomputed constants.
@@ -643,7 +643,7 @@ Status SetBuilderInsertionAfterValue(mlir::Value value,
                                      mlir::OpBuilder& builder) {
   if (value.isa<mlir::OpResult>()) {
     builder.setInsertionPointAfterValue(value);
-    return Status::OK();
+    return OkStatus();
   }
   mlir::tf_device::ClusterOp cluster;
   for (mlir::Operation* op : value.getUsers()) {
@@ -657,7 +657,7 @@ Status SetBuilderInsertionAfterValue(mlir::Value value,
   if (!cluster) return errors::Internal("value not used in any cluster");
 
   builder.setInsertionPointToStart(cluster.getBody());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
@@ -674,12 +674,14 @@ Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
   builder.create<mlir::TF::PrintV2Op>(value.getLoc(), format.output(),
                                       /*output_stream=*/"log(info)",
                                       /*end=*/"\n");
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExtractConstStringVectorFromValue(
     mlir::Value value, llvm::SmallVectorImpl<std::string>& out_vector) {
   value = GetForwardedDTensorLayoutInput(value);
+  if (value.isa<mlir::BlockArgument>())
+    return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
     return errors::Internal(
@@ -690,11 +692,13 @@ Status ExtractConstStringVectorFromValue(
   for (const auto& str : attr.getRawStringData()) {
     out_vector.push_back(str.str());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value) {
   value = GetForwardedDTensorLayoutInput(value);
+  if (value.isa<mlir::BlockArgument>())
+    return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
     return errors::Internal(absl::StrCat("required constant value for ",

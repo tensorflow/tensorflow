@@ -515,22 +515,26 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # then retrace each time.
     check_trace(
         structured_tensor.StructuredTensor.from_pyval({'a': [1]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'a': tensor_spec.TensorSpec((1,), dtypes.int32)}))
+        structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
+            fields={'a': tensor_spec.TensorSpec((1,), dtypes.int32)},
+            rank=0))
     check_trace(
         structured_tensor.StructuredTensor.from_pyval({'b': [1]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'b': tensor_spec.TensorSpec((1,), dtypes.int32)}))
+        structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
+            fields={'b': tensor_spec.TensorSpec((1,), dtypes.int32)},
+            rank=0))
     check_trace(
         structured_tensor.StructuredTensor.from_pyval({'c': [1]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'c': tensor_spec.TensorSpec((1,), dtypes.int32)}))
+        structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
+            fields={'c': tensor_spec.TensorSpec((1,), dtypes.int32)},
+            rank=0))
 
     # But if we call again with only shape different, then do relax:
     check_trace(  # relax & retrace
         structured_tensor.StructuredTensor.from_pyval({'a': [1, 2]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'a': tensor_spec.TensorSpec((None,), dtypes.int32)}))
+        structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
+            fields={'a': tensor_spec.TensorSpec((None,), dtypes.int32)},
+            rank=0))
     check_trace(   # use relaxed graph
         structured_tensor.StructuredTensor.from_pyval({'a': [1, 2, 3]}),
         None)
@@ -5514,6 +5518,74 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
         constant_op.constant([0, 1]))
     with self.assertRaises(ValueError):
       lazy_capture()
+
+  def testMaybeCreateCapturePlaceholderWithValidCapture(self):
+    @def_function.function
+    def f():
+      func = lambda: x
+      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+
+    x = {
+        'tensor': constant_op.constant(0),
+        'list': [constant_op.constant(1), 2],
+        'dict': {
+            'float': constant_op.constant(0.5)
+        }
+    }
+
+    out = f()
+    # tf.function output should have same structure/values with the side input
+    self.assertEqual(x['tensor'].numpy(), out['tensor'].numpy())
+    self.assertEqual(x['list'][0].numpy(), out['list'][0].numpy())
+    self.assertEqual(x['list'][1], out['list'][1].numpy())
+    self.assertEqual(x['dict']['float'].numpy(), out['dict']['float'].numpy())
+
+  def testMaybeCreateCapturePlaceholderWithInvalidCapture(self):
+    @def_function.function
+    def f():
+      func = lambda: x
+      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+
+    # Set is not supported
+    x = set([1, 2])
+    with self.assertRaises(NotImplementedError):
+      f()
+
+  # TODO(panzf): remove this test after exposing manual API, as the integration
+  # testcase can be turned on at that time.
+  def test_inner_nested_tf_function_raise_error(self):
+    @def_function.function
+    def tf_f():
+
+      @def_function.function
+      def tf_g():
+        cx = ops.get_default_graph()._experimental_capture_side_input_by_ref(  # pylint: disable=protected-access
+            'lambda: x', lambda: x)
+        return cx
+
+      return tf_g()
+
+    x = constant_op.constant(0)  # pylint: disable=unused-variable
+    with self.assertRaisesRegex(
+        NotImplementedError, 'Manual side input usage for inner nested'):
+      tf_f()
+
+  @parameterized.parameters(
+      (1, int, 2, int, 2),
+      (1, constant_op.constant, 2, constant_op.constant, 1))
+  def testRetraceLogicWithSideInputs(self, val_before, type_before, val_after,
+                                     type_after, expected_len):
+    @def_function.function
+    def f():
+      func = lambda: x
+      return ops.get_default_graph()._experimental_capture_side_input_by_ref(  # pylint: disable=protected-access
+          'lambda: x', func)
+
+    x = type_before(val_before)
+    _ = f()
+    x = type_after(val_after)
+    _ = f()
+    self.assertLen(total_function_cache(f), expected_len)
 
   def testFunctoolsLruCache(self):
     self.skipTest(

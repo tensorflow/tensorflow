@@ -61,14 +61,14 @@ bool tfjs::MlirToJSONTranslateFunction(ModuleOp module,
   tensorflow::FunctionLibraryDefinition flib_def(
       tensorflow::OpRegistry::Global(), tensorflow::FunctionDefLibrary());
   absl::flat_hash_set<tensorflow::Node*> control_ret_nodes;
-  auto graph = absl::make_unique<tensorflow::Graph>(flib_def);
+  auto graph = std::make_unique<tensorflow::Graph>(flib_def);
   auto status = tensorflow::ConvertMlirToGraph(module, confs, &graph, &flib_def,
                                                &control_ret_nodes);
   if (!status.ok()) {
     LOG(ERROR) << "Graph export failed: " << status;
     return false;
   }
-  auto graphdef = absl::make_unique<tensorflow::GraphDef>();
+  auto graphdef = std::make_unique<tensorflow::GraphDef>();
   graph->ToGraphDef(graphdef.get());
 
   // Replace the _Arg nodes of the main function with Placeholder op.

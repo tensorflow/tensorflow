@@ -35,6 +35,7 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpAsmInterface.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 def TF_AbsOp : TF_Op<"Abs", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes the absolute value of a tensor.";
@@ -516,7 +517,8 @@ Returns min/max k values and their indices of the input operand in an approximat
   }];
 
   let description = [{
-Returns min/max k values and their indices of the input operand in an approximate manner.
+See https://arxiv.org/abs/2206.14286 for the algorithm details.
+This op is only optimized on TPU currently.
   }];
 
   let arguments = (ins
@@ -1915,22 +1917,27 @@ def TF_BroadcastToOp : TF_Op<"BroadcastTo", [NoSideEffect]> {
   let description = [{
 Broadcasting is the process of making arrays to have compatible shapes
 for arithmetic operations. Two shapes are compatible if for each
-dimension pair they are either equal or one of them is one. When trying
-to broadcast a Tensor to a shape, it starts with the trailing dimensions,
-and works its way forward.
+dimension pair they are either equal or one of them is one.
 
-For example,
+For example:
 
->>> x = tf.constant([1, 2, 3])
->>> y = tf.broadcast_to(x, [3, 3])
+>>> x = tf.constant([[1, 2, 3]])   # Shape (1, 3,)
+>>> y = tf.broadcast_to(x, [2, 3])
 >>> print(y)
 tf.Tensor(
     [[1 2 3]
-     [1 2 3]
-     [1 2 3]], shape=(3, 3), dtype=int32)
+     [1 2 3]], shape=(2, 3), dtype=int32)
 
 In the above example, the input Tensor with the shape of `[1, 3]`
-is broadcasted to output Tensor with shape of `[3, 3]`.
+is broadcasted to output Tensor with shape of `[2, 3]`.
+
+When broadcasting, if a tensor has fewer axes than necessary its shape is
+padded on the left with ones. So this gives the same result as the previous
+example:
+
+>>> x = tf.constant([1, 2, 3])   # Shape (3,)
+>>> y = tf.broadcast_to(x, [2, 3])
+
 
 When doing broadcasted operations such as multiplying a tensor
 by a scalar, broadcasting (usually) confers some time or space
@@ -2140,6 +2147,23 @@ as `t`. The maximum value to clip by.}]>:$clip_value_max
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CollateTPUEmbeddingMemoryOp : TF_Op<"CollateTPUEmbeddingMemory", []> {
+  let summary = [{
+An op that merges the string-encoded memory config protos from all hosts.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_StrTensor>, [{String-encoded memory config protos containing metadata about
+the memory allocations reserved for TPUEmbedding across all hosts.}]>:$memory_configs
+  );
+
+  let results = (outs
+    TF_StrTensor:$merged_memory_config
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
 def TF_CollectiveAssignGroupV2Op : TF_Op<"CollectiveAssignGroupV2", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Assign group keys based on group assignment.";
 
@@ -2268,7 +2292,7 @@ Mutually reduces multiple tensors of identical type and shape.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", []> {
+def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", [TF_CollectiveReduceOrderingEffect]> {
   let summary = [{
 Mutually reduces multiple tensors of identical type and shape.
   }];
@@ -2468,6 +2492,39 @@ def TF_ConfigureTPUEmbeddingOp : TF_Op<"ConfigureTPUEmbedding", []> {
   let results = (outs);
 }
 
+def TF_ConfigureTPUEmbeddingHostOp : TF_Op<"ConfigureTPUEmbeddingHost", []> {
+  let summary = "An op that configures the TPUEmbedding software on a host.";
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{A string-encoded common configuration proto containing metadata
+about the TPUEmbedding partitioner output.}]>:$common_config,
+    Arg<TF_StrTensor, [{A string-encoded memory config proto containing metadata about
+the memory allocations reserved for TPUEmbedding.}]>:$memory_config,
+
+    StrAttr:$config
+  );
+
+  let results = (outs
+    Res<TF_StrTensor, [{A string containing metadata about the hostname and RPC port
+used for communication with this host.}]>:$network_config
+  );
+}
+
+def TF_ConfigureTPUEmbeddingMemoryOp : TF_Op<"ConfigureTPUEmbeddingMemory", []> {
+  let summary = "An op that configures the TPUEmbedding software on a host.";
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{A string-encoded CommonConfiguration proto containing metadata
+about the TPUEmbedding partitioner output and the HBM size (in bytes) required
+for operation.}]>:$common_config
+  );
+
+  let results = (outs
+    Res<TF_StrTensor, [{A string-encoded HbmBuffersConfig proto containing metadata about
+the memory allocations reserved for TPUEmbedding.}]>:$memory_config
+  );
+}
+
 def TF_ConjOp : TF_Op<"Conj", [Involution, NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns the complex conjugate of a complex number.";
 
@@ -2520,6 +2577,25 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tperm = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_ConnectTPUEmbeddingHostsOp : TF_Op<"ConnectTPUEmbeddingHosts", []> {
+  let summary = [{
+An op that sets up communication between TPUEmbedding host software instances
+  }];
+
+  let description = [{
+after ConfigureTPUEmbeddingHost has been called on each host.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_StrTensor>, [{Strings containing metadata about the hostname and RPC port
+used for communication with all hosts.}]>:$network_configs
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_Conv2DOp : TF_Op<"Conv2D", [InferTensorType, NoSideEffect, TF_LayoutSensitiveInterface]> {
@@ -2998,37 +3074,48 @@ def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, Sam
   let summary = "Permute input tensor from `src_format` to `dst_format`.";
 
   let description = [{
-Input tensor must be a vector of size 4, or a 4x2 tensor.
+Given source and destination format strings of length n=4 or 5, the input
+tensor must be a vector of size n or n-2, or a 2D tensor of shape
+(n, 2) or (n-2, 2).
 
-For example, with `src_format` of `NHWC`, `dst_format` of `NCHW`, and inputs:
+If the first dimension of the input tensor is n-2, it is assumed that
+non-spatial dimensions are omitted (i.e `N`, `C`).
+
+For example, with `src_format` of `NHWC`, `dst_format` of `NCHW`, and input:
 ```
 [1, 2, 3, 4]
 ```
-and
-```
-[[1, 2, 3, 4],
- [5, 6, 7, 8]]
-```
-, the outputs will be (respectively):
+, the output will be:
 ```
 [1, 4, 2, 3]
 ```
-and
+With `src_format` of `NDHWC`, `dst_format` of `NCDHW`, and input:
 ```
-[[1, 4, 2, 3],
- [5, 8, 6, 7]]
+[[1, 6], [2, 7], [3, 8], [4, 9], [5, 10]]
+```
+, the output will be:
+```
+[[1, 6], [5, 10], [2, 7], [3, 8], [4, 9]]
+```
+With `src_format` of `NHWC`, `dst_format` of `NCHW`, and input:
+```
+[1, 2]
+```
+, the output will be:
+```
+[1, 2]
 ```
   }];
 
   let arguments = (ins
-    Arg<TF_I32OrI64Tensor, [{Vector of size 4 or Tensor of shape (4, 2) in source data format.}]>:$x,
+    Arg<TF_I32OrI64Tensor, [{Tensor of rank 1 or 2 in source data format.}]>:$x,
 
     DefaultValuedAttr<StrAttr, "\"NHWC\"">:$src_format,
     DefaultValuedAttr<StrAttr, "\"NCHW\"">:$dst_format
   );
 
   let results = (outs
-    Res<TF_I32OrI64Tensor, [{Vector of size 4 or Tensor of shape (4, 2) in destination data format.}]>:$y
+    Res<TF_I32OrI64Tensor, [{Tensor of rank 1 or 2 in destination data format.}]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4508,6 +4595,26 @@ def TF_ErfinvOp : TF_Op<"Erfinv", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ExecuteTPUEmbeddingPartitionerOp : TF_Op<"ExecuteTPUEmbeddingPartitioner", []> {
+  let summary = [{
+An op that executes the TPUEmbedding partitioner on the central configuration
+  }];
+
+  let description = [{
+device and computes the HBM size (in bytes) required for TPUEmbedding operation.
+  }];
+
+  let arguments = (ins
+    StrAttr:$config
+  );
+
+  let results = (outs
+    Res<TF_StrTensor, [{A string-encoded common configuration proto
+containing metadata about the TPUEmbedding partitioner output and
+the HBM size (in bytes) required for operation.}]>:$common_config
+  );
+}
+
 def TF_ExpOp : TF_Op<"Exp", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Computes exponential of x element-wise.  \\(y = e^x\\).
@@ -5043,6 +5150,20 @@ Creates a dataset by applying `tf.data.Options` to `input_dataset`.
   );
 }
 
+def TF_FinalizeTPUEmbeddingOp : TF_Op<"FinalizeTPUEmbedding", []> {
+  let summary = "An op that finalizes the TPUEmbedding configuration.";
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{A string-encoded common configuration proto containing metadata
+about the TPUEmbedding partitioner output and the HBM size (in bytes) required
+for operation.}]>:$common_config,
+    Arg<TF_StrTensor, [{A string-encoded memory config proto containing metadata about
+the memory allocations reserved for TPUEmbedding.}]>:$memory_config
+  );
+
+  let results = (outs);
+}
+
 def TF_FlatMapDatasetOp : TF_Op<"FlatMapDataset", [NoSideEffect]> {
   let summary = [{
 Creates a dataset that applies `f` to the outputs of `input_dataset`.
@@ -5108,13 +5229,12 @@ def TF_FloorDivOp : TF_Op<"FloorDiv", [NoSideEffect, ResultsBroadcastableShape]>
 
 def TF_FloorModOp : TF_Op<"FloorMod", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
                     WithBroadcastableBinOpBuilder {
-  let summary = [{
-Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
-  }];
+  let summary = "Returns element-wise remainder of division.";
 
   let description = [{
-true, this follows Python semantics in that the result here is consistent
-with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+This follows Python semantics in that the
+result here is consistent with a flooring divide. E.g.
+`floor(x / y) * y + floormod(x, y) = x`, regardless of the signs of x and y.
 
 *NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -9069,6 +9189,8 @@ def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape, TF
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_MeanOp : TF_Op<"Mean", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
@@ -9143,6 +9265,10 @@ Intended for "grouping" multiple checkpoints in a sharded checkpoint setup.
 If delete_old_dirs is true, attempts to delete recursively the dirname of each
 path in the input checkpoint_prefixes.  This is useful when those paths are non
 user-facing temporary locations.
+
+If allow_missing_files is true, merges the checkpoint prefixes as long as
+at least one file exists. Otherwise, if no files exist, an error will be thrown.
+The default value for allow_missing_files is false.
   }];
 
   let arguments = (ins
@@ -9150,7 +9276,8 @@ user-facing temporary locations.
     Arg<TF_StrTensor, [{scalar.  The desired final prefix.  Allowed to be the same
 as one of the checkpoint_prefixes.}]>:$destination_prefix,
 
-    DefaultValuedAttr<BoolAttr, "true">:$delete_old_dirs
+    DefaultValuedAttr<BoolAttr, "true">:$delete_old_dirs,
+    DefaultValuedAttr<BoolAttr, "false">:$allow_missing_files
   );
 
   let results = (outs);
@@ -10471,7 +10598,7 @@ truncated normal values using the parameters for each row.}]>:$output
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, NoSideEffect]> {
+def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, NoSideEffect, SymbolUserOpInterface]> {
   let summary = [{
 returns `f(inputs)`, where `f`'s body is placed and partitioned.
   }];
@@ -10509,9 +10636,10 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     func::FuncOp func() {
       return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, f());
     }
-  }];
 
-  let hasVerifier = 1;
+    // SymbolUserOpInterface verifier.
+    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
+  }];
 }
 
 def TF_PolygammaOp : TF_Op<"Polygamma", [NoSideEffect, ResultsBroadcastableShape]>,
@@ -11604,7 +11732,8 @@ Creates a dataset with a range of values. Corresponds to python's xrange.
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
-    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata,
+    DefaultValuedAttr<BoolAttr, "false">:$replicate_on_split
   );
 
   let results = (outs
@@ -11767,7 +11896,7 @@ is the corresponding input gradient.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RecvOp : TF_Op<"Recv", []> {
+def TF_RecvOp : TF_Op<"Recv", [TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
   let arguments = (ins
@@ -11873,6 +12002,8 @@ array([0., 0., 3.], dtype=float32)
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_Relu6Op : TF_Op<"Relu6", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
@@ -14752,7 +14883,7 @@ if outputs < 0, `scale * gradients` otherwise.}]>:$backprops
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SendOp : TF_Op<"Send", []> {
+def TF_SendOp : TF_Op<"Send", [TF_SendSideEffect]> {
   let summary = "Sends the named tensor from send_device to recv_device.";
 
   let arguments = (ins
@@ -17586,7 +17717,8 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
     DefaultValuedAttr<StrArrayAttr, "{}">:$padding_map,
     DefaultValuedAttr<StrAttr, "\"STEP_MARK_AT_ENTRY\"">:$step_marker_location,
     DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement,
-    DefaultValuedAttr<BoolAttr, "false">:$use_spmd_for_xla_partitioning
+    DefaultValuedAttr<BoolAttr, "false">:$use_spmd_for_xla_partitioning,
+    DefaultValuedAttr<StrAttr, "\"\"">:$tpu_compile_options_proto
   );
 
   let results = (outs);
@@ -17676,18 +17808,22 @@ variables.
 }
 
 def TF_TPURoundRobinOp : TF_Op<"TPURoundRobin", []> {
-  let summary = "A load balancing op that round-robins among TPU cores.";
+  let summary = "Round-robin load balancing on TPU cores.";
 
   let description = [{
+A load balancing op that round-robins among TPU cores.
+
 This op round-robins between the integers in [0, NumTPUCoresVisiblePerHost]. It
 is useful for interfacing with TensorFlow ops that take as input a TPU core on
 which to execute computations, such as `TPUPartitionedCall`.
+
+device_ordinal: An integer in [0, NumTPUCoresVisiblePerHost].
   }];
 
   let arguments = (ins);
 
   let results = (outs
-    Res<TF_Int32Tensor, [{An integer in [0, NumTPUCoresVisiblePerHost].}]>:$device_ordinal
+    TF_Int32Tensor:$device_ordinal
   );
 }
 
@@ -18197,6 +18333,8 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_TensorListLengthOp : TF_Op<"TensorListLength", [NoSideEffect]> {
@@ -18649,7 +18787,8 @@ Creates a dataset that emits each dim-0 slice of `components` once.
 
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "false">:$is_files,
-    DefaultValuedAttr<StrAttr, "\"\"">:$metadata
+    DefaultValuedAttr<StrAttr, "\"\"">:$metadata,
+    DefaultValuedAttr<BoolAttr, "false">:$replicate_on_split
   );
 
   let results = (outs
@@ -18875,6 +19014,31 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   let hasVerifier = 1;
 
   let hasFolder = 1;
+}
+
+def TF_TridiagonalMatMulOp : TF_Op<"TridiagonalMatMul", [NoSideEffect]> {
+  let summary = "Calculate product with tridiagonal matrix.";
+
+  let description = [{
+Calculates product of two matrices, where left matrix is a tridiagonal matrix.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., 1, M]`, representing superdiagonals of
+tri-diagonal matrices to the left of multiplication. Last element is ignored.}]>:$superdiag,
+    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., 1, M]`, representing main diagonals of tri-diagonal
+matrices to the left of multiplication.}]>:$maindiag,
+    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., 1, M]`, representing subdiagonals of tri-diagonal
+matrices to the left of multiplication. First element is ignored.}]>:$subdiag,
+    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., M, N]`, representing MxN matrices to the right of
+multiplication.}]>:$rhs
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., M, N]` containing the product.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_TridiagonalSolveOp : TF_Op<"TridiagonalSolve", [NoSideEffect]> {
@@ -19597,6 +19761,54 @@ for binary operators.
   }];
 }
 
+def TF_XlaCallModuleOp : TF_Op<"XlaCallModule", [NoSideEffect]> {
+  let summary = "Temporary op for experimenting with jax2tf.";
+
+  let description = [{
+DO NOT USE THIS OP. It has no backwards compatibility guarantees. It is also
+very likely to change. This op will be used only in jax2tf under an
+experimental flag.
+
+This is an experimental op to allow a smooth evolution of jax2tf towards
+emitting and serializing MHLO directly from JAX. At the moment this op
+carries a serialized MHLO module, therefore there are no backward-compatibility
+guarantees, and should not be used for serialization.
+Eventually, the op will carry a MHLO object, which will have
+backwards-compatibility guarantees.
+
+The serialized module must return a tuple if and only if the Sout is an empty
+list or a list with more than 1 elements. The length of Tout and Sout must
+match. This op always returns a tuple of results, even if the module returns
+a single result.
+
+The handling of dynamic shapes is work-in-progress. At the moment, the
+JAX lowering for dynamic shapes will prepend one dimension parameter to the
+serialized module for each dimension whose value must be passed in.
+The "args" correspond to the non-dimension arguments. During compilation
+we compute the values of the dimension arguments based on the static shapes of
+the "args". In order to do this, we encode for each dimension argument a
+specification of how to compute its value, as a string, in the form
+"<arg_idx>.<axis_idx>".
+E.g., the specification "2.1" denotes the value args[2].shape[1].
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A list of `Tensor` with possibly different types to be passed as arguments
+to the HLO module.}]>:$args,
+
+    StrAttr:$module,
+    TF_ShapeAttrArray:$Sout,
+    StrArrayAttr:$dim_args_spec
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_XlaClusterOutputOp : TF_Op<"XlaClusterOutput", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 Operator that connects the output of an XLA computation to other consumer graph nodes.
@@ -19640,6 +19852,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_XlaConvV2Op : TF_Op<"XlaConvV2", [NoSideEffect, TF_NoConstantFold]> {
@@ -19672,6 +19886,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
   TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
   TF_DerivedResultTypeAttr preferred_element_type = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_XlaDotOp : TF_Op<"XlaDot", [NoSideEffect, TF_NoConstantFold]> {
@@ -19901,6 +20117,28 @@ containing only non-negative values.}]>:$padding_interior
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
 }
 
+def TF_XlaRecvOp : TF_Op<"XlaRecv", [TF_RecvSideEffect]> {
+  let summary = [{
+Receives the named tensor from another XLA computation. Wraps the XLA Recv
+  }];
+
+  let description = [{
+operator documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#recv .
+  }];
+
+  let arguments = (ins
+    StrAttr:$tensor_name,
+    TF_ShapeAttr:$shape
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{The tensor to receive.}]>:$tensor
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_XlaRecvFromHostOp : TF_Op<"XlaRecvFromHost", [TF_RecvSideEffect]> {
   let summary = "An op to receive a tensor from the host.";
 
@@ -19921,6 +20159,58 @@ key: A unique identifier for this region used to match up host transfers.
   );
 
   TF_DerivedResultTypeAttr Toutput = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_XlaRecvTPUEmbeddingActivationsOp : TF_Op<"XlaRecvTPUEmbeddingActivations", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
+  let summary = "An op that receives embedding activations on the TPU.";
+
+  let description = [{
+The TPU system performs the embedding lookups and aggregations. The results of
+these aggregations are visible to the Tensorflow Graph as the outputs of a
+XlaRecvTPUEmbeddingActivations Op. This op returns a list containing one
+Tensor of activations per table specified in the model.
+  }];
+
+  let arguments = (ins
+    Arg<TF_VariantTensor, [{A Tensor with type=DT_VARIANT containing the deduplication
+data. The tensor is an XLA nested tuple containing N elements (where N is
+the ratio of the number of embedding to tensor cores per TPU chip). Each
+element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+contains indices (DT_UINT32) for embedding lookup on the TensorCore or
+weights (DT_FLOAT) to apply to the output of the embedding lookup operation.}]>:$deduplication_data,
+
+    StrAttr:$config
+  );
+
+  let results = (outs
+    Res<Variadic<TF_Float32Tensor>, [{A TensorList of embedding activations containing one Tensor per
+embedding table in the model.}]>:$outputs
+  );
+
+  TF_DerivedResultSizeAttr num_tables = TF_DerivedResultSizeAttr<0>;
+}
+
+def TF_XlaRecvTPUEmbeddingDeduplicationDataOp : TF_Op<"XlaRecvTPUEmbeddingDeduplicationData", []> {
+  let summary = [{
+Receives deduplication data (indices and weights) from the embedding core.
+  }];
+
+  let description = [{
+The deduplication data is a Tensor with type=DT_VARIANT. The tensor itself is an
+XLA nested tuple containing N elements (where N is the ratio of the number of
+embedding to tensor cores per TPU chip). Each element of the nested tuple is a
+tuple of rank 1 tensors. Each tensor either contains indices (DT_UINT32) for
+embedding lookup on the TensorCore or weights (DT_FLOAT) to apply to the output
+of the embedding lookup operation.
+  }];
+
+  let arguments = (ins
+    StrAttr:$config
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output
+  );
 }
 
 def TF_XlaReduceOp : TF_Op<"XlaReduce", [NoSideEffect]> {
@@ -20141,6 +20431,60 @@ eigenvalue w[..., i].}]>:$v
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSendOp : TF_Op<"XlaSend", [TF_SendSideEffect]> {
+  let summary = [{
+Sends the named tensor to another XLA computation. Wraps the XLA Send operator
+  }];
+
+  let description = [{
+documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#send .
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{The tensor to send.}]>:$tensor,
+
+    StrAttr:$tensor_name
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSendTPUEmbeddingGradientsOp : TF_Op<"XlaSendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
+  let summary = "An op that performs gradient updates of embedding tables.";
+
+  let description = [{
+The gradients argument is a TensorList having the same length and shapes as the
+return value of XlaRecvTPUEmbeddingActivations, but contains gradients of the
+model's loss with respect to the embedding activations. The embedding tables are
+updated from these gradients via the optimizer specified in the
+TPUEmbeddingConfiguration proto given to tpu.initialize_system.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Float32Tensor>, [{A TensorList of gradients with which to update embedding tables.}]>:$gradients,
+    Arg<Variadic<TF_Float32Tensor>, [{A TensorList of learning rates used for updating the embedding
+tables via the optimizer. The length of the TensorList must be equal to the
+number of dynamic learning rate tags specified in the
+TPUEmbeddingConfiguration proto.}]>:$learning_rates,
+    Arg<TF_VariantTensor, [{A Tensor with type=DT_VARIANT containing the deduplication
+data. The tensor is an XLA nested tuple containing N elements (where N is
+the ratio of the number of embedding to tensor cores per TPU chip). Each
+element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+contains indices (DT_UINT32) for embedding lookup on the TensorCore or
+weights (DT_FLOAT) to apply to the output of the embedding lookup operation.}]>:$deduplication_data,
+
+    StrAttr:$config
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr NumLearningRateTags = TF_DerivedOperandSizeAttr<1>;
+  TF_DerivedOperandSizeAttr NumTables = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_XlaSendToHostOp : TF_Op<"XlaSendToHost", [TF_SendSideEffect]> {
@@ -20493,9 +20837,9 @@ create these operators.
   }];
 
   let arguments = (ins
-    TF_F32OrF64Tensor:$input,
-    TF_F32OrF64Tensor:$filter,
-    Variadic<TF_F32OrF64Tensor>:$args,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$input,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$filter,
+    Variadic<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>>:$args,
 
     I64ArrayAttr:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
@@ -20509,7 +20853,7 @@ create these operators.
   );
 
   let results = (outs
-    TF_F32OrF64Tensor:$output
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$output
   );
 
   TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
@@ -20531,7 +20875,7 @@ the output of each fused_op must be of type T.
 Currently supported fused_op combinations are: ["BiasAdd"] and ["BiasAdd",A],
 where A is one of {"Elu","Relu","Relu6"}.
 
-* The first input to BiasAdd is the Conv2D result, and the additional BiasAdd
+* The first input to BiasAdd is the MatMul result, and the additional BiasAdd
 input is specified by `args`.
 * If there is an op A specified, the output of the BiasAdd is the input to op A,
 and op A produces the _FusedConv2D output. Otherwise, the BiasAdd produces the
@@ -20542,9 +20886,9 @@ expected to create these operators.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float32]>:$a,
-    TensorOf<[TF_Bfloat16, TF_Float32]>:$b,
-    Variadic<TensorOf<[TF_Bfloat16, TF_Float32]>>:$args,
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>:$a,
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>:$b,
+    Variadic<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>>:$args,
 
     DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
     DefaultValuedAttr<BoolAttr, "false">:$transpose_b,
@@ -20554,14 +20898,14 @@ expected to create these operators.
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Float32]>:$product
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>:$product
   );
 
   TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF__HostRecvOp : TF_Op<"_HostRecv", [TF_RecvSideEffect]> {
+def TF__HostRecvOp : TF_Op<"_HostRecv", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
   let description = [{
@@ -20584,7 +20928,7 @@ output on device memory.
   TF_DerivedResultTypeAttr tensor_type = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF__HostSendOp : TF_Op<"_HostSend", [TF_SendSideEffect]> {
+def TF__HostSendOp : TF_Op<"_HostSend", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_SendSideEffect]> {
   let summary = "Sends the named tensor from send_device to recv_device.";
 
   let description = [{
@@ -20623,7 +20967,7 @@ def TF__ListToArrayOp : TF_Op<"_ListToArray", [NoSideEffect]> {
   TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF__RecvOp : TF_Op<"_Recv", [TF_RecvSideEffect]> {
+def TF__RecvOp : TF_Op<"_Recv", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
   let arguments = (ins
@@ -20641,59 +20985,7 @@ def TF__RecvOp : TF_Op<"_Recv", [TF_RecvSideEffect]> {
   TF_DerivedResultTypeAttr tensor_type = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF__RecvTPUEmbeddingActivationsOp : TF_Op<"_RecvTPUEmbeddingActivations", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
-  let summary = "An op that receives embeddng activations on the TPU.";
-
-  let description = [{
-The TPU system performs the embedding lookups and aggregations. The results of
-these aggregations are visible to the Tensorflow Graph as the outputs of a
-_RecvTPUEmbeddingActivations Op. This op returns a list containing one
-Tensor of activations per table specified in the model.
-  }];
-
-  let arguments = (ins
-    Arg<TF_VariantTensor, [{A Tensor with type=DT_VARIANT containing the deduplication
-data. The tensor is an XLA nested tuple containing N elements (where N is
-the ratio of the number of embedding to tensor cores per TPU chip). Each
-element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
-contains indices (DT_UINT32) for embedding lookup on the TensorCore or
-weights (DT_FLOAT) to apply to the output of the embedding lookup operation.}]>:$deduplication_data,
-
-    StrAttr:$config
-  );
-
-  let results = (outs
-    Res<Variadic<TF_Float32Tensor>, [{A TensorList of embedding activations containing one Tensor per
-embedding table in the model.}]>:$outputs
-  );
-
-  TF_DerivedResultSizeAttr num_tables = TF_DerivedResultSizeAttr<0>;
-}
-
-def TF__RecvTPUEmbeddingDeduplicationDataOp : TF_Op<"_RecvTPUEmbeddingDeduplicationData", []> {
-  let summary = [{
-Receives deduplication data (indices and weights) from the embedding core.
-  }];
-
-  let description = [{
-The deduplication data is a Tensor with type=DT_VARIANT. The tensor itself is an
-XLA nested tuple containing N elements (where N is the ratio of the number of
-embedding to tensor cores per TPU chip). Each element of the nested tuple is a
-tuple of rank 1 tensors. Each tensor either contains indices (DT_UINT32) for
-embedding lookup on the TensorCore or weights (DT_FLOAT) to apply to the output
-of the embedding lookup operation.
-  }];
-
-  let arguments = (ins
-    StrAttr:$config
-  );
-
-  let results = (outs
-    TF_VariantTensor:$output
-  );
-}
-
-def TF__SendOp : TF_Op<"_Send", [TF_SendSideEffect]> {
+def TF__SendOp : TF_Op<"_Send", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_SendSideEffect]> {
   let summary = "Sends the named tensor from send_device to recv_device.";
 
   let arguments = (ins
@@ -20709,39 +21001,6 @@ def TF__SendOp : TF_Op<"_Send", [TF_SendSideEffect]> {
   let results = (outs);
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
-  let summary = "An op that performs gradient updates of embedding tables.";
-
-  let description = [{
-The gradients argument is a TensorList having the same length and shapes as the
-return value of _RecvTPUEmbeddingActivations, but contains gradients of the
-model's loss with respect to the embedding activations. The embedding tables are
-updated from these gradients via the optimizer specified in the
-TPUEmbeddingConfiguration proto given to tpu.initialize_system.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_Float32Tensor>, [{A TensorList of gradients with which to update embedding tables.}]>:$gradients,
-    Arg<Variadic<TF_Float32Tensor>, [{A TensorList of learning rates used for updating the embedding
-tables via the optimizer. The length of the TensorList must be equal to the
-number of dynamic learning rate tags specified in the
-TPUEmbeddingConfiguration proto.}]>:$learning_rates,
-    Arg<TF_VariantTensor, [{A Tensor with type=DT_VARIANT containing the deduplication
-data. The tensor is an XLA nested tuple containing N elements (where N is
-the ratio of the number of embedding to tensor cores per TPU chip). Each
-element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
-contains indices (DT_UINT32) for embedding lookup on the TensorCore or
-weights (DT_FLOAT) to apply to the output of the embedding lookup operation.}]>:$deduplication_data,
-
-    StrAttr:$config
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr NumLearningRateTags = TF_DerivedOperandSizeAttr<1>;
-  TF_DerivedOperandSizeAttr NumTables = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF__TPUCompileMlirOp : TF_Op<"_TPUCompileMlir", [TF_MustExecute]> {
@@ -20819,7 +21078,7 @@ expected to create these operators.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF__XlaHostComputeMlirOp : TF_Op<"_XlaHostComputeMlir", [TF_RecvSideEffect, TF_SendSideEffect]> {
+def TF__XlaHostComputeMlirOp : TF_Op<"_XlaHostComputeMlir", [TF_RecvSideEffect, TF_SendSideEffect, TF_XlaHostComputeSideEffect]> {
   let summary = [{
 A pseudo-op to represent host-side computation in an XLA program.
   }];
@@ -20829,7 +21088,6 @@ A pseudo-op to represent host-side computation in an XLA program.
 
     StrAttr:$send_key,
     StrAttr:$recv_key,
-    DefaultValuedAttr<I64Attr, "0">:$tpu_core,
     DefaultValuedAttr<StrAttr, "\"\"">:$host_mlir_module
   );
 

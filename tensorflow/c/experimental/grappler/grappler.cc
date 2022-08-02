@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
+#include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -59,20 +60,20 @@ tensorflow::Status ValidateTPOptimizerRegistrationParams(
   VALIDATE_STRUCT_SIZE(TP_OptimizerRegistrationParams, params,
                        TP_OPTIMIZER_REGISTRATION_PARAMS_STRUCT_SIZE);
   VALIDATE_MEMBER(TP_OptimizerRegistrationParams, params, device_type);
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status ValidateTPOptimizer(const TP_Optimizer& optimizer) {
   VALIDATE_STRUCT_SIZE(TP_Optimizer, optimizer, TP_OPTIMIZER_STRUCT_SIZE);
   VALIDATE_MEMBER(TP_Optimizer, optimizer, optimize_func);
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status ValidateTPOptimizerConfigs(
     const TP_OptimizerConfigs& configs) {
   VALIDATE_STRUCT_SIZE(TP_OptimizerConfigs, configs,
                        TP_OPTIMIZER_CONFIGS_STRUCT_SIZE);
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 #undef VALIDATE_MEMBER
@@ -96,7 +97,7 @@ Status CGraphOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   TF_RETURN_IF_ERROR(
       BufferToMessage(optimized_graph_buf.get(), optimized_graph_def));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CONFIG_TOGGLE(optimizer)                             \
@@ -123,6 +124,7 @@ void CGraphOptimizerRegister(
   CONFIG_TOGGLE(constant_folding);
   CONFIG_TOGGLE(shape_optimization);
   CONFIG_TOGGLE(auto_mixed_precision);
+  CONFIG_TOGGLE(auto_mixed_precision_onednn_bfloat16);
   CONFIG_TOGGLE(auto_mixed_precision_mkl);
   CONFIG_TOGGLE(pin_to_host_optimization);
   CONFIG_TOGGLE(layout_optimizer);
@@ -173,7 +175,7 @@ tensorflow::Status InitGraphPlugin(TFInitGraphPluginFn init_fn) {
       [=]() { return new CGraphOptimizer(optimizer, params.device_type); },
       optimizer_configs, params.device_type);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace grappler

@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "if_google")
+
 package(
     default_visibility = [":friends"],
     licenses = ["notice"],
@@ -9,6 +11,7 @@ package_group(
         # Authorized users go here.
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        # copybara:uncomment "//learning/infra/mira/...",
         # copybara:uncomment "//learning/serving/...",
         # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/core/runtime_fallback/...",
@@ -31,6 +34,10 @@ cc_library(
     hdrs = ["saved_model.h"],
     tags = ["no_oss"],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
@@ -69,15 +76,14 @@ cc_library(
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:tensor_util",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:metrics",
         "@tf_runtime//:support",
-    ],
+    ] + if_google([
+        "//third_party/tf_runtime_google:streamz_metrics_registry_alwayslink",
+    ]),
 )
 
 cc_library(
@@ -89,9 +95,15 @@ cc_library(
     deps = [
         ":saved_model",
         "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tfrt/runtime",
+        "//tensorflow_serving/apis:model_cc_proto",
+        "//tensorflow_serving/apis:predict_cc_proto",
+        "//tensorflow_serving/apis:prediction_log_cc_proto",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
     ],
@@ -108,5 +120,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
+        "@com_google_absl//absl/synchronization",
     ],
 )

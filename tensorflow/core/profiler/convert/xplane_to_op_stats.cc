@@ -20,7 +20,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/op_stats_combiner.h"
@@ -40,15 +43,29 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/step_intersection.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
+namespace {
+
+std::string Hostname(const XSpace& space) {
+  if (space.hostnames().empty()) return "localhost";
+  DCHECK_EQ(space.hostnames_size(), 1);
+  const std::string& hostname = space.hostnames(0);
+  // This shouldn't be a taskname in host:port format.
+  DCHECK(!absl::StrContains(hostname, ':'));
+  return hostname;
+}
+
+}  // namespace
 
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
                     double peak_hbm_bw_giga_bytes_per_second) {
@@ -56,33 +73,59 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
   result.set_peak_tera_flops_per_second(peak_tera_flops_per_second);
   result.set_peak_hbm_bw_giga_bytes_per_second(
       peak_hbm_bw_giga_bytes_per_second);
-  result.set_ridge_point(peak_tera_flops_per_second * 1000 /
+  result.set_ridge_point(TeraToGiga(peak_tera_flops_per_second) /
                          peak_hbm_bw_giga_bytes_per_second);
   return result;
 }
 
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   DeviceCapabilities cap = GetDeviceCaps(device_plane);
-  return MakePerfEnv(GetFlopMaxThroughputPerSM(cap) / 1000 * cap.num_cores(),
-                     cap.memory_bandwidth() / 1e9);
+  if (!absl::StartsWith(device_plane.name(), kTpuPlanePrefix)) {
+    return MakePerfEnv(
+        GigaToTera(GetFlopMaxThroughputPerSM(cap)) * cap.num_cores(),
+        UniToGiga(cap.memory_bandwidth()));
+  } else {
+    XPlaneVisitor visitor = CreateTfXPlaneVisitor(&device_plane);
+    auto peak_tera_flops_per_second =
+        visitor.GetStat(StatType::kDevCapPeakTeraflopsPerSecond);
+    auto peak_hbm_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakHbmBwGigabytesPerSecond);
+    return MakePerfEnv(peak_tera_flops_per_second->DoubleValue(),
+                       peak_hbm_bw_giga_bytes_per_second->DoubleValue());
+  }
 }
 
-namespace {
-
-void SetRunEnvironment(const XSpace& space, int32_t accelerator_count,
-                       RunEnvironment* env) {
+void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
   // Currently, we only support profiling one host and one program.
   env->set_host_count(1);
   env->set_task_count(1);
-  for (const auto& hostname : space.hostnames()) {
-    std::vector<std::string> hostname_split = absl::StrSplit(hostname, ':');
-    (*env->mutable_hostnames())[hostname_split[0]] = true;
-  }
-  env->set_device_type(accelerator_count > 0 ? "GPU" : "CPU");
-  env->set_device_core_count(accelerator_count);
-}
+  env->mutable_hostnames()->insert({Hostname(space), true});
 
-}  // namespace
+  std::vector<const XPlane*> gpu_planes =
+      FindPlanesWithPrefix(space, kGpuPlanePrefix);
+  if (!gpu_planes.empty()) {
+    absl::string_view gpu_model =
+        GpuModelName(GetDeviceCaps(*gpu_planes.front()));
+    if (!gpu_model.empty()) {
+      env->set_device_type(std::string(gpu_model));
+    } else {
+      env->set_device_type("GPU");
+    }
+    env->set_device_core_count(gpu_planes.size());
+  } else if (std::vector<const XPlane*> tpu_planes =
+                 FindTensorCorePlanes(space);
+             !tpu_planes.empty()) {
+    XPlaneVisitor visitor = CreateTfXPlaneVisitor(tpu_planes.at(0));
+    auto xstat = visitor.GetStat(StatType::kDeviceTypeString);
+    if (xstat.has_value()) {
+      env->set_device_type(std::string(xstat->StrOrRefValue()));
+    }
+    env->set_device_core_count(tpu_planes.size());
+  } else {
+    env->set_device_type("CPU");
+    env->set_device_core_count(0);
+  }
+}
 
 void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
                                          OpStats* op_stats) {
@@ -103,19 +146,21 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options) {
   const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
-  std::vector<const XPlane*> device_planes =
-      FindPlanesWithPrefix(space, kGpuPlanePrefix);
+  std::vector<const XPlane*> device_planes = FindTensorCorePlanes(space);
+  bool is_gpu = device_planes.empty();
+  if (is_gpu) {
+    device_planes = FindPlanesWithPrefix(space, kGpuPlanePrefix);
+  }
+
   OpStats op_stats;
   StepEvents step_events;
   PropagateXSpaceDiagnosticsToOpStats(space, &op_stats);
   // Convert device planes.
   OpMetricsDbCombiner op_metrics_db_combiner(
       op_stats.mutable_device_op_metrics_db());
-  SetRunEnvironment(space, device_planes.size(),
-                    op_stats.mutable_run_environment());
+  SetRunEnvironment(space, op_stats.mutable_run_environment());
 
   KernelReportMap reports;
-  absl::string_view gpu_model = "";
 
   // TODO(b/161942993) parallelize XPlane processing per thread.
   for (const XPlane* device_trace : device_planes) {
@@ -123,12 +168,17 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
       }
-      OpMetricsDb device_op_metrics_db =
-          ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
-      op_metrics_db_combiner.Combine(device_op_metrics_db);
-    }
-    if (gpu_model.empty()) {
-      gpu_model = GpuModelName(GetDeviceCaps(*device_trace));
+      if (is_gpu) {
+        OpMetricsDb device_op_metrics_db =
+            ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
+        op_metrics_db_combiner.Combine(device_op_metrics_db);
+      } else {
+        XPlane aggregated_xplane;
+        AggregateXPlane(*device_trace, aggregated_xplane);
+        OpMetricsDb device_op_metrics_db =
+            ConvertTpuDeviceTraceXPlaneToOpMetricsDb(aggregated_xplane);
+        op_metrics_db_combiner.Combine(device_op_metrics_db);
+      }
     }
     if (options.generate_step_db) {
       StepEvents device_step_events =
@@ -139,11 +189,6 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       ConvertDeviceTraceXPlaneToKernelReports(*device_trace,
                                               /*on_kernel_fn=*/{}, &reports);
     }
-  }
-
-  if (!gpu_model.empty()) {
-    // Overwrites the device type with the more specific GPU model name.
-    op_stats.mutable_run_environment()->set_device_type(std::string(gpu_model));
   }
 
   // Combine into reports.
@@ -177,10 +222,12 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
         ComputePrecisionStats(nonoverlapped_step_events);
   }
 
-  CoreDetails& details =
-      (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
-  details.set_hostname(space.hostnames().empty() ? "localhost"
-                                                 : space.hostnames(0));
+  // TODO(bvandermoon): Add the TPU equivalent for setting core details hostname
+  if (is_gpu) {
+    CoreDetails& details =
+        (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
+    details.set_hostname(Hostname(space));
+  }
   return op_stats;
 }
 
@@ -191,7 +238,7 @@ Status ConvertMultiXSpacesToCombinedOpStats(const std::vector<XSpace>& xspaces,
   // if there is only a single XSpace.
   if (xspaces.size() == 1) {
     *combined_op_stats = ConvertXSpaceToOpStats(xspaces[0], options);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Read multiple XSpaces and convert to multiple OpStats.
@@ -215,7 +262,7 @@ Status ConvertMultiXSpacesToCombinedOpStats(const std::vector<XSpace>& xspaces,
       ComputeStepIntersectionToMergeOpStats(all_op_stats_info, kuint32max);
   CombineAllOpStats(all_op_stats_info, step_intersection, combined_op_stats);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace profiler

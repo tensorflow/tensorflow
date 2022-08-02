@@ -1095,6 +1095,28 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
+  def _merge_with_spec(self, b):
+    """Merge with a TypeSpec to create a new RowPartition."""
+    a_spec = self._type_spec
+    if not a_spec.is_compatible_with(b):
+      # TODO(martinz): Should a dynamic check be used here?
+      raise ValueError("RowPartition and RowPartitionSpec are not compatible")
+    nrows = constant_op.constant(
+        b.nrows, self.dtype) if b.nrows is not None else self._nrows
+    nvals = constant_op.constant(
+        b.nvals, self.dtype) if b.nvals is not None else self._nvals
+    uniform_row_length = constant_op.constant(
+        b.uniform_row_length, self.dtype
+    ) if b.uniform_row_length is not None else self._uniform_row_length
+    return RowPartition(
+        row_splits=self._row_splits,
+        row_lengths=self._row_lengths,
+        value_rowids=self._value_rowids,
+        nvals=nvals,
+        uniform_row_length=uniform_row_length,
+        nrows=nrows,
+        internal=_row_partition_factory_key)
+
   def _merge_precomputed_encodings(self, other, validate=True):
     """Returns a RowPartition that merges encodings from `self` and `other`.
 
@@ -1183,6 +1205,7 @@ class RowPartition(composite_tensor.CompositeTensor):
 # of precomputed row-partition encodings (rather than always using row_splits).
 
 
+@type_spec.register("tf.RowPartitionSpec")
 class RowPartitionSpec(type_spec.TypeSpec):
   """Type specification for a `tf.RowPartition`."""
 
@@ -1325,6 +1348,39 @@ class RowPartitionSpec(type_spec.TypeSpec):
       if nrows is not None and nvals != ncols * nrows:
         return False  # inconsistent number of values.
     return True
+
+  def _merge_with(self, other):
+    """Merge two RowPartitionSpecs."""
+    nrows = self._nrows.merge_with(other.nrows)
+    nvals = self._nvals.merge_with(other.nvals)
+    ncols = self._uniform_row_length.merge_with(other.uniform_row_length)
+
+    if not RowPartitionSpec._dimensions_compatible(nrows, nvals, ncols):
+      raise ValueError("Merging incompatible RowPartitionSpecs")
+
+    # NOTE: if the dtypes are unequal, behavior is unspecified.
+    if self.dtype != other.dtype:
+      raise ValueError("Merging RowPartitionSpecs with incompatible dtypes")
+
+    return RowPartitionSpec(nrows=nrows[0],
+                            nvals=nvals[0],
+                            uniform_row_length=ncols[0],
+                            dtype=self.dtype)
+
+  def with_dtype(self, dtype):
+    nrows = tensor_shape.dimension_value(self._nrows[0])
+    nvals = tensor_shape.dimension_value(self._nvals[0])
+    return RowPartitionSpec(nrows, nvals, self._uniform_row_length, dtype)
+
+  def __deepcopy__(self, memo):
+    del memo
+    dtype = self.dtype
+    nrows = tensor_shape.dimension_value(self._nrows[0])
+    nvals = tensor_shape.dimension_value(self._nvals[0])
+    uniform_row_length = (None if self._uniform_row_length is None else
+                          tensor_shape.dimension_value(
+                              self._uniform_row_length[0]))
+    return RowPartitionSpec(nrows, nvals, uniform_row_length, dtype)
 
 
 #===============================================================================

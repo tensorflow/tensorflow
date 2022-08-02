@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/pad.h"
 
 #include <algorithm>
+#include <any>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -36,7 +39,7 @@ class Pad : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr = absl::any_cast<const PadAttributes&>(ctx.op_attr);
+    const auto& attr = std::any_cast<const PadAttributes&>(ctx.op_attr);
 
     if (attr.type != PaddingContentType::ZEROS &&
         attr.type != PaddingContentType::REFLECT) {
@@ -137,7 +140,7 @@ class Pad : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewPadNodeShader() {
-  return absl::make_unique<Pad>();
+  return std::make_unique<Pad>();
 }
 
 }  // namespace gl

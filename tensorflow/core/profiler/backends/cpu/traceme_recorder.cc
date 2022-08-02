@@ -253,8 +253,10 @@ class TraceMeRecorder::ThreadLocalRecorder {
 
   uint32 ThreadId() const { return info_.tid; }
 
-  bool IsActive() const { return active_; }
-  void SetActive(bool active) { active_ = active; }
+  // IsActive is called from the control thread.
+  bool IsActive() const { return active_.load(std::memory_order_acquire); }
+  // SetInactive is called when the owner thread is destroyed.
+  void SetInactive() { active_.store(0, std::memory_order_release); }
 
   // Record is only called from the owner thread.
   void Record(TraceMeRecorder::Event&& event) { queue_.Push(std::move(event)); }
@@ -272,7 +274,7 @@ class TraceMeRecorder::ThreadLocalRecorder {
  private:
   TraceMeRecorder::ThreadInfo info_;
   EventQueue queue_;
-  bool active_ = true;
+  std::atomic<int> active_{1};  // std::atomic<bool> is not always lock-free.
 };
 
 // An instance of this wrapper is allocated in thread_local storage.
@@ -291,7 +293,7 @@ class TraceMeRecorder::ThreadLocalRecorderWrapper {
   }
 
   ~ThreadLocalRecorderWrapper() {
-    recorder_->SetActive(false);
+    recorder_->SetInactive();
     TraceMeRecorder::Get()->UnregisterThread(recorder_->ThreadId());
   }
 

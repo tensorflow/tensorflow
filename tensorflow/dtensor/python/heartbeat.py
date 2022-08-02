@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A heartbeat service (go/dtensor-heartbeat) periodically pinging all workers.
+"""A heartbeat service periodically pinging all workers.
 
 In normal cases, all workers will exchange the same randomly generated number
 until normal program termination. If any worker stops or restarts, other workers

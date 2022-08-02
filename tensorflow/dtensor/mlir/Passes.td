@@ -92,7 +92,7 @@ def DTensorUndoMergeConstAcrossMesh
 
 def DTensorSetDefaultSharding
     : Pass<"dtensor-set-default-sharding", "mlir::func::FuncOp"> {
-  let summary = "Sets default sharding of TPU computation inputs/ouputs to maximal.";
+  let summary = "Sets default sharding of TPU computation inputs/outputs to maximal.";
   let constructor = "CreateDTensorSetDefaultSharding()";
   let dependentDialects = [
   ];
@@ -236,6 +236,7 @@ def DTensorEmbedding
     "::mlir::mhlo::MhloDialect",
     "::mlir::shape::ShapeDialect",
     "::mlir::scf::SCFDialect",
+    "::mlir::tensor::TensorDialect",
   ];
 }
 
@@ -243,6 +244,14 @@ def DTensorEmbeddingV2
     : Pass<"dtensor-embedding-v2", "mlir::ModuleOp"> {
   let summary = "Embedding Pass";
   let constructor = "CreateDTensorEmbeddingPassV2()";
+  let dependentDialects = [
+  ];
+}
+
+def DTensorEmbeddingCheckpoint
+    : Pass<"dtensor-embedding-checkpoint", "mlir::ModuleOp"> {
+  let summary = "Checkpoint pass to save or load TPU embeddings variables.";
+  let constructor = "CreateDTensorEmbeddingCheckpointPass()";
   let dependentDialects = [
   ];
 }
@@ -291,6 +300,14 @@ def DTensorSparseExpansion
     : Pass<"dtensor-sparse-expansion", "mlir::ModuleOp"> {
   let summary = "Convert ops that take in SparseTensor input to its corresponding Sparse or Dense ops.";
   let constructor = "CreateDTensorSparseExpansion()";
+  let dependentDialects = [
+  ];
+}
+
+def DTensorInferShapesForRestoreV2Op
+    : Pass<"dtensor-infer-shapes-for-restorev2-op", "mlir::ModuleOp"> {
+  let summary = "Infer shapes of the outputs of tf.RestoreV2Op from the AssignVariableOps that consume those outputs. This is used for DTensor integration with TF Checkpoint.";
+  let constructor = "CreateDTensorInferShapesForRestoreV2Op()";
   let dependentDialects = [
   ];
 }

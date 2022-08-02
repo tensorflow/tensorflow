@@ -20,6 +20,8 @@ limitations under the License.
 #include "mlir/IR/DialectInterface.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 
 // Include generated declarations.
@@ -39,7 +41,35 @@ class TensorFlowRegistryInterfaceBase
   // Returns whether the operation is stateful.
   virtual bool isStateful(Operation *op) const = 0;
 };
+
+// This dialect fallback model implements memory effects for TensorFlow
+// operations.
+class StatefulMemoryEffectInterface
+    : public MemoryEffectOpInterface::FallbackModel<
+          StatefulMemoryEffectInterface>,
+      public DialectInterface::Base<StatefulMemoryEffectInterface> {
+ public:
+  explicit StatefulMemoryEffectInterface(Dialect *dialect)
+      : DialectInterface::Base<StatefulMemoryEffectInterface>(dialect) {}
+
+  // Get the memory effects of a TensorFlow operation. If the operation is known
+  // to be stateless, then it has no memory effects. Otherwise, statefulness is
+  // modelled as `MemoryWrite`.
+  void getEffects(
+      Operation *op,
+      SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+          &effects) const;
+};
 }  // namespace tfg
+
+namespace OpTrait {
+// This trait marks intrinsic TFG operations, e.g. terminators, functions,
+// and region control-flow operations. Any TFG operation that has this trait
+// exists only in MLIR.
+template <typename ConcreteType>
+class IntrinsicOperation
+    : public mlir::OpTrait::TraitBase<ConcreteType, IntrinsicOperation> {};
+}  // namespace OpTrait
 }  // namespace mlir
 
 #endif  // TENSORFLOW_CORE_IR_INTERFACES_H_

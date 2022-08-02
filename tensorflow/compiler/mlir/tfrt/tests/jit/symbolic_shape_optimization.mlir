@@ -178,10 +178,6 @@ func.func @optimize_3dx3d_bcast(
   // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
   // CHECK:      %[[D1:.*]] = tensor.dim %[[ARG1]], %[[C1]]
   // CHECK:      %[[D2:.*]] = tensor.dim %[[ARG0]], %[[C2]]
-  // CHECK:      %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]] : tensor<3xindex>
-  // CHECK:      %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
-  // CHECK:      %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
-  // CHECK:      %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
   // CHECK:      %[[OUT0:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
   // CHECK:      %[[RET0:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
@@ -192,9 +188,6 @@ func.func @optimize_3dx3d_bcast(
          {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
        : (tensor<?x1x?xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
 
-  // CHECK:      %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
-  // CHECK:      %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
-  // CHECK:      %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
   // CHECK:      %[[OUT1:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
   // CHECK:      %[[RET1:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP2]], #[[MAP1]]]

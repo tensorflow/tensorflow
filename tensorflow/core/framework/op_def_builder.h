@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_OP_DEF_BUILDER_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -46,6 +47,7 @@ typedef std::map<std::string, std::reference_wrapper<const FullTypeDef>>
 // in the node's corresponding op definition.
 //
 // TODO(mdan): Consider a vector-in, vector-out contract.
+// TODO(mdan): Rename to just TypeInferenceFn (since it's not always "forward").
 typedef std::function<StatusOr<FullTypeDef>(const TypeRefVector&,
                                             const TypeRefMap&)>
     ForwardTypeInferenceFn;
@@ -119,6 +121,17 @@ struct OpRegistrationData {
   // TODO(mdan): Merge with shape inference.
   // TODO(mdan): Replace with a union-based type inference algorithm.
   ForwardTypeInferenceFn fwd_type_fn;
+
+  // Reverse type inference function. This callable infers some input types
+  // based on the return type.
+  //
+  // TODO(mdan): Replace with a union-based type inference algorithm.
+  ForwardTypeInferenceFn rev_type_fn;
+
+  // The input number affected by reverse type inference. Only one input may be
+  // updated in this manner.
+  // TODO(mdan): Encode in a manner more consistent with the forward version.
+  int rev_type_input;
 
   bool is_function_op = false;
 };
@@ -213,6 +226,10 @@ class OpDefBuilder {
   // Sets the function to be used for forward type inference.
   // See OpRegistrationData::fwd_type_fn.
   OpDefBuilder& SetForwardTypeFn(ForwardTypeInferenceFn f);
+
+  // Sets the function to be used for reverse type inference.
+  // See OpRegistrationData::rew_type_fn.
+  OpDefBuilder& SetReverseTypeFn(int input_number, ForwardTypeInferenceFn f);
 
   // Sets the shape function to be used for shape inference.
   //

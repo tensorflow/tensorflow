@@ -19,7 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 
-#include "tensorflow/core/platform/thread_annotations.h"
+#include "absl/base/thread_annotations.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 

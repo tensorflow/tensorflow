@@ -77,12 +77,14 @@ Status DecomposeAllGather(HloAllGatherInstruction* ag, HloComputation* comp) {
       ag->use_global_device_ids()));
   TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(ar));
   TF_RETURN_IF_ERROR(comp->RemoveInstructionAndUnusedOperands(ag));
-  return Status::OK();
+  return OkStatus();
 }
 
-StatusOr<bool> AllGatherDecomposer::Run(HloModule* module) {
+StatusOr<bool> AllGatherDecomposer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (auto comp : module->MakeNonfusionComputations()) {
+  for (auto comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto hlo : comp->MakeInstructionPostOrder()) {
       if (hlo->opcode() != HloOpcode::kAllGather) {
         continue;

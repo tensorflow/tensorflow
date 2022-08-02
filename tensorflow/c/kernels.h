@@ -127,6 +127,17 @@ TF_CAPI_EXPORT extern void TF_RegisterKernelBuilder(const char* kernel_name,
                                                     TF_KernelBuilder* builder,
                                                     TF_Status* status);
 
+// Register the given kernel builder with the TensorFlow runtime. If
+// registration fails, the given status will be populated.
+//
+// This method is the same as TF_RegisterKernelBuilder except it takes in a
+// serialized KernelDef, and uses it for registration, instead of building a new
+// one. Users can choose to not provide a serialized KernelDef and in that case
+// it's identical to TF_RegisterKernelBuilder.
+TF_CAPI_EXPORT extern void TF_RegisterKernelBuilderWithKernelDef(
+    const char* serialized_kernel_def, const char* name,
+    TF_KernelBuilder* builder, TF_Status* status);
+
 // Deletes the given TF_KernelBuilder. This should be called only if the kernel
 // builder is not registered with TensorFlow via TF_RegisterKernelBuilder.
 TF_CAPI_EXPORT extern void TF_DeleteKernelBuilder(TF_KernelBuilder* builder);
@@ -159,6 +170,22 @@ TF_CAPI_EXPORT extern int TF_NumOutputs(TF_OpKernelContext* ctx);
 TF_CAPI_EXPORT extern void TF_GetInput(TF_OpKernelContext* ctx, int i,
                                        TF_Tensor** tensor, TF_Status* status);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;         // Not used, for possible extension.
+  int start;          // output
+  int stop;           // output
+  TF_Status* status;  // output
+} TF_InputRange_Args;
+const size_t TF_InputRange_Args_STRUCT_SIZE =
+    TF_OFFSET_OF_END(TF_InputRange_Args, status);
+
+// Retrieves the start and stop indices, given the input name. Equivalent to
+// OpKernel::InputRange(). `args` will contain the result indices and status.
+TF_CAPI_EXPORT extern void TF_InputRange(TF_OpKernelContext* ctx,
+                                         const char* name,
+                                         TF_InputRange_Args* args);
+
 // Sets the ith output of ctx to tensor. If TF_GetCode(status) is anything but
 // TF_OK, ctx is left unmodified.
 //
@@ -183,6 +210,19 @@ TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
 
 // Returns the step ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
+
+// Returns the name of the OpKernel.
+//
+// The returned TF_StringView's underlying string is owned by the OpKernel and
+// has the same lifetime as the OpKernel.
+TF_CAPI_EXPORT extern TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx);
+
+// Returns the name of the requested input at `index` from the OpKernel.
+//
+// The returned TF_StringView's underlying string is owned by the OpKernel and
+// has the same lifetime as the OpKernel.
+TF_CAPI_EXPORT extern TF_StringView TF_GetOpKernelRequestedInput(
+    TF_OpKernelContext* ctx, size_t index);
 
 // Get the list_size and total_size of the attribute `attr_name` of `oper`.
 // list_size - the length of the list.

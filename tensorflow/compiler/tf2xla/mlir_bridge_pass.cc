@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -42,33 +43,47 @@ auto* mlir_bridge_gauge_v2 = monitoring::Gauge<bool, 0>::New(
 
 namespace {
 
-constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
-
 bool HasTPUDevice(mlir::ModuleOp module) {
   mlir::TF::RuntimeDevices devices;
   if (failed(GetDevicesFromOp(module.getOperation(), &devices))) return false;
   return absl::c_any_of(
       devices.device_names(),
       [](const tensorflow::DeviceNameUtils::ParsedName& device) {
-        return device.has_type && device.type == "TPU";
+        return device.has_type && device.type == kTpuDevice;
       });
 }
 
 bool HasTPUOp(mlir::ModuleOp module) {
   auto walk_result = module.walk([&](mlir::Operation* op) {
-    // TODO(jiancai): we should check "_replication_info" attribute here instead
-    // once the migration to unified compilation and replication markers is
-    // done. See b/220150965 for more details.
+    // Check for ops with compile device type "TPU". This allows us to support
+    // TPU compilation without replication. Note that currently the compile
+    // device type is not set by default before bridge, only if eager context
+    // attribute `jit_compile_rewrite` is true.
+    // TODO(b/229028654): Remove string conversion once we have C++17.
+    const llvm::StringRef compile_device_type_attr_name(
+        kCompileDeviceTypeAttr.data(), kCompileDeviceTypeAttr.size());
+    auto compilation_attr =
+        op->getAttrOfType<mlir::StringAttr>(compile_device_type_attr_name);
+    if (compilation_attr && compilation_attr.getValue().str() == kTpuDevice) {
+      return mlir::WalkResult::interrupt();
+    }
+    // TODO(b/223677572): Once the scope for new compilation and replication
+    // markers is expanded beyond bridge we can remove this check for
+    // `kTPUReplicateAttr`, we will then always have a `kCompileDeviceTypeAttr`
+    // in such cases (see above).
+    // TODO(b/229028654): Remove string conversion once we have C++17.
+    const llvm::StringRef tpu_replicate_attr_name(kTpuReplicateAttr.data(),
+                                                  kTpuReplicateAttr.size());
     auto replicate_attr =
-        op->getAttrOfType<mlir::StringAttr>(kTPUReplicateAttr);
+        op->getAttrOfType<mlir::StringAttr>(tpu_replicate_attr_name);
     if (replicate_attr) return mlir::WalkResult::interrupt();
     return mlir::WalkResult::advance();
   });
   return walk_result.wasInterrupted();
 }
 
-// Checks that the module has both - TPU devices in its device list and contains
-// TPU ops (identifed by `_tpu_replicate` attribute on ops).
+// Checks that the module has both TPU devices in its device list and contains
+// TPU ops.
 bool HasTPUDevicesAndOps(mlir::ModuleOp module) {
   return HasTPUDevice(module) && HasTPUOp(module);
 }
@@ -209,7 +224,7 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
       VLOG(1) << " Skipping MLIR TF XLA Bridge,"
               << " no TPU devices or TPU ops found, and this non TPU graph"
               << " is not qualified to run MLIR TF XLA Bridge.";
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -224,7 +239,7 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
     // if the pass is disabled.  This logic is here defenseively in case the
     // calling pass logic changes.
     VLOG(1) << "MlirBridgePass is disabled and will not run.";
-    return Status::OK();
+    return OkStatus();
   }
 
   bool fallback_enabled = false;
@@ -282,13 +297,13 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
   // Skip function graphs as MlirBridgePass will be used instead.
-  if (options.is_function_graph) return Status::OK();
+  if (options.is_function_graph) return OkStatus();
 
   // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
   if (!HasTPUDevicesAndOps(module)) {
     VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices or TPU ops "
                "found";
-    return Status::OK();
+    return OkStatus();
   }
 
   MlirOptimizationPassState pass_state =
@@ -304,7 +319,7 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     // calling pass logic changes.
     VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
     mlir_bridge_gauge_v1->GetCell()->Set(false);
-    return Status::OK();
+    return OkStatus();
   }
 
   VLOG(1) << "Running MLIR TPU Bridge V1 Compat";

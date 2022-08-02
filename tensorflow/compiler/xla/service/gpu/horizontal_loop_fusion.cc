@@ -431,7 +431,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   comp->set_root_instruction(tuple, /*accept_different_shape=*/true);
   TF_RETURN_IF_ERROR(comp->RemoveInstruction(dummy_root));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HorizontalLoopFusionImpl::Fuse(
@@ -474,7 +474,7 @@ Status HorizontalLoopFusionImpl::Fuse(
         computation_->ReplaceInstruction(fused_instr, bitcast_or_tuple));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> HorizontalLoopFusionImpl::Run() {
@@ -529,7 +529,9 @@ StatusOr<bool> GpuHorizontalLoopFusion::RunOnComputation(
   return horizontal_fusion_impl.Run();
 }
 
-StatusOr<bool> GpuHorizontalLoopFusion::Run(HloModule* module) {
+StatusOr<bool> GpuHorizontalLoopFusion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   VLOG(2) << "Run horizontal fusion.";
 

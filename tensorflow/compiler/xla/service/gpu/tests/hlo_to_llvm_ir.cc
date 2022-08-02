@@ -51,7 +51,6 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
       std::unique_ptr<xla::HloModule> hlo_module,
       xla::LoadModuleFromData(/*data=*/hlo_text, /*format=*/"hlo"));
   llvm::LLVMContext llvm_context;
-
   // For now we pretend we're compiling for V100.  This can be generalized
   // later.
 
@@ -99,7 +98,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
             "Feature not yet implemented in ROCm"};
 #endif
   }
-  return xla::Status::OK();
+  return xla::OkStatus();
 }
 
 xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
@@ -114,7 +113,7 @@ xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
     TF_RETURN_IF_ERROR(CompileAndPrintLlvmIr(hlo_module_text, ptx, sm));
   }
 
-  return xla::Status::OK();
+  return xla::OkStatus();
 }
 }  // namespace
 

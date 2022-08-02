@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/interpreter/compiler.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/comparison_expander.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -87,6 +88,10 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   pipeline.AddPass<EighExpander>();
   pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
+  pipeline.AddPass<BatchNormExpander>(
+      /*rewrite_training_op=*/true,
+      /*rewrite_inference_op=*/true,
+      /*rewrite_grad_op=*/true);
   pipeline.AddPass<LayoutAssignment>(
       hlo_module->mutable_entry_computation_layout());
 
@@ -111,14 +116,14 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
   TF_ASSIGN_OR_RETURN(DynamicDimensionInference dynamic_dimension_inference,
                       DynamicDimensionInference::Run(hlo_module.get()));
 
-  auto evaluator = absl::make_unique<HloEvaluator>();
+  auto evaluator = std::make_unique<HloEvaluator>();
   evaluator->set_use_fast_path(
       hlo_module->config().debug_options().xla_hlo_evaluator_use_fast_path());
   evaluator->set_custom_call_handler(HandleEvaluatorCustomCall);
 
   // Create executable from only the Hlo module.
   std::unique_ptr<Executable> executable =
-      absl::make_unique<InterpreterExecutable>(
+      std::make_unique<InterpreterExecutable>(
           std::move(hlo_module), std::move(evaluator),
           std::move(dynamic_dimension_inference));
 
@@ -170,11 +175,11 @@ HloCostAnalysis::ShapeSizeFunction InterpreterCompiler::ShapeSizeBytesFunction()
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       se::interpreter::kXlaInterpreterPlatformId, []() {
-        return absl::make_unique<xla::interpreter::InterpreterCompiler>();
+        return std::make_unique<xla::interpreter::InterpreterCompiler>();
       });
   xla::ComputationPlacer::RegisterComputationPlacer(
       se::interpreter::kXlaInterpreterPlatformId,
-      []() { return absl::make_unique<xla::ComputationPlacer>(); });
+      []() { return std::make_unique<xla::ComputationPlacer>(); });
   return true;
 }
 

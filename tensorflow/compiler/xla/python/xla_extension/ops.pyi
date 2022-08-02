@@ -58,6 +58,7 @@ class CustomCallSchedule(enum.IntEnum):
 class CustomCallApiVersion(enum.IntEnum):
   API_VERSION_ORIGINAL: int
   API_VERSION_STATUS_RETURNING: int
+  API_VERSION_STATUS_RETURNING_UNIFIED: int
 
 def AfterAll(builder: XlaBuilder, tokens: Sequence[XlaOp]) -> XlaOp: ...
 def AllGather(
@@ -160,7 +161,8 @@ def ConvGeneralDilated(
     feature_group_count: int = ...,
     batch_group_count: int = ...,
     precision_config: Optional[PrecisionConfig_Precision] = ...,
-    preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
+    preferred_element_type: Optional[PrimitiveType] = ...,
+    window_reversal: Optional[Sequence[bool]] = ...) -> XlaOp: ...
 def ConvertElementType(
     operand: XlaOp,
     new_element_type: PrimitiveType) -> XlaOp: ...
@@ -272,7 +274,9 @@ def Parameter(
     shape: Shape,
     name: str = ...,
     replicated_at_leaf_buffers: Sequence[bool] = ...) -> XlaOp: ...
+def ProductOfElementaryHouseholderReflectors(a: XlaOp, taus: XlaOp) -> XlaOp: ...
 def QR(a: XlaOp, full_matrices: bool) -> Tuple[XlaOp, XlaOp]: ...
+def QrDecomposition(a: XlaOp) -> Tuple[XlaOp, XlaOp]: ...
 def Reduce(
     builder: XlaBuilder,
     operands: Sequence[XlaOp],
@@ -318,10 +322,20 @@ def RngBitGenerator(
     shape: Shape) -> XlaOp: ...
 def RngNormal(mu: XlaOp, sigma: XlaOp, shape: Shape) -> XlaOp: ...
 def RngUniform(a: XlaOp, b: XlaOp, shape: Shape) -> XlaOp: ...
+@overload
 def Scatter(
     input: XlaOp,
     scatter_indices: XlaOp,
     updates: XlaOp,
+    update_computation: XlaComputation,
+    dimension_numbers: _ScatterDimensionNumbers,
+    indices_are_sorted: bool = ...,
+    unique_indices: bool = ...) -> XlaOp: ...
+@overload
+def Scatter(
+    inputs: Sequence[XlaOp],
+    scatter_indices: XlaOp,
+    updates: Sequence[XlaOp],
     update_computation: XlaComputation,
     dimension_numbers: _ScatterDimensionNumbers,
     indices_are_sorted: bool = ...,

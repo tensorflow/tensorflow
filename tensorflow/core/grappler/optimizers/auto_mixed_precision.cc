@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <fstream>
 #include <memory>
+#include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -40,11 +42,26 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace {
+
+bool ShouldSimulateGpu() {
+  bool is_enabled = [] {
+    bool ret = false;
+    string var;
+    TF_CHECK_OK(ReadStringFromEnvVar(
+        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_SIMULATE_GPU", "", &var));
+    TF_CHECK_OK(
+        ReadBoolFromEnvVar("TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_SIMULATE_GPU",
+                           /*default_val=*/false, &ret));
+    return ret;
+  }();
+  return is_enabled;
+}
 
 #if GOOGLE_CUDA
 const std::pair<int, int> kMinGPUArch = {7, 0};
@@ -99,7 +116,7 @@ bool HasFastFP16Support(const DeviceProperties& props) {
   std::vector<std::string> gpu_arch = absl::StrSplit(gcnArchName, ":");
   return !gpu_arch.empty() && FP16SupportedDevices.contains(gpu_arch[0]);
 #endif
-  return false;
+  return ShouldSimulateGpu();
 }
 
 // Instances of this class represent unique type attribute identifiers within a
@@ -278,7 +295,7 @@ class NodeTypeAttrMap {
     for (const NodeDef& node : graph.node()) {
       TF_RETURN_IF_ERROR(AddNode(node));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   bool is_initialized() const { return graph_ != nullptr; }
@@ -392,7 +409,7 @@ class NodeTypeAttrMap {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // WARN: `graph_` must outlive this object (node pointers must remain valid).
@@ -608,7 +625,7 @@ Status GraphTypeTopologyView::InitializeFromGraph(
     SortAndRemoveDuplicates(&fanouts_[node_type_idx]);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphTypeTopologyView::AddEphemeralEdges(
@@ -658,7 +675,7 @@ Status GraphTypeTopologyView::AddEphemeralEdges(
     SortAndRemoveDuplicates(&fanouts_[node_type_idx]);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool GraphTypeTopologyView::HasNode(absl::string_view node_name,
@@ -911,7 +928,7 @@ Status ValidateLists(const gtl::FlatSet<string>& allow_list,
   if (duplicates) {
     return errors::InvalidArgument("Op lists have conflicting entries");
   } else {
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -940,8 +957,8 @@ bool CanForceFP16(const NodeDef& node) {
          !IsStateful(node) && !HasInputOrOutputRefs(node);
 }
 
-int GetCudaVersion(const Cluster& cluster) {
-  auto devices = cluster.GetDevices();
+int GetCudaVersion(
+    const std::unordered_map<string, DeviceProperties>& devices) {
   for (const auto& device : devices) {
     const DeviceProperties& device_properties = device.second;
     if (device_properties.type() == "GPU") {
@@ -956,8 +973,8 @@ int GetCudaVersion(const Cluster& cluster) {
   return 0;
 }
 
-int GetCudnnVersion(const Cluster& cluster) {
-  auto devices = cluster.GetDevices();
+int GetCudnnVersion(
+    const std::unordered_map<string, DeviceProperties>& devices) {
   for (const auto& device : devices) {
     const DeviceProperties& device_properties = device.second;
     if (device_properties.type() == "GPU") {
@@ -972,6 +989,36 @@ int GetCudnnVersion(const Cluster& cluster) {
   return 0;
 }
 
+std::unordered_map<string, DeviceProperties> GetDevices(Cluster* cluster) {
+  if (!ShouldSimulateGpu()) {
+    return cluster->GetDevices();
+  }
+
+  bool has_gpu = false;
+  for (const auto& device : cluster->GetDevices()) {
+    const DeviceProperties& device_properties = device.second;
+    if (device_properties.type() == "GPU") {
+      has_gpu = true;
+      break;
+    }
+  }
+
+  if (has_gpu) {
+    return cluster->GetDevices();
+  }
+
+  std::unordered_map<string, DeviceProperties> devices(cluster->GetDevices());
+  DeviceProperties gpu_device_properies;
+  gpu_device_properies.set_type("GPU");
+  gpu_device_properies.set_vendor("NVIDIA");
+  gpu_device_properies.mutable_environment()->insert({"architecture", "8.0"});
+  gpu_device_properies.mutable_environment()->insert({"cuda", "11050"});
+  gpu_device_properies.mutable_environment()->insert({"cudnn", "8302"});
+  devices.emplace(std::make_pair("/job:localhost/replica:0/task:0/device:GPU:0",
+                                 gpu_device_properies));
+  return devices;
+}
+
 class AutoMixedPrecisionImpl {
  public:
   // CastType indicates the type of inserted Cast op
@@ -983,14 +1030,15 @@ class AutoMixedPrecisionImpl {
                          const std::unordered_set<string>& nodes_to_preserve,
                          GraphDef* graph, string id,
                          AutoMixedPrecisionMode mode)
-      : virtual_placer_(cluster->GetDevices()),
+      : devices_(GetDevices(cluster)),
+        virtual_placer_(devices_),
         nodes_to_preserve_(nodes_to_preserve),
         graph_(graph),
         function_library_(OpRegistry::Global(), graph->library()),
         id_(id),
         graph_view_(graph),
-        cuda_version_(GetCudaVersion(*cluster)),
-        cudnn_version_(GetCudnnVersion(*cluster)),
+        cuda_version_(GetCudaVersion(devices_)),
+        cudnn_version_(GetCudnnVersion(devices_)),
         num_nonvar_casts_to_f16_(0),
         mode_(mode),
         target_dtype_((mode_ == AutoMixedPrecisionMode::CUDA ||
@@ -1008,7 +1056,7 @@ class AutoMixedPrecisionImpl {
       case AutoMixedPrecisionMode::CUDA:
         return std::make_unique<AutoMixedPrecisionListsCuda>(cuda_version_,
                                                              cudnn_version_);
-      case AutoMixedPrecisionMode::MKL:
+      case AutoMixedPrecisionMode::BF16:
         return std::make_unique<AutoMixedPrecisionListsMkl>();
       case AutoMixedPrecisionMode::CPU:
         // Note: this is not a typo here. AutoMixedPrecisionListsCuda is used
@@ -1019,7 +1067,7 @@ class AutoMixedPrecisionImpl {
     }
   }
   Status PrintDebugLogs(bool preop, size_t timestamp);
-  void LogSkippedNode(const NodeDef& node) const;
+  void LogSkippedNode(const NodeDef& node, const string& device_type) const;
   bool MustPreserve(const NodeDef& node) const;
   bool IsOnDevice(const NodeDef& node, const string& device_type) const;
   bool IsOnSuitableGPUArch(const NodeDef& node) const;
@@ -1070,6 +1118,7 @@ class AutoMixedPrecisionImpl {
       std::vector<MutableGraphView::OutputPort>& output_ports) const;
   Status ChangeTypeAttrsAndAddCasts(const absl::flat_hash_set<int>& allow_set);
 
+  std::unordered_map<string, DeviceProperties> devices_;
   VirtualPlacer virtual_placer_;
   std::unordered_set<string> nodes_to_preserve_;
   GraphDef* graph_;
@@ -1132,7 +1181,7 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
   string prepend_path;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
       "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LOG_PATH", "", &prepend_path));
-  if (prepend_path.empty()) return Status::OK();
+  if (prepend_path.empty()) return OkStatus();
 
   string suffix =
       strings::StrCat("_", preop ? "preop" : kSuffix, "_", id_, "_", timestamp);
@@ -1179,15 +1228,18 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
     f.close();
     LOG(INFO) << "Saved paint bucket info to " << fname;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-void AutoMixedPrecisionImpl::LogSkippedNode(const NodeDef& node) const {
+void AutoMixedPrecisionImpl::LogSkippedNode(const NodeDef& node,
+                                            const string& device_type) const {
   VLOG(2) << "Skipping " << node.op() << " node " << node.name()
           << " because it "
           << (MustPreserve(node)
                   ? "must be preserved"
-                  : "is not on the GPU, or the GPU arch is not suitable");
+                  : absl::StrFormat(
+                        "is not on the %s, or the %s arch is not suitable",
+                        device_type, device_type));
 }
 
 bool AutoMixedPrecisionImpl::MustPreserve(const NodeDef& node) const {
@@ -1318,12 +1370,12 @@ Status AutoMixedPrecisionImpl::Optimize() {
       "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL", "", &optimization_level));
   optimization_level = absl::AsciiStrToUpper(optimization_level);
   force_all_fp16_ = optimization_level == "UNSAFE_FORCE_ALL";
-  if (force_all_fp16_ && mode_ == AutoMixedPrecisionMode::MKL) {
+  if (force_all_fp16_ && mode_ == AutoMixedPrecisionMode::BF16) {
     // Many ops do not support bfloat16 on the CPU so we disallowing forcing to
     // bfloat16.
     return errors::InvalidArgument(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL cannot be set to "
-        "UNSAFE_FORCE_ALL when MKL is used");
+        "UNSAFE_FORCE_ALL when oneDNN is used");
   }
 
   treat_infer_as_deny_ = optimization_level == "TREAT_INFER_AS_DENY";
@@ -1352,21 +1404,24 @@ Status AutoMixedPrecisionImpl::Optimize() {
   VLOG(2) << "Identifying nodes that should be processed";
   for (const NodeDef& node : graph_->node()) {
     bool should_process;
+    string device_type;
     switch (mode_) {
       case AutoMixedPrecisionMode::CUDA:
+        device_type = DEVICE_GPU;
         should_process =
-            !MustPreserve(node) && IsOnDevice(node, DEVICE_GPU) &&
+            !MustPreserve(node) && IsOnDevice(node, device_type) &&
             (ShouldIgnorePerformance() || IsOnSuitableGPUArch(node));
         break;
-      case AutoMixedPrecisionMode::MKL:
+      case AutoMixedPrecisionMode::BF16:
       case AutoMixedPrecisionMode::CPU:
-        should_process = !MustPreserve(node) && IsOnDevice(node, DEVICE_CPU);
+        device_type = DEVICE_CPU;
+        should_process = !MustPreserve(node) && IsOnDevice(node, device_type);
         break;
     }
     if (should_process) {
       should_process_nodes_.insert(&node);
     } else {
-      LogSkippedNode(node);
+      LogSkippedNode(node, device_type);
     }
   }
 
@@ -1431,7 +1486,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
 
   if (allow_set.empty()) {
     LOG(INFO) << "No allowlist ops found, nothing to do";
-    return Status::OK();
+    return OkStatus();
   }
 
   VLOG(2) << "Beginning pass 2 to propagate deny forwards from denylist ops "
@@ -1483,7 +1538,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
 
   TF_RETURN_IF_ERROR(PrintDebugLogs(/* preop = */ false, timestamp));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // If node is a Tensor List op with a float32 data type attribute then this
@@ -1787,8 +1842,8 @@ void AutoMixedPrecisionImpl::PropagateAllowThroughClear(
 void AutoMixedPrecisionImpl::AddInferToAllowIfFollowAllow(
     const absl::flat_hash_set<int>& deny_set,
     absl::flat_hash_set<int>* allow_set) const {
-  // Currently only target for MKL
-  if (mode_ != AutoMixedPrecisionMode::MKL) {
+  // Currently only target for oneDNN
+  if (mode_ != AutoMixedPrecisionMode::BF16) {
     return;
   }
   for (int item_idx = 0; item_idx < graph_type_view_.num_nodes(); ++item_idx) {
@@ -1899,7 +1954,7 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Forces all of the given Tensor List nodes into the same color set.
@@ -2186,10 +2241,13 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
             << " nodes to " << type_str << " precision using "
             << num_nonvar_casts_to_f16_ << " cast(s) to " << type_str
             << " (excluding Const and Variable casts)";
-  return Status::OK();
+  return OkStatus();
 }
 
 int GetNumGPUs(const Cluster& cluster) {
+  if (ShouldSimulateGpu()) {
+    return 1;
+  }
   auto devices = cluster.GetDevices();
   int num_gpus = 0;
   for (const auto& device : devices) {
@@ -2211,12 +2269,12 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
 #if !defined(INTEL_MKL)
-  if (mode_ == AutoMixedPrecisionMode::MKL) {
+  if (mode_ == AutoMixedPrecisionMode::BF16) {
     return errors::Unimplemented(
-        "The auto_mixed_precision_mkl optimizer cannot be used since "
-        "this build of TensorFlow is not compiled with MKL support for "
-        "bfloat16. "
-        "For information on MKL builds, see: "
+        "The auto_mixed_precision_onednn_bfloat16 optimizer cannot be used "
+        "since this build of TensorFlow is not compiled with oneDNN support "
+        "for bfloat16. "
+        "For information on oneDNN builds, see: "
         "https://software.intel.com/en-us/articles/intel-optimization-for-"
         "tensorflow-installation-guide");
   }
@@ -2230,7 +2288,12 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
     // AutoMixedPrecision is currently only tuned for GPU.
     LOG(WARNING) << "No (suitable) GPUs detected, skipping " << name()
                  << " graph optimizer";
-    return Status::OK();
+    return OkStatus();
+  }
+
+  if (num_gpus >= 1 && mode_ == AutoMixedPrecisionMode::BF16) {
+    LOG(WARNING) << "Note: GPUs detected. Using " << name()
+                 << " graph optimizer configured for BFloat16 on CPUs";
   }
 
   // Optimize the output graph in-place.
