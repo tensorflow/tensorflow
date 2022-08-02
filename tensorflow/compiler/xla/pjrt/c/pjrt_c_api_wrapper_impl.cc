@@ -204,8 +204,9 @@ ConvertCCompileOptionstoCppCompileOptions(PJRT_CompileOptions* c_option) {
   ret.executable_build_options.set_allow_spmd_sharding_propagation_to_output(
       c_option->allow_spmd_sharding_propagation_to_output);
   if (c_option->device_assignment_size > 0) {
-    absl::string_view device_assignment_str(c_option->device_assignment,
-                                            c_option->device_assignment_size);
+    absl::string_view device_assignment_sv(c_option->device_assignment,
+                                           c_option->device_assignment_size);
+    std::string device_assignment_str(device_assignment_sv);
     xla::DeviceAssignmentProto proto;
     proto.ParseFromString(device_assignment_str);
     TF_ASSIGN_OR_RETURN(
