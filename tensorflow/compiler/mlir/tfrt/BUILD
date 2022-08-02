@@ -706,6 +706,10 @@ tf_cc_binary(
 tf_cc_binary(
     name = "lhlo-tfrt-opt",
     srcs = ["lhlo-tfrt-opt.cc"],
+    local_defines = select({
+        "//tensorflow/compiler/xla/service/gpu:is_xlir_enabled": ["XLA_ENABLE_XLIR=1"],
+        "//conditions:default": [],
+    }),
     tags = [
         "gpu",
         "no_oss",
@@ -718,7 +722,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu",
         "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_gpu_binary",
-        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_jitrt",
+        # copybara:uncomment "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_jitrt",
         "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_tfrt_gpu",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",

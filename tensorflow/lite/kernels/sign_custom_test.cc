@@ -14,9 +14,12 @@
 
 #include <cmath>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace {
@@ -40,7 +43,7 @@ class SignModel : public tflite::SingleOpModel {
             tflite::TensorData output) {
     x_ = AddInput(x);
     output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_SIGN, BuiltinOptions_NONE, 0);
+    SetCustomOp("Sign", {}, ops::custom::Register_SIGN);
     BuildInterpreter({GetShape(x_)});
   }
 
@@ -56,16 +59,16 @@ class SignModel : public tflite::SingleOpModel {
 };
 
 template <typename Float>
-class SignTest : public ::testing::Test {
+class SignCustomTest : public ::testing::Test {
  public:
   using FloatType = Float;
 };
 
 using TestTypes = ::testing::Types<float, double>;
 
-TYPED_TEST_SUITE(SignTest, TestTypes);
+TYPED_TEST_SUITE(SignCustomTest, TestTypes);
 
-TYPED_TEST(SignTest, TestScalar) {
+TYPED_TEST(SignCustomTest, TestScalar) {
   using Float = typename TestFixture::FloatType;
   tflite::TensorData x = {GetTTEnum<Float>(), {}};
   tflite::TensorData output = {GetTTEnum<Float>(), {}};
@@ -78,7 +81,7 @@ TYPED_TEST(SignTest, TestScalar) {
   ASSERT_FLOAT_EQ(m.GetOutput<Float>({-3.0})[0], -1.0);
 }
 
-TYPED_TEST(SignTest, TestBatch) {
+TYPED_TEST(SignCustomTest, TestBatch) {
   using Float = typename TestFixture::FloatType;
   tflite::TensorData x = {GetTTEnum<Float>(), {4, 2, 1}};
   tflite::TensorData output = {GetTTEnum<Float>(), {4, 2, 1}};

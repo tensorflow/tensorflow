@@ -64,7 +64,7 @@ cc_library(
     deps = [
         ":lmhlo_to_gpu",
         ":lmhlo_to_gpu_binary",
-        ":lmhlo_to_jitrt",
+        # copybara:uncomment ":lmhlo_to_jitrt",
         ":lmhlo_to_tfrt_gpu",
         ":pattern_utils",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
@@ -166,38 +166,42 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "lmhlo_to_jitrt",
-    srcs = ["lmhlo_to_jitrt.cc"],
-    hdrs = ["lmhlo_to_jitrt.h"],
-    tags = ["gpu"],
-    visibility = [
-        "//tensorflow/compiler/mlir/tfrt:__pkg__",
-        "//tensorflow/compiler/xla/service/gpu:__pkg__",
-    ],
-    deps = [
-        ":JitRtPassesIncGen",
-        ":lmhlo_to_gpu_binary",
-        "//tensorflow/compiler/mlir/xla:attribute_exporter",
-        "//tensorflow/compiler/xla/mlir_hlo:lhlo",
-        "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
-        "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
-        "@llvm-project//mlir:ArithmeticDialect",
-        "@llvm-project//mlir:ControlFlowDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:GPUTransforms",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
-        "@tf_runtime//backends/gpu:gpu_opdefs",
-        "@tf_runtime//backends/gpu:gpu_passes",
-        "@tf_runtime//backends/jitrt:rt_opdefs",
-    ],
-)
+# copybara:uncomment_begin
+#
+# cc_library(
+#     name = "lmhlo_to_jitrt",
+#     srcs = ["lmhlo_to_jitrt.cc"],
+#     hdrs = ["lmhlo_to_jitrt.h"],
+#     tags = ["gpu"],
+#     visibility = [
+#         "//tensorflow/compiler/mlir/tfrt:__pkg__",
+#         "//tensorflow/compiler/xla/service/gpu:__pkg__",
+#     ],
+#     deps = [
+#         ":JitRtPassesIncGen",
+#         ":lmhlo_to_gpu_binary",
+#         "//tensorflow/compiler/mlir/xla:attribute_exporter",
+#         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
+#         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
+#         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
+#         "@llvm-project//mlir:ArithmeticDialect",
+#         "@llvm-project//mlir:ControlFlowDialect",
+#         "@llvm-project//mlir:FuncDialect",
+#         "@llvm-project//mlir:GPUDialect",
+#         "@llvm-project//mlir:GPUTransforms",
+#         "@llvm-project//mlir:IR",
+#         "@llvm-project//mlir:MemRefDialect",
+#         "@llvm-project//mlir:Pass",
+#         "@llvm-project//mlir:SCFDialect",
+#         "@llvm-project//mlir:TransformUtils",
+#         "@llvm-project//mlir:Transforms",
+#         "@tf_runtime//backends/gpu:gpu_opdefs",
+#         "@tf_runtime//backends/gpu:gpu_passes",
+#         "@tf_runtime//backends/jitrt:rt_opdefs",
+#     ],
+# )
+#
+# copybara:uncomment_end
 
 # The lmhlo-to-gpu-binary pass is a separate target to avoid a dependency cycle:
 # :lmhlo_to_gpu_binary > xla/service/gpu:gpu_executable > :lmhlo_to_gpu
