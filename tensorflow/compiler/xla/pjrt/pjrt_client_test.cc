@@ -43,12 +43,17 @@ static xla::StatusOr<std::unique_ptr<xla::PjRtClient>> GetClient() {
 namespace xla {
 namespace {
 
-std::unique_ptr<PjRtLoadedExecutable> MakeIncrementProgram(PjRtClient* client,
-                                                           bool alias,
-                                                           int device) {
+std::unique_ptr<PjRtLoadedExecutable> MakeIncrementProgram(
+    PjRtClient* client, bool alias, int device, bool tuplize_arg = false) {
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   XlaBuilder builder("inc");
+  if (tuplize_arg) {
+    shape = ShapeUtil::MakeTupleShape({shape});
+  }
   auto inp = Parameter(&builder, 0, shape, "inp");
+  if (tuplize_arg) {
+    inp = GetTupleElement(inp, 0);
+  }
   auto one = ConstantR0<int32_t>(&builder, 1);
   auto inc = Add(inp, one);
   if (alias) {
@@ -58,6 +63,7 @@ std::unique_ptr<PjRtLoadedExecutable> MakeIncrementProgram(PjRtClient* client,
   DeviceAssignment assignment(1, 1);
   assignment(0, 0) = device;
   CompileOptions options;
+  options.parameter_is_tupled_arguments = tuplize_arg;
   options.executable_build_options.set_device_assignment(assignment);
   return client->Compile(computation, options).value();
 }
@@ -85,6 +91,48 @@ TEST_P(PjRtClientTest, Execute) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto results,
                           executable->Execute({{buffer.get()}}, options));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
+
+  std::vector<int32_t> expected(4, 1);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
+TEST_P(PjRtClientTest, ExecuteWithTupleZeroCopy) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  auto executable = MakeIncrementProgram(client.get(), /*alias=*/false,
+                                         /*device=*/0, /*tuplize_arg=*/true);
+
+  std::vector<int32_t> data(4, 0);
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer, client->BufferFromHostBuffer(
+                       data.data(), shape.element_type(), shape.dimensions(),
+                       /*byte_strides=*/std::nullopt,
+                       // Use kZeroCopy to test the correctness of
+                       // `on_done_with_host_buffer`.
+                       PjRtClient::HostBufferSemantics::kZeroCopy,
+                       /*on_done_with_host_buffer=*/
+                       [&data]() {
+                         // Deliberately modifying the content of `data`. A
+                         // correct implementation of PjRt should not use `data`
+                         // after `on_done_with_host_buffer` is called.
+                         std::fill(data.begin(), data.end(), 1);
+                       },
+                       client->addressable_devices()[0]));
+
+  ExecuteOptions options;
+  options.execution_mode = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          executable->Execute({{buffer.get()}}, options));
+  // Immediately release the input buffer. A correct implementation will not
+  // invoke `on_done_with_host_buffer` until the execution, which can be in a
+  // separate thread, finishes.
+  buffer.reset();
+
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(results[0].size(), 1);
   TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
