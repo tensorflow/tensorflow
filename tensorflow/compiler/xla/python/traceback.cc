@@ -33,10 +33,28 @@ namespace py = pybind11;
 
 bool Traceback::enabled_ = true;
 
+Traceback::Traceback() {
+  DCHECK(PyGILState_Check());
+  const PyThreadState* thread_state = PyThreadState_GET();
+  for (PyFrameObject* py_frame = thread_state->frame; py_frame != nullptr;
+       py_frame = py_frame->f_back) {
+    Py_INCREF(py_frame->f_code);
+    frames_.emplace_back(py_frame->f_code, py_frame->f_lasti);
+  }
+}
+
 Traceback::~Traceback() {
-  // We want Traceback objects to be safe to destroy without holding the
-  // GIL, so we defer destruction of the strings.
-  GlobalPyRefManager()->AddGarbage(frames_);
+  for (auto& frame : frames_) {
+    DCHECK(PyGILState_Check());
+    Py_DECREF(frame.first);
+  }
+}
+
+Traceback::Traceback(Traceback&& other) : frames_(std::move(other.frames_)) {
+  // absl::InlinedVector does not always clear itself if moved. Since we rely on
+  // its empty() method to destroy Traceback differently, we explicitly clear
+  // here.
+  other.frames_.clear();
 }
 
 std::string Traceback::Frame::ToString() const {
@@ -72,14 +90,14 @@ std::shared_ptr<Traceback> Traceback::Get() {
   if (!enabled_) {
     return nullptr;
   }
-  auto tb = std::make_shared<Traceback>();
-  const PyThreadState* thread_state = PyThreadState_GET();
-  for (PyFrameObject* py_frame = thread_state->frame; py_frame != nullptr;
-       py_frame = py_frame->f_back) {
-    Py_INCREF(py_frame->f_code);
-    tb->frames_.emplace_back(py_frame->f_code, py_frame->f_lasti);
-  }
-  return tb;
+  return std::make_shared<Traceback>();
+}
+
+void Traceback::SafeDestroy(Traceback traceback) {
+  // We want Traceback objects to be safe to destroy without holding the
+  // GIL, so we defer destruction of the strings.
+  GlobalPyRefManager()->AddGarbage(traceback.frames_);
+  traceback.frames_.clear();
 }
 
 void Traceback::SetEnabled(bool enabled) { enabled_ = enabled; }
