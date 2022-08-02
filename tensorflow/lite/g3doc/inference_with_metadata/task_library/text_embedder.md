@@ -74,7 +74,7 @@ pip install tflite-support
 from tflite_support.task import text
 
 # Initialization.
-text_embedder = text.TextEmbedder.create_from_file(model_file)
+text_embedder = text.TextEmbedder.create_from_file(model_path)
 
 # Run inference on two texts.
 result_1 = text_embedder.embed(text_1)

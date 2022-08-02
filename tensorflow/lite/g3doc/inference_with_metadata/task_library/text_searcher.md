@@ -140,7 +140,7 @@ pip install tflite-support
 from tflite_support.task import text
 
 # Initialization
-text_searcher = text.TextSearcher.create_from_file(model_file)
+text_searcher = text.TextSearcher.create_from_file(model_path)
 
 # Run inference
 result = text_searcher.search(text)

@@ -132,7 +132,7 @@ pip install tflite-support
 from tflite_support.task import vision
 
 # Initialization
-image_searcher = vision.ImageSearcher.create_from_file(model_file)
+image_searcher = vision.ImageSearcher.create_from_file(model_path)
 
 # Run inference
 image = vision.TensorImage.create_from_file(image_file)

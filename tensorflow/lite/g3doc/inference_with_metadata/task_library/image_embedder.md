@@ -74,7 +74,7 @@ pip install tflite-support
 from tflite_support.task import vision
 
 # Initialization.
-image_embedder = vision.ImageEmbedder.create_from_file(model_file)
+image_embedder = vision.ImageEmbedder.create_from_file(model_path)
 
 # Run inference on two images.
 image_1 = vision.TensorImage.create_from_file('/path/to/image1.jpg')

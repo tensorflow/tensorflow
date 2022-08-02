@@ -122,7 +122,7 @@ for audio recording, you need to install PortAudio on your system.
 
 ```python
 # Imports
-from tflite_support.task import vision
+from tflite_support.task import audio
 from tflite_support.task import core
 from tflite_support.task import processor
 
