@@ -40,7 +40,8 @@ class PreemptNotifierTest : public ::testing::Test {
  public:
   PreemptNotifierTest() {
 #if defined(PLATFORM_GOOGLE)
-    // Override default test SIGTERM handler.
+    // Override default test SIGTERM handler so that test does not exit
+    // prematurely.
     thread::signal::Token unused_token;
 
     thread::signal::AddHandler(
