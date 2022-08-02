@@ -309,6 +309,15 @@ PJRT_Error* PJRT_Device_DebugString(PJRT_Device_DebugString_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Device_ToString(PJRT_Device_ToString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_ToString_Args", PJRT_Device_ToString_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->to_string = args->device->device->ToString().data();
+  args->to_string_size = args->device->device->ToString().size();
+  return nullptr;
+}
+
 // ------------------------------- Executables ---------------------------------
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args) {
