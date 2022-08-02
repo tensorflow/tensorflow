@@ -38,7 +38,6 @@
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -64,9 +63,13 @@
 namespace tensorflow {
 
 using mlir::ArrayRef;
+using mlir::FloatType;
 using mlir::Operation;
 using mlir::SmallVector;
 using mlir::Value;
+using mlir::arith::ConstantFloatOp;
+using mlir::arith::ConstantIntOp;
+using mlir::arith::ConstantOp;
 using mlir::memref::GetGlobalOp;
 using xla::gpu::DeviceToDeviceCopyThunk;
 using xla::gpu::IrEmitterContext;
@@ -77,6 +80,28 @@ using xla::gpu::ThunkSequence;
 using ConstantInfo = xla::gpu::GpuExecutable::ConstantInfo;
 
 namespace {
+
+mlir::Value MakeBitPatternConstant(mlir::OpBuilder& builder, mlir::Location loc,
+                                   mlir::Type type, uint32_t bit_pattern) {
+  // In XLA a 1-byte bit pattern copied to fill a 32-byte word when
+  // `Memset32BitValueThunk` is constructed, so to get back an `i1` constant we
+  // only need to check if any bit is set to `1`.
+  if (type.isInteger(1)) {
+    return builder.create<ConstantOp>(loc, builder.getBoolAttr(bit_pattern));
+  }
+
+  if (type.isInteger(32)) {
+    llvm::APInt i32(32, bit_pattern);
+    return builder.create<ConstantIntOp>(loc, i32.getSExtValue(), type);
+  }
+
+  if (type.isF32()) {
+    llvm::APFloat f32(llvm::APInt(32, bit_pattern).bitsToFloat());
+    return builder.create<ConstantFloatOp>(loc, f32, type.cast<FloatType>());
+  }
+
+  llvm_unreachable("unsupported type");
+}
 
 // Replaces lmhlo ops within a module with gpu.launch_func and gpu.memcpy ops.
 struct KernelOpsPattern : mlir::OpRewritePattern<mlir::ModuleOp> {

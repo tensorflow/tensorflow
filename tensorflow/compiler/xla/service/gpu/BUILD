@@ -39,7 +39,6 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -571,51 +570,6 @@ bool_flag(
 config_setting(
     name = "is_xlir_enabled",
     flag_values = {":enable_xlir": "True"},
-)
-
-gentbl_cc_library(
-    name = "xlir_opdefs_inc_gen",
-    tags = ["manual"],
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "xlir_opdefs.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "xlir_opdefs.cpp.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "xlir_ops.td",
-    visibility = ["//visibility:private"],
-    deps = [
-        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
-        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
-        "@tf_runtime//:OpBaseTdFiles",
-        "@tf_runtime//backends/gpu:GpuOpBaseTdFile",
-    ],
-)
-
-cc_library(
-    name = "xlir_opdefs",
-    srcs = ["xlir_ops.cc"],
-    hdrs = ["xlir_ops.h"],
-    tags = ["manual"],
-    deps = [
-        ":gpu_executable_run_options",
-        ":io_feed_manager",
-        ":xlir_opdefs_inc_gen",
-        "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:InferTypeOpInterface",
-        "@llvm-project//mlir:SideEffectInterfaces",
-        "@tf_runtime//:basic_kernels_opdefs",
-        "@tf_runtime//:tensor_opdefs",
-        "@tf_runtime//backends/gpu:gpu_opdefs",
-        "@tf_runtime//backends/gpu:gpu_wrapper",
-    ],
 )
 
 # copybara:uncomment_begin
