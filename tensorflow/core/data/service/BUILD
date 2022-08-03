@@ -336,7 +336,6 @@ cc_library(
         ":dispatcher_proto_cc",
         ":grpc_util",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",
