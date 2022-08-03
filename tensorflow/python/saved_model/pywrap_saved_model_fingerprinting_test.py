@@ -36,6 +36,7 @@ class FingerprintingTest(test.TestCase):
     self.assertGreater(fingerprint_def.graph_def_checksum, 0)
     self.assertEqual(fingerprint_def.graph_def_program_hash,
                      13188891313422428336)
+    self.assertEqual(fingerprint_def.signature_def_hash, 5693392539583495303)
 
 
 if __name__ == "__main__":

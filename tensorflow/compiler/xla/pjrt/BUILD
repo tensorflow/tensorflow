@@ -579,6 +579,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "tfrt_cpu_pjrt_client_test",
+    srcs = ["tfrt_cpu_pjrt_client_test.cc"],
+    deps = [
+        ":tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla/service:custom_call_status_public_headers",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "lru_cache",
     hdrs = ["lru_cache.h"],

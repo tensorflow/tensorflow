@@ -62,6 +62,7 @@ struct PJRT_Executable {
 
 struct PJRT_Buffer {
   std::unique_ptr<xla::PjRtBuffer> buffer;
+  PJRT_Client* client;
 };
 
 namespace pjrt {
@@ -88,6 +89,7 @@ PJRT_Error* PJRT_Device_Attributes(PJRT_Device_Attributes_Args* args);
 PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args);
 PJRT_Error* PJRT_Device_LocalHardwareId(PJRT_Device_LocalHardwareId_Args* args);
 PJRT_Error* PJRT_Device_DebugString(PJRT_Device_DebugString_Args* args);
+PJRT_Error* PJRT_Device_ToString(PJRT_Device_ToString_Args* args);
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
@@ -101,6 +103,7 @@ PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
     PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
     PJRT_Buffer_OnDeviceSizeInBytes_Args* args);
+PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args);
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args);

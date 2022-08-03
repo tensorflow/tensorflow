@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -249,8 +250,14 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   for (auto gpuModuleOp : moduleOp.getBodyRegion().getOps<gpu::GPUModuleOp>()) {
     StringAttr symbol =
         symbolTable.insert(rewriter.clone(*gpuModuleOp.getOperation()));
-    if (failed(symbolTable.replaceAllSymbolUses(gpuModuleOp, symbol, funcOp)))
-      return rewriter.notifyMatchFailure(fusionOp, "failed to replace symbol");
+    if (symbol == gpuModuleOp.getNameAttr()) {
+      continue;
+    }
+    // gpu.module name changed, update symbol uses in gpu.launch_func.
+    funcOp->walk([&](gpu::LaunchFuncOp launch) {
+      launch.kernelAttr(
+          SymbolRefAttr::get(symbol, launch.kernel().getNestedReferences()));
+    });
   }
   // Add 'gpu.container_module' attribute to parent module.
   fusionOp->getParentOfType<ModuleOp>()->setAttr(

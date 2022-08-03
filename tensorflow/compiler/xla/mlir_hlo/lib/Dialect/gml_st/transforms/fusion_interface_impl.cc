@@ -79,7 +79,7 @@ struct LinalgGenericFusionInterface
 
       // Transpose operand subset if needed.
       if (!map.isIdentity()) {
-        unsigned int rank = map.getNumResults();
+        const unsigned int rank = map.getNumResults();
         SmallVector<int64_t> permutation;
         permutation.reserve(rank);
         for (int i = 0; i < static_cast<int>(rank); ++i) {
@@ -95,16 +95,16 @@ struct LinalgGenericFusionInterface
           builder.create<MaterializeOp>(loc, operand, operandSubset));
     }
 
-    Type subsetTy = subset.getType();
+    // Materialize the tiled output.
+    Value output = genericOp.outputs().front();
+    subOperands.push_back(builder.create<MaterializeOp>(loc, output, subset));
+
+    const Type subsetTy = subset.getType();
     return llvm::TypeSwitch<Type, Value>(subsetTy)
         .Case([&](TileType tileTy) -> Value {
-          Value output = genericOp.outputs().front();
           auto outputTy = output.getType().cast<RankedTensorType>();
           auto subResultTy = RankedTensorType::get(tileTy.getShape(),
                                                    outputTy.getElementType());
-          // Materialize the tiled output.
-          subOperands.push_back(
-              builder.create<MaterializeOp>(loc, output, subset));
 
           // Materialize tiled `linalg.generic` op.
           linalg::LinalgOp linalgOp = genericOp;

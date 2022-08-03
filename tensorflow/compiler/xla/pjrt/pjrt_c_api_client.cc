@@ -271,7 +271,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::WrapBuffer(
     StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtCApiBuffer>(
-      this, new PJRT_Buffer{std::move(buffer)}));
+      this, new PJRT_Buffer{std::move(buffer), pjrt_c_client()}));
 }
 
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
@@ -387,6 +387,17 @@ absl::string_view PjRtCApiDevice::DebugString() const {
   pjrt::LogFatalIfPjrtError(c_api->PJRT_Device_DebugString(&args), c_api);
   absl::string_view debug_string(args.debug_string, args.debug_string_size);
   return debug_string;
+}
+
+absl::string_view PjRtCApiDevice::ToString() const {
+  PJRT_Device_ToString_Args args;
+  args.struct_size = PJRT_Device_ToString_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  const PJRT_Api* c_api = client_->pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(c_api->PJRT_Device_ToString(&args), c_api);
+  absl::string_view to_string(args.to_string, args.to_string_size);
+  return to_string;
 }
 
 // ------------------------------- Executables ---------------------------------
@@ -551,7 +562,7 @@ PjRtCApiExecutable::ExecuteSharded(
 
   for (std::unique_ptr<PjRtBuffer>& buffer : out) {
     buffer = std::make_unique<PjRtCApiBuffer>(
-        client_, new PJRT_Buffer{std::move(buffer)});
+        client_, new PJRT_Buffer{std::move(buffer), client_->pjrt_c_client()});
   }
   return out;
 }
@@ -571,7 +582,7 @@ PjRtCApiExecutable::ExecutePortable(
 
   for (std::unique_ptr<PjRtBuffer>& buffer : out) {
     buffer = std::make_unique<PjRtCApiBuffer>(
-        client_, new PJRT_Buffer{std::move(buffer)});
+        client_, new PJRT_Buffer{std::move(buffer), client_->pjrt_c_client()});
   }
   return out;
 }
@@ -685,6 +696,16 @@ StatusOr<size_t> PjRtCApiBuffer::GetOnDeviceSizeInBytes() const {
       client_->pjrt_c_api());
 
   return args.on_device_size_in_bytes;
+}
+
+PjRtDevice* PjRtCApiBuffer::device() const {
+  PJRT_Buffer_Device_Args args;
+  args.struct_size = PJRT_Buffer_Device_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_;
+  const PJRT_Api* api = pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_Device(&args), api);
+  return client_->GetCppDevice(args.device);
 }
 
 void PjRtCApiBuffer::Delete() {

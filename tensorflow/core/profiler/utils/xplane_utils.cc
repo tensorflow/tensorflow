@@ -105,6 +105,9 @@ void CopyEventMetadata(const XEventMetadata& src_event_metadata,
       !src_event_metadata.display_name().empty()) {
     dst_event_metadata.set_display_name(src_event_metadata.display_name());
   }
+  if (dst_event_metadata.name().empty() && !src_event_metadata.name().empty()) {
+    dst_event_metadata.set_name(src_event_metadata.name());
+  }
   if (dst_event_metadata.metadata().empty() &&
       !src_event_metadata.metadata().empty()) {
     dst_event_metadata.set_metadata(src_event_metadata.metadata());

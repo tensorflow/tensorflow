@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_FALLBACK_COST_RECORDER_H_
 #define TENSORFLOW_CORE_TFRT_FALLBACK_COST_RECORDER_H_
 
-#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -41,7 +40,7 @@ class CostRecorder : public tfrt::SharedContext {
   void RecordCost(absl::string_view op_name, const uint64_t execution_time);
 
   size_t size();
-  Status WriteToFile(const std::string& file_path);
+  Status WriteToFile();
 
  private:
   tensorflow::mutex op_cost_map_mutex_;

@@ -70,6 +70,7 @@ TEST(FingerprintingTest, TestCreateFingerprint) {
       CreateFingerprintDef(saved_model_pb.meta_graphs(0));
 
   EXPECT_GT(fingerprint_def.graph_def_checksum(), 0);
+  EXPECT_EQ(fingerprint_def.signature_def_hash(), 5693392539583495303);
 }
 
 // Test that canonicalization returns the same hash for two models saved by
@@ -121,6 +122,8 @@ TEST(FingerprintingTest, TestCompareFingerprintForTwoModelSavedTwice) {
 
   EXPECT_EQ(fingerprint_def.graph_def_program_hash(),
             fingerprint_def2.graph_def_program_hash());
+  EXPECT_EQ(fingerprint_def.signature_def_hash(),
+            fingerprint_def2.signature_def_hash());
 }
 
 TEST(FingerprintingTest, TestFingerprintComputationDoesNotMutateModel) {

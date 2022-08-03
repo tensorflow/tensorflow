@@ -60,6 +60,44 @@ func.func @dynamic_broadcast_in_dim_with_known_expanding(%arg : tensor<?x?x?xf32
   func.return %0 : tensor<?x?x?x?xf32>
 }
 
+// CHECK-LABEL: @concatenate
+// CHECK-SAME:  %[[A:.*]]: tensor<?x?xi32>, %[[B:.*]]: tensor<?x?xi32>, %[[C:.*]]: tensor<?x?xi32>
+func.func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>) -> tensor<?x?xi32> {
+  // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+  // CHECK-DAG:  %[[D0:.*]] = tensor.dim %[[A]], %[[C0]]
+  // CHECK-DAG:  %[[CONCAT_DIM_A:.*]] = tensor.dim %[[A]], %[[C1]]
+  // CHECK-DAG:  %[[CONCAT_DIM_B:.*]] = tensor.dim %[[B]], %[[C1]]
+  // CHECK-DAG:  %[[CONCAT_DIM_C:.*]] = tensor.dim %[[C]], %[[C1]]
+  // CHECK-DAG:  %[[CONCAT_DIM_AB:.*]] = arith.addi %[[CONCAT_DIM_A]], %[[CONCAT_DIM_B]]
+  // CHECK-DAG:  %[[CONCAT_DIM_ABC:.*]] = arith.addi %[[CONCAT_DIM_AB]], %[[CONCAT_DIM_C]]
+  // CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[CONCAT_DIM_ABC]]]
+  // CHECK:      %[[CONCATENATE:.*]] = gml_st.concatenate
+  // CHECK-SAME:     ins(%[[A]] : tensor<?x?xi32>, %[[B]] : tensor<?x?xi32>, %[[C]] : tensor<?x?xi32>)
+  // CHECK-SAME:     outs(%[[INIT]] : tensor<?x?xi32>)
+  // CHECK-SAME:     {dimension = 1 : i64}
+  // CHECK:      return %[[CONCATENATE]]
+  %concat = "mhlo.concatenate"(%a, %b, %c) { dimension = 1 } : (tensor<?x?xi32>, tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+  func.return %concat : tensor<?x?xi32>
+}
+
+// CHECK-LABEL: @concatenate_with_static_info
+// CHECK-SAME:  %[[A:.*]]: tensor<?x32xi32>, %[[B:.*]]: tensor<64x16xi32>, %[[C:.*]]: tensor<?x?xi32>
+func.func @concatenate_with_static_info(%a: tensor<?x32xi32>, %b: tensor<64x16xi32>, %c: tensor<?x?xi32>) -> tensor<64x?xi32> {
+  // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+  // CHECK-DAG:  %[[C48:.*]] = arith.constant 48
+  // CHECK-DAG:  %[[CONCAT_DIM_C:.*]] = tensor.dim %[[C]], %[[C1]]
+  // CHECK-DAG:  %[[CONCAT_DIM_SUM:.*]] = arith.addi %[[CONCAT_DIM_C]], %[[C48]]
+  // CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [64, %[[CONCAT_DIM_SUM]]]
+  // CHECK:      %[[CONCAT:.*]] = gml_st.concatenate
+  // CHECK-SAME:     ins(%[[A]] : tensor<?x32xi32>, %[[B]] : tensor<64x16xi32>, %[[C]] : tensor<?x?xi32>)
+  // CHECK-SAME:     outs(%[[INIT]] : tensor<64x?xi32>)
+  // CHECK-SAME:     {dimension = 1 : i64}
+  // CHECK:      return %[[CONCAT]]
+  %concat = "mhlo.concatenate"(%a, %b, %c) { dimension = 1 } : (tensor<?x32xi32>, tensor<64x16xi32>, tensor<?x?xi32>) -> tensor<64x?xi32>
+  func.return %concat : tensor<64x?xi32>
+}
+
 func.func @simple_gather(%operand : tensor<3x3xf32>,
                          %indices: tensor<3x2xi64>) -> tensor<3xf32> {
   %0 = "mhlo.gather"(%operand, %indices) {

@@ -37,6 +37,9 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+using ::testing::Property;
+using ::testing::UnorderedElementsAre;
+
 static constexpr char kXPlanePb[] = "xplane.pb";
 
 TEST(ConvertXPlaneToOpStats, GpuPerfEnv) {
@@ -405,6 +408,53 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
       op_stats.device_op_metrics_db().precision_stats();
   EXPECT_EQ(precision_stats.compute_16bit_ps(), 0);
   EXPECT_EQ(precision_stats.compute_32bit_ps(), 40);
+}
+
+TEST(ConvertXPlaneToOpStats, TpuDeviceTraceToStepDb) {
+  XSpace space;
+  constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
+  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
+  XPlaneBuilder xplane_builder(
+      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4"));
+
+  xplane_builder.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata("peak_teraflops_per_second"),
+      kDevCapPeakTeraflopsPerSecond);
+  xplane_builder.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
+                                  "peak_hbm_bw_gigabytes_per_second"),
+                              kDevCapPeakHbmBwGigabytesPerSecond);
+
+  XEventMetadata* event_metadata = xplane_builder.GetOrCreateEventMetadata(1);
+  event_metadata->set_name("op_name");
+  XStatsBuilder<XEventMetadata> stats(event_metadata, &xplane_builder);
+
+  stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
+                         GetStatTypeStr(StatType::kProgramId)),
+                     1);
+  stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
+                         GetStatTypeStr(StatType::kSymbolId)),
+                     1);
+  stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
+                         GetStatTypeStr(StatType::kSelfDurationPs)),
+                     10);
+  stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
+                         GetStatTypeStr(StatType::kTfOpName)),
+                     "tf_op_name");
+  stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
+                         GetStatTypeStr(StatType::kHloCategory)),
+                     "category");
+  XLineBuilder line = xplane_builder.GetOrCreateLine(1);
+  line.SetName(kTensorFlowOpLineName);
+  XEventBuilder event = line.AddEvent(*event_metadata);
+  event.SetOffsetNs(0);
+  event.SetDurationNs(10);
+
+  OpStatsOptions options;
+  options.generate_op_metrics_db = true;
+  OpStats op_stats = ConvertXSpaceToOpStats(space, options);
+  EXPECT_THAT(op_stats.device_op_metrics_db().metrics_db(),
+              UnorderedElementsAre(Property(&OpMetrics::name, "op_name"),
+                                   Property(&OpMetrics::name, "IDLE")));
 }
 
 }  // namespace

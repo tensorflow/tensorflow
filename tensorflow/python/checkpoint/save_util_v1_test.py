@@ -15,7 +15,7 @@
 """Tests for the checkpoint/util.py."""
 
 from tensorflow.python.checkpoint import graph_view
-from tensorflow.python.checkpoint import util
+from tensorflow.python.checkpoint import save_util_v1
 from tensorflow.python.eager import test
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import registration
@@ -34,14 +34,15 @@ registration.register_checkpoint_saver(
     restore_fn=lambda trackables, merged_prefix: None)
 
 
-class UtilTest(test.TestCase):
+class SerializationTest(test.TestCase):
 
   def test_serialize_gathered_objects(self):
     root = autotrackable.AutoTrackable()
     root.v = variables.Variable(1.0)
     root.registered = TrackableWithRegisteredSaver()
     named_saveable_objects, _, _, registered_savers = (
-        util.serialize_gathered_objects(graph_view.ObjectGraphView(root)))
+        save_util_v1.serialize_gathered_objects(
+            graph_view.ObjectGraphView(root)))
 
     self.assertLen(named_saveable_objects, 1)
     self.assertIs(named_saveable_objects[0].op, root.v)
@@ -61,8 +62,8 @@ class UtilTest(test.TestCase):
     object_map[root.v] = copy_of_v
 
     named_saveable_objects, _, _, registered_savers = (
-        util.serialize_gathered_objects(graph_view.ObjectGraphView(root),
-                                        object_map))
+        save_util_v1.serialize_gathered_objects(
+            graph_view.ObjectGraphView(root), object_map))
 
     self.assertLen(named_saveable_objects, 1)
     self.assertIsNot(named_saveable_objects[0].op, root.v)

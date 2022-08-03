@@ -153,9 +153,11 @@ def _variable_handle_from_shape_and_dtype(shape,
   dtype = dtypes.as_dtype(dtype)
   if not graph_mode:
     if shared_name is not None:
-      raise errors.InternalError(  # pylint: disable=no-value-for-parameter
-          "Using an explicit shared_name is not allowed when executing eagerly."
-      )
+      raise errors.InternalError(
+          node_def=None,
+          op=None,
+          message="Using an explicit shared_name is "
+          "not allowed when executing eagerly.")
     shared_name = context.anonymous_name()
 
   handle = gen_resource_variable_ops.var_handle_op(
@@ -1653,8 +1655,10 @@ class ResourceVariable(BaseResourceVariable):
         raise ValueError(f"Creating a `tf.Variable` with a `variable_def` arg "
                          f"is not supported when eager execution is enabled. "
                          f"Got: variable_def={variable_def}")
-      self._init_from_proto(variable_def, import_scope=import_scope,
-                            validate_shape=validate_shape)
+      self._init_from_proto(
+          variable_def,
+          import_scope=import_scope,
+          validate_shape=validate_shape)
     else:
       self._init_from_args(
           initial_value=initial_value,
@@ -1671,20 +1675,21 @@ class ResourceVariable(BaseResourceVariable):
           validate_shape=validate_shape,
       )
 
-  def _init_from_args(self,
-                      initial_value=None,
-                      trainable=None,
-                      collections=None,
-                      caching_device=None,
-                      name=None,
-                      dtype=None,
-                      constraint=None,
-                      synchronization=None,
-                      aggregation=None,
-                      distribute_strategy=None,
-                      shape=None,
-                      validate_shape=True,
-                      ):
+  def _init_from_args(
+      self,
+      initial_value=None,
+      trainable=None,
+      collections=None,
+      caching_device=None,
+      name=None,
+      dtype=None,
+      constraint=None,
+      synchronization=None,
+      aggregation=None,
+      distribute_strategy=None,
+      shape=None,
+      validate_shape=True,
+  ):
     """Creates a variable.
 
     Args:
@@ -1928,7 +1933,9 @@ class ResourceVariable(BaseResourceVariable):
           validate_shape=validate_shape,
       )
 
-  def _init_from_proto(self, variable_def, import_scope=None,
+  def _init_from_proto(self,
+                       variable_def,
+                       import_scope=None,
                        validate_shape=True):
     """Initializes from `VariableDef` proto."""
     # Note that init_from_proto is currently not supported in Eager mode.
@@ -2360,10 +2367,7 @@ class VariableSpec(tensor_spec.DenseSpec):
 
   value_type = property(lambda self: BaseResourceVariable)
 
-  def __init__(self,
-               shape,
-               dtype=dtypes.float32,
-               trainable=True):
+  def __init__(self, shape, dtype=dtypes.float32, trainable=True):
     super(VariableSpec, self).__init__(shape, dtype=dtype)
     self.trainable = trainable
 
@@ -2375,10 +2379,7 @@ class VariableSpec(tensor_spec.DenseSpec):
 
   @classmethod
   def from_value(cls, value):
-    return cls(
-        value.shape,
-        dtype=value.dtype,
-        trainable=value.trainable)
+    return cls(value.shape, dtype=value.dtype, trainable=value.trainable)
 
   def _to_components(self, value):
     return value.handle
@@ -2412,10 +2413,9 @@ class VariableSpec(tensor_spec.DenseSpec):
     return hash((self.shape, self.dtype, self.trainable))
 
   def __eq__(self, other):
-    return (type(self) is type(other) and
-            self.shape == other.shape and
-            self.dtype == other.dtype and
-            self.trainable == other.trainable)
+    return (type(self) is type(other) and self.shape == other.shape and
+            self.dtype == other.dtype and self.trainable == other.trainable)
+
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
 

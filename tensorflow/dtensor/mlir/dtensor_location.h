@@ -30,10 +30,10 @@ namespace tensorflow {
 namespace dtensor {
 
 mlir::Location DTensorLocation(mlir::Location loc, llvm::StringRef file,
-                               unsigned int line);
+                               unsigned int line, llvm::StringRef name = "");
 
 mlir::Location DTensorLocation(mlir::Operation* op, llvm::StringRef file,
-                               unsigned int line);
+                               unsigned int line, llvm::StringRef name = "");
 
 // Creates a string from a location of the following format:
 //    >> pass_file_1:line1:col1
@@ -50,7 +50,12 @@ std::string DTensorLocationToString(mlir::Location loc);
 }  // namespace dtensor
 }  // namespace tensorflow
 
+// Creates a location, reusing the current name scope.
 #define DT_LOC(loc) \
   ::tensorflow::dtensor::DTensorLocation(loc, __FILE__, __LINE__)
+
+// Creates a location, recording a new nested name scope.
+#define DT_LOC2(loc, name) \
+  ::tensorflow::dtensor::DTensorLocation(loc, __FILE__, __LINE__, name)
 
 #endif  // TENSORFLOW_DTENSOR_MLIR_DTENSOR_LOCATION_H_

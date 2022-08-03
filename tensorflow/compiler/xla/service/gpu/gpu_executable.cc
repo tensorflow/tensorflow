@@ -615,7 +615,7 @@ static Status ExecuteJitRt(const std::string& module_name,
   }
 
   // JitRt executables do not return any values.
-  jitrt::NoOpReturnValueConverter converter;
+  jitrt::NoResultConverter converter;
 
   // Prepare options for executing JitRt program.
   jitrt::Executable::ExecuteOpts opts;

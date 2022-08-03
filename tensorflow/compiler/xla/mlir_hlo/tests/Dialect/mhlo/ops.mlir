@@ -656,6 +656,14 @@ func.func @concat_0D(%arg0: tensor<i32>, %arg1: tensor<i32>)  -> tensor<2xi32> {
 
 // -----
 
+func.func @concat_no_operands()  -> tensor<2xi32> {
+  // expected-error@+1 {{expected 1 or more operands, but found 0}}
+  %0 = "mhlo.concatenate"() { dimension = 0 : i64 } : () -> tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: @concat_1D
 func.func @concat_1D(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>

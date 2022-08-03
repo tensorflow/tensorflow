@@ -28,6 +28,9 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/macros.h"
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+#include "tensorflow/lite/tensorflow_profiler_logger.h"
+#endif  // TF_LITE_TENSORFLOW_PROFILER
 
 namespace {
 
@@ -40,6 +43,16 @@ T AlignTo(size_t alignment, T offset) {
 }  // namespace
 
 namespace tflite {
+
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+SimpleMemoryArena::~SimpleMemoryArena() {
+  if (underlying_buffer_size_) {
+    OnTfLiteArenaDealloc(subgraph_index_, reinterpret_cast<std::intptr_t>(this),
+                         underlying_buffer_size_);
+  }
+}
+#endif
+
 TfLiteStatus SimpleMemoryArena::Allocate(
     TfLiteContext* context, size_t alignment, size_t size, int32_t tensor,
     int32_t first_node, int32_t last_node,
@@ -114,6 +127,10 @@ TfLiteStatus SimpleMemoryArena::Deallocate(
 TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context) {
   size_t required_size = RequiredBufferSize();
   if (required_size > underlying_buffer_size_) {
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    OnTfLiteArenaAlloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
+                       required_size);
+#endif
     char* new_alloc = new char[required_size];
     char* new_underlying_buffer_aligned_ptr = reinterpret_cast<char*>(
         AlignTo(arena_alignment_, reinterpret_cast<intptr_t>(new_alloc)));
@@ -130,6 +147,11 @@ TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context) {
              copy_amount);
     }
 
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    OnTfLiteArenaDealloc(subgraph_index_,
+                         reinterpret_cast<std::uintptr_t>(this),
+                         underlying_buffer_size_);
+#endif
     underlying_buffer_.reset(new_alloc);
     underlying_buffer_size_ = required_size;
     underlying_buffer_aligned_ptr_ = new_underlying_buffer_aligned_ptr;
@@ -162,6 +184,10 @@ TfLiteStatus SimpleMemoryArena::ClearPlan() {
 
 TfLiteStatus SimpleMemoryArena::ReleaseBuffer() {
   committed_ = false;
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  OnTfLiteArenaDealloc(subgraph_index_, reinterpret_cast<std::uintptr_t>(this),
+                       underlying_buffer_size_);
+#endif
   underlying_buffer_size_ = 0;
   underlying_buffer_aligned_ptr_ = nullptr;
   underlying_buffer_.reset();

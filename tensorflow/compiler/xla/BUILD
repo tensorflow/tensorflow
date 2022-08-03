@@ -18,12 +18,13 @@ package_group(
     name = "friends",
     includes = ["//tensorflow:internal"],
     packages = [
-        "//tensorflow/compiler/...",
-        "//tensorflow/python/tpu/...",
+        # copybara:uncomment "//learning/infra/mira/...",
         "//third_party/auroraml/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
+        "//tensorflow/compiler/...",
+        "//tensorflow/python/tpu/...",
     ],
 )
 

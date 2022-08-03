@@ -42,6 +42,74 @@ bool isIotaArray(llvm::ArrayRef<int64_t> array, int expectedSize = -1) {
   return true;
 }
 
+struct ConcatenateOpPattern : public OpRewritePattern<mhlo::ConcatenateOp> {
+  using OpRewritePattern<mhlo::ConcatenateOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::ConcatenateOp op,
+                                PatternRewriter& rewriter) const override {
+    const uint64_t concatDim = op.dimension();
+    const Location loc = op.getLoc();
+    const Value anyOperand = op.val().front();
+
+    auto resultTy = op.getResult().getType().cast<RankedTensorType>();
+    const ArrayRef<int64_t> resultShape = resultTy.getShape();
+    const int64_t rank = resultTy.getRank();
+
+    // Determine init tensor size.
+    SmallVector<int64_t> staticInitSizes(resultShape.begin(),
+                                         resultShape.end());
+    SmallVector<Value> dynamicInitSizes;
+    for (int64_t i = 0; i < rank; ++i) {
+      // No need to materialize anything for static dimensions.
+      if (staticInitSizes[i] != ShapedType::kDynamicSize) {
+        continue;
+      }
+
+      // For all dimensions other than the concatenation dimension, we can copy
+      // the size from any operand.
+      if (i != concatDim) {
+        dynamicInitSizes.push_back(
+            rewriter.create<tensor::DimOp>(loc, anyOperand, i));
+        continue;
+      }
+
+      // For the concatenation dimensions, sum up the sizes of all operands in
+      // that dimension.
+      int64_t staticSum = 0;
+      Value dynamicSum;
+      for (const Value operand : op.val()) {
+        auto operandTy = operand.getType().cast<RankedTensorType>();
+        if (operandTy.getDimSize(concatDim) == ShapedType::kDynamicSize) {
+          const Value dynamicSummand =
+              rewriter.create<tensor::DimOp>(loc, operand, concatDim);
+          if (dynamicSum) {
+            dynamicSum =
+                rewriter.create<arith::AddIOp>(loc, dynamicSum, dynamicSummand);
+          } else {
+            dynamicSum = dynamicSummand;
+          }
+        } else {
+          staticSum += operandTy.getDimSize(concatDim);
+        }
+      }
+      assert(dynamicSum && "expect at least one dynamic summand in this case");
+      if (staticSum != 0) {
+        dynamicSum = rewriter.create<arith::AddIOp>(
+            loc, dynamicSum,
+            rewriter.create<arith::ConstantIndexOp>(loc, staticSum));
+      }
+      dynamicInitSizes.push_back(dynamicSum);
+    }
+
+    // Create init tensor and the new concat op.
+    auto init = rewriter.create<linalg::InitTensorOp>(
+        loc, dynamicInitSizes, staticInitSizes, resultTy.getElementType());
+    rewriter.replaceOpWithNewOp<gml_st::ConcatenateOp>(op, resultTy, op.val(),
+                                                       init, concatDim);
+    return success();
+  }
+};
+
 struct DynamicBroadcastInDimOpPattern
     : public OpRewritePattern<mhlo::DynamicBroadcastInDimOp> {
   using OpRewritePattern<mhlo::DynamicBroadcastInDimOp>::OpRewritePattern;
@@ -227,9 +295,13 @@ class LegalizeMHLOToGMLPass
     RewritePatternSet patterns(ctx);
 
     // List of patterns.
-    patterns
-        .insert<DynamicBroadcastInDimOpPattern, GatherPattern, ScatterPattern>(
-            ctx);
+    // clang-format off
+    patterns.insert<
+        ConcatenateOpPattern,
+        DynamicBroadcastInDimOpPattern,
+        GatherPattern,
+        ScatterPattern>(ctx);
+    // clang-format on
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {

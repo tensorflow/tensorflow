@@ -178,6 +178,8 @@ This release contains contributions from many people at Google, as well as:
 
     *  Added `tf.train.TrackableView` which allows users to inspect the
        TensorFlow Trackable object (e.g. `tf.Module`, Keras Layers and models).
+    *  Added `tf.train.CheckpointView` which allows users to inspect SavedModel
+       objects and Checkpoint objects.
 
 *   `tf.vectorized_map`:
 

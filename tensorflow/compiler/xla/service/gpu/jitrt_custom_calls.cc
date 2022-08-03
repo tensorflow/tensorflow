@@ -68,6 +68,8 @@ TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
 namespace xla {
 namespace gpu {
 
+using Eigen::half;
+
 using llvm::ArrayRef;
 using llvm::Error;
 using llvm::Optional;
@@ -1018,20 +1020,40 @@ struct Memset {
 Error Memset::operator()(const ServiceExecutableRunOptions* run_options,
                          jitrt::FlatMemrefView dst,
                          CustomCall::VariantArg constant) const {
-  uint32_t pattern;
-  if (constant.isa<int32_t>())
-    pattern = *constant.get<int32_t>();
-  else if (constant.isa<float>())
-    pattern = reinterpret_cast<uint32_t&>(*constant.get<float>());
-  else
-    return MakeStringError("Unsupported memset value type");
-
   se::Stream* stream = run_options->stream();
+  se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
+
+  // If the constant is zero we can use memzero directly.
+  bool set_zero = false;
+
+  // Check all supported data types to see if we have a zero value.
+  if (auto i1 = constant.get<bool>(); succeeded(i1) && *i1 == false)
+    set_zero = true;
+  else if (auto i32 = constant.get<int32_t>(); succeeded(i32) && *i32 == 0)
+    set_zero = true;
+  else if (auto f16 = constant.get<half>(); succeeded(f16) && *f16 == half(0.0))
+    set_zero = true;
+  else if (auto f32 = constant.get<float>(); succeeded(f32) && *f32 == 0.0)
+    set_zero = true;
+
+  if (set_zero) {
+    stream->ThenMemZero(&dst_data, dst.size_in_bytes);
+    return Error::success();
+  }
+
+  // If the constant is not zero, use the given pattern to `memset`.
+  // TODO(ezhulenev): Support 16 and 8 bit patterns.
+  uint32_t pattern;
+  if (auto i32 = constant.get<int32_t>(); succeeded(i32))
+    pattern = *i32;
+  else if (auto f32 = constant.get<float>(); succeeded(f32))
+    pattern = reinterpret_cast<uint32_t&>(*f32);
+  else
+    return MakeStringError("Unsupported memset bit pattern type");
 
   if (dst.size_in_bytes % 4 != 0)
     return MakeStringError("Memref size is not divisible by 4");
 
-  se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
   stream->ThenMemset32(&dst_data, pattern, dst.size_in_bytes);
 
   return Error::success();
@@ -1343,13 +1365,20 @@ Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
   // Prepare pointers to buffers to pass to the Xla custom call handler.
   llvm::SmallVector<void*> buffers;
   for (unsigned i = 0; i < args.size(); ++i) {
-    auto memref = args.get<jitrt::FlatMemrefView>(i);
-    if (failed(memref))
-      return MakeStringError("Failed to get arguments as memref view");
-
     // We use zero-sized memrefs to represent holes in custom calls with target
     // arguments mapping (see `CustomCallTargetArgMapping`).
-    buffers.push_back(memref->size_in_bytes == 0 ? nullptr : memref->data);
+    if (auto memref = args.get<jitrt::FlatMemrefView>(i); succeeded(memref)) {
+      buffers.push_back(memref->size_in_bytes == 0 ? nullptr : memref->data);
+      continue;
+    }
+    if (auto strided = args.get<jitrt::StridedMemrefView>(i);
+        succeeded(strided)) {
+      int64_t size_in_bytes = GetHostSize(strided->dtype);
+      for (int64_t size : strided->sizes) size_in_bytes *= size;
+      buffers.push_back(size_in_bytes == 0 ? nullptr : strided->data);
+      continue;
+    }
+    return MakeStringError("Failed to get arguments as (strided) memref view");
   }
 
   // Original custom call API version that doesn't support returning status.

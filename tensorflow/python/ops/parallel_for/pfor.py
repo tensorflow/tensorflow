@@ -4272,7 +4272,7 @@ def _convert_tensor_scatter_update(pfor_input):
 
   # Tile the loop count range for the batch dimensions (all except the first and
   # last dimensions of indices).
-  # Rank(indices) >= 3 always for this function so we always have atleast 1.
+  # Rank(indices) >= 3 always for this function so we always have at least 1.
   tile_multiplier = array_ops.tensor_scatter_nd_update(
       indices_shape, [[0], [indices_rank - 1]], [1, 1])
   meta_index = array_ops.tile(loop_count, tile_multiplier)
