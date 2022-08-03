@@ -2988,6 +2988,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tensor_list_util",
+    srcs = ["tensor_list_util.cc"],
+    hdrs = ["tensor_list_util.h"],
+    deps = [
+        ":tensor_list",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_kernel_library(
     name = "list_kernels",
     srcs = ["list_kernels.cc"],
@@ -3000,6 +3011,7 @@ tf_kernel_library(
         ":concat_lib",
         ":fill_functor",
         ":tensor_list",
+        ":tensor_list_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor",
@@ -3566,7 +3578,18 @@ cc_library(
 tf_kernel_library(
     name = "aggregate_ops",
     prefix = "aggregate_ops",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + [":variant_ops_util"],
+)
+
+tf_kernel_library(
+    name = "variant_ops_util",
+    srcs = ["variant_ops_util.cc"],
+    hdrs = ["variant_ops_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
 )
 
 tf_kernel_library(
@@ -6381,6 +6404,8 @@ filegroup(
         "unpack_op.cc",
         "variable_ops.cc",
         "variable_ops.h",
+        "variant_ops_util.cc",
+        "variant_ops_util.h",
     ] + [
         "//tensorflow/c/kernels:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:non_max_suppression_op.cc",
@@ -6800,6 +6825,8 @@ filegroup(
         "tensor_array.cc",
         "tensor_array_ops.cc",
         "tensor_list.cc",
+        "tensor_list_util.cc",
+        "tensor_list_util.h",
         "tensor_map.cc",
         "tile_functor_cpu.h",
         "tile_functor_cpu_bfloat16.cc",

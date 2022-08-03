@@ -1445,6 +1445,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
               // contains dynamism indicators.
               return Literal::CreateFromProto(
                   root->literal().tuple_literals(1));
+            } else if (type == PostorderDFSNodeType::kValueIsDynamic) {
+              return CreatePredLiteral(true, Shape(root->shape()));
             } else {
               return Literal::CreateFromProto(root->literal());
             }

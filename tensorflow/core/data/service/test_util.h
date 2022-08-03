@@ -43,6 +43,10 @@ DatasetDef RangeSquareDataset(int64_t range);
 DatasetDef RangeDatasetWithShardHint(int64_t range);
 
 // Returns a test dataset representing
+// tf.data.Dataset.range(100000000).repeat().
+DatasetDef InfiniteDataset();
+
+// Returns a test dataset representing
 // tf.data.Dataset.from_tensor_slices(["filenames"]).interleave(
 //     lambda filepath: tf.data.TextLineDataset(filepath),
 //     cycle_length=10)

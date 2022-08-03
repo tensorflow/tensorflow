@@ -124,11 +124,17 @@ class OpConverterBase {
     return Status::OK();
   }
 
+  static constexpr bool HasFixNumberOfInputs() { return true; }
+
   // Validates input argument roles and data types.
   Status ValidateInputs() {
     const NodeDef& node_def = params_->node_def;
     const auto& inputs = params_->inputs;
-    TRT_ENSURE(inputs.size() == Impl::InputSpec().size());
+    if (Impl::HasFixNumberOfInputs()) {
+      TRT_ENSURE(inputs.size() == Impl::InputSpec().size());
+    } else {
+      TRT_ENSURE(inputs.size() <= Impl::InputSpec().size());
+    }
     for (int i = 0; i < inputs.size(); i++) {
       const InputArgSpec arg_spec = Impl::InputSpec()[i];
       if (arg_spec.allowed_roles == TrtInputArg::kWeight &&

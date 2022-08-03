@@ -30,6 +30,7 @@ namespace unsorted_segment {
 
 enum SegmentType {
   kSegmentMax,
+  kSegmentMin,
   kSegmentProd,
   kSegmentSum,
 };
@@ -104,6 +105,12 @@ struct SegmenMax {
 };
 
 template <typename T>
+struct SegmenMin {
+  inline T operator()(const T& a, const T& b) const { return std::min(a, b); }
+  static constexpr T kInitialValue = std::numeric_limits<T>::max();
+};
+
+template <typename T>
 struct SegmenProd {
   inline T operator()(const T& a, const T& b) const { return a * b; }
   static constexpr T kInitialValue = T(1);
@@ -135,6 +142,11 @@ TfLiteStatus EvalType(TfLiteContext* context, const RuntimeShape& input_shape,
       break;
     case kSegmentSum:
       reference_ops::UnsortedSegmentRef<T, SegmenSum>(
+          input_shape, input_data, segment_ids_shape, segment_ids_data,
+          output_shape, output_data);
+      break;
+    case kSegmentMin:
+      reference_ops::UnsortedSegmentRef<T, SegmenMin>(
           input_shape, input_data, segment_ids_shape, segment_ids_data,
           output_shape, output_data);
       break;
@@ -200,6 +212,9 @@ TfLiteStatus EvalMax(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   return EvalGeneric(context, node, kSegmentSum);
 }
+TfLiteStatus EvalMin(TfLiteContext* context, TfLiteNode* node) {
+  return EvalGeneric(context, node, kSegmentMin);
+}
 
 }  // namespace unsorted_segment
 
@@ -218,6 +233,12 @@ TfLiteRegistration* Register_UNSORTED_SEGMENT_MAX() {
 TfLiteRegistration* Register_UNSORTED_SEGMENT_SUM() {
   static TfLiteRegistration r = {nullptr, nullptr, unsorted_segment::Prepare,
                                  unsorted_segment::EvalSum};
+  return &r;
+}
+
+TfLiteRegistration* Register_UNSORTED_SEGMENT_MIN() {
+  static TfLiteRegistration r = {nullptr, nullptr, unsorted_segment::Prepare,
+                                 unsorted_segment::EvalMin};
   return &r;
 }
 

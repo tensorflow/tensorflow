@@ -953,6 +953,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
               << "Call should have 1 called computation but has "
               << proto.called_computation_ids_size();
         }
+        if (instruction->opcode() == HloOpcode::kWhile) {
+          TF_RET_CHECK(proto.called_computation_ids_size() == 2)
+              << "While should have 2 called computation but has "
+              << proto.called_computation_ids_size();
+        }
         for (const int64_t computation_id : proto.called_computation_ids()) {
           instruction->called_computations_.push_back(
               computation_map.at(computation_id));

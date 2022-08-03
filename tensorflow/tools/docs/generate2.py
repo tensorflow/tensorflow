@@ -200,7 +200,6 @@ def build_docs(output_dir, code_url_prefix, search_hints):
 
   if distutils.version.LooseVersion(tf.__version__) >= "2.9":
     doc_controls.set_deprecated(tf.compat.v1)
-    doc_controls.set_deprecated(tf.compat.v2)
     doc_controls.set_deprecated(tf.estimator)
     doc_controls.set_deprecated(tf.feature_column)
     doc_controls.set_deprecated(tf.keras.preprocessing)

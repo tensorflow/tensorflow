@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
+#include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
@@ -227,6 +228,17 @@ std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
     return ConvertMultiXSpacesToPodViewer(xspaces);
   } else if (tool_name == "tf_data_bottleneck_analysis") {
     return ConvertMultiXSpacesToTfDataBottleneckAnalysis(xspaces, filenames);
+  } else if (tool_name == "hlo_proto") {
+    // <hlo_proto> is a special tool name to generate HLO proto files from
+    // XSpace and store them in profile repository, this method does not return
+    // actual tool data.
+    auto status = GetHloProtoFromMultiXSpaceAndSaveToFile(xspaces, filenames);
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to convert XSpace to HLO proto: "
+                 << status.error_message();
+      return std::make_pair("", false);
+    }
+    return std::make_pair("", true);
   } else {
     LOG(WARNING) << "Can not find tool: " << tool_name << ". Please update to "
                  << "the latest version of Tensorflow.";

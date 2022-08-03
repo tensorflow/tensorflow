@@ -20,6 +20,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
@@ -822,9 +823,6 @@ absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op) {
   op->work_group_size_.y = fb_op->work_group_size()->y();
   op->work_group_size_.z = fb_op->work_group_size()->z();
   op->tensor_to_grid_ = ToEnum(fb_op->tensor_to_grid());
-  op->elementwise_ = fb_op->elementwise();
-  op->linkable_ = fb_op->linkable();
-  op->check_src_channels_size_ = fb_op->check_src_channels_size();
   op->flops_ = fb_op->flops();
   Decode(fb_op->definition(), &op->definition_);
   op->grid_dimension_ = fb_op->grid_dimension();
@@ -845,7 +843,6 @@ absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op) {
   op->work_groups_count_.x = fb_op->work_groups_count()->x();
   op->work_groups_count_.y = fb_op->work_groups_count()->y();
   op->work_groups_count_.z = fb_op->work_groups_count()->z();
-  op->linkable_count_ = fb_op->linkable_count();
   op->CalculateConstArgsSize();
   return absl::OkStatus();
 }
@@ -879,9 +876,6 @@ flatbuffers::Offset<data::GPUOperation> Encode(
   op_builder.add_arguments(args_fb);
   op_builder.add_work_group_size(work_group_size_fb);
   op_builder.add_tensor_to_grid(ToFB(op.tensor_to_grid_));
-  op_builder.add_elementwise(op.elementwise_);
-  op_builder.add_linkable(op.linkable_);
-  op_builder.add_check_src_channels_size(op.check_src_channels_size_);
   op_builder.add_flops(op.flops_);
   op_builder.add_definition(def_fb);
   op_builder.add_grid_dimension(op.grid_dimension_);
@@ -890,7 +884,6 @@ flatbuffers::Offset<data::GPUOperation> Encode(
   op_builder.add_src_tensors_names(src_names_fb_vec);
   op_builder.add_dst_tensors_names(dst_names_fb_vec);
   op_builder.add_work_groups_count(work_groups_count_fb);
-  op_builder.add_linkable_count(op.linkable_count_);
   return op_builder.Finish();
 }
 

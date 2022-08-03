@@ -18,7 +18,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
+
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/statusor.h"
+// TODO(b/238999986): Remove this.
+#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 
 namespace pjrt {
 
@@ -69,7 +76,7 @@ void PJRT_Error_Message(PJRT_Error_Message_Args* args) {
     LOG(ERROR) << struct_size_check.error_message();
   }
   if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Error_Destroy_Args, error)) {
-    xla::Status* status = &args->error->status;
+    const xla::Status* status = &args->error->status;
     args->message = status->error_message().data();
     args->message_size = status->error_message().size();
   }
@@ -143,72 +150,6 @@ PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args) {
   return nullptr;
 }
 
-// --------------------------------- Devices -----------------------------------
-
-PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_Device_Id_Args",
-                                                PJRT_Device_Id_Args_STRUCT_SIZE,
-                                                args->struct_size));
-
-  args->id = args->device->device->id();
-  return nullptr;
-}
-
-PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_Device_ProcessIndex_Args",
-      PJRT_Device_ProcessIndex_Args_STRUCT_SIZE, args->struct_size));
-  args->process_index = args->device->device->process_index();
-  return nullptr;
-}
-
-PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_Device_IsAddressable_Args",
-      PJRT_Device_IsAddressable_Args_STRUCT_SIZE, args->struct_size));
-  args->is_addressable = args->device->device->IsAddressable();
-  return nullptr;
-}
-
-PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_Device_Kind_Args", PJRT_Device_Kind_Args_STRUCT_SIZE,
-      args->struct_size));
-
-  args->device_kind = args->device->device->device_kind().data();
-  args->device_kind_size = args->device->device->device_kind().size();
-  return nullptr;
-}
-
-PJRT_Error* PJRT_Device_LocalHardwareId(
-    PJRT_Device_LocalHardwareId_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_Device_LocalHardwareId_Args",
-      PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE, args->struct_size));
-  args->local_hardware_id = args->device->device->local_hardware_id();
-  return nullptr;
-}
-
-// ------------------------------- Executables ---------------------------------
-
-PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_Executable_Destroy_Args", PJRT_Executable_Destroy_Args_STRUCT_SIZE,
-      args->struct_size));
-  delete args->executable;
-  return nullptr;
-}
-
-PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_Executable_Name_Args", PJRT_Executable_Name_Args_STRUCT_SIZE,
-      args->struct_size));
-  absl::string_view executable_name = args->executable->executable->name();
-  args->executable_name = executable_name.data();
-  args->executable_name_size = executable_name.size();
-  return nullptr;
-}
-
 // Searches `device_list` for a PJRT_Device* that wraps a provided
 // `xla::PjRtDevice *` (`cpp_device`). If a match is found, that PJRT_Device* is
 // returned. Otherwise, returns nullptr.
@@ -247,6 +188,154 @@ static void PopulatePjrtExecutableAddressableDevices(
         << cpp_devices[i] << ")";
     exec_devices.push_back(device);
   }
+}
+
+static xla::StatusOr<xla::CompileOptions>
+ConvertCCompileOptionstoCppCompileOptions(PJRT_CompileOptions* c_option) {
+  xla::CompileOptions ret;
+  ret.parameter_is_tupled_arguments = c_option->parameter_is_tupled_arguments;
+  if (c_option->device_ordinal != -1) {
+    ret.executable_build_options.set_device_ordinal(c_option->device_ordinal);
+  }
+  ret.executable_build_options.set_num_replicas(c_option->num_replicas);
+  ret.executable_build_options.set_num_partitions(c_option->num_partitions);
+  ret.executable_build_options.set_use_spmd_partitioning(
+      c_option->use_spmd_partitioning);
+  ret.executable_build_options.set_allow_spmd_sharding_propagation_to_output(
+      c_option->allow_spmd_sharding_propagation_to_output);
+  if (c_option->device_assignment_size > 0) {
+    absl::string_view device_assignment_sv(c_option->device_assignment,
+                                           c_option->device_assignment_size);
+    std::string device_assignment_str(device_assignment_sv);
+    xla::DeviceAssignmentProto proto;
+    proto.ParseFromString(device_assignment_str);
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<xla::DeviceAssignment> device_assignment,
+        xla::DeviceAssignment::Deserialize(proto));
+    ret.executable_build_options.set_device_assignment(*device_assignment);
+  }
+  return ret;
+}
+
+PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_Compile_Args", PJRT_Client_Compile_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_CompileOptions",
+                                                PJRT_CompileOptions_STRUCT_SIZE,
+                                                args->options->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      xla::CompileOptions options,
+      ConvertCCompileOptionstoCppCompileOptions(args->options));
+  absl::string_view module_str(args->module, args->module_size);
+  mlir::MLIRContext context;
+  PJRT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                        xla::ParseMlirModuleString(module_str, context));
+
+  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                        args->client->client->Compile(*module, options));
+  // TODO(b/237545405): Implement creation methods for PJRT_Executable.
+  args->executable = new PJRT_Executable{std::move(executable), args->client};
+  PopulatePjrtExecutableAddressableDevices(args->executable);
+  args->executable->populated = true;
+  return nullptr;
+}
+
+// --------------------------------- Devices -----------------------------------
+
+PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_Device_Id_Args",
+                                                PJRT_Device_Id_Args_STRUCT_SIZE,
+                                                args->struct_size));
+
+  args->id = args->device->device->id();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_ProcessIndex_Args",
+      PJRT_Device_ProcessIndex_Args_STRUCT_SIZE, args->struct_size));
+  args->process_index = args->device->device->process_index();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_IsAddressable_Args",
+      PJRT_Device_IsAddressable_Args_STRUCT_SIZE, args->struct_size));
+  args->is_addressable = args->device->device->IsAddressable();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_Attributes(PJRT_Device_Attributes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_Attributes_Args", PJRT_Device_Attributes_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  // Returns the attributes that were initialized during PJRT_Device creation.
+  args->num_attributes = args->device->attributes.size();
+  args->attributes = args->device->attributes.data();
+
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_Kind_Args", PJRT_Device_Kind_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->device_kind = args->device->device->device_kind().data();
+  args->device_kind_size = args->device->device->device_kind().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_LocalHardwareId(
+    PJRT_Device_LocalHardwareId_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_LocalHardwareId_Args",
+      PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE, args->struct_size));
+  args->local_hardware_id = args->device->device->local_hardware_id();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_DebugString(PJRT_Device_DebugString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_DebugString_Args", PJRT_Device_DebugString_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->debug_string = args->device->device->DebugString().data();
+  args->debug_string_size = args->device->device->DebugString().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_ToString(PJRT_Device_ToString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_ToString_Args", PJRT_Device_ToString_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->to_string = args->device->device->ToString().data();
+  args->to_string_size = args->device->device->ToString().size();
+  return nullptr;
+}
+
+// ------------------------------- Executables ---------------------------------
+
+PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Destroy_Args", PJRT_Executable_Destroy_Args_STRUCT_SIZE,
+      args->struct_size));
+  delete args->executable;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Name_Args", PJRT_Executable_Name_Args_STRUCT_SIZE,
+      args->struct_size));
+  absl::string_view executable_name = args->executable->executable->name();
+  args->executable_name = executable_name.data();
+  args->executable_name_size = executable_name.size();
+  return nullptr;
 }
 
 PJRT_Error* PJRT_Executable_AddressableDevices(
@@ -322,14 +411,35 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
 
   for (int i = 0; i < cpp_buffer_lists.size(); ++i) {
     for (int j = 0; j < cpp_buffer_lists[i].size(); ++j) {
-      args->output_lists[i][j] =
-          new PJRT_Buffer{std::move(cpp_buffer_lists[i][j])};
+      args->output_lists[i][j] = new PJRT_Buffer{
+          std::move(cpp_buffer_lists[i][j]), args->executable->client};
     }
   }
   return nullptr;
 }
 
 // ---------------------------------- Buffers ----------------------------------
+// TODO(b/238999986): Replace this with decomposed shape methods.
+PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
+    PJRT_Buffer_OnDeviceTrimmedShape_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_OnDeviceTrimmedShape_Args",
+      PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE, args->struct_size));
+
+  const xla::Shape& shape = args->buffer->buffer->on_device_shape();
+  args->element_type = shape.element_type();
+  ApiConverter::CreateVector(shape.dimensions(), &args->dimensions);
+  ApiConverter::CreateVector(shape.dynamic_dimensions(),
+                             &args->dynamic_dimensions);
+
+  if (shape.has_layout()) {
+    ApiConverter::ToC(shape.layout(), &args->layout);
+  } else {
+    args->layout.format = xla::INVALID_FORMAT;
+  }
+
+  return nullptr;
+}
 
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
     PJRT_Buffer_OnDeviceSizeInBytes_Args* args) {
@@ -338,6 +448,19 @@ PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
       PJRT_Buffer_OnDeviceSizeInBytes_Args_STRUCT_SIZE, args->struct_size));
   PJRT_ASSIGN_OR_RETURN(args->on_device_size_in_bytes,
                         args->buffer->buffer->GetOnDeviceSizeInBytes());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_Device_Args", PJRT_Buffer_Device_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->device = FindDeviceWrapper(args->buffer->buffer->device(),
+                                   args->buffer->client->addressable_devices);
+  CHECK(args->device != nullptr)
+      << "No PJRT_Device* found in the client's `addressable_devices` that "
+         "wraps this "
+      << args->buffer->buffer->device()->DebugString();
   return nullptr;
 }
 
@@ -354,6 +477,18 @@ PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args) {
       "PJRT_Buffer_IsDeleted_Args", PJRT_Buffer_IsDeleted_Args_STRUCT_SIZE,
       args->struct_size));
   args->is_deleted = args->buffer->buffer->IsDeleted();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_CopyToDevice_Args",
+      PJRT_Buffer_CopyToDevice_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer> dst_buffer,
+      args->buffer->buffer->CopyToDevice(args->dst_device->device));
+  args->dst_buffer =
+      new PJRT_Buffer{std::move(dst_buffer), args->buffer->client};
   return nullptr;
 }
 

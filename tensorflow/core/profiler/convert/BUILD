@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_oss", "tf_cc_test")
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts", "tf_profiler_xla_proto_header")
 
 package(
     default_visibility = ["//tensorflow/core/profiler:internal"],
@@ -712,6 +712,7 @@ cc_library(
         ":op_stats_to_overview_page",
         ":op_stats_to_pod_viewer",
         ":op_stats_to_tf_stats",
+        ":xplane_to_hlo",
         ":xplane_to_memory_profile",
         ":xplane_to_op_stats",
         ":xplane_to_tf_data_stats",
@@ -819,6 +820,23 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+cc_library(
+    name = "xplane_to_hlo",
+    srcs = ["xplane_to_hlo.cc"],
+    hdrs = ["xplane_to_hlo.h"],
+    copts = tf_profiler_copts(),
+    deps = [
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:file_system_utils",
+        "//tensorflow/core/profiler/utils:hlo_proto_map",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+    ] + tf_profiler_xla_proto_header(),
 )
 
 cc_library(

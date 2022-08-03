@@ -7,6 +7,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
     "if_google",
+    "if_not_mobile",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -36,6 +37,7 @@ filegroup(
         "c_api_macros.h",
         "tensor_interface.h",
         "tf_attrtype.h",
+        "tf_buffer.h",
         "tf_datatype.h",
         "tf_file_statistics.h",
         "tf_status.h",
@@ -79,6 +81,7 @@ cc_library(
         "python_api.h",
         "tensor_interface.h",
         "tf_status_helper.h",
+        "tf_buffer_internal.h",
         "tf_status_internal.h",
         "tf_tensor_internal.h",
     ],
@@ -94,6 +97,7 @@ tf_cuda_library(
         "c_api.h",
         "c_api_internal.h",
         "c_api_macros.h",
+        "tf_buffer.h",
         "tf_datatype.h",
         "tf_tensor.h",
         "tf_tstring.h",
@@ -123,6 +127,7 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime:server_lib",
         ],
     }) + [
+        ":tf_buffer_internal",
         ":tf_status_internal",
         ":tf_tensor_internal",
     ],
@@ -165,6 +170,7 @@ tf_cuda_library(
     hdrs = [
         "c_api.h",
         "tf_attrtype.h",
+        "tf_buffer.h",
         "tf_datatype.h",
         "tf_file_statistics.h",
         "tf_status.h",
@@ -174,14 +180,15 @@ tf_cuda_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core/platform:tstring",
         ":c_api_no_xla",
         ":c_api_internal",
         ":tf_attrtype",
-        ":tf_status_internal",
+        ":tf_buffer",
         ":tf_file_statistics",
+        ":tf_status_internal",
         ":tf_tensor_internal",
         ":tf_tstring",
+        "//tensorflow/core/platform:tstring",
     ] + select({
         "//tensorflow:with_xla_support": [
             "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -218,6 +225,8 @@ tf_cuda_library(
         ":c_api_internal",
         ":tf_attrtype",
         ":tf_datatype",
+        ":tf_buffer",
+        ":tf_buffer_internal",
         ":tf_status_internal",
     ] + select({
         "//tensorflow:android": [
@@ -463,6 +472,44 @@ tf_cuda_library(
     }),
 )
 
+cc_library(
+    name = "tf_buffer",
+    srcs = [
+        "tf_buffer.cc",
+    ],
+    hdrs = [
+        "tf_buffer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tf_buffer_internal",
+        ":tf_status",
+        ":tf_tensor_internal",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:status",
+    ],
+)
+
+tf_cuda_library(
+    name = "tf_buffer_internal",
+    hdrs = [
+        "tf_buffer.h",
+        "tf_buffer_internal.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/c:__subpackages__",
+    ],
+    deps = [
+        ":tf_status",
+        ":tf_tensor_internal",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:status",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_experimental",
     srcs = [
@@ -477,6 +524,8 @@ tf_cuda_library(
         ":c_api",
         ":c_api_internal",
         ":checkpoint_reader",
+        ":tf_buffer",
+        ":tf_buffer_internal",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tfe_context_internal",
@@ -615,6 +664,8 @@ tf_cuda_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":tf_buffer",
+        ":tf_buffer_internal",
         ":tf_status",
         ":tf_status_helper",
         ":tf_tensor_internal",
@@ -630,6 +681,7 @@ tf_cuda_library(
             "//tensorflow/stream_executor:stream",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
+            "//tensorflow/core:protos_all_cc",
             "//tensorflow/c/experimental/stream_executor:stream_executor",
             "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         ],
@@ -659,7 +711,13 @@ tf_cuda_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:refcount",
-    ],
+    ] + if_not_mobile([
+        "//tensorflow/core/kernels:tensor_list",
+        "//tensorflow/core/kernels:tensor_list_util",
+        "//tensorflow/core/kernels:variant_ops_util",
+        "//tensorflow/core/kernels/data:optional_ops_util",
+        "//tensorflow/core/platform:abi",
+    ]),
 )
 
 tf_cuda_library(
@@ -756,6 +814,8 @@ tf_cuda_cc_test(
         ":c_api_internal",
         ":c_test_util",
         ":test_op_kernel",
+        ":tf_buffer",
+        ":tf_buffer_internal",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:grad_ops",
         "//tensorflow/cc/saved_model:signature_constants",
@@ -964,4 +1024,11 @@ cc_library(
         "conversion_macros.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+cc_library(
+    name = "c_op_requires",
+    hdrs = ["c_op_requires.h"],
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/core/platform:macros"],
 )

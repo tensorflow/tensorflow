@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_OPERATION_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -76,16 +77,11 @@ struct OperationDef {
   bool IsBatchSupported() const;
 };
 
-// GPUOperation represents some implementation of neural network operation on
-// GPU. GPUOperation can contain another GPU operations with flag elementwise_.
-// When GPUOperation contains another GPU ops, this GPUoperation replaces
-// some sequence of operations Op + op0 + op1 + ...
-// Because of this abilities of GPUOperation, usage scenario is next:
-// Create instance of GPUOperation.
-// Create all instances of GPUOperations that we will(probably) attach
-// to GPUOperation. Attach all GPUOperations to GPUOperation. Call
-// GPUOperation.Compile(). Don't call GPUOperations.Compile() if it
-// attached, it useless(and may be error)
+struct ElementwiseDescriptor {
+  Arguments args;
+  std::string code;
+};
+
 class GPUOperation {
  public:
   GPUOperation() = default;
@@ -97,7 +93,7 @@ class GPUOperation {
   GPUOperation(const GPUOperation&) = delete;
   GPUOperation& operator=(const GPUOperation&) = delete;
 
-  absl::Status AddOperation(GPUOperation* operation);
+  absl::Status AddOperation(const GpuInfo& gpu_info, GPUOperation* operation);
 
   void SetSrc(GpuSpatialTensor* ptr, int index = 0);
   void SetDst(GpuSpatialTensor* ptr, int index = 0);
@@ -138,10 +134,7 @@ class GPUOperation {
   void AddDstTensor(const std::string& tensor_name,
                     const TensorDescriptor& desc);
 
-  bool IsLinkable() const { return elementwise_ && linkable_; }
-
-  // for linking
-  void AddUniquePostfix(const std::string& unique_postfix);
+  bool IsLinkable() const { return elementwise_; }
 
   virtual absl::Status BindArguments(ArgumentsBinder* args) {
     return absl::OkStatus();
@@ -156,12 +149,6 @@ class GPUOperation {
   // not applicable to elementwise
   TensorToGrid tensor_to_grid_ = TensorToGrid::kCustom;
 
-  bool elementwise_ = false;
-  // applicable only with elementwise_ = true;
-  bool linkable_ = true;  // by default every elementwise is linkable
-  // applicable only with elementwise_ = true;
-  bool check_src_channels_size_ = false;
-
   // for profiling
   uint64_t flops_ = 0;
   // size in bytes of constant gpu_objects inside args_
@@ -175,6 +162,8 @@ class GPUOperation {
       const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const tflite::gpu::data::GPUOperation* fb_op,
                              GPUOperation* op);
+  friend GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                         ElementwiseDescriptor&& descriptor);
 
   virtual int3 GetGridSize() const;
   virtual void GetPossibleKernelWorkGroups(
@@ -193,9 +182,13 @@ class GPUOperation {
 
  private:
   int3 work_groups_count_ = int3(0, 0, 0);
-  int linkable_count_ = 0;
+  bool elementwise_ = false;      // temporary, used during op construction
+  int linkable_count_ = 0;        // temporary, used during op construction
   std::string elementwise_code_;  // temporary, used during op construction
 };
+
+GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                ElementwiseDescriptor&& descriptor);
 
 }  // namespace gpu
 }  // namespace tflite

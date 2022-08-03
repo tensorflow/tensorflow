@@ -1088,7 +1088,7 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 #else
     memory_planner_ = std::make_unique<ArenaPlanner>(
         &context_, CreateGraphInfo(), ShouldPreserveAllTensors(),
-        kDefaultTensorAlignment);
+        kDefaultTensorAlignment, subgraph_index_);
 #endif
     memory_planner_->PlanAllocations();
   }
@@ -1896,6 +1896,20 @@ const std::string& Subgraph::GetName() const { return name_; }
 void Subgraph::DumpMemoryPlannerDebugInfo() const {
   if (memory_planner_ == nullptr) return;
   memory_planner_->DumpDebugInfo(execution_plan());
+}
+
+void Subgraph::GetMemoryAllocInfo(size_t* arena_size,
+                                  size_t* arena_persist_size,
+                                  size_t* dynamic_size) const {
+  if (memory_planner_ == nullptr) return;
+  memory_planner_->GetAllocInfo(arena_size, arena_persist_size);
+  *dynamic_size = 0;
+  for (const auto& tensor : tensors_) {
+    if (tensor.allocation_type == kTfLiteDynamic &&
+        tensor.data.raw != nullptr) {
+      *dynamic_size += tensor.bytes;
+    }
+  }
 }
 
 std::unique_ptr<GraphInfo> Subgraph::CreateGraphInfo() {

@@ -163,10 +163,9 @@ absl::Status InferenceContext::InitFromGraph(
   }
   std::map<ValueId, MetalSpatialTensor> temp_external_tensors;
   for (const auto& external_tensor : create_info.external_mutable_tensors) {
-    RETURN_IF_ERROR(CreateTensor(
-        device_id, tensors_descs_[external_tensor.first].GetBHWDCShape(),
-        tensors_descs_[external_tensor.first],
-        &temp_external_tensors[external_tensor.first]));
+    RETURN_IF_ERROR(
+        CreateTensor(device_id, tensors_descs_[external_tensor.first],
+                     &temp_external_tensors[external_tensor.first]));
     external_mutable_tensors_[external_tensor.first] =
         &temp_external_tensors[external_tensor.first];
   }
@@ -239,10 +238,9 @@ absl::Status InferenceContext::RestoreDeserialized(
       external_immutable_tensors_[external_tensor.first] = cl_spatial_tensor;
     }
     for (const auto& external_tensor : create_info->external_mutable_tensors) {
-      RETURN_IF_ERROR(CreateTensor(
-          device_id, tensors_descs_[external_tensor.first].GetBHWDCShape(),
-          tensors_descs_[external_tensor.first],
-          &temp_external_tensors[external_tensor.first]));
+      RETURN_IF_ERROR(
+          CreateTensor(device_id, tensors_descs_[external_tensor.first],
+                       &temp_external_tensors[external_tensor.first]));
       external_mutable_tensors_[external_tensor.first] =
           &temp_external_tensors[external_tensor.first];
     }
@@ -347,18 +345,25 @@ MetalSpatialTensor* InferenceContext::GetTensor(ValueId tensor_id) {
 
 absl::Status InferenceContext::SetInputTensor(ValueId id,
                                               const TensorFloat32& tensor) {
-  return GetTensor(id)->WriteData(device_, tensor);
+  MetalSpatialTensor* gpu_tensor = GetTensor(id);
+  TensorDescriptor descriptor_with_data = gpu_tensor->GetDescriptor();
+  descriptor_with_data.UploadData(tensor);
+  return gpu_tensor->UploadDescriptorData(descriptor_with_data, device_);
 }
 
 absl::Status InferenceContext::GetOutputTensor(ValueId id,
                                                TensorFloat32* result) {
-  const auto& gpu_tensor = *GetTensor(id);
-  const auto dst_shape = BHWC(gpu_tensor.Batch(), gpu_tensor.Height(),
-                              gpu_tensor.Width(), gpu_tensor.Channels());
+  const MetalSpatialTensor* gpu_tensor = GetTensor(id);
+  const auto dst_shape = BHWC(gpu_tensor->Batch(), gpu_tensor->Height(),
+                              gpu_tensor->Width(), gpu_tensor->Channels());
   result->id = id;
   result->shape = dst_shape;
   result->data.resize(dst_shape.DimensionsProduct());
-  return gpu_tensor.ReadData(device_, result);
+
+  TensorDescriptor desc;
+  RETURN_IF_ERROR(gpu_tensor->ToDescriptor(&desc, device_));
+  desc.DownloadData(result);
+  return absl::OkStatus();
 }
 
 void InferenceContext::BindTensorsToOperations() {
@@ -577,14 +582,13 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
         size_t row_bytes_alignment = [device->device()
             minimumLinearTextureAlignmentForPixelFormat:
                 DataTypeToRGBAPixelFormat(tensor_dummy.GetDataType(), false)];
-        RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
-            base_buffer, tensor_dummy.GetBHWDCShape(), tensor_dummy,
-            row_bytes_alignment, &shared_buffer_tensors_[tensor_index],
-            base_buffer_offset));
-      } else {
-        RETURN_IF_ERROR(CreateSharedBufferTensor(
-            base_buffer, tensor_dummy.GetBHWDCShape(), tensor_dummy,
+        RETURN_IF_ERROR(CreateTensorSharedImage2DBuffer(
+            base_buffer, tensor_dummy, row_bytes_alignment,
             &shared_buffer_tensors_[tensor_index], base_buffer_offset));
+      } else {
+        RETURN_IF_ERROR(CreateTensorSharedBuffer(
+            base_buffer, tensor_dummy, &shared_buffer_tensors_[tensor_index],
+            base_buffer_offset));
       }
       created_tensors[tensor_index] = true;
     }
@@ -635,8 +639,7 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
       graph_ids_to_strong_shape_tensors_[tensor_id] = id;
       const auto& it = strong_shape_tensors_.find(id);
       if (it == strong_shape_tensors_.end()) {
-        RETURN_IF_ERROR(CreateTensor(device->device(),
-                                     tensor_dummy.GetBHWDCShape(), tensor_dummy,
+        RETURN_IF_ERROR(CreateTensor(device->device(), tensor_dummy,
                                      &strong_shape_tensors_[id]));
       }
     }

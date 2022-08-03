@@ -349,6 +349,10 @@ class Layout {
   const Mesh& mesh() const { return mesh_; }
   const std::string& sharding_spec(int idx) const;
 
+  // Two layouts are equivalent if they would result in the same sharding for
+  // the tensor. E.g. if on is unsharded and the other is sharded on a mesh
+  // dimension of size 1.
+  bool IsEquivalent(const Layout& b) const;
   bool operator==(const Layout& b) const;
   bool operator!=(const Layout& b) const { return !((*this) == b); }
   bool operator<(const Layout& b) const {

@@ -51,6 +51,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #ifdef XLA_CPU_USE_ACL
   opts.set_xla_cpu_use_acl(true);
 #endif
+  opts.set_xla_cpu_use_jitrt(false);
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
 
   // Run all GPU work on one stream by default.  Using multiple streams
@@ -87,8 +88,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
   opts.set_xla_detailed_logging_and_dumping(true);
 
-  opts.set_xla_gpu_bef_executable(false);
-  opts.set_xla_gpu_bef_thunk(false);
   opts.set_xla_gpu_jitrt_executable(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
@@ -97,7 +96,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
   opts.set_xla_cpu_enable_mlir_lowering(false);
-  opts.set_xla_gpu_enable_mlir_lowering(false);
+  opts.set_xla_gpu_enable_mlir_lowering(true);
   opts.set_xla_gpu_normalize_layouts(false);
   return opts;
 }
@@ -449,6 +448,10 @@ static void AllocateFlags() {
       flag_values->xla_cpu_use_acl(),
       "Generate calls to ACL (Arm Compute Library) in the CPU backend."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_cpu_use_jitrt",
+      bool_setter_for(&DebugOptions::set_xla_cpu_use_jitrt),
+      flag_values->xla_cpu_use_jitrt(), "Enable JitRt in the CPU backend."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_crash_on_verification_failures",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_crash_on_verification_failures),
@@ -672,11 +675,6 @@ static void AllocateFlags() {
       flag_values->xla_gpu_deterministic_ops(),
       "Guarantees run-to-run determinism on GPU."));
   flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_simplify_scatters",
-      bool_setter_for(&DebugOptions::set_xla_gpu_simplify_scatters),
-      flag_values->xla_gpu_simplify_scatters(),
-      "Simplifies all Scatters to a canonical form."));
-  flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_enable_async_all_reduce",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_reduce),
       flag_values->xla_gpu_enable_async_all_reduce(),
@@ -724,16 +722,6 @@ static void AllocateFlags() {
       flag_values->xla_dump_hlo_pipeline_re(),
       "If specified, dumps HLO before and after optimization passes in the "
       "pass pipelines that match this regular expression."));
-  flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_bef_executable",
-      bool_setter_for(&DebugOptions::set_xla_gpu_bef_executable),
-      flag_values->xla_gpu_bef_executable(),
-      "Whether to enable XLIR to compile gpu programs to TFRT BEF."));
-  flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_bef_thunk",
-      bool_setter_for(&DebugOptions::set_xla_gpu_bef_thunk),
-      flag_values->xla_gpu_bef_thunk(),
-      "Whether to enable XLIR to compile thunks to TFRT BEF."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_jitrt_executable",
       bool_setter_for(&DebugOptions::set_xla_gpu_jitrt_executable),

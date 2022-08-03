@@ -68,7 +68,8 @@ class WorkerClientTest : public ::testing::Test {
     const auto dataset_def = RangeSquareDataset(range);
     std::string dataset_id;
     TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
-        dataset_def, DataServiceMetadata(), dataset_id));
+        dataset_def, DataServiceMetadata(),
+        /*requested_dataset_id=*/std::nullopt, dataset_id));
     return dataset_id;
   }
 

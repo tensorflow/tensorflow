@@ -2220,6 +2220,7 @@ tf_cc_test(
     srcs = ["real_imag_expander_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_creation_utils",
         ":hlo_matchers",
         ":hlo_parser",
         ":hlo_pass",
@@ -2235,6 +2236,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -2288,6 +2290,36 @@ tf_cc_test(
         ":hlo_matchers",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
+    name = "convolution_pred_expander",
+    srcs = ["convolution_pred_expander.cc"],
+    hdrs = ["convolution_pred_expander.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":op_expander_pass",
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "convolution_pred_expander_test",
+    srcs = ["convolution_pred_expander_test.cc"],
+    deps = [
+        ":convolution_pred_expander",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
@@ -3321,6 +3353,35 @@ tf_cc_test(
     deps = [
         ":algebraic_simplifier",
         ":dot_merger",
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "convert_mover",
+    srcs = ["convert_mover.cc"],
+    hdrs = ["convert_mover.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla/service/graphcycles",
+    ],
+)
+
+tf_cc_test(
+    name = "convert_mover_test",
+    srcs = ["convert_mover_test.cc"],
+    deps = [
+        ":algebraic_simplifier",
+        ":convert_mover",
         ":hlo_matchers",
         ":hlo_parser",
         ":pattern_matcher",
@@ -6581,6 +6642,7 @@ cc_library(
     srcs = ["scatter_simplifier.cc"],
     hdrs = ["scatter_simplifier.h"],
     deps = [
+        ":gather_scatter_utils",
         ":hlo",
         ":hlo_creation_utils",
         ":op_expander_pass",
@@ -6663,6 +6725,45 @@ cc_library(
         ":hlo",
         ":hlo_creation_utils",
         ":hlo_pass",
+    ],
+)
+
+cc_library(
+    name = "gather_scatter_utils",
+    srcs = ["gather_scatter_utils.cc"],
+    hdrs = ["gather_scatter_utils.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        "//tensorflow/compiler/xla:permutation_util",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "gather_simplifier",
+    srcs = ["gather_simplifier.cc"],
+    hdrs = ["gather_simplifier.h"],
+    deps = [
+        ":gather_scatter_utils",
+        ":hlo",
+        ":hlo_creation_utils",
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+tf_cc_test(
+    name = "gather_simplifier_test",
+    srcs = ["gather_simplifier_test.cc"],
+    deps = [
+        ":gather_simplifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 

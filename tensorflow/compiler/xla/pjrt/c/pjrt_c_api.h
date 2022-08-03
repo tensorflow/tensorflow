@@ -17,6 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_H_
 
 #include <stddef.h>
+#include <stdint.h>
+
+// TODO(b/238999986): Remove this.
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 
 #define PJRT_STRUCT_SIZE(struct_type, last_field) \
   offsetof(struct_type, last_field) + sizeof(((struct_type*)0)->last_field)
@@ -48,7 +52,7 @@ typedef void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
 typedef struct {
   size_t struct_size;
   void* priv;
-  PJRT_Error* error;
+  const PJRT_Error* error;
   // Has the lifetime of `error`.
   const char* message;  // out
   size_t message_size;  // out
@@ -64,6 +68,7 @@ typedef void PJRT_Error_Message(PJRT_Error_Message_Args* args);
 
 typedef struct PJRT_Client PJRT_Client;
 typedef struct PJRT_Device PJRT_Device;
+typedef struct PJRT_Executable PJRT_Executable;
 
 typedef struct {
   size_t struct_size;
@@ -181,6 +186,51 @@ const size_t PJRT_Client_LookupDevice_Args_STRUCT_SIZE =
 typedef PJRT_Error* PJRT_Client_LookupDevice(
     PJRT_Client_LookupDevice_Args* args);
 
+// TODO(jieying): add debug_option.
+// TODO(b/240560013): consider putting some of option fields in priv.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  // If true, the supplied module expects its arguments to be wrapped in a
+  // tuple and passed as a single parameter.
+  bool parameter_is_tupled_arguments;
+  // If set, this is the device to build the computation for. A value of -1
+  // indicates this option has not been set.
+  int device_ordinal;
+  // The number of replicas of this computation that are to be executed.
+  int num_replicas;
+  // The number of partitions in this computation.
+  int num_partitions;
+  // Whether to use SPMD (true) or MPMD (false) partitioning when
+  // num_partitions > 1 and XLA is requested to partition the input program.
+  bool use_spmd_partitioning;
+  // Whether to allow sharding propagation to propagate to the outputs.
+  bool allow_spmd_sharding_propagation_to_output;
+  const char* device_assignment;  // Serialized device assignment.
+  size_t device_assignment_size;
+} PJRT_CompileOptions;
+const size_t PJRT_CompileOptions_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_CompileOptions, device_assignment_size);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  // Serialized MLIR module. Only needs to stay alive for the duration of the
+  // Compile call.
+  const char* module;
+  size_t module_size;
+  // Only needs to stay alive for the duration of the Compile call.
+  PJRT_CompileOptions* options;
+  PJRT_Executable* executable;  // out
+} PJRT_Client_Compile_Args;
+
+const size_t PJRT_Client_Compile_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_Compile_Args, executable);
+
+// Compiles an MLIR module with given `options`.
+typedef PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
+
 // --------------------------------- Devices -----------------------------------
 
 typedef struct {
@@ -244,6 +294,42 @@ typedef PJRT_Error* PJRT_Device_IsAddressable(
 typedef struct {
   size_t struct_size;
   void* priv;
+  const char* name;
+  size_t name_size;
+  enum {
+    PJRT_Device_Attribute_kString = 0,
+    PJRT_Device_Attribute_kInt64,
+    PJRT_Device_Attribute_kInt64List
+  } type;
+  union {
+    int64_t int64_value;
+    const int64_t* int64_array_value;
+    const char* string_value;
+  };
+  // `value_size` is the number of elements for array/string and 1 for scalar
+  // values.
+  size_t value_size;
+} PJRT_Device_Attribute;
+const size_t PJRT_Device_Attribute_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_Attribute, value_size);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  size_t num_attributes;              // out
+  PJRT_Device_Attribute* attributes;  // out
+} PJRT_Device_Attributes_Args;
+const size_t PJRT_Device_Attributes_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_Attributes_Args, attributes);
+
+// Returns an array of device specific attributes with attribute name, value
+// and value type.
+typedef PJRT_Error* PJRT_Device_Attributes(PJRT_Device_Attributes_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
   PJRT_Device* device;
   // `device_kind` string is owned by `device` and has same lifetime as
   // `device`.
@@ -257,9 +343,36 @@ const size_t PJRT_Device_Kind_Args_STRUCT_SIZE =
 // e.g., "Tesla V100-SXM2-16GB".
 typedef PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  const char* debug_string;  // out
+  size_t debug_string_size;  // out
+} PJRT_Device_DebugString_Args;
+const size_t PJRT_Device_DebugString_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_DebugString_Args, debug_string_size);
+
+// Debug string suitable for logging when errors occur. Should be verbose
+// enough to describe the current device unambiguously.
+typedef PJRT_Error* PJRT_Device_DebugString(PJRT_Device_DebugString_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  const char* to_string;  // out
+  size_t to_string_size;  // out
+} PJRT_Device_ToString_Args;
+const size_t PJRT_Device_ToString_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_ToString_Args, to_string_size);
+
+// Debug string suitable for reading by end users, should be reasonably terse,
+// for example: "CpuDevice(id=0)".
+typedef PJRT_Error* PJRT_Device_ToString(PJRT_Device_ToString_Args* args);
+
 // ------------------------------- Executables ---------------------------------
 
-typedef struct PJRT_Executable PJRT_Executable;
 typedef struct PJRT_Buffer PJRT_Buffer;
 
 typedef struct {
@@ -371,6 +484,26 @@ typedef PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args);
 
 // ---------------------------------- Buffers ----------------------------------
 
+// This trimmed shape doesn't have any Tuple information. In case of Tuple,
+// assert is triggered from the C API  Client.
+// TODO(b/238999986): This is a temporary solution. Remove this later.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  int element_type;             // out
+  Int64List dimensions;         // out
+  BoolList dynamic_dimensions;  // out
+  XLA_Layout layout;            // out
+} PJRT_Buffer_OnDeviceTrimmedShape_Args;
+const size_t PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_OnDeviceTrimmedShape_Args, layout);
+
+// Return the trimmed shape from PjRtBuffer.
+// TODO(b/238999986): Replace this with decomposed shape methods.
+typedef PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
+    PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
+
 typedef struct {
   size_t struct_size;
   void* priv;
@@ -416,6 +549,22 @@ typedef struct {
   size_t struct_size;
   void* priv;
   PJRT_Buffer* buffer;
+  PJRT_Device* dst_device;
+  PJRT_Buffer* dst_buffer;  // out
+} PJRT_Buffer_CopyToDevice_Args;
+const size_t PJRT_Buffer_CopyToDevice_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_CopyToDevice_Args, dst_buffer);
+
+// Copies the buffer to device `dst_device`. Caller is responsible for freeing
+// returned `dst_buffer` with PJRT_Buffer_Destroy. Returns an error if the
+// buffer is already on `dst_device`.
+typedef PJRT_Error* PJRT_Buffer_CopyToDevice(
+    PJRT_Buffer_CopyToDevice_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
   bool is_on_cpu;  // out
 } PJRT_Buffer_IsOnCpu_Args;
 const size_t PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE =
@@ -423,6 +572,18 @@ const size_t PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE =
 
 // Whether this buffer is on CPU and thus allows for certain optimizations.
 typedef PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  PJRT_Device* device;  // out
+} PJRT_Buffer_Device_Args;
+const size_t PJRT_Buffer_Device_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_Device_Args, device);
+
+// Returns this buffer's storage device.
+typedef PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args);
 
 // -------------------------------- API access ---------------------------------
 
@@ -444,12 +605,16 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Devices);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableDevices);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupDevice);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_Compile);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_Attributes);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Kind);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_DebugString);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_ToString);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
@@ -458,9 +623,12 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Execute);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToDevice);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
 } PJRT_Api;
 

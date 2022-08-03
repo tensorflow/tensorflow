@@ -160,17 +160,20 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
         tensorflow::profiler::TraceMe activity(
             "SetTrtEngineInputs::setBindingDimensions",
             tensorflow::profiler::TraceMeLevel::kInfo);
-        nvinfer1::Dims trt_dims;
         auto adap = DimsAdapter::Create(input_shape);
         TRT_ENSURE_OK(adap);
-        VLOG(2) << "Setting binding dimensions for idx " << binding_index;
-        bool ret = execution_context->setBindingDimensions(binding_index,
-                                                           adap->AsTrtDims());
-        if (!ret) {
-          VLOG(2) << "Error setting engine input " << binding_index << " "
-                  << DebugString(trt_dims);
-          return errors::Internal(
-              "Binding dimension does not fit selected profile.");
+        nvinfer1::Dims trt_dims = adap->AsTrtDims();
+        if (execution_context->getBindingDimensions(binding_index) !=
+            trt_dims) {
+          VLOG(2) << "Setting binding dimensions for idx " << binding_index;
+          bool ret =
+              execution_context->setBindingDimensions(binding_index, trt_dims);
+          if (!ret) {
+            VLOG(2) << "Error setting engine input " << binding_index << " "
+                    << DebugString(trt_dims);
+            return errors::Internal(
+                "Binding dimension does not fit selected profile.");
+          }
         }
       }
     }

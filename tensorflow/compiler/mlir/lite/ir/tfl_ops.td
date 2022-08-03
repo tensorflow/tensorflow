@@ -19,9 +19,11 @@ limitations under the License.
 #ifndef TFL_OPS
 #define TFL_OPS
 
+include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
@@ -42,6 +44,12 @@ def TFL_Str : Type<CPred<"$_self.isa<mlir::TF::StringType>()">,
 def TFL_Quint8 : Type<CPred<"$_self.isa<mlir::TF::Quint8Type>()">,
                     "TFLite quint8 type">,
               BuildableType<"getType<mlir::TF::Quint8Type>()">;
+
+//===----------------------------------------------------------------------===//
+// Type that represents control dependencies
+//===----------------------------------------------------------------------===//
+def TFL_Control: Type<CPred<"$_self.isa<ControlType>()">, "control">,
+                 BuildableType<"$_builder.getType<ControlType>()">;
 
 
 //===----------------------------------------------------------------------===//
@@ -3350,6 +3358,8 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
     Returns the top `k` largest element along each last dimensional slice of
     `input` and the indices of values within the last dimension of the input
     tensor.
+
+    Results are always sorted in the descending order.
   }];
 
   let arguments = (ins
@@ -4869,6 +4879,31 @@ def TFL_UnsortedSegmentMaxOp: TFL_Op<"unsorted_segment_max", [
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 }
 
+def TFL_UnsortedSegmentSumOp: TFL_Op<"unsorted_segment_sum", [
+    NoSideEffect, PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+
+  let summary = "UnsortedSegmentSum operator";
+
+  let description = [{
+    From a tensor segmentation, computes the `output` resulting from
+    summing together elements mapped to the same segment_id. I.e. `output[i]` is
+    equal to the tensor sum of all elements from the input tensor mapped to
+    segment_id `i`. If no tensors are mapped to a particular included
+    segment_id, the output at that indice will be a zero tensor with the
+    appropriate shape. Note the values of segment_ids are always validated to be
+    less than num_segments and an error is thrown for out-of-bound indices
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, I32]>:$input,
+    TFL_I32Tensor:$segment_ids,
+    TFL_I32Tensor:$num_segments
+  );
+
+  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+}
+
 def TFL_YieldOp : Op<TFL_Dialect, "yield",
   [NoSideEffect,
    Terminator,
@@ -4877,12 +4912,19 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield",
   let summary = "Yield operation";
   let description = [{
     The "yield" operation represents a return operation within the conditional
-    and body of structured control flow (e.g., while). The operation takes
-    variable number of operands and produces no results. The operand number and
-    types must match the signature of the region that contains the operation.
+    and body of structured control flow (e.g., while), and a terminator for ControlNodeOp.
+    The operation takes a variable number of operands and produces no results.
+    The operand number and types must match the signature of the region that contains the operation.
   }];
-
   let arguments = (ins Variadic<AnyType>:$operands);
+
+  // Default builder needed for ensureTerminator
+  let builders = [
+    OpBuilder<(ins),
+    [{
+      build($_builder, $_state, {});
+    }]>
+  ];
 }
 
 def TFL_IfOp : Op<TFL_Dialect, "if", [
@@ -5557,6 +5599,47 @@ No value constant op.
   }];
 }
 
+def TFL_ControlNodeOp : Op<TFL_Dialect, "control_node",
+    [HasParent<"mlir::func::FuncOp">, RecursiveSideEffects, SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = [{
+    The `TFL.control_node` operation wraps single-block operations in order to attach control edges.
+  }];
+
+  let description = [{
+    This is used to wrap regions and attach control dependencies to them. Typically,
+    this will happen in one of the last steps before emitting the flatbuffer model
+    in order to enable optimizations that rely on a fixed order of operations (such
+    as rematerialization.)
+    The flatbuffer exporter will unwrap the wrapped region and annotate the generated
+    model with metadata such that any runtime reorderings will respect the order
+    given by the control dependencies.
+  }];
+
+  // May take values of type !tfl.control as inputs
+  let arguments = (ins
+    Variadic<TFL_Control>:$controlInputs
+  );
+
+  // Adds a single value of type !tfl.control as the last output (all other
+  // outputs are copied from the wrapped region.)
+  let results = (outs
+    Variadic<AnyTensor>:$outputs,
+    TFL_Control:$control
+  );
+
+  let regions = (region SizedRegion<1>:$body);
+
+  let extraClassDeclaration = [{
+    Block &GetBody() { return getOperation()->getRegion(0).front(); }
+    YieldOp GetYield();
+    bool WrapsSinglePerfectlyForwardedOp();
+  }];
+
+  let hasCanonicalizer = 0;
+  let hasVerifier = 1;
+  let hasFolder = 0;
+  let hasCustomAssemblyFormat = 1;
+}
 
 #endif // TFL_OPS
 

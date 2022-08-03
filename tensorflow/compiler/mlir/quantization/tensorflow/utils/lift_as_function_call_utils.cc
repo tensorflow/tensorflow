@@ -193,9 +193,8 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   auto current_func = result_op->getParentOfType<func::FuncOp>();
   auto guard = OpBuilder::InsertionGuard(builder);
   builder.setInsertionPointAfter(current_func);
-  TypeRange arg_types(
-      llvm::ArrayRef<Value>(arguments.begin(), arguments.end()));
-  TypeRange result_types(llvm::ArrayRef<Value>(results.begin(), results.end()));
+  TypeRange arg_types{ValueRange{arguments}};
+  TypeRange result_types{ValueRange{results}};
   auto func_type = FunctionType::get(context, arg_types, result_types);
 
   llvm::SmallVector<Location> arg_locs;

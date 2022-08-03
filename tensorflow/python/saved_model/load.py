@@ -289,17 +289,32 @@ class Loader(object):
     # Set up concrete functions that aren't part of the object graph
     # (e.g. gradient functions)
     self._setup_remaining_functions()
-    self._create_saveable_object_factories()
+    self._load_checkpoint_save_and_restore_functions()
 
-  def _create_saveable_object_factories(self):
+  def _load_checkpoint_save_and_restore_functions(self):
+    """Restores the checkpoint-related save/restore functions to all nodes."""
     for node_id, proto in self._iter_all_nodes():
       node = self.get(node_id)
-      node._self_saveable_object_factories = {}  # pylint: disable=protected-access
-      for name, saveable_object_proto in proto.saveable_objects.items():
-        node._self_saveable_object_factories[name] = (  # pylint: disable=protected-access
-            saveable_object_util.restored_saved_object_factory(
-                self.get(saveable_object_proto.save_function),
-                self.get(saveable_object_proto.restore_function)))
+      if proto.saveable_objects.keys() == {
+          trackable_utils.SERIALIZE_TO_TENSORS_NAME}:
+        # Restore Trackable serialize- and restore-from-tensor functions.
+        assert len(proto.saveable_objects) == 1
+        saveable_object_proto = next(iter(proto.saveable_objects.values()))
+        save_fn_id = saveable_object_proto.save_function
+        restore_fn_id = saveable_object_proto.restore_function
+        node._serialize_to_tensors = self.get(save_fn_id)  # pylint: disable=protected-access
+        node._restore_from_tensors = self.get(restore_fn_id)  # pylint: disable=protected-access
+      else:
+        # Restore legacy SaveableObject functions.
+        saveable_fn_by_name = {}
+        for name, saveable_object_proto in proto.saveable_objects.items():
+          save_fn_id = saveable_object_proto.save_function
+          restore_fn_id = saveable_object_proto.restore_function
+          saveable_fn_by_name[name] = (self.get(save_fn_id),
+                                       self.get(restore_fn_id))
+
+        node._self_saveable_object_factories = (  # pylint: disable=protected-access
+            saveable_object_util.recreate_saveable_objects(saveable_fn_by_name))
 
   def _load_edges(self):
     """Adds edges from objects to other objects and functions."""

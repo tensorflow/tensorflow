@@ -323,7 +323,7 @@ def TFType_FullTypeAttr : AttrDef<TFTypeDialect, "FullType"> {
 
 def TFType_FuncAttr : TFType_Attr<"Func", [
     DeclareAttrInterfaceMethods<SubElementAttrInterface,
-        ["replaceImmediateSubAttribute"]>
+        ["replaceImmediateSubElements"]>
   ]> {
   let mnemonic = "func";
   let summary = "Models the `AttrValue.value.func` proto attribute value as a "

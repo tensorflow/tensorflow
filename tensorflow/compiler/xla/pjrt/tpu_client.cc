@@ -133,7 +133,7 @@ StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
 }
 
 StatusOr<std::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
-    const PjRtExecutable& executable) const {
+    const PjRtLoadedExecutable& executable) const {
   if (executable.client() != this) {
     return InvalidArgument(
         "Passed executable from different client (platform '%s') to "
@@ -154,7 +154,7 @@ StatusOr<std::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
 }
 
 StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
-    const PjRtExecutable& executable) const {
+    const PjRtLoadedExecutable& executable) const {
   const PjRtStreamExecutorExecutable* se_executable =
       tensorflow::down_cast<const PjRtStreamExecutorExecutable*>(&executable);
   if (se_executable->executables().size() > 1) {
@@ -168,8 +168,9 @@ StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
   return tpu_executable->Serialize();
 }
 
-StatusOr<std::unique_ptr<PjRtExecutable>> PjRtTpuClient::DeserializeExecutable(
-    absl::string_view serialized, CompileOptions options) {
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtTpuClient::DeserializeExecutable(absl::string_view serialized,
+                                     CompileOptions options) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TpuExecutable> tpu_executable,
                       TpuExecutable::Deserialize(serialized));
 
@@ -203,7 +204,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtTpuClient::DeserializeExecutable(
       std::move(extras.addressable_devices), this);
   TF_RETURN_IF_ERROR(
       pjrt_executable->SetUpDonation(options.parameter_is_tupled_arguments));
-  return std::unique_ptr<PjRtExecutable>(std::move(pjrt_executable));
+  return std::unique_ptr<PjRtLoadedExecutable>(std::move(pjrt_executable));
 }
 
 static StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>>

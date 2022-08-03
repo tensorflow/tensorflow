@@ -31,6 +31,9 @@ namespace profiler {
 namespace {
 
 void CreateXSpace(XSpace* space) {
+  constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
+  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
+
   XPlaneBuilder host_plane(space->add_planes());
   XPlaneBuilder device_plane(space->add_planes());
 
@@ -44,6 +47,12 @@ void CreateXSpace(XSpace* space) {
   event1.SetDurationNs(10000);
   event1.AddStatValue(*host_plane.GetOrCreateStatMetadata("tf_op"),
                       *host_plane.GetOrCreateStatMetadata("Relu"));
+  event1.AddStatValue(*host_plane.GetOrCreateStatMetadata(GetStatTypeStr(
+                          StatType::kDevCapPeakTeraflopsPerSecond)),
+                      kDevCapPeakTeraflopsPerSecond);
+  event1.AddStatValue(*host_plane.GetOrCreateStatMetadata(GetStatTypeStr(
+                          StatType::kDevCapPeakHbmBwGigabytesPerSecond)),
+                      kDevCapPeakHbmBwGigabytesPerSecond);
   XLineBuilder thread2 = host_plane.GetOrCreateLine(20);
   thread2.SetName("thread2");
   XEventBuilder event2 =
@@ -52,6 +61,12 @@ void CreateXSpace(XSpace* space) {
   event2.SetDurationNs(10000);
   event2.AddStatValue(*host_plane.GetOrCreateStatMetadata("tf_op"),
                       *host_plane.GetOrCreateStatMetadata("Conv2D"));
+  event2.AddStatValue(*host_plane.GetOrCreateStatMetadata(GetStatTypeStr(
+                          StatType::kDevCapPeakTeraflopsPerSecond)),
+                      kDevCapPeakTeraflopsPerSecond);
+  event2.AddStatValue(*host_plane.GetOrCreateStatMetadata(GetStatTypeStr(
+                          StatType::kDevCapPeakHbmBwGigabytesPerSecond)),
+                      kDevCapPeakHbmBwGigabytesPerSecond);
 
   device_plane.SetName("gpu:0");
   device_plane.SetId(1);
@@ -63,17 +78,36 @@ void CreateXSpace(XSpace* space) {
   event3.SetDurationNs(10000);
   event3.AddStatValue(*device_plane.GetOrCreateStatMetadata("correlation id"),
                       55);
+  event3.AddStatValue(*host_plane.GetOrCreateStatMetadata(GetStatTypeStr(
+                          StatType::kDevCapPeakTeraflopsPerSecond)),
+                      kDevCapPeakTeraflopsPerSecond);
+  event3.AddStatValue(*host_plane.GetOrCreateStatMetadata(GetStatTypeStr(
+                          StatType::kDevCapPeakHbmBwGigabytesPerSecond)),
+                      kDevCapPeakHbmBwGigabytesPerSecond);
 }
 
 TEST(ConvertXPlaneToProfileResponse, ExtractTpuMxuUtilizationFromXSpace) {
+  constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
+  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
+
   XSpace xspace;
-  GetOrCreateTpuXPlane(&xspace, 0, "TPU V4");
+  XPlaneBuilder devicePlane(GetOrCreateTpuXPlane(&xspace, 0, "TPU V4"));
   auto xplane = FindOrAddMutablePlaneWithName(&xspace, kHostThreadsPlaneName);
   XPlaneBuilder xplaneBuilder(xplane);
+  xplaneBuilder.ReserveLines(1);
   xplaneBuilder.AddStatValue(
       *xplaneBuilder.GetOrCreateStatMetadata(
-          GetStatTypeStr(tensorflow::profiler::kMatrixUnitUtilizationPercent)),
+          GetStatTypeStr(StatType::kMatrixUnitUtilizationPercent)),
       20.0);
+  devicePlane.AddStatValue(*devicePlane.GetOrCreateStatMetadata(GetStatTypeStr(
+                               StatType::kDevCapPeakTeraflopsPerSecond)),
+                           kDevCapPeakTeraflopsPerSecond);
+  devicePlane.AddStatValue(*devicePlane.GetOrCreateStatMetadata(GetStatTypeStr(
+                               StatType::kDevCapPeakHbmBwGigabytesPerSecond)),
+                           kDevCapPeakHbmBwGigabytesPerSecond);
+  devicePlane.AddStatValue(*devicePlane.GetOrCreateStatMetadata(
+                               GetStatTypeStr(StatType::kDevCapCoreCount)),
+                           80);
   ProfileRequest request;
   request.add_tools("overview_page");
   ProfileResponse response;

@@ -421,8 +421,8 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
           coords += ", sz" + zind;
         }
         if (src_def.IsLinear()) {
-          c += "      args.src_tensor.GetAddress(addr" + id + ", " + coords +
-               ", 0);\n";
+          c += "      int addr" + id + " = args.src_tensor.GetAddress(" +
+               coords + ", 0);\n";
           if (src_def.ReturnsZeroForNegOneRead(gpu_info)) {
             c += "      addr" + id + " = select(-1, addr" + id + ", (" + check +
                  "));\n";

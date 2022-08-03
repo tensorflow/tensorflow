@@ -95,7 +95,7 @@ def initialize_rbe_configs():
 
     tensorflow_rbe_config(
         name = "ubuntu18.04-clang_manylinux2010-cuda11.0-cudnn8-tensorrt7.1",
-        compiler = "/clang_r969a51ff363263a3b5f2df55eba6b4d392bf30c0/bin/clang",
+        compiler = "/clang_rf2b94bd7eaa83d853dc7568fac87b1f8bf4ddec6/bin/clang",
         cuda_version = "11.0",
         cudnn_version = "8",
         os = "ubuntu18.04-manylinux2010-multipython",
@@ -128,7 +128,7 @@ def initialize_rbe_configs():
 
     tensorflow_rbe_config(
         name = "ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2",
-        compiler = "/clang11/bin/clang",
+        compiler = "/clang_rf2b94bd7eaa83d853dc7568fac87b1f8bf4ddec6/bin/clang",
         cuda_version = "11.2",
         cudnn_version = "8.1",
         os = "ubuntu20.04-manylinux2014-multipython",
@@ -154,7 +154,7 @@ def initialize_rbe_configs():
 
     tensorflow_rbe_config(
         name = "ubuntu20.04-clang_manylinux2014-cuda11.1-cudnn8-tensorrt7.2",
-        compiler = "/clang11/bin/clang",
+        compiler = "/clang_rf2b94bd7eaa83d853dc7568fac87b1f8bf4ddec6/bin/clang",
         cuda_version = "11.1",
         cudnn_version = "8",
         os = "ubuntu20.04-manylinux2014-multipython",
@@ -180,7 +180,7 @@ def initialize_rbe_configs():
 
     tensorflow_rbe_config(
         name = "ubuntu20.04-clang_manylinux2014-cuda11.4-cudnn8.2-tensorrt7.2",
-        compiler = "/clang11/bin/clang",
+        compiler = "/clang_rf2b94bd7eaa83d853dc7568fac87b1f8bf4ddec6/bin/clang",
         cuda_version = "11.4",
         cudnn_version = "8.2",
         os = "ubuntu20.04-manylinux2014-multipython",

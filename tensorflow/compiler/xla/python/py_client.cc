@@ -318,7 +318,7 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
     const XlaComputation& computation, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<PjRtExecutable> executable;
+  std::unique_ptr<PjRtLoadedExecutable> executable;
   std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
@@ -336,7 +336,7 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
     std::string mlir_module, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<PjRtExecutable> executable;
+  std::unique_ptr<PjRtLoadedExecutable> executable;
   std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
@@ -362,7 +362,7 @@ StatusOr<py::bytes> PyClient::SerializeExecutable(
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
     const std::string& serialized, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<PjRtExecutable> executable;
+  std::unique_ptr<PjRtLoadedExecutable> executable;
   std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
@@ -467,7 +467,7 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
       auto* device_label = sample->add_label();
       device_label->set_key(device_string_id);
       device_label->set_str(
-          builder.StringId(entry.first.device->DebugString()));
+          builder.StringId(std::string(entry.first.device->DebugString())));
     } else {
       kind_label->set_str(executable_string_id);
     }
@@ -577,7 +577,7 @@ StatusOr<pybind11::object> PyClient::MakePythonCallbackUsingHostSendAndRecv(
 
   host_callback->callback = [callback = std::move(callback)](void** outputs,
                                                              void** inputs) {
-    callback->PrepareAndCall(outputs, inputs, /*status=*/nullptr);
+    return callback->PrepareAndCall(outputs, inputs);
   };
 
   py::capsule callback_capsule(

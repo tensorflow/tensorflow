@@ -56,7 +56,7 @@ TEST(GpuMultiStream, Basics) {
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtExecutable> executable,
+      std::unique_ptr<PjRtLoadedExecutable> executable,
       client->Compile(computation, std::move(compile_options)));
 
   int64_t dummy_size = 1 << 20;

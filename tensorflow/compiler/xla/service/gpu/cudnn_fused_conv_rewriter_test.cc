@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/convert_mover.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
@@ -619,6 +620,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, Int8SideInputWithScaleAndReshape) {
   HloPassFix<HloPassPipeline> simplify("simplify");
   simplify.AddPass<AlgebraicSimplifier>(AlgebraicSimplifierOptions{});
   simplify.AddPass<ReshapeMover>();
+  simplify.AddPass<ConvertMover>();
   TF_ASSERT_OK(RunHloPass(&simplify, m.get()).status());
 
   SCOPED_TRACE(m->ToString());

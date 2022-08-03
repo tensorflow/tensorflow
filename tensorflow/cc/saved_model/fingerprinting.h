@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "google/protobuf/map.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
@@ -28,8 +29,15 @@ namespace tensorflow::fingerprinting {
 // Computes the Fingerprint64 hash of the GraphDef.
 uint64 ComputeHash(const GraphDef& graph_def);
 
+// Sorts and computes the Fingerprint64 hash of the SignatureDefs.
+uint64 RegularizeAndHashSignatureDefs(
+    const google::protobuf::Map<std::string, SignatureDef>& signature_def_map);
+
 // Creates a FingerprintDef proto from a MetaGraph.
 FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph);
+
+// Canonicalizes the GraphDef in order to remove sources of non-determinism.
+void CanonicalizeGraphDef(GraphDef& graph_def);
 
 }  // namespace tensorflow::fingerprinting
 

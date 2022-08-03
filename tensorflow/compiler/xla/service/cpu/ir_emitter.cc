@@ -597,8 +597,11 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
   // Normalize the shape and the dimension to sort.
   Shape normalized_keys_shape =
       ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(keys_shape);
-  int64_t physical_dimension_to_sort = LayoutUtil::MakeLogicalToPhysical(
-      keys_shape.layout())[sort->sort_dimension()];
+  auto logical_to_physical =
+      LayoutUtil::MakeLogicalToPhysical(keys_shape.layout());
+  TF_RET_CHECK(sort->sort_dimension() < logical_to_physical.size());
+  int64_t physical_dimension_to_sort =
+      logical_to_physical[sort->sort_dimension()];
 
   int64_t sort_dimension_elements =
       normalized_keys_shape.dimensions(physical_dimension_to_sort);

@@ -16,12 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_PLATFORM_INITIALIZE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_INITIALIZE_H_
 
-#include "tensorflow/stream_executor/platform/platform.h"
-
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_CHROMIUMOS)
-#include "tensorflow/stream_executor/platform/google/initialize.h"
-#else
-#include "tensorflow/stream_executor/platform/default/initialize.h"
-#endif
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_PLATFORM_INITIALIZE_H_

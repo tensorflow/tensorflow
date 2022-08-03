@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <array>
+#include <cmath>
 #include <fstream>
 #include <vector>
 

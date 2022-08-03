@@ -33,12 +33,71 @@ class JitRtKernelsCache;
 class JitRtGemmConfigCache;
 class JitRtCollectiveSupport;
 class JitRtAsyncCollectiveSupport;
+
+struct DotDimensionNumbers {
+  llvm::ArrayRef<int64_t> lhs_batch;
+  llvm::ArrayRef<int64_t> lhs_contract;
+  llvm::ArrayRef<int64_t> rhs_batch;
+  llvm::ArrayRef<int64_t> rhs_contract;
+};
+
+struct ConvDimensionNumbers {
+  int64_t input_batch_dim;
+  int64_t input_feature_dim;
+  llvm::ArrayRef<int64_t> input_spatial_dims;
+
+  int64_t kernel_in_feature_dim;
+  int64_t kernel_out_feature_dim;
+  llvm::ArrayRef<int64_t> kernel_spatial_dims;
+
+  int64_t output_batch_dim;
+  int64_t output_feature_dim;
+  llvm::ArrayRef<int64_t> output_spatial_dims;
+};
+
+struct ConvBackendConfig {
+  int64_t algorithm;
+  bool tensor_ops_enabled;
+  bool is_cudnn_frontend;
+  llvm::ArrayRef<int64_t> knob_ids;
+  llvm::ArrayRef<int64_t> knob_values;
+  llvm::ArrayRef<int64_t> operand_0_layout;
+  llvm::ArrayRef<int64_t> operand_1_layout;
+  llvm::ArrayRef<int64_t> result_layout;
+  int64_t workspace_size;
+};
 }  // namespace gpu
 }  // namespace xla
 
 namespace tfrt {
 namespace jitrt {
 JITRT_REGISTER_ENUM_ATTR_DECODING(stream_executor::dnn::ActivationMode);
+JITRT_REGISTER_ENUM_ATTR_DECODING(stream_executor::fft::Type);
+
+JITRT_REGISTER_AGGREGATE_ATTR_DECODING(
+    xla::gpu::DotDimensionNumbers,
+    JITRT_AGGREGATE_FIELDS("lhs_batch", "lhs_contract", "rhs_batch",
+                           "rhs_contract"),
+    ArrayRef<int64_t>, ArrayRef<int64_t>, ArrayRef<int64_t>, ArrayRef<int64_t>);
+
+JITRT_REGISTER_AGGREGATE_ATTR_DECODING(
+    xla::gpu::ConvDimensionNumbers,
+    JITRT_AGGREGATE_FIELDS("input_batch_dim", "input_feature_dim",
+                           "input_spatial_dims", "kernel_in_feature_dim",
+                           "kernel_out_feature_dim", "kernel_spatial_dims",
+                           "output_batch_dim", "output_feature_dim",
+                           "output_spatial_dims"),
+    int64_t, int64_t, ArrayRef<int64_t>, int64_t, int64_t, ArrayRef<int64_t>,
+    int64_t, int64_t, ArrayRef<int64_t>);
+
+JITRT_REGISTER_AGGREGATE_ATTR_DECODING(
+    xla::gpu::ConvBackendConfig,
+    JITRT_AGGREGATE_FIELDS("algorithm", "tensor_ops_enabled",
+                           "is_cudnn_frontend", "knob_ids", "knob_values",
+                           "operand_0_layout", "operand_1_layout",
+                           "result_layout", "workspace_size"),
+    int64_t, bool, bool, ArrayRef<int64_t>, ArrayRef<int64_t>,
+    ArrayRef<int64_t>, ArrayRef<int64_t>, ArrayRef<int64_t>, int64_t);
 }  // namespace jitrt
 }  // namespace tfrt
 

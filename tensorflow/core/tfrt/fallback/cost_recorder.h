@@ -13,13 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines a recorder for op cost measurement
+// This file defines a recorder for op cost measurement.
 
 #ifndef TENSORFLOW_CORE_TFRT_FALLBACK_COST_RECORDER_H_
 #define TENSORFLOW_CORE_TFRT_FALLBACK_COST_RECORDER_H_
 
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
 #include "tfrt/host_context/shared_context.h"  // from @tf_runtime
 
 namespace tfrt {
@@ -32,16 +37,16 @@ class CostRecorder : public tfrt::SharedContext {
  public:
   explicit CostRecorder(tfrt::HostContext* host) {}
 
-  // TODO(xiangll): This is used for cost measurement only. Clean up after the
-  // measurement is done.
-  void RecordCost(const absl::string_view op_name,
-                  const uint64_t run_duration) {
-    cost_per_op_map_[op_name] = run_duration;
-  }
+  void RecordCost(absl::string_view op_name, const uint64_t execution_time);
+
+  size_t size();
+  Status WriteToFile();
 
  private:
-  // Map op name to op run duration in terms of microseconds.
-  absl::flat_hash_map<absl::string_view, uint64_t> cost_per_op_map_;
+  tensorflow::mutex op_cost_map_mutex_;
+  // Map op name to {sum of op execution time in microseconds, number of op}.
+  absl::flat_hash_map<absl::string_view, std::pair<uint64_t, uint64_t>>
+      op_cost_map_ TF_GUARDED_BY(op_cost_map_mutex_);
 };
 }  // namespace tfrt_stub
 }  // namespace tensorflow

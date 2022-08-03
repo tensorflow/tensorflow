@@ -58,6 +58,7 @@ void PopulateSymbolNode(const OpMetrics& op_metrics, Node* node) {
           LayoutDimensionSemantics_Name(dimension.semantics())));
     }
   }
+  xla.set_computation_primitive_size(op_metrics.computation_primitive_size());
 }
 
 // Sort the children and only keep the top K children.

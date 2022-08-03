@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/encapsulate_xla_computations_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -332,7 +335,7 @@ bool IsTpuGraph(const Graph* graph) {
 // devices. Returns a new graph with the added Send/Recv ops.
 // This is done by partitioning `graph` and add Send/Recv ops on the edges
 // across devices.
-StatusOr<std::unique_ptr<Graph>> MaybeInsertTransferOps(
+StatusOr<std::unique_ptr<Graph>> BuildXlaOpsAndMaybeInsertTransferOps(
     const std::string& graph_func_name, const FallbackState& fallback_state,
     const std::vector<std::string>& inputs,
     const std::vector<std::string>& outputs,
@@ -354,6 +357,15 @@ StatusOr<std::unique_ptr<Graph>> MaybeInsertTransferOps(
   TF_RETURN_IF_ERROR(InlineFunctions(&graph, &fallback_state.device_set()));
   if (VLOG_IS_ON(1)) {
     DumpGraphToFile("after_inlining", *graph);
+  }
+
+  // Replace the StatefulPartitionedCall op that should be compiled to an
+  // XlaLaunch op.
+  // TODO(b/239089915): Clean this up after the logic is implemented in TFXLA
+  // bridge.
+  TF_RETURN_IF_ERROR(BuildXlaLaunchOps(graph.get()));
+  if (VLOG_IS_ON(1)) {
+    DumpGraphToFile("after_build_xla_launch", *graph);
   }
 
   // Run placer.
@@ -456,7 +468,7 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
   if (options_.enable_tfrt_gpu) {
     TF_ASSIGN_OR_RETURN(
         result.graph,
-        MaybeInsertTransferOps(
+        BuildXlaOpsAndMaybeInsertTransferOps(
             graph_import_config.graph_func_name, fallback_state_, inputs,
             graph_import_config.outputs, graph_import_config.control_outputs,
             std::move(result.graph)));
@@ -853,6 +865,42 @@ TfrtGraphExecutionState::OptimizeGraph(
   TF_RETURN_IF_ERROR(optimized_graph->AddFunctionLibrary(optimized_flib_proto));
 
   return optimized_graph;
+}
+
+// TODO(b/239089915): Clean this up after the logic is implemented in TFXLA
+// bridge.
+Status BuildXlaLaunchOps(Graph* graph) {
+  const auto is_xla_launch_node = [](const Node& n) -> StatusOr<bool> {
+    if (!n.IsPartitionedCall()) {
+      return false;
+    }
+    bool xla_must_compile = false;
+    const bool has_attribute =
+        TryGetNodeAttr(n.attrs(), kXlaMustCompileAttr, &xla_must_compile);
+    return has_attribute && xla_must_compile;
+  };
+
+  const auto get_xla_function_info = [](const Node& launch)
+      -> StatusOr<EncapsulateXlaComputationsPass::XlaFunctionInfo> {
+    EncapsulateXlaComputationsPass::XlaFunctionInfo result;
+    std::vector<DataType> tin_dtypes;
+    TF_RETURN_IF_ERROR(GetNodeAttr(launch.def(), "Tin", &tin_dtypes));
+    int variable_start_index = 0;
+    for (; variable_start_index < tin_dtypes.size(); ++variable_start_index) {
+      if (tin_dtypes.at(variable_start_index) == DT_RESOURCE) break;
+    }
+    result.variable_start_index = variable_start_index;
+
+    NameAttrList func;
+    TF_RETURN_IF_ERROR(GetNodeAttr(launch.attrs(), "f", &func));
+    result.function_name = func.name();
+
+    return result;
+  };
+
+  return EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
+      graph, is_xla_launch_node, get_xla_function_info,
+      /*add_edges_to_output_of_downstream_nodes=*/false);
 }
 
 }  // namespace tfrt_stub

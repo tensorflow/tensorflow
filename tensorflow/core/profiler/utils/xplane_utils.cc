@@ -95,16 +95,36 @@ void RemoveIf(protobuf::RepeatedPtrField<T>* array, Pred&& pred) {
   RemoveAt(array, indices);
 }
 
+// Copy XEventMetadata from source to destination. Also copies the associated
+// XStats.
 void CopyEventMetadata(const XEventMetadata& src_event_metadata,
-                       XEventMetadata& dst_event_metadata) {
+                       const XPlaneVisitor& src_plane,
+                       XEventMetadata& dst_event_metadata,
+                       XPlaneBuilder& dst_plane) {
   if (dst_event_metadata.display_name().empty() &&
       !src_event_metadata.display_name().empty()) {
     dst_event_metadata.set_display_name(src_event_metadata.display_name());
+  }
+  if (dst_event_metadata.name().empty() && !src_event_metadata.name().empty()) {
+    dst_event_metadata.set_name(src_event_metadata.name());
   }
   if (dst_event_metadata.metadata().empty() &&
       !src_event_metadata.metadata().empty()) {
     dst_event_metadata.set_metadata(src_event_metadata.metadata());
   }
+  XEventMetadataVisitor src_event_metadata_visitor(&src_plane,
+                                                   &src_event_metadata);
+  src_event_metadata_visitor.ForEachStat([&](const XStatVisitor& stat) {
+    XStatMetadata& metadata = *dst_plane.GetOrCreateStatMetadata(stat.Name());
+    XStat dst_stat = stat.RawStat();
+    if (stat.ValueCase() == XStat::kRefValue) {
+      XStatMetadata& value_metadata =
+          *dst_plane.GetOrCreateStatMetadata(stat.StrOrRefValue());
+      dst_stat.set_ref_value(value_metadata.id());
+    }
+    dst_stat.set_metadata_id(metadata.id());
+    *dst_event_metadata.add_stats() = dst_stat;
+  });
 }
 
 bool IsOpLineName(absl::string_view line_name) {
@@ -288,7 +308,7 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
     line.ForEachEvent([&](const XEventVisitor& event) {
       XEventMetadata* dst_event_metadata =
           dst.GetOrCreateEventMetadata(event.Name());
-      CopyEventMetadata(*event.metadata(), *dst_event_metadata);
+      CopyEventMetadata(*event.metadata(), src, *dst_event_metadata, dst);
       XEventBuilder dst_event = dst_line.AddEvent(*dst_event_metadata);
       dst_event.SetOffsetPs(event.OffsetPs() + time_offset_ps);
       dst_event.SetDurationPs(event.DurationPs());
@@ -484,7 +504,7 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
     line.ForEachEvent([&](XEventVisitor event) {
       StatByEvent& line_stats = stats[line.Id()];
       line_stats[event.Id()].stat.UpdateStat(event.DurationPs());
-      DCHECK(event_stack.empty() || event_stack.back() < event);
+      DCHECK(event_stack.empty() || !(event < event_stack.back()));
       while (!event_stack.empty() &&
              !event_stack.back().GetTimespan().Includes(event.GetTimespan())) {
         event_stack.pop_back();
@@ -509,7 +529,8 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
     for (const auto& [event_id, event_stat] : stat_by_event) {
       XEventMetadata& event_metadata =
           *aggregated_plane.GetOrCreateEventMetadata(event_id);
-      CopyEventMetadata(*plane.GetEventMetadata(event_id), event_metadata);
+      CopyEventMetadata(*plane.GetEventMetadata(event_id), plane,
+                        event_metadata, aggregated_plane);
       XEventBuilder aggregated_event = aggregated_line.AddEvent(event_metadata);
       aggregated_event.SetNumOccurrences(event_stat.stat.count());
       aggregated_event.SetDurationPs(event_stat.stat.sum());

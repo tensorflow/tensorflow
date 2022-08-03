@@ -745,15 +745,3 @@ message EntryFunctionAttributes {
   // xla::Shape in string format.
   string result_xla_shape = 2;
 }
-
-// Encodes the underlying BEF executable for GpuExecutable.
-message GpuBefExecutableProto {
-  HloModuleProto hlo_module_proto = 1;
-
-  // Executable serialized in Binary Executable Format:
-  // https://github.com/tensorflow/runtime/blob/master/documents/binary_executable_format.md
-  bytes bef = 2;
-
-  // XLA-specific attributes of the executable's (BEF) entry function.
-  EntryFunctionAttributes entry_func_attrs = 3;
-}

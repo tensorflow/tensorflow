@@ -96,6 +96,42 @@ CHECK: st.global.v2.f32
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
+TEST_F(ReductionVectorizationTest, NoVectorizationForBlockSmallerThanWarpSize) {
+  const char* hlo_text = R"(
+HloModule SlowModule
+
+%search_fn (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add0 = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %fused_computation.371 (param_0: f32[6400,4,8,32]) -> f32[6400,4,8] {
+  %param_0 = f32[6400,4,8,32]{3,2,1,0} parameter(0)
+  %constant_0 = f32[] constant(0.0)
+  ROOT %reduce.277 = f32[6400,4,8]{2,1,0} reduce(f32[6400,4,8,32]{3,2,1,0} %param_0, f32[] %constant_0), dimensions={3}, to_apply=%search_fn
+}
+)";
+  const char* expected_optimized_llvm_ir = R"(
+CHECK:  %[[thread_id:.*]] = tail call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
+CHECK:  %[[masked_thread_id:.*]] = and i32 %[[thread_id]], 31
+CHECK-NOT: icmp ult i32 %[[masked_thread_id]], 16
+)";
+
+  CompileAndVerifyIr(hlo_text, expected_optimized_llvm_ir, true);
+
+  // Check that there is a single scalar load.
+  const char* expected_ptx = R"(
+CHECK: ld.global.nc.f32
+CHECK-NOT: ld.global.nc.f32
+CHECK-NOT: ld.global.v2.f32
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  CompileAndOptionallyVerifyPtx(std::move(optimized_module), expected_ptx);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

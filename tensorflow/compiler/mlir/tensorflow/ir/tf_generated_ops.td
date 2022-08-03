@@ -517,7 +517,8 @@ Returns min/max k values and their indices of the input operand in an approximat
   }];
 
   let description = [{
-Returns min/max k values and their indices of the input operand in an approximate manner.
+See https://arxiv.org/abs/2206.14286 for the algorithm details.
+This op is only optimized on TPU currently.
   }];
 
   let arguments = (ins
@@ -2146,6 +2147,23 @@ as `t`. The maximum value to clip by.}]>:$clip_value_max
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CollateTPUEmbeddingMemoryOp : TF_Op<"CollateTPUEmbeddingMemory", []> {
+  let summary = [{
+An op that merges the string-encoded memory config protos from all hosts.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_StrTensor>, [{String-encoded memory config protos containing metadata about
+the memory allocations reserved for TPUEmbedding across all hosts.}]>:$memory_configs
+  );
+
+  let results = (outs
+    TF_StrTensor:$merged_memory_config
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
 def TF_CollectiveAssignGroupV2Op : TF_Op<"CollectiveAssignGroupV2", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Assign group keys based on group assignment.";
 
@@ -2474,6 +2492,39 @@ def TF_ConfigureTPUEmbeddingOp : TF_Op<"ConfigureTPUEmbedding", []> {
   let results = (outs);
 }
 
+def TF_ConfigureTPUEmbeddingHostOp : TF_Op<"ConfigureTPUEmbeddingHost", []> {
+  let summary = "An op that configures the TPUEmbedding software on a host.";
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{A string-encoded common configuration proto containing metadata
+about the TPUEmbedding partitioner output.}]>:$common_config,
+    Arg<TF_StrTensor, [{A string-encoded memory config proto containing metadata about
+the memory allocations reserved for TPUEmbedding.}]>:$memory_config,
+
+    StrAttr:$config
+  );
+
+  let results = (outs
+    Res<TF_StrTensor, [{A string containing metadata about the hostname and RPC port
+used for communication with this host.}]>:$network_config
+  );
+}
+
+def TF_ConfigureTPUEmbeddingMemoryOp : TF_Op<"ConfigureTPUEmbeddingMemory", []> {
+  let summary = "An op that configures the TPUEmbedding software on a host.";
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{A string-encoded CommonConfiguration proto containing metadata
+about the TPUEmbedding partitioner output and the HBM size (in bytes) required
+for operation.}]>:$common_config
+  );
+
+  let results = (outs
+    Res<TF_StrTensor, [{A string-encoded HbmBuffersConfig proto containing metadata about
+the memory allocations reserved for TPUEmbedding.}]>:$memory_config
+  );
+}
+
 def TF_ConjOp : TF_Op<"Conj", [Involution, NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns the complex conjugate of a complex number.";
 
@@ -2526,6 +2577,25 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tperm = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_ConnectTPUEmbeddingHostsOp : TF_Op<"ConnectTPUEmbeddingHosts", []> {
+  let summary = [{
+An op that sets up communication between TPUEmbedding host software instances
+  }];
+
+  let description = [{
+after ConfigureTPUEmbeddingHost has been called on each host.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_StrTensor>, [{Strings containing metadata about the hostname and RPC port
+used for communication with all hosts.}]>:$network_configs
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_Conv2DOp : TF_Op<"Conv2D", [InferTensorType, NoSideEffect, TF_LayoutSensitiveInterface]> {
@@ -4525,6 +4595,26 @@ def TF_ErfinvOp : TF_Op<"Erfinv", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ExecuteTPUEmbeddingPartitionerOp : TF_Op<"ExecuteTPUEmbeddingPartitioner", []> {
+  let summary = [{
+An op that executes the TPUEmbedding partitioner on the central configuration
+  }];
+
+  let description = [{
+device and computes the HBM size (in bytes) required for TPUEmbedding operation.
+  }];
+
+  let arguments = (ins
+    StrAttr:$config
+  );
+
+  let results = (outs
+    Res<TF_StrTensor, [{A string-encoded common configuration proto
+containing metadata about the TPUEmbedding partitioner output and
+the HBM size (in bytes) required for operation.}]>:$common_config
+  );
+}
+
 def TF_ExpOp : TF_Op<"Exp", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Computes exponential of x element-wise.  \\(y = e^x\\).
@@ -5060,6 +5150,20 @@ Creates a dataset by applying `tf.data.Options` to `input_dataset`.
   );
 }
 
+def TF_FinalizeTPUEmbeddingOp : TF_Op<"FinalizeTPUEmbedding", []> {
+  let summary = "An op that finalizes the TPUEmbedding configuration.";
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{A string-encoded common configuration proto containing metadata
+about the TPUEmbedding partitioner output and the HBM size (in bytes) required
+for operation.}]>:$common_config,
+    Arg<TF_StrTensor, [{A string-encoded memory config proto containing metadata about
+the memory allocations reserved for TPUEmbedding.}]>:$memory_config
+  );
+
+  let results = (outs);
+}
+
 def TF_FlatMapDatasetOp : TF_Op<"FlatMapDataset", [NoSideEffect]> {
   let summary = [{
 Creates a dataset that applies `f` to the outputs of `input_dataset`.
@@ -5125,13 +5229,12 @@ def TF_FloorDivOp : TF_Op<"FloorDiv", [NoSideEffect, ResultsBroadcastableShape]>
 
 def TF_FloorModOp : TF_Op<"FloorMod", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
                     WithBroadcastableBinOpBuilder {
-  let summary = [{
-Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
-  }];
+  let summary = "Returns element-wise remainder of division.";
 
   let description = [{
-true, this follows Python semantics in that the result here is consistent
-with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+This follows Python semantics in that the
+result here is consistent with a flooring divide. E.g.
+`floor(x / y) * y + floormod(x, y) = x`, regardless of the signs of x and y.
 
 *NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -9162,6 +9265,10 @@ Intended for "grouping" multiple checkpoints in a sharded checkpoint setup.
 If delete_old_dirs is true, attempts to delete recursively the dirname of each
 path in the input checkpoint_prefixes.  This is useful when those paths are non
 user-facing temporary locations.
+
+If allow_missing_files is true, merges the checkpoint prefixes as long as
+at least one file exists. Otherwise, if no files exist, an error will be thrown.
+The default value for allow_missing_files is false.
   }];
 
   let arguments = (ins
@@ -9169,7 +9276,8 @@ user-facing temporary locations.
     Arg<TF_StrTensor, [{scalar.  The desired final prefix.  Allowed to be the same
 as one of the checkpoint_prefixes.}]>:$destination_prefix,
 
-    DefaultValuedAttr<BoolAttr, "true">:$delete_old_dirs
+    DefaultValuedAttr<BoolAttr, "true">:$delete_old_dirs,
+    DefaultValuedAttr<BoolAttr, "false">:$allow_missing_files
   );
 
   let results = (outs);
@@ -10490,7 +10598,7 @@ truncated normal values using the parameters for each row.}]>:$output
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, SymbolUserOpInterface, NoSideEffect]> {
+def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, NoSideEffect, SymbolUserOpInterface]> {
   let summary = [{
 returns `f(inputs)`, where `f`'s body is placed and partitioned.
   }];
@@ -18908,6 +19016,31 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   let hasFolder = 1;
 }
 
+def TF_TridiagonalMatMulOp : TF_Op<"TridiagonalMatMul", [NoSideEffect]> {
+  let summary = "Calculate product with tridiagonal matrix.";
+
+  let description = [{
+Calculates product of two matrices, where left matrix is a tridiagonal matrix.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., 1, M]`, representing superdiagonals of
+tri-diagonal matrices to the left of multiplication. Last element is ignored.}]>:$superdiag,
+    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., 1, M]`, representing main diagonals of tri-diagonal
+matrices to the left of multiplication.}]>:$maindiag,
+    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., 1, M]`, representing subdiagonals of tri-diagonal
+matrices to the left of multiplication. First element is ignored.}]>:$subdiag,
+    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., M, N]`, representing MxN matrices to the right of
+multiplication.}]>:$rhs
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., M, N]` containing the product.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_TridiagonalSolveOp : TF_Op<"TridiagonalSolve", [NoSideEffect]> {
   let summary = "Solves tridiagonal systems of equations.";
 
@@ -19719,6 +19852,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_XlaConvV2Op : TF_Op<"XlaConvV2", [NoSideEffect, TF_NoConstantFold]> {
@@ -19751,6 +19886,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
   TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
   TF_DerivedResultTypeAttr preferred_element_type = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_XlaDotOp : TF_Op<"XlaDot", [NoSideEffect, TF_NoConstantFold]> {
@@ -20025,7 +20162,7 @@ key: A unique identifier for this region used to match up host transfers.
 }
 
 def TF_XlaRecvTPUEmbeddingActivationsOp : TF_Op<"XlaRecvTPUEmbeddingActivations", [TF_MustExecute, TF_TPUEmbeddingReadEffect]> {
-  let summary = "An op that receives embeddng activations on the TPU.";
+  let summary = "An op that receives embedding activations on the TPU.";
 
   let description = [{
 The TPU system performs the embedding lookups and aggregations. The results of
@@ -20623,75 +20760,6 @@ def TF__ArrayToListOp : TF_Op<"_ArrayToList", [NoSideEffect]> {
   TF_DerivedResultTypeListAttr out_types = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_CollateTPUEmbeddingMemoryOp : TF_Op<"CollateTPUEmbeddingMemory", []> {
-  let summary = [{
-An op that merges the string-encoded HbmBufferConfig protos from all hosts.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_StrTensor>, [{String-encoded HbmBuffersConfig protos containing metadata about
-the memory allocations reserved for TPUEmbedding across all hosts.}]>:$memory_configs
-  );
-
-  let results = (outs
-    TF_StrTensor:$merged_memory_config
-  );
-
-  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
-}
-
-def TF_ConfigureTPUEmbeddingHostOp : TF_Op<"ConfigureTPUEmbeddingHost", []> {
-  let summary = "An op that configures the TPUEmbedding software on a host.";
-
-  let arguments = (ins
-    Arg<TF_StrTensor, [{A string-encoded CommonConfiguration proto containing metadata
-about the TPUEmbedding partitioner output.}]>:$common_config,
-    Arg<TF_StrTensor, [{A string-encoded HbmBuffersConfig proto containing metadata about
-the memory allocations reserved for TPUEmbedding.}]>:$memory_config,
-
-    StrAttr:$config
-  );
-
-  let results = (outs
-    Res<TF_StrTensor, [{A string containing metadata about the hostname and RPC port
-used for communication with this host.}]>:$network_config
-  );
-}
-
-def TF_ConfigureTPUEmbeddingMemoryOp : TF_Op<"ConfigureTPUEmbeddingMemory", []> {
-  let summary = "An op that configures the TPUEmbedding software on a host.";
-
-  let arguments = (ins
-    Arg<TF_StrTensor, [{A string-encoded CommonConfiguration proto containing metadata
-about the TPUEmbedding partitioner output and the HBM size (in bytes) required
-for operation.}]>:$common_config
-  );
-
-  let results = (outs
-    Res<TF_StrTensor, [{A string-encoded HbmBuffersConfig proto containing metadata about
-the memory allocations reserved for TPUEmbedding.}]>:$memory_config
-  );
-}
-
-def TF_ConnectTPUEmbeddingHostsOp : TF_Op<"ConnectTPUEmbeddingHosts", []> {
-  let summary = [{
-An op that sets up communication between TPUEmbedding host software instances
-  }];
-
-  let description = [{
-after ConfigureTPUEmbeddingHost has been called on each host.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_StrTensor>, [{Strings containing metadata about the hostname and RPC port
-used for communication with all hosts.}]>:$network_configs
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
-}
-
 def TF__EagerConstOp : TF_Op<"_EagerConst", [NoSideEffect]> {
   let summary = "";
 
@@ -20704,40 +20772,6 @@ def TF__EagerConstOp : TF_Op<"_EagerConst", [NoSideEffect]> {
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_ExecuteTPUEmbeddingPartitionerOp : TF_Op<"ExecuteTPUEmbeddingPartitioner", []> {
-  let summary = [{
-An op that executes the TPUEmbedding partitioner on the central configuration
-  }];
-
-  let description = [{
-device and computes the HBM size (in bytes) required for TPUEmbedding operation.
-  }];
-
-  let arguments = (ins
-    StrAttr:$config
-  );
-
-  let results = (outs
-    Res<TF_StrTensor, [{A string-encoded tpu_embedding::CommonConfiguration proto
-containing metadata about the TPUEmbedding partitioner output and
-the HBM size (in bytes) required for operation.}]>:$common_config
-  );
-}
-
-def TF_FinalizeTPUEmbeddingOp : TF_Op<"FinalizeTPUEmbedding", []> {
-  let summary = "An op that finalizes the TPUEmbedding configuration.";
-
-  let arguments = (ins
-    Arg<TF_StrTensor, [{A string-encoded CommonConfiguration proto containing metadata
-about the TPUEmbedding partitioner output and the HBM size (in bytes) required
-for operation.}]>:$common_config,
-    Arg<TF_StrTensor, [{A string-encoded HbmBuffersConfig proto containing metadata about
-the memory allocations reserved for TPUEmbedding.}]>:$memory_config
-  );
-
-  let results = (outs);
 }
 
 def TF__FusedBatchNormExOp : TF_Op<"_FusedBatchNormEx", [NoSideEffect]> {
@@ -20803,9 +20837,9 @@ create these operators.
   }];
 
   let arguments = (ins
-    TF_F32OrF64Tensor:$input,
-    TF_F32OrF64Tensor:$filter,
-    Variadic<TF_F32OrF64Tensor>:$args,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$input,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$filter,
+    Variadic<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>>:$args,
 
     I64ArrayAttr:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
@@ -20819,7 +20853,7 @@ create these operators.
   );
 
   let results = (outs
-    TF_F32OrF64Tensor:$output
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$output
   );
 
   TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;

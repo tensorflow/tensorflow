@@ -106,8 +106,9 @@ struct MklEinsumHelper {
 
     // Compute parameters for DNNL matmul primitive.
     MklBatchMatMulHelper bmm;
-    auto params = bmm.CreateMatMulParams(lhs.shape(), rhs.shape(), out_shape,
-                                         trans_x, trans_y);
+    string prefix = "einsum";
+    auto params = bmm.CreateMatMulParams(prefix, lhs.shape(), rhs.shape(),
+                                         out_shape, trans_x, trans_y);
 
     // Create or retrieve matmul primitive from cache.
     MklMatMulPrimitive<T, T, T>* matmul_prim =

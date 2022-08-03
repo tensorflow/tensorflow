@@ -588,7 +588,15 @@ class MemorySpaceAssignment {
 
     const std::vector<HloUse>& uses() const { return uses_; }
     MemorySpace memory_space() const { return memory_space_; }
-    Chunk chunk() const { return *chunk_; }
+    // Returns the associated chunk that may be a nullopt if the allocation is
+    // in the default memory space.
+    std::optional<Chunk> maybe_chunk() const { return chunk_; }
+    // Returns the associated chunk. The caller should ensure that the chunk is
+    // defined (the allocation should be in the alternate memory space).
+    Chunk chunk() const {
+      CHECK(chunk_.has_value());
+      return *chunk_;
+    }
     Chunk* mutable_chunk() { return &*chunk_; }
     void set_start_time(int64_t start_time) { start_time_ = start_time; }
     int64_t start_time() const { return start_time_; }
@@ -707,7 +715,7 @@ class MemorySpaceAssignment {
    public:
     MirroredAllocation(const Allocation& original_allocation, int64_t time)
         : Allocation(original_allocation.defining_position(),
-                     MemorySpace::kDefault, original_allocation.chunk(),
+                     MemorySpace::kDefault, original_allocation.maybe_chunk(),
                      /*start_time=*/time,
                      /*end_time=*/time, /*is_scoped_allocation=*/false),
           original_allocation_(original_allocation) {}
@@ -732,7 +740,7 @@ class MemorySpaceAssignment {
                      HloInstruction* calling_instruction, HloPosition position,
                      int64_t time)
         : Allocation(position, MemorySpace::kDefault,
-                     original_allocation.chunk(), /*start_time=*/time,
+                     original_allocation.maybe_chunk(), /*start_time=*/time,
                      /*end_time=*/time, /*is_scoped_allocation=*/false),
           original_allocation_(original_allocation),
           calling_instruction_(calling_instruction) {}

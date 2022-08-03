@@ -18,9 +18,10 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -41,26 +42,103 @@ GraphDef CreateTestProto() {
   return graph_def;
 }
 
+StatusOr<SavedModel> ReadSavedModel(absl::string_view file_path) {
+  std::string serialized_saved_model;
+  auto status = ReadFileToString(Env::Default(), std::string(file_path),
+                                 &serialized_saved_model);
+  if (!status.ok()) {
+    return status;
+  }
+  SavedModel saved_model_pb;
+  saved_model_pb.ParseFromString(serialized_saved_model);
+  return saved_model_pb;
+}
+
 TEST(FingerprintingTest, TestComputeHash) {
   GraphDef graph_def = CreateTestProto();
   EXPECT_EQ(ComputeHash(graph_def), 4870331646167591885);
 }
 
 TEST(FingerprintingTest, TestCreateFingerprint) {
-  // Read a SavedModel from disk.
   const std::string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
                    "VarsAndArithmeticObjectGraph", "saved_model.pb");
-  std::string serialized_saved_model;
-  TF_EXPECT_OK(
-      ReadFileToString(Env::Default(), export_dir, &serialized_saved_model));
 
-  SavedModel saved_model_pb;
-  saved_model_pb.ParseFromString(serialized_saved_model);
-  MetaGraphDef metagraph = saved_model_pb.meta_graphs(0);
+  TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
+                          ReadSavedModel(export_dir));
+  FingerprintDef fingerprint_def =
+      CreateFingerprintDef(saved_model_pb.meta_graphs(0));
 
-  FingerprintDef fingerprint_def = CreateFingerprintDef(metagraph);
-  EXPECT_GT(fingerprint_def.graph_def_hash(), 0);
+  EXPECT_GT(fingerprint_def.graph_def_checksum(), 0);
+  EXPECT_EQ(fingerprint_def.signature_def_hash(), 5693392539583495303);
+}
+
+// Test that canonicalization returns the same hash for two models saved by
+// calling `tf.saved_model.save` twice in a row in the same program.
+TEST(FingerprintingTest, TestCanonicalizeGraphDeforModelSavedTwice) {
+  const std::string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
+                   "bert1", "saved_model.pb");
+  TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
+                          ReadSavedModel(export_dir));
+
+  MetaGraphDef* metagraph = saved_model_pb.mutable_meta_graphs(0);
+  GraphDef* graph_def = metagraph->mutable_graph_def();
+  CanonicalizeGraphDef(*graph_def);
+  uint64 hash1 = ComputeHash(*graph_def);
+
+  const std::string export_dir2 =
+      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
+                   "bert2", "saved_model.pb");
+  TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb2,
+                          ReadSavedModel(export_dir2));
+  const MetaGraphDef& metagraph2 = saved_model_pb2.meta_graphs(0);
+  GraphDef graph_def2 = metagraph2.graph_def();
+  CanonicalizeGraphDef(graph_def2);
+  uint64 hash2 = ComputeHash(graph_def2);
+
+  EXPECT_EQ(hash1, hash2);
+}
+
+// Compare the fingerprints of two models saved by calling
+// `tf.saved_model.save` twice in a row in the same program.
+TEST(FingerprintingTest, TestCompareFingerprintForTwoModelSavedTwice) {
+  const std::string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
+                   "bert1", "saved_model.pb");
+
+  TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
+                          ReadSavedModel(export_dir));
+  FingerprintDef fingerprint_def =
+      CreateFingerprintDef(saved_model_pb.meta_graphs(0));
+
+  const std::string export_dir2 =
+      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
+                   "bert2", "saved_model.pb");
+  TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb2,
+                          ReadSavedModel(export_dir2));
+  FingerprintDef fingerprint_def2 =
+      CreateFingerprintDef(saved_model_pb2.meta_graphs(0));
+
+  EXPECT_EQ(fingerprint_def.graph_def_program_hash(),
+            fingerprint_def2.graph_def_program_hash());
+  EXPECT_EQ(fingerprint_def.signature_def_hash(),
+            fingerprint_def2.signature_def_hash());
+}
+
+TEST(FingerprintingTest, TestFingerprintComputationDoesNotMutateModel) {
+  const std::string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
+                   "bert1", "saved_model.pb");
+  TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
+                          ReadSavedModel(export_dir));
+  FingerprintDef fingerprint_def =
+      CreateFingerprintDef(saved_model_pb.meta_graphs(0));
+  FingerprintDef fingerprint_def2 =
+      CreateFingerprintDef(saved_model_pb.meta_graphs(0));
+
+  EXPECT_EQ(fingerprint_def.graph_def_checksum(),
+            fingerprint_def2.graph_def_checksum());
 }
 
 }  // namespace

@@ -488,8 +488,14 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
     const KernelFallbackCompatRequestState& fallback_request_state,
     const OpKernelRunner& kernel_runner, bool is_async,
     tensorflow::Device* device) {
-  tensorflow::profiler::TraceMe trace_me(
-      [&]() { return ToAbslStringView(frame.op_name().GetValue()); });
+  tensorflow::profiler::TraceMe trace_me([&]() -> std::string {
+    if (kernel_runner.op_kernel()) {
+      return tensorflow::profiler::TraceMeOp(
+          kernel_runner.op_kernel()->name_view(),
+          kernel_runner.op_kernel()->type_string_view());
+    }
+    return std::string(ToAbslStringView(frame.op_name().GetValue()));
+  });
 
   trace_me.AppendMetadata(
       [&]() { return GetTracingMetadata(args, exec_ctx, kernel_runner); });
@@ -544,10 +550,10 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
   }
   if (is_cost_measurement_enabled) {
     op_chain->AndThen([run_start_time, exec_ctx, frame] {
-      auto run_duration = Env::Default()->NowMicros() - run_start_time;
+      auto execution_time = Env::Default()->NowMicros() - run_start_time;
       exec_ctx.host()
           ->GetOrCreateSharedContext<tensorflow::tfrt_stub::CostRecorder>()
-          .RecordCost(frame.op_name().GetValue(), run_duration);
+          .RecordCost(frame.op_name().GetValue(), execution_time);
     });
   }
 }

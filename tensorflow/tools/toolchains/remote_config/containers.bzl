@@ -3,7 +3,7 @@
 """SHA 256 values for each image."""
 container_digests = {
     # TF now uses only this container
-    "cuda11.2-cudnn8.1-ubuntu20.04-manylinux2014-multipython": "sha256:a1b6c03012002e9c831d6019ec53ae9aa87c16c06dce58fbcc02ae4959003c41",
+    "cuda11.2-cudnn8.1-ubuntu20.04-manylinux2014-multipython": "sha256:48612bd85709cd014711d0b0f87e0806f3567d06d2e81c6e860516b87498b821",
     # JAX manylinux2014 configs.
     "cuda11.1-cudnn8-ubuntu20.04-manylinux2014-multipython": "sha256:3764b49e64a16e5778995fc21a119ff0e364174ecbf461f741701b48e6d4f204",
     "cuda11.4-cudnn8.2-ubuntu20.04-manylinux2014-multipython": "sha256:6531a7ed4b1524e9f997ad10ad214af79e1042bc7ec6efe2f3e0692bafdb968f",

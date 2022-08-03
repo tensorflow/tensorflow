@@ -532,7 +532,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
         throw new IllegalArgumentException(
             "Instantiated delegates (other than NnApiDelegate) are not allowed when using TF Lite"
                 + " from Google Play Services. Please use"
-                + " InterpreterApi.Options.setDelegateFactory() with an appropriate DelegateFactory"
+                + " InterpreterApi.Options.addDelegateFactory() with an appropriate DelegateFactory"
                 + " instead.");
       }
       delegates.add(delegate);

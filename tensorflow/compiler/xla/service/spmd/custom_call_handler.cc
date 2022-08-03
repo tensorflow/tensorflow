@@ -408,6 +408,10 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     return HandleCustomCallSPMDInternal_RotateRight(hlo);
   }
 
+  if (hlo->sharding().HasUniqueDevice()) {
+    return HandleSingleDevice(hlo);
+  }
+
   return DefaultAction(hlo);
 }
 

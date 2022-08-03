@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 
@@ -83,6 +84,49 @@ INSTANTIATE_TEST_SUITE_P(
         TestParams{0, 0, 0}, TestParams{0, 0, 1}, TestParams{0, 1, 0},
         TestParams{0, 1, 1}, TestParams{1, 0, 0}, TestParams{1, 0, 1},
         TestParams{1, 1, 0}, TestParams{1, 1, 1}));
+
+TEST(SavedModelTest, CostMeasurementEnabled) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  //  x = tf.placeholder(tf.int32, shape=(3))
+  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+  //  r = tf.matmul(x, y)
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.graph_execution_options.compile_options.enable_native_ops = false;
+
+  tensorflow::Status status;
+  auto saved_model =
+      SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                     /*tags=*/{"serve"}, &status);
+  TF_CHECK_OK(status);
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.push_back(
+      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
+
+  tfrt::SavedModel::RunOptions run_options;
+  run_options.enable_cost_measurement = true;
+
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({6}));
+
+  auto op_count = saved_model->GetHostContext()
+                      ->GetOrCreateSharedContext<CostRecorder>()
+                      .size();
+
+  // There are three ops in the CostRecorder. They are tf.VarHandleOp,
+  // tf.ReadVariableOp and tf.MatMul
+  ASSERT_EQ(op_count, 3);
+}
 
 TEST(SavedModelTest, BasicV2) {
   // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated

@@ -166,6 +166,8 @@ class IrEmitterUnnested : public IrEmitter {
   // generated code will have empty 'content'.
   Status EmitLmhloRegion(mlir::Region* region);
 
+  static void GetDependentDialects(mlir::DialectRegistry& registry);
+
  private:
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                     IrEmitterContext* ir_emitter_context);
@@ -588,7 +590,7 @@ class IrEmitterUnnested : public IrEmitter {
   ReductionCodegenState GenerateReductionCodegenState(
       mlir::lmhlo::FusionOp fusion, const ReductionCodegenInfo& reduction_info,
       absl::Span<const HloReduceInstruction* const> reduce_instr_index_group,
-      HloComputation* fused_computation, FusedIrEmitter* fused_emitter);
+      FusedIrEmitter& fused_emitter);
 
   // Wraps up the code generation for a tile block of a reduction kernel:
   // write the calculated output into the output tensor.
@@ -625,8 +627,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Emits code for reductions in the output_instructions.
   Status EmitIRForReduction(mlir::lmhlo::FusionOp fusion,
                             absl::Span<HloInstruction* const> instr_index_group,
-                            HloComputation* fused_computation,
-                            FusedIrEmitter* fused_emitter,
+                            FusedIrEmitter& fused_emitter,
                             const ReductionOutputMap& result_ir_arrays,
                             const ReductionCodegenInfo& reduction_info,
                             const Shape& input_shape);

@@ -181,7 +181,8 @@ StatusOr<std::string> DatasetClient<T>::RegisterDataset(
     const DatasetDef& dataset) {
   std::string dataset_id;
   TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
-      dataset, DataServiceMetadata(), dataset_id));
+      dataset, DataServiceMetadata(), /*requested_dataset_id=*/std::nullopt,
+      dataset_id));
   return dataset_id;
 }
 

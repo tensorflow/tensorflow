@@ -818,6 +818,11 @@ cc_library(
         "partially_decluster_pass.h",
         "report_clustering_info_pass.h",
     ],
+    visibility = [
+        ":internal",
+        "//tensorflow/core/tfrt/utils:__pkg__",
+        "//third_party/cloud_tpu/inference_converter:__pkg__",
+    ],
     deps = [
         "compilability_check_util",
         ":common",
