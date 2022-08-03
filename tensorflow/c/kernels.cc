@@ -131,6 +131,11 @@ void TF_KernelBuilder_Priority(TF_KernelBuilder* kernel_builder,
   kernel_builder->cc_builder->Priority(priority_number);
 }
 
+void TF_KernelBuilder_Label(TF_KernelBuilder* kernel_builder,
+                            const char* label) {
+  kernel_builder->cc_builder->Label(label);
+}
+
 namespace tensorflow {
 namespace {
 
