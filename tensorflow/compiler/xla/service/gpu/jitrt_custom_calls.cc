@@ -929,7 +929,7 @@ Error Infeed::operator()(const ServiceExecutableRunOptions* run_options,
 
     // Check that destination shape matches the source shape.
     Shape dest_shape = ToShape(*dest);
-    if (!ShapeUtil::Equal(dest_shape, source_shape)) {
+    if (!ShapeUtil::ReshapeIsBitcast(dest_shape, source_shape)) {
       return MakeStringError(
           "The destination shape does not match the source shape");
     }
@@ -998,7 +998,7 @@ Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
 
     // Check that destination shape matches the source shape.
     Shape source_shape = ToShape(*source);
-    if (!ShapeUtil::Equal(dest_shape, source_shape)) {
+    if (!ShapeUtil::ReshapeIsBitcast(dest_shape, source_shape)) {
       return MakeStringError(
           "The destination shape does not match the source shape");
     }
