@@ -134,6 +134,12 @@ Status EliminateRefVariablesFromV1ControlFlow(GraphDef& graph_def);
 // Removes the "_input_shapes" attribute of functions in the graph.
 void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def);
 
+// Replaces partitioned calls in the graph that have _XlaMustCompile attribute
+// set to true with XlaLaunch op.
+// TODO(b/239089915): Clean this up after the logic is implemented in TFXLA
+// bridge.
+Status BuildXlaLaunchOps(Graph* graph);
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow
 

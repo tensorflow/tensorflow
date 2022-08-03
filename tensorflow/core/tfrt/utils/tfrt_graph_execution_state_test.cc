@@ -19,19 +19,32 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/functional_ops.h"
+#include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/cc/ops/while_loop.h"
+#include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_ops.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
+#include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -988,6 +1001,171 @@ TEST_F(InsertTransferOpsTest, InsertTransferOpsWithFunctionInlining) {
     EXPECT_EQ(send_count, 1);
     EXPECT_EQ(recv_count, 1);
   }
+}
+
+std::unique_ptr<Graph> MakeOuterGraph(const FunctionLibraryDefinition& flib_def,
+                                      const std::string& function_name) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  TF_EXPECT_OK(scope.graph()->AddFunctionLibrary(flib_def.ToProto()));
+
+  auto a = ops::Placeholder(scope.WithOpName("A"), DT_INT32);
+  auto b = ops::Placeholder(scope.WithOpName("B"), DT_FLOAT);
+  auto c = ops::Placeholder(scope.WithOpName("C"), DT_INT32);
+  auto d = ops::Placeholder(scope.WithOpName("D"), DT_FLOAT);
+  auto u = ops::Placeholder(scope.WithOpName("U"), DT_RESOURCE);
+  auto v = ops::Placeholder(scope.WithOpName("V"), DT_RESOURCE);
+  auto w = ops::Placeholder(scope.WithOpName("W"), DT_RESOURCE);
+
+  std::vector<tensorflow::NodeDefBuilder::NodeOut> func_inputs;
+  func_inputs.push_back(
+      tensorflow::NodeDefBuilder::NodeOut(a.node()->name(), 0, DT_INT32));
+  func_inputs.push_back(tensorflow::NodeDefBuilder::NodeOut(b.node()->name(), 0,
+                                                            b.output.type()));
+  func_inputs.push_back(tensorflow::NodeDefBuilder::NodeOut(c.node()->name(), 0,
+                                                            c.output.type()));
+  func_inputs.push_back(tensorflow::NodeDefBuilder::NodeOut(d.node()->name(), 0,
+                                                            d.output.type()));
+  func_inputs.push_back(tensorflow::NodeDefBuilder::NodeOut(u.node()->name(), 0,
+                                                            u.output.type()));
+  func_inputs.push_back(tensorflow::NodeDefBuilder::NodeOut(v.node()->name(), 0,
+                                                            v.output.type()));
+  func_inputs.push_back(tensorflow::NodeDefBuilder::NodeOut(w.node()->name(), 0,
+                                                            w.output.type()));
+
+  std::vector<DataType> input_dtypes;
+  for (const NodeDefBuilder::NodeOut& func_input : func_inputs) {
+    input_dtypes.push_back(func_input.data_type);
+  }
+
+  std::vector<DataType> output_dtypes = {DT_FLOAT, DT_INT32, DT_FLOAT,
+                                         DT_FLOAT};
+
+  NameAttrList f;
+  f.set_name(function_name);
+
+  NodeDef def;
+  TF_CHECK_OK(NodeDefBuilder("xla_call_0", "StatefulPartitionedCall", &flib_def)
+                  .Input(func_inputs)
+                  .Attr("Tin", input_dtypes)
+                  .Attr("Tout", output_dtypes)
+                  .Attr("f", f)
+                  .Device("/gpu:0")
+                  .Attr(kXlaMustCompileAttr, true)
+                  .Finalize(&def));
+
+  Status status;
+  Node* launch = scope.graph()->AddNode(def, &status);
+  TF_CHECK_OK(status);
+  TF_CHECK_OK(scope.DoShapeInference(launch));
+  scope.graph()->AddEdge(a.node(), 0, launch, 0);
+  scope.graph()->AddEdge(b.node(), 0, launch, 1);
+  scope.graph()->AddEdge(c.node(), 0, launch, 2);
+  scope.graph()->AddEdge(d.node(), 0, launch, 3);
+  scope.graph()->AddEdge(u.node(), 0, launch, 4);
+  scope.graph()->AddEdge(v.node(), 0, launch, 5);
+  scope.graph()->AddEdge(w.node(), 0, launch, 6);
+
+  auto consumer0_a =
+      ops::Identity(scope.WithOpName("consumer0_a"), Output(launch, 0));
+  auto consumer0_b =
+      ops::Identity(scope.WithOpName("consumer0_b"), Output(launch, 0));
+  auto consumer0_c =
+      ops::Identity(scope.WithOpName("consumer0_c"), Output(launch, 0));
+  auto consumer1 =
+      ops::Identity(scope.WithOpName("consumer1"), Output(launch, 1));
+  auto consumer2 =
+      ops::Identity(scope.WithOpName("consumer2"), Output(launch, 2));
+  auto consumer3 =
+      ops::Identity(scope.WithOpName("consumer3"), Output(launch, 3));
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_CHECK_OK(scope.ToGraph(graph.get()));
+  return graph;
+}
+
+// Makes an encapsulate body graph for use in tests.
+std::unique_ptr<Graph> MakeBodyGraph() {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+
+  auto arg0 = ops::_Arg(scope.WithOpName("a_0_arg"), DT_INT32, 0);
+  auto arg1 = ops::_Arg(scope.WithOpName("b_0_arg"), DT_FLOAT, 1);
+  auto arg2 = ops::_Arg(scope.WithOpName("c_0_arg"), DT_INT32, 2);
+  auto arg3 = ops::_Arg(scope.WithOpName("d_0_arg"), DT_FLOAT, 3);
+
+  auto arg4 = ops::_Arg(scope.WithOpName("u_0_arg"), DT_RESOURCE, 4);
+  auto arg5 = ops::_Arg(scope.WithOpName("v_0_arg"), DT_RESOURCE, 5);
+  auto arg6 = ops::_Arg(scope.WithOpName("w_0_arg"), DT_RESOURCE, 6);
+
+  auto b_identity = ops::Identity(scope.WithOpName("B_identity"), arg1);
+  auto read_u = ops::ReadVariableOp(scope.WithOpName("ReadU"), arg4, DT_FLOAT);
+  auto read_v = ops::ReadVariableOp(scope.WithOpName("ReadV"), arg5, DT_FLOAT);
+  auto read_w = ops::ReadVariableOp(scope.WithOpName("ReadW"), arg6, DT_FLOAT);
+
+  auto e = ops::Add(scope.WithOpName("E"), arg0, arg2);
+  auto f = ops::Add(scope.WithOpName("F"), read_v, read_w);
+  auto g = ops::Add(scope.WithOpName("G"), f, arg3);
+
+  auto out0 = ops::_Retval(scope.WithOpName("b_identity_0_retval_RetVal"),
+                           b_identity, 0);
+  auto out1 = ops::_Retval(scope.WithOpName("e_0_retval_RetVal"), e, 1);
+  auto out2 = ops::_Retval(scope.WithOpName("g_0_retval_RetVal"), g, 2);
+  auto out3 =
+      ops::_Retval(scope.WithOpName("readu_0_retval_RetVal"), read_u, 3);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_CHECK_OK(scope.ToGraph(graph.get()));
+  return graph;
+}
+
+TEST(BuildXlaOpsTest, BuildXlaLaunchOp) {
+  std::unique_ptr<Graph> body_graph = MakeBodyGraph();
+  FunctionDefLibrary flib;
+  TF_ASSERT_OK(
+      GraphToFunctionDef(*body_graph, "xla_func_0", flib.add_function()));
+
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), flib);
+
+  std::unique_ptr<Graph> graph = MakeOuterGraph(flib_def, "xla_func_0");
+  TF_ASSERT_OK(BuildXlaLaunchOps(graph.get()));
+
+  Scope scope = Scope::DisabledShapeInferenceScope().ExitOnError();
+  TF_EXPECT_OK(scope.graph()->AddFunctionLibrary(flib));
+
+  auto a = ops::Placeholder(scope.WithOpName("A"), DT_INT32);
+  auto b = ops::Placeholder(scope.WithOpName("B"), DT_FLOAT);
+  auto c = ops::Placeholder(scope.WithOpName("C"), DT_INT32);
+  auto d = ops::Placeholder(scope.WithOpName("D"), DT_FLOAT);
+  auto u = ops::Placeholder(scope.WithOpName("U"), DT_RESOURCE);
+  auto v = ops::Placeholder(scope.WithOpName("V"), DT_RESOURCE);
+  auto w = ops::Placeholder(scope.WithOpName("W"), DT_RESOURCE);
+
+  NameAttrList function;
+  function.set_name("xla_func_0");
+  auto launch = ops::XlaLaunch(
+      scope.WithOpName("xla_call_0").WithDevice("/gpu:0"),
+      std::initializer_list<Input>{}, std::initializer_list<Input>{a, b, c, d},
+      std::initializer_list<Input>{u, v, w},
+      DataTypeVector{DT_FLOAT, DT_INT32, DT_FLOAT, DT_FLOAT}, function);
+
+  auto consumer0_a =
+      ops::Identity(scope.WithOpName("consumer0_a"), launch.results[0]);
+  auto consumer0_b =
+      ops::Identity(scope.WithOpName("consumer0_b"), launch.results[0]);
+  auto consumer0_c =
+      ops::Identity(scope.WithOpName("consumer0_c"), launch.results[0]);
+  auto consumer1 =
+      ops::Identity(scope.WithOpName("consumer1"), launch.results[1]);
+  auto consumer2 =
+      ops::Identity(scope.WithOpName("consumer2"), launch.results[2]);
+  auto consumer3 =
+      ops::Identity(scope.WithOpName("consumer3"), launch.results[3]);
+
+  GraphDef expected_def;
+  TF_ASSERT_OK(scope.ToGraphDef(&expected_def));
+
+  GraphDef actual_def;
+  graph->ToGraphDef(&actual_def);
+  TF_EXPECT_GRAPH_EQ(expected_def, actual_def);
 }
 
 }  // namespace
