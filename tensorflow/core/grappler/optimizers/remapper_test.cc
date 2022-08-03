@@ -2408,6 +2408,5 @@ class RemapperLeakyReluTest : public GrapplerTest {
 TEST_F(RemapperLeakyReluTest, F32) { RunTest<DT_FLOAT>(); }
 TEST_F(RemapperLeakyReluTest, BF16) { RunTest<DT_BFLOAT16>(); }
 
-
 }  // namespace grappler
 }  // namespace tensorflow
