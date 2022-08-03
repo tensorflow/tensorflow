@@ -167,8 +167,7 @@ typedef struct TP_OptimizerRegistrationParams {
 
 // TF_InitGraph is used to do graph optimizer registration.
 // Plugin should implement TF_InitGraph to register graph optimizers.
-TF_CAPI_EXPORT extern void TF_InitGraph(TP_OptimizerRegistrationParams* params,
-                                        TF_Status* status);
+void TF_InitGraph(TP_OptimizerRegistrationParams* params, TF_Status* status);
 
 // Get a set of node names that must be preserved. They can not be transformed
 // or removed during the graph transformation. This includes feed and fetch
