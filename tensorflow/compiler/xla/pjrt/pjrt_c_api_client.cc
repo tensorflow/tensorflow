@@ -154,8 +154,11 @@ absl::string_view PjRtCApiClient::platform_version() const {
 
 StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
     const PjRtLoadedExecutable& executable) const {
+#ifdef PJRT_C_API_BYPASS
   return wrapped_->ExecutableFingerprint(
       *PjRtCApiExecutable::GetWrapped(&executable));
+#endif  // PJRT_C_API_BYPASS
+  return Unimplemented("PJRT C API does not support ExecutableFingerprint");
 }
 
 StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
@@ -244,19 +247,28 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
     const PjRtLoadedExecutable& executable) const {
+#ifdef PJRT_C_API_BYPASS
   return wrapped_->SerializeExecutable(
       *PjRtCApiExecutable::GetWrapped(&executable));
+#endif  // PJRT_C_API_BYPASS
+  return Unimplemented("PJRT C API does not support SerializeExecutable");
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
                                       CompileOptions options) {
+#ifdef PJRT_C_API_BYPASS
   return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
+#endif  // PJRT_C_API_BYPASS
+  return Unimplemented("PJRT C API does not support DeserializeExecutable");
 }
 
 StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
     PjRtBuffer* buffer) {
+#ifdef PJRT_C_API_BYPASS
   return wrapped_->UnsafeBufferPointer(PjRtCApiBuffer::GetWrapped(buffer));
+#endif  // PJRT_C_API_BYPASS
+  return Unimplemented("PJRT C API does not support UnsafeBufferPointer");
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::WrapExecutable(
@@ -552,6 +564,7 @@ PjRtCApiExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+#ifdef PJRT_C_API_BYPASS
   std::vector<PjRtBuffer*> wrapped_args =
       PjRtCApiBuffer::GetWrappedVector(argument_handles);
 
@@ -565,6 +578,8 @@ PjRtCApiExecutable::ExecuteSharded(
         client_, new PJRT_Buffer{std::move(buffer), client_->pjrt_c_client()});
   }
   return out;
+#endif  // PJRT_C_API_BYPASS
+  return Unimplemented("PJRT C API does not support ExecuteSharded");
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -572,6 +587,7 @@ PjRtCApiExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+#ifdef PJRT_C_API_BYPASS
   std::vector<PjRtBuffer*> wrapped_args =
       PjRtCApiBuffer::GetWrappedVector(argument_handles);
 
@@ -585,6 +601,8 @@ PjRtCApiExecutable::ExecutePortable(
         client_, new PJRT_Buffer{std::move(buffer), client_->pjrt_c_client()});
   }
   return out;
+#endif  // PJRT_C_API_BYPASS
+  return Unimplemented("PJRT C API does not support ExecutePortable");
 }
 
 PjRtLoadedExecutable* PjRtCApiExecutable::wrapped() const {
