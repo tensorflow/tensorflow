@@ -61,6 +61,9 @@ absl::Status TensorBHWCTest(const BHWC& shape, const TensorDescriptor& descripto
     if (descriptor.GetDataType() == DataType::FLOAT16) {
       transformed_val = half(transformed_val);
     }
+    if (descriptor.GetDataType() == DataType::BOOL) {
+      transformed_val = i % 7;
+    }
     tensor_cpu.data[i] = transformed_val;
   }
   tflite::gpu::Tensor<BHWC, T> tensor_gpu;
@@ -71,9 +74,12 @@ absl::Status TensorBHWCTest(const BHWC& shape, const TensorDescriptor& descripto
   }
 
   tflite::gpu::metal::MetalSpatialTensor tensor;
-  RETURN_IF_ERROR(CreateTensor(device, shape, descriptor, &tensor));
-  RETURN_IF_ERROR(tensor.WriteData(device, tensor_cpu));
-  RETURN_IF_ERROR(tensor.ReadData(device, &tensor_gpu));
+  tflite::gpu::TensorDescriptor descriptor_with_data = descriptor;
+  descriptor_with_data.UploadData(tensor_cpu);
+  RETURN_IF_ERROR(tensor.CreateFromDescriptor(descriptor_with_data, device));
+  tflite::gpu::TensorDescriptor output_descriptor;
+  RETURN_IF_ERROR(tensor.ToDescriptor(&output_descriptor, device));
+  output_descriptor.DownloadData(&tensor_gpu);
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
@@ -111,6 +117,10 @@ template absl::Status TensorBHWCTest<DataType::UINT8>(const BHWC& shape,
                                                       const TensorDescriptor& descriptor,
                                                       id<MTLDevice> device);
 
+template absl::Status TensorBHWCTest<DataType::BOOL>(const BHWC& shape,
+                                                     const TensorDescriptor& descriptor,
+                                                     id<MTLDevice> device);
+
 template <DataType T>
 absl::Status TensorBHWDCTest(const BHWDC& shape, const TensorDescriptor& descriptor,
                              id<MTLDevice> device) {
@@ -132,6 +142,9 @@ absl::Status TensorBHWDCTest(const BHWDC& shape, const TensorDescriptor& descrip
     if (descriptor.GetDataType() == DataType::FLOAT16) {
       transformed_val = half(transformed_val);
     }
+    if (descriptor.GetDataType() == DataType::BOOL) {
+      transformed_val = i % 7;
+    }
     tensor_cpu.data[i] = transformed_val;
   }
   tflite::gpu::Tensor<BHWDC, T> tensor_gpu;
@@ -142,9 +155,12 @@ absl::Status TensorBHWDCTest(const BHWDC& shape, const TensorDescriptor& descrip
   }
 
   tflite::gpu::metal::MetalSpatialTensor tensor;
-  RETURN_IF_ERROR(CreateTensor(device, shape, descriptor, &tensor));
-  RETURN_IF_ERROR(tensor.WriteData(device, tensor_cpu));
-  RETURN_IF_ERROR(tensor.ReadData(device, &tensor_gpu));
+  tflite::gpu::TensorDescriptor descriptor_with_data = descriptor;
+  descriptor_with_data.UploadData(tensor_cpu);
+  RETURN_IF_ERROR(tensor.CreateFromDescriptor(descriptor_with_data, device));
+  tflite::gpu::TensorDescriptor output_descriptor;
+  RETURN_IF_ERROR(tensor.ToDescriptor(&output_descriptor, device));
+  output_descriptor.DownloadData(&tensor_gpu);
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
@@ -179,6 +195,10 @@ template absl::Status TensorBHWDCTest<DataType::UINT16>(const BHWDC& shape,
 template absl::Status TensorBHWDCTest<DataType::UINT8>(const BHWDC& shape,
                                                        const TensorDescriptor& descriptor,
                                                        id<MTLDevice> device);
+
+template absl::Status TensorBHWDCTest<DataType::BOOL>(const BHWDC& shape,
+                                                      const TensorDescriptor& descriptor,
+                                                      id<MTLDevice> device);
 
 template <DataType T>
 absl::Status TensorTests(DataType data_type, TensorStorageType storage_type) {
@@ -234,6 +254,8 @@ template absl::Status TensorTests<DataType::UINT16>(DataType data_type,
                                                     TensorStorageType storage_type);
 template absl::Status TensorTests<DataType::UINT8>(DataType data_type,
                                                    TensorStorageType storage_type);
+template absl::Status TensorTests<DataType::BOOL>(DataType data_type,
+                                                  TensorStorageType storage_type);
 
 }  // namespace
 
@@ -277,6 +299,11 @@ template absl::Status TensorTests<DataType::UINT8>(DataType data_type,
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
+- (void)testBufferBool {
+  auto status = TensorTests<DataType::BOOL>(DataType::BOOL, TensorStorageType::BUFFER);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 - (void)testTexture2DF32 {
   auto status = TensorTests<DataType::FLOAT32>(DataType::FLOAT32, TensorStorageType::TEXTURE_2D);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
@@ -314,6 +341,11 @@ template absl::Status TensorTests<DataType::UINT8>(DataType data_type,
 
 - (void)testTexture2DUint8 {
   auto status = TensorTests<DataType::UINT8>(DataType::UINT8, TensorStorageType::TEXTURE_2D);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testTexture2DBool {
+  auto status = TensorTests<DataType::BOOL>(DataType::BOOL, TensorStorageType::TEXTURE_2D);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
@@ -357,6 +389,11 @@ template absl::Status TensorTests<DataType::UINT8>(DataType data_type,
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
+- (void)testTexture3DBool {
+  auto status = TensorTests<DataType::BOOL>(DataType::BOOL, TensorStorageType::TEXTURE_3D);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 - (void)testTexture2DArrayF32 {
   auto status = TensorTests<DataType::FLOAT32>(DataType::FLOAT32, TensorStorageType::TEXTURE_ARRAY);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
@@ -397,6 +434,11 @@ template absl::Status TensorTests<DataType::UINT8>(DataType data_type,
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
+- (void)testTexture2DArrayBool {
+  auto status = TensorTests<DataType::BOOL>(DataType::BOOL, TensorStorageType::TEXTURE_ARRAY);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 - (void)testTextureBufferF32 {
   auto status = TensorTests<DataType::FLOAT32>(DataType::FLOAT32, TensorStorageType::IMAGE_BUFFER);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
@@ -434,6 +476,11 @@ template absl::Status TensorTests<DataType::UINT8>(DataType data_type,
 
 - (void)testTextureBufferUint8 {
   auto status = TensorTests<DataType::UINT8>(DataType::UINT8, TensorStorageType::IMAGE_BUFFER);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testTextureBufferBool {
+  auto status = TensorTests<DataType::BOOL>(DataType::BOOL, TensorStorageType::IMAGE_BUFFER);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

@@ -51,7 +51,7 @@ StatusOr<mlir::Value> EmitAllGather(
     mlir::OpBuilder& builder, mlir::Value input,
     const dtensor::Layout& src_layout, const dtensor::Layout& tgt_layout,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops) {
-  if (src_layout == tgt_layout) return input;
+  if (src_layout.IsEquivalent(tgt_layout)) return input;
 
   if (src_layout.rank() != tgt_layout.rank()) {
     return errors::InvalidArgument(
@@ -89,9 +89,10 @@ StatusOr<mlir::Value> EmitAllGather(
   TF_ASSIGN_OR_RETURN(mlir::TensorType output_type,
                       LocalTypeFromGlobalType(tgt_layout, global_type));
 
+  mlir::Location loc = DT_LOC2(input.getLoc(), "DTensorAllGatherOp");
   mlir::TF::DTensorAllGatherOp all_gather =
       builder.create<mlir::TF::DTensorAllGatherOp>(
-          input.getLoc(), output_type, input,
+          loc, output_type, input,
           mlir::dtensor::LayoutAttr::get(builder.getContext(), src_layout),
           mlir::dtensor::LayoutAttr::get(builder.getContext(), tgt_layout));
   SetSingleLayoutOnOp(all_gather, tgt_layout);
@@ -105,7 +106,7 @@ StatusOr<const mlir::Value> EmitAllScatter(
     mlir::OpBuilder& builder, const mlir::Value& original_value,
     const Layout& original_layout, const Layout& desired_layout,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops) {
-  if (original_layout == desired_layout) return original_value;
+  if (original_layout.IsEquivalent(desired_layout)) return original_value;
 
   // Have an early return if desired layout is not more sharded then the
   // original_layout.
@@ -132,9 +133,10 @@ StatusOr<const mlir::Value> EmitAllScatter(
   TF_ASSIGN_OR_RETURN(const mlir::TensorType output_type,
                       LocalTypeFromGlobalType(desired_layout, global_type));
 
+  mlir::Location loc = DT_LOC2(original_value.getLoc(), "DTensorAllScatterOp");
   mlir::TF::DTensorAllScatterOp all_scatter =
       builder.create<mlir::TF::DTensorAllScatterOp>(
-          original_value.getLoc(), output_type, original_value,
+          loc, output_type, original_value,
           mlir::dtensor::LayoutAttr::get(builder.getContext(), original_layout),
           mlir::dtensor::LayoutAttr::get(builder.getContext(), desired_layout));
   SetSingleLayoutOnOp(all_scatter, desired_layout);
@@ -208,6 +210,8 @@ StatusOr<mlir::Value> EmitRelayout(
   // that does not agree with the sharding on the output axis.
   // This produces intermediate layout 2.
   // A split is performed from intermediate layout 2 to the tgt layout.
+
+  if (src_layout.IsEquivalent(tgt_layout)) return input;
 
   // Save whether the input is from a SparseToDenseOp. If it is, then we will
   // emit a DenseToSparse and a SparseToDense op.
@@ -314,7 +318,7 @@ StatusOr<mlir::Operation*> EmitAllReduce(
   TF_ASSIGN_OR_RETURN(std::string device_type,
                       DeviceTypeFromMesh(output_layout.mesh()));
 
-  mlir::Location loc = DT_LOC(input);
+  mlir::Location loc = DT_LOC2(input->getLoc(), "DTensorAllReduceOp");
   auto all_reduce = builder.create<mlir::TF::DTensorAllReduceOp>(
       loc, input->getResultTypes()[0], input->getOpResult(0),
       builder.create<mlir::TF::ConstOp>(loc, group_assignment),

@@ -79,6 +79,6 @@ RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.7"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9"
 
-ENV CLANG_VERSION="11.0.0"
-COPY install/install_latest_clang_ml2014.sh /install/
-RUN /install/install_latest_clang_ml2014.sh
+ENV CLANG_VERSION="rf2b94bd7eaa83d853dc7568fac87b1f8bf4ddec6"
+COPY install/install_latest_clang.sh /install/
+RUN /install/install_latest_clang.sh

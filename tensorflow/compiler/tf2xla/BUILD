@@ -84,21 +84,6 @@ tf_cc_binary(
 )
 
 tf_proto_library(
-    name = "tf2xla_support_proto",
-    srcs = ["support.proto"],
-    cc_api_version = 2,
-    visibility = ["//visibility:public"],
-)
-
-xla_py_proto_library(
-    name = "tf2xla_support_py_pb2",
-    has_services = False,
-    api_version = 2,
-    visibility = ["//visibility:public"],
-    deps = [":tf2xla_support_proto"],
-)
-
-tf_proto_library(
     name = "tf2xla_proto",
     srcs = ["tf2xla.proto"],
     cc_api_version = 2,
@@ -188,7 +173,6 @@ cc_library(
         ":tf2xla_util",
         ":xla_compiler",
         "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
@@ -201,6 +185,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
@@ -957,7 +942,7 @@ cc_library(
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
-        "//tensorflow/compiler/tf2xla/kernels:gpu_tf_kernel_custom_call",
+        "//tensorflow/compiler/tf2xla/kernels:light_outside_compilation",
         "//tensorflow/core:framework",
     ],
     alwayslink = 1,

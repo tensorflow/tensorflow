@@ -598,7 +598,7 @@ class Translator {
 
   // Returns the quantization parameters for output value of "quant.stats" op.
   BufferOffset<tflite::QuantizationParameters>
-  GetQuantizationForQuantStatsOpOutput(mlir::quant::StatisticsOp stats_op);
+  GetQuantizationForQuantStatsOpOutput(mlir::quantfork::StatisticsOp stats_op);
 
   // Build a subgraph with a given name out of the region either corresponding
   // to a function's body or while op.
@@ -1358,7 +1358,7 @@ bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
 
 BufferOffset<tflite::QuantizationParameters>
 Translator::GetQuantizationForQuantStatsOpOutput(
-    mlir::quant::StatisticsOp stats_op) {
+    mlir::quantfork::StatisticsOp stats_op) {
   auto layer_stats = stats_op.getLayerStats().cast<mlir::DenseFPElementsAttr>();
   Optional<mlir::ElementsAttr> axis_stats = stats_op.getAxisStats();
   Optional<uint64_t> axis = stats_op.getAxis();
@@ -1408,7 +1408,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     Optional<BufferOffset<tflite::QuantizationParameters>> quant_parameters;
     if (value.hasOneUse()) {
       auto stats_op =
-          llvm::dyn_cast<mlir::quant::StatisticsOp>(*value.user_begin());
+          llvm::dyn_cast<mlir::quantfork::StatisticsOp>(*value.user_begin());
       if (stats_op) {
         quant_parameters = GetQuantizationForQuantStatsOpOutput(stats_op);
       }
@@ -1453,7 +1453,8 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;
     // For "quant.stats" op, it's used to store the quantization parameters info
     // and its output should be then replaced by its input value.
-    if (auto quant_stats_op = llvm::dyn_cast<mlir::quant::StatisticsOp>(inst)) {
+    if (auto quant_stats_op =
+            llvm::dyn_cast<mlir::quantfork::StatisticsOp>(inst)) {
       continue;
     }
     std::vector<int32_t> intermediates;
@@ -1513,7 +1514,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       if (operand.getType().isa<NoneType>())
         operands.push_back(kTfLiteOptionalTensor);
       else if (auto stats_op =
-                   llvm::dyn_cast_or_null<mlir::quant::StatisticsOp>(
+                   llvm::dyn_cast_or_null<mlir::quantfork::StatisticsOp>(
                        operand.getDefiningOp()))
         operands.push_back(tensor_index_map.lookup(stats_op.getArg()));
       else

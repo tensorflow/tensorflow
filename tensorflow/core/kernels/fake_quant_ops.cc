@@ -261,6 +261,12 @@ class FakeQuantWithMinMaxVarsGradientOp : public OpKernel {
                 InvalidArgument("gradient and input must be the same size"));
     const Tensor& min = context->input(2);
     const Tensor& max = context->input(3);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(min.shape()),
+        InvalidArgument("`min` must be rank 0 but is rank ", min.dims()));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max.shape()),
+        InvalidArgument("`max` must be rank 0 but is rank ", max.dims()));
 
     Tensor* grad_wrt_input;
     OP_REQUIRES_OK(context,
@@ -414,10 +420,16 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
                 InvalidArgument("gradient and input must be the same size"));
     const int depth = input.dim_size(input.dims() - 1);  // last dimension size.
     const Tensor& min = context->input(2);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVector(min.shape()),
+        InvalidArgument("`min` must be rank 1 but is rank ", min.dims()));
     OP_REQUIRES(context, min.dim_size(0) == depth,
                 InvalidArgument("min has incorrect size, expected ", depth,
                                 " was ", min.dim_size(0)));
     const Tensor& max = context->input(3);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVector(max.shape()),
+        InvalidArgument("`max` must be rank 1 but is rank ", max.dims()));
     OP_REQUIRES(context, max.dim_size(0) == depth,
                 InvalidArgument("max has incorrect size, expected ", depth,
                                 " was ", max.dim_size(0)));

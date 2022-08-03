@@ -60,6 +60,10 @@ class ExecutorTest : public ::testing::Test {
   }
 
   ~ExecutorTest() override {
+    // LocalRendezvous::AsyncRecv() might still executing after done_callback
+    // returns. Wait until the local rc_owner_ releases.
+    while (!rendez_->RefCountIsOne()) {
+    }
     // There should always be exactly one Ref left on the Rendezvous
     // when the test completes.
     CHECK(rendez_->Unref());
@@ -377,9 +381,8 @@ TEST_F(ExecutorTest, Abort) {
       Key(BOB, kIncarnation, ALICE, "c"), Rendezvous::Args(), &out, &is_dead)));
   // At this point there can still be pending (albeit Aborted) Send
   // closures holding Refs on rendez_.  We need to wait for them, or
-  // else there can be a memory leak at termination.
-  while (!rendez_->RefCountIsOne()) {
-  }
+  // else there can be a memory leak at termination. This wait logic is in test
+  // dtor.
 }
 
 TEST_F(ExecutorTest, RecvInvalidDtype) {

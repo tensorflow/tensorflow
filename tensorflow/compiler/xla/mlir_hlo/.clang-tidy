@@ -1,0 +1,77 @@
+Checks: >
+        # LINT.IfChange(checks)
+        -*,clang-diagnostic-*,llvm-*,misc-*,
+        -misc-const-correctness,
+        -misc-unused-parameters,
+        -misc-non-private-member-variables-in-classes,
+        -misc-no-recursion,
+        bugprone-argument-comment,
+        bugprone-assert-side-effect,
+        bugprone-branch-clone,
+        bugprone-copy-constructor-init,
+        bugprone-dangling-handle,
+        bugprone-dynamic-static-initializers,
+        bugprone-macro-parentheses,
+        bugprone-macro-repeated-side-effects,
+        bugprone-misplaced-widening-cast,
+        bugprone-move-forwarding-reference,
+        bugprone-multiple-statement-macro,
+        bugprone-suspicious-semicolon,
+        bugprone-swapped-arguments,
+        bugprone-terminating-continue,
+        bugprone-unused-raii,
+        bugprone-unused-return-value,
+        misc-redundant-expression,
+        misc-static-assert,
+        misc-unused-parameters,
+        misc-unused-using-decls,
+        modernize-use-bool-literals,
+        modernize-loop-convert,
+        modernize-make-unique,
+        modernize-raw-string-literal,
+        modernize-use-equals-default,
+        modernize-use-default-member-init,
+        modernize-use-emplace,
+        modernize-use-nullptr,
+        modernize-use-override,
+        modernize-use-using,
+        performance-for-range-copy,
+        performance-implicit-conversion-in-loop,
+        performance-inefficient-algorithm,
+        performance-inefficient-vector-operation,
+        performance-move-const-arg,
+        performance-no-automatic-move,
+        performance-trivially-destructible,
+        performance-unnecessary-copy-initialization,
+        performance-unnecessary-value-param,
+        readability-avoid-const-params-in-decls,
+        readability-const-return-type,
+        readability-container-size-empty,
+        readability-identifier-naming,
+        readability-inconsistent-declaration-parameter-name,
+        readability-misleading-indentation,
+        readability-redundant-control-flow,
+        readability-simplify-boolean-expr,
+        readability-simplify-subscript-expr,
+        readability-use-anyofallof
+        # LINT.ThenChange(METADATA:checks)
+
+CheckOptions:
+  # LINT.IfChange(check-options)
+  - key:             readability-identifier-naming.ClassCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.EnumCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.FunctionCase
+    value:           camelBack
+  - key:             readability-identifier-naming.MemberCase
+    value:           camelBack
+  - key:             readability-identifier-naming.ParameterCase
+    value:           camelBack
+  - key:             readability-identifier-naming.UnionCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.VariableCase
+    value:           camelBack
+  - key:             readability-identifier-naming.IgnoreMainLikeFunctions
+    value:           1
+  # LINT.ThenChange(METADATA:check-options)

@@ -18,8 +18,11 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/c_api_macros.h"
+#include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -126,6 +129,11 @@ void TF_KernelBuilder_HostMemory(TF_KernelBuilder* kernel_builder,
 void TF_KernelBuilder_Priority(TF_KernelBuilder* kernel_builder,
                                int32_t priority_number) {
   kernel_builder->cc_builder->Priority(priority_number);
+}
+
+void TF_KernelBuilder_Label(TF_KernelBuilder* kernel_builder,
+                            const char* label) {
+  kernel_builder->cc_builder->Label(label);
 }
 
 namespace tensorflow {
@@ -276,6 +284,16 @@ void TF_GetInput(TF_OpKernelContext* ctx, int i, TF_Tensor** tensor,
   }
 }
 
+void TF_InputRange(TF_OpKernelContext* ctx, const char* name,
+                   TF_InputRange_Args* args) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  int start = -1, stop = -1;
+  auto status = cc_ctx->op_kernel().InputRange(name, &start, &stop);
+  args->start = start;
+  args->stop = stop;
+  tensorflow::Set_TF_Status_from_Status(args->status, status);
+}
+
 void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
                   TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
@@ -308,6 +326,32 @@ TF_Tensor* TF_GetMutableOutput(TF_OpKernelContext* ctx, int i,
   else {
     return nullptr;
   }
+}
+
+void TF_GetSerializedFunctionDefLibrary(
+    TF_OpKernelContext* ctx, TF_Buffer* serialized_function_def_library,
+    TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  auto fdef_lib =
+      cc_ctx->function_library()->GetFunctionLibraryDefinition()->ToProto();
+  auto cc_status =
+      tensorflow::MessageToBuffer(fdef_lib, serialized_function_def_library);
+  tensorflow::Set_TF_Status_from_Status(status, cc_status);
+}
+
+void TF_GetSerializedConfigProto(TF_OpKernelContext* ctx,
+                                 TF_Buffer* serialized_config_proto,
+                                 TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  const tensorflow::ConfigProto* config_proto_ptr =
+      cc_ctx->function_library()->config_proto();
+  tensorflow::ConfigProto config_proto;
+  if (config_proto_ptr != nullptr) {
+    config_proto = *config_proto_ptr;
+  }
+  auto cc_status =
+      tensorflow::MessageToBuffer(config_proto, serialized_config_proto);
+  tensorflow::Set_TF_Status_from_Status(status, cc_status);
 }
 
 void TF_OpKernelConstruction_Failure(TF_OpKernelConstruction* ctx,
@@ -514,6 +558,25 @@ void TF_OpKernelConstruction_GetAttrTensorList(TF_OpKernelConstruction* ctx,
   }
 }
 
+TF_Buffer* TF_OpKernelConstruction_GetAttrFunction(TF_OpKernelConstruction* ctx,
+                                                   const char* attr_name,
+                                                   TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  tensorflow::NameAttrList function;
+  auto cc_status = cc_ctx->GetAttr(attr_name, &function);
+  if (!cc_status.ok()) {
+    Set_TF_Status_from_Status(status, cc_status);
+    return nullptr;
+  }
+  TF_Buffer* buffer = TF_NewBuffer();
+  cc_status = tensorflow::MessageToBuffer(function, buffer);
+  Set_TF_Status_from_Status(status, cc_status);
+  if (!cc_status.ok())
+    return nullptr;
+  else
+    return buffer;
+}
+
 bool TF_OpKernelConstruction_HasAttr(TF_OpKernelConstruction* ctx,
                                      const char* attr_name, TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
@@ -535,8 +598,40 @@ TF_DataType TF_ExpectedOutputDataType(TF_OpKernelContext* ctx, int i) {
   return static_cast<TF_DataType>(cc_ctx->expected_output_dtype(i));
 }
 
+bool TF_IsHostMemoryInput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (i < 0 || i >= cc_ctx->num_inputs()) {
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "input index out of range");
+    return false;
+  }
+  TF_SetStatus(status, TF_OK, "");
+  return cc_ctx->input_memory_type(i) == tensorflow::HOST_MEMORY;
+}
+
+bool TF_IsHostMemoryOutput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (i < 0 || i >= cc_ctx->num_outputs()) {
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "output index out of range");
+    return false;
+  }
+  TF_SetStatus(status, TF_OK, "");
+  return cc_ctx->output_memory_type(i) == tensorflow::HOST_MEMORY;
+}
+
 int64_t TF_StepId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
+}
+
+uint64_t TF_GetFrameId(TF_OpKernelContext* ctx) {
+  return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)
+      ->frame_iter()
+      .frame_id;
+}
+
+int64_t TF_GetIterId(TF_OpKernelContext* ctx) {
+  return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)
+      ->frame_iter()
+      .iter_id;
 }
 
 TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx) {

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
+#include "tensorflow/core/data/service/validate_utils.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -57,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
@@ -483,36 +486,64 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
             absl::StrCat("Registering dataset graph: ", graph->DebugString()));
 
   mutex_lock l(mu_);
-  std::shared_ptr<const Dataset> dataset;
-  Status s = state_.DatasetFromFingerprint(fingerprint, dataset);
-  if (s.ok()) {
-    std::string dataset_id = dataset->dataset_id;
-    VLOG(3) << "Received duplicate RegisterDataset request with fingerprint "
-            << fingerprint << ". Returning id " << dataset_id;
-    response->set_dataset_id(dataset_id);
-    return OkStatus();
-  } else if (!errors::IsNotFound(s)) {
-    return s;
+  TF_ASSIGN_OR_RETURN(std::optional<std::string> dataset_id,
+                      FindDataset(*request, fingerprint));
+  if (dataset_id.has_value()) {
+    VLOG(3) << "RegisterDataset returns an existing dataset with ID = "
+            << *dataset_id << ", fingerprint = " << fingerprint << ".";
+    response->set_dataset_id(*dataset_id);
+    return Status::OK();
   }
 
-  std::string dataset_id;
+  std::string new_dataset_id;
   TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def,
-                                     request->metadata(), dataset_id));
-  response->set_dataset_id(dataset_id);
-  VLOG(3) << "Registered new dataset with id " << dataset_id;
+                                     request->metadata(), request->dataset_id(),
+                                     new_dataset_id));
+  response->set_dataset_id(new_dataset_id);
+  VLOG(3) << "Registered new dataset with id " << new_dataset_id;
   return OkStatus();
+}
+
+StatusOr<std::optional<std::string>> DataServiceDispatcherImpl::FindDataset(
+    const GetOrRegisterDatasetRequest& request, uint64 fingerprint)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::shared_ptr<const Dataset> existing_dataset;
+  Status status;
+  // TODO(b/236725000): Stop supporting fingerprint-based deduping. This becomes
+  // unreliable due to nondeterminism in the dataset graphdef generation. The
+  // users should provide a `dataset_id` to dedupe the dataset instead.
+  if (request.dataset_id().empty()) {
+    status = state_.DatasetFromFingerprint(fingerprint, existing_dataset);
+  } else {
+    status = state_.DatasetFromId(request.dataset_id(), existing_dataset);
+  }
+
+  if (errors::IsNotFound(status)) {
+    return std::optional<std::string>();
+  }
+  TF_RETURN_IF_ERROR(status);
+  if (!request.dataset_id().empty()) {
+    TF_RETURN_IF_ERROR(ValidateMatchingDataset(
+        request.dataset_id(), request.metadata(), existing_dataset->metadata));
+  }
+  return std::optional<std::string>(existing_dataset->dataset_id);
 }
 
 Status DataServiceDispatcherImpl::RegisterDataset(
     uint64 fingerprint, const DatasetDef& dataset,
-    const DataServiceMetadata& metadata, std::string& dataset_id)
+    const DataServiceMetadata& metadata,
+    const std::string& requested_dataset_id, std::string& dataset_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  dataset_id = state_.NextAvailableDatasetId();
+  dataset_id = requested_dataset_id;
+  if (dataset_id.empty()) {
+    dataset_id = state_.NextAvailableDatasetId();
+  }
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
   register_dataset->set_fingerprint(fingerprint);
   *register_dataset->mutable_metadata() = metadata;
+  register_dataset->set_dedupe_by_dataset_id(!requested_dataset_id.empty());
   TF_RETURN_IF_ERROR(
       dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));
   return Apply(update);

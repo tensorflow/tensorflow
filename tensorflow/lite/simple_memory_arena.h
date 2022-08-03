@@ -62,12 +62,22 @@ struct ArenaAllocWithUsageInterval {
 // zero-sized allocations are explicitly allowed, and will resolve to null.
 class SimpleMemoryArena {
  public:
-  explicit SimpleMemoryArena(size_t arena_alignment)
+  explicit SimpleMemoryArena(size_t arena_alignment, int subgraph_index = 0)
       : committed_(false),
         arena_alignment_(arena_alignment),
         high_water_mark_(0),
         underlying_buffer_size_(0),
-        ordered_allocs_() {}
+        ordered_allocs_()
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+        ,
+        subgraph_index_(subgraph_index)
+#endif
+  {
+  }
+
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  ~SimpleMemoryArena();
+#endif
 
   // Schedule memory allocation for a tensor with a given size, assuming that it
   // needs to be allocated before the execution of first_node, and deallocated
@@ -102,7 +112,7 @@ class SimpleMemoryArena {
   // again until Commit() is called & tensor allocations are resolved.
   TfLiteStatus ReleaseBuffer();
 
-  size_t GetBufferSize() { return underlying_buffer_size_; }
+  size_t GetBufferSize() const { return underlying_buffer_size_; }
 
   std::intptr_t BasePointer() const {
     return reinterpret_cast<std::intptr_t>(underlying_buffer_aligned_ptr_);
@@ -133,6 +143,9 @@ class SimpleMemoryArena {
   size_t underlying_buffer_size_;
   char* underlying_buffer_aligned_ptr_;
   std::vector<ArenaAllocWithUsageInterval> ordered_allocs_;
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  int subgraph_index_;
+#endif
 };
 
 }  // namespace tflite

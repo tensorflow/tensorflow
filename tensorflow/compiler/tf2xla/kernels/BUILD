@@ -13,8 +13,9 @@ load(
 
 package(
     default_visibility = [
-        "//tensorflow/compiler/tf2xla:internal",
+        # copybara:uncomment "//learning/infra/mira:__subpackages__",
         "//third_party/cloud_tpu/inference_converter:__subpackages__",
+        "//tensorflow/compiler/tf2xla:internal",
     ],
     licenses = ["notice"],
 )
@@ -181,7 +182,7 @@ tf_kernel_library(
         "@llvm-project//mlir:Support",
         "//tensorflow/compiler/jit:xla_activity_listener",
         "//tensorflow/compiler/jit:xla_activity_proto_cc",
-        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -244,14 +245,14 @@ tf_kernel_library(
         "//tensorflow/stream_executor/lib",
     ] + if_cuda_or_rocm(
         if_false = [],
-        if_true = [":gpu_tf_kernel_custom_call"],
+        if_true = [":light_outside_compilation"],
     ),
 )
 
 tf_cuda_library(
-    name = "gpu_tf_kernel_custom_call",
-    srcs = ["gpu_tf_kernel_custom_call.cc"],
-    hdrs = ["gpu_tf_kernel_custom_call.h"],
+    name = "light_outside_compilation",
+    srcs = ["light_outside_compilation.cc"],
+    hdrs = ["light_outside_compilation.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":callback_proto_cc",

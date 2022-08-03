@@ -45,6 +45,27 @@ TEST(MathUtilsTest, AffineQuantize) {
   test::ExpectEqual(quantized_tensor, expected_tensor);
 }
 
+TEST(MathUtilsTest, AffineDequantize) {
+  TensorShape shape({2, 2, 2});
+  Tensor tensor = test::AsTensor<qint8>({10, 15, 20, 25, -10, -5, 0, 5}, shape);
+  Tensor dequantized_tensor =
+      test::AsTensor<float>({0, 0, 0, 0, 0, 0, 0, 0}, shape);
+
+  // Dequantizes only the part [1:2, 0:2, 0:1].
+  Eigen::DSizes<Eigen::Index, 3> start_indices{1, 0, 0};
+  Eigen::DSizes<Eigen::Index, 3> sizes{1, 2, 2};
+  auto tensor_slice = tensor.tensor<qint8, 3>().slice(start_indices, sizes);
+  auto dequantized_tensor_slice =
+      dequantized_tensor.tensor<float, 3>().slice(start_indices, sizes);
+
+  AffineDequantize(tensor_slice, /*scale=*/2.0f, /*zero_point=*/3,
+                   dequantized_tensor_slice);
+
+  Tensor expected_tensor =
+      test::AsTensor<float>({0, 0, 0, 0, -26.0, -16.0, -6.0, 4.0}, shape);
+  test::ExpectTensorNear<float>(dequantized_tensor, expected_tensor, 1e-6);
+}
+
 TEST(MathUtilsTest, AsymmetricQuantize) {
   float scale;
   int32_t zero_point;

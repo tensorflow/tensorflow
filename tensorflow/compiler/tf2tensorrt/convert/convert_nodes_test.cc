@@ -2624,8 +2624,6 @@ TEST_P(OpConverter_FP32_Test, ConvertTile) {
     int test_ID;
     // Expected status of conversion (with concrete error message).
     Status status;
-    // Expected status of BuildAndRun.
-    Status runtime_status;
   };
 
   std::vector<TileParam> test_params = {
@@ -2689,7 +2687,7 @@ TEST_P(OpConverter_FP32_Test, ConvertTile) {
     for (bool input_is_tensor : {true, false}) {
       for (auto p : test_params) {
         std::vector<int> num_mults = {static_cast<int>(p.multiplier.size())};
-        std::vector<std::vector<int>> partial_input_dims_options = {{}};
+        std::vector<int> partial_input_dims = {};
         if (multiplier_is_tensor) {
           if (trt_mode_ == TrtTestMode::kImplicitBatch) {
             p.status =
@@ -2699,74 +2697,48 @@ TEST_P(OpConverter_FP32_Test, ConvertTile) {
             num_mults = {1, static_cast<int>(p.multiplier.size())};
           } else {
             if (p.test_ID == 1) {
-              // Replacement of statuses, since when multiplier is a tensor AND
-              // trt_mode_ != TrtTestMode::kImplicitBatch we cannot define these
-              // statuses in ConvertTile::Validate() for the first two tests
-              // from test_params.
+              // Skip this test because in that situation it is impossible
+              // to do a valid check for negative multipliers.
+              continue;
+            }
+
+            if (trt_mode_ == TrtTestMode::kDynamicShape) {
+              partial_input_dims = num_mults;
               p.status = Status::OK();
-              p.runtime_status =
-                  Status(error::INTERNAL,
-                         "Incorrect number of profile config parameters");
             }
 
-            if (trt_mode_ == TrtTestMode::kDynamicShape) {
-              if (p.test_ID == 1)
-                partial_input_dims_options = {num_mults};
-              else
-                partial_input_dims_options = {{}, num_mults};
-            }
-          }
-        }
-
-        for (auto partial_input_dims : partial_input_dims_options) {
-          if (multiplier_is_tensor &&
-              trt_mode_ != TrtTestMode::kImplicitBatch) {
-            if (trt_mode_ == TrtTestMode::kDynamicShape) {
-              if (p.test_ID != 1) {
-                p.runtime_status =
-                    partial_input_dims.empty()
-                        ? Status(error::INTERNAL,
-                                 "Failed to build TensorRT engine")
-                        : Status::OK();
-                p.status = Status::OK();
-              }
-            }
-
-            if (p.test_ID == 2 && (trt_mode_ == TrtTestMode::kExplicitBatch ||
-                                   !partial_input_dims.empty())) {
+            if (p.test_ID == 2) {
               p.status = Status(error::INVALID_ARGUMENT,
                                 "When replications are defined as a tensor, "
                                 "the number of its elements (4) must be equal "
                                 "to the rank of the input tensor (3).");
             }
           }
-
-          if (!multiplier_is_tensor &&
-              trt_mode_ == TrtTestMode::kImplicitBatch && p.multiplier[0] > 1) {
+        } else {
+          if (trt_mode_ == TrtTestMode::kImplicitBatch && p.multiplier[0] > 1) {
             p.status =
                 Status(error::UNIMPLEMENTED,
                        "The Tile operation along "
                        "the batch dimension in 'my_tile' is not implemented.");
           }
-
-          Reset();
-          if (input_is_tensor) {
-            AddTestTensor("input", p.input_dims, p.tensor);
-          } else {
-            AddTestWeights("input", p.input_dims, p.tensor, tf_type_);
-          }
-
-          if (multiplier_is_tensor) {
-            AddTestTensor<int>("weights", num_mults, DT_INT32, p.multiplier,
-                               partial_input_dims);
-          } else {
-            AddTestWeights<int32>("weights", num_mults, p.multiplier);
-          }
-
-          TestOpConverter("my_tile", node_def, p.expected_output_dims, p.status,
-                          p.runtime_status,
-                          ElementsAreArray(p.expected_results));
         }
+
+        Reset();
+        if (input_is_tensor) {
+          AddTestTensor("input", p.input_dims, p.tensor);
+        } else {
+          AddTestWeights("input", p.input_dims, p.tensor, tf_type_);
+        }
+
+        if (multiplier_is_tensor) {
+          AddTestTensor<int>("weights", num_mults, DT_INT32, p.multiplier,
+                             partial_input_dims);
+        } else {
+          AddTestWeights<int32>("weights", num_mults, p.multiplier);
+        }
+
+        TestOpConverter("my_tile", node_def, p.expected_output_dims, p.status,
+                        Status::OK(), ElementsAreArray(p.expected_results));
       }
     }
   }
@@ -3329,11 +3301,29 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
   };
 
   Status unimplemented_eq = errors::Unimplemented("");
-  Status internal_eq = errors::Internal("");
+  Status internal_err = errors::Internal("");
+  Status internal_err_before_TRT82 =
+      IS_TRT_VERSION_GE(8, 2, 0, 0) ? Status::OK() : internal_err;
+  Status unimplemented_before_TRT82 =
+      IS_TRT_VERSION_GE(8, 2, 0, 0) ? Status::OK() : unimplemented_eq;
+
+  Status diagonal_error = unimplemented_eq;
+  // The old converter only accepts 2 inputs, and the validator returns
+  // internal_err if only 1 input is used.
+  Status diagonal_error_1_input =
+      IS_TRT_VERSION_GE(8, 2, 0, 0) ? unimplemented_eq : internal_err;
 
   std::vector<TestParams> params{
       // Dot product.
-      TestParams{"i,i->", {2}, {2, 3}, {2}, {1, 2}, {1}, {8}, unimplemented_eq},
+      TestParams{"i,i->", {2}, {2, 3}, {2}, {1, 2}, {}, {8}, unimplemented_eq},
+      TestParams{"ik,ik->",
+                 {2, 2},
+                 {2, 3, 4, 1},
+                 {2, 2},
+                 {1, 2, 1, 3},
+                 {},
+                 {15},
+                 unimplemented_eq},
       // Outer product.
       TestParams{"i,k->ik",
                  {2},
@@ -3343,6 +3333,14 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {2, 3},
                  {1, 2, 3, 2, 4, 6},
                  unimplemented_eq},
+      TestParams{"ij,kl->ijkl",
+                 {2, 1},
+                 {1, 2},
+                 {3, 1},
+                 {1, 2, 3},
+                 {2, 1, 3, 1},
+                 {1, 2, 3, 2, 4, 6},
+                 unimplemented_before_TRT82},
       // Transpose.
       TestParams{"ik->ki",
                  {2, 3},
@@ -3351,7 +3349,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {},
                  {3, 2},
                  {0, 3, 1, 4, 2, 5},
-                 internal_eq},
+                 internal_err_before_TRT82},
       // Diag.
       TestParams{"ii->i",
                  {3, 3},
@@ -3360,16 +3358,16 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {},
                  {3},
                  {0, 4, 8},
-                 internal_eq},
+                 diagonal_error_1_input},
       // Trace.
-      TestParams{"ii",
+      TestParams{"ii->",  // Note TF einsum op always has '->'.
                  {3, 3},
                  {0, 1, 2, 3, 4, 5, 6, 7, 8},
                  {},
                  {},
                  {},
                  {12},
-                 internal_eq},
+                 diagonal_error_1_input},
       // MatMul with reduction.
       TestParams{"abbc,dc->ad",
                  {1, 2, 2, 3},
@@ -3378,7 +3376,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {1, 2, 3, 4, 5, 6},
                  {2, 3},
                  {1, 2, 3, 2, 4, 6},
-                 unimplemented_eq},
+                 diagonal_error},
       // Ellipsis with broadcast.
       TestParams{"...ik,...jk->...ij",
                  {1, 3, 1, 4},
@@ -3388,7 +3386,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {2, 3, 1, 1},
                  {20, 60, 100, 44, 148, 252},
                  unimplemented_eq},
-      // MatMul
+      // MatMul.
       TestParams{"ab,bc->ac",
                  {2, 3},
                  {0, 1, 2, 3, 4, 5},
@@ -3396,7 +3394,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {1, 2, 3, 4, 5, 6},
                  {2, 2},
                  {13, 16, 40, 52}},
-      // Batched MatMul
+      // Batched MatMul.
       TestParams{"abc,cde->abde",
                  /*shape_a=*/{1, 2, 3},
                  /*values_a=*/{0, 1, 2, 3, 4, 5},
@@ -3405,6 +3403,14 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  /*expected_shape=*/{1, 2, 2, 2},
                  /*expected_output=*/{23, 26, 29, 32, 68, 80, 92, 104}},
       TestParams{"abcd,cde->abe",
+                 {1, 2, 2, 3},
+                 {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                 {2, 3, 2},
+                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                 {1, 2, 2},
+                 {125, 140, 341, 392}},
+      // TF assumes case sensitive labels.
+      TestParams{"aBAE,AEe->aBe",
                  {1, 2, 2, 3},
                  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
                  {2, 3, 2},

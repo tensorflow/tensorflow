@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
+#include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -185,15 +186,19 @@ class DelegateKernel {
     for (uint32_t tensor_index : input_refs) {
       const int64_t object_index = input_indices_.size();
       input_indices_.push_back(tensor_index);
-      RETURN_IF_ERROR(
-          builder->SetInputObjectDef(object_index, GetObjectDef(tensor_index)));
+      const TfLiteTensor& tflite_tensor = context->tensors[tensor_index];
+      const DataType data_type = ToDataType(tflite_tensor.type);
+      RETURN_IF_ERROR(builder->SetInputObjectDef(
+          object_index, GetObjectDef(tensor_index, data_type)));
     }
     output_indices_.reserve(output_refs.size());
     for (uint32_t tensor_index : output_refs) {
       const int64_t object_index = output_indices_.size();
       output_indices_.push_back(tensor_index);
-      RETURN_IF_ERROR(builder->SetOutputObjectDef(object_index,
-                                                  GetObjectDef(tensor_index)));
+      const TfLiteTensor& tflite_tensor = context->tensors[tensor_index];
+      const DataType data_type = ToDataType(tflite_tensor.type);
+      RETURN_IF_ERROR(builder->SetOutputObjectDef(
+          object_index, GetObjectDef(tensor_index, data_type)));
     }
 
     return builder->Build(&runner_);
@@ -261,9 +266,10 @@ class DelegateKernel {
     return absl::OkStatus();
   }
 
-  ObjectDef GetObjectDef(int index) const {
+  ObjectDef GetObjectDef(int index,
+                         DataType data_type = DataType::FLOAT32) const {
     ObjectDef default_object_def;
-    default_object_def.data_type = DataType::FLOAT32;
+    default_object_def.data_type = data_type;
     default_object_def.data_layout = DataLayout::BHWC;
     default_object_def.object_type = ObjectType::CPU_MEMORY;
     default_object_def.user_provided = true;

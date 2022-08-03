@@ -644,6 +644,7 @@ BUILTIN_KERNEL_SRCS = [
     "segment_sum.cc",
     "select.cc",
     "shape.cc",
+    "sign.cc",
     "skip_gram.cc",
     "slice.cc",
     "space_to_batch_nd.cc",
@@ -805,13 +806,14 @@ cc_library(
 cc_library(
     name = "custom_ops",
     srcs = [
+        "atan2_custom.cc",
         "irfft2d.cc",
         "multinomial.cc",
         "pooling3d.cc",
         "random_standard_normal_custom.cc",
         "random_uniform_custom.cc",
         "roll.cc",
-        "sign.cc",
+        "sign_custom.cc",
         "table.cc",
         "unidirectional_sequence_gru.cc",
     ],
@@ -1584,6 +1586,20 @@ cc_test(
 )
 
 cc_test(
+    name = "atan2_custom_test",
+    size = "small",
+    srcs = ["atan2_custom_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "multinomial_test",
     size = "small",
     srcs = ["multinomial_test.cc"],
@@ -1668,9 +1684,9 @@ cc_test(
 )
 
 cc_test(
-    name = "sign_test",
+    name = "sign_custom_test",
     size = "small",
-    srcs = ["sign_test.cc"],
+    srcs = ["sign_custom_test.cc"],
     deps = [
         ":custom_ops",
         ":test_main",
@@ -1678,6 +1694,20 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "sign_test",
+    size = "small",
+    srcs = ["sign_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 
@@ -2804,6 +2834,19 @@ cc_test(
     name = "unsorted_segment_sum_test",
     size = "small",
     srcs = ["unsorted_segment_sum_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "unsorted_segment_min_test",
+    size = "small",
+    srcs = ["unsorted_segment_min_test.cc"],
     deps = [
         ":test_main",
         ":test_util",

@@ -275,7 +275,6 @@ tf_kernel_library(
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/framework:graph_proto_cc",
-        "//tensorflow/core/kernels/data:iterator_ops",
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",

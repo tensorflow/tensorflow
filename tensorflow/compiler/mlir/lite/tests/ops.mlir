@@ -2988,3 +2988,50 @@ func.func @scatter_nd_i1(%arg0: tensor<?xi32>, %arg1: tensor<?xi1>, %arg2: tenso
 
 // -----
 
+// CHECK-LABEL: testUnsortedSegmentSum
+func.func @testUnsortedSegmentSum(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>,  %arg2: tensor<i32>) -> tensor<8xf32> {
+  // CHECK: "tfl.unsorted_segment_sum"(%arg0, %arg1, %arg2)
+  %0 = "tfl.unsorted_segment_sum"(%arg0, %arg1, %arg2) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+  // CHECK: return %0 : tensor<8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testUnsortedSegmentProd
+func.func @testUnsortedSegmentProd(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>,  %arg2: tensor<i32>) -> tensor<8xf32> {
+  // CHECK: "tfl.unsorted_segment_prod"(%arg0, %arg1, %arg2)
+  %0 = "tfl.unsorted_segment_prod"(%arg0, %arg1, %arg2) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+  // CHECK: return %0 : tensor<8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testUnsortedSegmentMax
+func.func @testUnsortedSegmentMax(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>,  %arg2: tensor<i32>) -> tensor<8xf32> {
+  // CHECK: "tfl.unsorted_segment_max"(%arg0, %arg1, %arg2)
+  %0 = "tfl.unsorted_segment_max"(%arg0, %arg1, %arg2) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+  // CHECK: return %0 : tensor<8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testControlNodeLongForm
+func.func @testControlNodeLongForm(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>)->tensor<8xf32> {
+  %0, %c0 = "tfl.control_node"() ({
+    %1 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<8xf32>, tensor<8xf32>)->tensor<8xf32>
+    "tfl.yield"(%1) : (tensor<8xf32>) -> ()
+    }) : () -> (tensor<8xf32>, !tfl.control)
+  func.return %0 : tensor<8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testControlNodeShortForm
+func.func @testControlNodeShortForm(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>)->tensor<8xf32> {
+  %0, %c0 = tfl.control_node() controls "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<8xf32>, tensor<8xf32>)->tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+}
+

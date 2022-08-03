@@ -403,6 +403,22 @@ struct TensorFlowLiteDialectFoldInterface : public DialectFoldInterface {
   }
 };
 
+void TFLDialect::printType(Type type, DialectAsmPrinter &os) const {
+  if (type.isa<ControlType>()) {
+    os << "control";
+    return;
+  }
+  os << "<unknown TFL type>";
+}
+
+Type TFLDialect::parseType(DialectAsmParser &parser) const {
+  StringRef data_type;
+  if (parser.parseKeyword(&data_type)) return Type();
+  if (data_type == "control") return ControlType::get(getContext());
+  parser.emitError(parser.getNameLoc()) << "unknown TFL type: " << data_type;
+  return nullptr;
+}
+
 void TFLDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
@@ -414,6 +430,7 @@ void TFLDialect::initialize() {
       >();
   addInterfaces<TensorFlowLiteInlinerInterface,
                 TensorFlowLiteDialectFoldInterface>();
+  addTypes<ControlType>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -3803,6 +3820,127 @@ OpFoldResult NoValueOp::fold(ArrayRef<Attribute> operands) {
 
 bool NoValueOp::isBuildableWith(Attribute value, Type type) {
   return value.isa<UnitAttr>() && type.isa<NoneType>();
+}
+
+YieldOp ControlNodeOp::GetYield() {
+  return llvm::cast<YieldOp>(GetBody().back());
+}
+
+// Checks if a TFL.control_node wraps a single operation and the single
+// operation results are perfectly forwarded to the wrapper's yield.
+bool ControlNodeOp::WrapsSinglePerfectlyForwardedOp() {
+  auto body = GetBody().without_terminator();
+  if (!hasSingleElement(body)) return false;
+
+  Operation &controlled_op = *body.begin();
+  YieldOp yield = GetYield();
+  return controlled_op.getNumResults() == yield.getNumOperands() &&
+         std::equal(controlled_op.getResults().begin(),
+                    controlled_op.getResults().end(),
+                    yield.getOperands().begin());
+}
+
+mlir::LogicalResult ControlNodeOp::verify() {
+  ControlNodeOp control_node = *this;
+  if (!control_node.GetBody().args_empty())
+    return control_node.emitOpError() << "expects body without any arguments";
+
+  Operation &yield = control_node.GetBody().back();
+  if (!isa<YieldOp>(yield))
+    return yield.emitOpError()
+           << "invalid TFL.control_node terminator, yield expected";
+
+  // Ensure that the terminator's operands and the control_node results match in
+  // types.
+  const int result_count =
+      control_node.getNumResults() - 1;  // 1 for control token
+  const int num_operands = yield.getNumOperands();
+  if (num_operands != result_count)
+    return yield.emitOpError()
+           << "has " << yield.getNumOperands()
+           << " operand, but control_node returns " << result_count;
+  for (const int operand_idx : llvm::seq<int>(0, yield.getNumOperands())) {
+    if (control_node.getResult(operand_idx).getType() !=
+        yield.getOperand(operand_idx).getType())
+      return yield.emitOpError() << "operand #" << operand_idx
+                                 << " type mismatch control_node results";
+  }
+  return success();
+}
+
+void ControlNodeOp::print(OpAsmPrinter &p) {
+  if (getNumOperands()) {
+    // These are always control operand, no explicit type needed.
+    p << '(';
+    p.printOperands(getOperands());
+    p << ')';
+  }
+  // Check if we can print the short "controls" form: that is if the
+  // control_node contains a single operation and the results of this operation
+  // are perfectly forwarded to the yield.
+  if (getOperation()->getAttrs().empty() && WrapsSinglePerfectlyForwardedOp()) {
+    Operation &controlled_op = GetBody().front();
+    // The "controls" syntax only encodes a single location.
+    YieldOp yield_op = GetYield();
+    // In order to correctly round-trip, we can only use this syntax when all
+    // the locations are identical.
+    if (controlled_op.getLoc() == getLoc() && yield_op.getLoc() == getLoc()) {
+      p << " controls ";
+      p.printGenericOp(&controlled_op);
+      return;
+    }
+  }
+  p << ' ';
+  p.printRegion(getOperation()->getRegion(0));
+  p.printOptionalAttrDict(getOperation()->getAttrs());
+}
+
+ParseResult ControlNodeOp::parse(OpAsmParser &parser, OperationState &result) {
+  // Parse the body region.
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  Type control_type = ControlType::get(parser.getBuilder().getContext());
+
+  // Parse optional argument list (control dependencies only).
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> op_infos;
+  if (parser.parseOperandList(op_infos, OpAsmParser::Delimiter::OptionalParen))
+    return failure();
+  if (!op_infos.empty()) {
+    SmallVector<Type, 2> types(op_infos.size(), control_type);
+    if (parser.resolveOperands(op_infos, types, loc, result.operands))
+      return failure();
+  }
+
+  Region &body = *result.addRegion();
+
+  if (succeeded(parser.parseOptionalKeyword("controls"))) {
+    // If we parse the short version of the control node, we have an operation
+    // in the generic form that follows the "controls" keyword. Parse it inside
+    // the region and forward all of its results as-is to the yield operation.
+    body.push_back(new Block);
+    Block &block = body.back();
+    Operation *controlled_op =
+        parser.parseGenericOperation(&block, block.begin());
+    if (!controlled_op) return failure();
+    OpBuilder builder(parser.getBuilder().getContext());
+    builder.setInsertionPointToEnd(&block);
+    builder.create<YieldOp>(controlled_op->getLoc(),
+                            controlled_op->getResults());
+    result.location = controlled_op->getLoc();
+  } else if (parser.parseRegion(body)) {
+    return failure();
+  }
+
+  ControlNodeOp::ensureTerminator(body, parser.getBuilder(), result.location);
+
+  // Get the results type for the control node from the terminator operands.
+  Operation &yield = body.back().back();
+  result.types.reserve(yield.getNumOperands() + 1);
+  result.types.append(yield.operand_type_begin(), yield.operand_type_end());
+  result.types.push_back(control_type);
+
+  // Parse the optional attribute list.
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

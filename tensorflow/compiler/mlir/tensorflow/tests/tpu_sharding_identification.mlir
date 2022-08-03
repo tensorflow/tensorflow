@@ -573,3 +573,34 @@ func.func @func(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   %6 = "tf.Sub"(%cst, %5) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
   func.return %6 : tensor<4xf32>
 }
+
+// -----
+// CHECK-LABEL: func @check_propagation_for_output_sharding_from_tf_matmul
+// CHECK:      tf_device.cluster_func
+// CHECK-SAME: input_sharding_configuration = ["", ""]
+// CHECK-SAME: output_sharding_configuration = ["\08\03\1A\02\02\01\22\02\00\01"]
+func.func @check_propagation_for_output_sharding_from_tf_matmul(%arg0: tensor<2x4xf32>, %arg1: tensor<4x2xf32>) -> (tensor<1x2xf32>, tensor<1x2xf32>) {
+  %0 = "tf_device.cluster_func"(%arg0, %arg1) {func = @_func, use_spmd_for_xla_partitioning = true, use_tpu = true} : (tensor<2x4xf32>, tensor<4x2xf32>) -> tensor<2x2xf32>
+  %1:2 = "tf.TPUPartitionedOutput"(%0) {device = "", partition_dim = 0 : i64} : (tensor<2x2xf32>) -> (tensor<1x2xf32>, tensor<1x2xf32>)
+  return %1#0, %1#1 : tensor<1x2xf32>, tensor<1x2xf32>
+}
+func.func @_func(%arg0: tensor<2x4xf32>, %arg1: tensor<4x2xf32>) -> tensor<2x2xf32> {
+  %0 = "tf.MatMul"(%arg0, %arg1) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01"} : (tensor<2x4xf32>, tensor<4x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
+// -----
+// CHECK-LABEL: func @check_propagation_for_output_sharding_from_tf_matmul_following_by_identity_op
+// CHECK:      tf_device.cluster_func
+// CHECK-SAME: input_sharding_configuration = ["", ""]
+// CHECK-SAME: output_sharding_configuration = ["\08\03\1A\02\02\01\22\02\00\01"]
+func.func @check_propagation_for_output_sharding_from_tf_matmul_following_by_identity_op(%arg0: tensor<2x4xf32>, %arg1: tensor<4x2xf32>) -> (tensor<1x2xf32>, tensor<1x2xf32>) {
+  %0 = "tf_device.cluster_func"(%arg0, %arg1) {func = @_func, use_spmd_for_xla_partitioning = true, use_tpu = true} : (tensor<2x4xf32>, tensor<4x2xf32>) -> tensor<2x2xf32>
+  %1:2 = "tf.TPUPartitionedOutput"(%0) {device = "", partition_dim = 0 : i64} : (tensor<2x2xf32>) -> (tensor<1x2xf32>, tensor<1x2xf32>)
+  return %1#0, %1#1 : tensor<1x2xf32>, tensor<1x2xf32>
+}
+func.func @_func(%arg0: tensor<2x4xf32>, %arg1: tensor<4x2xf32>) -> tensor<2x2xf32> {
+  %0 = "tf.MatMul"(%arg0, %arg1) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01"} : (tensor<2x4xf32>, tensor<4x2xf32>) -> tensor<2x2xf32>
+  %1 = "tf.Identity"(%0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %1 : tensor<2x2xf32>
+}

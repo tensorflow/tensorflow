@@ -27,8 +27,8 @@ func.func @compute(%lhs: memref<4x4xf32>, %rhs: memref<4x4xf32>,
   // CHECK-SAME:   alpha_imag = 0.000000e+00 : f64
   // CHECK-SAME:   alpha_real = 1.000000e+00 : f64
   // CHECK-SAME:   beta = 0.000000e+00 : f64
-  // CHECK-SAME:   lhs_contracting_dimensions = dense<1> : tensor<1xi64>
-  // CHECK-SAME:   rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+  // CHECK-SAME:   dot_dims = #mhlo.dot<lhs_contracting_dimensions = [1],
+  // CHECK-SAME:                        rhs_contracting_dimensions = [0]>
   // CHECK-SAME:   uid = 0 : i64
   // CHECK-SAME: (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
   "lmhlo_gpu.gemm"(%lhs, %rhs, %out)

@@ -11,7 +11,7 @@ END
   out_arg {
     name: "memory_config"
     description: <<END
-A string-encoded HbmBuffersConfig proto containing metadata about
+A string-encoded memory configuration containing metadata about
 the memory allocations reserved for TPUEmbedding.
 END
   }

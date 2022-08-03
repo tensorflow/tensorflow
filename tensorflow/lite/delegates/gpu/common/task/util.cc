@@ -32,7 +32,6 @@ std::string GetGlslConversion(const GpuInfo& gpu_info, DataType src_type,
   }
   bool need_explicit_conversion = true;
   switch (dst_type) {
-    case DataType::BOOL:
     case DataType::FLOAT32:
     case DataType::FLOAT16:
       if (gpu_info.IsGlslSupportsExplicitFp16()) {
@@ -60,6 +59,9 @@ std::string GetGlslConversion(const GpuInfo& gpu_info, DataType src_type,
           src_type == DataType::UINT8) {
         need_explicit_conversion = false;
       }
+      break;
+    case DataType::BOOL:
+      need_explicit_conversion = true;
       break;
     default:
       break;
@@ -261,16 +263,32 @@ std::string GetTypeConversion(const GpuInfo& gpu_info, DataType src_type,
                               DataType dst_type, int vec_size) {
   if (src_type != dst_type) {
     if (gpu_info.IsApiOpenCl()) {
-      return "convert_" + ToCLDataType(dst_type, vec_size);
+      if (dst_type == DataType::BOOL && vec_size != 1) {
+        // In OpenCL for bool4 we are using uchar4
+        // From OpenCL specification for "Relational and Equality Operators":
+        //   "These functions shall return a 0 if the specified relation is
+        //   false and a -1 (i.e. all bits set) if the specified relation is
+        //   true for vector argument types."
+        // (convert_uchar4((value) != 0) & (uchar4)(1))
+        return "(convert_" + ToCLDataType(DataType::UINT8, vec_size) +
+               "(($0) != " + GetZeroValue(gpu_info, src_type, vec_size) +
+               ") & " + GetOneValue(gpu_info, DataType::UINT8, vec_size) + ")";
+      } else {
+        return "convert_" + ToCLDataType(dst_type, vec_size) + "($0)";
+      }
     } else if (gpu_info.IsApiMetal()) {
-      return dst_type == DataType::BOOL
-                 ? "convert_" + ToMetalDataType(dst_type, vec_size)
-                 : ToMetalDataType(dst_type, vec_size);
+      return ToMetalDataType(dst_type, vec_size) + "($0)";
     } else if (gpu_info.IsGlsl()) {
-      return GetGlslConversion(gpu_info, src_type, dst_type, vec_size);
+      const std::string conversion =
+          GetGlslConversion(gpu_info, src_type, dst_type, vec_size);
+      if (!conversion.empty()) {
+        return conversion + "($0)";
+      } else {
+        return "$0";
+      }
     }
   }
-  return "";
+  return "$0";
 }
 
 }  // namespace gpu

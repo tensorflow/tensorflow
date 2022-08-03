@@ -61,8 +61,8 @@ using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
+using ::tfrt::jitrt::RemainingResultsConverter;
 using ::tfrt::jitrt::ReturnStridedMemref;
-using ::tfrt::jitrt::ReturnValueConverter;
 
 namespace tensorflow {
 
@@ -142,8 +142,8 @@ static llvm::ArrayRef<int64_t> Strides(StridedMemRefType<T, 0>* memref) {
 namespace {
 struct PyBindingConversionContext {};
 
-using PyBindingReturnValueConverter =
-    ReturnValueConverter<PyBindingConversionContext>;
+using PyBindingResultConverter =
+    RemainingResultsConverter<PyBindingConversionContext>;
 }  // namespace
 
 template <typename T>
@@ -236,7 +236,7 @@ std::vector<py::array> TfJitRtExecutor::Execute(
 
   // Convert returned memrefs to python arrays.
   PyBindingConversionContext results_ctx;
-  PyBindingReturnValueConverter converter(results, results_ctx);
+  PyBindingResultConverter converter(results, results_ctx);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
   if (auto err = (*executable)->Execute(memrefs, converter, opts))
     throw std::runtime_error(StrCat("Unsupported argument: ", err));

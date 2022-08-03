@@ -23,6 +23,7 @@ import numpy as np
 import six
 
 from tensorflow.core.framework import full_type_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -721,6 +722,10 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, "TypeSpec __main__.Foo has not been registered."):
       type_spec.get_name(Foo)
+
+  def testSerialization(self):
+    spec = TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool)
+    self.assertEqual(spec, trace_type.deserialize(trace_type.serialize(spec)))
 
 
 class BatchableTypeSpecTest(test_util.TensorFlowTestCase,

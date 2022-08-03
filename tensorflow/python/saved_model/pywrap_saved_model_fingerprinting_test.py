@@ -31,9 +31,12 @@ class FingerprintingTest(test.TestCase):
     fingerprint_def = fingerprint_pb2.FingerprintDef()
     fingerprint_def.ParseFromString(
         fingerprinting.CreateFingerprintDef(file_content))
-    # We cannot check the value of the graph_def_hash due to non-determinism in
-    # serialization.
-    self.assertGreater(fingerprint_def.graph_def_hash, 0)
+    # We cannot check the value of the graph_def_checksum due to non-determinism
+    # in serialization.
+    self.assertGreater(fingerprint_def.graph_def_checksum, 0)
+    self.assertEqual(fingerprint_def.graph_def_program_hash,
+                     13188891313422428336)
+    self.assertEqual(fingerprint_def.signature_def_hash, 5693392539583495303)
 
 
 if __name__ == "__main__":

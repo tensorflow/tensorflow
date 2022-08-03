@@ -66,14 +66,15 @@ enum RemoveVolatileOpsType {
 
 // Remove the back-to-back quantize and dequantize ops with volatile attribute.
 template <RemoveVolatileOpsType remove_volatile_ops_type>
-struct RemoveVolatileOps : public OpRewritePattern<DequantizeCastOp> {
+struct RemoveVolatileOps
+    : public OpRewritePattern<quantfork::DequantizeCastOp> {
   explicit RemoveVolatileOps(MLIRContext* context)
-      : OpRewritePattern<DequantizeCastOp>(context, 1) {}
+      : OpRewritePattern<quantfork::DequantizeCastOp>(context, 1) {}
 
-  LogicalResult matchAndRewrite(DequantizeCastOp op,
+  LogicalResult matchAndRewrite(quantfork::DequantizeCastOp op,
                                 PatternRewriter& rewriter) const override {
     auto input_op = op.getArg().getDefiningOp();
-    if (auto q = llvm::dyn_cast_or_null<QuantizeCastOp>(input_op)) {
+    if (auto q = llvm::dyn_cast_or_null<quantfork::QuantizeCastOp>(input_op)) {
       if (!q->getAttr(kVolatileOpAttrName)) return failure();
 
       if (remove_volatile_ops_type == kPreserveInputsAndOutputs) {
@@ -90,7 +91,7 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeCastOp> {
       if (auto qtype =
               QuantizedType::getQuantizedElementType(q.getArg().getType())) {
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<DequantizeCastOp>(
+        rewriter.replaceOpWithNewOp<quantfork::DequantizeCastOp>(
             op, op.getResult().getType(), q.getArg());
         return success();
       }
@@ -106,7 +107,7 @@ void PostQuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
-  patterns.add<FoldTrivalRequantizeOp<QuantizeCastOp>,
+  patterns.add<FoldTrivalRequantizeOp<quantfork::QuantizeCastOp>,
                RemoveVolatileOps<kPreserveNone>>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

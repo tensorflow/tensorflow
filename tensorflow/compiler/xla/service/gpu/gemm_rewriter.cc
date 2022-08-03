@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
@@ -280,13 +281,14 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     config.set_beta(1.0);
-    CHECK_EQ(gemm->operand_count(), 2);
-    std::unique_ptr<HloInstruction> fused_op = gemm->CloneWithNewOperands(
-        instr->shape(), {
-                            gemm->mutable_operand(0),
-                            gemm->mutable_operand(1),
-                            MaybeConstantFoldBias(bias),
-                        });
+
+    std::vector<HloInstruction *> operands(gemm->operands().begin(),
+                                           gemm->operands().end());
+    operands.insert(operands.begin() + 2, MaybeConstantFoldBias(bias));
+
+    std::unique_ptr<HloInstruction> fused_op =
+        gemm->CloneWithNewOperands(instr->shape(), operands);
+
     TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
     if (IsCublasGemm(*fused_op)) {
       // Force bias input to alias with output, as GEMM operates in-place.
@@ -319,10 +321,21 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     // We require the bias vector to have been broadcast in the most major
-    // dimensions; i.e. its dimensions align with the output column dims.
+    // dimensions; i.e. its most minor physical dimensions align with most minor
+    // physical dimensions of the matmul output.
+    absl::Span<const int64_t> broadcast_dims = broadcast_bias->dimensions();
     for (size_t i = 0; i < num_col_dims; ++i) {
-      if (broadcast_bias->dimensions(i) !=
-          matmul->shape().rank() - num_col_dims + i) {
+      int64_t dim = matmul->shape().layout().minor_to_major(i);
+
+      // Find the corresponding dimension from the bias vector.
+      auto it = absl::c_find(broadcast_dims, dim);
+
+      if (it == broadcast_dims.end()) {
+        return false;
+      }
+
+      int64_t vector_dim = it - broadcast_dims.begin();
+      if (bias->shape().layout().minor_to_major(i) != vector_dim) {
         return false;
       }
     }

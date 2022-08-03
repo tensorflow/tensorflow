@@ -29,6 +29,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -595,56 +596,72 @@ inline GatherNdHelperResult GatherNdHelper(const RuntimeShape& params_shape,
   return ret;
 }
 
+// Implements GatherNd.
+// Returns an error if any of the indices_data would cause an out of bounds
+// memory read.
 template <typename ParamsT, typename IndicesT = int32>
-inline void GatherNd(const RuntimeShape& params_shape,
-                     const ParamsT* params_data,
-                     const RuntimeShape& indices_shape,
-                     const IndicesT* indices_data,
-                     const RuntimeShape& output_shape, ParamsT* output_data) {
+inline TfLiteStatus GatherNd(const RuntimeShape& params_shape,
+                             const ParamsT* params_data,
+                             const RuntimeShape& indices_shape,
+                             const IndicesT* indices_data,
+                             const RuntimeShape& output_shape,
+                             ParamsT* output_data) {
   ruy::profiler::ScopeLabel label("GatherNd");
 
   const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
   for (int i = 0; i < res.n_slices; ++i) {
-    int from_pos = 0;
+    int64_t from_pos = 0;
     for (int j = 0; j < res.indices_nd; ++j) {
       from_pos += indices_data[i * res.indices_nd + j] * res.dims_to_count[j];
+    }
+    if (from_pos < 0 || from_pos + res.slice_size > params_shape.FlatSize()) {
+      return kTfLiteError;
     }
     std::memcpy(output_data + i * res.slice_size, params_data + from_pos,
                 sizeof(ParamsT) * res.slice_size);
   }
+  return kTfLiteOk;
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
+// Implements GatherNd on strings.
+// Returns an error if any of the indices_data would cause an out of bounds
+// memory read.
 template <typename IndicesT = int32>
-inline void GatherNdString(const RuntimeShape& params_shape,
-                           const TfLiteTensor* params_data,
-                           const RuntimeShape& indices_shape,
-                           const IndicesT* indices_data,
-                           const RuntimeShape& output_shape,
-                           TfLiteTensor* output_data) {
+inline TfLiteStatus GatherNdString(const RuntimeShape& params_shape,
+                                   const TfLiteTensor* params_data,
+                                   const RuntimeShape& indices_shape,
+                                   const IndicesT* indices_data,
+                                   const RuntimeShape& output_shape,
+                                   TfLiteTensor* output_data) {
   ruy::profiler::ScopeLabel label("GatherNdString");
 
   const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
   DynamicBuffer buffer;
   for (int i = 0; i < res.n_slices; ++i) {
-    int from_pos = 0;
+    int64_t from_pos = 0;
     for (int j = 0; j < res.indices_nd; ++j) {
       from_pos += indices_data[i * res.indices_nd + j] * res.dims_to_count[j];
+    }
+    if (from_pos < 0 || from_pos + res.slice_size > params_shape.FlatSize()) {
+      return kTfLiteError;
     }
     for (int j = 0; j < res.slice_size; ++j) {
       buffer.AddString(GetString(params_data, from_pos + j));
     }
   }
   buffer.WriteToTensor(output_data, /*new_shape=*/nullptr);
+  return kTfLiteOk;
 }
 #endif
 
 template <typename IndicesT, typename UpdatesT>
-inline void ScatterNd(const RuntimeShape& indices_shape,
-                      const IndicesT* indices_data,
-                      const RuntimeShape& updates_shape,
-                      const UpdatesT* updates_data,
-                      const RuntimeShape& output_shape, UpdatesT* output_data) {
+inline TfLiteStatus ScatterNd(const RuntimeShape& indices_shape,
+                              const IndicesT* indices_data,
+                              const RuntimeShape& updates_shape,
+                              const UpdatesT* updates_data,
+                              const RuntimeShape& output_shape,
+                              UpdatesT* output_data) {
   ruy::profiler::ScopeLabel label("ScatterNd");
 
   int n_slices = 1;
@@ -667,18 +684,24 @@ inline void ScatterNd(const RuntimeShape& indices_shape,
     remain_flat_size = dims_to_count[i];
   }
 
+  if (n_slices * slice_size > updates_shape.FlatSize()) {
+    return kTfLiteError;
+  }
   memset(output_data, 0, sizeof(UpdatesT) * output_flat_size);
   for (int i = 0; i < n_slices; ++i) {
     int to_pos = 0;
     for (int j = 0; j < indices_nd; ++j) {
       IndicesT idx = indices_data[i * indices_nd + j];
-      TFLITE_DCHECK(0 <= idx && idx < output_shape.Dims(j));
       to_pos += idx * dims_to_count[j];
+    }
+    if (to_pos < 0 || to_pos + slice_size > output_flat_size) {
+      return kTfLiteError;
     }
     for (int j = 0; j < slice_size; j++) {
       output_data[to_pos + j] += updates_data[i * slice_size + j];
     }
   }
+  return kTfLiteOk;
 }
 
 template <typename T>

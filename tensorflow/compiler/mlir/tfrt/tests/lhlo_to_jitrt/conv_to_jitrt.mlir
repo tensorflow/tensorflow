@@ -32,17 +32,7 @@ func.func @conv_forward(%input: memref<1x4x4x1024xf16, #map1>,
   // CHECK: call @xla.gpu.conv.forward(
   // CHECK-SAME: %[[INPUT]], %[[FILTER]], %[[OUTPUT]], %[[SCRATCH]])
 
-  // CHECK-DAG: input_batch_dim = 0 : i64
-  // CHECK-DAG: input_feature_dim = 3 : i64
-  // CHECK-DAG: input_spatial_dims = dense<[1, 2]> : tensor<2xi64>
-
-  // CHECK-DAG: kernel_in_feature_dim = 2 : i64
-  // CHECK-DAG: kernel_out_feature_dim = 3 : i64
-  // CHECK-DAG: kernel_spatial_dims = dense<[0, 1]> : tensor<2xi64>
-
-  // CHECK-DAG: output_batch_dim = 0 : i64
-  // CHECK-DAG: output_feature_dim = 3 : i64
-  // CHECK-DAG: output_spatial_dims = dense<[1, 2]> : tensor<2xi64>
+  // CHECK-DAG: conv_dims = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>
 
   // CHECK-DAG: window_strides = dense<1> : tensor<2xi64>
   // CHECK-DAG: lhs_dilation = dense<1> : tensor<2xi64>
@@ -50,14 +40,15 @@ func.func @conv_forward(%input: memref<1x4x4x1024xf16, #map1>,
   // CHECK-DAG: window_reversal = dense<0> : tensor<2xi64>
   // CHECK-DAG: padding = dense<> : tensor<0xi64>
 
-  // CHECK-DAG: algorithm = 0 : i64
+  // CHECK-DAG: backend_config = #lmhlo_gpu.convolution_backend_config<
+  // CHECK-DAG: algorithm = 0
   // CHECK-DAG: is_cudnn_frontend = true
-  // CHECK-DAG: knob_ids = dense<> : tensor<0xi64>
-  // CHECK-DAG: knob_values = dense<> : tensor<0xi64>
-  // CHECK-DAG: operand_0_layout = dense<[2, 1, 3, 0]> : tensor<4xi64>
-  // CHECK-DAG: operand_1_layout = dense<[1, 0, 2, 3]> : tensor<4xi64>
+  // CHECK-DAG: knob_ids = []
+  // CHECK-DAG: knob_values = []
+  // CHECK-DAG: operand_0_layout = [2, 1, 3, 0]
+  // CHECK-DAG: operand_1_layout = [1, 0, 2, 3]
   // CHECK-DAG: tensor_ops_enabled = false
-  // CHECK-DAG: workspace_size = 0 : i64
+  // CHECK-DAG: workspace_size = 0
 
   // CHECK-DAG: feature_group_count = 1024 : i64
   // CHECK-DAG: result_scale = 1.000000e+00 : f64
@@ -220,8 +211,8 @@ func.func @conv_forward_fused(%input: memref<8x5x5x1xf32, #map1>,
   // CHECK-SAME: %[[INPUT]], %[[FILTER]], %[[BIAS]], %[[OUTPUT]], %[[SCRATCH]])
 
   // CHECK-DAG: activation_mode = #lmhlo_gpu<activation Relu>
-  // CHECK-DAG: knob_ids = dense<[2, 3]> : tensor<2xi64>
-  // CHECK-DAG: knob_values = dense<[4, 0]> : tensor<2xi64>
+  // CHECK-DAG: knob_ids = [2, 3]
+  // CHECK-DAG: knob_values = [4, 0]
   lmhlo_gpu.conv_forward_fused(%input, %filter, %bias, %output, %scratch)
     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
     window = { stride = [1, 1],

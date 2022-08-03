@@ -119,6 +119,10 @@ TF_CAPI_EXPORT extern void TF_KernelBuilder_HostMemory(
 TF_CAPI_EXPORT extern void TF_KernelBuilder_Priority(
     TF_KernelBuilder* kernel_builder, int32_t priority_number);
 
+// Specify a label for this kernel.
+TF_CAPI_EXPORT extern void TF_KernelBuilder_Label(
+    TF_KernelBuilder* kernel_builder, const char* label);
+
 // Register the given kernel builder with the TensorFlow runtime. If
 // registration fails, the given status will be populated.
 //
@@ -170,6 +174,22 @@ TF_CAPI_EXPORT extern int TF_NumOutputs(TF_OpKernelContext* ctx);
 TF_CAPI_EXPORT extern void TF_GetInput(TF_OpKernelContext* ctx, int i,
                                        TF_Tensor** tensor, TF_Status* status);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;         // Not used, for possible extension.
+  int start;          // output
+  int stop;           // output
+  TF_Status* status;  // output
+} TF_InputRange_Args;
+const size_t TF_InputRange_Args_STRUCT_SIZE =
+    TF_OFFSET_OF_END(TF_InputRange_Args, status);
+
+// Retrieves the start and stop indices, given the input name. Equivalent to
+// OpKernel::InputRange(). `args` will contain the result indices and status.
+TF_CAPI_EXPORT extern void TF_InputRange(TF_OpKernelContext* ctx,
+                                         const char* name,
+                                         TF_InputRange_Args* args);
+
 // Sets the ith output of ctx to tensor. If TF_GetCode(status) is anything but
 // TF_OK, ctx is left unmodified.
 //
@@ -186,6 +206,16 @@ TF_CAPI_EXPORT extern void TF_SetOutput(TF_OpKernelContext* ctx, int i,
 TF_CAPI_EXPORT extern TF_Tensor* TF_GetMutableOutput(TF_OpKernelContext* ctx,
                                                      int i, TF_Status* status);
 
+// Retrieves a serialized FunctionDefLibrary. Status will be set.
+TF_CAPI_EXPORT extern void TF_GetSerializedFunctionDefLibrary(
+    TF_OpKernelContext* ctx, TF_Buffer* serialized_function_def_library,
+    TF_Status* status);
+
+// Retrieves a serialized ConfigProto. Status will be set.
+TF_CAPI_EXPORT extern void TF_GetSerializedConfigProto(
+    TF_OpKernelContext* ctx, TF_Buffer* serialized_config_proto,
+    TF_Status* status);
+
 // Notifies the given OpKernelConstruction that kernel construction has failed.
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_Failure(
     TF_OpKernelConstruction* ctx, TF_Status* status);
@@ -200,8 +230,24 @@ TF_CAPI_EXPORT extern void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx,
 TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
     TF_OpKernelContext* ctx, int i);
 
+// Returns true if the ith input is allocated in host memory. If i < 0 or i >=
+// TF_NumInputs(ctx), the program aborts.
+TF_CAPI_EXPORT extern bool TF_IsHostMemoryInput(TF_OpKernelContext* ctx, int i,
+                                                TF_Status* status);
+
+// Returns true if the ith output is allocated in host memory. If i < 0 or i >=
+// TF_NumOutputs(ctx), the program aborts.
+TF_CAPI_EXPORT extern bool TF_IsHostMemoryOutput(TF_OpKernelContext* ctx, int i,
+                                                 TF_Status* status);
+
 // Returns the step ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
+
+// Returns the frame ID of the given context.
+TF_CAPI_EXPORT extern uint64_t TF_GetFrameId(TF_OpKernelContext* ctx);
+
+// Returns the Iter ID of the given context.
+TF_CAPI_EXPORT extern int64_t TF_GetIterId(TF_OpKernelContext* ctx);
 
 // Returns the name of the OpKernel.
 //
@@ -376,6 +422,13 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTensorList(
     TF_OpKernelConstruction* ctx, const char* attr_name, TF_Tensor** vals,
     int max_values, TF_Status* status);
+
+// Interprets the named kernel construction attribute as a
+// tensorflow::NameAttrList and returns the serialized proto as TF_Buffer.
+// `status` will be set. The caller takes ownership of the returned TF_Buffer
+// (if not null) and is responsible for managing its lifetime.
+TF_CAPI_EXPORT extern TF_Buffer* TF_OpKernelConstruction_GetAttrFunction(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Status* status);
 
 // Return true if the kernel construction has the attr_name
 TF_CAPI_EXPORT extern bool TF_OpKernelConstruction_HasAttr(

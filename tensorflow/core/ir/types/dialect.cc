@@ -350,23 +350,11 @@ void FuncAttr::walkImmediateSubElements(
   if (!getName().getRootReference().getValue().empty()) walkAttrsFn(getName());
 }
 
-SubElementAttrInterface FuncAttr::replaceImmediateSubAttribute(
-    ArrayRef<std::pair<size_t, Attribute>> replacements) const {
-  DictionaryAttr attrs = getAttrs();
-  SymbolRefAttr name = getName();
-  for (auto &replacement : replacements) {
-    switch (replacement.first) {
-      case 0:
-        attrs = replacement.second.cast<DictionaryAttr>();
-        break;
-      case 1:
-        name = replacement.second.cast<SymbolRefAttr>();
-        break;
-      default:
-        llvm_unreachable("invalid replacement attribute index");
-    }
-  }
-  return FuncAttr::get(getContext(), name, attrs);
+Attribute FuncAttr::replaceImmediateSubElements(
+    ArrayRef<Attribute> replAttrs, ArrayRef<Type> replTypes) const {
+  assert(replAttrs.size() == 2 && "invalid number of replacement attributes");
+  return get(getContext(), replAttrs[1].cast<SymbolRefAttr>(),
+             replAttrs[0].cast<DictionaryAttr>());
 }
 
 void PlaceholderAttr::print(AsmPrinter &os) const {

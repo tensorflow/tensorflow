@@ -1509,6 +1509,7 @@ REGISTER_OP("RegisterDatasetV2")
     .Output("dataset_id: string")
     .Attr("external_state_policy: int")
     .Attr("element_spec: string = ''")
+    .Attr("requested_dataset_id: string = ''")
     .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 

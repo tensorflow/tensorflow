@@ -16,7 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
-#include "tensorflow/compiler/tf2xla/kernels/gpu_tf_kernel_custom_call.h"
+#include "tensorflow/compiler/tf2xla/kernels/light_outside_compilation.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -58,7 +58,8 @@ class TestStaticTfOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("TestStaticTf").Device(DEVICE_GPU),
                         TestStaticTfOp);
-REGISTER_XLA_OP(Name("TestStaticTf").Device(DEVICE_GPU_XLA_JIT), CallTfKernelOp)
+REGISTER_XLA_OP(Name("TestStaticTf").Device(DEVICE_GPU_XLA_JIT),
+                LightOutsideCompilationOp)
 
 REGISTER_OP("TestStaticMultipleOutputTf")
     .Input("input: float")
@@ -104,7 +105,7 @@ class TestStaticMultipleOutputTfOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TestStaticMultipleOutputTf").Device(DEVICE_GPU),
                         TestStaticMultipleOutputTfOp);
 REGISTER_XLA_OP(Name("TestStaticMultipleOutputTf").Device(DEVICE_GPU_XLA_JIT),
-                CallTfKernelOp)
+                LightOutsideCompilationOp)
 
 // Copy the input up to `max_size`.
 REGISTER_OP("TestDynamicTf")
@@ -157,10 +158,10 @@ class TestDynamicTfOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TestDynamicTf").Device(DEVICE_GPU),
                         TestDynamicTfOp);
 
-class TestDynamicTfXlaOp : public CallTfKernelOp {
+class TestDynamicTfXlaOp : public LightOutsideCompilationOp {
  public:
   explicit TestDynamicTfXlaOp(OpKernelConstruction* context)
-      : CallTfKernelOp(context) {}
+      : LightOutsideCompilationOp(context) {}
   StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
       const NodeDef& ndef, XlaOpKernelContext* ctx) const override {
     OutputDimensionBoundsMap out;
@@ -217,10 +218,10 @@ REGISTER_KERNEL_BUILDER(
     Name("DynamicMultidim").Device(DEVICE_GPU).HostMemory("output_shape"),
     DynamicMultidimOp);
 
-class DynamicMultidimXlaOp : public CallTfKernelOp {
+class DynamicMultidimXlaOp : public LightOutsideCompilationOp {
  public:
   explicit DynamicMultidimXlaOp(OpKernelConstruction* context)
-      : CallTfKernelOp(context) {}
+      : LightOutsideCompilationOp(context) {}
   StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
       const NodeDef& ndef, XlaOpKernelContext* ctx) const override {
     OutputDimensionBoundsMap out;
@@ -244,7 +245,7 @@ REGISTER_OP("DynamicUnranked")
     });
 
 REGISTER_XLA_OP(Name("DynamicUnranked").Device(DEVICE_GPU_XLA_JIT),
-                CallTfKernelOp);
+                LightOutsideCompilationOp);
 
 // Copies up to `to_copy_bytes` from the input: tests constant storage.
 REGISTER_OP("TestTfMustBeConstant")
@@ -272,15 +273,12 @@ class TestTfMustBeConstantOp : public OpKernel {
     AllocatorAttributes pinned_alloc_attrs;
     pinned_alloc_attrs.set_on_host(true);
     pinned_alloc_attrs.set_gpu_compatible(true);
-    TF_CHECK_OK(ctx->allocate_temp(DataType::DT_FLOAT,
-                                   TensorShape({input.NumElements()}), &tmp,
+    TF_CHECK_OK(ctx->allocate_temp(input.dtype(), input.shape(), &tmp,
                                    pinned_alloc_attrs));
 
-    se::DeviceMemoryBase tmp_wrapper{tmp.flat<float>().data(),
-                                     tmp.AllocatedBytes()};
-    stream->ThenMemcpyD2D(&tmp_wrapper,
-                          se::DeviceMemoryBase{input.data(), allocated_size},
-                          allocated_size);
+    stream->ThenMemcpy(tmp.data(),
+                       se::DeviceMemoryBase{input.data(), allocated_size},
+                       allocated_size);
 
     OP_REQUIRES_OK(ctx, stream->BlockHostUntilDone());
 
@@ -293,8 +291,7 @@ class TestTfMustBeConstantOp : public OpKernel {
                                              &out_tensor));
     se::DeviceMemoryBase gpu_dst{out_tensor->data(),
                                  static_cast<uint64_t>(allocated_size)};
-
-    stream->ThenMemcpyD2D(&gpu_dst, tmp_wrapper, /*size=*/allocated_size);
+    stream->ThenMemcpy(&gpu_dst, tmp.data(), allocated_size);
   }
 };
 
@@ -304,7 +301,7 @@ REGISTER_KERNEL_BUILDER(Name("TestTfMustBeConstant").Device(DEVICE_GPU),
 REGISTER_XLA_OP(Name("TestTfMustBeConstant")
                     .Device(DEVICE_GPU_XLA_JIT)
                     .CompileTimeConstantInput("constant_to_add"),
-                CallTfKernelOp)
+                LightOutsideCompilationOp)
 
 REGISTER_OP("TestDynamicTfWithBound")
     .Input("input: float")
@@ -351,10 +348,10 @@ class TestDynamicTfWithBoundOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TestDynamicTfWithBound").Device(DEVICE_GPU),
                         TestDynamicTfWithBoundOp);
 
-class TestDynamicTfWithBoundXlaOp : public CallTfKernelOp {
+class TestDynamicTfWithBoundXlaOp : public LightOutsideCompilationOp {
  public:
   explicit TestDynamicTfWithBoundXlaOp(OpKernelConstruction* context)
-      : CallTfKernelOp(context) {}
+      : LightOutsideCompilationOp(context) {}
 
   StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
       const NodeDef& ndef, XlaOpKernelContext* ctx) const override {

@@ -105,6 +105,12 @@ bool IsValidationSubgraph(const char* name);
 // have unsigned numbers. It is also generalized to work where sizeof(size_t)
 // is not 8.
 TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product);
+
+// Returns whether the TfLiteTensor is a resource or variant tensor.
+inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
+  return tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant;
+}
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_UTIL_H_

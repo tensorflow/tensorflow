@@ -45,20 +45,24 @@ PJRT_ErrorDeleter MakeErrorDeleter(const PJRT_Api* api) {
   };
 }
 
-xla::Status PjrtErrorToStatus(PJRT_Error* error, const PJRT_Api* api) {
+xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   xla::Status status;
   if (error != nullptr) {
-    PJRT_Error_Message_Args message_args;
-    message_args.struct_size = PJRT_Error_Message_Args_STRUCT_SIZE;
-    message_args.priv = nullptr;
-    message_args.error = error;
-    api->PJRT_Error_Message(&message_args);
-
     // TODO(b/237621349) Replace UNKNOWN status code with the actual
-    absl::string_view message(message_args.message, message_args.message_size);
-    status = xla::Status(tensorflow::error::UNKNOWN, message);
+    status = xla::Status(tensorflow::error::UNKNOWN,
+                         GetPjrtErrorMessage(error, api));
   }
   return status;
+}
+
+absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
+                                      const PJRT_Api* api) {
+  PJRT_Error_Message_Args message_args;
+  message_args.struct_size = PJRT_Error_Message_Args_STRUCT_SIZE;
+  message_args.priv = nullptr;
+  message_args.error = error;
+  api->PJRT_Error_Message(&message_args);
+  return absl::string_view(message_args.message, message_args.message_size);
 }
 
 void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api) {

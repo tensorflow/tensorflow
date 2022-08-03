@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 
 #include <algorithm>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -536,33 +538,45 @@ absl::Status Arguments::ResolveSelector(
   RETURN_IF_ERROR(GetDescriptor(object_name, &desc_ptr));
   auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
+  std::vector<std::string> function_args_new = function_args;
   if (tensor_desc && !linkables.empty() && selector == "Write") {
     auto it = linkables.find(object_name);
-    if (it != linkables.end()) {
+    if (it != linkables.end() && !it->second.empty()) {
       if (desc_ptr->GetAccess() != AccessType::WRITE &&
           desc_ptr->GetAccess() != AccessType::READ_WRITE) {
         return absl::FailedPreconditionError(absl::StrCat(
             "Object with name - ", object_name, " should have Write access."));
       }
-      std::string value_name, x_coord, y_coord, s_coord;
+      std::string value_name, x_coord, y_coord, z_coord, s_coord, b_coord;
       RETURN_IF_ERROR(tensor_desc->GetLinkingContextFromWriteSelector(
-          function_args, &value_name, &x_coord, &y_coord, &s_coord));
-      // x_coord can have batch size property of link_object
-      ResolveObjectNames(object_name, names, &x_coord);
-      *result = it->second;
-      ReplaceAllWords("in_out_value", value_name, result);
+          function_args_new, &value_name, &x_coord, &y_coord, &z_coord,
+          &s_coord, &b_coord));
+      const std::string new_value_name = value_name + "_final";
+      *result = "{\n" +
+                GetTypeDeclaration(gpu_info, tensor_desc->GetDataType(), 4) +
+                " " + new_value_name + ";\n" + it->second + "\n";
+      ReplaceAllWords("in_value", value_name, result);
+      ReplaceAllWords("out_value", new_value_name, result);
       ReplaceAllWords("X_COORD", x_coord, result);
       ReplaceAllWords("Y_COORD", y_coord, result);
+      ReplaceAllWords("Z_COORD", z_coord, result);
       ReplaceAllWords("S_COORD", s_coord, result);
+      ReplaceAllWords("B_COORD", b_coord, result);
+      function_args_new[0] = new_value_name;
       RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, result));
       RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, {}, result));
     }
   }
   std::string patch;
-  RETURN_IF_ERROR(desc_ptr->PerformSelector(gpu_info, selector, function_args,
-                                            template_args, &patch));
+  RETURN_IF_ERROR(desc_ptr->PerformSelector(
+      gpu_info, selector, function_args_new, template_args, &patch));
   ResolveObjectNames(object_name, names, &patch);
-  *result += patch;
+  if (result->empty()) {
+    *result += patch;
+  } else {
+    // result has elementwise code
+    *result += patch + ";}";
+  }
   return absl::OkStatus();
 }
 

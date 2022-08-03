@@ -33,18 +33,15 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 
@@ -129,11 +126,11 @@ class PjRtDevice {
 
   // Debug string suitable for logging when errors occur. Should be verbose
   // enough to describe the current device unambiguously.
-  virtual std::string DebugString() const = 0;
+  virtual absl::string_view DebugString() const = 0;
 
   // Debug string suitable for reading by end users, should be reasonably terse,
   // for example: "CpuDevice(id=0)".
-  virtual std::string ToString() const = 0;
+  virtual absl::string_view ToString() const = 0;
 
   // Returns a scoped event that the caller uses to tell the PjRtClient that
   // there is asynchronous work happening that depends on activity on the
@@ -371,7 +368,7 @@ class PjRtHostMemoryForDeviceManager {
                               size_t dst_size, const Shape& dst_shape) = 0;
 };
 
-class PjRtExecutable;
+class PjRtLoadedExecutable;
 
 // Encapsulates the state of Python session with XLA.
 //
@@ -493,28 +490,50 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() = 0;
 
   // Compile `computation` with given `options`.
-  virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) = 0;
 
   // Variant of `Compile` that accepts an MLIR module.
-  virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) = 0;
 
   // Generates a unique fingerprint for `executable`, may be std::nullopt.
   virtual StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtExecutable& executable) const = 0;
+      const PjRtLoadedExecutable& executable) const = 0;
 
   // Returns a platform-specific serialization of `executable`. The
   // serialization is not guaranteed to be stable over time. `executable` must
   // have been produced by this client.
   virtual StatusOr<std::string> SerializeExecutable(
-      const PjRtExecutable& executable) const = 0;
+      const PjRtLoadedExecutable& executable) const = 0;
 
   // Deserializes a serialized executable as produced by
   // SerializeExecutable(). `serialized` must have been produced by a client of
   // the same platform and version as this one.
-  virtual StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized, CompileOptions options) = 0;
+
+  // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
+  // returned executable is loaded by this client. The same checks are made as
+  // in Load that the serialized executable is compatible with the client.
+  // LoadSerializedExecutable will materialize CompileOptions from within the
+  // serialized executable unlike 'DeserializeExecutable' above that accepts
+  // CompileOptions.
+  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(absl::string_view serialized) const {
+    return Unimplemented("Loading serialized executable not supported.");
+  }
+
+  // Loads the executable returns aa PjRtLoadedExecutable runnable by this
+  // client. Returns an error if the PjRtExecutable was created with an
+  // incompatible topology or client.
+  // PjRtExecutable contains a copy of the CompileOptions that was used to
+  // generate the executable. Load will use the CompileOptions from within the
+  // executable.
+  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::unique_ptr<PjRtExecutable> executable) {
+    return Unimplemented("Loading executable not supported.");
+  }
 
   // Creates a buffer on the device without initializing or copying any data.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
@@ -694,6 +713,11 @@ class PjRtClient {
   // struct contains an opaque string that should be transmitted to the sending
   // host and used in a call to CopyToRemoteDevice. None of the recv buffers
   // will become ready until *all* of the sends have completed.
+  //
+  // If MakeCrossHostReceiveBuffers returns an error, then `notifier` will not
+  // be called. Otherwise `notifier` will be called exactly once. In the case
+  // where `notifier` is called with an error status, then the PjRtBuffers
+  // returned by MakeCrossHostReceiveBuffers will never yield data.
   //
   // See note on semantics of cross-device copies in the class definition
   // comment for PjRtClient.
@@ -998,13 +1022,19 @@ struct SendCallback {
   // each invocation of the corresponding Send op in the HLO program (So it can
   // be invoked multiple times if it is in a loop). Currently there is no
   // guarantee that the callback here will be invoked in the same order as their
-  // corresponding HLO Send ops.
+  // corresponding HLO Send ops. The callback can also return errors to indicate
+  // the execution should fail.
+  //
+  // IMPORTANT: the implementation might NOT signal the error to the execution,
+  // and the execution will run to completion with UNDEFINED DATA returned by
+  // the callback. If there is any potential control flow that depends on the
+  // value of the returned data, an error return is unsafe.
   //
   // TODO(chky): Currently the callback invocation order may not be consistent
   // with the HLO send op invocation order, due to limitations in some PjRt
   // implementation. Consider making it strictly the same order as HLO program.
-  std::function<void(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
-                     size_t total_size_in_bytes, bool done)>
+  std::function<Status(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
+                       size_t total_size_in_bytes, bool done)>
       callback;
 };
 
@@ -1053,48 +1083,24 @@ struct ExecuteOptions {
   // These callbacks must outlive the execution.
   absl::Span<const std::vector<SendCallback>> send_callbacks;
   absl::Span<const std::vector<RecvCallback>> recv_callbacks;
-};
 
-// Static device memory usage for a compiled program.
-// The on-device memory needed to run an executable is at least
-//   generated_code_size_in_bytes
-//   + argument_size_in_bytes + output_size_in_bytes - alias_size_in_bytes
-//   + temp_size_in_bytes.
-struct CompiledMemoryStats {
-  int64_t generated_code_size_in_bytes = 0;
-  int64_t argument_size_in_bytes = 0;
-  int64_t output_size_in_bytes = 0;
-  // How much argument is reused for output.
-  int64_t alias_size_in_bytes = 0;
-  int64_t temp_size_in_bytes = 0;
-
-  std::string DebugString() const;
+  // The `execution_mode` decides whether the execution will be invoked in the
+  // caller thread or launched to a separate thread. By default, the
+  // implementation may choose either strategy or use a heuristic to decide.
+  // Currently it is only applied to CPU implementations
+  enum class ExecutionMode { kDefault = 0, kSynchronous, kAsynchronous };
+  ExecutionMode execution_mode = ExecutionMode::kDefault;
 };
 
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. If any input/output alias has been specified in
 // the computation, the parameter containing the input buffer will be donated
 // when passed to the execution.
-class PjRtExecutable {
+class PjRtLoadedExecutable : public PjRtExecutable {
  public:
-  virtual ~PjRtExecutable() = default;
+  virtual ~PjRtLoadedExecutable() = default;
 
   virtual PjRtClient* client() const = 0;
-
-  // Unique name for this executable, e.g., HloModule name.
-  virtual absl::string_view name() const = 0;
-
-  virtual int num_replicas() const = 0;
-
-  virtual int num_partitions() const = 0;
-
-  virtual int64_t SizeOfGeneratedCodeInBytes() const = 0;
-
-  // Return memory stats that allow callers to estimate device memory usage
-  // when running this executable.
-  virtual StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
-    return Unimplemented("Retrieving CompiledMemoryStats is not supported.");
-  }
 
   virtual const DeviceAssignment& device_assignment() const = 0;
 
@@ -1115,10 +1121,6 @@ class PjRtExecutable {
   // addressable_device_logical_ids()[i] is assigned.
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
-  // Return an HloModule (optimized) per partition.
-  virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const = 0;
-
   // Executes on devices addressable by the client. Requires executable has a
   // device_assignment and all devices in the device_assignment are addressable
   // by the client.
@@ -1133,8 +1135,8 @@ class PjRtExecutable {
   //   else:
   //     *returned_futures is undefined.
   //
-  // The caller is *NOT* required to ensure that PjRtExecutable stays alive
-  // until futures are ready.
+  // The caller is *NOT* required to ensure that PjRtLoadedExecutable stays
+  // alive until futures are ready.
   virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
           const ExecuteOptions& options,

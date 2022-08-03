@@ -181,8 +181,16 @@ TEST_F(LocalizerValidationRegressionTest, Nnapi) {
 TEST_F(LocalizerValidationRegressionTest, NnapiSl) {
   const char* accelerator_name = getenv("TEST_ACCELERATOR_NAME");
 
-  std::string support_library_file = GetTestTmpDir() + "/libnnapi_sl_driver.so";
-  auto nnapi_sl_handle = nnapi::loadNnApiSupportLibrary(support_library_file);
+  auto nnapi_sl_handle = nnapi::loadNnApiSupportLibrary(
+      GetTestTmpDir() + "/libnnapi_sl_driver.so");
+
+  ASSERT_NE(nnapi_sl_handle.get(), nullptr);
+  int res;
+  uint32_t count;
+  res = nnapi_sl_handle->getFL5()->ANeuralNetworks_getDeviceCount(&count);
+  ASSERT_EQ(res, ANEURALNETWORKS_NO_ERROR);
+  ASSERT_GE(count, 1);
+
   fbb_.Finish(CreateComputeSettings(
       fbb_, ExecutionPreference_ANY,
       CreateTFLiteSettings(

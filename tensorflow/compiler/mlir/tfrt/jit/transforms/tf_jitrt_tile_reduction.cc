@@ -306,13 +306,16 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     auto identity_1d_map = b.getMultiDimIdentityMap(1);
     auto iv = ivs.front();
 
+    mlir::OpFoldResult tile_size_fold = tile_size_value;
+    mlir::OpFoldResult input_size_fold = input_size;
     auto tile_sizes = mlir::linalg::computeTileSizes(
-        b, nested_loc, tile_size_value, input_size);
+        b, nested_loc, tile_size_fold, input_size_fold);
     for (auto input : inputs) {
       // Extract slice of input.
       Value slice = mlir::linalg::makeTiledShape(
-          b, nested_loc, input, tile_size_value, identity_1d_map, iv,
-          input_size, tile_sizes, /*omitPartialTileCheck=*/true);
+          b, nested_loc, input, tile_size_fold, identity_1d_map,
+          mlir::OpFoldResult(iv), input_size_fold, tile_sizes,
+          /*omitPartialTileCheck=*/true);
       auto element_type = slice.getType().cast<ShapedType>().getElementType();
 
       // Reshape input tile to

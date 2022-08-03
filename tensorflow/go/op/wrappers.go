@@ -6814,7 +6814,7 @@ func ConfigureTPUEmbeddingHost(scope *Scope, common_config tf.Output, memory_con
 // about the TPUEmbedding partitioner output and the HBM size (in bytes) required
 // for operation.
 //
-// Returns A string-encoded HbmBuffersConfig proto containing metadata about
+// Returns A string-encoded memory configuration containing metadata about
 // the memory allocations reserved for TPUEmbedding.
 func ConfigureTPUEmbeddingMemory(scope *Scope, common_config tf.Output) (memory_config tf.Output) {
 	if scope.Err() != nil {
@@ -17234,10 +17234,11 @@ func FloorDiv(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
-// Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
+// Returns element-wise remainder of division.
 //
-// true, this follows Python semantics in that the result here is consistent
-// with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+// This follows Python semantics in that the
+// result here is consistent with a flooring divide. E.g.
+// `floor(x / y) * y + floormod(x, y) = x`, regardless of the signs of x and y.
 //
 // *NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -36345,6 +36346,14 @@ func RegisterDatasetV2ElementSpec(value string) RegisterDatasetV2Attr {
 	}
 }
 
+// RegisterDatasetV2RequestedDatasetId sets the optional requested_dataset_id attribute to value.
+// If not specified, defaults to ""
+func RegisterDatasetV2RequestedDatasetId(value string) RegisterDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["requested_dataset_id"] = value
+	}
+}
+
 // RegisterDatasetV2Metadata sets the optional metadata attribute to value.
 // If not specified, defaults to ""
 func RegisterDatasetV2Metadata(value string) RegisterDatasetV2Attr {
@@ -54056,6 +54065,69 @@ func UniformCandidateSampler(scope *Scope, true_classes tf.Output, num_true int6
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// UniformDequantizeAttr is an optional argument to UniformDequantize.
+type UniformDequantizeAttr func(optionalAttr)
+
+// UniformDequantizeQuantizationAxis sets the optional quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization. Otherwise, it must be set within range [0, input.dims()).
+// If not specified, defaults to -1
+func UniformDequantizeQuantizationAxis(value int64) UniformDequantizeAttr {
+	return func(m optionalAttr) {
+		m["quantization_axis"] = value
+	}
+}
+
+// Perform dequantization on the quantized Tensor `input`.
+//
+// Given quantized `input` which was quantized using `scales` and `zero_points`, performs dequantization using the formula:
+// dequantized_data = (quantized_data - zero_point) * scale.
+//
+// Arguments:
+//
+//	input: Must be a Tensor of Tin.
+//	scales: The float value(s) used as scale(s) when quantizing original data that input represents.
+//
+// Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).
+//
+//	zero_points: The int32 value(s) used as zero_point(s) when quantizing original data that input represents.
+//
+// Same shape condition as scales.
+//
+//	Tout: The type of output Tensor. A tf.DType from: tf.qint8, tf.qint32
+//	quantization_min_val: The quantization min value that was used when input was quantized.
+//
+// The purpose of this attribute is typically (but not limited to) to indicate narrow range, where this is set to:
+// `(Tin lowest) + 1` if narrow range, and `(Tin lowest)` otherwise.
+// For example, if Tin is qint8, this is set to -127 if narrow range quantized or -128 if not.
+//
+//	quantization_max_val: The quantization max value that was used when input was quantized.
+//
+// The purpose of this attribute is typically (but not limited to) indicate narrow range, where this is set to:
+// `(Tout max)` for both narrow range and not narrow range.
+// For example, if Tin is qint8, this is set to 127.
+//
+// Returns The output dequantized Tensor of Tout, whose shape is same as input.
+func UniformDequantize(scope *Scope, input tf.Output, scales tf.Output, zero_points tf.Output, Tout tf.DataType, quantization_min_val int64, quantization_max_val int64, optional ...UniformDequantizeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tout": Tout, "quantization_min_val": quantization_min_val, "quantization_max_val": quantization_max_val}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniformDequantize",
+		Input: []tf.Input{
+			input, scales, zero_points,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // UniformQuantizedDotHybridAttr is an optional argument to UniformQuantizedDotHybrid.

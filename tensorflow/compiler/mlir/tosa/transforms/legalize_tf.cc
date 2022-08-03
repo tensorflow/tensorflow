@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
@@ -1318,6 +1319,19 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_batchnorm_op = cast<TF::FusedBatchNormV3Op>(op);
 
+  if (tf_batchnorm_op.is_training())
+    return rewriter.notifyMatchFailure(
+        op, "unable to lower when is_training is set");
+
+  for (auto value : tf_batchnorm_op.getResults().drop_front(1)) {
+    if (!value.use_empty()) {
+      // Really we should compute this still and let it DCE but I can't find
+      // the math.
+      return rewriter.notifyMatchFailure(
+          op, "lowering does not support aggregate statistics");
+    }
+  }
+
   RankedTensorType output_type =
       tf_batchnorm_op.getResult(0).getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
@@ -1367,7 +1381,13 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
       op5_mul_op4_scale.getResult(), tf_batchnorm_op.offset());
 
-  rewriter.replaceOp(op, {op6_add_op5_offset.getResult()});
+  llvm::SmallVector<Value> replacements = {
+      op6_add_op5_offset.getResult(), tf_batchnorm_op.mean(),
+      tf_batchnorm_op.variance(),
+      // The last three are reserved spaces and have no purpose currently.
+      tf_batchnorm_op.mean(), tf_batchnorm_op.variance(),
+      tf_batchnorm_op.variance()};
+  rewriter.replaceOp(op, replacements);
   return success();
 }
 

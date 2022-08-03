@@ -29,6 +29,10 @@ namespace quant {
 class QuantizationDialect;
 }
 
+namespace quantfork {
+class QuantizationForkDialect;
+}
+
 namespace TFL {
 class TFLDialect;
 }
