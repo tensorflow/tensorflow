@@ -366,6 +366,7 @@ py_strict_library(
         "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/checkpoint:functional_saver",
         "//tensorflow/python/checkpoint:graph_view",
+        "//tensorflow/python/checkpoint:save_util_v1",
         "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/checkpoint:util",
         "//tensorflow/python/eager:context",

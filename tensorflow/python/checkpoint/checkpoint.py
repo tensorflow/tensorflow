@@ -31,6 +31,7 @@ from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import graph_view as graph_view_lib
 from tensorflow.python.checkpoint import restore as restore_lib
+from tensorflow.python.checkpoint import save_util_v1
 from tensorflow.python.checkpoint import util
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
@@ -1182,7 +1183,7 @@ class TrackableSaver(object):
   def _gather_saveables(self, object_graph_tensor=None):
     """Wraps _serialize_object_graph to include the object graph proto."""
     named_saveable_objects, graph_proto, feed_additions, registered_savers = (
-        util.serialize_gathered_objects(
+        save_util_v1.serialize_gathered_objects(
             graph_view=self._graph_view,
             object_map=self._object_map,
             saveables_cache=self._saveables_cache))
@@ -1550,7 +1551,7 @@ def frozen_saver(root_trackable):
     the time `frozen_saver` was called.
   """
   named_saveable_objects, registered_savers = (
-      util.frozen_saveables_and_savers(
+      save_util_v1.frozen_saveables_and_savers(
           graph_view_lib.ObjectGraphView(root_trackable)))
   return functional_saver.MultiDeviceSaver(named_saveable_objects,
                                            registered_savers)
