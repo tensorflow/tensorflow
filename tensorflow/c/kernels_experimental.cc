@@ -354,7 +354,7 @@ void TF_GetInputTensorFromVariable(TF_OpKernelContext* ctx, int input,
                                    TF_Tensor** out, TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
 
-  auto status_setter = ::tensorflow::gtl::MakeCleanup([cc_ctx]() {
+  auto status_setter = ::tensorflow::gtl::MakeCleanup([cc_ctx, status]() {
     ::tensorflow::Set_TF_Status_from_Status(status, cc_ctx->status());
   });
 
