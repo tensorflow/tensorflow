@@ -1260,8 +1260,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   const tstring data_transfer_protocol_;
   const tstring job_name_;
   const bool is_coordinated_read_;
-  const absl::optional<int64_t> consumer_index_;
-  const absl::optional<int64_t> num_consumers_;
+  const std::optional<int64_t> consumer_index_;
+  const std::optional<int64_t> num_consumers_;
   const int64_t max_outstanding_requests_;
   const int64_t task_refresh_interval_ms_;
   const TargetWorkers target_workers_;
@@ -1271,7 +1271,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   const ResourceHandle iteration_counter_handle_;
   ResourceMgr* const resource_mgr_;  // Not owned
   const std::unique_ptr<CapturedFunction> captured_uncompress_func_;
-  const absl::optional<CrossTrainerCacheOptions> cross_trainer_cache_options_;
+  const std::optional<CrossTrainerCacheOptions> cross_trainer_cache_options_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
