@@ -2646,7 +2646,7 @@ def TestFactory(xla_backend,
   class TokenTest(ComputationTest):
     """Tests related to PyToken."""
 
-    def testToken(self):
+    def testExecuteWithToken(self):
       c = self._NewComputation()
       ops.Mul(
           ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], np.float32)),
@@ -2657,6 +2657,25 @@ def TestFactory(xla_backend,
       self.assertLen(results, 1)
       np.testing.assert_allclose(
           results[0].to_py(), np.float32([-3, 6.6, 2.4, -2.1]), rtol=3e-3)
+
+    def testExecuteShardedOnLocalDevicesWithTokens(self):
+      c = self._NewComputation()
+      ops.Mul(
+          ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], np.float32)),
+          ops.Constant(c, np.array([-1.2, 2, -2, -3], np.float32)))
+      num_replicas = 1
+      options = xla_client.CompileOptions()
+      options.num_replicas = num_replicas
+      compiled_c = self.backend.compile(c.build(), compile_options=options)
+      results, tokens = compiled_c.execute_sharded_on_local_devices_with_tokens(
+          [])
+      self.assertLen(tokens, 1)
+      for token in tokens:
+        token.block_until_ready()
+      self.assertLen(results, 1)
+      self.assertLen(results[0], 1)
+      np.testing.assert_allclose(
+          results[0][0].to_py(), np.float32([-3, 6.6, 2.4, -2.1]), rtol=3e-3)
 
   tests.append(TokenTest)
 
