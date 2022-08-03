@@ -136,16 +136,38 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "c_api_test_builtin_op_models",
+    testonly = 1,
+    srcs = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+    ],
+)
+
+filegroup(
+    name = "c_api_test_custom_op_models",
+    testonly = 1,
+    srcs = [
+        "//tensorflow/lite:testdata/custom_sinh.bin",
+    ],
+)
+
+filegroup(
+    name = "c_api_test_models",
+    testonly = 1,
+    srcs = [
+        ":c_api_test_builtin_op_models",
+        ":c_api_test_custom_op_models",
+    ],
+)
+
 cc_test(
     name = "c_api_test",
     size = "small",
     srcs = ["c_api_test.cc"],
     copts = tflite_copts(),
-    data = [
-        "//tensorflow/lite:testdata/add.bin",
-        "//tensorflow/lite:testdata/add_quantized.bin",
-        "//tensorflow/lite:testdata/custom_sinh.bin",
-    ],
+    data = [":c_api_test_models"],
     deps = [
         ":c_api",
         ":c_api_experimental",
@@ -159,6 +181,7 @@ cc_test(
 tflite_custom_c_library(
     name = "selectively_built_c_api_test_lib",
     testonly = 1,
+    models = [":c_api_test_builtin_op_models"],
     visibility = ["//visibility:private"],
 )
 
@@ -168,6 +191,8 @@ cc_test(
     srcs = ["c_api_test.cc"],
     copts = tflite_copts(),
     data = [
+        # We list the files explicitly here, rather than using the ':c_api_test_models' filegroup,
+        # because Mobile Harness doesn't support filegroups in 'data'.
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
         "//tensorflow/lite:testdata/custom_sinh.bin",
