@@ -647,6 +647,13 @@ tensorflow::Status SavedModelImpl::Run(
   if (run_options.validate_input_specs) {
     TF_RETURN_IF_ERROR(IsInputSpecsCorrect(name, sig_iter->second, inputs));
   }
+  if (run_options.validate_input_specs_dry_run) {
+    const auto status = IsInputSpecsCorrect(name, sig_iter->second, inputs);
+    if (!status.ok()) {
+      LOG(ERROR) << "TFRT input specs validation failed: "
+                 << status.error_message();
+    }
+  }
   std::vector<tensorflow::Tensor> captures;
   for (const auto& capture : sig_iter->second.captures) {
     captures.push_back(capture);
@@ -730,6 +737,14 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
     if (run_options.validate_input_specs) {
       TF_RETURN_IF_ERROR(
           IsInputSpecsCorrect(signature_name, signature, input_tensors));
+    }
+    if (run_options.validate_input_specs_dry_run) {
+      const auto status =
+          IsInputSpecsCorrect(signature_name, signature, input_tensors);
+      if (!status.ok()) {
+        LOG(ERROR) << "TFRT input specs validation failed: "
+                   << status.error_message();
+      }
     }
     DCHECK(signature.captures.empty());
 
