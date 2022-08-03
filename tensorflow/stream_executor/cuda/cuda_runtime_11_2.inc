@@ -2174,6 +2174,30 @@ cudaGetFuncBySymbol(cudaFunction_t *functionPtr, const void *symbolPtr) {
   return func_ptr(functionPtr, symbolPtr);
 }
 
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphAddEventRecordNode(cudaGraphNode_t *pGraphNode, cudaGraph_t graph,
+                            const cudaGraphNode_t *pDependencies,
+                            size_t numDependencies, cudaEvent_t event) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraphNode_t *, cudaGraph_t,
+                               const cudaGraphNode_t *, size_t, cudaEvent_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphAddEventRecordNode");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(pGraphNode, graph, pDependencies, numDependencies, event);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaGraphAddEventWaitNode(cudaGraphNode_t *pGraphNode, cudaGraph_t graph,
+                          const cudaGraphNode_t *pDependencies,
+                          size_t numDependencies, cudaEvent_t event) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraphNode_t *, cudaGraph_t,
+                               const cudaGraphNode_t *, size_t, cudaEvent_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphAddEventWaitNode");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(pGraphNode, graph, pDependencies, numDependencies, event);
+}
+
 #if CUDA_VERSION >= 11030
 
 extern __host__ cudaError_t CUDARTAPI cudaUserObjectCreate(
