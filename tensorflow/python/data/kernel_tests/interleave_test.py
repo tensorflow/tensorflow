@@ -15,6 +15,7 @@
 """Tests for `tf.data.Dataset.interleave()`."""
 import multiprocessing
 import os
+import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -56,12 +57,15 @@ def _interleave(lists, cycle_length, block_length, num_parallel_calls=None):
   open_iterators = []
   if cycle_length is None:
     # The logic here needs to match interleave C++ kernels.
+    cpu_count = (
+        len(os.sched_getaffinity(0))
+        if sys.platform != "win32" else multiprocessing.cpu_count())
     if num_parallel_calls is None:
-      cycle_length = multiprocessing.cpu_count()
+      cycle_length = cpu_count
     elif num_parallel_calls == dataset_ops.AUTOTUNE:
-      cycle_length = (multiprocessing.cpu_count() + 2) // 3
+      cycle_length = (cpu_count + 2) // 3
     else:
-      cycle_length = min(num_parallel_calls, multiprocessing.cpu_count())
+      cycle_length = min(num_parallel_calls, cpu_count)
 
   for i in range(cycle_length):
     if all_iterators:
