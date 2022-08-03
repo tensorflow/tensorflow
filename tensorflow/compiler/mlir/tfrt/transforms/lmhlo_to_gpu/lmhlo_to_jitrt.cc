@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
@@ -470,16 +471,28 @@ class CublasLtMatmulOpLowering : public OpRewritePattern<CublasLtMatmulOp> {
 
     ModuleOp module = op->template getParentOfType<ModuleOp>();
 
+    std::string matmul;
+    switch (op.getOperands().size()) {
+      case 4:
+        matmul = kCustomCallTarget;
+        break;
+      case 5:
+        matmul = absl::StrCat(kCustomCallTarget, ".bias");
+        break;
+      default:
+        return op.emitOpError("unexpected number of operands for matmul");
+    }
+
     // Custom call target.
     NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr(kCustomCallTarget));
+                          b.getStringAttr(matmul));
 
     // Create a custom call function declaration.
     auto custom_call_type =
         FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
-                                      custom_call_type, custom_call_attrs);
+    auto custom_call = FuncOp::create(op.getLoc(), matmul, custom_call_type,
+                                      custom_call_attrs);
     custom_call.setPrivate();
 
     SymbolTable sym_table(module);

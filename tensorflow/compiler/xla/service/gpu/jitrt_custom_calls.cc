@@ -547,8 +547,9 @@ struct CublasLtMatmul {
                    const DebugOptions* debug_options,
                    jitrt::StridedMemrefView a, jitrt::StridedMemrefView b,
                    jitrt::StridedMemrefView c, jitrt::StridedMemrefView d,
-                   int64_t algorithm, double alpha_real, double alpha_imag,
-                   double beta, DotDimensionNumbers dot_dims,
+                   Optional<jitrt::StridedMemrefView> bias, int64_t algorithm,
+                   double alpha_real, double alpha_imag, double beta,
+                   DotDimensionNumbers dot_dims,
                    se::cuda::BlasLt::Epilogue epilogue,
                    ArrayRef<int32_t> precision, int64_t uid) const;
 
@@ -560,10 +561,10 @@ Error CublasLtMatmul::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, jitrt::StridedMemrefView a,
     jitrt::StridedMemrefView b, jitrt::StridedMemrefView c,
-    jitrt::StridedMemrefView d, int64_t algorithm, double alpha_real,
-    double alpha_imag, double beta, DotDimensionNumbers dot_dims,
-    se::cuda::BlasLt::Epilogue epilogue, ArrayRef<int32_t> precision,
-    int64_t uid) const {
+    jitrt::StridedMemrefView d, Optional<jitrt::StridedMemrefView> bias,
+    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
+    DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
+    ArrayRef<int32_t> precision, int64_t uid) const {
   VLOG(3) << "Running CublasLtMatmul";
   se::Stream* stream = run_options->stream();
 
@@ -584,6 +585,7 @@ Error CublasLtMatmul::operator()(
   se::DeviceMemoryBase c_data = GetDeviceAddress(c);
   se::DeviceMemoryBase d_data = GetDeviceAddress(d);
   se::DeviceMemoryBase bias_data;
+  if (bias.has_value()) bias_data = GetDeviceAddress(*bias);
 
   se::OwningScratchAllocator<> scratch_allocator(
       stream->parent()->device_ordinal(), stream->parent()->GetAllocator());
@@ -596,25 +598,52 @@ Error CublasLtMatmul::operator()(
   return Error::success();
 }
 
+// Adds custom call bindings for matmul operations.
+template <typename... Ts>
+static auto BindMatmulAttributes(jitrt::CustomCallBinding<Ts...> binding) {
+  return std::move(binding)
+      .template Attr<int64_t>("algorithm")
+      .template Attr<double>("alpha_real")
+      .template Attr<double>("alpha_imag")
+      .template Attr<double>("beta")
+      .template Attr<DotDimensionNumbers>("dot_dims")
+      .template Attr<se::cuda::BlasLt::Epilogue>("epilogue")
+      .template Attr<ArrayRef<int32_t>>("precision")
+      .template Attr<int64_t>("uid");
+}
+
 static bool CublasLtMatmul(runtime::KernelContext* ctx, void** args,
                            void** attrs) {
-  static auto* handler = CustomCall::Bind("xla.gpu.cublas.lt.matmul")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .Arg<jitrt::StridedMemrefView>()  // a
-                             .Arg<jitrt::StridedMemrefView>()  // b
-                             .Arg<jitrt::StridedMemrefView>()  // c
-                             .Arg<jitrt::StridedMemrefView>()  // d
-                             .Attr<int64_t>("algorithm")
-                             .Attr<double>("alpha_real")
-                             .Attr<double>("alpha_imag")
-                             .Attr<double>("beta")
-                             .Attr<DotDimensionNumbers>("dot_dims")
-                             .Attr<se::cuda::BlasLt::Epilogue>("epilogue")
-                             .Attr<ArrayRef<int32_t>>("precision")
-                             .Attr<int64_t>("uid")
-                             .To<RuntimeChecks()>(CublasLtMatmul::Handler())
-                             .release();
+  static auto* handler =
+      BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul")
+                               .UserData<const ServiceExecutableRunOptions*>()
+                               .UserData<const DebugOptions*>()
+                               .Arg<jitrt::StridedMemrefView>()  // a
+                               .Arg<jitrt::StridedMemrefView>()  // b
+                               .Arg<jitrt::StridedMemrefView>()  // c
+                               .Arg<jitrt::StridedMemrefView>()  // d
+                               .Value(CustomCall::None)          // bias
+                           )
+          .To<RuntimeChecks()>(CublasLtMatmul::Handler())
+          .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+}
+
+static bool CublasLtMatmulBias(runtime::KernelContext* ctx, void** args,
+                               void** attrs) {
+  static auto* handler =
+      BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul.bias")
+                               .UserData<const ServiceExecutableRunOptions*>()
+                               .UserData<const DebugOptions*>()
+                               .Arg<jitrt::StridedMemrefView>()  // a
+                               .Arg<jitrt::StridedMemrefView>()  // b
+                               .Arg<jitrt::StridedMemrefView>()  // c
+                               .Arg<jitrt::StridedMemrefView>()  // d
+                               .Arg<jitrt::StridedMemrefView>()  // bias
+                           )
+          .To<RuntimeChecks()>(CublasLtMatmul::Handler())
+          .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
@@ -2110,6 +2139,7 @@ DirectCustomCallLibrary JitRtGpuCustomCalls() {
   lib.Insert("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   lib.Insert("xla.gpu.gemm", &xla::gpu::Gemm);
   lib.Insert("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
+  lib.Insert("xla.gpu.cublas.lt.matmul.bias", &xla::gpu::CublasLtMatmulBias);
 
   auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
   lib.Insert(conv("forward"), &ConvFn<CudnnConvKind::kForward>);

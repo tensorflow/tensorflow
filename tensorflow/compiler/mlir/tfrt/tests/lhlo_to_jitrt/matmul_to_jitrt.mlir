@@ -60,7 +60,8 @@ func.func @compute(%a: memref<2x6x2x2xf32>,
                    %d: memref<2x6x2x2xf32>,
                    %bias: memref<2x6x2x2xf32>) {
 
-  // CHECK: @xla.gpu.cublas.lt.matmul(%[[A]], %[[B]], %[[C]], %[[D]], %[[BIAS]])
+  // CHECK: @xla.gpu.cublas.lt.matmul.bias(%[[A]], %[[B]], %[[C]], %[[D]],
+  // CHECK-SAME:                           %[[BIAS]])
   // CHECK-SAME:   alpha_imag = 0.000000e+00 : f64
   // CHECK-SAME:   alpha_real = 1.000000e+00 : f64
   // CHECK-SAME:   beta = 0.000000e+00 : f64
@@ -89,7 +90,8 @@ func.func @compute(%a: memref<2x6x2x2xf32>,
   return
 }
 
-// CHECK: func private @xla.gpu.cublas.lt.matmul(
+// CHECK: func private @xla.gpu.cublas.lt.matmul.bias(
 // CHECK-SAME:   memref<2x6x2x2xf32>, memref<2x6x2x2xf32>, memref<2x6x2x2xf32>,
 // CHECK-SAME:   memref<2x6x2x2xf32>, memref<2x6x2x2xf32>
-// CHECK-SAME: ) attributes {rt.direct_custom_call = "xla.gpu.cublas.lt.matmul"}
+// CHECK-SAME: ) attributes {rt.direct_custom_call =
+// CHECK-SAME: "xla.gpu.cublas.lt.matmul.bias"}
