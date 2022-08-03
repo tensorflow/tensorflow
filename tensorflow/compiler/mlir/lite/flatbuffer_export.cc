@@ -598,7 +598,7 @@ class Translator {
 
   // Returns the quantization parameters for output value of "quant.stats" op.
   BufferOffset<tflite::QuantizationParameters>
-  GetQuantizationForQuantStatsOpOutput(mlir::quant::StatisticsOp stats_op);
+  GetQuantizationForQuantStatsOpOutput(mlir::quantfork::StatisticsOp stats_op);
 
   // Build a subgraph with a given name out of the region either corresponding
   // to a function's body or while op.
@@ -774,11 +774,17 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
     mlir::Type type, const std::string& name) {
   auto tensor_type = type.cast<TensorType>();
 
-  if (!tensor_type.hasStaticShape()) {
-    return llvm::None;
+  llvm::ArrayRef<int64_t> shape_ref;
+  std::vector<int32_t> shape;
+
+  if (tensor_type.hasRank()) {
+    if (tensor_type.hasStaticShape()) {
+      shape_ref = tensor_type.getShape();
+      shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
+    } else {
+      return llvm::None;
+    }
   }
-  llvm::ArrayRef<int64_t> shape_ref = tensor_type.getShape();
-  std::vector<int32_t> shape(shape_ref.begin(), shape_ref.end());
 
   auto element_type = tensor_type.getElementType();
   tflite::TensorType tflite_element_type =
@@ -802,7 +808,8 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
   return tflite::CreateTensor(
       builder_, builder_.CreateVector(shape), tflite_element_type,
       /*buffer=*/0, builder_.CreateString(name), q_params,
-      /*is_variable=*/false);
+      /*is_variable=*/false, /*sparsity=*/0, /*shape_signature=*/0,
+      /*has_rank=*/tensor_type.hasRank());
 }
 
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
@@ -890,7 +897,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
         builder_.CreateVector<int64_t>(zero_points),
         tflite::QuantizationDetails_NONE, /*details=*/0,
         qtype.getQuantizedDimension());
-  } else if (quant_parameters.hasValue()) {
+  } else if (quant_parameters.has_value()) {
     q_params = quant_parameters.getValue();
   } else {
     q_params = tflite::CreateQuantizationParameters(builder_);
@@ -906,17 +913,21 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     }
   }
 
+  bool has_rank = type.hasRank();
+
   if (shape_signature.empty()) {
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
-        /*is_variable=*/is_variable, s_params);
+        /*is_variable=*/is_variable, s_params, /*shape_signature=*/0,
+        /*has_rank=*/has_rank);
   } else {
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
         /*is_variable=*/is_variable, s_params,
-        /*shape_signature=*/builder_.CreateVector(shape_signature));
+        /*shape_signature=*/builder_.CreateVector(shape_signature),
+        /*has_rank=*/has_rank);
   }
 }
 
@@ -1347,13 +1358,13 @@ bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
 
 BufferOffset<tflite::QuantizationParameters>
 Translator::GetQuantizationForQuantStatsOpOutput(
-    mlir::quant::StatisticsOp stats_op) {
-  auto layer_stats = stats_op.layerStats().cast<mlir::DenseFPElementsAttr>();
-  Optional<mlir::ElementsAttr> axis_stats = stats_op.axisStats();
-  Optional<uint64_t> axis = stats_op.axis();
+    mlir::quantfork::StatisticsOp stats_op) {
+  auto layer_stats = stats_op.getLayerStats().cast<mlir::DenseFPElementsAttr>();
+  Optional<mlir::ElementsAttr> axis_stats = stats_op.getAxisStats();
+  Optional<uint64_t> axis = stats_op.getAxis();
   std::vector<float> mins, maxs;
   mlir::DenseFPElementsAttr min_max_attr =
-      axis_stats.hasValue()
+      axis_stats.has_value()
           ? axis_stats.getValue().cast<mlir::DenseFPElementsAttr>()
           : layer_stats;
 
@@ -1371,7 +1382,7 @@ Translator::GetQuantizationForQuantStatsOpOutput(
       builder_, builder_.CreateVector<float>(mins),
       builder_.CreateVector<float>(maxs), /*scale=*/0, /*zero_point=*/0,
       tflite::QuantizationDetails_NONE, /*details=*/0,
-      /*quantized_dimension=*/axis.hasValue() ? axis.getValue() : 0);
+      /*quantized_dimension=*/axis.has_value() ? axis.getValue() : 0);
 }
 
 Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
@@ -1397,7 +1408,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     Optional<BufferOffset<tflite::QuantizationParameters>> quant_parameters;
     if (value.hasOneUse()) {
       auto stats_op =
-          llvm::dyn_cast<mlir::quant::StatisticsOp>(*value.user_begin());
+          llvm::dyn_cast<mlir::quantfork::StatisticsOp>(*value.user_begin());
       if (stats_op) {
         quant_parameters = GetQuantizationForQuantStatsOpOutput(stats_op);
       }
@@ -1442,7 +1453,8 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;
     // For "quant.stats" op, it's used to store the quantization parameters info
     // and its output should be then replaced by its input value.
-    if (auto quant_stats_op = llvm::dyn_cast<mlir::quant::StatisticsOp>(inst)) {
+    if (auto quant_stats_op =
+            llvm::dyn_cast<mlir::quantfork::StatisticsOp>(inst)) {
       continue;
     }
     std::vector<int32_t> intermediates;
@@ -1460,7 +1472,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
           Type qtype = attr.getValue();
           auto tensor_or = BuildTensorFromType(
               qtype, name_mapper_.GetUniqueName(intermediate).str());
-          if (!tensor_or.hasValue()) {
+          if (!tensor_or.has_value()) {
             continue;
           } else {
             intermediates.push_back(tensors.size());
@@ -1502,9 +1514,9 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       if (operand.getType().isa<NoneType>())
         operands.push_back(kTfLiteOptionalTensor);
       else if (auto stats_op =
-                   llvm::dyn_cast_or_null<mlir::quant::StatisticsOp>(
+                   llvm::dyn_cast_or_null<mlir::quantfork::StatisticsOp>(
                        operand.getDefiningOp()))
-        operands.push_back(tensor_index_map.lookup(stats_op.arg()));
+        operands.push_back(tensor_index_map.lookup(stats_op.getArg()));
       else
         operands.push_back(tensor_index_map.lookup(operand));
     }
@@ -2036,22 +2048,22 @@ Optional<std::string> Translator::TranslateInternal() {
 
 BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
     const mlir::TFL::SparsityParameterAttr& s_attr) {
-  const int dim_size = s_attr.dim_metadata().size();
+  const int dim_size = s_attr.getDimMetadata().size();
   std::vector<flatbuffers::Offset<tflite::DimensionMetadata>> fb_dim_metadata(
       dim_size);
   for (int i = 0; i < dim_size; i++) {
     const auto dim_metadata =
-        s_attr.dim_metadata()[i].dyn_cast<mlir::TFL::DimensionMetadataAttr>();
-    if (dim_metadata.format().getValue() == mlir::TFL::DimensionType::DENSE) {
-      fb_dim_metadata[i] =
-          tflite::CreateDimensionMetadata(builder_, tflite::DimensionType_DENSE,
-                                          dim_metadata.dense_size().getInt());
+        s_attr.getDimMetadata()[i].dyn_cast<mlir::TFL::DimensionMetadataAttr>();
+    if (dim_metadata.getFormat().getValue() ==
+        mlir::TFL::DimensionType::DENSE) {
+      fb_dim_metadata[i] = tflite::CreateDimensionMetadata(
+          builder_, tflite::DimensionType_DENSE, dim_metadata.getDenseSize());
 
     } else {
-      auto segments = dim_metadata.segments();
+      auto segments = dim_metadata.getSegments();
       std::vector<int> vector_segments(segments.size(), 0);
       for (int j = 0, end = segments.size(); j < end; j++) {
-        vector_segments[j] = segments[j].dyn_cast<mlir::IntegerAttr>().getInt();
+        vector_segments[j] = segments[j];
       }
       tflite::SparseIndexVector segments_type;
       BufferOffset<void> array_segments;
@@ -2079,11 +2091,11 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
                              .Union();
       }
 
-      auto indices = dim_metadata.indices();
+      auto indices = dim_metadata.getIndices();
       std::vector<int> vector_indices(indices.size(), 0);
       int max_of_indices = 0;
       for (int j = 0, end = indices.size(); j < end; j++) {
-        vector_indices[j] = indices[j].dyn_cast<mlir::IntegerAttr>().getInt();
+        vector_indices[j] = indices[j];
         if (vector_indices[j] > max_of_indices) {
           max_of_indices = vector_indices[j];
         }
@@ -2119,13 +2131,12 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
 
   std::vector<int> traversal_order(dim_size);
   for (int i = 0; i < dim_size; i++) {
-    traversal_order[i] =
-        s_attr.traversal_order()[i].dyn_cast<mlir::IntegerAttr>().getInt();
+    traversal_order[i] = s_attr.getTraversalOrder()[i];
   }
-  const int block_map_size = s_attr.block_map().size();
+  const int block_map_size = s_attr.getBlockMap().size();
   std::vector<int> block_map(block_map_size);
   for (int i = 0; i < block_map_size; i++) {
-    block_map[i] = s_attr.block_map()[i].dyn_cast<mlir::IntegerAttr>().getInt();
+    block_map[i] = s_attr.getBlockMap()[i];
   }
 
   return tflite::CreateSparsityParameters(

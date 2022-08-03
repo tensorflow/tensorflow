@@ -16,6 +16,7 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -211,7 +212,7 @@ TEST(BenchmarkTest, DoesntCrashMultiPerfOptions) {
 
   TestBenchmark benchmark(CreateFp32Params());
   BenchmarkPerformanceOptions all_options_benchmark(
-      &benchmark, absl::make_unique<TestMultiRunStatsRecorder>());
+      &benchmark, std::make_unique<TestMultiRunStatsRecorder>());
   all_options_benchmark.Run();
 }
 

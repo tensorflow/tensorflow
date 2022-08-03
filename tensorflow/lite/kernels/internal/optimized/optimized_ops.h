@@ -94,7 +94,6 @@ using reference_ops::Less;
 using reference_ops::LessEqual;
 using reference_ops::LessEqualWithScaling;
 using reference_ops::LessWithScaling;
-using reference_ops::Mean;
 using reference_ops::ProcessBroadcastShapes;
 using reference_ops::RankOneSelect;
 using reference_ops::Relu0To1;  // NOLINT
@@ -3590,6 +3589,8 @@ inline void SoftmaxInt8LUT(const SoftmaxParams& params,
                            const RuntimeShape& input_shape,
                            const In* input_data,
                            const RuntimeShape& output_shape, Out* output_data) {
+  ruy::profiler::ScopeLabel label("SoftmaxInt8LUT");
+
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);

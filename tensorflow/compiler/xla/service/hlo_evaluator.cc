@@ -25,6 +25,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -403,10 +404,11 @@ enum class EvalErrorDetail : uint32_t {
   kDynamicValueDependence = 0,
 };
 
-Status MakeEvalErrorDueToParamOrInfeed() {
+Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
   Status error = tensorflow::errors::FailedPrecondition(
-      "Failed to evaluate instruction since it depends on infeed or "
-      "parameters to its parent computation.");
+      "Failed to evaluate instruction (", eval_instruction.name(),
+      ") since it depends on infeed or parameters to its parent computation (",
+      eval_instruction.parent()->name(), ").");
   std::string error_payload;
   error_payload.resize(sizeof(EvalErrorDetail));
   absl::little_endian::Store32(
@@ -820,7 +822,7 @@ StatusOr<Literal> HloEvaluator::Evaluate(
     }
   }
   if (!result.IsKnown()) {
-    return MakeEvalErrorDueToParamOrInfeed();
+    return MakeEvalErrorDueToParamOrInfeed(*computation.root_instruction());
   }
   return result.Clone();
 }
@@ -838,7 +840,7 @@ StatusOr<Literal> HloEvaluator::Evaluate(
                        recursively_evaluate_nonconstant_operands));
   const Literal& result = GetEvaluatedLiteralFor(instruction);
   if (!result.IsKnown()) {
-    return MakeEvalErrorDueToParamOrInfeed();
+    return MakeEvalErrorDueToParamOrInfeed(*instruction);
   }
   return result.Clone();
 }
@@ -853,7 +855,7 @@ bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result,
     return false;
   }
 
-  *result = result_or.ConsumeValueOrDie();
+  *result = std::move(result_or).value();
   return true;
 }
 
@@ -2929,7 +2931,7 @@ Status HloEvaluator::HandleScatter(HloInstruction* hlo) {
     }
     Literal updated_result =
         embedded_evaluator.Evaluate(*scatter->to_apply(), to_apply_args)
-            .ConsumeValueOrDie();
+            .value();
     // Clear visit states so that the we can use the evaluate again on the
     // same computation.
     embedded_evaluator.ResetVisitStates();
@@ -3337,7 +3339,7 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
       StatusOr<Literal> result =
           TryParseAndEvaluateWhileInductionVar(while_hlo);
       if (result.ok()) {
-        lcv = result.ConsumeValueOrDie();
+        lcv = std::move(result).value();
         break;
       } else {
         return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",
@@ -3839,7 +3841,7 @@ Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {
 }
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
-  VLOG(2) << "About to visit HLO: " << hlo->ToString();
+  VLOG(3) << "About to visit HLO: " << hlo->ToString();
   if (!enable_partial_evaluation_) {
     for (HloInstruction* operand : hlo->mutable_operands()) {
       if (!IsAlreadyEvaluated(operand) ||
@@ -3854,7 +3856,7 @@ Status HloEvaluator::Preprocess(HloInstruction* hlo) {
 }
 
 Status HloEvaluator::Postprocess(HloInstruction* hlo) {
-  VLOG(2) << "Finished visiting " << hlo->ToString()
+  VLOG(3) << "Finished visiting " << hlo->ToString()
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
   // Out of convenience the literal may have been produced with a different
   // layout. Relayout as indicated by the HLO instruction.

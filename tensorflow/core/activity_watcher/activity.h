@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -32,11 +31,14 @@ namespace activity_watcher {
 
 using ActivityId = uint64;
 constexpr ActivityId kActivityNotRecorded = 0;
+constexpr int kWatcherDisabled = 0;
 
 enum ActivityCategory {
   kCollective = 0,
   kRemoteFunction = 1,
   kMisc = 2,
+  kDatasetOp = 3,
+  kTpuOp = 4,
 };
 
 static tensorflow::string ToString(ActivityCategory category) {
@@ -47,6 +49,10 @@ static tensorflow::string ToString(ActivityCategory category) {
       return "Remote Function";
     case ActivityCategory::kMisc:
       return "Miscellaneous";
+    case ActivityCategory::kDatasetOp:
+      return "Dataset Op";
+    case ActivityCategory::kTpuOp:
+      return "TPU Op";
   }
 }
 
@@ -76,25 +82,30 @@ void MaybeEnableMultiWorkersWatching(CoordinationServiceAgent* agent);
 
 namespace tfw_internal {
 
+#if !defined(IS_MOBILE_PLATFORM)
+
 // Records an activity start without checking whether the watcher is enabled.
 ActivityId RecordActivityStart(std::unique_ptr<Activity> activity);
 // Records an activity end without checking whether the activity_id is valid.
 void RecordActivityEnd(ActivityId activity_id);
 
-TF_EXPORT extern std::atomic<bool> g_watcher_enabled;
+TF_EXPORT extern std::atomic<int> g_watcher_level;
 
 // Returns whether the activitity watcher is enabled.
-inline bool WatcherEnabled() {
-  return g_watcher_enabled.load(std::memory_order_acquire);
+inline bool WatcherEnabled(int level = 1) {
+  return g_watcher_level.load(std::memory_order_acquire) >= level;
 }
 
-// NOTE: Borrowed from boost C++ libraries. When TF embrace C++17 this should
-// be replaced with std::is_invocable_r;
+#endif
+
+// NOTE: Borrowed from boost C++ libraries because std::is_invocable_r is not
+// available in Android NDK.
 template <typename R, typename F, typename... Args>
 struct is_invocable_r
     : std::is_constructible<
           std::function<R(Args...)>,
           std::reference_wrapper<typename std::remove_reference<F>::type>> {};
+
 }  // namespace tfw_internal
 
 template <typename F>
@@ -110,24 +121,28 @@ constexpr bool is_activity_generator =
 //     return std::make_unique<Activity>(
 //         op_name, category,
 //         Activity::Attributes{{"key1", value1}, {"key2", value2}});
-//   }
+//   }, /*level=*/2);
 //   DoSomething();
 //   ActivityEnd(aid);
 template <
     typename ActivityGenerator,
     std::enable_if_t<is_activity_generator<ActivityGenerator>, bool> = true>
-inline ActivityId ActivityStart(ActivityGenerator&& gen) {
-  if (TF_PREDICT_FALSE(tfw_internal::WatcherEnabled())) {
+inline ActivityId ActivityStart(ActivityGenerator&& gen, int level = 1) {
+#if !defined(IS_MOBILE_PLATFORM)
+  if (TF_PREDICT_FALSE(tfw_internal::WatcherEnabled(level))) {
     return tfw_internal::RecordActivityStart(
         std::forward<ActivityGenerator>(gen)());
   }
+#endif
   return kActivityNotRecorded;
 }
 
 inline void ActivityEnd(ActivityId id) {
+#if !defined(IS_MOBILE_PLATFORM)
   if (TF_PREDICT_FALSE(id != kActivityNotRecorded)) {
     tfw_internal::RecordActivityEnd(id);
   }
+#endif
 }
 
 // ActivityScope marks a scope as an activity and record it with a global
@@ -138,7 +153,7 @@ inline void ActivityEnd(ActivityId id) {
 //       return std::make_unique<Activity>(
 //           op_name, ActivityCategory::kMisc,
 //           Activity::Attributes{{"key1", value1}, {"key2", value2}});
-//     });
+//     }, /*level=*/2);
 //     DoSomething();
 //   }
 class ActivityScope {
@@ -146,8 +161,8 @@ class ActivityScope {
   template <
       typename ActivityGenerator,
       std::enable_if_t<is_activity_generator<ActivityGenerator>, bool> = true>
-  explicit ActivityScope(ActivityGenerator&& gen) {
-    activity_id_ = ActivityStart(std::forward<ActivityGenerator>(gen));
+  explicit ActivityScope(ActivityGenerator&& gen, int level = 1) {
+    activity_id_ = ActivityStart(std::forward<ActivityGenerator>(gen), level);
   }
   ~ActivityScope() { ActivityEnd(activity_id_); }
 

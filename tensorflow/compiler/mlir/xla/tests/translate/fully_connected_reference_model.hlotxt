@@ -41,7 +41,7 @@ ENTRY %tfcompile.48 {
   // CHECK-NEXT: %[[VAL_11:.*]] = "mhlo.broadcast_in_dim"(%[[VAL_10]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<300x1x5xf32>
   %broadcast.33 = f32[300,1,5] broadcast(%constant.32), dimensions={}
 
-  // CHECK-NEXT: %[[VAL_12:.*]] = "mhlo.compare"(%[[VAL_9]], %[[VAL_11]]) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<300x1x5xf32>, tensor<300x1x5xf32>) -> tensor<300x1x5xi1>
+  // CHECK-NEXT: %[[VAL_12:.*]] = "mhlo.compare"(%[[VAL_9]], %[[VAL_11]]) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<300x1x5xf32>, tensor<300x1x5xf32>) -> tensor<300x1x5xi1>
   %compare.34 = pred[300,1,5] compare(%multiply.31, %broadcast.33), direction=GT
 
   // CHECK-NEXT: %[[VAL_13:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
@@ -75,7 +75,7 @@ ENTRY %tfcompile.48 {
   %constant.35 = f32[3,5] constant({ { -0.106023, 0.121505, 0.800239, -0.768885, 0.0966113 }, { 0.689014, -0.407056, -0.797853, 0.00378925, -0.208881 }, { -0.608529, 0.0276617, 0.268557, 0.577401, -0.428437 } })
 
   // TODO(b/129709049) consider making this default precision config implied.
-  // CHECK-NEXT: %[[VAL_23:.*]] = "mhlo.dot"(%[[VAL_21]], %[[VAL_22]]) {precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<300x3xf32>, tensor<3x5xf32>) -> tensor<300x5xf32>
+  // CHECK-NEXT: %[[VAL_23:.*]] = "mhlo.dot"(%[[VAL_21]], %[[VAL_22]]) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<300x3xf32>, tensor<3x5xf32>) -> tensor<300x5xf32>
   %dot.36 = f32[300,5] dot(%reshape.26, %constant.35), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 
   // CHECK-NEXT: %[[VAL_24:.*]] = mhlo.constant dense<0.000000e+00> : tensor<5xf32>

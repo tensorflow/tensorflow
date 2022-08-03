@@ -27,7 +27,6 @@ limitations under the License.
 #include <unordered_set>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
@@ -38,6 +37,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
@@ -1062,7 +1062,6 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
   }
 
   ArrayAttr stride;
-  ArrayAttr dilation;
   ArrayAttr outpad;
   ArrayAttr output_shape;
   {
@@ -1070,9 +1069,6 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     int64_t stride_w = tfl_conv_op.stride_w();
     stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
   }
-
-  // tfl.transpose_conv doesn't support dilations
-  dilation = rewriter.getI64ArrayAttr({1, 1});
 
   {
     tensorflow::Padding tf_pad;
@@ -1083,8 +1079,7 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
             tf_pad,
             tensorflow::FORMAT_NHWC,  // TFLite only supports this
             1,                        // tensorflow::FORMAT_OHWI,
-            input_type, filter_type, output_type, stride, dilation, rewriter,
-            outpad))
+            input_type, filter_type, output_type, stride, rewriter, outpad))
       return failure();
   }
   {
@@ -1143,7 +1138,7 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
 
   auto a1_conv2d_op = CreateOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety), tfl_conv_op.input(),
-      tfl_conv_op.weights(), zero_bias.getValue(), outpad, stride, dilation,
+      tfl_conv_op.weights(), zero_bias.getValue(), outpad, stride,
       output_shape);
 
   Value conv2d_output;

@@ -286,7 +286,7 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   }
   resource->cache_.emplace(
       engine_input_shape,
-      absl::make_unique<EngineContext>(std::move(engine), std::move(context)));
+      std::make_unique<EngineContext>(std::move(engine), std::move(context)));
   // Check that the resource has multiple references before it is unregistered
   // from the resource manager.
   EXPECT_FALSE(resource->RefCountIsOne());
@@ -322,7 +322,7 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   // Verify the file for the serialized engine.
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(filename, &file));
-  auto reader = absl::make_unique<io::RecordReader>(file.get());
+  auto reader = std::make_unique<io::RecordReader>(file.get());
   uint64 offset = 0;
   tstring record;
   TF_ASSERT_OK(reader->ReadRecord(&offset, &record));

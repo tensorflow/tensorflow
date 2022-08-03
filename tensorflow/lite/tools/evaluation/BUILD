@@ -55,6 +55,7 @@ cc_library(
         "//conditions:default": [],
     }) + select({
         "//tensorflow:linux_s390x": [],
+        "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
             "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         ],

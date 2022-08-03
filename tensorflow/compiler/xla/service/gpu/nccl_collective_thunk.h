@@ -78,16 +78,16 @@ template <typename OpT>
 NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
     OpT op, std::optional<bool> use_global_device_ids) {
   NcclCollectiveConfig config;
-  config.operand_count = op.operands().size();
+  config.operand_count = op.getInputs().size();
   config.operand_element_type.reserve(config.operand_count);
   for (int i = 0; i < config.operand_count; i++) {
-    const Shape shape = GetShape(op.operands()[i]);
+    const Shape shape = GetShape(op.getInputs()[i]);
     config.operand_element_type.push_back(shape.element_type());
   }
   config.replica_groups =
       ConvertReplicaGroups(op.getReplicaGroups()).ValueOrDie();
   config.SetCollectiveOpKindAndID(op);
-  config.group_mode = GetCollectiveOpGroupMode(op.getChannelId().hasValue(),
+  config.group_mode = GetCollectiveOpGroupMode(op.getChannelId().has_value(),
                                                use_global_device_ids)
                           .ValueOrDie();
   return config;

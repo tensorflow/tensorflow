@@ -83,7 +83,9 @@ Status ReplaceWithContiguousAllReduce(HloAllReduceInstruction* all_reduce) {
 }
 }  // namespace
 
-StatusOr<bool> AllReduceContiguous::Run(HloModule* module) {
+StatusOr<bool> AllReduceContiguous::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running AllReduceContiguous";
 
   if (hlo_query::ContainsLayoutConstrainedAllReduce(*module)) {
@@ -94,7 +96,8 @@ StatusOr<bool> AllReduceContiguous::Run(HloModule* module) {
   }
 
   std::vector<HloAllReduceInstruction*> all_reduces;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kAllReduce &&
           instruction->operand_count() > 1) {

@@ -53,7 +53,7 @@ int RealMain(int argc, char** argv) {
     platform = PlatformUtil::GetPlatform(platform_str).ValueOrDie();
   }
   std::unique_ptr<xla::GRPCService> service =
-      xla::GRPCService::NewService(platform).ConsumeValueOrDie();
+      xla::GRPCService::NewService(platform).value();
 
   ::grpc::ServerBuilder builder;
   std::string server_address(

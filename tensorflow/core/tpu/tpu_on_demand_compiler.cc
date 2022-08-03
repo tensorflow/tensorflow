@@ -104,7 +104,7 @@ class TpuCompiler : public Compiler {
     }
 
     std::unique_ptr<Executable> exec =
-        absl::make_unique<TpuExecutable>(result, std::move(module));
+        std::make_unique<TpuExecutable>(result, std::move(module));
     return exec;
   }
 
@@ -171,7 +171,7 @@ class TpuCompiler : public Compiler {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                           ApiConverter::FromC(c_module));
       std::shared_ptr<HloModule> module_shared(module.release());
-      executables.emplace_back(absl::make_unique<TpuExecutable>(
+      executables.emplace_back(std::make_unique<TpuExecutable>(
           se_executables[i], std::move(module_shared)));
     }
 
@@ -217,7 +217,7 @@ class TpuCompiler : public Compiler {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       tensorflow::tpu::GetTpuPlatformId(),
-      []() { return absl::make_unique<TpuCompiler>(); });
+      []() { return std::make_unique<TpuCompiler>(); });
   return true;
 }
 

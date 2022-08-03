@@ -79,6 +79,7 @@ enum DataType : byte {
   INT32 = 9,
   UINT64 = 10,
   INT64 = 11,
+  BOOL = 12,
 }
 
 enum MemoryType : byte {
@@ -232,9 +233,6 @@ table GPUOperation {
   work_group_size:Int3;
   compiler_options:[CompilerOption];
   tensor_to_grid:TensorToGrid;
-  elementwise:bool;
-  linkable:bool;
-  check_src_channels_size:bool;
   flops:uint64;
   definition:OperationDef;
   grid_dimension:int32;
@@ -243,6 +241,4 @@ table GPUOperation {
   src_tensors_names:[string];
   dst_tensors_names:[string];
   work_groups_count:Int3;
-  linkable_count:int32;
-  elementwise_code:string;
 }

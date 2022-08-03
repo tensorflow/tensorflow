@@ -2095,7 +2095,9 @@ Status DynamicShapeRemovingVisitor::HandleCustomCall(HloInstruction* hlo) {
 
 }  // namespace
 
-StatusOr<bool> DynamicPadder::Run(HloModule* module) {
+StatusOr<bool> DynamicPadder::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   VLOG(2) << "Pre DynamicPadder HLO:";
   XLA_VLOG_LINES(2, module->ToString());
@@ -2138,7 +2140,7 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
                                      options_.assertion_generator));
 
   std::vector<HloComputation*> computations =
-      module->MakeComputationPostOrder();
+      module->MakeComputationPostOrder(execution_threads);
 
   for (HloComputation* computation : computations) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
@@ -2269,7 +2271,7 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
   // There are ops that only support dynamic lowering and ops that only support
   // static lowering, add dynamic<->static tensor conversion around the boundary
   // between those ops, as well as the root instruction.
-  computations = module->MakeComputationPostOrder();
+  computations = module->MakeComputationPostOrder(execution_threads);
   // Reverse postorder so that if caller doesn't support dynamic tensor (while,
   // etc), change their called computation to only take static tensors.
   for (auto it = computations.rbegin(); it != computations.rend(); ++it) {
@@ -2290,7 +2292,7 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
     module->set_is_dynamic(true);
   }
 
-  for (auto* computation : module->computations()) {
+  for (auto* computation : module->computations(execution_threads)) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(
           bool c, ReplaceGetSize(instruction, &dynamic_dimension_inference));
@@ -2298,7 +2300,7 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
     }
   }
 
-  for (auto* computation : module->computations()) {
+  for (auto* computation : module->computations(execution_threads)) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(bool c, ReplaceSetSize(instruction));
       changed |= c;
@@ -2309,7 +2311,7 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
   }
 
   HloDCE dce;
-  TF_ASSIGN_OR_RETURN(bool c, dce.Run(module));
+  TF_ASSIGN_OR_RETURN(bool c, dce.Run(module, execution_threads));
   changed |= c;
 
   VLOG(2) << "Post DynamicPadder HLO:";

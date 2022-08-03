@@ -447,7 +447,6 @@ MovableAllReduceContext IsAllReduceMovable(
       [&is_value_replicated_within_replica_group](
           const HloInstruction& dynamic_update_slice) -> bool {
     for (int i = 2; i < dynamic_update_slice.operand_count(); ++i) {
-      LOG(INFO) << " operand: " << dynamic_update_slice.operand(i)->ToString();
       if (!is_value_replicated_within_replica_group(
               *dynamic_update_slice.operand(i), {})) {
         return false;
@@ -725,7 +724,9 @@ Status AddSinkedAllReducesAndReplaceWhile(
 
 }  // namespace
 
-StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(HloModule* module) {
+StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool is_changed = false;
   bool run_next_pass = true;
   // In case of MPMD, all-reduces might be cross-module and should preserve
@@ -761,7 +762,8 @@ StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(HloModule* module) {
     // A computation could be the while body of multiple while instructions,
     // so we start from the computation and find all of its callers that is a
     // kWhile if there is any.
-    for (HloComputation* computation : module->computations()) {
+    for (HloComputation* computation :
+         module->computations(execution_threads)) {
       std::vector<HloInstruction*> computation_callers =
           call_graph->GetComputationCallers(computation);
       std::vector<HloInstruction*> while_caller_instructions;

@@ -207,7 +207,9 @@ struct CseKey {
 
 }  // namespace
 
-StatusOr<bool> HloCSE::Run(HloModule* module) {
+StatusOr<bool> HloCSE::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
   const auto eq_instructions = [&](const HloInstruction* a,
@@ -232,7 +234,7 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
         *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_);
   };
 
-  for (auto* computation : module->computations()) {
+  for (auto* computation : module->computations(execution_threads)) {
     if (only_fusion_computations_ && !computation->IsFusionComputation()) {
       continue;
     }

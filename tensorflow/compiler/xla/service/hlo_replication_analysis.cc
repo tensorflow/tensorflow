@@ -402,36 +402,42 @@ void HloReplicationAnalysis::ComputeHloReplication() {
     auto param = entry->parameter_instruction(i);
     ShapeTree<HloReplication> shape_tree(param->shape(),
                                          HloReplication::UniqueOnAllDevices());
-    if (cross_partition_spmd_ && param->has_sharding()) {
-      auto sharding_tree =
-          param->sharding().AsShapeTree(param->shape()).ValueOrDie();
-      ShapeUtil::ForEachSubshape(
-          param->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-            if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
-              return OkStatus();
-            }
+    const auto& replication = param->parameter_replicated_at_leaf_buffers();
+    int leaf_index = 0;
+    ShapeUtil::ForEachSubshape(
+        param->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
+            return OkStatus();
+          }
+          if (cross_partition_spmd_ && param->has_sharding()) {
+            // In cross-partition spmd mode, set parameter replication status
+            // based on the parameter's sharding.
+            TF_ASSIGN_OR_RETURN(auto sharding_tree,
+                                param->sharding().AsShapeTree(param->shape()));
             *shape_tree.mutable_element(index) =
                 sharding_tree.element(index).IsReplicated()
                     ? HloReplication::ReplicatedOnAllDevices()
                     : HloReplication::UniqueOnAllDevices();
-            return OkStatus();
-          });
-    } else if (!cross_partition_spmd_) {
-      const auto& replication = param->parameter_replicated_at_leaf_buffers();
-      int leaf_index = 0;
-      ShapeUtil::ForEachSubshape(
-          param->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-            if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
-              return OkStatus();
-            }
-            if (replication && replication->at(leaf_index)) {
+          }
+          if (replication) {
+            // If parameter replication status has been set explicitly, use that
+            // instead.
+            if (!cross_partition_spmd_ && replication->at(leaf_index)) {
+              // Setting parameter replication status for replicas in
+              // non cross-partition spmd mode.
               *shape_tree.mutable_element(index) =
                   HloReplication::ReplicatedOnAllDevices();
             }
+            if (cross_partition_spmd_ && !replication->at(leaf_index)) {
+              // Setting paramemter replication status for partitions in
+              // cross-partition spmd mode.
+              *shape_tree.mutable_element(index) =
+                  HloReplication::UniqueOnAllDevices();
+            }
             ++leaf_index;
-            return OkStatus();
-          });
-    }
+          }
+          return OkStatus();
+        });
     hlo_replication_[param] = std::move(shape_tree);
   }
   ComputeHloReplicationOnComputation(entry,

@@ -170,6 +170,7 @@ def TF_RecvResource : TF_ResourceBase<"Recv">;
 def TF_TPUExecuteResource : TF_ResourceBase<"TPUExecute">;
 def TF_RandomGeneratorResource : TF_ResourceBase<"RandomGenerator">;
 def TF_XlaHostComputeResource : TF_ResourceBase<"XlaHostCompute">;
+def TF_CollectiveReduceOrderingResource : TF_ResourceBase<"CollectiveReduceOrdering">;
 
 // Fake resource, see `TF_MustExecute` below.
 def TF_MustExecuteResource : TF_ResourceBase<"MustExecute">;
@@ -233,6 +234,9 @@ def TF_XlaHostComputeSideEffect : MemoryEffects<[MemWrite<TF_XlaHostComputeResou
 def TF_TPUExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUExecuteResource>]>;
 
 def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
+
+// Special effect for keeping `CollectiveReduce` ops in order.
+def TF_CollectiveReduceOrderingEffect : MemoryEffects<[MemWrite<TF_CollectiveReduceOrderingResource>]>;
 
 // Trait for enforcing that a side-effecting op is executed, even if it would be
 // considered dead by MLIR (see b/195782952).
@@ -478,16 +482,6 @@ def TF_Tensor : TensorOf<[TF_ElementType]>;
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// Tensorflow devices metadata
-
-// Tensorflow GPU device metadata.
-def TF_GpuDeviceMetadata : StructAttr<"GpuDeviceMetadata", TensorFlowDialect, [
-    // GPU device compute capability: major:minor.
-    StructFieldAttr<"cc_major", I32Attr>,
-    StructFieldAttr<"cc_minor", I32Attr>
-]>;
-
-//===----------------------------------------------------------------------===//
 // String attribute constraints
 
 // A string attribute whose value are one of the values in `cases`.
@@ -537,7 +531,7 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::OperandElementTypeIterator(values.begin()), "
           "mlir::OperandElementTypeIterator(values.end())};",
   [{
-    ArrayAttr::get($_ctx, 
+    ArrayAttr::get($_ctxt, 
     [&]() {
       llvm::SmallVector<Attribute, 4> ret;
       for (auto t : $_self)
@@ -557,11 +551,11 @@ class TF_DerivedOperandShapeListAttr<int idx> : DerivedAttr<
   "return {mlir::TF::OperandShapeIterator(values.begin()), "
           "mlir::TF::OperandShapeIterator(values.end())};",
   [{
-    ArrayAttr::get($_ctx,
+    ArrayAttr::get($_ctxt,
       [&](){
         llvm::SmallVector<Attribute, 4> ret;
         for (auto shape : $_self)
-          ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
+          ret.push_back(mlir::TF::ShapeAttr::get($_ctxt, shape));
         return ret;
       }())
   }]
@@ -593,7 +587,7 @@ class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::ResultElementTypeIterator(values.begin()), "
           "mlir::ResultElementTypeIterator(values.end())};",
   [{
-    ArrayAttr::get($_ctx, 
+    ArrayAttr::get($_ctxt, 
     [&]() {
       llvm::SmallVector<Attribute, 4> ret;
       for (auto t : $_self)
@@ -613,11 +607,11 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
   "return {mlir::TF::ResultShapeIterator(values.begin()), "
           "mlir::TF::ResultShapeIterator(values.end())};",
   [{
-    ArrayAttr::get($_ctx,
+    ArrayAttr::get($_ctxt,
       [&](){
         llvm::SmallVector<Attribute, 4> ret;
         for (auto shape : $_self)
-          ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
+          ret.push_back(mlir::TF::ShapeAttr::get($_ctxt, shape));
         return ret;
       }())
   }]
@@ -626,7 +620,7 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
 // A derived attribute that returns the shape of the first result type.
 def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
   "return (*getOperation()->result_type_begin()).cast<ShapedType>();",
-  [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
+  [{ mlir::TF::ShapeAttr::get($_ctxt, $_self) }]>;
 
 def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
   let returnType = "Type";

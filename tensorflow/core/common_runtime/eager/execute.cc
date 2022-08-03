@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
 #include <vector>
 
 // clang-format off
@@ -416,7 +417,7 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
   }
 
   if (op->eager_func_params().has_value() &&
-      op->eager_func_params().value().step_id.has_value()) {
+      op->eager_func_params().value().is_component_function) {
     // If the op is a component of a multi-device function, don't compile it
     // with XLA.
     *compile_with_xla = false;
@@ -1300,7 +1301,8 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
         "Cross-process functions are not supported on mobile devices.");
 #else  // !IS_MOBILE_PLATFORM
     const int64_t op_id = ctx.RemoteMgr()->NextOpId();
-    eager_func_params = EagerFunctionParams{op_id, /*step_id=*/absl::nullopt};
+    eager_func_params = EagerFunctionParams{
+        op_id, /* is_component_function= */ false, /* step_id= */ std::nullopt};
 #endif  // !IS_MOBILE_PLATFORM
   }
   if (executor.Async()) {
@@ -1320,7 +1322,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
     }
     const absl::InlinedVector<TensorHandle*, 4>* inputs;
     TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
-    auto node = absl::make_unique<AsyncExecuteNode>(
+    auto node = std::make_unique<AsyncExecuteNode>(
         &ctx, *inputs, eager_func_params, std::move(kernel), graph_collector,
         op->GetCancellationManager(),
         absl::Span<TensorHandle*>(retvals, num_outputs), op->GetStackTrace());

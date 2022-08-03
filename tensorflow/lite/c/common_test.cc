@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 
+#include <string>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
 

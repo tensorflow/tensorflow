@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -540,6 +541,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("set_op_metadata", &XlaBuilder::SetOpMetadata)
       .def("set_sharding", &XlaBuilder::SetSharding)
       .def("clear_sharding", &XlaBuilder::ClearSharding)
+      .def("set_frontend_attributes", &XlaBuilder::SetFrontendAttributes)
+      .def("clear_frontend_attributes", &XlaBuilder::ClearFrontendAttributes)
       .def("setup_alias",
            [](XlaBuilder& builder, const std::vector<int64_t>& output_index,
               int64_t param_number, const std::vector<int64_t>& param_index) {
@@ -759,6 +762,20 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   DefRepeatedProperty(op_sharding, "last_tile_dims",
                       &xla::OpSharding::mutable_last_tile_dims);
 
+  py::class_<HloSharding> hlo_sharding(m, "HloSharding");
+  hlo_sharding.def_static("from_proto", &xla::HloSharding::FromProto)
+      .def("__eq__", [](const xla::HloSharding& a,
+                        const xla::HloSharding& b) { return a == b; })
+      .def("__hash__",
+           [](const xla::HloSharding& self) { return absl::HashOf(self); });
+
+  py::class_<FrontendAttributes> frontend_attributes(m, "FrontendAttributes");
+  frontend_attributes.def(py::init<>())
+      .def("__setitem__",
+           [](FrontendAttributes* attr, std::string key, std::string value) {
+             (*attr->mutable_map())[key] = value;
+           });
+
   py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
       .value("DEFAULT", PrecisionConfig::DEFAULT)
       .value("HIGH", PrecisionConfig::HIGH)
@@ -771,8 +788,13 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .value("HOST_TO_DEVICE", ChannelHandle::HOST_TO_DEVICE);
 
   py::class_<ChannelHandle>(m, "ChannelHandle")
-      .def_property_readonly("type", &ChannelHandle::type)
-      .def_property_readonly("handle", &ChannelHandle::handle)
+      .def_property("type", &ChannelHandle::type,
+                    [](ChannelHandle* h, ChannelHandle::ChannelType type) {
+                      h->set_type(type);
+                    })
+      .def_property(
+          "handle", &ChannelHandle::handle,
+          [](ChannelHandle* h, int64_t handle) { h->set_handle(handle); })
       .def("__repr__", [](ChannelHandle* h) { return h->DebugString(); });
 
   py::enum_<FftType>(m, "FftType")

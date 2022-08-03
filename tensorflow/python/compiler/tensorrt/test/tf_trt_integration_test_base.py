@@ -54,6 +54,8 @@ from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import resource
 from tensorflow.python.util import nest
 
+logging.get_logger().propagate = False
+
 TfTrtIntegrationTestParams = collections.namedtuple(
     "TfTrtIntegrationTestParams",
     [
@@ -150,7 +152,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def setUp(self):
     """Setup method."""
-    super(TfTrtIntegrationTestBase, self).setUp()
+    super().setUp()
     warnings.simplefilter("always")
 
     if not is_tensorrt_enabled():

@@ -67,6 +67,9 @@ constexpr char kSavedModelTrainOpSignatureKey[] = "__saved_model_train_op";
 // Key in the TensorBundle for the object graph proto.
 constexpr char kObjectGraphProtoKey[] = "_CHECKPOINTABLE_OBJECT_GRAPH";
 
+// Filename for the FingerprintDef protocol buffer.
+constexpr char kFingerprintFilenamePb[] = "saved_model_fingerprint.pb";
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_SAVED_MODEL_CONSTANTS_H_

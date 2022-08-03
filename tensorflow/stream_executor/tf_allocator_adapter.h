@@ -16,11 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TF_ALLOCATOR_ADAPTER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TF_ALLOCATOR_ADAPTER_H_
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
+#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 
@@ -73,7 +79,13 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
       : DeviceMemoryAllocator(platform) {
     tf_allocators_.reserve(tf_allocators.size());
     for (AllocatorWithStream &p : tf_allocators) {
-      per_device_allocators_.emplace_back(p.first.get(), p.second);
+      int device_ordinal = p.second->parent()->device_ordinal();
+      if (per_device_allocators_.size() <= device_ordinal) {
+        per_device_allocators_.resize(device_ordinal + 1);
+      }
+      CHECK(!per_device_allocators_[device_ordinal]);
+      per_device_allocators_[device_ordinal] =
+          std::make_unique<TfAllocatorAdapter>(p.first.get(), p.second);
       tf_allocators_.push_back(std::move(p.first));
     }
   }
@@ -82,14 +94,14 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
                                               bool retry_on_failure,
                                               int64_t memory_space) override {
     CHECK_LT(device_ordinal, per_device_allocators_.size());
-    return per_device_allocators_[device_ordinal].Allocate(
+    return per_device_allocators_[device_ordinal]->Allocate(
         device_ordinal, size, retry_on_failure, memory_space);
   }
 
   port::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override {
     CHECK_LT(device_ordinal, per_device_allocators_.size());
-    return per_device_allocators_[device_ordinal].Deallocate(device_ordinal,
-                                                             mem);
+    return per_device_allocators_[device_ordinal]->Deallocate(device_ordinal,
+                                                              mem);
   }
 
   // The Tensorflow BFC allocator used on GPU allows host-side deallocation
@@ -102,11 +114,11 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
   bool AllowsAsynchronousDeallocation() const override { return true; }
 
   port::StatusOr<Stream *> GetStream(int device_ordinal) override {
-    return per_device_allocators_[device_ordinal].GetStream(device_ordinal);
+    return per_device_allocators_[device_ordinal]->GetStream(device_ordinal);
   }
 
  private:
-  std::vector<TfAllocatorAdapter> per_device_allocators_;
+  std::vector<std::unique_ptr<TfAllocatorAdapter>> per_device_allocators_;
   // The wrapped TF allocators backing per_device_allocators_
   // (TfAllocatorAdapter does not take ownership of its underlying Allocator).
   std::vector<std::unique_ptr<tensorflow::Allocator>> tf_allocators_;

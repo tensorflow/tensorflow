@@ -564,6 +564,7 @@ BUILTIN_KERNEL_SRCS = [
     "add.cc",
     "add_n.cc",
     "arg_min_max.cc",
+    "atan2.cc",
     "audio_spectrogram.cc",
     "basic_rnn.cc",
     "batch_matmul.cc",
@@ -643,6 +644,7 @@ BUILTIN_KERNEL_SRCS = [
     "segment_sum.cc",
     "select.cc",
     "shape.cc",
+    "sign.cc",
     "skip_gram.cc",
     "slice.cc",
     "space_to_batch_nd.cc",
@@ -663,7 +665,7 @@ BUILTIN_KERNEL_SRCS = [
     "unidirectional_sequence_rnn.cc",
     "unique.cc",
     "unpack.cc",
-    "unsorted_segment_prod.cc",
+    "unsorted_segment.cc",
     "where.cc",
     "while.cc",
     "zeros_like.cc",
@@ -804,14 +806,14 @@ cc_library(
 cc_library(
     name = "custom_ops",
     srcs = [
-        "atan2.cc",
+        "atan2_custom.cc",
         "irfft2d.cc",
         "multinomial.cc",
         "pooling3d.cc",
         "random_standard_normal_custom.cc",
         "random_uniform_custom.cc",
         "roll.cc",
-        "sign.cc",
+        "sign_custom.cc",
         "table.cc",
         "unidirectional_sequence_gru.cc",
     ],
@@ -1575,6 +1577,20 @@ cc_test(
     size = "small",
     srcs = ["atan2_test.cc"],
     deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "atan2_custom_test",
+    size = "small",
+    srcs = ["atan2_custom_test.cc"],
+    deps = [
         ":custom_ops",
         ":test_main",
         ":test_util",
@@ -1669,9 +1685,9 @@ cc_test(
 )
 
 cc_test(
-    name = "sign_test",
+    name = "sign_custom_test",
     size = "small",
-    srcs = ["sign_test.cc"],
+    srcs = ["sign_custom_test.cc"],
     deps = [
         ":custom_ops",
         ":test_main",
@@ -1679,6 +1695,20 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "sign_test",
+    size = "small",
+    srcs = ["sign_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 
@@ -2188,6 +2218,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2778,6 +2809,45 @@ cc_test(
     name = "unsorted_segment_prod_test",
     size = "small",
     srcs = ["unsorted_segment_prod_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "unsorted_segment_max_test",
+    size = "small",
+    srcs = ["unsorted_segment_max_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "unsorted_segment_sum_test",
+    size = "small",
+    srcs = ["unsorted_segment_sum_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "unsorted_segment_min_test",
+    size = "small",
+    srcs = ["unsorted_segment_min_test.cc"],
     deps = [
         ":test_main",
         ":test_util",

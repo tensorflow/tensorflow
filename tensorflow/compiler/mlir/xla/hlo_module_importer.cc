@@ -22,8 +22,8 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -46,12 +46,15 @@ Status HloModuleImporter::Import(const xla::HloModule& module) {
   if (!import_all_computation_)
     // Only import the entry computation, any reachable one will be imported
     // unless turned into a region operation.
-    return HloFunctionImporter::ImportAsFunc(
-        *module.entry_computation(), module_, &function_map_, &builder_);
+    return HloFunctionImporter::ImportAsFunc(*module.entry_computation(),
+                                             module_, &function_map_, &builder_,
+                                             /*is_main*/ true);
 
+  auto* module_entry_computation = module.entry_computation();
   for (const auto* computation : module.computations())
     TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
-        *computation, module_, &function_map_, &builder_));
+        *computation, module_, &function_map_, &builder_,
+        /*is_main*/ computation == module_entry_computation));
 
   return ::tensorflow::OkStatus();
 }

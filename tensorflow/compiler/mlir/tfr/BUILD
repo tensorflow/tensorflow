@@ -43,7 +43,7 @@ td_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:CallInterfacesTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
@@ -105,6 +105,7 @@ cc_library(
     ],
     deps = [
         ":tfr_ops_inc_gen",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
@@ -155,6 +156,7 @@ cc_library(
     deps = [
         ":tfr",
         ":utils",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
@@ -182,6 +184,7 @@ tf_cc_binary(
         ":tfr",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir:passes",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "@llvm-project//mlir:AllPassesAndDialects",

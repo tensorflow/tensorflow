@@ -35,6 +35,7 @@ visibility = [
     "//learning/brain/tfrt:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
     "//tensorflow_models/google:__subpackages__",
+    "//learning/brain/google/data:__subpackages__",
 ]
 
 package(
@@ -325,6 +326,7 @@ py_library(
     deps = [
         ":_dtypes",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/lib/core:_pywrap_bfloat16",
         "//tensorflow/python/types:doc_typealias",
@@ -1262,6 +1264,7 @@ py_library(
     deps = [
         ":dtypes",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/util",
@@ -1277,6 +1280,8 @@ pytype_library(
         ":composite_tensor",
         ":dtypes",
         ":tensor_shape",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
@@ -1310,6 +1315,9 @@ py_library(
         ":dtypes",
         ":tensor_shape",
         ":type_spec",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],
@@ -1854,6 +1862,7 @@ tf_py_test(
         ":for_generated_wrappers",
         ":test_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1870,6 +1879,7 @@ tf_py_test(
         ":test_lib",
         ":type_spec",
         ":type_utils",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],
@@ -2042,6 +2052,7 @@ tf_py_test(
         ":test_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],

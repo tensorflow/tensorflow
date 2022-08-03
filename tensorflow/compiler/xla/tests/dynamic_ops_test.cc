@@ -789,7 +789,7 @@ void BM_DynamicSlice(::testing::benchmark::State& state) {
             .transfer_manager()
             ->AllocateScopedShapedBuffer(start_indices_shape, &allocator,
                                          /*device_ordinal=*/0)
-            .ConsumeValueOrDie());
+            .value());
     host_shapes[i] = &shaped_buffers[i].on_host_shape();
     ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
         stream.get(), start_index_literal, shaped_buffers[i]));
@@ -797,7 +797,7 @@ void BM_DynamicSlice(::testing::benchmark::State& state) {
 
   // Add DynamicSlice op to the computation.
   DynamicSlice(input, start_indices, {1, 1, 1, 1});
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,

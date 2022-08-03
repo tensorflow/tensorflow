@@ -147,6 +147,16 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       return [new_g[0][i].normal([]) for i in range(2)]
     f()
 
+  def testFnVars(self):
+    """Tests that RNG variable is added to ConcreteFunction.variables."""
+    rng = random.Generator.from_seed(0)
+    @def_function.function
+    def f():
+      return rng.normal([])
+
+    concrete = f.get_concrete_function()
+    self.assertIn(rng.state, concrete.variables)
+
   @test_util.run_v2_only
   def testReset(self):
     shape = [2, 3]

@@ -1062,7 +1062,7 @@ class GradSliceChecker(object):
     np_val_grad = (2 * self.varnp * self.varnp)
     np_sliceval_grad = np.zeros(self.var.get_shape())
     if isinstance(spec, ops.Tensor):
-      spec = self.test.evaluate([spec])
+      spec = self.test.evaluate(spec)
     np_sliceval_grad[spec] = np_val_grad[spec]
     # verify gradient
     self.test.assertAllEqual(slice_val_grad_evaled, np_sliceval_grad)
@@ -1407,6 +1407,26 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           f, [array_ops.zeros(shape), array_ops.ones(updates_shape)], delta=1.0)
       self.assertAllClose(theoretical, numerical)
 
+  @parameterized.named_parameters(("_%s" % i, *args) for i, args in enumerate([  # pylint:disable=g-complex-comprehension
+      ([2, 5], [0, 1], [1, 0], [1, 2], [1], 0, 2, 0, 0,
+       1), ([4], [5], [3], [1], [], 1, 0, 0, 0, 0),
+      ([2, 2, 3, 2], [0, 0, 1], [1, 0, 2], [1, 0, 1], [2, 1], 0, 0, 2, 0, 5)
+  ]))
+  @test_util.disable_xla("b/123559667")
+  def testTensorStridedSliceUpdateWithBroadcastingGrad(self, shape, begin, end,
+                                                       strides, updates_shape,
+                                                       *args):
+    with self.cached_session():
+
+      def f(a, b):
+        return gen_array_ops.tensor_strided_slice_update(
+            a, begin, end, strides, b, *args)
+
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          f, [array_ops.zeros(shape),
+              array_ops.ones(updates_shape)], delta=1.0)
+      self.assertAllClose(theoretical, numerical)
+
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
 
@@ -1574,6 +1594,13 @@ class IdentityTest(test_util.TensorFlowTestCase):
       with test_util.force_gpu():
         e = array_ops.identity(d)
         _test(d, e, "gpu")
+
+  def testIdentityVariable(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+    self.evaluate(v.initializer)
+    result = array_ops.identity(v)
+    self.assertIsInstance(result, ops.Tensor)
+    self.assertAllEqual(result, v)
 
 
 class PadTest(test_util.TensorFlowTestCase):
@@ -2033,6 +2060,17 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
                 side=side,
                 out_type=dtype), array_ops.zeros([2, 0], dtype))
 
+  def testZeroInputSize(self):
+    dtype = dtypes.int32
+    for side in ("left", "right"):
+      with self.subTest(side=side):
+        self.assertAllEqual(
+            array_ops.searchsorted(
+                array_ops.ones([2, 0]),
+                array_ops.ones([2, 3]),
+                side=side,
+                out_type=dtype), array_ops.zeros([2, 3], dtype))
+
   def testInt64(self):
 
     @def_function.function
@@ -2373,7 +2411,7 @@ class TileVariantTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(t, tiled_tensor_1)
 
 
-class StopGradientTest(test_util.TensorFlowTestCase):
+class StopGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testStopGradient(self):
     x = array_ops.zeros(3)
@@ -2399,6 +2437,24 @@ class StopGradientTest(test_util.TensorFlowTestCase):
 
     self.assertIsNone(tape.gradient(y, x))
 
+  @parameterized.named_parameters([
+      ("TFFunction", def_function.function),
+      ("PythonFunction", lambda f: f),
+  ])
+  def test_stop_gradient_resource_variable(self, decorator):
+    x = resource_variable_ops.ResourceVariable([1.0])
+    self.evaluate(x.initializer)
+
+    @decorator
+    def stop_gradient_f(x):
+      return array_ops.stop_gradient(x)
+
+    with backprop.GradientTape() as tape:
+      y = stop_gradient_f(x)
+    self.assertIsNone(tape.gradient(y, x))
+    # stop_gradient converts ResourceVariable to Tensor
+    self.assertIsInstance(y, ops.Tensor)
+    self.assertAllEqual(y, x)
 
 if __name__ == "__main__":
   test_lib.main()

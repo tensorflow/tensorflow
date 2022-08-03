@@ -162,6 +162,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   HloInstruction* dot = computation->AddInstruction(HloInstruction::CreateDot(
       ShapeUtil::MakeShape(original_dot->shape().element_type(), dot_dims),
       reshaped_lhs, reshaped_rhs, dot_dnums, original_dot->precision_config()));
+  original_dot->SetupDerivedInstruction(dot);
 
   std::unique_ptr<HloInstruction> replacement =
       HloInstruction::CreateReshape(original_dot->shape(), dot);
@@ -175,10 +176,13 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
 
 }  // namespace
 
-StatusOr<bool> DotDecomposer::Run(HloModule* module) {
+StatusOr<bool> DotDecomposer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Gather all Non-canonical Dot operations.
   std::vector<HloInstruction*> non_canonical_dots;
-  for (auto* computation : module->MakeNonfusionComputations()) {
+  for (auto* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kDot) {
         continue;

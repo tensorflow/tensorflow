@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
@@ -48,6 +49,9 @@ limitations under the License.
 #else
 #include "tensorflow/lite/arena_planner.h"
 #endif
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+#include "tensorflow/lite/tensorflow_profiler_logger.h"
+#endif  // TF_LITE_TENSORFLOW_PROFILER
 
 namespace tflite {
 
@@ -229,12 +233,14 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
                    std::vector<std::unique_ptr<Subgraph>>* subgraphs,
                    resource::ResourceMap* resources,
                    resource::ResourceIDMap* resource_ids,
-                   resource::InitializationStatusMap* initialization_status_map)
+                   resource::InitializationStatusMap* initialization_status_map,
+                   int subgraph_index)
     : external_contexts_(external_contexts),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
       next_execution_plan_index_to_plan_allocation_(0),
       subgraphs_(subgraphs),
+      subgraph_index_(subgraph_index),
       resources_(resources),
       resource_ids_(resource_ids),
       initialization_status_map_(initialization_status_map),
@@ -950,6 +956,19 @@ TfLiteStatus Subgraph::ReleaseNonPersistentMemory() {
   return kTfLiteOk;
 }
 
+// Give 'op_reg' a chance to initialize itself using the contents of
+// 'buffer'. If registration_external is valid, use the 'init' callback from
+// that.
+void* Subgraph::OpInit(const TfLiteRegistration& op_reg, const char* buffer,
+                       size_t length) {
+  if (op_reg.registration_external && op_reg.registration_external->init) {
+    return op_reg.registration_external->init(
+        reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer, length);
+  }
+  if (op_reg.init == nullptr) return nullptr;
+  return op_reg.init(&context_, buffer, length);
+}
+
 TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
                                  TfLiteNode* node) {
   if (op_reg.registration_external && op_reg.registration_external->prepare) {
@@ -980,6 +999,32 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
     return kTfLiteOk;
   }
   return op_reg.prepare(&context_, node);
+}
+
+// Invoke the operator represented by 'node'.
+TfLiteStatus Subgraph::OpInvoke(const TfLiteRegistration& op_reg,
+                                TfLiteNode* node) {
+  if (op_reg.registration_external && op_reg.registration_external->invoke) {
+    return op_reg.registration_external->invoke(
+        reinterpret_cast<TfLiteOpaqueContext*>(&context_),
+        reinterpret_cast<TfLiteOpaqueNode*>(node));
+  }
+  if (op_reg.invoke == nullptr) return kTfLiteError;
+  return op_reg.invoke(&context_, node);
+}
+
+// Let 'op_reg' release any memory it might have allocated via 'OpInit'.
+// If registration_external is valid, use the 'free' callback from that.
+void Subgraph::OpFree(const TfLiteRegistration& op_reg, void* buffer) {
+  if (op_reg.registration_external && op_reg.registration_external->free &&
+      buffer) {
+    return op_reg.registration_external->free(
+        reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer);
+  }
+  if (op_reg.free == nullptr) return;
+  if (buffer) {
+    op_reg.free(&context_, buffer);
+  }
 }
 
 TfLiteStatus Subgraph::MayAllocateOpOutput(TfLiteNode* node) {
@@ -1013,6 +1058,9 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    tflite::OnTfLiteOpPrepare(GetTFLiteOpName(registration), node_index);
+#endif  // TF_LITE_TENSORFLOW_PROFILER
     const TfLiteStatus op_prepare_status = OpPrepare(registration, &node);
     if (op_prepare_status != kTfLiteOk) {
       ReportOpError(&context_, node, registration, node_index,
@@ -1038,9 +1086,9 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 #ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
     memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
 #else
-    memory_planner_.reset(new ArenaPlanner(&context_, CreateGraphInfo(),
-                                           ShouldPreserveAllTensors(),
-                                           kDefaultTensorAlignment));
+    memory_planner_ = std::make_unique<ArenaPlanner>(
+        &context_, CreateGraphInfo(), ShouldPreserveAllTensors(),
+        kDefaultTensorAlignment, subgraph_index_);
 #endif
     memory_planner_->PlanAllocations();
   }
@@ -1178,6 +1226,12 @@ TfLiteStatus Subgraph::Invoke() {
 
     const char* op_name = nullptr;
     if (profiler_) op_name = GetTFLiteOpName(registration);
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    if (!op_name) {
+      op_name = GetTFLiteOpName(registration);
+    }
+    tflite::OnTfLiteOpInvoke(op_name, node_index);
+#endif  // TF_LITE_TENSORFLOW_PROFILER
     TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(profiler_.get(), op_name, node_index);
 
     for (int i = 0; i < node.inputs->size; ++i) {
@@ -1842,6 +1896,20 @@ const std::string& Subgraph::GetName() const { return name_; }
 void Subgraph::DumpMemoryPlannerDebugInfo() const {
   if (memory_planner_ == nullptr) return;
   memory_planner_->DumpDebugInfo(execution_plan());
+}
+
+void Subgraph::GetMemoryAllocInfo(size_t* arena_size,
+                                  size_t* arena_persist_size,
+                                  size_t* dynamic_size) const {
+  if (memory_planner_ == nullptr) return;
+  memory_planner_->GetAllocInfo(arena_size, arena_persist_size);
+  *dynamic_size = 0;
+  for (const auto& tensor : tensors_) {
+    if (tensor.allocation_type == kTfLiteDynamic &&
+        tensor.data.raw != nullptr) {
+      *dynamic_size += tensor.bytes;
+    }
+  }
 }
 
 std::unique_ptr<GraphInfo> Subgraph::CreateGraphInfo() {

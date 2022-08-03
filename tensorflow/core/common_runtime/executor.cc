@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/entry.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
@@ -298,7 +299,8 @@ class ExecutorState {
                      EntryVector* outputs, NodeExecStatsInterface* stats);
   void ProcessAsync(const NodeItem& item, const OpKernelContext::Params& params,
                     const TaggedNode& tagged_node, Entry* first_input,
-                    NodeExecStatsInterface* stats);
+                    NodeExecStatsInterface* stats,
+                    activity_watcher::ActivityId activity_id);
   void ProcessNoop(NodeExecStatsInterface* stats);
   void ProcessConstTensor(const NodeItem& item, EntryVector* outputs,
                           NodeExecStatsInterface* stats);
@@ -507,8 +509,9 @@ struct ExecutorState<PropagatorStateType>::AsyncState {
   AsyncState(const OpKernelContext::Params& p, const TaggedNode& _tagged_node,
              const NodeItem* _item, Entry* _first_input,
              NodeExecStatsInterface* _stats)
-      : saved_inputs(*p.inputs),
-        saved_input_alloc_attrs(*p.input_alloc_attrs),
+      : saved_inputs(p.inputs.begin(), p.inputs.end()),
+        saved_input_alloc_attrs(p.input_alloc_attrs.begin(),
+                                p.input_alloc_attrs.end()),
         params(p),
         tagged_node(_tagged_node),
         item(_item),
@@ -517,8 +520,8 @@ struct ExecutorState<PropagatorStateType>::AsyncState {
         //   params.eigen_gpu_device = nullptr;
         ctx(ParamsButClearingEigenGPUDevice(&params), item->num_outputs),
         stats(_stats) {
-    params.inputs = &saved_inputs;
-    params.input_alloc_attrs = &saved_input_alloc_attrs;
+    params.inputs = saved_inputs;
+    params.input_alloc_attrs = saved_input_alloc_attrs;
   }
 
   TensorValueVec saved_inputs;
@@ -607,13 +610,13 @@ template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::ProcessAsync(
     const NodeItem& item, const OpKernelContext::Params& params,
     const TaggedNode& tagged_node, Entry* first_input,
-    NodeExecStatsInterface* stats) {
+    NodeExecStatsInterface* stats, activity_watcher::ActivityId activity_id) {
   AsyncOpKernel* async_kernel = item.kernel->AsAsync();
   DCHECK(async_kernel != nullptr);
   AsyncState* state =
       new AsyncState(params, tagged_node, &item, first_input, stats);
 
-  auto done = [this, state]() {
+  auto done = [this, state, activity_id]() {
     Device* device = immutable_state_.params().device;
     NodeExecStatsInterface* stats = state->stats;  // Shorthand
     Entry* first_input = state->first_input;       // Shorthand
@@ -635,6 +638,7 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
       (first_input + i)->ClearVal();
     }
     propagator_.MaybeMarkCompleted(state->tagged_node);
+    activity_watcher::ActivityEnd(activity_id);
     TaggedNodeSeq ready;
     if (s.ok()) {
       propagator_.PropagateOutputs(state->tagged_node, &outputs, &ready);
@@ -726,8 +730,6 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
   params.resource_manager = device->resource_manager();
   params.step_container = step_container_;
   params.slice_reader_cache = slice_reader_cache_;
-  params.inputs = &inputs;
-  params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
   params.run_all_kernels_inline = run_all_kernels_inline_;
   params.stats_collector = stats_collector_;
@@ -767,6 +769,22 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
     const int id = item.node_id;
 
     propagator_.MaybeMarkStarted(tagged_node);
+    const activity_watcher::ActivityId activity_id =
+        activity_watcher::ActivityStart(
+            [&]() {
+              return std::make_unique<activity_watcher::Activity>(
+                  "ExecutorState::Process",
+                  activity_watcher::ActivityCategory::kMisc,
+                  activity_watcher::Activity::Attributes{
+                      {"node_name", item.kernel->def().name()},
+                      {"op", item.kernel->def().op()},
+                      {"iter_num", absl::StrCat(tagged_node.get_iter_num())},
+                      {"step_id", absl::StrCat(params.step_id)},
+                      {"node_id", absl::StrCat(id)},
+                      {"device", device->name()},
+                  });
+            },
+            /*level=*/2);
 
     params.track_allocations = false;
     stats = nullptr;
@@ -810,6 +828,7 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
           (first_input + i)->ClearVal();
         }
         propagator_.MaybeMarkCompleted(tagged_node);
+        activity_watcher::ActivityEnd(activity_id);
         // Continue to process the nodes in 'inline_ready'.
         completed = NodeDone(s, &ready, stats, &inline_ready);
         continue;
@@ -822,9 +841,12 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
       params.output_attr_array = item.output_attrs();
       params.forward_from_array = item.forward_from();
       params.outputs_required_array = item.outputs_required.get();
+      params.inputs = inputs;
+      params.input_alloc_attrs = input_alloc_attrs;
 
       if (item.kernel_is_async) {
-        ProcessAsync(item, params, tagged_node, first_input, stats);
+        ProcessAsync(item, params, tagged_node, first_input, stats,
+                     activity_id);
         launched_asynchronously = true;
       } else {
         s = ProcessSync(item, &params, &outputs, stats);
@@ -845,6 +867,7 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
         (first_input + i)->ClearVal();
       }
       propagator_.MaybeMarkCompleted(tagged_node);
+      activity_watcher::ActivityEnd(activity_id);
       // Propagates outputs.
       if (s.ok()) {
         propagator_.PropagateOutputs(tagged_node, &outputs, &ready);

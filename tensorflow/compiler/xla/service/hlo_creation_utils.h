@@ -151,6 +151,12 @@ StatusOr<HloInstruction*> MakeDotHlo(
 StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
                                      HloComputation* map_computation);
 
+// Creates a reduce-precision op, where operand is the data to reduce in
+// precision, and exponent_bits and mantissa_bits describe the precision to
+// reduce it to.
+HloInstruction* MakeReducePrecisionHlo(HloInstruction* operand,
+                                       int exponent_bits, int mantissa_bits);
+
 // Creates a Reduce HLO instruction and adds it to the computation containing
 // the operand. This will create the sub-computation needed for the reduction in
 // the given module. binary_opcode should represent a binary operation.

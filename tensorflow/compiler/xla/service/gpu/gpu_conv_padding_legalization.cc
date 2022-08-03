@@ -380,7 +380,7 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   Shape slice_shape =
       ShapeInference::InferSliceShape(new_backward_conv->shape(), start_indices,
                                       limit_indices, strides)
-          .ConsumeValueOrDie();
+          .value();
   CHECK(ShapeUtil::Compatible(slice_shape, backward_conv_shape))
       << ShapeUtil::HumanString(slice_shape) << " vs "
       << ShapeUtil::HumanString(backward_conv_shape);
@@ -425,9 +425,12 @@ StatusOr<bool> GpuConvPaddingLegalization::RunOnComputation(
   return changed;
 }
 
-StatusOr<bool> GpuConvPaddingLegalization::Run(HloModule* module) {
+StatusOr<bool> GpuConvPaddingLegalization::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }

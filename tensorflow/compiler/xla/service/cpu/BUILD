@@ -7,10 +7,14 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts", "tf_xla_acl_copts")
+load(
+    "//third_party/compute_library:build_defs.bzl",
+    "acl_deps",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
 load(":build_defs.bzl", "runtime_copts")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -121,6 +125,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
@@ -197,14 +202,15 @@ cc_library(
         "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:ComplexToStandard",
         "@llvm-project//mlir:MathToLLVM",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:ToLLVMIRTranslation",
-        "//tensorflow/compiler/mlir/hlo:lower_index_cast",
-        "//tensorflow/compiler/mlir/hlo:shape_simplification",
+        "//tensorflow/compiler/xla/mlir_hlo:lower_index_cast",
+        "//tensorflow/compiler/xla/mlir_hlo:shape_simplification",
         "//tensorflow/compiler/mlir/xla:xla_framework",
         "//tensorflow/compiler/mlir/xla:xla_passes",
         "@llvm-project//mlir:LLVMDialect",
@@ -224,14 +230,15 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorToSCF",
-        "//tensorflow/compiler/mlir/hlo:all_passes",
-        "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
+        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:legalize_trigonometric_to_approximation",
         "//tensorflow/compiler/mlir/xla:hlo_to_mlir_hlo",
         "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
         "//tensorflow/compiler/xla/service:bfloat16_normalization",
         "//tensorflow/compiler/xla/service:bitcast_dtypes_expander",
+        "//tensorflow/compiler/xla/service:broadcast_canonicalizer",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:reshape_decomposer",
@@ -239,6 +246,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:result_caster",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
+        "//tensorflow/compiler/xla/service:select_and_scatter_expander",
         "//tensorflow/compiler/xla/service:sharding_propagation",
         "//tensorflow/compiler/xla/service:sharding_remover",
         "//tensorflow/compiler/xla/service:topk_rewriter",
@@ -249,6 +257,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:scatter_expander",
         "//tensorflow/compiler/xla/service:comparison_expander",
         "//tensorflow/compiler/xla/service:slice_sinker",
+        "//tensorflow/compiler/xla/service:reduce_decomposer",
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla/service:operand_upcaster",
         "//tensorflow/compiler/xla/service:optimization_barrier_expander",
@@ -280,6 +289,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:change_op_data_type",
         "//tensorflow/compiler/xla/service:hlo_ordering",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
@@ -340,33 +350,37 @@ cc_library(
         "windows_compatibility.h",
     ],
     hdrs = ["simple_orc_jit.h"],
+    copts = tf_xla_acl_copts(),
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
         ":orc_jit_memory_mapper",
-        ":runtime_custom_call_status",
-        ":runtime_fp16",
-        ":runtime_pow",
         ":runtime_conv2d",
+        ":runtime_conv2d_acl",
         ":runtime_conv2d_mkl",
         ":runtime_conv3d",
+        ":runtime_custom_call_status",
         ":runtime_fft",
         ":runtime_fork_join",
+        ":runtime_fp16",
         ":runtime_key_value_sort",
-        ":runtime_topk",
         ":runtime_matmul",
+        ":runtime_matmul_acl",
         ":runtime_matmul_mkl",
+        ":runtime_pow",
         ":runtime_single_threaded_conv2d",
         ":runtime_single_threaded_conv3d",
         ":runtime_single_threaded_fft",
         ":runtime_single_threaded_matmul",
+        ":runtime_topk",
         "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:MC",  # fixdeps: keep
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",  # fixdeps: keep
+        "@llvm-project//mlir:mlir_c_runner_utils",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -588,6 +602,7 @@ cc_library(
     hdrs = [
         "dot_op_emitter.h",
     ],
+    copts = tf_xla_acl_copts(),
     deps = [
         ":cpu_options",
         ":cpu_runtime",
@@ -843,6 +858,43 @@ cc_library(
         "//tensorflow/compiler/xla:executable_run_options",
         "//third_party/eigen3",
     ] + mkl_deps(),
+)
+
+cc_library(
+    name = "runtime_matmul_acl",
+    srcs = ["runtime_matmul_acl.cc"],
+    hdrs = ["runtime_matmul_acl.h"],
+    copts = tf_xla_acl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_lightweight_check",
+        ":runtime_matmul",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:logging",
+    ] + acl_deps(),
+)
+
+cc_library(
+    name = "runtime_conv2d_acl",
+    srcs = [
+        "runtime_conv2d_acl.cc",
+    ],
+    hdrs = ["runtime_conv2d_acl.h"],
+    copts = tf_xla_acl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_conv2d",
+        ":runtime_single_threaded_conv2d",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/kernels:eigen_helpers",
+        "//third_party/eigen3",
+        "//tensorflow/core/platform:logging",
+    ] + acl_deps(),
 )
 
 cc_library(

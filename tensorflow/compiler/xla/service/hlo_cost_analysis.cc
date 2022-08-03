@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <memory>
 
 #include "absl/algorithm/container.h"
@@ -159,14 +160,19 @@ int64_t HloCostAnalysis::FusionParameterReadBytes(
         size += GetShapeSize(user->shape());
         break;
       case HloOpcode::kDynamicSlice:
-        size += hlo == user->operand(0) ? GetShapeSize(user->shape())
-                                        : GetShapeSize(hlo->shape());
+        if (hlo == user->operand(0)) {
+          size += GetShapeSize(user->shape());
+        } else if (!seen_trivial_user) {
+          seen_trivial_user = true;
+          size += GetShapeSize(hlo->shape());
+        }
         break;
       case HloOpcode::kDynamicUpdateSlice:
-        // Uses the same shape as 'update' which is operand 1.
-        size += hlo == user->operand(0)
-                    ? GetShapeSize(user->operand(1)->shape())
-                    : GetShapeSize(hlo->shape());
+        // Operand 0 is aliased to the output.
+        if (hlo != user->operand(0) && !seen_trivial_user) {
+          seen_trivial_user = true;
+          size += GetShapeSize(hlo->shape());
+        }
         break;
       case HloOpcode::kBroadcast:
       case HloOpcode::kReshape:

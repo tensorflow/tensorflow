@@ -17,46 +17,39 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_PJRT_C_API_CLIENT_H_
 
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/core/platform/casts.h"
 
 namespace xla {
 
+class PjRtCApiClient;
+
 class PjRtCApiDevice : public PjRtDevice {
  public:
-  explicit PjRtCApiDevice(PjRtDevice* wrapped) : wrapped_(wrapped) {}
+  explicit PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client);
 
-  // Must set client exactly once.
-  void SetClient(PjRtClient* client) {
-    CHECK(client_ == nullptr) << ToString();
-    client_ = client;
-  }
+  PjRtClient* client() const override;
 
-  PjRtClient* client() const override { return client_; }
+  bool IsAddressable() const override;
 
-  bool IsAddressable() const override { return wrapped_->IsAddressable(); }
+  int id() const override;
 
-  int id() const override { return wrapped_->id(); }
+  int process_index() const override;
 
-  int process_index() const override { return wrapped_->process_index(); }
+  int local_hardware_id() const override;
 
-  int local_hardware_id() const override {
-    return wrapped_->local_hardware_id();
-  }
+  absl::string_view device_kind() const override;
 
-  absl::string_view device_kind() const override {
-    return wrapped_->device_kind();
-  }
+  absl::string_view DebugString() const override;
 
-  std::string DebugString() const override { return wrapped_->DebugString(); }
-
-  std::string ToString() const override {
-    return absl::StrCat("PjRtCApiDevice(wrapped=", wrapped_->ToString(), ")");
-  }
+  absl::string_view ToString() const override;
 
   Status TransferToInfeed(const LiteralSlice& literal) override {
     return wrapped_->TransferToInfeed(literal);
@@ -72,9 +65,9 @@ class PjRtCApiDevice : public PjRtDevice {
   }
 
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return wrapped_->Attributes();
-  }
+      const override;
+
+  PJRT_Device* c_device() const { return device_; }
 
   PjRtDevice* wrapped() const { return wrapped_; }
 
@@ -83,36 +76,33 @@ class PjRtCApiDevice : public PjRtDevice {
   }
 
  private:
-  PjRtClient* client_ = nullptr;
+  PjRtCApiClient* client_ = nullptr;
+  // `device_` is owned by the `PJRT_Client` wrapped by `client_`
+  PJRT_Device* device_;
+  // TODO(shahrokhi): wrapped_ is a non-C API pointer that was used to bypass
+  // the C API calls until all the C API's got implemented. Remove it when it's
+  // usage is reduced to zero.
   PjRtDevice* wrapped_;
+  // Device specific attributes with corresponding values.
+  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
+
+  // Initializes device specific attributes.
+  void InitAttributes();
 };
 
 class PjRtCApiClient : public PjRtClient {
  public:
-  PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client,
-                 std::vector<std::unique_ptr<PjRtCApiDevice>> devices);
+  PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client);
 
-  ~PjRtCApiClient() override;
+  int process_index() const override;
 
-  int process_index() const override { return wrapped_->process_index(); }
+  int device_count() const override;
+  int addressable_device_count() const override;
 
-  int device_count() const override { return wrapped_->device_count(); }
+  absl::Span<PjRtDevice* const> devices() const override;
+  absl::Span<PjRtDevice* const> addressable_devices() const override;
 
-  int addressable_device_count() const override {
-    return wrapped_->addressable_device_count();
-  }
-
-  absl::Span<PjRtDevice* const> devices() const override { return devices_; }
-
-  absl::Span<PjRtDevice* const> addressable_devices() const override {
-    return addressable_devices_;
-  }
-
-  StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
-    TF_ASSIGN_OR_RETURN(PjRtDevice * wrapped_device,
-                        wrapped_->LookupDevice(device_id));
-    return GetCApiDevice(wrapped_device);
-  }
+  StatusOr<PjRtDevice*> LookupDevice(int device_id) const override;
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override {
@@ -125,13 +115,9 @@ class PjRtCApiClient : public PjRtClient {
     return wrapped_->platform_id();
   }
 
-  absl::string_view platform_name() const override {
-    return wrapped_->platform_name();
-  }
+  absl::string_view platform_name() const override;
 
-  absl::string_view platform_version() const override {
-    return wrapped_->platform_version();
-  }
+  absl::string_view platform_version() const override;
 
   PjRtRuntimeType runtime_type() const override {
     return wrapped_->runtime_type();
@@ -146,26 +132,22 @@ class PjRtCApiClient : public PjRtClient {
     return wrapped_->GetHloCostAnalysis();
   }
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override {
     return WrapExecutable(wrapped_->Compile(computation, options));
   }
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      mlir::ModuleOp module, CompileOptions options) override {
-    return WrapExecutable(wrapped_->Compile(module, options));
-  }
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+      mlir::ModuleOp module, CompileOptions options) override;
 
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtExecutable& executable) const override;
+      const PjRtLoadedExecutable& executable) const override;
 
   StatusOr<std::string> SerializeExecutable(
-      const PjRtExecutable& executable) const override;
+      const PjRtLoadedExecutable& executable) const override;
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override {
-    return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
-  }
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
+      absl::string_view serialized, CompileOptions options) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override {
@@ -245,19 +227,30 @@ class PjRtCApiClient : public PjRtClient {
     return it->second;
   }
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> WrapExecutable(
-      StatusOr<std::unique_ptr<PjRtExecutable>> to_wrap);
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> WrapExecutable(
+      StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap);
 
   StatusOr<std::unique_ptr<PjRtBuffer>> WrapBuffer(
       StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap);
 
+  const PJRT_Api* pjrt_c_api() const;
+
+  PJRT_Client* pjrt_c_client() { return c_client_.get(); }
+
+  PjRtCApiDevice* GetCppDevice(PJRT_Device* c_device) const {
+    auto it = c_to_cpp_device_map_.find(c_device);
+    CHECK(it != c_to_cpp_device_map_.end());
+    return it->second;
+  }
+
  private:
   const PJRT_Api* c_api_;
-  PJRT_Client* c_client_;
+  std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
 
   std::vector<std::unique_ptr<PjRtCApiDevice>> owned_devices_;
   std::vector<PjRtDevice*> devices_;
   std::vector<PjRtDevice*> addressable_devices_;
+  absl::flat_hash_map<PJRT_Device*, PjRtCApiDevice*> c_to_cpp_device_map_;
 
   // TODO(skyewm): this is a shim so we can run PjRtCApiClient code without the
   // C API being fully implemented. All methods using wrapped_ should either be
@@ -265,24 +258,22 @@ class PjRtCApiClient : public PjRtClient {
   // wrapped_ and related functionality should be removed.
   PjRtClient* wrapped_;
   absl::flat_hash_map<PjRtDevice*, PjRtCApiDevice*> wrapped_device_map_;
+
+  void InitDevices();
 };
 
 class PjRtCApiBuffer : public PjRtBuffer {
  public:
-  PjRtCApiBuffer(PjRtCApiClient* client, std::unique_ptr<PjRtBuffer> wrapped)
-      : client_(client), wrapped_(std::move(wrapped)) {}
+  PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer);
+  ~PjRtCApiBuffer() override;
 
-  const Shape& on_device_shape() const override {
-    return wrapped_->on_device_shape();
-  }
+  const Shape& on_device_shape() const override;
 
   StatusOr<Shape> logical_on_device_shape() override {
     return wrapped_->logical_on_device_shape();
   }
 
-  PjRtDevice* device() const override {
-    return client_->GetCApiDevice(wrapped_->device());
-  }
+  PjRtDevice* device() const override;
 
   PjRtClient* client() const override { return client_; }
 
@@ -295,16 +286,14 @@ class PjRtCApiBuffer : public PjRtBuffer {
     return wrapped_->ToLiteral(literal);
   }
 
-  StatusOr<size_t> GetOnDeviceSizeInBytes() const override {
-    return wrapped_->GetOnDeviceSizeInBytes();
-  }
+  StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
   PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
                                    int64_t transfer_size) override {
     return wrapped_->CopyRawToHost(dst, offset, transfer_size);
   }
 
-  void Delete() override { wrapped_->Delete(); }
+  void Delete() override;
 
   StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
       bool wait_for_operations_to_complete) override {
@@ -312,17 +301,10 @@ class PjRtCApiBuffer : public PjRtBuffer {
         wait_for_operations_to_complete);
   }
 
-  bool IsDeleted() override { return wrapped_->IsDeleted(); }
+  bool IsDeleted() override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
-      PjRtDevice* dst_device) override {
-    if (dst_device->client() == client_) {
-      return client_->WrapBuffer(
-          wrapped_->CopyToDevice(PjRtCApiDevice::GetWrapped(dst_device)));
-    } else {
-      return wrapped_->CopyToDevice(dst_device);
-    }
-  }
+      PjRtDevice* dst_device) override;
 
   void CopyToRemoteDevice(absl::string_view serialized_descriptor,
                           RemoteSendCallback on_done) override {
@@ -340,9 +322,11 @@ class PjRtCApiBuffer : public PjRtBuffer {
     return wrapped_->GetReadyFuture();
   }
 
-  bool IsOnCpu() const override { return wrapped_->IsOnCpu(); }
+  bool IsOnCpu() const override;
 
-  PjRtBuffer* wrapped() const { return wrapped_.get(); }
+  PjRtBuffer* wrapped() const { return wrapped_; }
+
+  PJRT_Buffer* c_buffer() const { return buffer_; }
 
   static PjRtBuffer* GetWrapped(PjRtBuffer* c_api_buffer) {
     return tensorflow::down_cast<PjRtCApiBuffer*>(c_api_buffer)->wrapped();
@@ -358,32 +342,46 @@ class PjRtCApiBuffer : public PjRtBuffer {
     return wrapped;
   }
 
+  const PJRT_Api* pjrt_c_api() const { return client_->pjrt_c_api(); }
+
  private:
   PjRtCApiClient* client_;
-  std::unique_ptr<PjRtBuffer> wrapped_;
+  PJRT_Buffer* buffer_;
+  std::optional<xla::Shape> shape_;
+
+  // TODO(amangu): _wrapped is a non-C API pointer that was used to bypass the
+  // C API calls until all the C API's got implemented. Remove it when it's
+  // usage is reduced to zero.
+  PjRtBuffer* wrapped_;
+
+  // TODO(b/238999986): Refactor or Remove.
+  void set_shape();
 };
 
-class PjRtCApiExecutable : public PjRtExecutable {
+class PjRtCApiExecutable : public PjRtLoadedExecutable {
  public:
   PjRtCApiExecutable(PjRtCApiClient* client,
-                     std::unique_ptr<PjRtExecutable> wrapped);
+                     std::unique_ptr<PjRtLoadedExecutable> wrapped);
+  PjRtCApiExecutable(PjRtCApiClient* client, PJRT_Executable* executable);
+
+  ~PjRtCApiExecutable() override;
 
   PjRtClient* client() const override { return client_; }
-  absl::string_view name() const override { return wrapped_->name(); }
-  int num_replicas() const override { return wrapped_->num_replicas(); }
-  int num_partitions() const override { return wrapped_->num_partitions(); }
+  absl::string_view name() const override;
+  int num_replicas() const override { return wrapped()->num_replicas(); }
+  int num_partitions() const override { return wrapped()->num_partitions(); }
 
   int64_t SizeOfGeneratedCodeInBytes() const override {
-    return wrapped_->SizeOfGeneratedCodeInBytes();
+    return wrapped()->SizeOfGeneratedCodeInBytes();
   }
 
   const DeviceAssignment& device_assignment() const override {
-    return wrapped_->device_assignment();
+    return wrapped()->device_assignment();
   }
 
   absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
       const override {
-    return wrapped_->addressable_device_logical_ids();
+    return wrapped()->addressable_device_logical_ids();
   }
 
   absl::Span<PjRtDevice* const> addressable_devices() const override {
@@ -392,7 +390,7 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
-    return wrapped_->GetHloModules();
+    return wrapped()->GetHloModules();
   }
 
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
@@ -413,20 +411,25 @@ class PjRtCApiExecutable : public PjRtExecutable {
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
-  void Delete() override { return wrapped_->Delete(); }
-  bool IsDeleted() override { return wrapped_->IsDeleted(); }
+  void Delete() override;
+  bool IsDeleted() override;
 
-  PjRtExecutable* wrapped() const { return wrapped_.get(); }
+  PjRtLoadedExecutable* wrapped() const;
 
-  static PjRtExecutable* GetWrapped(const PjRtExecutable* c_api_executable) {
+  static PjRtLoadedExecutable* GetWrapped(
+      const PjRtLoadedExecutable* c_api_executable) {
     return tensorflow::down_cast<const PjRtCApiExecutable*>(c_api_executable)
         ->wrapped();
   }
 
+  const PJRT_Api* pjrt_c_api() const { return client_->pjrt_c_api(); }
+
  private:
   PjRtCApiClient* client_;
-  std::unique_ptr<PjRtExecutable> wrapped_;
+  PJRT_Executable* executable_;
   std::vector<PjRtDevice*> addressable_devices_;
+
+  void InitDevices();
 };
 
 // Takes ownership of wrapped.

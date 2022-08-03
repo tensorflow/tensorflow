@@ -45,12 +45,11 @@ struct GlobalIdsParams {
   std::vector<std::string> group_ids;
   std::vector<std::string> local_sizes;
   std::vector<std::string> local_ids;
-  int3 block_size;
+  ConvolutionMetal::ConvParams::BlockSize block_size;
   int3 launch_order;
-  bool linear_wh;
-  bool linear_whs;
-  std::string task_size_w;  // must be filled if linear_wh or linear_whs enabled
-  std::string task_size_wh;  // must be filled if linear_whs enabled
+  bool linear_spatial;
+  bool linear_all;
+  bool need_batch;
 };
 
 std::string GlobalIdsGen(const GlobalIdsParams& params) {
@@ -59,59 +58,67 @@ std::string GlobalIdsGen(const GlobalIdsParams& params) {
   launch_remap[params.launch_order.x] = 0;
   launch_remap[params.launch_order.y] = 1;
   launch_remap[params.launch_order.z] = 2;
-  if (params.linear_whs) {
-    c += "  int linear_whs = " + params.global_ids[0] + ";\n";
-    c += "  int Z = (linear_whs / " + params.task_size_wh + ") * " +
-         std::to_string(params.block_size.z) + ";\n";
-    c += "  int linear_wh = linear_whs % " + params.task_size_wh + ";\n";
-    c += "  int Y = (linear_wh / " + params.task_size_w + ") * " +
-         std::to_string(params.block_size.y) + ";\n";
-    c += "  int X = (linear_wh % " + params.task_size_w + ") * " +
-         std::to_string(params.block_size.x) + ";\n";
-  } else if (params.linear_wh) {
-    if (params.launch_order.x == 0) {
-      c += "  int linear_wh = " + params.global_ids[0] + ";\n";
-    } else {
-      c += "  int linear_wh = " + params.group_ids[launch_remap.x] + " * " +
-           params.local_sizes[0] + " + " + params.local_ids[0] + ";\n";
+  if (params.linear_all) {
+    c += "  int linear_all = " + params.global_ids[0] + ";\n";
+    if (params.need_batch) {
+      c += "  int B = linear_all % args.task_size_b;\n";
+      c += "  linear_all = linear_all / args.task_size_b;\n";
     }
-    c += "  int Y = (linear_wh / " + params.task_size_w + ") * " +
-         std::to_string(params.block_size.y) + ";\n";
-    c += "  int X = (linear_wh % " + params.task_size_w + ") * " +
-         std::to_string(params.block_size.x) + ";\n";
-    if (params.launch_order.y == 1) {
-      c += "  int Z = " + params.global_ids[1] + " * " +
-           std::to_string(params.block_size.z) + ";\n";
+    c += "  int X = linear_all % args.task_size_x;\n";
+    c += "  linear_all = linear_all / args.task_size_x;\n";
+    c += "  int Y = linear_all % args.task_size_y;\n";
+    c += "  int S = linear_all / args.task_size_y;\n";
+  } else if (params.linear_spatial) {
+    if (params.launch_order.x == 0) {
+      c += "  int linear_spatial = " + params.global_ids[0] + ";\n";
     } else {
-      c += "  int Z = (" + params.group_ids[launch_remap.y] + " * " +
-           params.local_sizes[1] + " + " + params.local_ids[1] + ") * " +
-           std::to_string(params.block_size.z) + ";\n";
+      c += "  int linear_spatial = " + params.group_ids[launch_remap.x] +
+           " * " + params.local_sizes[0] + " + " + params.local_ids[0] + ";\n";
+    }
+    if (params.need_batch) {
+      c += "  int B = linear_spatial % args.task_size_b;\n";
+      c += "  linear_spatial = linear_spatial / args.task_size_b;\n";
+    }
+    c += "  int X = linear_spatial % args.task_size_x;\n";
+    c += "  int Y = linear_spatial / args.task_size_x;\n";
+    if (params.launch_order.y == 1) {
+      c += "  int S = " + params.global_ids[1] + ";\n";
+    } else {
+      c += "  int S = " + params.group_ids[launch_remap.y] + " * " +
+           params.local_sizes[1] + " + " + params.local_ids[1] + ";\n";
     }
   } else {
     if (params.launch_order.x == 0) {
-      c += "  int X = " + params.global_ids[0] + " * " +
-           std::to_string(params.block_size.x) + ";\n";
+      c += "  int X = " + params.global_ids[0] + ";\n";
     } else {
-      c += "  int X = (" + params.group_ids[launch_remap.x] + " * " +
-           params.local_sizes[0] + " + " + params.local_ids[0] + ") * " +
-           std::to_string(params.block_size.x) + ";\n";
+      c += "  int X = " + params.group_ids[launch_remap.x] + " * " +
+           params.local_sizes[0] + " + " + params.local_ids[0] + ";\n";
+    }
+    if (params.need_batch) {
+      c += "  int B = X % args.task_size_b;\n";
+      c += "  X = X / args.task_size_b;\n";
     }
     if (params.launch_order.y == 1) {
-      c += "  int Y = " + params.global_ids[1] + " * " +
-           std::to_string(params.block_size.y) + ";\n";
+      c += "  int Y = " + params.global_ids[1] + ";\n";
     } else {
-      c += "  int Y = (" + params.group_ids[launch_remap.y] + " * " +
-           params.local_sizes[1] + " + " + params.local_ids[1] + ") * " +
-           std::to_string(params.block_size.y) + ";\n";
+      c += "  int Y = " + params.group_ids[launch_remap.y] + " * " +
+           params.local_sizes[1] + " + " + params.local_ids[1] + ";\n";
     }
     if (params.launch_order.z == 2) {
-      c += "  int Z = " + params.global_ids[2] + " * " +
-           std::to_string(params.block_size.z) + ";\n";
+      c += "  int S = " + params.global_ids[2] + ";\n";
     } else {
-      c += "  int Z = (" + params.group_ids[launch_remap.z] + " * " +
-           params.local_sizes[2] + " + " + params.local_ids[2] + ") * " +
-           std::to_string(params.block_size.z) + ";\n";
+      c += "  int S = " + params.group_ids[launch_remap.z] + " * " +
+           params.local_sizes[2] + " + " + params.local_ids[2] + ";\n";
     }
+  }
+  if (params.block_size.x != 1) {
+    c += "  X *= " + std::to_string(params.block_size.x) + ";\n";
+  }
+  if (params.block_size.y != 1) {
+    c += "  Y *= " + std::to_string(params.block_size.y) + ";\n";
+  }
+  if (params.block_size.s != 1) {
+    c += "  S *= " + std::to_string(params.block_size.s) + ";\n";
   }
   return c;
 }
@@ -145,17 +152,15 @@ std::string GenerateUploadByThreads(const std::string& local_ptr_name,
 }
 
 std::string GenerateConvolution(const ConvolutionMetal::ConvParams& params,
-                                const OperationDef& definition,
-                                bool stride_correction) {
+                                const OperationDef& definition) {
   GlobalIdsParams ids_params;
   ids_params.group_ids = {"group_id.x", "group_id.y", "group_id.z"};
   ids_params.global_ids = {"ugid.x", "ugid.y", "ugid.z"};
   ids_params.local_ids = {"tid3d.x", "tid3d.y", "tid3d.z"};
   ids_params.local_sizes = {"lsize.x", "lsize.y", "lsize.z"};
-  ids_params.linear_wh = params.linear_wh;
-  ids_params.task_size_w = "args.task_size_x";
-  ids_params.task_size_wh = "args.task_size_y";
-  ids_params.linear_whs = params.linear_whs;
+  ids_params.linear_spatial = params.linear_wh;
+  ids_params.linear_all = params.linear_whs;
+  ids_params.need_batch = definition.src_tensors[0].HasAxis(Axis::BATCH);
   ids_params.block_size = params.block_size;
   ids_params.launch_order = params.work_group_launch_order;
 
@@ -168,21 +173,12 @@ std::string GenerateConvolution(const ConvolutionMetal::ConvParams& params,
       params.weights_upload_type ==
       ConvolutionMetal::WeightsUploadType::LOCAL_MEM_BY_THREADS;
   const int local_mem_size =
-      params.block_size.z * 4 * params.src_depth_loop_size;
+      params.block_size.s * 4 * params.src_depth_loop_size;
 
   const bool use_filters_constants =
       !params.need_dst_loop && !params.need_src_loop && params.x_kernel_is_1 &&
       params.y_kernel_is_1 && !params.groups_support &&
       !params.different_weights_for_height;
-
-  const auto src_storage_type = definition.src_tensors[0].storage_type;
-  const auto dst_storage_type = definition.dst_tensors[0].storage_type;
-  const bool src_is_linear =
-      src_storage_type == TensorStorageType::BUFFER ||
-      src_storage_type == TensorStorageType::IMAGE_BUFFER;
-  const bool dst_is_linear =
-      dst_storage_type == TensorStorageType::BUFFER ||
-      dst_storage_type == TensorStorageType::IMAGE_BUFFER;
 
   std::string channels[4] = {"x", "y", "z", "w"};
   std::string c;
@@ -197,14 +193,18 @@ kernel void ComputeFunction(
 )";
   c += "    uint3 ugid[[thread_position_in_grid]]){\n";
   c += GlobalIdsGen(ids_params);
-  c += "  if (Z >= args.dst_tensor.Slices()) return;\n";
+  if (definition.src_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+  }
+  c += "  if (S >= args.dst_tensor.Slices()) return;\n";
   bool late_xy_check = use_local_mem;
   if (!late_xy_check && !params.linear_whs) {
     c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
          "return;\n";
   }
   if (params.groups_support) {
-    c += "      int conv_group_id = Z / args.dst_group_size;\n";
+    c += "      int conv_group_id = S / args.dst_group_size;\n";
     c += "      int src_start_slice = conv_group_id * args.src_group_size;\n";
     c += "      int src_end_slice = src_start_slice + args.src_group_size;\n";
   }
@@ -215,11 +215,11 @@ kernel void ComputeFunction(
   const std::string src_group_slices = params.groups_support
                                            ? "args.src_group_size"
                                            : "args.src_tensor.Slices()";
-  for (int z = 0; z < params.block_size.z; ++z) {
+  for (int s = 0; s < params.block_size.s; ++s) {
     for (int y = 0; y < params.block_size.y; ++y) {
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_i =
-            std::to_string(z) + std::to_string(y) + std::to_string(x);
+            std::to_string(s) + std::to_string(y) + std::to_string(x);
         c +=
             "  ACCUM_FLT4 r" + s_i + " = ACCUM_FLT4(0.0f, 0.0f, 0.0f, 0.0f);\n";
       }
@@ -239,22 +239,22 @@ kernel void ComputeFunction(
         }
       };
   if (!use_filters_constants) {
-    std::string kern_x = params.x_kernel_is_1 ? "" : " * args.kernel_size_x";
-    std::string kern_y = params.y_kernel_is_1 ? "" : " * args.kernel_size_y";
-    std::string dst_offset =
-        params.need_dst_loop ? " + Z * 4 * " + src_group_slices : "";
     if (!params.need_dst_loop) {
       c += "  " + addr_space + " FLT4* tmp = args.weights.GetPtr();\n";
     } else {
       if (params.different_weights_for_height) {
         c += "  " + addr_space +
-             " FLT4* tmp = args.weights.GetPtr() + (Z * "
+             " FLT4* tmp = args.weights.GetPtr() + (S * "
              "args.src_tensor.Height() + Y * " +
-             std::to_string(params.block_size.z) +
+             std::to_string(params.block_size.s) +
              ") * 4 * args.src_tensor.Slices();\n";
       } else {
+        std::string kern_x =
+            params.x_kernel_is_1 ? "" : " * args.kernel_size_x";
+        std::string kern_y =
+            params.y_kernel_is_1 ? "" : " * args.kernel_size_y";
         c += "  " + addr_space +
-             " FLT4* tmp = args.weights.GetPtr() + Z * 4 * " +
+             " FLT4* tmp = args.weights.GetPtr() + S * 4 * " +
              src_group_slices + kern_x + kern_y + ";\n";
       }
     }
@@ -262,15 +262,8 @@ kernel void ComputeFunction(
   if (!params.x_kernel_is_1) {
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
-      if (stride_correction) {
-        c += "  int x" + s_x + " = " +
-             GetXStrideCorrected("(X + " + s_x + ")", "args.src_tensor.Batch()",
-                                 "args.stride_x", "args.padding_x") +
-             ";\n";
-      } else {
-        c += "  int x" + s_x + " = (X + " + s_x +
-             ") * args.stride_x + args.padding_x;\n";
-      }
+      c += "  int x" + s_x + " = (X + " + s_x +
+           ") * args.stride_x + args.padding_x;\n";
     }
   }
   if (!params.y_kernel_is_1) {
@@ -290,7 +283,7 @@ kernel void ComputeFunction(
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
       c += "  int c_y" + s_y + " = y * args.dilation_y + y" + s_y + ";\n";
-      if (src_is_linear) {
+      if (definition.src_tensors[0].IsLinear()) {
         c += "  bool y" + s_y + "_out = c_y" + s_y + " < 0 || c_y" + s_y +
              " >= args.src_tensor.Height();\n";
         c += "  c_y" + s_y + " = clamp(c_y" + s_y +
@@ -310,7 +303,7 @@ kernel void ComputeFunction(
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
       c += "  int c_x" + s_x + " = x * args.dilation_x + x" + s_x + ";\n";
-      if (src_is_linear) {
+      if (definition.src_tensors[0].IsLinear()) {
         c += "  bool x" + s_x + "_out = c_x" + s_x + " < 0 || c_x" + s_x +
              " >= args.src_tensor.Width();\n";
         c += "  c_x" + s_x + " = clamp(c_x" + s_x +
@@ -324,7 +317,7 @@ kernel void ComputeFunction(
            ", 0, args.src_tensor.Width() - 1);\n";
     }
   }
-  if (src_is_linear) {
+  if (definition.src_tensors[0].IsLinear()) {
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
       for (int x = 0; x < params.block_size.x; ++x) {
@@ -345,34 +338,21 @@ kernel void ComputeFunction(
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_x = std::to_string(x);
         const std::string s_yx = s_y + s_x;
-        if (definition.src_tensors[0].storage_type ==
+        if (definition.src_tensors[0].GetStorageType() ==
             TensorStorageType::BUFFER) {
-          if (params.groups_support) {
-            c += "  args.src_tensor.GetAddress(base_addr_" + s_yx + ", c_x" +
-                 s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
-            c += "  device FLT4* src_loc_" + s_yx +
-                 " = args.src_tensor.GetHandle() + base_addr_" + s_yx + ";\n";
-          } else {
-            c += "  device FLT4* src_loc_" + s_yx +
-                 " = args.src_tensor.GetHandle() + "
-                 "args.src_tensor.GetWHOffset(c_x" +
-                 s_x + ", c_y" + s_y + ");\n";
-          }
-        } else if (definition.src_tensors[0].storage_type ==
+          c += "  device FLT4* src_loc_" + s_yx +
+               " = args.src_tensor.GetHandle() + "
+               "args.src_tensor.GetAddress(c_x" +
+               s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
+        } else if (definition.src_tensors[0].GetStorageType() ==
                    TensorStorageType::IMAGE_BUFFER) {
-          if (params.groups_support) {
-            c += "  args.src_tensor.GetAddress(src_loc_" + s_yx + ", c_x" +
-                 s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
-          } else {
-            c += "  int src_loc_" + s_yx +
-                 " = args.src_tensor.GetWHOffset(c_x" + s_x + ", c_y" + s_y +
-                 ");\n";
-          }
+          c += "  int src_loc_" + s_yx + " = args.src_tensor.GetAddress(c_x" +
+               s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
         }
       }
     }
   }
-  c += "  int s = " + src_group_start_slice + ";\n";
+  c += "  int src_s = " + src_group_start_slice + ";\n";
   if (params.need_src_loop) {
     c += "  do {\n";
   }
@@ -398,8 +378,8 @@ kernel void ComputeFunction(
     for (int y = 0; y < params.block_size.y; ++y) {
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_yx = std::to_string(y) + std::to_string(x);
-        if (src_is_linear) {
-          if (definition.src_tensors[0].storage_type ==
+        if (definition.src_tensors[0].IsLinear()) {
+          if (definition.src_tensors[0].GetStorageType() ==
               TensorStorageType::BUFFER) {
             if (!params.y_kernel_is_1 || !params.x_kernel_is_1) {
               c += "    src" + s_yx + " = *src_loc_" + s_yx + " * m" + s_yx +
@@ -407,7 +387,7 @@ kernel void ComputeFunction(
             } else {
               c += "    src" + s_yx + " = *src_loc_" + s_yx + ";\n";
             }
-          } else if (definition.src_tensors[0].storage_type ==
+          } else if (definition.src_tensors[0].GetStorageType() ==
                      TensorStorageType::IMAGE_BUFFER) {
             if (!params.y_kernel_is_1 || !params.x_kernel_is_1) {
               c += "    src" + s_yx + " = args.src_tensor.Read(src_loc_" +
@@ -419,11 +399,11 @@ kernel void ComputeFunction(
           }
         } else {
           c += "    src" + s_yx + " = args.src_tensor.Read(c_x" +
-               std::to_string(x) + ", c_y" + std::to_string(y) + ", s);\n";
+               std::to_string(x) + ", c_y" + std::to_string(y) + ", src_s);\n";
         }
       }
     }
-    if (src_is_linear) {
+    if (definition.src_tensors[0].IsLinear()) {
       for (int y = 0; y < params.block_size.y; ++y) {
         for (int x = 0; x < params.block_size.x; ++x) {
           const std::string s_yx = std::to_string(y) + std::to_string(x);
@@ -437,15 +417,15 @@ kernel void ComputeFunction(
     if (use_filters_constants) {
       name = "args.weights.GetPtr()";
     }
-    for (int z = 0; z < params.block_size.z; ++z) {
+    for (int s = 0; s < params.block_size.s; ++s) {
       for (int ch = 0; ch < 4; ++ch) {
         for (int y = 0; y < params.block_size.y; ++y) {
           for (int x = 0; x < params.block_size.x; ++x) {
             std::string s_id = std::to_string(y) + std::to_string(x);
             std::string r_id =
-                std::to_string(z) + std::to_string(y) + std::to_string(x);
+                std::to_string(s) + std::to_string(y) + std::to_string(x);
             std::string f_val =
-                name + "[" + std::to_string(z * 4 + ch + offset) + "]";
+                name + "[" + std::to_string(s * 4 + ch + offset) + "]";
             std::string s_val = "src" + s_id;
             std::string r_val = "r" + r_id;
             if (params.weights_layout == WeightsLayout::kOSpatialIOGroupO4I4) {
@@ -465,20 +445,20 @@ kernel void ComputeFunction(
   };
   declare_src();
   read_src();
-  c += "    s += 1;\n";
+  c += "    src_s += 1;\n";
   conv_core(0);
   for (int i = 1; i < params.src_depth_loop_size; ++i) {
     read_src();
-    conv_core(i * params.block_size.z * 4);
-    c += "    s += 1;\n";
+    conv_core(i * params.block_size.s * 4);
+    c += "    src_s += 1;\n";
   }
   if (!use_filters_constants) {
     c += "    tmp += " +
-         std::to_string(params.block_size.z * 4 * params.src_depth_loop_size) +
+         std::to_string(params.block_size.s * 4 * params.src_depth_loop_size) +
          ";\n";
   }
   if (params.need_src_loop) {
-    c += "  } while (s < " + src_group_end_slice + ");\n";
+    c += "  } while (src_s < " + src_group_end_slice + ");\n";
   }
   if (!params.x_kernel_is_1) {
     c += "  x++;\n";
@@ -494,38 +474,38 @@ kernel void ComputeFunction(
          "return;\n";
   }
 
-  if (dst_is_linear) {
+  if (definition.dst_tensors[0].IsLinear()) {
     for_every_yx([](const std::string& s_yx, const std::string& s_x,
                     const std::string& s_y, int x, int y) {
-      return "  args.dst_tensor.GetAddress(offset_" + s_yx + ", X + " + s_x +
-             ", Y + " + s_y + ", Z);";
+      return "  int offset_" + s_yx + " = args.dst_tensor.GetAddress(X + " +
+             s_x + ", Y + " + s_y + ", S);";
     });
   }
 
   std::string bias_name = "args.biases.GetPtr()";
   if (params.need_dst_loop) {
-    c += "  device FLT4* bias_loc = args.biases.GetPtr() + Z;\n";
+    c += "  device FLT4* bias_loc = args.biases.GetPtr() + S;\n";
     bias_name = "bias_loc";
   }
   for (int y = 0; y < params.block_size.y; ++y) {
     for (int x = 0; x < params.block_size.x; ++x) {
-      for (int z = 0; z < params.block_size.z; ++z) {
+      for (int s = 0; s < params.block_size.s; ++s) {
         std::string r_id =
-            std::to_string(z) + std::to_string(y) + std::to_string(x);
+            std::to_string(s) + std::to_string(y) + std::to_string(x);
         c += "  r" + r_id + " += TO_ACCUM_TYPE(" + bias_name + "[" +
-             std::to_string(z) + "]);\n";
+             std::to_string(s) + "]);\n";
       }
     }
   }
-  for (int z = 0; z < params.block_size.z; ++z) {
-    const std::string s_z = std::to_string(z);
-    c += "  if (Z + " + s_z + " < args.dst_tensor.Slices()) {\n";
+  for (int s = 0; s < params.block_size.s; ++s) {
+    const std::string s_s = std::to_string(s);
+    c += "  if (S + " + s_s + " < args.dst_tensor.Slices()) {\n";
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_x = std::to_string(x);
         const std::string s_yx = s_y + s_x;
-        const std::string s_zyx = s_z + s_yx;
+        const std::string s_syx = s_s + s_yx;
         bool need_check_x = x >= 1;
         bool need_check_y = y >= 1;
         std::string check;
@@ -541,16 +521,16 @@ kernel void ComputeFunction(
         } else {
           c += "    {\n";
         }
-        c += "      FLT4 value = FLT4(r" + s_zyx + ");\n";
-        if (dst_is_linear) {
+        c += "      FLT4 value = FLT4(r" + s_syx + ");\n";
+        if (definition.dst_tensors[0].IsLinear()) {
           c += "      int linear_index = offset_" + s_yx +
-               " + args.dst_tensor.SliceStride() * " + s_z + ";\n";
-          c += "      args.dst_tensor.Linking(value, X + " + s_x + ", Y + " +
-               s_y + ", Z + " + s_z + ");\n";
-          c += "      args.dst_tensor.WriteLinear(value, linear_index);\n";
+               " + args.dst_tensor.SliceStride() * " + s_s + ";\n";
+          c += "      args.dst_tensor.Write<LinearIndex::linear_index>(value, "
+               "X + " +
+               s_x + ", Y + " + s_y + ", S + " + s_s + ");\n";
         } else {
           c += "      args.dst_tensor.Write(value, X + " + s_x + ", Y + " +
-               s_y + ", Z + " + s_z + ");\n";
+               s_y + ", S + " + s_s + ");\n";
         }
         c += "    }\n";
       }
@@ -590,36 +570,41 @@ std::vector<uint8_t> ReorderBiasesForConv(
 }
 
 int GetGroupsCount(const BHWC& dst_shape, const int3& wg_size,
-                   const int3& block_size) {
+                   const ConvolutionMetal::ConvParams::BlockSize& block_size) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
 
-  int grid_x = DivideRoundUp(dst_shape.w, block_size.x);
+  int grid_x = DivideRoundUp(dst_shape.w, block_size.x) *
+               DivideRoundUp(dst_shape.b, block_size.b);
   int grid_y = DivideRoundUp(dst_shape.h, block_size.y);
-  int grid_z = DivideRoundUp(dst_slices, block_size.z);
+  int grid_z = DivideRoundUp(dst_slices, block_size.s);
 
   return DivideRoundUp(grid_x, wg_size.x) * DivideRoundUp(grid_y, wg_size.y) *
          DivideRoundUp(grid_z, wg_size.z);
 }
 
-int GetGroupsCountForLinearWH(const BHWC& dst_shape, const int3& wg_size,
-                              const int3& block_size) {
+int GetGroupsCountForLinearWH(
+    const BHWC& dst_shape, const int3& wg_size,
+    const ConvolutionMetal::ConvParams::BlockSize& block_size) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
 
-  int grid_x = DivideRoundUp(dst_shape.w, block_size.x);
+  int grid_x = DivideRoundUp(dst_shape.w, block_size.x) *
+               DivideRoundUp(dst_shape.b, block_size.b);
   int grid_y = DivideRoundUp(dst_shape.h, block_size.y);
-  int grid_z = DivideRoundUp(dst_slices, block_size.z);
+  int grid_z = DivideRoundUp(dst_slices, block_size.s);
 
   return DivideRoundUp(grid_x * grid_y, wg_size.x) *
          DivideRoundUp(grid_z, wg_size.y);
 }
 
-int GetGroupsCountForLinearWHS(const BHWC& dst_shape, const int3& wg_size,
-                               const int3& block_size) {
+int GetGroupsCountForLinearWHS(
+    const BHWC& dst_shape, const int3& wg_size,
+    const ConvolutionMetal::ConvParams::BlockSize& block_size) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
 
-  int grid_x = DivideRoundUp(dst_shape.w, block_size.x);
+  int grid_x = DivideRoundUp(dst_shape.w, block_size.x) *
+               DivideRoundUp(dst_shape.b, block_size.b);
   int grid_y = DivideRoundUp(dst_shape.h, block_size.y);
-  int grid_z = DivideRoundUp(dst_slices, block_size.z);
+  int grid_z = DivideRoundUp(dst_slices, block_size.s);
 
   return DivideRoundUp(grid_x * grid_y * grid_z, wg_size.x);
 }
@@ -671,7 +656,8 @@ struct WorkGroupSizeOption {
 WorkGroupSizeOption CreateWorkGroupSizeOption(
     const int3& work_group_size,
     WorkGroupSizeOption::ThreadMapping mapping_type, float penalty,
-    const BHWC& dst_shape, const int3& block_size) {
+    const BHWC& dst_shape,
+    const ConvolutionMetal::ConvParams::BlockSize& block_size) {
   WorkGroupSizeOption wg;
   wg.work_group_size = work_group_size;
   wg.thread_mapping = mapping_type;
@@ -725,7 +711,11 @@ ConvolutionMetal::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   params.x_kernel_is_1 = x_kernel_is_1;
   params.y_kernel_is_1 = y_kernel_is_1;
   params.src_depth_loop_size = 1;
-  params.block_size = block_size;
+  params.block_size.b = 1;
+  params.block_size.x = block_size.x;
+  params.block_size.y = block_size.y;
+  params.block_size.z = 1;
+  params.block_size.s = block_size.z;
   params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
 
   std::vector<WorkGroupSizeOption> options;
@@ -794,8 +784,9 @@ ConvolutionMetal::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
     params.work_group_size = optimum_wg.work_group_size;
     params.work_group_launch_order = int3(2, 0, 1);
   }
-  int total_elements =
-      params.block_size.x * params.block_size.y * params.block_size.z;
+  int total_elements = params.block_size.b * params.block_size.x *
+                       params.block_size.y * params.block_size.z *
+                       params.block_size.s;
   if (total_elements == 1) {
     if (src_slices % 4 == 0) {
       params.src_depth_loop_size = 4;
@@ -810,7 +801,7 @@ ConvolutionMetal::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   if (params.src_depth_loop_size == src_slices) {
     params.need_src_loop = false;
   }
-  if (params.block_size.z == dst_slices) {
+  if (params.block_size.s == dst_slices) {
     params.need_dst_loop = false;
   }
   const bool use_filters_constants =
@@ -856,15 +847,19 @@ ConvolutionMetal::ConvParams GetConvParamsForA9AndHigher(
   params.x_kernel_is_1 = x_kernel_is_1;
   params.y_kernel_is_1 = y_kernel_is_1;
   params.src_depth_loop_size = 1;
-  params.block_size = block_size;
+  params.block_size.b = 1;
+  params.block_size.x = block_size.x;
+  params.block_size.y = block_size.y;
+  params.block_size.z = 1;
+  params.block_size.s = block_size.z;
   params.linear_wh = false;
   params.linear_whs = false;
   params.work_group_size = int3(8, 4, 1);
   params.work_group_launch_order = int3(2, 0, 1);
   params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
-  int g1 = GetGroupsCount(dst_shape, params.work_group_size, block_size);
-  int g2 = GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, block_size);
-  int g3 = GetGroupsCountForLinearWHS(dst_shape, {32, 1, 1}, block_size);
+  int g1 = GetGroupsCount(dst_shape, params.work_group_size, params.block_size);
+  int g2 = GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, params.block_size);
+  int g3 = GetGroupsCountForLinearWHS(dst_shape, {32, 1, 1}, params.block_size);
   if (g2 < g1) {
     params.linear_wh = true;
     params.work_group_size = int3(32, 1, 1);
@@ -877,8 +872,9 @@ ConvolutionMetal::ConvParams GetConvParamsForA9AndHigher(
     params.linear_whs = true;
     params.work_group_size = int3(32, 1, 1);
   }
-  int total_elements =
-      params.block_size.x * params.block_size.y * params.block_size.z;
+  int total_elements = params.block_size.b * params.block_size.x *
+                       params.block_size.y * params.block_size.z *
+                       params.block_size.s;
   if (total_elements == 1) {
     if (src_slices % 4 == 0) {
       params.src_depth_loop_size = 4;
@@ -893,7 +889,7 @@ ConvolutionMetal::ConvParams GetConvParamsForA9AndHigher(
   if (params.src_depth_loop_size == src_slices) {
     params.need_src_loop = false;
   }
-  if (params.block_size.z == dst_slices) {
+  if (params.block_size.s == dst_slices) {
     params.need_dst_loop = false;
   }
   const bool use_filters_constants =
@@ -922,7 +918,11 @@ ConvolutionMetal::ConvParams GetConvParams(const GpuInfo& gpu_info,
     }
   } else {
     ConvolutionMetal::ConvParams params;
-    params.block_size = int3(1, 1, 4);
+    params.block_size.b = 1;
+    params.block_size.x = 1;
+    params.block_size.y = 1;
+    params.block_size.z = 1;
+    params.block_size.s = 4;
     params.work_group_size = int3(8, 4, 1);
     params.work_group_launch_order = int3(2, 0, 1);
     params.src_depth_loop_size = 1;
@@ -946,10 +946,7 @@ ConvolutionMetal::ConvolutionMetal(const OperationDef& definition,
                                    const ConvParams& params,
                                    const Convolution2DAttributes* attr)
     : GPUOperation(definition), params_(params) {
-  bool stride_correction = false;
   if (attr) {
-    stride_correction = definition.IsBatchSupported() && attr->strides.w != 1;
-
     args_.AddInt("kernel_size_x", attr->weights.shape.w);
     args_.AddInt("kernel_size_y", attr->weights.shape.h);
     args_.AddInt("dilation_x", attr->dilations.w);
@@ -973,18 +970,9 @@ ConvolutionMetal::ConvolutionMetal(const OperationDef& definition,
     dilation_ = int2(1, 1);
   }
 
-  code_ = GenerateConvolution(params, definition, stride_correction);
-
-  auto src_desc = definition.src_tensors[0];
-  if (definition.IsBatchSupported()) {
-    src_desc.SetStateVar("BatchedWidth", "true");
-  }
-  AddSrcTensor("src_tensor", src_desc);
-  auto dst_desc = definition.dst_tensors[0];
-  if (definition.IsBatchSupported()) {
-    dst_desc.SetStateVar("BatchedWidth", "true");
-  }
-  AddDstTensor("dst_tensor", dst_desc);
+  code_ = GenerateConvolution(params, definition);
+  AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   if (params.groups_support) {
     const int src_slices = DivideRoundUp(attr->weights.shape.i, 4);
@@ -993,6 +981,7 @@ ConvolutionMetal::ConvolutionMetal(const OperationDef& definition,
     args_.AddInt("dst_group_size", dst_slices / attr->groups);
   }
 
+  args_.AddInt("task_size_b");
   args_.AddInt("task_size_x");
   args_.AddInt("task_size_y");
 
@@ -1008,21 +997,21 @@ ConvolutionMetal::ConvolutionMetal(const OperationDef& definition,
 }
 
 absl::Status ConvolutionMetal::BindArguments(ArgumentsBinder* args) {
-  RETURN_IF_ERROR(args->SetInt("padding_x", padding_.x * src_[0]->Batch()));
-  RETURN_IF_ERROR(args->SetInt("dilation_x", dilation_.x * src_[0]->Batch()));
-  const int grid_x =
-      DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), params_.block_size.x);
-  const int grid_y = DivideRoundUp(dst_[0]->Height(), params_.block_size.y);
-  RETURN_IF_ERROR(args->SetInt("task_size_x", grid_x));
-  RETURN_IF_ERROR(args->SetInt("task_size_y", grid_x * grid_y));
+  const int task_size_x = DivideRoundUp(dst_[0]->Width(), params_.block_size.x);
+  const int task_size_y =
+      DivideRoundUp(dst_[0]->Height(), params_.block_size.y);
+  const int task_size_b = DivideRoundUp(dst_[0]->Batch(), params_.block_size.b);
+  RETURN_IF_ERROR(args->SetInt("task_size_x", task_size_x));
+  RETURN_IF_ERROR(args->SetInt("task_size_y", task_size_y));
+  RETURN_IF_ERROR(args->SetInt("task_size_b", task_size_b));
   return absl::OkStatus();
 }
 
 int3 ConvolutionMetal::GetGridSize() const {
-  int grid_x =
-      DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), params_.block_size.x);
+  int grid_x = DivideRoundUp(dst_[0]->Width(), params_.block_size.x) *
+               DivideRoundUp(dst_[0]->Batch(), params_.block_size.b);
   int grid_y = DivideRoundUp(dst_[0]->Height(), params_.block_size.y);
-  int grid_z = DivideRoundUp(dst_[0]->Slices(), params_.block_size.z);
+  int grid_z = DivideRoundUp(dst_[0]->Slices(), params_.block_size.s);
 
   int3 group_size(params_.work_group_size);
   int3 wg;
@@ -1058,7 +1047,7 @@ void ConvolutionMetal::UploadBiases(
   bias_desc.memory_type = params_.GetMemoryType();
   bias_desc.data =
       ReorderBiasesForConv(biases, weights_layout_desc.type,
-                           AlignByN(biases.shape.v, params_.block_size.z * 4));
+                           AlignByN(biases.shape.v, params_.block_size.s * 4));
   bias_desc.size = bias_desc.data.size();
   args_.AddObject("biases",
                   std::make_unique<BufferDescriptor>(std::move(bias_desc)));
@@ -1068,19 +1057,18 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
                                         const BHWC& dst_shape,
                                         const Convolution2DAttributes& attr,
                                         const GpuInfo& gpu_info) {
-  BHWC new_shape = BHWC(1, dst_shape.h, dst_shape.w * dst_shape.b, dst_shape.c);
   ConvolutionMetal::ConvParams params =
       GetConvParams(gpu_info, IsKernelXIs1(attr), IsKernelYIs1(attr),
-                    attr.weights.shape.i, new_shape);
+                    attr.weights.shape.i, dst_shape);
   if (attr.groups != 1) {
     params.groups_support = true;
     const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
     const int dst_group_slices = dst_slices / attr.groups;
-    if (dst_group_slices % params.block_size.z != 0) {
-      if (params.block_size.z == 4 && dst_group_slices % 2 == 0) {
-        params.block_size.z = 2;
+    if (dst_group_slices % params.block_size.s != 0) {
+      if (params.block_size.s == 4 && dst_group_slices % 2 == 0) {
+        params.block_size.s = 2;
       } else {
-        params.block_size.z = 1;
+        params.block_size.s = 1;
       }
     }
   }
@@ -1091,7 +1079,7 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
   if (definition.src_tensors.size() == 2) {
     // dynamic weights
     BufferDescriptor weights_desc;
-    weights_desc.element_type = definition.src_tensors[1].data_type;
+    weights_desc.element_type = definition.src_tensors[1].GetDataType();
     weights_desc.element_size = 4;
     weights_desc.memory_type = params.GetMemoryType();
     desc.AddSrcBuffer("weights", weights_desc);
@@ -1107,9 +1095,8 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
 ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
     const OperationDef& definition, const BHWC& dst_shape,
     const Convolution2DAttributes& attr, const GpuInfo& gpu_info) {
-  BHWC new_shape = BHWC(1, dst_shape.h, dst_shape.w * dst_shape.b, dst_shape.c);
   ConvolutionMetal::ConvParams params =
-      GetConvParams(gpu_info, true, true, attr.weights.shape.i, new_shape);
+      GetConvParams(gpu_info, true, true, attr.weights.shape.i, dst_shape);
   params.different_weights_for_height = true;
   params.block_size.x *= params.block_size.y;
   params.block_size.y = 1;
@@ -1124,6 +1111,32 @@ ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
 
   desc.UploadWeights(wino_weights);
   desc.UploadBiases(wino_biases);
+
+  return desc;
+}
+
+ConvolutionMetal CreateConvolutionMetalBatchedMatMul(
+    const OperationDef& definition, const BHWC& dst_shape,
+    const OHWI& weights_shape, const GpuInfo& gpu_info) {
+  ConvolutionMetal::ConvParams params =
+      GetConvParams(gpu_info, true, true, weights_shape.i, dst_shape);
+  params.different_weights_for_height = true;
+  params.block_size.x *= params.block_size.y;
+  params.block_size.y = 1;
+
+  ConvolutionMetal desc(definition, params, /*attr*/ nullptr);
+
+  // dynamic weights
+  BufferDescriptor weights_desc;
+  weights_desc.element_type = definition.src_tensors[1].GetDataType();
+  weights_desc.element_size = 4;
+  weights_desc.memory_type = params.GetMemoryType();
+  desc.AddSrcBuffer("weights", weights_desc);
+
+  tflite::gpu::Tensor<Linear, DataType::FLOAT32> biases;
+  biases.shape = Linear(weights_shape.o);
+  biases.data.resize(weights_shape.o, 0.0f);
+  desc.UploadBiases(biases);
 
   return desc;
 }

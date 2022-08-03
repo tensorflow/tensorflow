@@ -52,13 +52,9 @@ bool IsInputFusible(const HloInstruction& instr);
 
 bool IsLoopFusible(const HloInstruction& instr);
 
-// The code emitted for reduce-rooted input fusions (EmitReductionToVector)
-// suffers from poor data locality if the layouts of input parameters differ. In
-// such situations it is better not to fuse. Only input params with
-// maximum rank are considered. Params with smaller ranks will be broadcasted
-// and have not been observed to cause data locality issues.
-bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
-                                         const HloInstruction& reduce);
+// Whether the op tranposes the physical data layout. Fusing such ops may lead
+// to uncoalesced data access and may thus not be beneficial.
+bool IsPhysicallyTransposing(const HloInstruction& instr);
 
 // Note that reduction ops are lowered in different ways. Reduce input fusions
 // are lowered by IrEmitterUnnested::EmitReductionToVector and must be rooted at

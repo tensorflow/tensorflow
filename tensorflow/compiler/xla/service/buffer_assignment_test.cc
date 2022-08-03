@@ -96,7 +96,7 @@ class BufferAssignmentTest : public HloTestBase {
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
-        .ConsumeValueOrDie();
+        .value();
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithSequentialOrdering(
@@ -107,7 +107,7 @@ class BufferAssignmentTest : public HloTestBase {
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
-        .ConsumeValueOrDie();
+        .value();
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersForConstants(
@@ -117,7 +117,7 @@ class BufferAssignmentTest : public HloTestBase {
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/false)
-        .ConsumeValueOrDie();
+        .value();
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersReuseForAdd(
@@ -134,7 +134,7 @@ class BufferAssignmentTest : public HloTestBase {
                /*allocate_buffers_for_constants=*/false,
                /*colorer=*/BufferAssigner::DefaultColorer(),
                /*must_not_live_out=*/must_not_live_out)
-        .ConsumeValueOrDie();
+        .value();
   }
 
   std::unique_ptr<BufferAssignment> RunColoredBufferAssignment(
@@ -145,7 +145,7 @@ class BufferAssignmentTest : public HloTestBase {
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true, std::move(colorer))
-        .ConsumeValueOrDie();
+        .value();
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithInstructionSequence(
@@ -158,7 +158,7 @@ class BufferAssignmentTest : public HloTestBase {
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
-        .ConsumeValueOrDie();
+        .value();
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithPresetAssignments(
@@ -172,7 +172,7 @@ class BufferAssignmentTest : public HloTestBase {
                BufferAssigner::DefaultColorer(),
                /*must_not_live_out=*/std::nullopt,
                /*can_share_buffer=*/nullptr, std::move(preset_assignments))
-        .ConsumeValueOrDie();
+        .value();
   }
 
   // Builds an x+1.0 computation to use in a Map.
@@ -269,7 +269,7 @@ class BufferAssignmentTest : public HloTestBase {
       const BufferAssignment& buffers, HloInstruction* hlo) {
     LOG(INFO) << "Checking input: " << hlo->ToString();
     const BufferAllocation& buffer =
-        *buffers.GetUniqueTopLevelSlice(hlo).ConsumeValueOrDie().allocation();
+        *buffers.GetUniqueTopLevelSlice(hlo).value().allocation();
     EXPECT_EQ(hlo->parameter_number(), buffer.parameter_number());
     return buffer;
   }
@@ -287,13 +287,11 @@ class BufferAssignmentTest : public HloTestBase {
   const BufferAllocation& GetAllocation(const BufferAssignment& buffers,
                                         const HloInstruction* hlo,
                                         const ShapeIndex& index) {
-    return *buffers.GetUniqueSlice(hlo, index).ConsumeValueOrDie().allocation();
+    return *buffers.GetUniqueSlice(hlo, index).value().allocation();
   }
   const BufferAllocation& GetTopLevelAllocation(const BufferAssignment& buffers,
                                                 const HloInstruction* hlo) {
-    return *buffers.GetUniqueTopLevelSlice(hlo)
-                .ConsumeValueOrDie()
-                .allocation();
+    return *buffers.GetUniqueTopLevelSlice(hlo).value().allocation();
   }
 
   // Verifies that all instructions in the given instruction list except
@@ -341,15 +339,14 @@ static bool BuffersDistinct(const std::vector<const HloInstruction*>& a,
   absl::flat_hash_set<BufferAllocation::Slice> a_slices;
   for (const HloInstruction* instruction : a) {
     if (assignment.HasTopLevelAllocation(instruction)) {
-      a_slices.insert(
-          assignment.GetUniqueTopLevelSlice(instruction).ConsumeValueOrDie());
+      a_slices.insert(assignment.GetUniqueTopLevelSlice(instruction).value());
     }
   }
 
   for (const HloInstruction* instruction : b) {
     if (assignment.HasTopLevelAllocation(instruction)) {
-      if (a_slices.contains(assignment.GetUniqueTopLevelSlice(instruction)
-                                .ConsumeValueOrDie())) {
+      if (a_slices.contains(
+              assignment.GetUniqueTopLevelSlice(instruction).value())) {
         return false;
       }
     }
@@ -602,11 +599,13 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto colorer = [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
+  absl::flat_hash_map<const HloInstruction*, int> color_map;
+  auto colorer = [&](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
     int color = 0;
     for (HloValue::Id id = 0;
          id < alias_analysis->dataflow_analysis().values().size(); id++) {
       auto& value = alias_analysis->dataflow_analysis().GetValue(id);
+      color_map[value.defining_instruction()] = color;
       value.set_color(BufferValue::Color(color++));
     }
     return OkStatus();
@@ -635,11 +634,11 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
   GetAssignedOutputAllocation(*buffers, sub);
 
   // Check if the HLO instructions have the correct colors in the layout.
-  EXPECT_EQ(param0->shape().layout().memory_space(), 2);
-  EXPECT_EQ(param1->shape().layout().memory_space(), 3);
-  EXPECT_EQ(mul->shape().layout().memory_space(), 4);
-  EXPECT_EQ(add->shape().layout().memory_space(), 5);
-  EXPECT_EQ(sub->shape().layout().memory_space(), 6);
+  EXPECT_EQ(param0->shape().layout().memory_space(), color_map[param0]);
+  EXPECT_EQ(param1->shape().layout().memory_space(), color_map[param1]);
+  EXPECT_EQ(mul->shape().layout().memory_space(), color_map[mul]);
+  EXPECT_EQ(add->shape().layout().memory_space(), color_map[add]);
+  EXPECT_EQ(sub->shape().layout().memory_space(), color_map[sub]);
 }
 
 TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
@@ -1822,9 +1821,9 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
   // Ensure the temp buffers for dot_ab and dot_bc share a single allocation,
   // and each occupies different slices of that allocation.
   BufferAllocation::Slice slice_ab =
-      assignment->GetUniqueTopLevelSlice(dot_ab).ConsumeValueOrDie();
+      assignment->GetUniqueTopLevelSlice(dot_ab).value();
   BufferAllocation::Slice slice_bc =
-      assignment->GetUniqueTopLevelSlice(dot_bc).ConsumeValueOrDie();
+      assignment->GetUniqueTopLevelSlice(dot_bc).value();
   EXPECT_EQ(slice_ab.allocation(), slice_bc.allocation());
   EXPECT_NE(slice_ab, slice_bc);
   EXPECT_EQ(32, slice_ab.size());
@@ -1835,8 +1834,8 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
   // Re-run buffer assignment with alignment=64.
   assignment = RunBufferAssignment(module.get(), /*alignment=*/64);
   EXPECT_EQ(5, assignment->Allocations().size());
-  slice_ab = assignment->GetUniqueTopLevelSlice(dot_ab).ConsumeValueOrDie();
-  slice_bc = assignment->GetUniqueTopLevelSlice(dot_bc).ConsumeValueOrDie();
+  slice_ab = assignment->GetUniqueTopLevelSlice(dot_ab).value();
+  slice_bc = assignment->GetUniqueTopLevelSlice(dot_bc).value();
   EXPECT_EQ(slice_ab.allocation(), slice_bc.allocation());
   EXPECT_NE(slice_ab, slice_bc);
   EXPECT_EQ(32, slice_ab.size());
@@ -2116,14 +2115,13 @@ class WhileBufferAssignmentTest : public HloTestBase {
 
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64_t alignment = 1) {
-    HloSchedule schedule =
-        ScheduleModule(module, ByteSizeOf).ConsumeValueOrDie();
+    HloSchedule schedule = ScheduleModule(module, ByteSizeOf).value();
     return BufferAssigner::Run(
                module, std::make_unique<SequentialHloOrdering>(schedule),
                ByteSizeOf,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
-        .ConsumeValueOrDie();
+        .value();
   }
 
   static int64_t ByteSizeOf(const BufferValue& buffer) {
@@ -2184,17 +2182,17 @@ TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
   auto assignment = RunBufferAssignment(module.get());
 
   // Verify 'input0' and read-only use while0{0} alias.
-  EXPECT_EQ(assignment->GetUniqueSlice(input0, {}).ConsumeValueOrDie(),
-            assignment->GetUniqueSlice(while0, {0}).ConsumeValueOrDie());
+  EXPECT_EQ(assignment->GetUniqueSlice(input0, {}).value(),
+            assignment->GetUniqueSlice(while0, {0}).value());
   // Verify 'weights0' and read-only use while0{1} alias.
-  EXPECT_EQ(assignment->GetUniqueSlice(weights0, {}).ConsumeValueOrDie(),
-            assignment->GetUniqueSlice(while0, {1}).ConsumeValueOrDie());
+  EXPECT_EQ(assignment->GetUniqueSlice(weights0, {}).value(),
+            assignment->GetUniqueSlice(while0, {1}).value());
   // Verify 'while0{2}' and read-only use while1{0} alias.
-  EXPECT_EQ(assignment->GetUniqueSlice(while0, {2}).ConsumeValueOrDie(),
-            assignment->GetUniqueSlice(while1, {0}).ConsumeValueOrDie());
+  EXPECT_EQ(assignment->GetUniqueSlice(while0, {2}).value(),
+            assignment->GetUniqueSlice(while1, {0}).value());
   // Verify 'weights1' and read-only use while1{1} alias.
-  EXPECT_EQ(assignment->GetUniqueSlice(weights1, {}).ConsumeValueOrDie(),
-            assignment->GetUniqueSlice(while1, {1}).ConsumeValueOrDie());
+  EXPECT_EQ(assignment->GetUniqueSlice(weights1, {}).value(),
+            assignment->GetUniqueSlice(while1, {1}).value());
 }
 
 // Tests that two colocated buffer sets are not merged if an entry parameter
@@ -2499,12 +2497,12 @@ TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
   auto assignment = RunBufferAssignment(module.get());
 
   // while0 and while1 buffers should be completely aligned.
-  EXPECT_EQ(assignment->GetUniqueSlice(while0, {0}).ConsumeValueOrDie(),
-            assignment->GetUniqueSlice(while1, {0}).ConsumeValueOrDie());
-  EXPECT_EQ(assignment->GetUniqueSlice(while0, {1}).ConsumeValueOrDie(),
-            assignment->GetUniqueSlice(while1, {1}).ConsumeValueOrDie());
-  EXPECT_EQ(assignment->GetUniqueSlice(while0, {2}).ConsumeValueOrDie(),
-            assignment->GetUniqueSlice(while1, {2}).ConsumeValueOrDie());
+  EXPECT_EQ(assignment->GetUniqueSlice(while0, {0}).value(),
+            assignment->GetUniqueSlice(while1, {0}).value());
+  EXPECT_EQ(assignment->GetUniqueSlice(while0, {1}).value(),
+            assignment->GetUniqueSlice(while1, {1}).value());
+  EXPECT_EQ(assignment->GetUniqueSlice(while0, {2}).value(),
+            assignment->GetUniqueSlice(while1, {2}).value());
 }
 
 TEST_F(BufferAssignmentTest, TwoCalls) {
@@ -2749,8 +2747,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 
   RunCopyInsertion(module.get());
 
-  HloSchedule schedule =
-      ScheduleModule(module.get(), ByteSizeOf).ConsumeValueOrDie();
+  HloSchedule schedule = ScheduleModule(module.get(), ByteSizeOf).value();
 
   // To trigger b/38494731, we want a specific Hlo schedule for the
   // root computation, so we overwrite that entry with a manually
@@ -2770,7 +2767,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
           module.get(), std::make_unique<SequentialHloOrdering>(schedule),
           ByteSizeOf, [](LogicalBuffer::Color) { return 1; },
           /*allocate_buffers_for_constants=*/true)
-          .ConsumeValueOrDie();
+          .value();
 
   EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
 }
@@ -2823,9 +2820,8 @@ TEST_F(WhileBufferAssignmentTest, WhilesDontShareEntryParamIfLiveOut) {
   RunCopyInsertion(module.get());
   auto assignment = RunBufferAssignment(module.get());
   // Get BufferAllocation for root instruction.
-  auto* root_alloc = assignment->GetUniqueTopLevelSlice(while1_out)
-                         .ConsumeValueOrDie()
-                         .allocation();
+  auto* root_alloc =
+      assignment->GetUniqueTopLevelSlice(while1_out).value().allocation();
   // Test that root instruction allocation is live out.
   EXPECT_TRUE(root_alloc->maybe_live_out());
   // Test that root instruction allocation is not an entry parameter.
@@ -2868,18 +2864,15 @@ ENTRY entry_computation {
 }
 
 )";
-  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
-  auto module = module_or_status.ConsumeValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
   RunCopyInsertion(module.get());
   auto assignment = RunBufferAssignment(module.get());
   // Get BufferAllocation for root instruction.
   auto dus9 = FindInstruction(module.get(), "dynamic-update-slice.9");
-  auto dus9_alloc_slice =
-      assignment->GetUniqueTopLevelSlice(dus9).ConsumeValueOrDie();
+  auto dus9_alloc_slice = assignment->GetUniqueTopLevelSlice(dus9).value();
   auto dus5 = FindInstruction(module.get(), "dynamic-update-slice.5");
-  auto dus5_alloc_slice =
-      assignment->GetUniqueTopLevelSlice(dus5).ConsumeValueOrDie();
+  auto dus5_alloc_slice = assignment->GetUniqueTopLevelSlice(dus5).value();
   // Test that the two dynamic-update-slice ops share the same allocation slice.
   EXPECT_EQ(dus9_alloc_slice.allocation(), dus5_alloc_slice.allocation());
   EXPECT_EQ(dus9_alloc_slice, dus5_alloc_slice);

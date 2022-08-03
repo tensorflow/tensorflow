@@ -3102,13 +3102,6 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast2) {
 
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
-  // Don't replace transposes with bitcasts.
-  options.set_replace_transpose_with_bitcast(false);
-  AlgebraicSimplifier simplifier_no_replace(options);
-  ASSERT_FALSE(simplifier_no_replace.Run(m.get()).ValueOrDie());
-
-  // Replace transposes with bitcasts if possible.
-  options.set_replace_transpose_with_bitcast(true);
   AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
@@ -5275,6 +5268,60 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfNonCanonicalBatchDotCantSimplify) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfTranspose) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[12,10,8] parameter(0)
+      i0 = s32[] parameter(1)
+      i1 = s32[] parameter(2)
+      i2 = s32[] parameter(3)
+      transpose = f32[12,8,10] transpose(param), dimensions={0,2,1}
+      ROOT slice = f32[2,3,5] dynamic-slice(transpose, i0, i1, i2),
+        dynamic_slice_sizes={2,3,5}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Transpose(
+                        m::DynamicSlice(m::Parameter(0), m::Parameter(1),
+                                        m::Parameter(3), m::Parameter(2)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfTrivialReshape) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[12,10,1,8] parameter(0)
+      i0 = s32[] parameter(1)
+      i1 = s32[] parameter(2)
+      i2 = s32[] parameter(3)
+      z = s32[] constant(0)
+      reshape = f32[1,12,10,8] reshape(param)
+      ROOT slice = f32[1,2,3,5] dynamic-slice(reshape, z, i0, i1, i2),
+        dynamic_slice_sizes={1,2,3,5}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Reshape(m::DynamicSlice(
+                        m::Parameter(0), m::Parameter(1), m::Parameter(2),
+                        m::Constant(), m::Parameter(3)))));
+}
+
 TEST_F(AlgebraicSimplifierTest, SliceOfPadLow) {
   const char* hlo_string = R"(
     HloModule module
@@ -7279,6 +7326,29 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcat) {
               GmockMatch(m::Parameter(1)));
 }
 
+TEST_F(AlgebraicSimplifierTest, SliceOfMultipleConcatOperands) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[50,50] parameter(0)
+      p1 = f32[50,50] parameter(1)
+      p2 = f32[50,50] parameter(2)
+      p3 = f32[50,50] parameter(3)
+      c0 = f32[200,50] concatenate(p0, p1, p2, p3), dimensions={0}
+      ROOT s0 = f32[98,50] slice(c0), slice={[51:149], [0:50]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Slice(m::Concatenate(m::Parameter(1), m::Parameter(2)))));
+  EXPECT_THAT(m->entry_computation()->root_instruction()->slice_starts(),
+              ElementsAre(1, 0));
+  EXPECT_THAT(m->entry_computation()->root_instruction()->slice_limits(),
+              ElementsAre(99, 50));
+}
+
 TEST_F(AlgebraicSimplifierTest, SqrtOfSelfMultiply) {
   const char* kModuleStr = R"(
     HloModule m
@@ -8415,6 +8485,56 @@ TEST_F(AlgebraicSimplifierTest, CopyReshapeCopy4) {
   AlgebraicSimplifier simplifier(options);
   ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
   VLOG(3) << "Module " << m->ToString();
+}
+
+TEST_F(AlgebraicSimplifierTest, BitcastCopyChain) {
+  const char* kModuleStr = R"(
+   HloModule m
+
+  ENTRY main {
+   p.0 = f32[4,32,32,1]{2,3,1,0} parameter(0)
+   reshape.30 = f32[4,32,1,1,32]{4,1,0,3,2} reshape(p.0)
+   transpose.1757 = f32[4,1,1,32,32]{3,4,0,1,2} transpose(reshape.30), dimensions={0,3,2,4,1}
+   copy.3 = f32[4,1,1,32,32]{4,3,0,2,1} copy(transpose.1757)
+   reshape.1758 = f32[4,1,1,1024]{3,2,1,0} reshape(copy.3)
+   transpose.61 = f32[1024,4,1,1]{0,3,2,1} transpose(reshape.1758), dimensions={3,0,1,2}
+   copy.4 = f32[1024,4,1,1]{0,1,3,2} copy(transpose.61)
+   ROOT reshape.107 = f32[1024,4]{0,1} reshape(copy.4)
+   })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  auto result = simplifier.Run(m.get()).ValueOrDie();
+  SCOPED_TRACE(m->ToString());
+  ASSERT_TRUE(result);
+  EXPECT_NE(FindInstruction(m.get(), "copy.3"), nullptr);
+}
+
+// Make sure that the following copy-bitcast-copy is not transformed via
+// SwapCopyBitcastCopy function. If SwapCopyBitcastCopy does not fire, in this
+// case, the last copy will be turned into a bitcast by HandleCopy.
+TEST_F(AlgebraicSimplifierTest, BitcastCopyChainSmall) {
+  const char* kModuleStr = R"(
+   HloModule m
+   ENTRY %main (para.0: f32[4,1,1,32,32]) -> f32[1024,4,1,1] {
+    %para.0 = f32[4,1,1,32,32]{3,4,0,1,2} parameter(0)
+    %copy.0 = f32[4,1,1,32,32]{4,3,0,2,1} copy(%para.0)
+    %bitcast.0 = f32[1024,4,1,1]{0,3,2,1} bitcast(%copy.0)
+    ROOT %copy.1 = f32[1024,4,1,1]{0,1,3,2} copy(%bitcast.0)
+  }
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  SCOPED_TRACE(m->ToString());
+  auto result = simplifier.Run(m.get()).ValueOrDie();
+  SCOPED_TRACE(m->ToString());
+  ASSERT_TRUE(result);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast(m::Bitcast(m::Copy(m::Parameter(0))))));
 }
 
 }  // namespace

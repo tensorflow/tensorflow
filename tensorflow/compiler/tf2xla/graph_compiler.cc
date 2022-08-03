@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
@@ -166,6 +167,7 @@ Status GraphCompiler::Compile() {
 
       tensor_inputs_.at(e->dst_input()) = src_outputs.at(e->src_output());
     }
+    params.inputs = tensor_inputs_;
 
     OpKernelContext op_context(&params, n->num_outputs());
     VLOG(3) << "Translating " << params.op_kernel->name();
@@ -287,7 +289,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
     for (const string& node_name : token_input_nodes) {
       auto token_or = compiler->GetNodeToken(node_name);
       TF_RETURN_IF_ERROR(token_or.status());
-      token_inputs.push_back(token_or.ConsumeValueOrDie());
+      token_inputs.push_back(std::move(token_or).value());
     }
     xla::XlaOp token_input = xla::AfterAll(b, token_inputs);
     handles.push_back(token_input);
@@ -336,7 +338,6 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
 
 void GraphCompiler::PartiallySetupParams(OpKernelContext::Params* params) {
   params->device = device_;
-  params->inputs = &tensor_inputs_;
   params->step_container = step_container_;
   params->resource_manager = device_->resource_manager();
   params->function_library = flib_;

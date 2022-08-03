@@ -132,58 +132,77 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
     const auto& inputs = params.inputs;
     const auto& node_def = params.node_def;
 
-    if (!all_same_types(inputs)) {
-      return errors::InvalidArgument(convert_range_expected_msg(node_def),
-                                     "passed as weights OR tensors");
-    }
-
-    if (!all_weights_) {
-      if (!all_integers(inputs)) {
-        return errors::Unimplemented(convert_range_expected_msg(node_def),
-                                     "tensors");
-      }
-
-      for (int i = 0; i < 3; i++) {
-        const auto& dims = inputs.at(i).GetTrtDims();
-        if (dims.nbDims != 1 || dims.d[0] != 1) {
-          return errors::InvalidArgument("Dimension for '", InputSpec()[i].name,
-                                         "' of ", node_def.op(), " operator ",
-                                         "should be equal to 1");
-        }
-      }
-      return Status::OK();
-    }
-
     float param[3];
+    all_weights_ = all_integers_ = true;
     for (int i = 0; i < 3; i++) {
       const auto& input = inputs.at(i);
-      switch (input.TrtDType()) {
-        case nvinfer1::DataType::kFLOAT:
-          param[i] = get_input_param<float>(input);
-          break;
-        case nvinfer1::DataType::kHALF:
-          param[i] = get_input_param<Eigen::half>(input);
-          break;
-        default:  // nvinfer1::DataType::kINT32:
-          param[i] = get_input_param<int>(input);
+      all_integers_ &= input.TrtDType() == nvinfer1::DataType::kINT32;
+      if (input.is_weights()) {
+        switch (input.TrtDType()) {
+          case nvinfer1::DataType::kFLOAT:
+            param[i] = get_input_param<float>(input);
+            break;
+          case nvinfer1::DataType::kHALF:
+            param[i] = get_input_param<Eigen::half>(input);
+            break;
+          case nvinfer1::DataType::kINT32:
+            param[i] = get_input_param<int>(input);
+            break;
+          default:
+            return errors::InvalidArgument(
+                "Unsupported data type ", DebugString(input.TrtDType()),
+                " used for '", InputSpec()[i].name, "'");
+        }
+      } else {
+        all_weights_ = false;
       }
     }
 
-    if ((delta_ = param[2]) == 0) {
-      return errors::InvalidArgument("The delta parameter of ", node_def.op(),
-                                     " operation cannot be equal to 0");
+    if (!(all_weights_ || all_integers_)) {
+      // As of 06/03/2022, when at least one of the (start, limit, delta)
+      // is passed as a tensor, they must all be of type kINT32
+      return errors::Unimplemented(convert_range_expected_msg(node_def));
     }
 
-    const auto num_intervals_float = (param[1] - (start_ = param[0])) / delta_;
-    if (num_intervals_float < 0) {
-      const auto error = convert_range_error_msg(start_, param[1], delta_);
-      return errors::InvalidArgument(error);
+    if (inputs.at(2).is_weights()) {
+      if ((delta_ = param[2]) == 0) {
+        return errors::InvalidArgument("The delta parameter of ", node_def.op(),
+                                       " operation cannot be equal to 0");
+      }
+
+      if (!all_weights_ && delta_ < 0) {
+        return errors::InvalidArgument(
+            "The delta parameter of Range operation "
+            "cannot be negative, when one of (start, limit) is passed as "
+            "a tensor, but got ",
+            delta_);
+      }
     }
 
-    num_values_ = static_cast<int>(num_intervals_float);
-    if (start_ + delta_ * num_values_ != param[1]) {
-      num_values_++;
+    for (int i = 0; i < 3; i++) {
+      const auto& input = inputs.at(i);
+      const auto& dims = input.GetTrtDims();
+      if (dims.nbDims != 1 || dims.d[0] != 1) {
+        return errors::InvalidArgument("Dimension for '", InputSpec()[i].name,
+                                       "' of ", node_def.op(), " operator ",
+                                       "should be equal to 1");
+      }
     }
+
+    if (all_weights_) {
+      const auto num_intervals_float =
+          (param[1] - (start_ = param[0])) / delta_;
+      if (num_intervals_float < 0) {
+        const auto error = convert_range_error_msg(start_, param[1], delta_);
+        return errors::InvalidArgument(error);
+      }
+
+      num_values_ = static_cast<int>(num_intervals_float);
+      if (start_ + delta_ * num_values_ != param[1]) {
+        num_values_++;
+      }
+    }
+
     return Status::OK();
   }
 
@@ -192,7 +211,6 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
     const auto& inputs = params.inputs;
     const TRT_TensorOrWeights& input = inputs.at(0);
     TRT_TensorOrWeights value_input;
-
     nvinfer1::Dims trt_dims{1};
     auto builder = TRTNetworkBuilder::Create(params.converter->network(),
                                              params.weight_store);
@@ -201,14 +219,19 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
     ITensorProxyPtr beta_tensor = nullptr;
     ITensorProxyPtr scalar_tensor = nullptr;
     if (!all_weights_) {
+      ITensorProxyPtr tensors[3];
+      for (int i = 0; i < 3; i++) {
+        TF_RETURN_IF_ERROR(
+            builder->get_tensor4TensorOrWeights(inputs.at(i), tensors + i));
+      }
+
       StatusOr<nvinfer1::IElementWiseLayer*> num =
-          builder->Sub(/*limit*/ inputs.at(1).tensor()->trt_tensor(),
-                       /*start*/ inputs.at(0).tensor()->trt_tensor());
+          builder->Sub(/*limit*/ tensors[1]->trt_tensor(),
+                       /*start*/ tensors[0]->trt_tensor());
 
       TRT_ENSURE_PTR_OK(num);
-      beta_tensor = params.inputs.at(2).tensor();
       StatusOr<nvinfer1::IElementWiseLayer*> ceil_div = builder->FloorDiv(
-          (*num)->getOutput(0), beta_tensor->trt_tensor() /*delta*/);
+          (*num)->getOutput(0), (beta_tensor = tensors[2])->trt_tensor());
       TRT_ENSURE_PTR_OK(ceil_div);
       dims_input_tensor = (*ceil_div)->getOutput(0);
       dims_input_tensor->setType(nvinfer1::DataType::kINT32);
@@ -241,7 +264,7 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
                          trt_dims, scalar_tensor, beta_tensor, delta_);
 
     ITensorProxyPtr output_tensor = (*layer)->getOutput(0);
-    if (all_integers(inputs)) {
+    if (all_integers_) {
       output_tensor->setType(nvinfer1::DataType::kINT32);
     }
 
@@ -255,31 +278,11 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
     return static_cast<float>(*input.weights().GetPointer<T>());
   }
 
-  bool all_integers(const std::vector<TRT_TensorOrWeights>& inputs) const {
-    for (int i = 0; i < 3; i++) {
-      if (inputs.at(i).TrtDType() != nvinfer1::DataType::kINT32) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  bool all_same_types(const std::vector<TRT_TensorOrWeights>& inputs) {
-    auto i = inputs.size();
-    const bool is_weight = inputs.at(--i).is_weights();
-    while (i--) {
-      if (inputs.at(i).is_weights() != is_weight) {
-        return all_weights_ = false;
-      }
-    }
-    all_weights_ = is_weight;
-    return true;
-  }
-
   float start_;
   float delta_;
   int num_values_;
   bool all_weights_;
+  bool all_integers_;
 };
 
 std::string convert_range_error_msg(float start, float limit, float delta) {
@@ -291,8 +294,9 @@ std::string convert_range_error_msg(float start, float limit, float delta) {
 }
 
 std::string convert_range_expected_msg(const NodeDef& node_def) {
-  return "All parameters (start, limit, delta) of " + node_def.op() +
-         " operation in " + node_def.name() + " are expected to be ";
+  return "When at least one of parameters (start, limit, delta) of " +
+         node_def.op() + " operation in " + node_def.name() +
+         " is passed as a tensor, they must all be of type kINT32";
 }
 
 REGISTER_DEFAULT_TRT_OP_CONVERTER(MakeConverterFunction<ConvertFill>(), "Fill");

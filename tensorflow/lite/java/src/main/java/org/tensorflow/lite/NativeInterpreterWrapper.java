@@ -23,6 +23,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
+import org.tensorflow.lite.InterpreterImpl.Options;
 import org.tensorflow.lite.annotations.UsedByReflection;
 import org.tensorflow.lite.nnapi.NnApiDelegate;
 
@@ -36,6 +38,9 @@ import org.tensorflow.lite.nnapi.NnApiDelegate;
  * <p>Note: This class is not thread safe.
  */
 class NativeInterpreterWrapper implements AutoCloseable {
+
+  // This is changed to RuntimeFlavor.SYSTEM for TF Lite in Google Play Services.
+  private static final RuntimeFlavor RUNTIME_FLAVOR = RuntimeFlavor.APPLICATION;
 
   NativeInterpreterWrapper(String modelPath) {
     this(modelPath, /* options= */ null);
@@ -150,12 +155,8 @@ class NativeInterpreterWrapper implements AutoCloseable {
     outputsIndexes = null;
     isMemoryAllocated = false;
     delegates.clear();
-    for (AutoCloseable ownedDelegate : ownedDelegates) {
-      try {
-        ownedDelegate.close();
-      } catch (Exception e) {
-        System.err.println("Failed to close flex delegate: " + e);
-      }
+    for (Delegate ownedDelegate : ownedDelegates) {
+      ownedDelegate.close();
     }
     ownedDelegates.clear();
   }
@@ -504,16 +505,37 @@ class NativeInterpreterWrapper implements AutoCloseable {
     if (originalGraphHasUnresolvedFlexOp) {
       Delegate optionalFlexDelegate = maybeCreateFlexDelegate(options.getDelegates());
       if (optionalFlexDelegate != null) {
-        ownedDelegates.add((AutoCloseable) optionalFlexDelegate);
+        ownedDelegates.add(optionalFlexDelegate);
         delegates.add(optionalFlexDelegate);
       }
     }
     // Now add the user-supplied delegates.
-    delegates.addAll(options.getDelegates());
+    addUserProvidedDelegates(options);
+    for (DelegateFactory delegateFactory : options.getDelegateFactories()) {
+      Delegate delegate = delegateFactory.create(RUNTIME_FLAVOR);
+      ownedDelegates.add(delegate);
+      delegates.add(delegate);
+    }
     if (options.getUseNNAPI()) {
       NnApiDelegate optionalNnApiDelegate = new NnApiDelegate();
       ownedDelegates.add(optionalNnApiDelegate);
       delegates.add(optionalNnApiDelegate);
+    }
+  }
+
+  private void addUserProvidedDelegates(Options options) {
+    for (Delegate delegate : options.getDelegates()) {
+      // NnApiDelegate is compatible with both the system and built-in runtimes and therefore can be
+      // added directly even when using TF Lite from the system.
+      if (options.getRuntime() != TfLiteRuntime.FROM_APPLICATION_ONLY
+          && !(delegate instanceof NnApiDelegate)) {
+        throw new IllegalArgumentException(
+            "Instantiated delegates (other than NnApiDelegate) are not allowed when using TF Lite"
+                + " from Google Play Services. Please use"
+                + " InterpreterApi.Options.addDelegateFactory() with an appropriate DelegateFactory"
+                + " instead.");
+      }
+      delegates.add(delegate);
     }
   }
 
@@ -595,7 +617,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
   private final List<Delegate> delegates = new ArrayList<>();
 
   // List of owned delegates that must be closed when the interpreter is closed.
-  private final List<AutoCloseable> ownedDelegates = new ArrayList<>();
+  private final List<Delegate> ownedDelegates = new ArrayList<>();
 
   private static native void run(long interpreterHandle, long errorHandle);
 

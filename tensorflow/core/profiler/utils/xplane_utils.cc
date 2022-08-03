@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/core/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -92,6 +93,42 @@ template <typename T, typename Pred>
 void RemoveIf(protobuf::RepeatedPtrField<T>* array, Pred&& pred) {
   std::vector<int> indices = FindAll(*array, pred);
   RemoveAt(array, indices);
+}
+
+// Copy XEventMetadata from source to destination. Also copies the associated
+// XStats.
+void CopyEventMetadata(const XEventMetadata& src_event_metadata,
+                       const XPlaneVisitor& src_plane,
+                       XEventMetadata& dst_event_metadata,
+                       XPlaneBuilder& dst_plane) {
+  if (dst_event_metadata.display_name().empty() &&
+      !src_event_metadata.display_name().empty()) {
+    dst_event_metadata.set_display_name(src_event_metadata.display_name());
+  }
+  if (dst_event_metadata.name().empty() && !src_event_metadata.name().empty()) {
+    dst_event_metadata.set_name(src_event_metadata.name());
+  }
+  if (dst_event_metadata.metadata().empty() &&
+      !src_event_metadata.metadata().empty()) {
+    dst_event_metadata.set_metadata(src_event_metadata.metadata());
+  }
+  XEventMetadataVisitor src_event_metadata_visitor(&src_plane,
+                                                   &src_event_metadata);
+  src_event_metadata_visitor.ForEachStat([&](const XStatVisitor& stat) {
+    XStatMetadata& metadata = *dst_plane.GetOrCreateStatMetadata(stat.Name());
+    XStat dst_stat = stat.RawStat();
+    if (stat.ValueCase() == XStat::kRefValue) {
+      XStatMetadata& value_metadata =
+          *dst_plane.GetOrCreateStatMetadata(stat.StrOrRefValue());
+      dst_stat.set_ref_value(value_metadata.id());
+    }
+    dst_stat.set_metadata_id(metadata.id());
+    *dst_event_metadata.add_stats() = dst_stat;
+  });
+}
+
+bool IsOpLineName(absl::string_view line_name) {
+  return line_name == kXlaOpLineName || line_name == kTensorFlowOpLineName;
 }
 
 }  // namespace
@@ -269,18 +306,9 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
     }
 
     line.ForEachEvent([&](const XEventVisitor& event) {
-      const XEventMetadata* src_event_metadata = event.metadata();
       XEventMetadata* dst_event_metadata =
           dst.GetOrCreateEventMetadata(event.Name());
-      if (dst_event_metadata->display_name().empty() &&
-          !src_event_metadata->display_name().empty()) {
-        dst_event_metadata->set_display_name(
-            src_event_metadata->display_name());
-      }
-      if (dst_event_metadata->metadata().empty() &&
-          !src_event_metadata->metadata().empty()) {
-        dst_event_metadata->set_metadata(src_event_metadata->metadata());
-      }
+      CopyEventMetadata(*event.metadata(), src, *dst_event_metadata, dst);
       XEventBuilder dst_event = dst_line.AddEvent(*dst_event_metadata);
       dst_event.SetOffsetPs(event.OffsetPs() + time_offset_ps);
       dst_event.SetDurationPs(event.DurationPs());
@@ -410,6 +438,116 @@ uint64_t GetDevicePlaneFingerprint(const XPlane& plane) {
     output = FingerprintCat64(output, fp);
   }
   return output;
+}
+
+std::optional<XEventVisitor> XEventContextTracker::GetContainingEvent(
+    const Timespan& event) {
+  if (!line_) return std::nullopt;
+  if (current_index_ != -1) {
+    XEventVisitor current_event(plane_, line_, &line_->events(current_index_));
+    if (current_event.GetTimespan().Includes(event)) {
+      return current_event;
+    }
+  }
+  for (int i = current_index_ + 1; i < line_->events_size(); ++i) {
+    XEventVisitor current_event(plane_, line_, &line_->events(i));
+    if (current_event.TimestampPs() > event.end_ps()) break;
+    if (current_event.EndTimestampPs() < event.begin_ps()) continue;
+    current_index_ = i;
+    if (current_event.GetTimespan().Includes(event)) {
+      return current_event;
+    }
+    break;  // overlapping
+  }
+  return std::nullopt;
+}
+
+std::optional<XEventVisitor> XEventContextTracker::GetOverlappingEvent(
+    const Timespan& event) {
+  if (!line_) return std::nullopt;
+  if (current_index_ != -1) {
+    XEventVisitor current_event(plane_, line_, &line_->events(current_index_));
+    if (current_event.GetTimespan().Overlaps(event)) {
+      return current_event;
+    }
+  }
+  for (int i = current_index_ + 1; i < line_->events_size(); ++i) {
+    XEventVisitor current_event(plane_, line_, &line_->events(i));
+    if (current_event.TimestampPs() > event.end_ps()) break;
+    if (current_event.EndTimestampPs() < event.begin_ps()) continue;
+    current_index_ = i;
+    if (current_event.GetTimespan().Overlaps(event)) {
+      return current_event;
+    }
+    break;  // overlapping
+  }
+  return std::nullopt;
+}
+
+void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
+  struct EventStat {
+    Stat<int64_t> stat;
+    int64_t children_duration;
+  };
+  using StatByEvent = absl::flat_hash_map<int64_t /*event_id*/, EventStat>;
+
+  absl::flat_hash_map<int64_t /*line_id*/, StatByEvent> stats;
+
+  XPlaneVisitor plane(&full_trace);
+  XPlaneBuilder aggregated_plane(&aggregated_trace);
+
+  plane.ForEachLine([&](const XLineVisitor& line) {
+    if (!IsOpLineName(line.Name())) return;
+    XLineBuilder aggregated_line = aggregated_plane.GetOrCreateLine(line.Id());
+    aggregated_line.SetName(line.Name());
+    std::vector<XEventVisitor> event_stack;
+    line.ForEachEvent([&](XEventVisitor event) {
+      StatByEvent& line_stats = stats[line.Id()];
+      line_stats[event.Id()].stat.UpdateStat(event.DurationPs());
+      DCHECK(event_stack.empty() || !(event < event_stack.back()));
+      while (!event_stack.empty() &&
+             !event_stack.back().GetTimespan().Includes(event.GetTimespan())) {
+        event_stack.pop_back();
+      }
+      if (!event_stack.empty()) {
+        line_stats[event_stack.back().Id()].children_duration +=
+            event.DurationPs();
+      }
+      event_stack.push_back(std::move(event));
+    });
+  });
+
+  // TODO(b/238349654): Remove when XPlane better XPlane Comparison mechanism
+  // exists.
+  aggregated_plane.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kMinDurationPs));
+  aggregated_plane.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kSelfDurationPs));
+
+  for (const auto& [line_id, stat_by_event] : stats) {
+    XLineBuilder aggregated_line = aggregated_plane.GetOrCreateLine(line_id);
+    for (const auto& [event_id, event_stat] : stat_by_event) {
+      XEventMetadata& event_metadata =
+          *aggregated_plane.GetOrCreateEventMetadata(event_id);
+      CopyEventMetadata(*plane.GetEventMetadata(event_id), plane,
+                        event_metadata, aggregated_plane);
+      XEventBuilder aggregated_event = aggregated_line.AddEvent(event_metadata);
+      aggregated_event.SetNumOccurrences(event_stat.stat.count());
+      aggregated_event.SetDurationPs(event_stat.stat.sum());
+      if (event_stat.stat.count() > 1) {
+        aggregated_event.AddStatValue(
+            *aggregated_plane.GetOrCreateStatMetadata(
+                GetStatTypeStr(StatType::kMinDurationPs)),
+            event_stat.stat.min());
+      }
+      if (event_stat.children_duration != 0) {
+        aggregated_event.AddStatValue(
+            *aggregated_plane.GetOrCreateStatMetadata(
+                GetStatTypeStr(StatType::kSelfDurationPs)),
+            event_stat.stat.sum() - event_stat.children_duration);
+      }
+    }
+  }
 }
 
 }  // namespace profiler

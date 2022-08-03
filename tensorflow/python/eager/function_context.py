@@ -121,12 +121,21 @@ def _enclosing_xla_context():
 
 
 def make_cache_key(
-    args
+    args: Any,
+    captures: Any = None,
 ) -> Tuple[function_cache.FunctionCacheKey, trace_type.WeakrefDeletionObserver]:
   """Computes the cache key given the function arguments."""
+  if captures is None:
+    captures = dict()
   signature_context = trace_type.InternalTracingContext()
-  function_signature = trace_type.from_object(
+  args_signature = trace_type.from_object(
       args, signature_context)
+  captures_dict_tracetype = trace_type.from_object(
+      captures, signature_context)
+  captures_signature = function_cache.CaptureSnapshot(
+      captures_dict_tracetype.mapping)
+
   return function_cache.FunctionCacheKey(
-      function_signature,
+      args_signature,
+      captures_signature,
       make_function_context()), signature_context.deletion_observer

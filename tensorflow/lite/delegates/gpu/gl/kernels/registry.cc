@@ -160,7 +160,7 @@ class Registry : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewNodeShaderRegistry() {
-  return absl::make_unique<Registry>();
+  return std::make_unique<Registry>();
 }
 
 }  // namespace gl

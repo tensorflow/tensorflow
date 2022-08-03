@@ -83,11 +83,13 @@ tf_cc_test(
         "xla_compilation_cache_serialize_test.cc",
     ],
     env = {
-        "XLA_FLAGS": "--xla_gpu_bef_executable",
+        "XLA_FLAGS": "--xla_gpu_jitrt_executable",
     },
     tags = [
+        "broken",  # b/239679478: Switching AOT support from BEF to JitRt.
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
+        "notap",  # b/239679478: Switching AOT support from BEF to JitRt.
         "requires-gpu-nvidia",
         "xla",
     ],
@@ -105,11 +107,13 @@ tf_cc_test(
         "xla_compilation_cache_serialize_options_test.cc",
     ],
     env = {
-        "XLA_FLAGS": "--xla_gpu_bef_executable",
+        "XLA_FLAGS": "--xla_gpu_jitrt_executable",
     },
     tags = [
+        "broken",  # b/239679478: Switching AOT support from BEF to JitRt.
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
+        "notap",  # b/239679478: Switching AOT support from BEF to JitRt.
         "requires-gpu-nvidia",
         "xla",
     ],

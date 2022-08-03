@@ -32,6 +32,7 @@ from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import graph_view
+from tensorflow.python.checkpoint import save_util_v1
 from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -60,8 +61,10 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.saved_model import tracing_utils
 from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.saved_model.pywrap_saved_model import constants
+from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import base
@@ -294,7 +297,7 @@ class _SaveableView(object):
     the `saveable_objects` map in the `SavedObject` proto.
     """
     checkpoint_factory_map, registered_savers = (
-        checkpoint_util.get_checkpoint_factories_and_keys(self.object_names))
+        save_util_v1.get_checkpoint_factories_and_keys(self.object_names))
     self._obj_to_registered_saver = object_identity.ObjectIdentityDictionary()
     for saver_name, trackables in registered_savers.items():
       for trackable in trackables.values():
@@ -432,12 +435,12 @@ def _gen_save_and_restore_functions(checkpoint_factory_map):
   for resources.
 
   This function is intended to run on the output of
-  `checkpoint_util.get_checkpoint_factories_and_keys(object_names)`,
+  `save_util_v1.get_checkpoint_factories_and_keys(object_names)`,
   which returns the generated a map of `_CheckpointFactoryData`.
 
   Args:
     checkpoint_factory_map: A dictionary mapping trackable objects to
-      _CheckpointFactoryData.
+      a list of `_CheckpointFactoryData`.
 
   Returns:
     Tuple of (
@@ -449,23 +452,20 @@ def _gen_save_and_restore_functions(checkpoint_factory_map):
   saveable_fn_map = object_identity.ObjectIdentityDictionary()
 
   for obj, factory_data_list in checkpoint_factory_map.items():
-    for factory_data in factory_data_list:
-      saveable_factory = factory_data.factory
-      attribute_name = factory_data.name
+    if resource_variable_ops.is_resource_variable(obj) or not factory_data_list:
+      # There is no need to trace the save and restore functions for variables.
+      continue
 
-      # If object revives as a resource (or TPU/Mirrored) variable,
-      # there is no need to trace the save and restore functions.
-      if (resource_variable_ops.is_resource_variable(obj) or
-          resource_variable_ops.is_resource_variable(saveable_factory) or
-          not callable(saveable_factory)):
-        continue
-      concrete_save, concrete_restore = (
-          saveable_object_util.trace_save_restore_functions(
-              saveable_factory, obj))
-      if not concrete_save:
-        continue
-      saveable_fn_map.setdefault(obj, {})[attribute_name] = (concrete_save,
-                                                             concrete_restore)
+    if factory_data_list[0].name == trackable_utils.SERIALIZE_TO_TENSORS_NAME:
+      # Trace Trackable save and restore functions.
+      assert len(factory_data_list) == 1
+      saveable_fn_map[obj] = {trackable_utils.SERIALIZE_TO_TENSORS_NAME: (
+          tracing_utils.trace_save_and_restore(obj))}
+    else:
+      # Trace deprecated SaveableObject save and restore functions.
+      saveable_fn_map[obj] = (
+          saveable_object_util.trace_save_restore_function_map(
+              obj, factory_data_list))
   return saveable_fn_map
 
 
@@ -833,7 +833,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   for obj in object_map.values():
     obj._maybe_initialize_trackable()  # pylint: disable=protected-access
   named_saveable_objects, registered_savers = (
-      checkpoint_util.frozen_saveables_and_savers(
+      save_util_v1.frozen_saveables_and_savers(
           graph_view=saveable_view.augmented_graph_view,
           object_map=object_map,
           to_graph=exported_graph,
@@ -847,7 +847,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
     meta_graph_def.saver_def.CopyFrom(saver_def)
 
   # At this point all nodes that can be added to the SavedObjectGraph have been
-  # added, so run the following to validate deserialization depenencies.
+  # added, so run the following to validate deserialization dependencies.
   _dependency_sorted_node_ids(saveable_view)
 
   graph_def = exported_graph.as_graph_def(add_shapes=True)
@@ -1229,6 +1229,7 @@ def save(obj, export_dir, signatures=None, options=None):
   # pylint: enable=line-too-long
   metrics.IncrementWriteApi(_SAVE_V2_LABEL)
   save_and_return_nodes(obj, export_dir, signatures, options)
+
   metrics.IncrementWrite(write_version="2")
 
 
@@ -1294,16 +1295,22 @@ def save_and_return_nodes(obj,
   # as we build up the C++ API.
   pywrap_saved_model.Save(export_dir)
 
+  saved_model_serialized = saved_model.SerializeToString(deterministic=True)
+
+  # Write fingerprint protobuf, if requested.
+  if flags.config().saved_model_fingerprinting.value():
+    fingerprint_path = file_io.join(
+        compat.as_str(export_dir),
+        compat.as_str(constants.FINGERPRINT_FILENAME))
+    fingerprint_proto = fingerprinting.CreateFingerprintDef(
+        saved_model_serialized)
+    file_io.atomic_write_string_to_file(fingerprint_path, fingerprint_proto)
+
   path = file_io.join(
       compat.as_str(export_dir),
       compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
   file_io.atomic_write_string_to_file(
       path, saved_model.SerializeToString(deterministic=True))
-
-  # Write fingerprint, if requested.
-  if flags.config().saved_model_fingerprinting.value():
-    # Do nothing for now.
-    pass
 
   # Save debug info, if requested.
   if options.save_debug_info:

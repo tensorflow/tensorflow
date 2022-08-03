@@ -64,7 +64,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       Exp(Add(x, half));
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
-      add_and_exp_ = computation_status.ConsumeValueOrDie();
+      add_and_exp_ = std::move(computation_status).value();
     }
 
     // Create a computation for a binary user function: (x, y) => x + y
@@ -75,7 +75,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       Add(x, y);
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
-      add_ = computation_status.ConsumeValueOrDie();
+      add_ = std::move(computation_status).value();
     }
 
     // Create a computation for a sigmoid function: x => 1 / (1 + exp(-x))
@@ -86,7 +86,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       Div(one, Add(one, Exp(Neg(x))));
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
-      sigmoid_ = computation_status.ConsumeValueOrDie();
+      sigmoid_ = std::move(computation_status).value();
     }
 
     // Create a computation for a binary max function: (x, y) => max (x, y)
@@ -97,7 +97,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       Max(x, y);
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
-      max_ = computation_status.ConsumeValueOrDie();
+      max_ = std::move(computation_status).value();
     }
 
     // Create a computation for a binary GT function: (x, y) => x > y
@@ -108,7 +108,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       Gt(x, y);
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
-      gt_ = computation_status.ConsumeValueOrDie();
+      gt_ = std::move(computation_status).value();
     }
   }
 
@@ -116,12 +116,11 @@ class HloCostAnalysisTest : public ::testing::Test {
   std::unique_ptr<HloModule> BuildHloGraph(XlaBuilder* builder) {
     auto computation_status = builder->Build();
     TF_CHECK_OK(computation_status.status());
-    auto computation = computation_status.ConsumeValueOrDie();
+    auto computation = std::move(computation_status).value();
     auto config = HloModule::CreateModuleConfigFromProto(computation.proto(),
                                                          DebugOptions())
-                      .ConsumeValueOrDie();
-    return HloModule::CreateFromProto(computation.proto(), config)
-        .ConsumeValueOrDie();
+                      .value();
+    return HloModule::CreateFromProto(computation.proto(), config).value();
   }
 
   Client* client_;
@@ -628,6 +627,65 @@ TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
 }
 
 using FusionCostAnalysis = HloTestBase;
+
+TEST_F(FusionCostAnalysis, LoopFusionDynUpdateSlice) {
+  // Test for b/234935631.
+  // DynamicUpdateSlice within a loop fusion needs to respect operand-output
+  // aliasing.
+  const char* hlo_fusion_module_str = R"(
+  HloModule module
+
+  _.1 {
+    tmp_0 = bf16[50,32,256,1152]{3,2,1,0:T(8,128)(2,1)} parameter(0)
+    tmp_1 = bf16[50,32,256,1152]{3,2,1,0:T(8,128)(2,1)} parameter(2)
+    tmp_2 = s32[]{:T(128)} parameter(1)
+    tmp_3 = s32[]{:T(128)} constant(0)
+    tmp_4 = bf16[1,32,256,1152]{3,2,1,0:T(8,128)(2,1)S(3)} dynamic-slice(tmp_1, tmp_2, tmp_3, tmp_3, tmp_3), dynamic_slice_sizes={1,32,256,1152}
+    tmp_11 = bf16[50,32,256,1152]{3,2,1,0:T(8,128)(2,1)} dynamic-update-slice(tmp_0, tmp_4, tmp_2, tmp_3, tmp_3, tmp_3)
+    ROOT tmp_20 = (bf16[50,32,256,1152]{3,2,1,0:T(8,128)(2,1)}) tuple(tmp_11)
+  }
+
+  ENTRY _ {
+    _0 = bf16[50,32,256,1152]{3,2,1,0:T(8,128)(2,1)} parameter(0)
+    _1 = s32[]{:T(128)} parameter(1)
+    _4 = bf16[50,32,256,1152]{3,2,1,0:T(8,128)(2,1)} parameter(2)
+    ROOT _ = (bf16[50,32,256,1152]{3,2,1,0:T(8,128)(2,1)}) fusion(_0, _1, _4), kind=kLoop, calls=_.1
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  HloCostAnalysis fusion_analysis(ShapeSize);
+
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
+
+  const char* hlo_dus_module_str = R"(
+  HloModule module
+
+  ENTRY _ {
+    _0 = bf16[50,32,256,1152]{3,2,1,0:T(8,128)(2,1)} parameter(0)
+    _1 = s32[]{:T(128)} parameter(1)
+    _2 = bf16[1,32,256,1152]{3,2,1,0:T(8,128)(2,1)} parameter(2)
+    ROOT _ = bf16[50,32,256,1152]{3,2,1,0:T(8,128)(2,1)} dynamic-update-slice(_0, _2, _1, _1, _1, _1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto dus_module,
+                          ParseAndReturnVerifiedModule(hlo_dus_module_str));
+  HloCostAnalysis dus_analysis(ShapeSize);
+  auto dus = dus_module->entry_computation()->root_instruction();
+  ASSERT_IS_OK(dus->Accept(&dus_analysis));
+  EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 0), 0);
+  EXPECT_EQ(fusion_analysis.bytes_accessed(), dus_analysis.bytes_accessed());
+  EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 0),
+            dus_analysis.operand_bytes_accessed(*dus, 0));
+  EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 1),
+            dus_analysis.operand_bytes_accessed(*dus, 2));
+  EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 2),
+            dus_analysis.operand_bytes_accessed(*dus, 1));
+  EXPECT_EQ(fusion_analysis.output_bytes_accessed(*fusion),
+            dus_analysis.output_bytes_accessed(*dus));
+}
 
 TEST_F(FusionCostAnalysis, LoopFusion) {
   // Do this 4 times with different per-second rates to test the computation of

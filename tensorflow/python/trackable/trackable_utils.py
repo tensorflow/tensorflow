@@ -108,7 +108,13 @@ _OPTIMIZER_SLOTS_NAME = _ESCAPE_CHAR + "OPTIMIZER_SLOT"
 # Keyword for separating the path to an object from the name of an
 # attribute in checkpoint names. Used like:
 #   <path to variable>/<_OBJECT_ATTRIBUTES_NAME>/<name of attribute>
-_OBJECT_ATTRIBUTES_NAME = _ESCAPE_CHAR + "ATTRIBUTES"
+OBJECT_ATTRIBUTES_NAME = _ESCAPE_CHAR + "ATTRIBUTES"
+
+# A constant string that is used to reference the save and restore functions of
+#  Trackable objects that define `_serialize_to_tensors` and
+# `_restore_from_tensors`. This is written as the key in the
+# `SavedObject.saveable_objects<string, SaveableObject>` map in the SavedModel.
+SERIALIZE_TO_TENSORS_NAME = _ESCAPE_CHAR + "TENSORS"
 
 
 def escape_local_name(name):
@@ -129,9 +135,14 @@ def object_path_to_string(node_path_arr):
 
 def checkpoint_key(object_path, local_name):
   """Returns the checkpoint key for a local attribute of an object."""
+  key_suffix = escape_local_name(local_name)
+  if local_name == SERIALIZE_TO_TENSORS_NAME:
+    # In the case that Trackable uses the _serialize_to_tensor API for defining
+    # tensors to save to the checkpoint, the suffix should be the key(s)
+    # returned by `_serialize_to_tensor`. The suffix used here is empty.
+    key_suffix = ""
 
-  return (f"{object_path}/{_OBJECT_ATTRIBUTES_NAME}/"
-          f"{escape_local_name(local_name)}")
+  return f"{object_path}/{OBJECT_ATTRIBUTES_NAME}/{key_suffix}"
 
 
 def slot_variable_key(variable_path, optimizer_path, slot_name):

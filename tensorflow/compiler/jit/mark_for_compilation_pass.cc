@@ -1189,6 +1189,24 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
+absl::flat_hash_set<string> GetOrCreateClusterExcludeList() {
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
+  absl::flat_hash_set<string> excludelist;
+  for (auto s : absl::StrSplit(flags->tf_xla_cluster_exclude_ops, ',')) {
+    if (!s.empty()) {
+      excludelist.insert(string(s));
+    }
+  }
+  if (VLOG_IS_ON(2) && !excludelist.empty()) {
+    std::vector<string> vexcludelist(excludelist.begin(), excludelist.end());
+    absl::c_sort(vexcludelist);
+    VLOG(2) << "XLA clustering will exclude following TF operations from auto "
+               "clustering: "
+            << absl::StrJoin(vexcludelist, " ");
+  }
+  return excludelist;
+}
+
 absl::flat_hash_set<string> GetOrCreateAllowlist() {
   absl::flat_hash_map<string, std::vector<string>>* allowlist_table =
       tensorflow::GetAllowlistTable();
@@ -1289,12 +1307,25 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
+    auto cluster_exclude_op_list = GetOrCreateClusterExcludeList();
     RecursiveCompilabilityChecker::OperationFilter filter =
         CreateOperationFilter(*registration);
     filter.require_always_compilable = true;
     filter.allow_string_consts = false;
     filter.allow_collective_reduce_v2 = false;
     filter.allow_unique_op = false;
+    filter.allow_where_op = true;
+
+    for (const auto& s : cluster_exclude_op_list) {
+      if (s == "Where") {
+        filter.allow_where_op = false;
+      } else {
+        return errors::InvalidArgument(
+            "The operation '", s,
+            "' passed to --tf_xla_cluster_exclude_ops is not supported by "
+            "XLA.");
+      }
+    }
 
     RecursiveCompilabilityChecker checker(
         filter, DeviceType{registration->compilation_device_name});
@@ -1968,6 +1999,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "BesselI1e",
       "Betainc",
       "BiasAddV1",
+      "Bincount",
       "Bucketize",
       "Case",
       "CheckNumerics",
@@ -1982,6 +2014,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "Cross",
       "Cumprod",
       "Cumsum",
+      "DenseBincount",
       "DataFormatDimMap",
       "DataFormatVecPermute",
       "DepthToSpace",
@@ -2175,6 +2208,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "TensorScatterUpdate",
       "ToBool",
       "TridiagonalSolve",
+      "TridiagonalMatMul",
       "TruncatedNormal",
       "Unique",
       "UniqueV2",
@@ -2188,6 +2222,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "Where",
       "While",
       "XlaBroadcastHelper",
+      "XlaCallModule",
       "XlaConcatND",
       "XlaConv",
       "XlaConvV2",

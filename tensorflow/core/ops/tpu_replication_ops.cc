@@ -44,7 +44,7 @@ REGISTER_OP("TPUReplicatedInput")
     .Attr("N: int >= 1")
     .Attr("T: type")
     .Attr("is_mirrored_variable: bool = false")
-    // Index of the input. If is_mirrored_variable is true, this is ignored.
+    // `index` attribute is unused
     .Attr("index: int = -1")
     // All inputs are packed into one input
     .Attr("is_packed: bool = false")

@@ -460,6 +460,7 @@ class _BoundedTensorSpecCodec(object):
         name=(name if name else None))
 
 
+# TODO(b/238903802): Use TraceType serialization and specific protos.
 class _TypeSpecCodec(object):
   """Codec for `tf.TypeSpec`."""
 

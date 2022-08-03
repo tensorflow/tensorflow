@@ -20,8 +20,6 @@ load("//third_party/llvm:setup.bzl", "llvm_setup")
 load("//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("//third_party/absl:workspace.bzl", absl = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
-load("//third_party/clog:workspace.bzl", clog = "repo")
-load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 load("//third_party/eigen3:workspace.bzl", eigen3 = "repo")
 load("//third_party/farmhash:workspace.bzl", farmhash = "repo")
@@ -57,8 +55,6 @@ def _initialize_third_party():
     FP16()
     absl()
     benchmark()
-    clog()  # Note: needed only by XNNPACK, at some point it should be removed
-    cpuinfo()
     dlpack()
     eigen3()
     farmhash()
@@ -134,9 +130,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "bdb10fe1c862992d786a3a4b44eb221d674d5afac7cd6112925a28482b17ef1b",
-        strip_prefix = "XNNPACK-087b58c98590e1718e8372cff4068528559ec0fe",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/087b58c98590e1718e8372cff4068528559ec0fe.zip"),
+        sha256 = "21cf16fb50c32682b8548cde83933bbd90b884983c50b9db7550002a72a75ad5",
+        strip_prefix = "XNNPACK-8e3d3359f9bec608e09fac1f7054a2a14b1bd73c",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/8e3d3359f9bec608e09fac1f7054a2a14b1bd73c.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -152,6 +148,20 @@ def _tf_repositories():
         sha256 = "b96413b10dd8edaa4f6c0a60c6cf5ef55eebeef78164d5d69294c8173457f0ec",
         strip_prefix = "pthreadpool-b8374f80e42010941bda6c85b0e3f1a1bd77a1e0",
         urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/b8374f80e42010941bda6c85b0e3f1a1bd77a1e0.zip"),
+    )
+
+    tf_http_archive(
+        name = "clog",
+        strip_prefix = "cpuinfo-5e63739504f0f8e18e941bd63b2d6d42536c7d90",
+        sha256 = "18eca9bc8d9c4ce5496d0d2be9f456d55cbbb5f0639a551ce9c8bac2e84d85fe",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/5e63739504f0f8e18e941bd63b2d6d42536c7d90.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "cpuinfo",
+        strip_prefix = "cpuinfo-5e63739504f0f8e18e941bd63b2d6d42536c7d90",
+        sha256 = "18eca9bc8d9c4ce5496d0d2be9f456d55cbbb5f0639a551ce9c8bac2e84d85fe",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/5e63739504f0f8e18e941bd63b2d6d42536c7d90.tar.gz"),
     )
 
     tf_http_archive(
@@ -174,15 +184,15 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "9695640f55acd833ddcef4776af15e03446c4655f9296e5074b1b178dd7a4fb2",
-        strip_prefix = "oneDNN-2.6",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.6.tar.gz"),
+        sha256 = "0ff70240378aa26e1fc3edf66d14964e614ef2f9278514182cd43b34ced9af21",
+        strip_prefix = "oneDNN-2.6.1",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.6.1.tar.gz"),
     )
 
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        patch_file = ["//third_party/mkl_dnn:onednn_acl.patch"],
+        patch_file = ["//third_party/mkl_dnn:onednn_acl.patch", "//third_party/mkl_dnn:onednn_acl_threadpool_support.patch"],
         sha256 = "9695640f55acd833ddcef4776af15e03446c4655f9296e5074b1b178dd7a4fb2",
         strip_prefix = "oneDNN-2.6",
         urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.6.tar.gz"),
@@ -190,11 +200,11 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "11244b05259fb1c4af7384d0c3391aeaddec8aac144774207582db4842726540",
-        strip_prefix = "ComputeLibrary-22.02",
+        sha256 = "94e2e9ff87c261a9c9987bc9024c449c48014f7fe707311bdfa76b87f3dda5c5",
+        strip_prefix = "ComputeLibrary-22.05",
         build_file = "//third_party/compute_library:BUILD",
-        patch_file = ["//third_party/compute_library:compute_library.patch"],
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.02.tar.gz"),
+        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:activation_func_correct_args.patch"],
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.05.tar.gz"),
     )
 
     tf_http_archive(
@@ -482,10 +492,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "93fb2cd4b880656b4e8589c912a9fd092750166d555166370247f09d18f5d0c0",
-        strip_prefix = "curl-7.83.1",
+        sha256 = "3c6893d38d054d4e378267166858698899e9d87258e8ff1419d020c395384535",
+        strip_prefix = "curl-7.84.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.83.1.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.84.0.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -584,9 +594,9 @@ def _tf_repositories():
         name = "nccl_archive",
         build_file = "//third_party:nccl/archive.BUILD",
         patch_file = ["//third_party/nccl:archive.patch"],
-        sha256 = "3ae89ddb2956fff081e406a94ff54ae5e52359f5d645ce977c7eba09b3b782e6",
-        strip_prefix = "nccl-2.8.3-1",
-        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.8.3-1.tar.gz"),
+        sha256 = "d5f5243200d4e40683c56f04435bfd6defa379cb4f2b8c07b0f191df0f66c3d9",
+        strip_prefix = "nccl-2.13.4-1",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.13.4-1.tar.gz"),
     )
 
     java_import_external(

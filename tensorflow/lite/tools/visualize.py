@@ -459,7 +459,9 @@ def create_html(tflite_input, input_is_filepath=True):  # pylint: disable=invali
   html += _CSS
   html += "<h1>TensorFlow Lite Model</h2>"
 
-  data["filename"] = tflite_input  # Avoid special case
+  data["filename"] = tflite_input if input_is_filepath else (
+      "Null (used model object)")  # Avoid special case
+
   toplevel_stuff = [("filename", None), ("version", None),
                     ("description", None)]
 

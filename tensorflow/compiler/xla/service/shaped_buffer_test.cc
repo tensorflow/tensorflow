@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 
 #include <memory>
+#include <utility>
 
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -168,7 +169,7 @@ TEST(ScopedShapedBufferTest, TestSubShapeTree) {
       });
   auto ssb_statusor = sb.SubShapedBuffer({1});
   ASSERT_TRUE(ssb_statusor.ok());
-  auto ssb = ssb_statusor.ConsumeValueOrDie();
+  auto ssb = std::move(ssb_statusor).value();
   EXPECT_EQ(ssb.on_host_shape(), array_shape);
   EXPECT_EQ(ssb.on_device_shape(), array_shape);
 }

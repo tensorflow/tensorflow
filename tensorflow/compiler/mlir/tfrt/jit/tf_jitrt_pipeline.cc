@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"
+#include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
@@ -27,12 +28,12 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
 
 // -------------------------------------------------------------------------- //
 // Custom passes that are missing upstream.
@@ -205,6 +206,9 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(mlir::createLowerIndexCastPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  // Convert complex types.
+  pm.addPass(mlir::createConvertComplexToStandardPass());
 
   // Add linalg passes to perform fusion, tiling, peeling and vectorization.
   AddLinalgTransformations(pm, options);

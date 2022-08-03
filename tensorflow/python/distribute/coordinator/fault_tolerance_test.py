@@ -682,6 +682,8 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     model.join_training_functions()
     self.assertGreaterEqual(model.iterations.numpy(), 10)
 
+    self._cluster.start_task("worker", 0)
+
 
 class MultiWorkerFaultToleranceTest(BaseFaultToleranceTest, test.TestCase):
   """Multi worker fault tolerance tests.

@@ -482,9 +482,10 @@ class ReversePostOrderFusionQueue : public FusionQueue {
 }  // namespace
 
 std::vector<HloComputation*> InstructionFusion::GetFusionComputations(
-    HloModule* module) {
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Use sorted computations because fusion configuration is order-sensitive.
-  return module->MakeNonfusionComputationsSorted();
+  return module->MakeNonfusionComputationsSorted(execution_threads);
 }
 
 std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
@@ -492,7 +493,9 @@ std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
   return std::make_unique<ReversePostOrderFusionQueue>(computation);
 }
 
-StatusOr<bool> InstructionFusion::Run(HloModule* module) {
+StatusOr<bool> InstructionFusion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   int64_t fuse_count = 0;
   std::vector<std::vector<bool>>* fusion_config = nullptr;
@@ -506,7 +509,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool dump_fusion =
       module->config().debug_options().xla_dump_fusion_visualization();
 
-  for (auto* computation : GetFusionComputations(module)) {
+  for (auto* computation : GetFusionComputations(module, execution_threads)) {
     CHECK(!computation->IsFusionComputation());
     std::unique_ptr<HloReachabilityMap> reachability =
         HloReachabilityMap::Build(computation);

@@ -1077,6 +1077,10 @@ tf_module {
     argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'uncompress_fn\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'uncompress\', \'cross_trainer_cache_options\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'False\', \'\', \'None\'], "
   }
   member_method {
+    name: "DataServiceDatasetV4"
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'uncompress_fn\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'uncompress\', \'cross_trainer_cache_options\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'False\', \'\', \'None\'], "
+  }
+  member_method {
     name: "DatasetCardinality"
     argspec: "args=[\'input_dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2217,6 +2221,10 @@ tf_module {
     argspec: "args=[\'start\', \'stop\', \'num\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ListDataset"
+    argspec: "args=[\'tensors\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
     name: "ListDiff"
     argspec: "args=[\'x\', \'y\', \'out_idx\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
@@ -2570,7 +2578,7 @@ tf_module {
   }
   member_method {
     name: "MergeV2Checkpoints"
-    argspec: "args=[\'checkpoint_prefixes\', \'destination_prefix\', \'delete_old_dirs\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'checkpoint_prefixes\', \'destination_prefix\', \'delete_old_dirs\', \'allow_missing_files\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
   }
   member_method {
     name: "Mfcc"
@@ -3519,6 +3527,10 @@ tf_module {
   member_method {
     name: "RegisterDataset"
     argspec: "args=[\'dataset\', \'address\', \'protocol\', \'external_state_policy\', \'element_spec\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "RegisterDatasetV2"
+    argspec: "args=[\'dataset\', \'address\', \'protocol\', \'external_state_policy\', \'element_spec\', \'requested_dataset_id\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "Relu"

@@ -427,10 +427,10 @@ function test_xml_summary_exit {
 # https://github.com/tensorflow/build/blob/master/tf_sig_build_dockerfiles/devel.usertools/wheel_verification.bats
 # instead. See go/tf-devinfra/docker.
 # CPU size
-MAC_CPU_MAX_WHL_SIZE=225M
+MAC_CPU_MAX_WHL_SIZE=240M
 WIN_CPU_MAX_WHL_SIZE=170M
 # GPU size
-WIN_GPU_MAX_WHL_SIZE=345M
+WIN_GPU_MAX_WHL_SIZE=360M
 
 function test_tf_whl_size() {
   WHL_PATH=${1}

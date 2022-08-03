@@ -92,12 +92,6 @@ std::unique_ptr<mlir::OperationPass<func::FuncOp>> CreateMapParallelLoopsPass();
 std::unique_ptr<mlir::OperationPass<func::FuncOp>>
 CreateFuseInnerParallelLoopsPass();
 
-// Pass to create vectorized code for CPU.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationPass();
-
-// Pass to remove unneeded code generated in VectorizationPass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationCleanupPass();
-
 // Pass to remove copies which are consumed by a GenericOp.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateCopyCleanupPass();
 

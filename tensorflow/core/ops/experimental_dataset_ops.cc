@@ -1466,6 +1466,31 @@ REGISTER_OP("DataServiceDatasetV3")
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
 
+// Changes `dataset_id` from int64 to string.
+REGISTER_OP("DataServiceDatasetV4")
+    .Input("dataset_id: string")
+    .Input("processing_mode: string")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Input("job_name: string")
+    .Input("consumer_index: int64")
+    .Input("num_consumers: int64")
+    .Input("max_outstanding_requests: int64")
+    .Input("iteration_counter: resource")
+    .Output("handle: variant")
+    .Attr("task_refresh_interval_hint_ms: int = -1")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("data_transfer_protocol: string = ''")
+    .Attr("target_workers: string = 'AUTO'")
+    .Attr("uncompress: bool = false")
+    .Attr("uncompress_fn: func")
+    .Attr("cross_trainer_cache_options: string = ''")
+    .SetIsStateful()
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
+                                                           "output_types"))
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("RegisterDataset")
     .Input("dataset: variant")
     .Input("address: string")
@@ -1473,6 +1498,18 @@ REGISTER_OP("RegisterDataset")
     .Output("dataset_id: int64")
     .Attr("external_state_policy: int")
     .Attr("element_spec: string = ''")
+    .Attr("metadata: string = ''")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+// Changes `dataset_id` from int64 to string.
+REGISTER_OP("RegisterDatasetV2")
+    .Input("dataset: variant")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Output("dataset_id: string")
+    .Attr("external_state_policy: int")
+    .Attr("element_spec: string = ''")
+    .Attr("requested_dataset_id: string = ''")
     .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
@@ -1485,5 +1522,24 @@ REGISTER_OP("InitializeTableFromDataset")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
       return OkStatus();
     });
+
+// - `output_types` is the types of tensors in a single dataset element.
+// - `output_shapes` is the shapes of tensors in a single dataset element.
+// - `output_types` and `output_shapes` are the same size: the number of
+// tensors in a single dataset element, a.k.a. the number of components.
+// - `Tinput_types` is the types of tensors for all dataset elements.
+// `Tinput_types` is equivalent to `output_types` repeated for N total dataset
+// elements.
+REGISTER_OP("ListDataset")
+    .Input("tensors: Tinput_types")
+    .Output("handle: variant")
+    .Attr("Tinput_types: list(type) >= 1")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
+    .SetDoNotOptimize()
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
+                                                           "output_types"))
+    .SetShapeFn(shape_inference::ScalarShape);
 
 }  // namespace tensorflow

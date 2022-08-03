@@ -938,7 +938,7 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
     if (registered_function == nullptr) {
       registered_function = new RegisteredFunction;
       registered_function->cached_kernel_keys =
-          absl::make_unique<std::vector<Fprint128>>();
+          std::make_unique<std::vector<Fprint128>>();
       gtl::InsertOrUpdate(&registered_functions_, fdef.signature().name(),
                           registered_function);
     } else {

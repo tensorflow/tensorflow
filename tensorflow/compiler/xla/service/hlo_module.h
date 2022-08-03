@@ -205,6 +205,27 @@ class HloModule {
             MakeUnwrappingIterator(computations_.end())};
   }
 
+  // Similar as above, but return a filtered view of computations for specified
+  // `execution_threads`. Empty `execution_threads` list means all execution
+  // threads are included.
+  tensorflow::gtl::iterator_range<FilteringUnwrappingIterator<
+      std::vector<std::unique_ptr<HloComputation>>::const_iterator,
+      std::function<bool(const HloComputation*)>>>
+  computations(
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const {
+    // Pass execution_threads by value to the predicate to ensure it lives
+    // beyond this function.
+    std::function<bool(const HloComputation*)> pred =
+        [execution_threads](const HloComputation* computation) {
+          if (execution_threads.empty()) {
+            return true;
+          }
+          return execution_threads.contains(computation->execution_thread());
+        };
+    return MakeFilteringUnwrappingIteratorRange(computations_.begin(),
+                                                computations_.end(), pred);
+  }
+
   // Returns the computation in this module that has the name `name`.  Returns
   // null if there is no such computation.
   HloComputation* GetComputationWithName(absl::string_view name);
@@ -231,16 +252,31 @@ class HloModule {
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
-  std::vector<HloComputation*> MakeComputationPostOrder() const;
-
-  // Same as MakeComputationPostOrder() but only returns the computations
-  // that are also found in the passed in allowList
+  std::vector<HloComputation*> MakeComputationPostOrder() const {
+    return MakeComputationPostOrder({});
+  }
+  // Similar as above but only returns computations with specified
+  // `execution_threads`. Empty `execution_threads` list means all execution
+  // threads are included.
   std::vector<HloComputation*> MakeComputationPostOrder(
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
+  // Same as MakeComputationPostOrder() but only returns the computations that
+  // are on specified `execution_threads` and are also found in the passed in
+  // allowList. Empty `execution_threads` list means all execution threads are
+  // included.
+  std::vector<HloComputation*> MakeComputationPostOrder(
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
       const absl::flat_hash_set<HloComputation*>& allow_list) const;
 
   // Same as MakeComputationPostOrder() but sorting the computations by their
   // contents. The order is longer post order.
-  std::vector<HloComputation*> MakeComputationSorted() const;
+  std::vector<HloComputation*> MakeComputationSorted() const {
+    return MakeComputationSorted({});
+  }
+  // Same as above but only for specified `execution_threads`. Empty
+  // `execution_threads` list means all execution threads are included.
+  std::vector<HloComputation*> MakeComputationSorted(
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   // Gets the computations in this module which aren't for fusion nodes.
   //
@@ -251,10 +287,22 @@ class HloModule {
   // of the module's non-fusion computations -- that is, it's OK to add or
   // remove computations from a module while iterating over
   // MakeNonfusionComputations().
-  std::vector<HloComputation*> MakeNonfusionComputations() const;
+  std::vector<HloComputation*> MakeNonfusionComputations() const {
+    return MakeNonfusionComputations({});
+  }
+  // Same as above but only for specified `execution_threads`. Empty
+  // `execution_threads` list means all execution threads are included.
+  std::vector<HloComputation*> MakeNonfusionComputations(
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   // Same as MakeNonfusionComputations() but sorting computations by content.
-  std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
+  std::vector<HloComputation*> MakeNonfusionComputationsSorted() const {
+    return MakeNonfusionComputationsSorted({});
+  }
+  // Same as above but only for specified `execution_threads`. Empty
+  // `execution_threads` list means all execution threads are included.
+  std::vector<HloComputation*> MakeNonfusionComputationsSorted(
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   HloModuleConfig& config() { return config_; }
   const HloModuleConfig& config() const { return config_; }

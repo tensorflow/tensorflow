@@ -67,7 +67,7 @@ class HloDataflowAnalysisTest : public HloTestBase,
     EXPECT_TRUE(flatten.Run(module_.get()).ok());
     analysis_ =
         HloDataflowAnalysis::Run(*module_, ssa_form, bitcast_defines_value)
-            .ConsumeValueOrDie();
+            .value();
     return *analysis_;
   }
 
@@ -2067,7 +2067,7 @@ std::unique_ptr<HloDataflowAnalysis> RunAnalysis(
   return HloDataflowAnalysis::Run(module, /*ssa_form=*/false,
                                   /*bitcast_defines_value=*/false,
                                   can_share_buffer)
-      .ConsumeValueOrDie();
+      .value();
 }
 
 using DoesNotUseOperandBufferTest = HloTestBase;

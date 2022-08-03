@@ -65,7 +65,9 @@ static bool IsOrContainsIllegalInstr(const HloInstruction* instr) {
 
 /*static*/ std::atomic<int64_t> HloConstantFolding::slow_op_counter_{0};
 
-StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
+StatusOr<bool> HloConstantFolding::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Limit the constant folding to 0 iterations to skip folding loops. This
   // retains the behavior from before while loop support in HloEvaluator and may
   // be revised.
@@ -75,7 +77,8 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
 
   bool changed = false;
 
-  for (auto* computation : module->MakeNonfusionComputations()) {
+  for (auto* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       // Skip dead code.
       if (instruction->IsDead()) {

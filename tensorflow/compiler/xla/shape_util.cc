@@ -1180,14 +1180,11 @@ Status ForEachMutableSubshapeHelper(
   return new_shape;
 }
 
-/* static */ std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
+/* static */ std::optional<ShapeUtil::ShapeEqualityDescriptor>
 ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
                                              const Shape& shape_post) {
   CHECK(shape_pre.IsArray());
   CHECK(shape_post.IsArray());
-
-  auto nil =
-      std::make_tuple(false, std::vector<int64_t>(), std::vector<int64_t>());
 
   std::vector<int64_t> deleted_indices;
   std::vector<int64_t> inserted_indices;
@@ -1234,11 +1231,11 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
             ? unmodified_dims[i]
             : std::make_pair(shape_pre.rank(), shape_post.rank());
     if (!check_modified_dims(prior_unmodified_dim_pair, unmodified_dim_pair)) {
-      return nil;
+      return std::nullopt;
     }
   }
 
-  return std::make_tuple(true, deleted_indices, inserted_indices);
+  return ShapeEqualityDescriptor{deleted_indices, inserted_indices};
 }
 
 /* static */ std::vector<std::pair<int64_t, int64_t>>
@@ -1600,7 +1597,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     if (compatible) {
       auto subshape_result = TryGetSubshape(bounded_shape, index);
       if (subshape_result.ok()) {
-        const Shape* bounded_sub_shape = subshape_result.ConsumeValueOrDie();
+        const Shape* bounded_sub_shape = std::move(subshape_result).value();
         if (sub_shape.IsTuple()) {
           if (!bounded_sub_shape->IsTuple()) {
             compatible = false;
@@ -1676,9 +1673,9 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
                                                   dimensions);
 }
 
-/*static*/ std::optional<std::vector<int64_t>> ShapeUtil::FindTranspose021(
+/* static */ std::optional<Vector3> ShapeUtil::FindTranspose021(
     const Shape& a, const Shape& b) {
-  if (!CompatibleIgnoringElementType(a, b)) {
+  if (!ShapeUtil::CompatibleIgnoringElementType(a, b)) {
     return std::nullopt;
   }
 
@@ -1699,7 +1696,7 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
         ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(a);
     Shape normalized_shape = MergeDimensions(segments, descending_layout_shape);
     absl::Span<const int64_t> normalized_dims = normalized_shape.dimensions();
-    std::vector<int64_t> dims_021;
+    Vector3 dims_021;
     if (2 == segments.size()) {
       // The logical component-0 is of size one.
       dims_021 = {1, normalized_dims[1], normalized_dims[0]};

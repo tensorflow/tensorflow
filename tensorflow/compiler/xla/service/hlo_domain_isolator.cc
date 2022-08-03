@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -57,10 +58,12 @@ StatusOr<int64_t> AddExitDomains(HloInstruction* instruction,
   return added_domains;
 }
 
-StatusOr<bool> RunInternal(HloModule* module,
-                           HloDomainIsolator::DomainCreator* creator) {
+StatusOr<bool> RunInternal(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    HloDomainIsolator::DomainCreator* creator) {
   int64_t added_domains = 0;
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     // Walk in post order and place all the required kDomain instructions.
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
@@ -99,18 +102,34 @@ HloDomainIsolator::HloDomainIsolator(DomainCreatorFactory creator_factory)
     : creator_factory_(std::move(creator_factory)) {}
 
 StatusOr<bool> HloDomainIsolator::UpdateDomains(HloInstruction* instruction) {
+  DomainCreator creator = creator_factory_();
+  bool changed = false;
+  // Update exit domains.
   TF_ASSIGN_OR_RETURN(const int64_t removed_domains,
                       HloDomainRemover::RemoveExitDomains(
                           instruction, ShardingMetadata::KindName()));
-  DomainCreator creator = creator_factory_();
   TF_ASSIGN_OR_RETURN(const int64_t added_domains,
                       AddExitDomains(instruction, &creator));
-  return removed_domains > 0 || added_domains > 0;
+  changed |= (removed_domains > 0 || added_domains > 0);
+  // Update the instruction ifself if it's a domain.
+  if (instruction->opcode() == HloOpcode::kDomain) {
+    for (HloInstruction* operand : instruction->operands()) {
+      TF_ASSIGN_OR_RETURN(const int64_t removed_domains,
+                          HloDomainRemover::RemoveExitDomains(
+                              operand, ShardingMetadata::KindName()));
+      TF_ASSIGN_OR_RETURN(const int64_t added_domains,
+                          AddExitDomains(operand, &creator));
+      changed |= (removed_domains > 0 || added_domains > 0);
+    }
+  }
+  return changed;
 }
 
-StatusOr<bool> HloDomainIsolator::Run(HloModule* module) {
+StatusOr<bool> HloDomainIsolator::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   DomainCreator creator = creator_factory_();
-  return RunInternal(module, &creator);
+  return RunInternal(module, execution_threads, &creator);
 }
 
 }  // namespace xla

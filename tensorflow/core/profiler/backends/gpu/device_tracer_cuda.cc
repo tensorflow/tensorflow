@@ -228,7 +228,7 @@ std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
     return nullptr;
   }
   profiler::CuptiInterface* cupti_interface = profiler::GetCuptiInterface();
-  return absl::make_unique<profiler::GpuTracer>(cupti_tracer, cupti_interface);
+  return std::make_unique<profiler::GpuTracer>(cupti_tracer, cupti_interface);
 }
 
 auto register_gpu_tracer_factory = [] {

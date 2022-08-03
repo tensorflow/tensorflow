@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONVOLUTION_TRANSPOSED_THIN_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONVOLUTION_TRANSPOSED_THIN_H_
 
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -100,7 +103,7 @@ void ConvolutionTransposedThin::UploadData(
   }
 
   args_.AddObject("weights",
-                  absl::make_unique<BufferDescriptor>(std::move(desc)));
+                  std::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
 template <DataType S, typename T>

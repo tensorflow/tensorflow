@@ -81,7 +81,7 @@ struct AllocOpConverter : public OpConversionPattern<memref::AllocOp> {
 
     // Symbolic operands that bind to the symbols of the memref's layout map are
     // not supported by TFAllocOp.
-    if (!alloc.symbolOperands().empty()) {
+    if (!alloc.getSymbolOperands().empty()) {
       return failure();
     }
     auto reuse_input_candidates = alloc->getAttrOfType<ArrayAttr>(
@@ -112,11 +112,12 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
     if (!ctx) return failure();
 
     // Operand with no layout is expected.
-    auto operand_memref_type = dealloc.memref().getType().cast<MemRefType>();
+    auto operand_memref_type = dealloc.getMemref().getType().cast<MemRefType>();
     if (!operand_memref_type.getLayout().isIdentity()) {
       return failure();
     }
-    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx, adaptor.memref());
+    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx,
+                                             adaptor.getMemref());
     return success();
   }
 };
@@ -148,7 +149,7 @@ struct JITExecuteOpConverter : public OpConversionPattern<JITExecuteOp> {
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
-    rewriter.replaceOpWithNewOp<JITExecuteOp>(op, op.getResultTypes(), *ctx,
+    rewriter.replaceOpWithNewOp<JITExecuteOp>(op, op.result().getType(), *ctx,
                                               op.callable(), op.operands());
     return success();
   }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/selectors/operation_selector.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -159,14 +160,14 @@ absl::Status AddDynamicConv(ModelHints hints, const GpuInfo& gpu_info,
                             const BHWC& src_shape, const OHWI& weights_shape,
                             const BHWC& dst_shape, int src_id, int weights_id,
                             int dst_id, GPUOperationsSubgraph* gpu_subgraph,
-                            void* attr) {
+                            void* attr = nullptr) {
   gpu_subgraph->operations.reserve(gpu_subgraph->operations.size() + 2);
   gpu_subgraph->operations.push_back({});
   auto& converter_op = gpu_subgraph->operations.back();
   gpu_subgraph->operations.push_back({});
   auto& conv_op = gpu_subgraph->operations.back();
   OperationDef conv_temp_def = op_def;
-  conv_temp_def.src_tensors[1] = {op_def.src_tensors[1].data_type,
+  conv_temp_def.src_tensors[1] = {op_def.src_tensors[1].GetDataType(),
                                   TensorStorageType::BUFFER, Layout::HWC};
   WeightsDescription weights_desc;
   const BHWC weights_shape_bhwc(weights_shape.o, weights_shape.h,
@@ -189,13 +190,12 @@ absl::Status AddDynamicConv(ModelHints hints, const GpuInfo& gpu_info,
     conv_op.operation->flops_ =
         GetConvolutionTransposedFlops(src_shape, weights_shape);
   } else if (op_type == OperationType::BATCHED_MATMUL) {
-    Convolution2DAttributes* conv_attr =
-        reinterpret_cast<Convolution2DAttributes*>(attr);
-    conv_op.operation = SelectConvolutionWithDynamicWeights(
-        *conv_attr, weights_shape_bhwc, dst_shape, gpu_info, conv_temp_def,
-        hints, &weights_desc);
+    conv_op.operation =
+        SelectConvolutionBatchedMatMul(weights_shape, dst_shape, gpu_info,
+                                       conv_temp_def, hints, &weights_desc);
     conv_op.name = "mat_mul_as_convolution";
-    conv_op.operation->flops_ = GetConvolutionFlops(dst_shape, weights_shape);
+    conv_op.operation->flops_ =
+        dst_shape.b * dst_shape.h * dst_shape.w * dst_shape.c * weights_shape.i;
   } else {
     return absl::InternalError("No support of this operation type.");
   }
@@ -231,8 +231,12 @@ absl::Status AddDynamicConv(ModelHints hints, const GpuInfo& gpu_info,
   }
 
   converter_op.input_ids = {weights_id};
-  converter_op.operation =
-      SelectConverterToConvWeights(weights_desc, converter_def, hints);
+  Layout input_layout = Layout::OHWI;
+  if (op_type == OperationType::BATCHED_MATMUL) {
+    input_layout = Layout::HWIO;
+  }
+  converter_op.operation = SelectConverterToConvWeights(
+      weights_desc, converter_def, hints, input_layout);
   converter_op.name = "bhwc_tensor_to_conv_weights";
   return absl::OkStatus();
 }
@@ -340,65 +344,80 @@ absl::Status GPUOperationFromNodePart0(
           "No support of ", node.operation.type, " with this parameters"));
     }
     case OperationType::BATCHED_MATMUL: {
-      // Currently only batch = 1 is supported.
       // Matmul replaced with this sequence:
-      //   1) Transpose second tensor(weights). (1xBxHxW)->(Wx1xBxH)
-      //   2) Run cconvolution with runtime weights
+      //   1) Transpose second tensor(weights). (D0xD1xHxW)->(WxD0xD1xH)
+      //   2) Run convolution with runtime weights
+      //   if batch != 1, input reshaped to hwc and output reshaped from hwc
+      auto first_shape = inputs[0]->tensor.shape;
       auto second_shape = inputs[1]->tensor.shape;
       auto dst_shape = outputs[0]->tensor.shape;
-      if (dst_shape.b != 1) {
-        return absl::UnimplementedError(
-            "Currently only batch = 1 supported for BATCHED_MATMUL.");
-      }
-      const OHWI weights_shape(second_shape.c, 1, second_shape.h,
+      gpu_subgraph->operations.clear();
+      int src_id = static_cast<int>(inputs[0]->id);
+      int dst_id = static_cast<int>(outputs[0]->id);
+      const OHWI weights_shape(second_shape.c, second_shape.b, second_shape.h,
                                second_shape.w);
       const BHWC weights_shape_bhwc(weights_shape.o, weights_shape.h,
                                     weights_shape.w, weights_shape.i);
-      Convolution2DAttributes attr;
-      attr.strides = HW(1, 1);
-      attr.dilations = HW(1, 1);
-      attr.padding.appended = HW(0, 0);
-      attr.padding.prepended = HW(0, 0);
-      attr.bias.shape = Linear(weights_shape.o);
-      attr.bias.data.resize(weights_shape.o, 0.0f);
+      if (dst_shape.b != 1) {
+        const BHWC hwc_input_shape(1, first_shape.b * first_shape.h,
+                                   first_shape.w, first_shape.c);
+        const BHWC hwc_output_shape(1, dst_shape.b * dst_shape.h, dst_shape.w,
+                                    dst_shape.c);
+        TensorDescriptor hwc_input_desc = {
+            op_def.src_tensors[0].GetDataType(),
+            op_def.src_tensors[0].GetStorageType(), Layout::BHWC};
+        TensorDescriptor hwc_output_desc = {
+            op_def.dst_tensors[0].GetDataType(),
+            op_def.dst_tensors[0].GetStorageType(), Layout::BHWC};
+        src_id = gpu_subgraph->AddTensor(hwc_input_shape, hwc_input_desc);
+        dst_id = gpu_subgraph->AddTensor(hwc_output_shape, hwc_output_desc);
 
-      gpu_subgraph->operations.clear();
-      TensorDescriptor transposed_desc = {op_def.src_tensors[1].data_type,
-                                          op_def.src_tensors[1].storage_type,
-                                          Layout::BHWC};
-      RETURN_IF_ERROR(transposed_desc.UpdateToSupportedStorageType(
-          gpu_info, weights_shape_bhwc));
-      gpu_subgraph->operations.resize(1);
-      auto& transpose_op = gpu_subgraph->operations[0];
-      OperationDef transpose_def;
-      transpose_def.precision = op_def.precision;
-      transpose_def.src_tensors.push_back(op_def.src_tensors[1]);
-      transpose_def.dst_tensors.push_back(transposed_desc);
-
-      transpose_op.input_ids = {static_cast<int>(inputs[1]->id)};
-      TransposeAttributes transpose_attr;
-      transpose_attr.perm = BHWC(3, 0, 1, 2);
-      transpose_op.operation = std::make_unique<GPUOperation>(
-          CreateTranspose(transpose_def, transpose_attr));
-      transpose_op.name = "mat_mul_transpose_second_tensor";
-
-      const int transposed_id =
-          gpu_subgraph->AddTensor(weights_shape_bhwc, transposed_desc);
-      transpose_op.output_ids = {transposed_id};
-
+        OperationDef reshape_input_def;
+        reshape_input_def.precision = op_def.precision;
+        reshape_input_def.src_tensors.push_back(op_def.src_tensors[0]);
+        reshape_input_def.dst_tensors.push_back(hwc_input_desc);
+        gpu_subgraph->operations.push_back({});
+        auto& reshape_input_op = gpu_subgraph->operations.back();
+        SelectReshape(first_shape.c, first_shape.c, reshape_input_def,
+                      &reshape_input_op.operation);
+        reshape_input_op.input_ids = {static_cast<int>(inputs[0]->id)};
+        reshape_input_op.output_ids = {src_id};
+        reshape_input_op.name = "mat_mul_reshape_input";
+      }
       OperationDef conv_def = op_def;
-      conv_def.src_tensors[1] = transposed_desc;
-      return AddDynamicConv(hints, gpu_info, conv_def, op_type,
-                            inputs[0]->tensor.shape, weights_shape, dst_shape,
-                            inputs[0]->id, transposed_id, outputs[0]->id,
-                            gpu_subgraph, &attr);
+      RETURN_IF_ERROR(AddDynamicConv(
+          hints, gpu_info, conv_def, op_type, first_shape, weights_shape,
+          dst_shape, src_id, inputs[1]->id, dst_id, gpu_subgraph));
+      if (dst_shape.b != 1) {
+        TensorDescriptor hwc_output_desc = {
+            op_def.dst_tensors[0].GetDataType(),
+            op_def.dst_tensors[0].GetStorageType(), Layout::BHWC};
+
+        OperationDef reshape_output_def;
+        reshape_output_def.precision = op_def.precision;
+        reshape_output_def.src_tensors.push_back(hwc_output_desc);
+        reshape_output_def.dst_tensors.push_back(op_def.dst_tensors[0]);
+        gpu_subgraph->operations.push_back({});
+        auto& reshape_output_op = gpu_subgraph->operations.back();
+        SelectReshape(dst_shape.c, dst_shape.c, reshape_output_def,
+                      &reshape_output_op.operation);
+        reshape_output_op.input_ids = {dst_id};
+        reshape_output_op.output_ids = {static_cast<int>(outputs[0]->id)};
+        reshape_output_op.name = "mat_mul_reshape_output";
+      }
+      return absl::OkStatus();
     }
     case OperationType::CAST:
       SelectCast(op_def, gpu_info, gpu_op);
       return absl::OkStatus();
     case OperationType::CONCAT: {
       auto attr = absl::any_cast<ConcatAttributes>(node.operation.attributes);
-      const int max_inputs = gpu_info.GetMaxImageArguments() - 8;
+      int max_inputs = gpu_info.GetMaxImageArguments() - 8;
+      if (gpu_info.IsMali()) {
+        // Mali can fail clEnqueueNDRangeKernel with "Out of resources" when it
+        // receives too big kernel.
+        max_inputs = std::min(8, max_inputs);
+      }
       if (inputs.size() >= max_inputs) {
         int groups = DivideRoundUp(inputs.size(), max_inputs);
         gpu_subgraph->operations.clear();
@@ -478,7 +497,7 @@ absl::Status GPUOperationFromNodePart0(
                 attr.weights.shape.w, attr.weights.shape.i);
             OperationDef conv_temp_def = op_def;
             conv_temp_def.src_tensors.push_back(
-                {op_def.src_tensors[0].data_type, TensorStorageType::BUFFER,
+                {op_def.src_tensors[0].GetDataType(), TensorStorageType::BUFFER,
                  Layout::HWC});
             *gpu_op = SelectConvolutionWithDynamicWeights(
                 attr, weights_shape_bhwc, output_shape, gpu_info, conv_temp_def,
@@ -555,6 +574,11 @@ absl::Status GPUOperationFromNodePart0(
       }
       return absl::OkStatus();
     }
+    case OperationType::CUMSUM: {
+      auto attr = absl::any_cast<CumsumAttributes>(node.operation.attributes);
+      SelectCumsum(op_def, attr, gpu_op);
+      return absl::OkStatus();
+    }
     case OperationType::DEPTH_TO_SPACE: {
       auto attr =
           absl::any_cast<SpaceToDepthAttributes>(node.operation.attributes);
@@ -588,7 +612,7 @@ absl::Status GPUOperationFromNodePart0(
     case OperationType::MAX_UNPOOLING_2D: {
       auto attr =
           absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
-      *gpu_op = SelectMaxUnpooling(attr, op_def);
+      *gpu_op = SelectMaxUnpooling(attr, gpu_info, op_def);
       return absl::OkStatus();
     }
     case OperationType::MEAN: {
@@ -599,8 +623,13 @@ absl::Status GPUOperationFromNodePart0(
     }
     case OperationType::MEAN_STDDEV_NORMALIZATION: {
       MeanStdDevNormalization operation = CreateMeanStdDevNormalization(
-          op_def, gpu_info, (inputs[0]->tensor.shape.c + 3) / 4);
+          op_def, gpu_info, inputs[0]->tensor.shape);
       *gpu_op = std::make_unique<MeanStdDevNormalization>(std::move(operation));
+      return absl::OkStatus();
+    }
+    case OperationType::ONE_HOT: {
+      auto attr = absl::any_cast<OneHotAttributes>(node.operation.attributes);
+      SelectOneHot(op_def, attr, gpu_op);
       return absl::OkStatus();
     }
     case OperationType::PAD: {
@@ -666,6 +695,34 @@ absl::Status GPUOperationFromNodePart0(
         channels.push_back(output->tensor.shape.c);
       }
       auto attr = absl::any_cast<SplitAttributes>(node.operation.attributes);
+      if (gpu_info.IsMali()) {
+        // Mali can fail clEnqueueNDRangeKernel with "Out of resources" when it
+        // receives too big kernel.
+        // Replace single complex split to N with N simple kernels.
+        gpu_subgraph->operations.clear();
+        gpu_subgraph->operations.resize(outputs.size());
+        int split_offset = 0;
+        for (int i = 0; i < outputs.size(); ++i) {
+          auto& op = gpu_subgraph->operations[i];
+          op.input_ids = {static_cast<int>(inputs[0]->id)};
+          op.output_ids = {static_cast<int>(outputs[i]->id)};
+          OperationDef new_def;
+          new_def.precision = op_def.precision;
+          new_def.src_tensors.push_back(op_def.src_tensors[0]);
+          new_def.dst_tensors.push_back(op_def.dst_tensors[i]);
+          SliceAttributes new_attr;
+          new_attr.starts = BHWC(0, 0, 0, 0);
+          new_attr.ends = inputs[0]->tensor.shape;
+          new_attr.strides = BHWC(1, 1, 1, 1);
+          new_attr.starts.set(attr.axis, split_offset);
+          new_attr.ends.set(
+              attr.axis,
+              split_offset + outputs[i]->tensor.shape.get(attr.axis));
+          split_offset += outputs[i]->tensor.shape.get(attr.axis);
+          SelectStridedSlice(new_attr, new_def, &op.operation);
+        }
+        return absl::OkStatus();
+      }
       SelectSplit(attr, gpu_info, channels, op_def, gpu_op);
       return absl::OkStatus();
     }
@@ -734,6 +791,11 @@ absl::Status GPUOperationFromNodePart0(
       auto attr = absl::any_cast<ReduceAttributes>(node.operation.attributes);
       *gpu_op = SelectReduce(attr.dims, inputs[0]->tensor.shape, op_type,
                              op_def, gpu_info);
+      return absl::OkStatus();
+    }
+    case OperationType::SELECT_V2: {
+      auto attr = absl::any_cast<SelectV2Attributes>(node.operation.attributes);
+      SelectSelectV2(op_def, attr, gpu_op);
       return absl::OkStatus();
     }
     default:

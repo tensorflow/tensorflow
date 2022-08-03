@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -49,10 +50,10 @@ absl::Status DepthwiseConvSimpleWeightsTest(TestExecutionEnvironment* env) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
+      DepthwiseConv operation =
           CreateDepthwiseConvolution2D(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<DepthwiseConv>(std::move(operation)),
           BHWC(1, 2, 2, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({4.0f, 6.0f, 8.0f, 10.0f, 4.0f, 6.0f, 8.0f, 10.0f},
@@ -86,10 +87,10 @@ absl::Status DepthwiseConvNoMultiplierTest(TestExecutionEnvironment* env) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
+      DepthwiseConv operation =
           CreateDepthwiseConvolution2D(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<DepthwiseConv>(std::move(operation)),
           BHWC(1, 2, 2, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({16.5f, 27.5f, 28.5f, 43.5f, 8.5f, 15.5f, 12.5f, 23.5f},
@@ -124,10 +125,10 @@ absl::Status DepthwiseConvMultiplier2Test(TestExecutionEnvironment* env) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation =
+      DepthwiseConv operation =
           CreateDepthwiseConvolution2D(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<DepthwiseConv>(std::move(operation)),
           BHWC(1, 2, 2, 4), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {16.5f, 39.5f, 29.0f, 63.0f, 28.5f, 75.5f, 45.0f, 103.0f, 8.5f, 31.5f,

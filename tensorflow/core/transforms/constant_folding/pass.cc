@@ -19,10 +19,13 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 #include <string>
+#include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
@@ -35,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
 #include "tensorflow/core/ir/utility.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/transforms/pass_detail.h"
 #include "tensorflow/core/transforms/utils/eval_utils.h"
 #include "tensorflow/core/transforms/utils/op_cat_helper.h"
@@ -548,14 +552,18 @@ static bool IsValidConstShapeForMulConvPushDown(StringAttr data_format,
 }
 
 namespace {
-class FolderPatternBase : public RewritePattern {
+template <typename ConcreteType, template <typename> class... Traits>
+class ConstantPatternBase : public RewritePattern,
+                            public Traits<ConcreteType>... {
  public:
-  FolderPatternBase(StringRef opName, OpPropertyHelper &helper)
+  using RewritePattern::RewritePattern;
+
+  ConstantPatternBase(StringRef opName, OpPropertyHelper &helper)
       : RewritePattern(opName, PatternBenefit(1),
                        helper.getDialect()->getContext()),
         helper_(helper),
         dialect_(helper.getDialect()) {}
-  FolderPatternBase(MatchAnyOpTypeTag tag, OpPropertyHelper &helper)
+  ConstantPatternBase(MatchAnyOpTypeTag tag, OpPropertyHelper &helper)
       : RewritePattern(tag, PatternBenefit(1),
                        helper.getDialect()->getContext()),
         helper_(helper),
@@ -565,14 +573,38 @@ class FolderPatternBase : public RewritePattern {
   OpPropertyHelper &helper_;
   TFGraphDialect *dialect_;
 };
+
+// A base trait which can help with classifying patterns and filter patterns
+// according to the classification.
+template <typename ConcreteType>
+struct TraitBase {
+  ConcreteType *getPattern() { return static_cast<ConcreteType *>(this); }
+};
+
+// A trait indicates that the pattern will fold the root operation into a
+// another operation like a constant op.
+template <typename ConcreteType>
+struct FolderTrait : public TraitBase<ConcreteType> {};
+
+// A trait indicates that the pattern may propagate the constant operands to its
+// users.
+template <typename ConcreteType>
+struct PropagationTrait : public TraitBase<ConcreteType> {};
+
+template <typename ConcreteType>
+using FolderPatternBase = ConstantPatternBase<ConcreteType, FolderTrait>;
+
+template <typename ConcreteType>
+using PropagationPatternBase =
+    ConstantPatternBase<ConcreteType, PropagationTrait>;
 }  // namespace
 
 // EvaluateConstant maps the implementation of FoldGraph in
 // ConstantFolding::FoldGraph in grappler/optimizers/constant_folding.cc
-class EvaluateConstant : public FolderPatternBase {
+class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
  public:
   explicit EvaluateConstant(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper),
+      : FolderPatternBase<EvaluateConstant>(MatchAnyOpTypeTag(), helper),
         has_folded_(BoolAttr::get(helper.getDialect()->getContext(), true)),
         folded_attr_name_(
             StringAttr::get(helper.getDialect()->getContext(), "has_folded")),
@@ -675,10 +707,10 @@ class EvaluateConstant : public FolderPatternBase {
 
 // This implementation is mapped to the ShapeOp materialization in
 // ConstantFolding::MaterializeShapes in grappler/optimizers/constant_folding.cc
-class MaterializeShapeOp : public FolderPatternBase {
+class MaterializeShapeOp : public FolderPatternBase<MaterializeShapeOp> {
  public:
   explicit MaterializeShapeOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Shape", helper) {}
+      : FolderPatternBase<MaterializeShapeOp>("tfg.Shape", helper) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -712,10 +744,10 @@ class MaterializeShapeOp : public FolderPatternBase {
 
 // This implementation is mapped to the SizeOp materialization in
 // ConstantFolding::MaterializeShapes in grappler/optimizers/constant_folding.cc
-class MaterializeSizeOp : public FolderPatternBase {
+class MaterializeSizeOp : public FolderPatternBase<MaterializeSizeOp> {
  public:
   explicit MaterializeSizeOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Size", helper) {}
+      : FolderPatternBase<MaterializeSizeOp>("tfg.Size", helper) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -748,10 +780,10 @@ class MaterializeSizeOp : public FolderPatternBase {
 
 // This implementation is mapped to the RankOp materialization in
 // ConstantFolding::MaterializeShapes in grappler/optimizers/constant_folding.cc
-class MaterializeRankOp : public FolderPatternBase {
+class MaterializeRankOp : public FolderPatternBase<MaterializeRankOp> {
  public:
   explicit MaterializeRankOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Rank", helper) {}
+      : FolderPatternBase<MaterializeRankOp>("tfg.Rank", helper) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -783,10 +815,12 @@ class MaterializeRankOp : public FolderPatternBase {
 
 // This implementation is mapped to the TensorArraySizeV3 materialization in
 // ConstantFolding::MaterializeShapes in grappler/optimizers/constant_folding.cc
-class MaterializeTensorArraySizeV3Op : public FolderPatternBase {
+class MaterializeTensorArraySizeV3Op
+    : public FolderPatternBase<MaterializeTensorArraySizeV3Op> {
  public:
   explicit MaterializeTensorArraySizeV3Op(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.TensorArraySizeV3", helper) {}
+      : FolderPatternBase<MaterializeTensorArraySizeV3Op>(
+            "tfg.TensorArraySizeV3", helper) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -823,10 +857,10 @@ class MaterializeTensorArraySizeV3Op : public FolderPatternBase {
 
 // This implementation is mapped to the ShapeN materialization in
 // ConstantFolding::MaterializeShapes in grappler/optimizers/constant_folding.cc
-class MaterializeShapeNOp : public FolderPatternBase {
+class MaterializeShapeNOp : public FolderPatternBase<MaterializeShapeNOp> {
  public:
   explicit MaterializeShapeNOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.ShapeN", helper) {}
+      : FolderPatternBase<MaterializeShapeNOp>("tfg.ShapeN", helper) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -868,10 +902,12 @@ class MaterializeShapeNOp : public FolderPatternBase {
 // This implementation is mapped to the BroadcastGradientArgsOp materialization
 // in ConstantFolding::MaterializeBroadcastGradientArgs in
 // grappler/optimizers/constant_folding.cc
-class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
+class MaterializeBroadcastGradientArgsOp
+    : public PropagationPatternBase<MaterializeBroadcastGradientArgsOp> {
  public:
   explicit MaterializeBroadcastGradientArgsOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.BroadcastGradientArgs", helper) {}
+      : PropagationPatternBase<MaterializeBroadcastGradientArgsOp>(
+            "tfg.BroadcastGradientArgs", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     Operation *s0 = op->getOperand(0).getDefiningOp();
@@ -981,10 +1017,12 @@ class MaterializeBroadcastGradientArgsOp : public FolderPatternBase {
 // This implementation is mapped to the indices of reduction ops materialization
 // in ConstantFolding::MaterializeReductionIndices in
 // grappler/optimizers/constant_folding.cc
-class MaterializeReductionIndices : public FolderPatternBase {
+class MaterializeReductionIndices
+    : public PropagationPatternBase<MaterializeReductionIndices> {
  public:
   explicit MaterializeReductionIndices(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : PropagationPatternBase<MaterializeReductionIndices>(MatchAnyOpTypeTag(),
+                                                            helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (!dialect_->IsReduction(op)) return failure();
@@ -1058,10 +1096,10 @@ class MaterializeReductionIndices : public FolderPatternBase {
 // This implementation is mapped to the constant value materialization in
 // ConstantFolding::MaterializeConstantValuedNode in
 // grappler/optimizers/constant_folding.cc
-class MaterializeFillNode : public FolderPatternBase {
+class MaterializeFillNode : public FolderPatternBase<MaterializeFillNode> {
  public:
   explicit MaterializeFillNode(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Fill", helper) {}
+      : FolderPatternBase<MaterializeFillNode>("tfg.Fill", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (helper_.DisableCompressedTensorOptimization()) return failure();
@@ -1097,10 +1135,12 @@ class MaterializeFillNode : public FolderPatternBase {
 // This implementation is mapped to the constant value materialization in
 // ConstantFolding::MaterializeConstantValuedNode in
 // grappler/optimizers/constant_folding.cc
-class MaterializeConstantValuedNode : public FolderPatternBase {
+class MaterializeConstantValuedNode
+    : public FolderPatternBase<MaterializeConstantValuedNode> {
  public:
   explicit MaterializeConstantValuedNode(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : FolderPatternBase<MaterializeConstantValuedNode>(MatchAnyOpTypeTag(),
+                                                         helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (helper_.DisableCompressedTensorOptimization()) return failure();
@@ -1146,10 +1186,12 @@ class MaterializeConstantValuedNode : public FolderPatternBase {
 // This implementation is mapped to the output value materialization in
 // ConstantFolding::MaterializeOutputValues in
 // grappler/optimizers/constant_folding.cc
-class MaterializeOutputValue : public FolderPatternBase {
+class MaterializeOutputValue
+    : public PropagationPatternBase<MaterializeOutputValue> {
  public:
   explicit MaterializeOutputValue(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : PropagationPatternBase<MaterializeOutputValue>(MatchAnyOpTypeTag(),
+                                                       helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // In grappler, the shape information is stored in a separate structure and
@@ -1163,10 +1205,11 @@ class MaterializeOutputValue : public FolderPatternBase {
 // This implementation is mapped to the merge node folding in
 // ConstantFolding::FoldMergeNode in
 // grappler/optimizers/constant_folding.cc
-class MergeNodeFoldingBase : public FolderPatternBase {
+template <typename ConcreteType>
+class MergeNodeFoldingBase : public PropagationPatternBase<ConcreteType> {
  protected:
   MergeNodeFoldingBase(StringRef op_name, OpPropertyHelper &helper)
-      : FolderPatternBase(op_name, helper),
+      : PropagationPatternBase<ConcreteType>(op_name, helper),
         zero_dim_i32_tensor_type_(RankedTensorType::get(
             llvm::None,
             IntegerType::get(helper.getDialect()->getContext(), 32))) {}
@@ -1197,7 +1240,7 @@ class MergeNodeFoldingBase : public FolderPatternBase {
     for (Value operand : TFOp(op).getNonControlOperands()) {
       Operation *operand_op = operand.getDefiningOp();
       if (!operand_op) continue;
-      if (!dialect_->IsConstant(operand_op)) continue;
+      if (!this->dialect_->IsConstant(operand_op)) continue;
       if (!TFOp(operand_op).getControlOperands().empty()) continue;
 
       FailureOr<TFOp> const_out = CreateConstantTensorOp(
@@ -1241,19 +1284,19 @@ class MergeNodeFoldingBase : public FolderPatternBase {
   RankedTensorType zero_dim_i32_tensor_type_;
 };
 
-class MergeNodeFolding : public MergeNodeFoldingBase {
+class MergeNodeFolding : public MergeNodeFoldingBase<MergeNodeFolding> {
  public:
   explicit MergeNodeFolding(OpPropertyHelper &helper)
       : MergeNodeFoldingBase("tfg.Merge", helper) {}
 };
 
-class RefMergeNodeFolding : public MergeNodeFoldingBase {
+class RefMergeNodeFolding : public MergeNodeFoldingBase<RefMergeNodeFolding> {
  public:
   explicit RefMergeNodeFolding(OpPropertyHelper &helper)
       : MergeNodeFoldingBase("tfg.RefMerge", helper) {}
 };
 
-class XlaMergeNodeFolding : public MergeNodeFoldingBase {
+class XlaMergeNodeFolding : public MergeNodeFoldingBase<XlaMergeNodeFolding> {
  public:
   explicit XlaMergeNodeFolding(OpPropertyHelper &helper)
       : MergeNodeFoldingBase("tfg.XlaMerge", helper) {}
@@ -1261,10 +1304,10 @@ class XlaMergeNodeFolding : public MergeNodeFoldingBase {
 
 // This implementation is mapped with ConstantFolding::RemoveSplitOrSplitVin in
 // grappler/optimizers/constant_folding.cc
-class RemoveSplitOp : public FolderPatternBase {
+class RemoveSplitOp : public FolderPatternBase<RemoveSplitOp> {
  public:
   explicit RemoveSplitOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Split", helper) {}
+      : FolderPatternBase<RemoveSplitOp>("tfg.Split", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     auto num_split_attr = op->getAttrOfType<IntegerAttr>("num_split");
@@ -1278,10 +1321,10 @@ class RemoveSplitOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::RemoveSplitOrSplitVin in
 // grappler/optimizers/constant_folding.cc
-class RemoveSplitVOp : public FolderPatternBase {
+class RemoveSplitVOp : public FolderPatternBase<RemoveSplitVOp> {
  public:
   explicit RemoveSplitVOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.SplitV", helper) {}
+      : FolderPatternBase<RemoveSplitVOp>("tfg.SplitV", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     auto num_split_attr = op->getAttrOfType<IntegerAttr>("num_split");
@@ -1296,10 +1339,10 @@ class RemoveSplitVOp : public FolderPatternBase {
 // TODO(chiahungduan): Do we still have "Shuffle" op?
 // This implementation is mapped with ConstantFolding::RemoveShuffleOrTranspose
 // in grappler/optimizers/constant_folding.cc
-class RemoveShuffleOp : public FolderPatternBase {
+class RemoveShuffleOp : public FolderPatternBase<RemoveShuffleOp> {
  public:
   explicit RemoveShuffleOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Shuffle", helper) {}
+      : FolderPatternBase<RemoveShuffleOp>("tfg.Shuffle", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     Operation *perm_op = op->getOperand(1).getDefiningOp();
@@ -1328,10 +1371,10 @@ class RemoveShuffleOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::RemoveShuffleOrTranspose
 // in grappler/optimizers/constant_folding.cc
-class RemoveTransposeOp : public FolderPatternBase {
+class RemoveTransposeOp : public FolderPatternBase<RemoveTransposeOp> {
  public:
   explicit RemoveTransposeOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Transpose", helper) {}
+      : FolderPatternBase<RemoveTransposeOp>("tfg.Transpose", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     Operation *perm_op = op->getOperand(1).getDefiningOp();
@@ -1360,10 +1403,10 @@ class RemoveTransposeOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::RemoveRandomShuffle
 // in grappler/optimizers/constant_folding.cc
-class RemoveRandomShuffleOp : public FolderPatternBase {
+class RemoveRandomShuffleOp : public FolderPatternBase<RemoveRandomShuffleOp> {
  public:
   explicit RemoveRandomShuffleOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.RandomShuffle", helper) {}
+      : FolderPatternBase<RemoveRandomShuffleOp>("tfg.RandomShuffle", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     auto shape = op->getOperand(0).getType().cast<ShapedType>();
@@ -1380,10 +1423,10 @@ class RemoveRandomShuffleOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::RemoveReverse
 // in grappler/optimizers/constant_folding.cc
-class RemoveReverse : public FolderPatternBase {
+class RemoveReverse : public FolderPatternBase<RemoveReverse> {
  public:
   explicit RemoveReverse(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.ReverseV2", helper) {}
+      : FolderPatternBase<RemoveReverse>("tfg.ReverseV2", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     ShapedType tensor_type = op->getOperand(0).getType().cast<ShapedType>();
@@ -1422,10 +1465,10 @@ class RemoveReverse : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::SimplifySlice
 // in grappler/optimizers/constant_folding.cc
-class SimlifySliceOp : public FolderPatternBase {
+class SimplifySliceOp : public FolderPatternBase<SimplifySliceOp> {
  public:
-  explicit SimlifySliceOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Slice", helper) {}
+  explicit SimplifySliceOp(OpPropertyHelper &helper)
+      : FolderPatternBase<SimplifySliceOp>("tfg.Slice", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     Operation *begin_op = op->getOperand(1).getDefiningOp();
@@ -1469,10 +1512,10 @@ class SimlifySliceOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::SimplifyStridedSlice
 // in grappler/optimizers/constant_folding.cc
-class SimplifyStridedSlice : public FolderPatternBase {
+class SimplifyStridedSlice : public FolderPatternBase<SimplifyStridedSlice> {
  public:
   explicit SimplifyStridedSlice(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.StridedSlice", helper) {}
+      : FolderPatternBase<SimplifyStridedSlice>("tfg.StridedSlice", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // Skip ops with new/shrink axis mask, since they involve dimension changes.
@@ -1567,10 +1610,10 @@ class SimplifyStridedSlice : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::SimplifyTile
 // in grappler/optimizers/constant_folding.cc
-class SimplifyTileOp : public FolderPatternBase {
+class SimplifyTileOp : public FolderPatternBase<SimplifyTileOp> {
  public:
   explicit SimplifyTileOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Tile", helper) {}
+      : FolderPatternBase<SimplifyTileOp>("tfg.Tile", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     Operation *multiples_op = op->getOperand(1).getDefiningOp();
@@ -1600,14 +1643,15 @@ class SimplifyTileOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::SimplifyPad
 // in grappler/optimizers/constant_folding.cc
-class SimplifyPadOpBase : public FolderPatternBase {
+template <typename ConcreteType>
+class SimplifyPadOpBase : public FolderPatternBase<ConcreteType> {
  protected:
   SimplifyPadOpBase(StringRef op_name, OpPropertyHelper &helper)
-      : FolderPatternBase(op_name, helper) {}
+      : FolderPatternBase<ConcreteType>(op_name, helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     Operation *paddings = op->getOperand(1).getDefiningOp();
-    if (!paddings || !dialect_->IsConstant(paddings)) return failure();
+    if (!paddings || !this->dialect_->IsConstant(paddings)) return failure();
 
     ElementsAttr paddings_attr = paddings->getAttrOfType<ElementsAttr>("value");
     if (paddings_attr.getElementType().isInteger(32)) {
@@ -1632,7 +1676,7 @@ class SimplifyPadOpBase : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::SimplifyPad
 // in grappler/optimizers/constant_folding.cc
-class SimplifyPadOp : public SimplifyPadOpBase {
+class SimplifyPadOp : public SimplifyPadOpBase<SimplifyPadOp> {
  public:
   explicit SimplifyPadOp(OpPropertyHelper &helper)
       : SimplifyPadOpBase("tfg.Pad", helper) {}
@@ -1640,7 +1684,7 @@ class SimplifyPadOp : public SimplifyPadOpBase {
 
 // This implementation is mapped with ConstantFolding::SimplifyPad
 // in grappler/optimizers/constant_folding.cc
-class SimplifyPadV2Op : public SimplifyPadOpBase {
+class SimplifyPadV2Op : public SimplifyPadOpBase<SimplifyPadV2Op> {
  public:
   explicit SimplifyPadV2Op(OpPropertyHelper &helper)
       : SimplifyPadOpBase("tfg.PadV2", helper) {}
@@ -1648,10 +1692,10 @@ class SimplifyPadV2Op : public SimplifyPadOpBase {
 
 // This implementation is mapped with ConstantFolding::SimplifySqueeze
 // in grappler/optimizers/constant_folding.cc
-class SimplifySqueezeOp : public FolderPatternBase {
+class SimplifySqueezeOp : public FolderPatternBase<SimplifySqueezeOp> {
  public:
   explicit SimplifySqueezeOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Squeeze", helper) {}
+      : FolderPatternBase<SimplifySqueezeOp>("tfg.Squeeze", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     auto shape_type = op->getOperand(0).getType().cast<ShapedType>();
@@ -1669,10 +1713,10 @@ class SimplifySqueezeOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::SimplifyPack
 // in grappler/optimizers/constant_folding.cc
-class SimplifyPackOp : public FolderPatternBase {
+class SimplifyPackOp : public FolderPatternBase<SimplifyPackOp> {
  public:
   explicit SimplifyPackOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Pack", helper) {}
+      : FolderPatternBase<SimplifyPackOp>("tfg.Pack", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     auto [non_control_operands, control_operands] = TFOp(op).splitOperands();
@@ -1713,17 +1757,19 @@ class SimplifyPackOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::MoveConstantsPastEnter
 // in grappler/optimizers/constant_folding.cc
-class MoveConstantsPastEnterOpBase : public FolderPatternBase {
+template <typename ConcreteType>
+class MoveConstantsPastEnterOpBase
+    : public PropagationPatternBase<ConcreteType> {
  protected:
   MoveConstantsPastEnterOpBase(StringRef op_name, OpPropertyHelper &helper)
-      : FolderPatternBase(op_name, helper) {}
+      : PropagationPatternBase<ConcreteType>(op_name, helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     auto is_constant_attr = op->getAttrOfType<BoolAttr>("is_constant");
     if (!is_constant_attr || !is_constant_attr.getValue()) return failure();
 
     Operation *input = op->getOperand(0).getDefiningOp();
-    if (!input || !dialect_->IsConstant(input)) return failure();
+    if (!input || !this->dialect_->IsConstant(input)) return failure();
 
     // Find non-constant nodes that consume the outputs of Enter.
     if (op->getResults()[0].use_empty()) return failure();
@@ -1746,7 +1792,8 @@ class MoveConstantsPastEnterOpBase : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::MoveConstantsPastEnter
 // in grappler/optimizers/constant_folding.cc
-class MoveConstantsPastEnterOp : public MoveConstantsPastEnterOpBase {
+class MoveConstantsPastEnterOp
+    : public MoveConstantsPastEnterOpBase<MoveConstantsPastEnterOp> {
  public:
   explicit MoveConstantsPastEnterOp(OpPropertyHelper &helper)
       : MoveConstantsPastEnterOpBase("tfg.Enter", helper) {}
@@ -1754,7 +1801,8 @@ class MoveConstantsPastEnterOp : public MoveConstantsPastEnterOpBase {
 
 // This implementation is mapped with ConstantFolding::MoveConstantsPastEnter
 // in grappler/optimizers/constant_folding.cc
-class MoveConstantsPastRefEnterOp : public MoveConstantsPastEnterOpBase {
+class MoveConstantsPastRefEnterOp
+    : public MoveConstantsPastEnterOpBase<MoveConstantsPastRefEnterOp> {
  public:
   explicit MoveConstantsPastRefEnterOp(OpPropertyHelper &helper)
       : MoveConstantsPastEnterOpBase("tfg.RefEnter", helper) {}
@@ -1762,10 +1810,10 @@ class MoveConstantsPastRefEnterOp : public MoveConstantsPastEnterOpBase {
 
 // This implementation is mapped with ConstantFolding::SimplifySwitch
 // in grappler/optimizers/constant_folding.cc
-class SimplifySwitchOp : public FolderPatternBase {
+class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
  public:
   explicit SimplifySwitchOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Switch", helper),
+      : PropagationPatternBase<SimplifySwitchOp>("tfg.Switch", helper),
         zero_dim_i1_tensor_type_(RankedTensorType::get(
             {}, IntegerType::get(helper.getDialect()->getContext(), 1))) {}
   LogicalResult matchAndRewrite(Operation *op,
@@ -1866,10 +1914,10 @@ class SimplifySwitchOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::SimplifyReduction
 // in grappler/optimizers/constant_folding.cc
-class SimplifyReductionOp : public FolderPatternBase {
+class SimplifyReductionOp : public FolderPatternBase<SimplifyReductionOp> {
  public:
   explicit SimplifyReductionOp(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : FolderPatternBase<SimplifyReductionOp>(MatchAnyOpTypeTag(), helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (!dialect_->IsReduction(op)) return failure();
@@ -2010,10 +2058,10 @@ class SimplifyReductionOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::SimplifyReshapeOp
 // in grappler/optimizers/constant_folding.cc
-class SimplifyReshapeOp : public FolderPatternBase {
+class SimplifyReshapeOp : public FolderPatternBase<SimplifyReshapeOp> {
  public:
   explicit SimplifyReshapeOp(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : FolderPatternBase<SimplifyReshapeOp>(MatchAnyOpTypeTag(), helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (!dialect_->IsReshape(op) || !op->hasAttr("T")) return failure();
@@ -2057,10 +2105,12 @@ class SimplifyReshapeOp : public FolderPatternBase {
 // This implementation is mapped with
 // ConstantFolding::SimplifyArithmeticOperations in
 // grappler/optimizers/constant_folding.cc
-class SimplifyArithmeticOp : public FolderPatternBase {
+class SimplifyArithmeticOp
+    : public ConstantPatternBase<SimplifyArithmeticOp, FolderTrait,
+                                 PropagationTrait> {
  public:
   explicit SimplifyArithmeticOp(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : ConstantPatternBase(MatchAnyOpTypeTag(), helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     const bool is_mul = dialect_->IsAnyMul(op) || dialect_->IsLogicalAnd(op);
@@ -2227,10 +2277,12 @@ class SimplifyArithmeticOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::ReduceDivToReciprocalMul
 // in grappler/optimizers/constant_folding.cc
-class ReduceDivToReciprocalMul : public FolderPatternBase {
+class ReduceDivToReciprocalMul
+    : public FolderPatternBase<ReduceDivToReciprocalMul> {
  public:
   explicit ReduceDivToReciprocalMul(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : FolderPatternBase<ReduceDivToReciprocalMul>(MatchAnyOpTypeTag(),
+                                                    helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // Strength reduce floating point division by a constant Div(x, const) to
@@ -2286,9 +2338,13 @@ class ReduceDivToReciprocalMul : public FolderPatternBase {
 };
 
 namespace {
-class ConstantPushDownBase : public FolderPatternBase {
- public:
-  using FolderPatternBase::FolderPatternBase;
+template <typename ConcreteType>
+using Base = ConstantPatternBase<ConcreteType, FolderTrait, PropagationTrait>;
+
+template <typename ConcreteType>
+class ConstantPushDownBase : public Base<ConcreteType> {
+ protected:
+  using Base<ConcreteType>::Base;
 
   bool IsOperandsSafeToMove(Operation *op_child, Operation *const_child) const {
     // Don't rewrite the tree if it might create cycles.
@@ -2331,7 +2387,7 @@ class ConstantPushDownBase : public FolderPatternBase {
 // by rotating the tree locally, e.g.
 //    Sub(C, Add(X, Y)) -> Sub(Sub(C, Y), X)
 //    Mul(C, Div(X, Y)) -> Mul(X, Div(C, Y)).
-class ConstantPushDown : public ConstantPushDownBase {
+class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
  public:
   explicit ConstantPushDown(OpPropertyHelper &helper)
       : ConstantPushDownBase(MatchAnyOpTypeTag(), helper) {}
@@ -2515,10 +2571,12 @@ class ConstantPushDown : public ConstantPushDownBase {
 // This implementation is mapped with
 // ConstantFolding::PartialConstPropThroughIdentityN in
 // grappler/optimizers/constant_folding.cc
-class PartialConstPropThroughIdentityN : public FolderPatternBase {
+class PartialConstPropThroughIdentityN
+    : public PropagationPatternBase<PartialConstPropThroughIdentityN> {
  public:
   explicit PartialConstPropThroughIdentityN(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : PropagationPatternBase<PartialConstPropThroughIdentityN>(
+            MatchAnyOpTypeTag(), helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // In grappler's constant folding, it propagates the values from IdentityN.
@@ -2577,10 +2635,12 @@ class PartialConstPropThroughIdentityN : public FolderPatternBase {
 // This implementation is mapped with
 // ConstantFolding::PartialAssocOpConstFolding in
 // grappler/optimizers/constant_folding.cc
-class PartialAssocOpConstFolding : public FolderPatternBase {
+class PartialAssocOpConstFolding
+    : public FolderPatternBase<PartialAssocOpConstFolding> {
  public:
   explicit PartialAssocOpConstFolding(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : FolderPatternBase<PartialAssocOpConstFolding>(MatchAnyOpTypeTag(),
+                                                      helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // Partial constant folding for associative operators:
@@ -2661,10 +2721,10 @@ class PartialAssocOpConstFolding : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::MergeConcat in
 // grappler/optimizers/constant_folding.cc
-class MergeConcatOp : public FolderPatternBase {
+class MergeConcatOp : public FolderPatternBase<MergeConcatOp> {
  public:
   explicit MergeConcatOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.ConcatV2", helper) {}
+      : FolderPatternBase<MergeConcatOp>("tfg.ConcatV2", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (helper_.ShouldPreserveOp(op)) return failure();
@@ -2756,10 +2816,11 @@ class MergeConcatOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::MulConvPushDown
 // in grappler/optimizers/constant_folding.cc
-class MulConvPushDown : public FolderPatternBase {
+class MulConvPushDown : public ConstantPatternBase<MulConvPushDown, FolderTrait,
+                                                   PropagationTrait> {
  public:
   explicit MulConvPushDown(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : ConstantPatternBase(MatchAnyOpTypeTag(), helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // Push down multiplication on ConvND.
@@ -2912,10 +2973,12 @@ class MulConvPushDown : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::PartialConcatConstFolding
 // in grappler/optimizers/constant_folding.cc
-class PartialConcatConstFolding : public FolderPatternBase {
+class PartialConcatConstFolding
+    : public FolderPatternBase<PartialConcatConstFolding> {
  public:
   explicit PartialConcatConstFolding(OpPropertyHelper &helper)
-      : FolderPatternBase(MatchAnyOpTypeTag(), helper) {}
+      : FolderPatternBase<PartialConcatConstFolding>(MatchAnyOpTypeTag(),
+                                                     helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // Partial constant folding for Concat which is not commutative, so
@@ -3073,7 +3136,8 @@ class PartialConcatConstFolding : public FolderPatternBase {
 //                  M   V            M  CV       = leaves
 //
 // Cases 1 through 3 have additional sub-cases due to the symmetry of Add.
-class ConstantPushDownBiasAdd : public ConstantPushDownBase {
+class ConstantPushDownBiasAdd
+    : public ConstantPushDownBase<ConstantPushDownBiasAdd> {
  public:
   explicit ConstantPushDownBiasAdd(OpPropertyHelper &helper)
       : ConstantPushDownBase(MatchAnyOpTypeTag(), helper) {}
@@ -3178,7 +3242,7 @@ class ConstantPushDownBiasAdd : public ConstantPushDownBase {
 //                  M   V            M  CV       = leaves
 //
 // Cases 1 through 3 have additional sub-cases due to the symmetry of Add.
-class ConstantPushDownAdd : public ConstantPushDownBase {
+class ConstantPushDownAdd : public ConstantPushDownBase<ConstantPushDownAdd> {
  public:
   explicit ConstantPushDownAdd(OpPropertyHelper &helper)
       : ConstantPushDownBase(MatchAnyOpTypeTag(), helper) {}
@@ -3267,10 +3331,10 @@ class ConstantPushDownAdd : public ConstantPushDownBase {
 
 // This implementation is mapped with ConstantFolding::SimplifyCase in
 // grappler/optimizers/constant_folding.cc
-class SimplifyCaseOp : public FolderPatternBase {
+class SimplifyCaseOp : public FolderPatternBase<SimplifyCaseOp> {
  public:
   explicit SimplifyCaseOp(OpPropertyHelper &helper)
-      : FolderPatternBase("tfg.Case", helper) {}
+      : FolderPatternBase<SimplifyCaseOp>("tfg.Case", helper) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     Operation *branch_index_op = op->getOperand(0).getDefiningOp();
@@ -3305,18 +3369,19 @@ class SimplifyCaseOp : public FolderPatternBase {
 
 // This implementation is mapped with ConstantFolding::SimplifySelect in
 // grappler/optimizers/constant_folding.cc
-class SimplifySelectOpBase : public FolderPatternBase {
+template <typename ConcreteType>
+class SimplifySelectOpBase : public FolderPatternBase<ConcreteType> {
  protected:
   SimplifySelectOpBase(StringRef op_name, OpPropertyHelper &helper)
-      : FolderPatternBase(op_name, helper) {}
+      : FolderPatternBase<ConcreteType>(op_name, helper) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     Operation *condition_op = op->getOperand(0).getDefiningOp();
     if (!condition_op) return failure();
 
-    bool is_all_true = helper_.IsOnes(condition_op);
-    bool is_all_false = helper_.IsZeros(condition_op);
+    bool is_all_true = this->helper_.IsOnes(condition_op);
+    bool is_all_false = this->helper_.IsZeros(condition_op);
     if (!is_all_true && !is_all_false) return failure();
 
     auto condition_type = op->getOperand(0).getType().cast<ShapedType>();
@@ -3361,17 +3426,78 @@ class SimplifySelectOpBase : public FolderPatternBase {
   }
 };
 
-class SimplifySelectOp : public SimplifySelectOpBase {
+class SimplifySelectOp : public SimplifySelectOpBase<SimplifySelectOp> {
  public:
   explicit SimplifySelectOp(OpPropertyHelper &helper)
       : SimplifySelectOpBase("tfg.Select", helper) {}
 };
 
-class SimplifySelectV2Op : public SimplifySelectOpBase {
+class SimplifySelectV2Op : public SimplifySelectOpBase<SimplifySelectV2Op> {
  public:
   explicit SimplifySelectV2Op(OpPropertyHelper &helper)
       : SimplifySelectOpBase("tfg.SelectV2", helper) {}
 };
+
+namespace {
+
+// Utilities for filtering desired patterns.
+template <bool>
+struct FilterPattern {
+  template <class Pattern>
+  using type = std::tuple<Pattern>;
+};
+template <>
+struct FilterPattern<false> {
+  template <class Pattern>
+  using type = std::tuple<>;
+};
+template <template <class> class Pred, class... Patterns>
+struct FilterPatterns {
+  using type = decltype(std::tuple_cat(
+      std::declval<typename FilterPattern<Pred<Patterns>::value>::template type<
+          Patterns>>()...));
+};
+
+// Predicates of selecting pattern kind.
+template <typename Pattern>
+using FolderPatterns = std::is_base_of<FolderTrait<Pattern>, Pattern>;
+template <typename Pattern>
+using PropagationPatterns = std::is_base_of<PropagationTrait<Pattern>, Pattern>;
+template <typename Pattern>
+using AllPatterns = std::true_type;
+
+// Registers a set of patterns.
+template <typename... Patterns>
+struct TargetPatterns;
+template <typename... Patterns>
+struct TargetPatterns<std::tuple<Patterns...>> {
+  static void Register(::mlir::RewritePatternSet &patterns,
+                       OpPropertyHelper &helper) {
+    patterns.insert<Patterns...>(helper);
+  }
+};
+template <template <class> class PatternsFilter>
+void RegisterPatterns(::mlir::RewritePatternSet &patterns,
+                      OpPropertyHelper &helper) {
+  TargetPatterns<typename FilterPatterns<
+      PatternsFilter, MaterializeBroadcastGradientArgsOp, MaterializeShapeNOp,
+      SimplifySwitchOp, MergeNodeFolding, RefMergeNodeFolding,
+      XlaMergeNodeFolding, MoveConstantsPastEnterOp,
+      MoveConstantsPastRefEnterOp, MaterializeReductionIndices,
+      PartialConstPropThroughIdentityN, ConstantPushDown, MulConvPushDown,
+      ConstantPushDownBiasAdd, ConstantPushDownAdd, EvaluateConstant,
+      PartialConcatConstFolding, PartialAssocOpConstFolding,
+      SimplifyArithmeticOp, ReduceDivToReciprocalMul, SimplifyReshapeOp,
+      RemoveReverse, SimplifyStridedSlice, SimplifyTileOp, SimplifySqueezeOp,
+      SimplifySliceOp, RemoveTransposeOp, RemoveRandomShuffleOp,
+      RemoveShuffleOp, SimplifyPackOp, SimplifyReductionOp, SimplifyPadOp,
+      SimplifyPadV2Op, RemoveSplitOp, RemoveSplitVOp, MaterializeFillNode,
+      MaterializeConstantValuedNode, MaterializeShapeOp, MaterializeRankOp,
+      MaterializeSizeOp, MaterializeTensorArraySizeV3Op, MergeConcatOp,
+      SimplifyCaseOp, SimplifySelectOp,
+      SimplifySelectV2Op>::type>::Register(patterns, helper);
+}
+}  // namespace
 
 class ConstantFolding : public ConstantFoldingPassBase<ConstantFolding> {
  public:
@@ -3380,8 +3506,7 @@ class ConstantFolding : public ConstantFoldingPassBase<ConstantFolding> {
         context->getOrLoadDialect<TFGraphDialect>(), nodes_to_preserve_,
         disable_compressed_tensor_optimization_);
     RewritePatternSet patterns(context);
-    populateConstantPropagationPatterns(*context, patterns);
-    populateConstantFoldingPatterns(*context, patterns);
+    populatePatterns(patterns);
     final_patterns_ = std::move(patterns);
     return success();
   }
@@ -3389,44 +3514,29 @@ class ConstantFolding : public ConstantFoldingPassBase<ConstantFolding> {
   void runOnOperation() override;
 
  private:
-  void populateConstantPropagationPatterns(MLIRContext &context,
-                                           ::mlir::RewritePatternSet &patterns);
-  void populateConstantFoldingPatterns(MLIRContext &context,
-                                       ::mlir::RewritePatternSet &patterns);
+  void populatePatterns(::mlir::RewritePatternSet &patterns) {
+    switch (pattern_category_) {
+      default:
+        LOG(ERROR) << "unknown pattern category, will run all patterns";
+        [[fallthrough]];
+      case 0: {
+        RegisterPatterns<AllPatterns>(patterns, *helper_);
+        break;
+      }
+      case 1: {
+        RegisterPatterns<FolderPatterns>(patterns, *helper_);
+        break;
+      }
+      case 2: {
+        RegisterPatterns<PropagationPatterns>(patterns, *helper_);
+        break;
+      }
+    }
+  }
 
   FrozenRewritePatternSet final_patterns_;
   std::shared_ptr<OpPropertyHelper> helper_;
 };
-
-void ConstantFolding::populateConstantPropagationPatterns(
-    MLIRContext &context, ::mlir::RewritePatternSet &patterns) {
-  patterns
-      .insert<MaterializeBroadcastGradientArgsOp, MaterializeShapeNOp,
-              SimplifySwitchOp, MergeNodeFolding, RefMergeNodeFolding,
-              XlaMergeNodeFolding, MoveConstantsPastEnterOp,
-              MoveConstantsPastRefEnterOp, MaterializeReductionIndices,
-              PartialConstPropThroughIdentityN, ConstantPushDown,
-              MulConvPushDown, ConstantPushDownBiasAdd, ConstantPushDownAdd>(
-          *helper_);
-}
-
-void ConstantFolding::populateConstantFoldingPatterns(
-    MLIRContext &context, ::mlir::RewritePatternSet &patterns) {
-  // This is a No-Op in TFG (see comments in the pattern), comment it out here
-  // as a reminder that this is the mapping of MaterializeOutputValue in
-  // grappler.
-  // patterns.insert<MaterializeOutputValue>(&context, *helper_);
-  patterns.insert<
-      EvaluateConstant, PartialConcatConstFolding, PartialAssocOpConstFolding,
-      SimplifyArithmeticOp, ReduceDivToReciprocalMul, SimplifyReshapeOp,
-      RemoveReverse, SimplifyStridedSlice, SimplifyTileOp, SimplifySqueezeOp,
-      SimlifySliceOp, RemoveTransposeOp, RemoveRandomShuffleOp, RemoveShuffleOp,
-      SimplifyPackOp, SimplifyReductionOp, SimplifyPadOp, SimplifyPadV2Op,
-      RemoveSplitOp, RemoveSplitVOp, MaterializeFillNode,
-      MaterializeConstantValuedNode, MaterializeShapeOp, MaterializeRankOp,
-      MaterializeSizeOp, MaterializeTensorArraySizeV3Op, MergeConcatOp,
-      SimplifyCaseOp, SimplifySelectOp, SimplifySelectV2Op>(*helper_);
-}
 
 void ConstantFolding::runOnOperation() {
   // TODO(chiahungduan): Set up the attributes before operation creation.

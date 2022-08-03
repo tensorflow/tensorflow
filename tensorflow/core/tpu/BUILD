@@ -43,6 +43,30 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_embedding_errors",
+    srcs = ["tpu_embedding_errors.cc"],
+    hdrs = ["tpu_embedding_errors.h"],
+    deps = [
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "tpu_embedding_errors_test",
+    srcs = ["tpu_embedding_errors_test.cc"],
+    deps = [
+        ":tpu_embedding_errors",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "tpu_embedding_optimization_parameters_utils",
     srcs = ["tpu_embedding_optimization_parameters_utils.cc"],
     hdrs = ["tpu_embedding_optimization_parameters_utils.h"],
@@ -66,8 +90,8 @@ cc_library(
     hdrs = ["tpu_embedding_output_layout_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/lib/core:status",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
     ],
 )

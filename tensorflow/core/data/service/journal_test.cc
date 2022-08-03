@@ -59,7 +59,7 @@ Update MakeFinishTaskUpdate() {
 Update MakeRegisterDatasetUpdate() {
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
-  register_dataset->set_dataset_id(2);
+  register_dataset->set_dataset_id("dataset_id");
   register_dataset->set_fingerprint(3);
   return update;
 }
@@ -151,7 +151,7 @@ TEST(Journal, InvalidRecordData) {
     std::unique_ptr<WritableFile> file;
     TF_ASSERT_OK(Env::Default()->NewAppendableFile(
         DataServiceJournalFile(journal_dir, /*sequence_number=*/0), &file));
-    auto writer = absl::make_unique<io::RecordWriter>(file.get());
+    auto writer = std::make_unique<io::RecordWriter>(file.get());
     TF_ASSERT_OK(writer->WriteRecord("not serialized proto"));
   }
 

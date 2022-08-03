@@ -193,7 +193,7 @@ void CollectCandidateIslands(
     llvm::Optional<llvm::StringRef> result =
         GetTpuClusterName(&candidate_wrapped_op);
     llvm::StringRef candidate_cluster_name;
-    if (result.hasValue()) {
+    if (result.has_value()) {
       candidate_cluster_name = result.getValue();
     } else if (is_op_calling_func_for_cluster(cluster_name,
                                               &candidate_wrapped_op)) {
@@ -294,7 +294,7 @@ LogicalResult MergeIsland(
   Operation& wrapped_op = island.GetBody().front();
 
   llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
-  if (!result.hasValue()) return success();
+  if (!result.has_value()) return success();
   llvm::StringRef cluster_name = result.getValue();
 
   // We found a _replication_info, let's build an island for the full cluster!
@@ -381,102 +381,116 @@ SmallPtrSet<Operation*, 16> FindTPUPartitionedCallReachableFunctions(
   return reachable_functions;
 }
 
-// Looks at captured operands of `candidate_wrapped_op` to bring special TPU
-// ops such as tf.TPUReplicatedInput and tf.TPUPartitionedInput into the
-// island as well. These ops are brought in only if they do not already
-// have a cluster assigned to them (via `_replication_info` attribute value).
-void AddSpecialTpuInputOps(
-    IslandOp candidate_island, llvm::StringRef cluster_name,
+// valid means all the ops in the vector are belong to the same cluster.
+bool is_valid_special_tpu_op(
+    std::vector<IslandOp>& ops, llvm::StringRef cluster_name,
     llvm::SmallDenseMap<llvm::StringRef, llvm::SmallDenseSet<Operation*>>&
-        cluster_to_tpu_op_map,
-    SmallPtrSetImpl<Operation*>& visited_wrapped_ops) {
-  auto has_all_outputs_consumed_by_cluster = [&](IslandOp island) -> bool {
-    for (Value result : island->getResults()) {
-      for (auto user : result.getUsers()) {
-        if (!visited_wrapped_ops.contains(user)) {
-          return false;
-        }
-      }
+        cluster_to_tpu_op_map) {
+  for (IslandOp op : ops) {
+    Operation* wrapped_op = &op.GetBody().front();
+    llvm::Optional<llvm::StringRef> wrapped_op_cluster_name =
+        GetTpuClusterName(wrapped_op);
+
+    bool op_has_inconsistent_cluster_name =
+        wrapped_op_cluster_name.has_value() &&
+        !wrapped_op_cluster_name.getValue().equals(cluster_name);
+
+    if (op_has_inconsistent_cluster_name) {
+      return false;
     }
-    return true;
-  };
-  Operation* candidate_wrapped_op = &candidate_island.GetBody().front();
-  std::queue<Operation*> op_worklist;
-  op_worklist.push(candidate_wrapped_op);
-  while (!op_worklist.empty()) {
-    Operation* current_op = op_worklist.front();
-    op_worklist.pop();
-    for (Value operand : current_op->getOperands()) {
-      IslandOp wrapper = dyn_cast_or_null<IslandOp>(operand.getDefiningOp());
+  }
+  return true;
+}
+
+void collect_input_defining_islands(IslandOp op, std::vector<IslandOp>& ops) {
+  Operation* wrapped_op = &op.GetBody().front();
+  for (Value operand : wrapped_op->getOperands()) {
+    IslandOp wrapper = dyn_cast_or_null<IslandOp>(operand.getDefiningOp());
+    if (!wrapper || !wrapper.WrapsSingleOp()) continue;
+    ops.push_back(wrapper);
+  }
+}
+
+void collect_output_users_islands(IslandOp op, std::vector<IslandOp>& ops) {
+  for (Value result : op->getResults()) {
+    for (OpOperand use : result.getUsers()) {
+      IslandOp wrapper =
+          dyn_cast_or_null<IslandOp>(use.getOwner()->getParentOp());
       if (!wrapper || !wrapper.WrapsSingleOp()) continue;
-      Operation& wrapped_op = wrapper.GetBody().front();
-      if (!isa<TF::TPUReplicatedInputOp, TF::TPUPartitionedInputOp>(wrapped_op))
-        continue;
-      // Only inputs that do not have a cluster name assigned are considered for
-      // special handling. Otherwise, island coarsening logic should be able to
-      // handle it.
-      if (wrapped_op.hasAttrOfType<StringAttr>(TF::kReplicationInfoAttr)) {
-        continue;
-      }
-      if (!has_all_outputs_consumed_by_cluster(wrapper)) {
-        continue;
-      }
-      if (visited_wrapped_ops.contains(&wrapped_op)) {
-        continue;
-      }
-      op_worklist.push(&wrapped_op);
-      cluster_to_tpu_op_map[cluster_name].insert(wrapper);
-      visited_wrapped_ops.insert(&wrapped_op);
+      ops.push_back(wrapper);
     }
   }
 }
 
-// Looks at the results of `candidate_island` to bring special TPU
-// ops such as tf.TPUReplicatedOutput and tf.TPUPartitionedOutput into the
-// island as well. These ops are brought in only if they do not already have
-// cluster (`_tpu_replicate` attribute) assigned to them.
-// TODO(hanxiongwang): Consider de-duping this with the AddSpecialTpuInputOps
-// function above.
-void AddSpecialTpuOutputOps(
+bool AddSpecialTpuOps(
     IslandOp candidate_island, llvm::StringRef cluster_name,
     llvm::SmallDenseMap<llvm::StringRef, llvm::SmallDenseSet<Operation*>>&
         cluster_to_tpu_op_map,
-    SmallPtrSetImpl<Operation*>& visited_wrapped_ops) {
-  auto only_has_inputs_from_cluster = [&](Operation* op) -> bool {
-    for (Value operand : op->getOperands()) {
-      IslandOp defining_island =
-          llvm::dyn_cast_or_null<IslandOp>(operand.getDefiningOp());
-      if (!defining_island) return false;
-      Operation& defining_wrapped_op = defining_island.GetBody().front();
-      if (!visited_wrapped_ops.contains(&defining_wrapped_op)) return false;
-    }
-    return true;
-  };
+    SmallPtrSetImpl<Operation*>& visited_wrapped_ops, bool incoming) {
+  std::queue<IslandOp> op_worklist;
+  std::vector<IslandOp> ops;
 
-  std::queue<IslandOp> island_worklist;
-  island_worklist.push(candidate_island);
-  while (!island_worklist.empty()) {
-    IslandOp current_island = island_worklist.front();
-    island_worklist.pop();
-    for (Value result : current_island.getResults()) {
-      for (OpOperand use : result.getUsers()) {
-        Operation* user = use.getOwner();
-        IslandOp wrapper = dyn_cast_or_null<IslandOp>(user->getParentOp());
-        if (!wrapper || !wrapper.WrapsSingleOp()) continue;
-        if (!isa<TF::TPUReplicatedOutputOp, TF::TPUPartitionedOutputOp>(user))
+  op_worklist.push(candidate_island);
+
+  while (!op_worklist.empty()) {
+    IslandOp current_op = op_worklist.front();
+    op_worklist.pop();
+    ops.clear();
+    if (incoming) {
+      collect_input_defining_islands(current_op, ops);
+    } else {
+      collect_output_users_islands(current_op, ops);
+    }
+    for (IslandOp wrapper : ops) {
+      Operation* wrapped_op = &wrapper.GetBody().front();
+      std::vector<IslandOp> child_ops;
+      if (incoming) {
+        // Looks at captured operands of `candidate_wrapped_op` to bring special
+        // TPU ops such as tf.TPUReplicatedInput and tf.TPUPartitionedInput into
+        // the island as well. These ops are brought in only if they do not
+        // already have a cluster assigned to them (via `_replication_info`
+        // attribute value).
+        // `tf.Identity` op is also treated as special tpu ops since it can play
+        // a role as connection between `tf.TPUReplicatedInput` or
+        // `tf.TPUPartitionedInput`. For example, we have the follow pseudocode:
+        // %0 = tf_executor.island wraps "tf.OpA" (){_replication_info = 'c'}
+        // %1 = tf_executor.island wraps "tf.Identity(%0)
+        // %2 = tf_executor.island wraps "tf.TPUReplicatedInput"(%1)
+
+        if (!isa<TF::TPUReplicatedInputOp, TF::TPUPartitionedInputOp,
+                 TF::IdentityOp>(wrapped_op))
           continue;
-        // Only users that do not have a cluster name assigned are considered
-        // for special handling. Otherwise, island coarsening logic should be
-        // able to handle it.
-        if (user->hasAttrOfType<StringAttr>(TF::kReplicationInfoAttr)) continue;
-        if (!only_has_inputs_from_cluster(user)) continue;
-        if (visited_wrapped_ops.contains(user)) continue;
-        visited_wrapped_ops.insert(user);
-        cluster_to_tpu_op_map[cluster_name].insert(wrapper);
-        island_worklist.push(wrapper);
+        collect_output_users_islands(wrapper, child_ops);
+      } else {
+        // Looks at the results of `candidate_island` to bring special TPU
+        // ops such as tf.TPUReplicatedOutput and tf.TPUPartitionedOutput into
+        // the island as well. These ops are brought in only if they do not
+        // already have cluster (`_tpu_replicate` attribute) assigned to them.
+        // `tf.Identity` op is also treated as special tpu ops since it can play
+        // a role as connection between `tf.TPUReplicatedOutput` or
+        // `tf.TPUPartitionedInput`.
+        if (!isa<TF::TPUReplicatedOutputOp, TF::TPUPartitionedOutputOp,
+                 TF::IdentityOp>(wrapped_op))
+          continue;
+        collect_input_defining_islands(wrapper, child_ops);
       }
+      if (!is_valid_special_tpu_op(child_ops, cluster_name,
+                                   cluster_to_tpu_op_map)) {
+        return false;
+      }
+
+      // Only inputs/outputs that do not have a cluster name assigned are
+      // considered for special handling. Otherwise, island coarsening logic
+      // should be able to handle it.
+      if (wrapped_op->hasAttrOfType<StringAttr>(TF::kReplicationInfoAttr))
+        continue;
+      if (visited_wrapped_ops.contains(wrapped_op)) continue;
+      op_worklist.push(wrapper);
+      cluster_to_tpu_op_map[cluster_name].insert(wrapper);
+      visited_wrapped_ops.insert(wrapped_op);
     }
   }
+  return true;
 }
 
 LogicalResult CollectSpecialTpuOps(
@@ -493,17 +507,95 @@ LogicalResult CollectSpecialTpuOps(
   if (visited_wrapped_ops.contains(&wrapped_op)) return success();
 
   llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
-  if (!result.hasValue()) return success();
+  if (!result.has_value()) return success();
   llvm::StringRef cluster_name = result.getValue();
 
   visited_wrapped_ops.insert(&wrapped_op);
 
-  AddSpecialTpuInputOps(island, cluster_name, cluster_to_tpu_op_map,
-                        visited_wrapped_ops);
-  AddSpecialTpuOutputOps(island, cluster_name, cluster_to_tpu_op_map,
-                         visited_wrapped_ops);
-
+  if (!AddSpecialTpuOps(island, cluster_name, cluster_to_tpu_op_map,
+                        visited_wrapped_ops, /*incoming=*/true)) {
+    return failure();
+  }
+  if (!AddSpecialTpuOps(island, cluster_name, cluster_to_tpu_op_map,
+                        visited_wrapped_ops, /*incoming=*/false)) {
+    return failure();
+  }
   return success();
+}
+
+// Whenever we find an Identity op that is unqualified, we remove this Identity
+// op from the list `tpu_ops`. An unqualified Identity op indicates either its
+// inputs or its outputs do not belong to the same cluster.
+bool ExcludeIdentityOp(llvm::SmallDenseSet<Operation*>& tpu_ops,
+                       llvm::StringRef& target_cluster_name, bool incoming) {
+  for (auto iter = tpu_ops.begin(); iter != tpu_ops.end(); iter++) {
+    auto island_op = llvm::dyn_cast<IslandOp>(*iter);
+    if (llvm::dyn_cast_or_null<TF::IdentityOp>(island_op.GetBody().front())) {
+      if (island_op.outputs().use_empty()) {
+        tpu_ops.erase(iter);
+        return true;
+      }
+      std::vector<IslandOp> ops;
+      if (incoming) {
+        collect_output_users_islands(island_op, ops);
+      } else {
+        collect_input_defining_islands(island_op, ops);
+      }
+      for (IslandOp wrapper : ops) {
+        Operation* wrapped_op = &wrapper.GetBody().front();
+        auto cluster_name = GetTpuClusterName(wrapped_op);
+        if (cluster_name.hasValue() &&
+            cluster_name.getValue() != target_cluster_name) {
+          tpu_ops.erase(iter);
+          return true;
+        }
+        if (!cluster_name.hasValue() &&
+            !tpu_ops.count(wrapper.getOperation())) {
+          tpu_ops.erase(iter);
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+void ExcludeUnqualifiedIdentityOp(
+    llvm::SmallDenseMap<llvm::StringRef, llvm::SmallDenseSet<Operation*>>&
+        cluster_to_tpu_ops_map,
+    bool incoming) {
+  for (auto& [target_cluster_name, tpu_ops] : cluster_to_tpu_ops_map) {
+    bool changed = true;
+    while (changed) {
+      changed = ExcludeIdentityOp(tpu_ops, target_cluster_name, incoming);
+    }
+  }
+}
+
+void ExcludeUnqualifiedIdentityOp(
+    llvm::SmallDenseMap<llvm::StringRef, llvm::SmallDenseSet<Operation*>>&
+        cluster_to_tpu_ops_map) {
+  ExcludeUnqualifiedIdentityOp(cluster_to_tpu_ops_map, /*incoming=*/true);
+  ExcludeUnqualifiedIdentityOp(cluster_to_tpu_ops_map, /*incoming=*/false);
+}
+
+// Erase Identity op which does not contain `_replication_info` in the merged
+// island.
+void EraseIdentityWithNoReplicationInfo(Block& graph_body) {
+  for (Operation& island_op : graph_body) {
+    IslandOp island = dyn_cast<IslandOp>(island_op);
+    if (!island || island.WrapsSingleOp()) continue;
+    for (Operation& op : llvm::make_early_inc_range(island.GetBody())) {
+      llvm::Optional<llvm::StringRef> cluster_name = GetTpuClusterName(&op);
+      if (cluster_name.hasValue()) continue;
+      if (auto identity_op = llvm::dyn_cast_or_null<TF::IdentityOp>(op)) {
+        auto identity_input = identity_op.input();
+        auto output = identity_op.output();
+        output.replaceAllUsesWith(identity_input);
+        identity_op.erase();
+      }
+    }
+  }
 }
 
 void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
@@ -515,7 +607,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
   for (func::FuncOp func_op : getOperation().getOps<func::FuncOp>()) {
     func_op.walk([&](Operation* op) {
       llvm::Optional<llvm::StringRef> cluster_name_opt = GetTpuClusterName(op);
-      if (cluster_name_opt.hasValue()) {
+      if (cluster_name_opt.has_value()) {
         tpu_funcs[cluster_name_opt.getValue()].insert(func_op);
       }
     });
@@ -560,12 +652,16 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
       for (Operation& op : graph_body) {
         if (failed(CollectSpecialTpuOps(is_op_calling_func_for_cluster, &op,
                                         cluster_to_tpu_ops_map, visited_ops))) {
-          graph.emitError() << "Collect special Tpu ops failed: "
-                            << "Graph contains some unsupported ops\n";
+          graph.emitError()
+              << "Collect special Tpu ops failed: "
+              << "Graph contains op with inconsistent cluster info\n";
           signalPassFailure();
           return WalkResult::interrupt();
         }
       }
+
+      ExcludeUnqualifiedIdentityOp(cluster_to_tpu_ops_map);
+
       // Iterate until fixed point on the block, as it may contain multiple
       // clusters.
       bool changed = true;
@@ -586,6 +682,12 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
           if (changed) break;
         }
       }
+
+      // Need to remove the redundant `Identity` ops in the same cluster.
+      // Redundant `Identity` op indicates that no `_replicatation_info`
+      // attribute is attached.
+      EraseIdentityWithNoReplicationInfo(graph_body);
+
       return WalkResult::advance();
     });
   }

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONVOLUTION_TRANSPOSED_4X4_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONVOLUTION_TRANSPOSED_4X4_H_
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"

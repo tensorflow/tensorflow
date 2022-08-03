@@ -34,7 +34,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
     OpBuilder builder, Location location, StringRef func_name,
     const llvm::SmallVector<Value> &arguments,
     const llvm::SmallVector<Value> &results,
-    const llvm::SmallVector<Attribute> &attributes);
+    const llvm::SmallVector<NamedAttribute> &attributes);
 
 // Same as above but with empty attributes.
 llvm::SmallVector<Value, 4> LiftAsFunctionCall(

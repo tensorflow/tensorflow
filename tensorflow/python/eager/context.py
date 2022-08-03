@@ -1164,6 +1164,7 @@ class Context(object):
     rewriter_toggle("auto_mixed_precision")
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
+    rewriter_toggle("auto_mixed_precision_onednn_bfloat16")
     rewriter_toggle("auto_mixed_precision_mkl")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
@@ -1452,7 +1453,7 @@ class Context(object):
       self._physical_device_to_index = {
           p: i for i, p in enumerate(self._physical_devices)
       }
-      # We maintain a seperate list just so we can check whether the device in
+      # We maintain a separate list just so we can check whether the device in
       # _physical_devices is a PluggableDevice.
       pluggable_devs = pywrap_tfe.TF_ListPluggablePhysicalDevices()
       self._pluggable_devices = [
@@ -1815,6 +1816,7 @@ class Context(object):
     rewriter_toggle("auto_mixed_precision")
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
+    rewriter_toggle("auto_mixed_precision_onednn_bfloat16")
     rewriter_toggle("auto_mixed_precision_mkl")
 
     if rewrite_options.min_graph_nodes != 0:

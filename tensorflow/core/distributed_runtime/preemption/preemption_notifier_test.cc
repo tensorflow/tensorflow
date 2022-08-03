@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <csignal>
 #include <functional>
+#include <memory>
 #include <utility>
 
 #include "absl/synchronization/notification.h"
@@ -23,17 +24,37 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#if defined(PLATFORM_GOOGLE)
+#include "thread/executor.h"
+#include "thread/signal.h"
+#endif
 
 namespace tensorflow {
 namespace {
-TEST(PreemptNotifierTest, WillBePreemptedAt) {
+
+class PreemptNotifierTest : public ::testing::Test {
+ public:
+  PreemptNotifierTest() {
+#if defined(PLATFORM_GOOGLE)
+    // Override default test SIGTERM handler so that test does not exit
+    // prematurely.
+    thread::signal::Token unused_token;
+
+    thread::signal::AddHandler(
+        SIGTERM, thread::Executor::DefaultExecutor(), []() {},
+        thread::signal::kOverrideDefault, &unused_token);
+#endif
+  }
+};
+
+TEST_F(PreemptNotifierTest, WillBePreemptedAt) {
   auto env = Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
-      CreateSigtermNotifier(env);
+      PreemptionNotifier::CreatePreemptionNotifier("sigterm", env);
   absl::Time start_time = absl::Now();
   env->SchedClosureAfter(/*micros=*/absl::ToInt64Microseconds(absl::Seconds(1)),
                          []() { std::raise(SIGTERM); });
@@ -46,16 +67,16 @@ TEST(PreemptNotifierTest, WillBePreemptedAt) {
   // Make sure that preempt time is approximately correct.
   absl::Duration time_diff = preempt_time - start_time;
   // Signal was raised 1 second after start time.
-  EXPECT_GT(time_diff, absl::Seconds(1));
+  EXPECT_GT(time_diff, absl::Seconds(1.0));
   // Listen to signal once per second, so we should catch within 2 seconds.
   EXPECT_LT(time_diff, absl::Seconds(3));
 }
 
-TEST(PreemptNotifierTest,
-     WillBePreemptedAt_AlreadyPreempted_ReturnsImmediately) {
+TEST_F(PreemptNotifierTest,
+       WillBePreemptedAt_AlreadyPreempted_ReturnsImmediately) {
   auto env = Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
-      CreateSigtermNotifier(env);
+      PreemptionNotifier::CreatePreemptionNotifier("sigterm", env);
   absl::Time start_time = absl::Now();
   std::raise(SIGTERM);
   // Note: sleep for a while to ensure that (a) SIGTERM is fully handled and (b)
@@ -77,10 +98,10 @@ TEST(PreemptNotifierTest,
   EXPECT_LT(time_diff, absl::Seconds(2));
 }
 
-TEST(PreemptNotifierTest, WillBePreemptedAtAsync_SameResultForAllCallbacks) {
+TEST_F(PreemptNotifierTest, WillBePreemptedAtAsync_SameResultForAllCallbacks) {
   auto env = Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
-      CreateSigtermNotifier(env);
+      PreemptionNotifier::CreatePreemptionNotifier("sigterm", env);
   env->SchedClosureAfter(/*micros=*/absl::ToInt64Microseconds(absl::Seconds(1)),
                          []() { std::raise(SIGTERM); });
 
@@ -108,10 +129,10 @@ TEST(PreemptNotifierTest, WillBePreemptedAtAsync_SameResultForAllCallbacks) {
   EXPECT_EQ(preempt_time.ValueOrDie(), preempt_time_2.ValueOrDie());
 }
 
-TEST(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
+TEST_F(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
   auto env = Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
-      CreateSigtermNotifier(env);
+      PreemptionNotifier::CreatePreemptionNotifier("sigterm", env);
 
   // Raise first signal.
   std::raise(SIGTERM);
@@ -119,7 +140,8 @@ TEST(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
   TF_CHECK_OK(result.status());
   absl::Time preempt_time = result.ValueOrDie();
 
-  preempt_notifier->Reset();
+  preempt_notifier =
+      PreemptionNotifier::CreatePreemptionNotifier("sigterm", env);
 
   // Raise second signal.
   std::raise(SIGTERM);
@@ -130,10 +152,10 @@ TEST(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
   EXPECT_NE(preempt_time, preempt_time_2);
 }
 
-TEST(PreemptNotifierTest, DestructorCancelsPendingCalls) {
+TEST_F(PreemptNotifierTest, DestructorCancelsPendingCalls) {
   auto env = Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
-      CreateSigtermNotifier(env);
+      PreemptionNotifier::CreatePreemptionNotifier("sigterm", env);
   StatusOr<absl::Time> result;
   absl::Notification n;
   preempt_notifier->WillBePreemptedAtAsync(

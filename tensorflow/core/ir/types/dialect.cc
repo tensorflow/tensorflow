@@ -128,7 +128,10 @@ void PrintVariantType(VariantType ty, DialectAsmPrinter &os) {
 Type TFTypeDialect::parseType(DialectAsmParser &parser) const {
   StringRef type_tag;
   llvm::SMLoc loc = parser.getNameLoc();
-  if (failed(parser.parseKeyword(&type_tag))) return Type();
+
+  Type genType;
+  auto parse_result = generatedTypeParser(parser, &type_tag, genType);
+  if (parse_result.hasValue()) return genType;
 
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   if (type_tag == name) return tftype##Type::get(getContext());
@@ -147,9 +150,6 @@ Type TFTypeDialect::parseType(DialectAsmParser &parser) const {
     return ret;
   }
 
-  Type genType;
-  auto parse_result = generatedTypeParser(parser, type_tag, genType);
-  if (parse_result.hasValue()) return genType;
   parser.emitError(parser.getNameLoc(),
                    "unknown type in TF graph dialect: " + type_tag);
   return {};
@@ -350,23 +350,11 @@ void FuncAttr::walkImmediateSubElements(
   if (!getName().getRootReference().getValue().empty()) walkAttrsFn(getName());
 }
 
-SubElementAttrInterface FuncAttr::replaceImmediateSubAttribute(
-    ArrayRef<std::pair<size_t, Attribute>> replacements) const {
-  DictionaryAttr attrs = getAttrs();
-  SymbolRefAttr name = getName();
-  for (auto &replacement : replacements) {
-    switch (replacement.first) {
-      case 0:
-        attrs = replacement.second.cast<DictionaryAttr>();
-        break;
-      case 1:
-        name = replacement.second.cast<SymbolRefAttr>();
-        break;
-      default:
-        llvm_unreachable("invalid replacement attribute index");
-    }
-  }
-  return FuncAttr::get(getContext(), name, attrs);
+Attribute FuncAttr::replaceImmediateSubElements(
+    ArrayRef<Attribute> replAttrs, ArrayRef<Type> replTypes) const {
+  assert(replAttrs.size() == 2 && "invalid number of replacement attributes");
+  return get(getContext(), replAttrs[1].cast<SymbolRefAttr>(),
+             replAttrs[0].cast<DictionaryAttr>());
 }
 
 void PlaceholderAttr::print(AsmPrinter &os) const {

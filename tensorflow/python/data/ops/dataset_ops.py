@@ -28,7 +28,6 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
@@ -2234,8 +2233,7 @@ name=None))
 
     >>> dataset = tf.data.Dataset.from_tensor_slices(
     ...     [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-    >>> dataset = dataset.flat_map(
-    ...     lambda x: tf.data.Dataset.from_tensor_slices(x))
+    >>> dataset = dataset.flat_map(tf.data.Dataset.from_tensor_slices)
     >>> list(dataset.as_numpy_iterator())
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
@@ -6435,20 +6433,10 @@ class _DirectedInterleaveDataset(DatasetV2):
 
 def _apply_rewrite(dataset, rewrite):
   # pylint: disable=protected-access
-  if not compat.forward_compatible(2022, 6, 6):
-    return dataset
-
-  try:
-    return _VariantDataset(
-        gen_dataset_ops.rewrite_dataset(dataset._variant_tensor, rewrite,
-                                        **dataset._flat_structure),
-        dataset.element_spec)
-  except AttributeError as e:
-    if "has no attribute 'rewrite_dataset'" in str(e):
-      # The TF server may be outdated. This try/except can be removed after 6/4
-      # when the forward compatibility window elapses.
-      return dataset
-    raise e
+  return _VariantDataset(
+      gen_dataset_ops.rewrite_dataset(dataset._variant_tensor, rewrite,
+                                      **dataset._flat_structure),
+      dataset.element_spec)
 
 
 def _collect_resource_inputs(op):

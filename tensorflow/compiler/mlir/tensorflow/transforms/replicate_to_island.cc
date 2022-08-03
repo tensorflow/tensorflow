@@ -70,7 +70,7 @@ llvm::Optional<int64_t> GetDeviceOrdinal(
     const llvm::Optional<DictionaryAttr>& devices, Location loc,
     unsigned replica_id) {
   int64_t device_ordinal = 0;
-  if (devices.hasValue()) {
+  if (devices.has_value()) {
     if (auto tpu_replica_0 = devices.getValue().get(kTPUCore0)) {
       llvm::StringRef tpu_device = tpu_replica_0.cast<ArrayAttr>()[replica_id]
                                        .cast<StringAttr>()
@@ -103,7 +103,7 @@ LogicalResult UpdateRegionReplicateVariantOps(
     }
 
     if (isa<TF::_TPUDeviceOrdinalPlaceholderOp>(op)) {
-      if (!device_ordinal.hasValue())
+      if (!device_ordinal.has_value())
         return op->emitOpError()
                << "requires device ordinal from device " << kTPUCore0
                << " to be present in 'tf.device.replicate' op";
@@ -118,7 +118,7 @@ LogicalResult UpdateRegionReplicateVariantOps(
       return WalkResult::advance();
     }
 
-    if (!devices.hasValue()) return WalkResult::advance();
+    if (!devices.has_value()) return WalkResult::advance();
 
     // Map aliased devices to explicit devices based on replica.
     if (auto launch = dyn_cast<tf_device::LaunchOp>(op))

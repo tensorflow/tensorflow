@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
@@ -414,8 +415,7 @@ bool getTransposeConv2dPaddingValues(
     tensorflow::Padding tf_pad, tensorflow::TensorFormat data_format_tf,
     uint32_t first_filter_spatial_dim, ShapedType input_type,
     ShapedType filter_type, ShapedType output_type, ArrayAttr strides,
-    ArrayAttr dilations, PatternRewriter& rewriter,
-    ArrayAttr& explicit_padding) {
+    PatternRewriter& rewriter, ArrayAttr& explicit_padding) {
   assert(tf_pad != tensorflow::Padding::EXPLICIT);
   if (!input_type.hasRank() || !filter_type.hasRank() || !output_type.hasRank())
     return false;
@@ -436,7 +436,6 @@ bool getTransposeConv2dPaddingValues(
     int64_t ifm_size = input_type.getDimSize(ifm_dim);
     int64_t filter_size = filter_type.getDimSize(filter_dim);
     int64_t ofm_size = output_type.getDimSize(ofm_dim);
-    int64_t dim_dilation = dilations[i].template cast<IntegerAttr>().getInt();
     int64_t dim_stride = strides[i].template cast<IntegerAttr>().getInt();
 
     // These dimensions need to be static to legalize.
@@ -445,15 +444,14 @@ bool getTransposeConv2dPaddingValues(
       return false;
     }
 
-    int effective_filter_size = (filter_size - 1) * dim_dilation + 1;
-    int total_padding =
-        ((ifm_size - 1) * dim_stride + effective_filter_size - ofm_size);
+    int total_padding = ((ifm_size - 1) * dim_stride + filter_size - ofm_size);
     total_padding = total_padding > 0 ? total_padding : 0;
 
     pad_before = total_padding / 2;
     pad_after = total_padding - pad_before;
 
     computed_paddings.push_back(pad_before);
+    computed_paddings.push_back(pad_after);
   }
 
   explicit_padding = rewriter.getI64ArrayAttr(computed_paddings);
@@ -565,39 +563,11 @@ LogicalResult ApplyPatternsWithShapeResolution(
     op.getResult().setType(new_ty);
   });
 
-  // Insert UnrealizedConversionCasts to guarantee ReturnOp agrees with
-  // the FuncOp type.
-  IRRewriter rewriter(func.getContext());
-  func.walk([&](func::ReturnOp op) {
-    func::FuncOp parent = dyn_cast<func::FuncOp>(op->getParentOp());
-    if (parent != func) return;
+  auto returnOp = cast<func::ReturnOp>(func.getBody().front().getTerminator());
+  llvm::SmallVector<Type> result_tys(returnOp.getOperandTypes());
 
-    rewriter.setInsertionPoint(op);
-    FunctionType func_ty = func.getFunctionType();
-    auto result_tys = func_ty.getResults();
-
-    bool cast_added = false;
-    SmallVector<Value> return_values;
-    for (auto it : llvm::zip(op->getOperands(), result_tys)) {
-      Value operand = std::get<0>(it);
-      Type current_ty = operand.getType();
-      Type cast_ty = std::get<1>(it);
-      if (current_ty == cast_ty) {
-        return_values.push_back(operand);
-        continue;
-      }
-
-      return_values.push_back(
-          rewriter.create<tensor::CastOp>(op.getLoc(), cast_ty, operand)
-              .getResult());
-
-      cast_added = true;
-    }
-
-    if (cast_added) {
-      rewriter.replaceOpWithNewOp<func::ReturnOp>(op, return_values);
-    }
-  });
+  func.setType(FunctionType::get(
+      func.getContext(), func.getFunctionType().getInputs(), result_tys));
 
   return success();
 }

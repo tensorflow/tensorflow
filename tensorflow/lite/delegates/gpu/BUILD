@@ -238,6 +238,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl:util",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
+        "//tensorflow/lite/delegates/gpu/common:model_builder_helper",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:quantization_util",
         "//tensorflow/lite/delegates/gpu/common:status",

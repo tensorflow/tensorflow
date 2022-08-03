@@ -18,13 +18,10 @@ The source code here is from
 https://www.tensorflow.org/xla/tutorials/jit_compile, where there is also a
 walkthrough.
 
-To execute in TFRT BEF, run with
-`--config=cuda --test_env=XLA_FLAGS=--xla_gpu_bef_executable`
-
 To execute in TFRT JitRt, run with
 `--config=cuda --test_env=XLA_FLAGS=--xla_gpu_jitrt_executable`
 
-To dump debug output (e.g., LMHLO MLIR, TFRT MLIR, TFRT BEF), run with
+To dump debug output (e.g., LMHLO MLIR), run with
 `--test_env=XLA_FLAGS="--xla_dump_to=/tmp/mnist"`.
 """
 

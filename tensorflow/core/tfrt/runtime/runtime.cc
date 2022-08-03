@@ -146,14 +146,6 @@ std::unique_ptr<Runtime> Runtime::Create(
       new Runtime(std::move(expected_core_runtime.get()), work_queue_ptr));
 }
 
-// TODO(b/196962112): Remove this overload.
-std::unique_ptr<Runtime> Runtime::Create() {
-  static constexpr int kDefaultNumInterOpThreads = 4;
-  // Let system pick the number of intra op threads.
-  static constexpr int kDefaultNumIntraOpThreads = 0;
-  return Runtime::Create(kDefaultNumInterOpThreads, kDefaultNumIntraOpThreads);
-}
-
 std::unique_ptr<Runtime> Runtime::Create(int num_inter_op_threads,
                                          int num_intra_op_threads) {
   if (num_intra_op_threads <= 0)

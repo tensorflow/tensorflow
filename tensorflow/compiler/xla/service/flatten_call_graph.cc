@@ -151,7 +151,9 @@ Status FlattenNode(const CallGraphNode& node) {
 
 }  // namespace
 
-StatusOr<bool> FlattenCallGraph::Run(HloModule* module) {
+StatusOr<bool> FlattenCallGraph::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3, "Before flatten call graph:\n" + module->ToString());
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);

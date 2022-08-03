@@ -25,6 +25,8 @@ limitations under the License.
 #include <iosfwd>
 #include <list>
 #include <memory>
+#include <optional>
+#include <ostream>
 #include <set>
 #include <string>
 #include <tuple>
@@ -504,6 +506,8 @@ class HloInstruction {
     kCustom,
   };
 
+  inline static constexpr char kMainExecutionThread[] = "main";
+
   virtual ~HloInstruction() { DetachFromOperandsAndUsers(); }
 
   // Detaches an instruction from its operands and users. That is, remove the
@@ -511,6 +515,7 @@ class HloInstruction {
   void DetachFromOperandsAndUsers();
 
   // Adds a derived instruciton to the parent compuation of this instruction.
+  // Also update setup the new instruction as a derived instruction.
   HloInstruction* AddInstruction(
       std::unique_ptr<HloInstruction> derived_instruction);
 
@@ -624,15 +629,18 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAsyncStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* async_computation,
-      std::optional<int64_t> async_group_id = std::nullopt);
+      std::optional<int64_t> async_group_id = std::nullopt,
+      absl::string_view async_execution_thread = kMainExecutionThread);
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
       const Shape& shape, HloInstruction* operand,
       HloComputation* async_computation,
-      std::optional<int64_t> async_group_id = std::nullopt);
+      std::optional<int64_t> async_group_id = std::nullopt,
+      absl::string_view async_execution_thread = kMainExecutionThread);
   static std::unique_ptr<HloInstruction> CreateAsyncDone(
       const Shape& shape, HloInstruction* operand,
       HloComputation* async_computation,
-      std::optional<int64_t> async_group_id = std::nullopt);
+      std::optional<int64_t> async_group_id = std::nullopt,
+      absl::string_view async_execution_thread = kMainExecutionThread);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -856,7 +864,7 @@ class HloInstruction {
   // Creates an asynchronous receive instruction with the given channel id,
   // which allocates resources to receive data of the given shape from a unique
   // send instruction in another computation that has the same channel id.  If
-  // is_host_transfer is true, then this Send operation transfers data from the
+  // is_host_transfer is true, then this Recv operation transfers data from the
   // host.
   static std::unique_ptr<HloInstruction> CreateRecv(
       const Shape& shape, HloInstruction* token, int64_t channel_id,
@@ -1671,7 +1679,7 @@ class HloInstruction {
   // dimensions.
   //
   // Precondition: this op must be a reshape.
-  std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
+  std::optional<ShapeUtil::ShapeEqualityDescriptor>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
   // Gets the string identifier for this instruction.
@@ -2126,6 +2134,18 @@ class HloInstruction {
 
   // Delegates to HloAsyncInstruction::set_async_group_id().
   void set_async_group_id(std::optional<int64_t> async_group_id);
+
+  // Delegates to HloAsyncInstruction::async_execution_thread().
+  absl::string_view async_execution_thread() const;
+
+  // Delegates to HloAsyncInstruction::set_async_execution_thread().
+  void set_async_execution_thread(absl::string_view async_execution_thread);
+
+  // Delegates to
+  // HloCallableInstruction::RecursivelySetComputationsThreadName().
+  void set_called_computations_execution_thread(
+      absl::string_view async_execution_thread,
+      bool skip_async_execution_thread_overwrite);
 
   // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
   bool is_cross_program_prefetch() const;

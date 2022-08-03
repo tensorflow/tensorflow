@@ -38,7 +38,7 @@ using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
-using ::tfrt::jitrt::ReturnValueConverter;
+using ::tfrt::jitrt::RemainingResultsConverter;
 
 // -------------------------------------------------------------------------- //
 // Run benchmark by compiling MLIR function using TFRT JitRt API.
@@ -86,7 +86,7 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
 
   // Free memory owned by the returned memrefs.
   ResultConversionCtx result_ctx(std::move(input_ptrs));
-  ReturnValueConverter<ResultConversionCtx> converter(results, result_ctx);
+  RemainingResultsConverter<ResultConversionCtx> converter(results, result_ctx);
   converter.AddConversion(FreeReturnedMemref);
 
   // Execute async tasks in the HostContext work queue.

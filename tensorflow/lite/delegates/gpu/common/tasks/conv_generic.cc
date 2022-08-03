@@ -76,31 +76,27 @@ std::string GenerateAsyncUpload(const std::string& local_ptr_name,
 std::string GenerateBlockCoords(const int4& block_size,
                                 const int3& work_group_launch_order,
                                 bool linear_spatial, bool linear_all,
-                                bool need_depth) {
+                                bool need_depth, bool need_batch) {
   std::string c;
   int3 launch_remap;
   launch_remap[work_group_launch_order.x] = 0;
   launch_remap[work_group_launch_order.y] = 1;
   launch_remap[work_group_launch_order.z] = 2;
   if (linear_all) {
-    c += "  int linear_id = GLOBAL_ID_0;\n";
-    c += "  int DST_S = (linear_id / args.task_size_spatial) * " +
-         std::to_string(block_size.w) + ";\n";
-    c += "  int linear_spatial = linear_id % args.task_size_spatial;\n";
-    if (need_depth) {
-      c += "  int DST_X = (linear_spatial % args.task_size_x) * " +
-           std::to_string(block_size.x) + ";\n";
-      c += "  linear_spatial = linear_spatial / args.task_size_x;\n";
-      c += "  int DST_Y = (linear_spatial % args.task_size_y) * " +
-           std::to_string(block_size.y) + ";\n";
-      c += "  int DST_Z = (linear_spatial / args.task_size_y) * " +
-           std::to_string(block_size.z) + ";\n";
-    } else {
-      c += "  int DST_Y = (linear_spatial / args.task_size_x) * " +
-           std::to_string(block_size.y) + ";\n";
-      c += "  int DST_X = (linear_spatial % args.task_size_x) * " +
-           std::to_string(block_size.x) + ";\n";
+    c += "  int linear_all = GLOBAL_ID_0;\n";
+    if (need_batch) {
+      c += "  int B = linear_all % args.task_size_b;\n";
+      c += "  linear_all = linear_all / args.task_size_b;\n";
     }
+    c += "  int DST_X = linear_all % args.task_size_x;\n";
+    c += "  linear_all = linear_all / args.task_size_x;\n";
+    c += "  int DST_Y = linear_all % args.task_size_y;\n";
+    c += "  linear_all = linear_all / args.task_size_y;\n";
+    if (need_depth) {
+      c += "  int DST_Z = linear_all % args.task_size_z;\n";
+      c += "  linear_all = linear_all / args.task_size_z;\n";
+    }
+    c += "  int DST_S = linear_all;\n";
   } else if (linear_spatial) {
     if (work_group_launch_order[0] == 0) {
       c += "  int linear_spatial = GLOBAL_ID_0;\n";
@@ -108,62 +104,66 @@ std::string GenerateBlockCoords(const int4& block_size,
       c += "  int linear_spatial = GROUP_ID_" +
            std::to_string(launch_remap[0]) + " * GROUP_SIZE_0 + LOCAL_ID_0;\n";
     }
+    if (need_batch) {
+      c += "  int B = linear_spatial % args.task_size_b;\n";
+      c += "  linear_spatial = linear_spatial / args.task_size_b;\n";
+    }
+    c += "  int DST_X = linear_spatial % args.task_size_x;\n";
+    c += "  linear_spatial = linear_spatial / args.task_size_x;\n";
+    c += "  int DST_Y = linear_spatial % args.task_size_y;\n";
+    c += "  linear_spatial = linear_spatial / args.task_size_y;\n";
     if (need_depth) {
-      c += "  int DST_X = (linear_spatial % args.task_size_x) * " +
-           std::to_string(block_size.x) + ";\n";
-      c += "  linear_spatial = linear_spatial / args.task_size_x;\n";
-      c += "  int DST_Y = (linear_spatial % args.task_size_y) * " +
-           std::to_string(block_size.y) + ";\n";
-      c += "  int DST_Z = (linear_spatial / args.task_size_y) * " +
-           std::to_string(block_size.z) + ";\n";
-    } else {
-      c += "  int DST_Y = (linear_spatial / args.task_size_x) * " +
-           std::to_string(block_size.y) + ";\n";
-      c += "  int DST_X = (linear_spatial % args.task_size_x) * " +
-           std::to_string(block_size.x) + ";\n";
+      c += "  int DST_Z = linear_spatial;\n";
     }
     if (work_group_launch_order[1] == 1) {
-      c +=
-          "  int DST_S = GLOBAL_ID_1 * " + std::to_string(block_size.w) + ";\n";
+      c += "  int DST_S = GLOBAL_ID_1;\n";
     } else {
-      c += "  int DST_S = (GROUP_ID_" + std::to_string(launch_remap[1]) +
-           " * GROUP_SIZE_1 + LOCAL_ID_1) * " + std::to_string(block_size.w) +
-           ";\n";
+      c += "  int DST_S = GROUP_ID_" + std::to_string(launch_remap[1]) +
+           " * GROUP_SIZE_1 + LOCAL_ID_1;\n";
     }
   } else {
     if (work_group_launch_order[0] == 0) {
-      c +=
-          "  int DST_X = GLOBAL_ID_0 * " + std::to_string(block_size.x) + ";\n";
+      c += "  int DST_X = GLOBAL_ID_0;\n";
     } else {
-      c += "  int DST_X = (GROUP_ID_" + std::to_string(launch_remap[0]) +
-           " * GROUP_SIZE_0 + LOCAL_ID_0) * " + std::to_string(block_size.x) +
-           ";\n";
+      c += "  int DST_X = GROUP_ID_" + std::to_string(launch_remap[0]) +
+           " * GROUP_SIZE_0 + LOCAL_ID_0;\n";
+    }
+    if (need_batch) {
+      c += "  int B = DST_X % args.task_size_b;\n";
+      c += "  DST_X = DST_X / args.task_size_b;\n";
     }
     std::string global_id_1;
     if (work_group_launch_order[1] == 1) {
       global_id_1 = "GLOBAL_ID_1";
     } else {
-      global_id_1 = "(GROUP_ID_" + std::to_string(launch_remap[1]) +
-                    " * GROUP_SIZE_1 + LOCAL_ID_1)";
+      global_id_1 = "GROUP_ID_" + std::to_string(launch_remap[1]) +
+                    " * GROUP_SIZE_1 + LOCAL_ID_1";
     }
     if (need_depth) {
       c += "  int linear_id_1 = " + global_id_1 + ";\n";
-      c += "  int DST_Z = (linear_id_1 / args.task_size_y) * " +
-           std::to_string(block_size.z) + ";\n";
-      c += "  int DST_Y = (linear_id_1 % args.task_size_y) * " +
-           std::to_string(block_size.y) + ";\n";
+      c += "  int DST_Y = linear_id_1 % args.task_size_y;\n";
+      c += "  int DST_Z = linear_id_1 / args.task_size_y;\n";
     } else {
-      c += "  int DST_Y = " + global_id_1 + " * " +
-           std::to_string(block_size.y) + ";\n";
+      c += "  int DST_Y = " + global_id_1 + ";\n";
     }
     if (work_group_launch_order[2] == 2) {
-      c +=
-          "  int DST_S = GLOBAL_ID_2 * " + std::to_string(block_size.w) + ";\n";
+      c += "  int DST_S = GLOBAL_ID_2;\n";
     } else {
-      c += "  int DST_S = (GROUP_ID_" + std::to_string(launch_remap[2]) +
-           " * GROUP_SIZE_2 + LOCAL_ID_2) * " + std::to_string(block_size.w) +
-           ";\n";
+      c += "  int DST_S = GROUP_ID_" + std::to_string(launch_remap[2]) +
+           " * GROUP_SIZE_2 + LOCAL_ID_2;\n";
     }
+  }
+  if (block_size.x != 1) {
+    c += "  DST_X *= " + std::to_string(block_size.x) + ";\n";
+  }
+  if (block_size.y != 1) {
+    c += "  DST_Y *= " + std::to_string(block_size.y) + ";\n";
+  }
+  if (need_depth && block_size.z != 1) {
+    c += "  DST_Z *= " + std::to_string(block_size.z) + ";\n";
+  }
+  if (block_size.w != 1) {
+    c += "  DST_S *= " + std::to_string(block_size.w) + ";\n";
   }
 
   return c;
@@ -263,14 +263,9 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
   } else if (conv_params_.linear_spatial) {
     grid_dimension_ = 2;
   }
-  const bool stride_correction =
-      definition_.IsBatchSupported() && stride_.x != 1;
 
-  auto src_desc = definition_.src_tensors[0];
-  if (definition_.IsBatchSupported()) {
-    src_desc.SetStateVar("BatchedWidth", "true");
-  }
-  AddSrcTensor("src_tensor", src_desc);
+  AddSrcTensor("src_tensor", definition_.src_tensors[0]);
+  AddDstTensor("dst_tensor", definition_.dst_tensors[0]);
   if (definition_.src_tensors.size() == 2) {  // dynamic weights
     const DataType weights_type = definition_.GetDataType();
     if (conv_params_.weights_layout == WeightsLayout::kOSpatialIOGroupI4O4 ||
@@ -295,14 +290,14 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
       definition_.src_tensors.push_back(desc);
       for (int i = 0; i < 4; ++i) {
         Texture2DDescriptor desc;
-        desc.element_type = definition_.src_tensors[1 + i].data_type;
+        desc.element_type = definition_.src_tensors[1 + i].GetDataType();
         const std::string name = "weights" + std::to_string(i);
         AddSrcTexture2D("weights" + std::to_string(i), desc);
       }
     }
   }
 
-  code_ = GenerateConv(gpu_info, definition_, stride_correction, conv_params_);
+  code_ = GenerateConv(gpu_info, definition_, conv_params_);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
     compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
@@ -326,41 +321,24 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
 }
 
 absl::Status ConvGeneric::BindArguments(ArgumentsBinder* args) {
-  if (!conv_params_.x_kernel_is_1) {
-    RETURN_IF_ERROR(args->SetInt("stride_x", stride_.x));
-    RETURN_IF_ERROR(args->SetInt("padding_x", padding_.x * src_[0]->Batch()));
-    RETURN_IF_ERROR(args->SetInt("kernel_size_x", kernel_size_.x));
-    RETURN_IF_ERROR(args->SetInt("dilation_x", dilation_.x * src_[0]->Batch()));
-  }
-  if (!conv_params_.y_kernel_is_1) {
-    RETURN_IF_ERROR(args->SetInt("stride_y", stride_.y));
-    RETURN_IF_ERROR(args->SetInt("padding_y", padding_.y));
-    RETURN_IF_ERROR(args->SetInt("kernel_size_y", kernel_size_.y));
-    RETURN_IF_ERROR(args->SetInt("dilation_y", dilation_.y));
-  }
-  if (definition_.src_tensors[0].HasAxis(Axis::DEPTH) &&
-      !conv_params_.z_kernel_is_1) {
-    RETURN_IF_ERROR(args->SetInt("stride_z", stride_.z));
-    RETURN_IF_ERROR(args->SetInt("padding_z", padding_.z));
-    RETURN_IF_ERROR(args->SetInt("kernel_size_z", kernel_size_.z));
-    RETURN_IF_ERROR(args->SetInt("dilation_z", dilation_.z));
-  }
-  const int task_size_x = DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
-                                        conv_params_.block_size.x);
+  const int task_size_b = dst_[0]->Batch();
+  const int task_size_x =
+      DivideRoundUp(dst_[0]->Width(), conv_params_.block_size.x);
   const int task_size_y =
       DivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
   const int task_size_z =
       DivideRoundUp(dst_[0]->Depth(), conv_params_.block_size.z);
+  RETURN_IF_ERROR(args->SetInt("task_size_b", task_size_b));
   RETURN_IF_ERROR(args->SetInt("task_size_x", task_size_x));
   RETURN_IF_ERROR(args->SetInt("task_size_y", task_size_y));
-  const int task_size_spatial = task_size_x * task_size_y * task_size_z;
-  RETURN_IF_ERROR(args->SetInt("task_size_spatial", task_size_spatial));
+  RETURN_IF_ERROR(args->SetInt("task_size_z", task_size_z));
   return absl::OkStatus();
 }
 
 int3 ConvGeneric::GetGridSize() const {
-  const int task_size_x = DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
-                                        conv_params_.block_size.x);
+  const int task_size_b = dst_[0]->Batch();
+  const int task_size_x =
+      DivideRoundUp(dst_[0]->Width(), conv_params_.block_size.x);
   const int task_size_y =
       DivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
   const int task_size_z =
@@ -370,11 +348,15 @@ int3 ConvGeneric::GetGridSize() const {
   int3 wg;
 
   if (conv_params_.linear_all) {
-    return int3(task_size_x * task_size_y * task_size_z * task_size_s, 1, 1);
+    return int3(
+        task_size_x * task_size_b * task_size_y * task_size_z * task_size_s, 1,
+        1);
   } else if (conv_params_.linear_spatial) {
-    return int3(task_size_x * task_size_y * task_size_z, task_size_s, 1);
+    return int3(task_size_x * task_size_b * task_size_y * task_size_z,
+                task_size_s, 1);
   } else {
-    return int3(task_size_x, task_size_y * task_size_z, task_size_s);
+    return int3(task_size_x * task_size_b, task_size_y * task_size_z,
+                task_size_s);
   }
 }
 
@@ -395,7 +377,6 @@ void ConvGeneric::GetPossibleKernelWorkGroups(
 
 std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
                                       const OperationDef& op_def,
-                                      bool stride_correction,
                                       const ConvParams& conv_params) {
   const auto& src_def = op_def.src_tensors[0];
 
@@ -441,33 +422,28 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
     return check;
   };
 
-  auto dst_desc = op_def.dst_tensors[0];
-  if (op_def.IsBatchSupported()) {
-    dst_desc.SetStateVar("BatchedWidth", "true");
-  }
-  AddDstTensor("dst_tensor", dst_desc);
-
   if (!conv_params_.x_kernel_is_1) {
-    args_.AddInt("stride_x");
-    args_.AddInt("padding_x");
-    args_.AddInt("kernel_size_x");
-    args_.AddInt("dilation_x");
+    args_.AddInt("stride_x", stride_.x);
+    args_.AddInt("padding_x", padding_.x);
+    args_.AddInt("kernel_size_x", kernel_size_.x);
+    args_.AddInt("dilation_x", dilation_.x);
   }
   if (!conv_params_.y_kernel_is_1) {
-    args_.AddInt("stride_y");
-    args_.AddInt("padding_y");
-    args_.AddInt("kernel_size_y");
-    args_.AddInt("dilation_y");
+    args_.AddInt("stride_y", stride_.y);
+    args_.AddInt("padding_y", padding_.y);
+    args_.AddInt("kernel_size_y", kernel_size_.y);
+    args_.AddInt("dilation_y", dilation_.y);
   }
   if (src_def.HasAxis(Axis::DEPTH) && !conv_params_.z_kernel_is_1) {
-    args_.AddInt("stride_z");
-    args_.AddInt("padding_z");
-    args_.AddInt("kernel_size_z");
-    args_.AddInt("dilation_z");
+    args_.AddInt("stride_z", stride_.z);
+    args_.AddInt("padding_z", padding_.z);
+    args_.AddInt("kernel_size_z", kernel_size_.z);
+    args_.AddInt("dilation_z", dilation_.z);
   }
+  args_.AddInt("task_size_b");
   args_.AddInt("task_size_x");
   args_.AddInt("task_size_y");
-  args_.AddInt("task_size_spatial");
+  args_.AddInt("task_size_z");
 
   const int wg_total_size =
       work_group_size_.x * work_group_size_.y * work_group_size_.z;
@@ -550,7 +526,12 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
   c += "MAIN_FUNCTION($0) {\n";
   c += GenerateBlockCoords(conv_params.block_size, work_group_launch_order_,
                            conv_params.linear_spatial, conv_params.linear_all,
-                           src_def.HasAxis(Axis::DEPTH));
+                           src_def.HasAxis(Axis::DEPTH),
+                           src_def.HasAxis(Axis::BATCH));
+  if (src_def.HasAxis(Axis::BATCH)) {
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+  }
   if (!late_oob_check) {
     c += "  if (" + dst_oob_check + ") {\n";
     c += "    return;\n";
@@ -598,15 +579,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
     for (int x = 0; x < block_size.x; ++x) {
       const std::string xind = std::to_string(x);
       const std::string xc = "(DST_X + " + xind + ")";
-      if (stride_correction) {
-        c += "  int xc" + xind + " = " +
-             GetXStrideCorrected(xc, "args.src_tensor.Batch()", "args.stride_x",
-                                 "args.padding_x") +
-             ";\n";
-      } else {
-        c += "  int xc" + xind + " = " + xc +
-             " * args.stride_x + args.padding_x;\n";
-      }
+      c += "  int xc" + xind + " = " + xc +
+           " * args.stride_x + args.padding_x;\n";
     }
   } else {
     for (int x = 0; x < block_size.x; ++x) {
@@ -760,8 +734,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
           coords += ", " + zc;
         }
         if (src_def.IsLinear()) {
-          c += "  args.src_tensor.GetAddress(addr" + id + ", " + coords + ", " +
-               src_group_start_slice + ");\n";
+          c += "  int addr" + id + " = args.src_tensor.GetAddress(" + coords +
+               ", " + src_group_start_slice + ");\n";
           if (need_multiple_slice_strides) {
             const std::string check = generate_check(xind, yind, zind);
             c += "  addr" + id + " = select(-1, addr" + id + ", (" + check +
@@ -845,15 +819,12 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
       }
     }
   };
-  const bool weights_type_as_accum_type =
-      !(op_def.precision == CalculationsPrecision::F32_F16 &&
-        conv_params.weights_data_type == DataType::FLOAT16);
   bool use_fma = gpu_info.IsAMD() && gpu_info.IsApiOpenCl();
   auto conv_core = [&](int shared_offset) {
     const std::string channels[] = {"x", "y", "z", "w"};
     for (int s = 0; s < block_size.w; ++s) {
       const std::string sind = std::to_string(s);
-      if (weights_type_as_accum_type) {
+      if (op_def.precision != CalculationsPrecision::F32_F16) {
         for (int ch = 0; ch < 4; ++ch) {
           for (int z = 0; z < block_size.z; ++z) {
             const std::string zind = std::to_string(z);
@@ -928,7 +899,7 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
             }
           }
         }
-      } else {  // F32_F16 precision and weights type is float16
+      } else {  // F32_F16 precision
         for (int z = 0; z < block_size.z; ++z) {
           const std::string zind = std::to_string(z);
           for (int y = 0; y < block_size.y; ++y) {
@@ -1220,9 +1191,6 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
       work_group_launch_order_ = int3(1, 0, 2);
       conv_params.fixed_work_group_size = true;
     }
-    conv_params.weights_data_type =
-        definition.precision == CalculationsPrecision::F16 ? DataType::FLOAT16
-                                                           : DataType::FLOAT32;
     conv_params.block_size = int4(1, 1, 1, 4);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type =
@@ -1580,11 +1548,11 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
   return params;
 }
 
-ConvGeneric::ConvParams ConvGeneric::GuessBestParamsWinograd(
+ConvGeneric::ConvParams ConvGeneric::GuessBestParamsPointwise(
     const GpuInfo& gpu_info, const OperationDef& definition,
-    const Convolution2DAttributes& attr, const BHWC* dst_shape) {
-  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
+    const OHWI& weights_shape, const BHWC* dst_shape) {
+  const int dst_depth = DivideRoundUp(weights_shape.o, 4);
+  const int src_depth = DivideRoundUp(weights_shape.i, 4);
   ConvGeneric::ConvParams params = GuessBestParams(
       gpu_info, definition, src_depth, dst_depth, true, true, true, dst_shape);
   params.block_size.x *= params.block_size.y;
@@ -1623,13 +1591,28 @@ ConvGeneric CreateConvGenericDynamicWeights(const GpuInfo& gpu_info,
   return result;
 }
 
+ConvGeneric CreateConvGenericBatchedMatMul(const GpuInfo& gpu_info,
+                                           const OperationDef& definition,
+                                           const OHWI& weights_shape,
+                                           const BHWC* dst_shape) {
+  ConvGeneric result(definition);
+  result.conv_params_ = result.GuessBestParamsPointwise(
+      gpu_info, definition, weights_shape, dst_shape);
+  result.GenerateCode(gpu_info);
+  tflite::gpu::Tensor<Linear, DataType::FLOAT32> biases;
+  biases.shape = Linear(weights_shape.o);
+  biases.data.resize(weights_shape.o, 0.0f);
+  result.UploadBias(biases);
+  return result;
+}
+
 ConvGeneric CreateConvGenericWino4x4To6x6(const GpuInfo& gpu_info,
                                           const OperationDef& definition,
                                           const Convolution2DAttributes& attr,
                                           const BHWC* dst_shape) {
   ConvGeneric result(definition);
-  result.conv_params_ =
-      result.GuessBestParamsWinograd(gpu_info, definition, attr, dst_shape);
+  result.conv_params_ = result.GuessBestParamsPointwise(
+      gpu_info, definition, attr.weights.shape, dst_shape);
   result.GenerateCode(gpu_info);
   result.UploadDataForWinograd4x4To6x6(attr.weights);
   return result;

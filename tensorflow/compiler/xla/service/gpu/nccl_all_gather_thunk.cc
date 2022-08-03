@@ -45,7 +45,7 @@ namespace gpu {
 }
 
 /*static*/ bool NcclAllGatherThunk::CanImplement(mlir::lmhlo::AllGatherOp op) {
-  return absl::c_all_of(op.operands(), [&](mlir::Value operand) {
+  return absl::c_all_of(op.getInputs(), [&](mlir::Value operand) {
     Shape shape = GetShape(operand);
     return LayoutUtil::IsDenseArray(shape) &&
            IsTypeSupportedByNccl(shape.element_type()) &&

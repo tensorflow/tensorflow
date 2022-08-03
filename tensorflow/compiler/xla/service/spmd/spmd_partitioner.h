@@ -210,7 +210,10 @@ class SpmdPartitioner : public HloModulePass {
         options_(std::move(options)),
         collective_ops_creator_(std::move(collective_ops_creator)) {}
   absl::string_view name() const override { return "spmd-partitioning"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Transforms the given computation with SPMD instructions, replacing it with
   // a new computation.
@@ -260,7 +263,9 @@ class SpmdPartitioner : public HloModulePass {
 
   // Verifies that the sharding of instructions in the module are valid, and
   // also fill in missing sharding information.
-  virtual Status PreprocessSharding(HloModule* module);
+  virtual Status PreprocessSharding(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Returns if the given side-effecting instruction is allowed to have
   // replicated sharding.
@@ -273,7 +278,9 @@ class SpmdPartitioner : public HloModulePass {
   // Preprocesses the graph to simplify some communication patterns. E.g., merge
   // pad->slice into a single pad with potentially negative padding to avoid
   // multiple halo exchanges.
-  Status PreprocessHlos(HloModule* module);
+  Status PreprocessHlos(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   const int64_t num_partitions_;
   const int64_t num_replicas_;
@@ -389,10 +396,16 @@ class PartitionedHlo {
  private:
   // Same as Reshard except that it does not explicitly modify the reshard
   // cache, although it would indirectly modify by calling Replicate().
-  PartitionedHlo ReshardNoCache(const HloSharding& target);
+  PartitionedHlo ReshardNoCache(const HloSharding& target,
+                                bool allow_full_replication = true);
 
   // Helper function to broadcast data from a single device to all devices.
   PartitionedHlo Broadcast() const;
+
+  // Try to perform complicated reshard handling by splitting a big reshard into
+  // multiple reshards using that can be handled directly.
+  std::optional<PartitionedHlo> TryComplexReshardHandling(
+      const HloSharding& target);
 
   // Helper function to reshard the tensor using AllToAll (instead of the
   // default of Replicate followed by Slice).

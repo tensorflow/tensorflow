@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
@@ -53,11 +54,20 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
                             bcast->operand(0)->shape().dimensions_size());
       int num_batch_dims = dim_nums->lhs_batch_dimensions_size();
 
+      const tensorflow::protobuf::RepeatedField<int64_t> &batch_dimensions =
+          (bcast_operand_index == 1) ? dim_nums->rhs_batch_dimensions()
+                                     : dim_nums->lhs_batch_dimensions();
       // This optimization is only valid if the set of broadcasted dimensions
       // is exactly the set of batch dimensions. First, check that all newly
-      // broadcast dimensions have been inserted on the left.
+      // broadcast dimensions have been inserted on the left i.e. all new
+      // dimensions must be in [0, num_bcast_dims) or equivalently all original
+      // dimensions are >= num_bcast_dims.
       for (int64_t bcast_dim : bcast->dimensions()) {
         if (bcast_dim < num_bcast_dims) {
+          return OkStatus();
+        }
+        // bcast_dim should not be in batch_dimensions.
+        if (absl::c_linear_search(batch_dimensions, bcast_dim)) {
           return OkStatus();
         }
       }
@@ -94,9 +104,12 @@ static StatusOr<bool> RunOnComputation(HloComputation *computation) {
   return visitor.changed();
 }
 
-StatusOr<bool> GemmBroadcastFoldingRewriter::Run(HloModule *module) {
+StatusOr<bool> GemmBroadcastFoldingRewriter::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   bool changed = false;
-  for (HloComputation *computation : module->MakeNonfusionComputations()) {
+  for (HloComputation *computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }

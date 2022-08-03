@@ -76,9 +76,9 @@ Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
           cardinality,
           ". Consider adding a `.repeat()` transformation to the dataset.");
     }
-    out = absl::make_unique<RoundRobinTaskRunner>(std::move(iterator),
-                                                  task_def.num_consumers(),
-                                                  task_def.worker_address());
+    out = std::make_unique<RoundRobinTaskRunner>(std::move(iterator),
+                                                 task_def.num_consumers(),
+                                                 task_def.worker_address());
   } else if (task_def.use_cross_trainer_cache()) {
     const size_t max_cache_size_bytes =
         worker_config.cross_trainer_cache_size_bytes() > 0
@@ -134,7 +134,7 @@ FirstComeFirstServedTaskRunner::GetNextFromInputIterator()
     TF_LOCKS_EXCLUDED(mu_) {
   GetElementResult result;
   std::vector<Tensor> element;
-  bool end_of_task;
+  bool end_of_task = false;
   result.skip = false;
   {
     mutex_lock l(mu_);
@@ -157,7 +157,7 @@ CachingTaskRunner::CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
                                      size_t max_cache_size_bytes)
     : fcfs_task_runner_(std::move(iterator)),
       cache_(max_cache_size_bytes,
-             absl::make_unique<GetElementResultSequence>(fcfs_task_runner_)) {
+             std::make_unique<GetElementResultSequence>(fcfs_task_runner_)) {
   LOG(INFO) << "Initialized tf.data service cross-trainer cache with "
             << FormatBytes(max_cache_size_bytes) << " of memory.";
 }
@@ -180,6 +180,11 @@ StatusOr<GetElementResult>
 CachingTaskRunner::GetElementResultSequence::GetNext() {
   GetElementResult result;
   TF_RETURN_IF_ERROR(fcfs_task_runner_.GetNext(result));
+  if (result.end_of_sequence) {
+    return errors::InvalidArgument(
+        "Cross-trainer caching requires the input dataset to be infinite. "
+        "However, it reached the end of sequence.");
+  }
   return result;
 }
 
@@ -375,7 +380,7 @@ void PrefetchThread::Run() {
       return;
     }
     mutex_lock l(mu_);
-    buffer_.push_back(absl::make_unique<Element>(std::move(element), index_++));
+    buffer_.push_back(std::make_unique<Element>(std::move(element), index_++));
     cv_.notify_all();
   }
 }

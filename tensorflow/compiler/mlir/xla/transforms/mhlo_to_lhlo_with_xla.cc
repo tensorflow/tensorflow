@@ -46,9 +46,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
@@ -56,6 +53,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
@@ -704,6 +704,10 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     return EmitGemm(custom_call_instr);
   }
 
+  if (xla::gpu::IsCublasLtMatmul(*instr)) {
+    return EmitCublasLtMatmul(custom_call_instr);
+  }
+
   if (xla::gpu::IsCustomCallToDnnConvolution(*instr)) {
     return EmitDnnConvolution(custom_call_instr);
   }
@@ -782,48 +786,111 @@ StatusOr<lmhlo_gpu::CholeskyOp> LhloDialectEmitter::EmitCholesky(
   return cholesky_op;
 }
 
+namespace {
+
+template <typename OpT>
+void SetMatmulAttributes(OpT op, const xla::gpu::GemmBackendConfig& config,
+                         OpBuilder& builder) {
+  auto arrayref = [](absl::Span<const int64_t> array) {
+    return llvm::ArrayRef<int64_t>{array.data(), array.size()};
+  };
+
+  auto hlo_dims = config.dot_dimension_numbers();
+  auto mlir_dims = mhlo::DotDimensionNumbersAttr::get(
+      builder.getContext(), arrayref(hlo_dims.lhs_batch_dimensions()),
+      arrayref(hlo_dims.rhs_batch_dimensions()),
+      arrayref(hlo_dims.lhs_contracting_dimensions()),
+      arrayref(hlo_dims.rhs_contracting_dimensions()));
+  op.setDotDimensionNumbersAttr(mlir_dims);
+  op.setAlphaRealAttr(builder.getF64FloatAttr(config.alpha_real()));
+  op.setAlphaImagAttr(builder.getF64FloatAttr(config.alpha_imag()));
+  op.setBetaAttr(builder.getF64FloatAttr(config.beta()));
+  if (config.algorithm_case() ==
+      xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
+    op.setAlgorithmAttr(builder.getI64IntegerAttr(config.selected_algorithm()));
+  }
+  op.setPrecisionConfigAttr(
+      xla::ConvertPrecisionConfig(&config.precision_config(), &builder));
+}
+
+StatusOr<lmhlo_gpu::CublasLtMatmulEpilogue> AsLhloEpilogue(
+    xla::gpu::GemmBackendConfig_Epilogue epilogue) {
+  switch (epilogue) {
+    case xla::gpu::GemmBackendConfig::DEFAULT:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::Default;
+      break;
+    case xla::gpu::GemmBackendConfig::BIAS:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::Bias;
+      break;
+    default:
+      return xla::InternalError("unknown epilogue");
+  }
+}
+
+}  // namespace
+
 StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
     const HloCustomCallInstruction* custom_call) {
   TF_ASSIGN_OR_RETURN(
       auto const config,
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
-  auto set_common_attributes = [&](auto op) -> Operation* {
-    auto arrayref = [](absl::Span<const int64_t> array) {
-      return llvm::ArrayRef<int64_t>{array.data(), array.size()};
-    };
-    auto hlo_dims = config.dot_dimension_numbers();
-    auto mlir_dims = mhlo::DotDimensionNumbersAttr::get(
-        builder_.getContext(), arrayref(hlo_dims.lhs_batch_dimensions()),
-        arrayref(hlo_dims.rhs_batch_dimensions()),
-        arrayref(hlo_dims.lhs_contracting_dimensions()),
-        arrayref(hlo_dims.rhs_contracting_dimensions()));
-    op.setDotDimensionNumbersAttr(mlir_dims);
-    op.setAlphaRealAttr(builder_.getF64FloatAttr(config.alpha_real()));
-    op.setAlphaImagAttr(builder_.getF64FloatAttr(config.alpha_imag()));
-    if (config.algorithm_case() ==
-        xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
-      op.setAlgorithmAttr(
-          builder_.getI64IntegerAttr(config.selected_algorithm()));
-    }
-    return op.getOperation();
-  };
-
   if (custom_call->operand_count() == 2) {
-    TF_ASSIGN_OR_RETURN(auto gemm,
-                        CreateOpWithoutAttrs<lmhlo_gpu::GEMMOp>(custom_call));
-    return set_common_attributes(gemm);
+    TF_RET_CHECK(config.beta() == 0.);
+  } else if (custom_call->operand_count() != 3) {
+    return xla::InvalidArgument("GEMM custom call should have 2 or 3 operands");
   }
 
-  if (custom_call->operand_count() == 3) {
-    TF_ASSIGN_OR_RETURN(
-        auto gemm_bias,
-        CreateOpWithoutAttrs<lmhlo_gpu::GEMM_BiasOp>(custom_call));
-    gemm_bias.setBetaAttr(builder_.getF64FloatAttr(config.beta()));
-    return set_common_attributes(gemm_bias);
+  // GEMM may have two or three operands. However, in the three operand case,
+  // the third operand is updated in-place, so we treat that as an output here.
+  TF_ASSIGN_OR_RETURN(
+      lmhlo_gpu::GEMMOp op,
+      CreateOpWithoutAttrs<lmhlo_gpu::GEMMOp>(custom_call,
+                                              /*num_operands=*/2));
+
+  SetMatmulAttributes(op, config, builder_);
+  return op.getOperation();
+}
+
+StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
+    const HloCustomCallInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(
+      auto const config,
+      custom_call->backend_config<xla::gpu::GemmBackendConfig>());
+
+  bool has_matrix_bias = config.beta() != 0.;
+  bool has_vector_bias = config.epilogue() == xla::gpu::GemmBackendConfig::BIAS;
+  TF_RET_CHECK(custom_call->operand_count() ==
+               2 + int{has_matrix_bias} + int{has_vector_bias});
+
+  llvm::SmallVector<Value, 5> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(
+      has_matrix_bias ? custom_call->operand(2) : custom_call, &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+
+  if (has_vector_bias) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(
+        custom_call->operand(has_matrix_bias ? 3 : 2), &operands));
   }
 
-  return xla::InvalidArgument("GEMM custom call should have 2 or 3 operands");
+  auto op =
+      CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulOp>(custom_call, operands);
+  SetMatmulAttributes(op, config, builder_);
+
+  TF_ASSIGN_OR_RETURN(lmhlo_gpu::CublasLtMatmulEpilogue epilogue,
+                      AsLhloEpilogue(config.epilogue()));
+  op.setEpilogueAttr(lmhlo_gpu::CublasLtMatmulEpilogueAttr::get(
+      builder_.getContext(), epilogue));
+
+  // Use the first algorithm by default (i.e. fastest according to heuristics).
+  if (config.algorithm_case() !=
+      xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
+    op.setAlgorithmAttr(builder_.getI64IntegerAttr(0));
+  }
+
+  return op.getOperation();
 }
 
 static StatusOr<mlir::lmhlo_gpu::Activation> GetLHLOActivation(
@@ -1684,9 +1751,8 @@ OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
   OwningOpRef<mlir::ModuleOp> module =
       ModuleOp::create(UnknownLoc::get(context));
 
-  TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(maybe_module.ConsumeValueOrDie(),
-                                           module.get(), "Host",
-                                           optimize_xla_hlo));
+  TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(
+      std::move(maybe_module).value(), module.get(), "Host", optimize_xla_hlo));
 
   return module;
 }

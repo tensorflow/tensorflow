@@ -25,7 +25,7 @@ The end-to-end workflow involves the following steps:
 
 The example application we'll be using has been tested on the following devices:
 
-*   [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
+*   [Arduino Nano 33 BLE Sense](https://store-usa.arduino.cc/products/arduino-nano-33-ble-sense-with-headers)
     (using Arduino IDE)
 *   [SparkFun Edge](https://www.sparkfun.com/products/15170) (building directly
     from source)

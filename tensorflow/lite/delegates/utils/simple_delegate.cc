@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"

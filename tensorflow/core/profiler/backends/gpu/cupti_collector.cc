@@ -592,8 +592,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
 std::unique_ptr<CuptiTraceCollector> CreateCuptiCollector(
     const CuptiTracerCollectorOptions& options, const uint64 start_walltime_ns,
     const uint64 start_gputime_ns) {
-  return absl::make_unique<CuptiTraceCollectorImpl>(options, start_walltime_ns,
-                                                    start_gputime_ns);
+  return std::make_unique<CuptiTraceCollectorImpl>(options, start_walltime_ns,
+                                                   start_gputime_ns);
 }
 
 // The strings are parser friendly and have no whitespaces in them.

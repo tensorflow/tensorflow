@@ -248,8 +248,9 @@ bool TpuTransferManager::CanShapedBufferBeAccessedNow(
   auto* tpu_executor = down_cast<TpuExecutor*>(executor->implementation());
   XLA_ShapedBuffer c_device_buffer;
   ApiConverter::ToC(device_buffer, &c_device_buffer);
-  auto cleanup = absl::MakeCleanup(
-      [&c_device_buffer]() { ApiConverter::Destroy(&c_device_buffer); });
+  absl::Cleanup cleanup = [&c_device_buffer]() {
+    ApiConverter::Destroy(&c_device_buffer);
+  };
   return tpu::ExecutorApiFn()
       ->TpuTransferManager_CanShapedBufferBeAccessedNowFn(
           manager_, tpu_executor->se_executor(), &c_device_buffer);

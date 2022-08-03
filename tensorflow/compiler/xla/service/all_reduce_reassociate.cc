@@ -42,7 +42,9 @@ bool AreCompatible(const HloAllReduceInstruction *ar0,
 
 }  // namespace
 
-StatusOr<bool> AllReduceReassociate::Run(HloModule *module) {
+StatusOr<bool> AllReduceReassociate::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedAllReduce(*module)) {
     VLOG(1)
         << "Skip AllReduceReassociate because the module contains all-reduce "
@@ -53,7 +55,7 @@ StatusOr<bool> AllReduceReassociate::Run(HloModule *module) {
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
 
   bool changed = false;
-  for (auto computation : module->computations()) {
+  for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction *inst : computation->MakeInstructionPostOrder()) {
       std::optional<ReductionKind> kind = MatchReductionInstruction(inst);
       if (!kind || inst->operand(0)->opcode() != HloOpcode::kAllReduce ||

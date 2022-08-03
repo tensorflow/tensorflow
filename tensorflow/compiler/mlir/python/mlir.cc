@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -35,8 +36,6 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -53,6 +52,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/function_body.h"
@@ -240,7 +241,7 @@ std::string ExperimentalConvertSavedModelToMlir(
     return "// error";
   }
 
-  return MlirModuleToString(*module_or.ConsumeValueOrDie(), show_debug_info);
+  return MlirModuleToString(*std::move(module_or).value(), show_debug_info);
 }
 
 std::string ExperimentalConvertSavedModelV1ToMlirLite(
@@ -300,7 +301,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
 
   // Run the tf standard pipeline by default and then, run passes that lift
   // variables if the flag is set on the module.
-  mlir::OwningOpRef<mlir::ModuleOp> module = module_or.ConsumeValueOrDie();
+  mlir::OwningOpRef<mlir::ModuleOp> module = std::move(module_or).value();
   mlir::PassManager pm(&context);
   std::string error;
   llvm::raw_string_ostream error_stream(error);

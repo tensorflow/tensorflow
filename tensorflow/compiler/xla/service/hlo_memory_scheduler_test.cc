@@ -44,7 +44,7 @@ int64_t PeakMemoryUseOfEntryComputation(
   CHECK(module->has_schedule());
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module).ConsumeValueOrDie();
+      HloAliasAnalysis::Run(module).value();
 
   const HloSchedule& schedule = module->schedule();
 
@@ -146,7 +146,7 @@ ENTRY root {
       HloSchedule schedule,
       ScheduleModule(module.get(), size_fn,
                      ComputationSchedulerToModuleScheduler(ListMemoryScheduler),
-                     &peak_memory));
+                     /*execution_threads=*/{}, &peak_memory));
   TF_ASSERT_OK(module->set_schedule(schedule));
   // Verify that all instructions are in the sequence.
   const std::vector<HloInstruction*>& sequence =

@@ -170,7 +170,7 @@ Optional<SmallVector<int64_t, 8>> GetShapeFromHandle(InferenceContext& context,
 TensorType CreateTensorType(InferenceContext& context, const ShapeHandle& sh,
                             Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
-  if (shape.hasValue())
+  if (shape.has_value())
     return RankedTensorType::get(shape.getValue(), element_type);
   return UnrankedTensorType::get(element_type);
 }
@@ -180,7 +180,7 @@ ShapedTypeComponents CreateShapedTypeComponents(InferenceContext& context,
                                                 const ShapeHandle& sh,
                                                 Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
-  if (shape.hasValue())
+  if (shape.has_value())
     return ShapedTypeComponents(shape.getValue(), element_type);
   return ShapedTypeComponents(element_type);
 }

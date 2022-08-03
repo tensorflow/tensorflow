@@ -31,9 +31,11 @@ limitations under the License.
 #include "llvm/IR/Operator.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Host.h"
+#include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_acl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv3d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_custom_call_status.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_fp16.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_key_value_sort.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_matmul_acl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_pow.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
@@ -53,6 +56,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
+
+// Provided by compiler-rt and MLIR.
+// Converts an F32 value to a BF16.
+extern "C" uint16_t __truncsfbf2(float);
+// Converts an F64 value to a BF16.
+extern "C" uint16_t __truncdfbf2(double);
 
 namespace xla {
 namespace cpu {
@@ -70,6 +79,14 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   return result;
 }
 
+llvm::StringRef DetectHostCpuName() {
+  auto cpu = llvm::sys::getHostCPUName();
+  // TODO(b/238469947): Targeting znver3 triggers a very deep recursion in LLVM.
+  // Fall back to zen 2 until https://reviews.llvm.org/D129745 lands to avoid
+  // running out of stack.
+  return cpu == "znver3" ? "znver2" : cpu;
+}
+
 }  // namespace
 
 /*static*/ std::unique_ptr<llvm::TargetMachine>
@@ -82,7 +99,7 @@ SimpleOrcJIT::InferTargetMachineForJIT(
           .setOptLevel(opt_level)
           .selectTarget(
               /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
-              /*MCPU=*/llvm::sys::getHostCPUName(),
+              /*MCPU=*/DetectHostCpuName(),
               /*MAttrs=*/DetectMachineAttributes()));
   CHECK(target_machine != nullptr);
   return target_machine;
@@ -281,10 +298,14 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulC64);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulC128);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulS32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenBatchMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF64);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(ACLMatMulF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(ACLBatchMatMulF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(ACLConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv2DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF16);
@@ -311,6 +332,10 @@ bool RegisterKnownJITSymbols() {
   registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee),
                      "Host");
   registry->Register("__truncdfhf2", reinterpret_cast<void*>(__truncdfhf2),
+                     "Host");
+  registry->Register("__truncdfbf2", reinterpret_cast<void*>(__truncdfbf2),
+                     "Host");
+  registry->Register("__truncsfbf2", reinterpret_cast<void*>(__truncsfbf2),
                      "Host");
   registry->Register("__powisf2", reinterpret_cast<void*>(__powisf2), "Host");
   registry->Register("__powidf2", reinterpret_cast<void*>(__powidf2), "Host");
@@ -402,6 +427,15 @@ bool RegisterKnownJITSymbols() {
   registry->Register("memcpy", reinterpret_cast<void*>(memcpy), "Host");
   registry->Register("memmove", reinterpret_cast<void*>(memmove), "Host");
   registry->Register("memset", reinterpret_cast<void*>(memset), "Host");
+
+  // Used by MLIR lowering.
+  registry->Register("malloc", reinterpret_cast<void*>(malloc), "Host");
+  registry->Register("calloc", reinterpret_cast<void*>(calloc), "Host");
+  registry->Register("free", reinterpret_cast<void*>(free), "Host");
+#ifndef _WIN32
+  // TODO(kramerb): This fails to link on windows because it's marked dllimport.
+  registry->Register("memrefCopy", reinterpret_cast<void*>(memrefCopy), "Host");
+#endif
 
 #ifdef __APPLE__
   registry->Register("__bzero", reinterpret_cast<void*>(bzero), "Host");

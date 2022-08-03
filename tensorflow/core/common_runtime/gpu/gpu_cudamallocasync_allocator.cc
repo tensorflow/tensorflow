@@ -122,7 +122,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   if (driverVersion < 11020) {
     LOG(FATAL)  // Crash OK.
         << "Disable cuda_malloc_async or update your CUDA driver to a version"
-        << " compitible with CUDA 11.2 or higher."
+        << " compatible with CUDA 11.2 or higher."
         << " We detected a version compatible with: " << driverVersion;
   }
 
@@ -386,7 +386,9 @@ bool GpuCudaMallocAsyncAllocator::ClearStats() {
 
 void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  if (cuda_stream_ != nullptr) {
+  CUstream new_cuda_stream = *(static_cast<CUstream*>(stream));
+  // We don't need to re-set the CUDA stream if this is the same stream
+  if (cuda_stream_ != nullptr && new_cuda_stream != cuda_stream_) {
     LOG(FATAL) <<  // Crash OK.
         "Trying to set the stream twice. This isn't supported. ";
   }
@@ -397,7 +399,7 @@ void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
     LOG(FATAL) <<  // Crash OK.
         "Failed to get CUDA pool attribute: " << GetCudaErrorMessage(status);
   }
-  cuda_stream_ = *(reinterpret_cast<CUstream*>(stream));
+  cuda_stream_ = new_cuda_stream;
   int64 prealloc_size = 0;
   // TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC=-1 is a special value that
   // preallocates the total pool size.

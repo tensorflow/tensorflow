@@ -652,23 +652,6 @@ void EventForest::ProcessWorker() {
   }
 }
 
-void EventForest::ProcessModelIds() {
-  const int64_t model_id_event_type_list[] = {HostEventType::kSessionRun,
-                                              HostEventType::kTfrtModelRun};
-  for (const int64_t event_type : model_id_event_type_list) {
-    auto event_list = gtl::FindOrNull(event_node_map_, event_type);
-    if (!event_list) continue;
-    for (EventNode& event : *event_list) {
-      auto group_id = event.GetGroupId();
-      if (!group_id.has_value()) continue;
-      absl::optional<XStatVisitor> model_id =
-          event.GetEventVisitor().GetStat(StatType::kModelId);
-      if (!model_id.has_value()) continue;
-      group_metadata_map_[*group_id].model_id = model_id->ToString();
-    }
-  }
-}
-
 void EventForest::AddPlane(
     const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
     XPlane* plane) {
@@ -784,7 +767,6 @@ void EventForest::GroupEvents() {
   CreateEventGroups();
   MarkEagerlyExecutedGpuKernels();
   MarkEagerlyExecutedCpuTfOps();
-  ProcessModelIds();
 }
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {

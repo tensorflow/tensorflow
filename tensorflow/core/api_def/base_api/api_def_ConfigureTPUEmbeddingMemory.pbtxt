@@ -1,0 +1,19 @@
+op {
+  graph_op_name: "ConfigureTPUEmbeddingMemory"
+  in_arg {
+    name: "common_config"
+    description: <<END
+A string-encoded CommonConfiguration proto containing metadata
+about the TPUEmbedding partitioner output and the HBM size (in bytes) required
+for operation.
+END
+  }
+  out_arg {
+    name: "memory_config"
+    description: <<END
+A string-encoded memory configuration containing metadata about
+the memory allocations reserved for TPUEmbedding.
+END
+  }
+  summary: "An op that configures the TPUEmbedding software on a host."
+}

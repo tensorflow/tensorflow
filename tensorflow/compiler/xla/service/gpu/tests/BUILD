@@ -84,18 +84,15 @@ cc_library(
     srcs = ["mlir_gpu_test_base.cc"],
     hdrs = ["mlir_gpu_test_base.h"],
     deps = [
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
-        "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
+        "//tensorflow/compiler/xla/service/gpu:ir_emitter",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core/common_runtime/gpu:gpu_init",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
     ],
@@ -248,6 +245,8 @@ tf_cc_test(
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service/gpu:gemm_broadcast_folding_rewriter",
+        "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -677,19 +676,15 @@ xla_test(
     ],
 )
 
-xla_test(
-    name = "bef_executable_test",
-    srcs = ["bef_executable_test.cc"],
-    backends = ["gpu"],
+tf_cc_test(
+    name = "select_and_scatter_test",
+    srcs = ["select_and_scatter_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
-        "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:reference_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client/lib:matrix",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:test_macros_header",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
     ],
 )
 

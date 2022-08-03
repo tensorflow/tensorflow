@@ -24,8 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -34,23 +33,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/stream_executor/blas.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
+#include "tensorflow/stream_executor/host_or_device_scalar.h"
+#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
-namespace {
-
-void TransposeMatrixDesc(se::blas::MatrixDescriptor& matrix_desc) {
-  matrix_desc.transpose =
-      (matrix_desc.transpose == se::blas::Transpose::kNoTranspose)
-          ? se::blas::Transpose::kTranspose
-          : se::blas::Transpose::kNoTranspose;
-}
-
-}  // namespace
 
 StatusOr<std::vector<int64_t>> GetNonContractingDims(
     const Shape& shape, absl::Span<const int64_t> batch_dims,
@@ -194,6 +189,11 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
   return MatrixLayout::For(shape, batch_dims, row_dims, col_dims);
 }
 
+void MatrixLayout::Transpose() {
+  std::swap(num_rows, num_cols);
+  order = (order == Order::kRowMajor) ? Order::kColumnMajor : Order::kRowMajor;
+}
+
 StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                               int64_t operand_idx) {
   TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
@@ -230,30 +230,13 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       .ok();
 }
 
-namespace {
-
-bool IsBlasPlansCompatibleType(PrimitiveType type) {
-  switch (type) {
-    case F16:
-    case F32:
-    case F64:
-    case C64:
-    case C128:
-      return true;
-    default:
-      return false;
-  }
-}
-
-}  // namespace
-
 /*static*/ StatusOr<GemmConfig> GemmConfig::For(
     const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
     absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
     absl::Span<const int64_t> rhs_batch_dims,
     absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
     double alpha_real, double alpha_imag, double beta,
-    std::optional<int64_t> algorithm, bool use_cublaslt) {
+    std::optional<int64_t> algorithm, int64_t compute_precision) {
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
@@ -302,8 +285,6 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
   TF_RET_CHECK((rhs_layout.batch_size == output_layout.batch_size) ||
                (rhs_layout.batch_size == 1));
 
-  use_cublaslt &= IsBlasPlansCompatibleType(output_shape.element_type());
-
   switch (output_shape.element_type()) {
     case F16:
     case BF16:
@@ -332,8 +313,8 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
   }
 
   return GemmConfig{
-      lhs_layout, rhs_layout, output_layout, {alpha_real, alpha_imag},
-      beta,       algorithm,  use_cublaslt,
+      lhs_layout, rhs_layout, output_layout,     {alpha_real, alpha_imag},
+      beta,       algorithm,  compute_precision,
   };
 }
 
@@ -349,93 +330,93 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
   const Shape& lhs_shape = gemm->operand(0)->shape();
   const Shape& rhs_shape = gemm->operand(1)->shape();
   const DotDimensionNumbers& dot_dims = config.dot_dimension_numbers();
-  bool use_cublaslt =
-      gemm->GetModule()->config().debug_options().xla_gpu_enable_cublaslt();
 
   return GemmConfig::For(
       lhs_shape, dot_dims.lhs_batch_dimensions(),
       dot_dims.lhs_contracting_dimensions(), rhs_shape,
       dot_dims.rhs_batch_dimensions(), dot_dims.rhs_contracting_dimensions(),
       /*output_shape=*/gemm->shape(), config.alpha_real(), config.alpha_imag(),
-      config.beta(), algorithm, use_cublaslt);
+      config.beta(), algorithm, se::blas::kDefaultComputePrecision);
 }
 
-/*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::Operation* op,
-                                                bool use_cublaslt) {
-  auto get_config = [&](auto op, llvm::APFloat beta) {
-    mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
+/*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::lmhlo_gpu::GEMMOp op) {
+  mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
 
-    std::optional<int64_t> algorithm;
-    if (op.getAlgorithm()) algorithm = *op.getAlgorithm();
+  std::optional<int64_t> algorithm;
+  if (op.getAlgorithm()) algorithm = *op.getAlgorithm();
 
-    return GemmConfig::For(
-        GetShape(op.getLhs()), dot_dims.getLhsBatchingDimensions(),
-        dot_dims.getLhsContractingDimensions(), GetShape(op.getRhs()),
-        dot_dims.getRhsBatchingDimensions(),
-        dot_dims.getRhsContractingDimensions(), GetShape(op.getOutput()),
-        op.getAlphaReal().convertToDouble(),
-        op.getAlphaImag().convertToDouble(), beta.convertToDouble(), algorithm,
-        use_cublaslt);
-  };
-
-  if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(op))
-    return get_config(gemm, llvm::APFloat(0.));
-
-  auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMM_BiasOp>(op);
-  TF_RET_CHECK(gemm != nullptr);
-  return get_config(gemm, gemm.getBeta());
-}
-
-se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
-                                         se::DeviceMemoryBase data) {
-  bool transpose = layout.order != MatrixLayout::Order::kColumnMajor;
-  return {
-      data,
-      layout.leading_dim_stride,
-      layout.batch_stride,
-      transpose ? se::blas::Transpose::kTranspose
-                : se::blas::Transpose::kNoTranspose,
-  };
-}
-
-void MakeBlasGemmCompatible(int64_t& m, int64_t& n,
-                            se::blas::MatrixDescriptor& lhs,
-                            se::blas::MatrixDescriptor& rhs,
-                            se::blas::MatrixDescriptor& output) {
-  // BLAS GeMM doesn't support transposed output, but we can use the identity:
-  // C^T = (A @ B)^T = B^T @ A^T.
-  if (output.transpose == se::blas::Transpose::kTranspose) {
-    std::swap(m, n);
-    std::swap(lhs, rhs);
-    TransposeMatrixDesc(lhs);
-    TransposeMatrixDesc(rhs);
-    TransposeMatrixDesc(output);
+  int64_t compute_precision = 0;  // Default
+  if (op.getPrecisionConfig().has_value()) {
+    auto precision_config = op.getPrecisionConfig();
+    for (auto attr : precision_config.getValue()) {
+      int64_t value = static_cast<int64_t>(
+          attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
+      if (value > compute_precision) {
+        compute_precision = value;
+      }
+    }
   }
+
+  return GemmConfig::For(
+      GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
+      dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
+      dot_dims.getRhsBatchingDimensions(),
+      dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
+      op.getAlphaReal().convertToDouble(), op.getAlphaImag().convertToDouble(),
+      op.getBeta().convertToDouble(), algorithm, compute_precision);
 }
 
 namespace {
 
-// Converts from an XLA PrimitiveType to a blas::ComputationType, which is
-// used to specify the precision with which matmul computations should be
-// performed, separately from the precision of the inputs and result.
-std::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
-    PrimitiveType type) {
-  switch (type) {
-    case F16:  // Use F32 computation for higher precision.
+// BLAS GeMM's output is column-major. If we require row-major, use identity:
+// C^T = (A @ B)^T = B^T @ A^T.
+bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
+                           MatrixLayout& output) {
+  bool swap_operands = output.order != MatrixLayout::Order::kColumnMajor;
+  if (swap_operands) {
+    std::swap(lhs, rhs);
+    lhs.Transpose();
+    rhs.Transpose();
+    output.Transpose();
+  }
+  return swap_operands;
+}
+
+StatusOr<se::blas::ComputationType> GetBlasComputationType(
+    PrimitiveType dtype) {
+  switch (dtype) {
+    case F16:  // fall-through
     case BF16:
-    case F32:
+      // Accumulate in f32 precision.
       return se::blas::ComputationType::kF32;
-    case F64:
-      return se::blas::ComputationType::kF64;
+    case F32:  // fall-through
     case C64:
-      return se::blas::ComputationType::kComplexF32;
+      return se::blas::ComputationType::kTF32AsF32;
+    case F64:  // fall-through
     case C128:
-      return se::blas::ComputationType::kComplexF64;
+      return se::blas::ComputationType::kF64;
     case S32:
       return se::blas::ComputationType::kI32;
     default:
-      return std::nullopt;
+      return InternalError("unsupported type");
   }
+}
+
+se::blas::Transpose AsBlasTranspose(MatrixLayout::Order order) {
+  // BLAS is column-major by default.
+  return (order == MatrixLayout::Order::kColumnMajor)
+             ? se::blas::Transpose::kNoTranspose
+             : se::blas::Transpose::kTranspose;
+}
+
+se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
+                                         se::DeviceMemoryBase data) {
+  return {
+      data,
+      layout.leading_dim_stride,
+      layout.batch_stride,
+      AsBlasTranspose(layout.order),
+  };
 }
 
 template <typename Input, typename Output>
@@ -448,8 +429,8 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
                            se::blas::ProfileResult* profile_result) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
-  se::blas::ComputationType computation_type =
-      *ComputationTypeFromPrimitive(output_type);
+  TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
+                      GetBlasComputationType(output_type));
   se::DeviceMemory<Output> output_data(output.data);
 
   if (batch_size != 1) {
@@ -475,6 +456,7 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
               const se::blas::MatrixDescriptor& output, Input alpha, Input beta,
               se::Stream* stream,
               std::optional<se::blas::AlgorithmType> algorithm,
+              se::blas::ComputePrecision compute_precision,
               se::blas::ProfileResult* profile_result) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   se::DeviceMemory<Input> output_data(output.data);
@@ -493,10 +475,10 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
         output.leading_dim_stride, output.batch_stride, batch_size);
   }
 
-  return stream->ThenBlasGemm(lhs.transpose, rhs.transpose, m, n, k, alpha,
-                              lhs.cast<Input>(), lhs.leading_dim_stride,
-                              rhs.cast<Input>(), rhs.leading_dim_stride, beta,
-                              &output_data, output.leading_dim_stride);
+  return stream->ThenBlasGemm(
+      lhs.transpose, rhs.transpose, m, n, k, alpha, lhs.cast<Input>(),
+      lhs.leading_dim_stride, rhs.cast<Input>(), rhs.leading_dim_stride, beta,
+      &output_data, output.leading_dim_stride, compute_precision);
 }
 
 }  // namespace
@@ -507,21 +489,28 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
                std::optional<se::blas::AlgorithmType> algorithm,
                se::blas::ProfileResult* profile_result) {
   VLOG(2) << "Executing a GemmThunk";
-  int64_t m = config.output_layout.num_rows;
-  int64_t n = config.output_layout.num_cols;
-  int64_t k = config.lhs_layout.num_cols;
-  se::blas::MatrixDescriptor lhs = GetMatrixDesc(config.lhs_layout, lhs_buffer);
-  se::blas::MatrixDescriptor rhs = GetMatrixDesc(config.rhs_layout, rhs_buffer);
-  se::blas::MatrixDescriptor output =
-      GetMatrixDesc(config.output_layout, output_buffer);
-  int64_t batch_size = config.output_layout.batch_size;
 
-  // TODO(cjfj): Support transposed output when using cuBLASLt.
-  MakeBlasGemmCompatible(m, n, lhs, rhs, output);
+  MatrixLayout lhs_layout = config.lhs_layout;
+  MatrixLayout rhs_layout = config.rhs_layout;
+  MatrixLayout output_layout = config.output_layout;
+  bool must_swap_operands =
+      MakeOutputColumnMajor(lhs_layout, rhs_layout, output_layout);
+  if (must_swap_operands) {
+    std::swap(lhs_buffer, rhs_buffer);
+  }
+
+  int64_t m = output_layout.num_rows;
+  int64_t n = output_layout.num_cols;
+  int64_t k = lhs_layout.num_cols;
+  se::blas::MatrixDescriptor lhs = GetMatrixDesc(lhs_layout, lhs_buffer);
+  se::blas::MatrixDescriptor rhs = GetMatrixDesc(rhs_layout, rhs_buffer);
+  se::blas::MatrixDescriptor output =
+      GetMatrixDesc(output_layout, output_buffer);
+  int64_t batch_size = output_layout.batch_size;
 
   if (!algorithm) algorithm = config.algorithm;
 
-  switch (config.output_layout.dtype) {
+  switch (output_layout.dtype) {
     case S32:
       if (!algorithm) algorithm = se::blas::kDefaultGemmAlgo;
       return DoGemmWithAlgorithm<int8_t, int32_t>(
@@ -533,182 +522,252 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
       return DoGemm<Eigen::half>(batch_size, m, n, k, lhs, rhs, output,
                                  static_cast<Eigen::half>(config.alpha.real()),
                                  static_cast<Eigen::half>(config.beta), stream,
-                                 algorithm, profile_result);
+                                 algorithm, config.compute_precision,
+                                 profile_result);
     case BF16:
       return DoGemm<Eigen::bfloat16>(
           batch_size, m, n, k, lhs, rhs, output,
           static_cast<Eigen::bfloat16>(config.alpha.real()),
           static_cast<Eigen::bfloat16>(config.beta), stream, algorithm,
-          profile_result);
+          config.compute_precision, profile_result);
     case F32:
       return DoGemm<float>(batch_size, m, n, k, lhs, rhs, output,
                            config.alpha.real(), config.beta, stream, algorithm,
-                           profile_result);
+                           config.compute_precision, profile_result);
     case F64:
       return DoGemm<double>(batch_size, m, n, k, lhs, rhs, output,
                             config.alpha.real(), config.beta, stream, algorithm,
-                            profile_result);
+                            config.compute_precision, profile_result);
     case C64:
       return DoGemm<complex64>(batch_size, m, n, k, lhs, rhs, output,
                                static_cast<complex64>(config.alpha),
                                static_cast<complex64>(config.beta), stream,
-                               algorithm, profile_result);
+                               algorithm, config.compute_precision,
+                               profile_result);
     case C128:
-      return DoGemm<complex128>(batch_size, m, n, k, lhs, rhs, output,
-                                config.alpha,
-                                static_cast<complex128>(config.beta), stream,
-                                algorithm, profile_result);
+      return DoGemm<complex128>(
+          batch_size, m, n, k, lhs, rhs, output, config.alpha,
+          static_cast<complex128>(config.beta), stream, algorithm,
+          config.compute_precision, profile_result);
     default:
-      return InternalError("Unexpected GEMM dtype: %s",
-                           primitive_util::LowercasePrimitiveTypeName(
-                               config.output_layout.dtype));
+      return InternalError(
+          "Unexpected GEMM dtype: %s",
+          primitive_util::LowercasePrimitiveTypeName(output_layout.dtype));
   }
 }
 
+#if GOOGLE_CUDA
+
 namespace {
 
-template <typename Input>
-Status DoGemmLt(int64_t batch_size, int64_t m, int64_t n, int64_t k,
-                const se::blas::MatrixDescriptor& lhs,
-                const se::blas::MatrixDescriptor& rhs,
-                const se::blas::MatrixDescriptor& output, se::Stream* stream,
-                Input alpha, Input beta,
-                se::ScratchAllocator& scratch_allocator,
-                const se::blas::IBlasLtMatmulAlgorithm* algorithm,
-                se::blas::ProfileResult* profile_result) {
-  CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
-  tensorflow::DataType dtype = tensorflow::DataTypeToEnum<Input>::value;
-
-  int device_id = stream->parent()->device_ordinal();
-
-  bool trans_x = lhs.transpose == se::blas::Transpose::kTranspose;
-  bool trans_y = rhs.transpose == se::blas::Transpose::kTranspose;
-  bool broadcast_lhs = lhs.batch_stride == 0;
-  bool broadcast_rhs = rhs.batch_stride == 0;
-  VLOG(2) << "matmul params: trans_x " << trans_x << " trans_y " << trans_y
-          << " adj_x " << false << " adj_y " << false << " m " << m << " n "
-          << n << " k " << k << " batch_size " << batch_size
-          << " broadcast_lhs " << broadcast_lhs << " broadcast_rhs "
-          << broadcast_rhs << " dtype " << dtype << " device_id " << device_id;
-  se::BatchMatmulParameters matmul_parameters(
-      trans_x, trans_y, false, false, m, n, k, batch_size, broadcast_lhs,
-      broadcast_rhs, dtype, dtype, device_id);
-
-  TF_ASSIGN_OR_RETURN(
-      const se::blas::PlanAndAlgorithms* plan_and_algorithms,
-      GetPlanAndAlgorithms(stream, matmul_parameters, batch_size, m, n, k,
-                           dtype, lhs, rhs, output));
-
-  const std::unique_ptr<se::blas::IBlasLtMatmulPlan>& plan =
-      plan_and_algorithms->plan;
-  const std::vector<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>>&
-      algorithms = plan_and_algorithms->algorithms;
-
-  if (algorithm == nullptr) {
-    BlasPlansAutotuneCache& cache = GetBlasPlansAutotuneCache();
-    std::optional<se::blas::AlgorithmConfig> algorithm_config =
-        cache.Find(matmul_parameters);
-    if (algorithm_config) {
-      algorithm = algorithms[algorithm_config->algorithm()].get();
-    } else {
-      VLOG(4) << "Autotuner disabled: Inserting algorithm id 0"
-              << " for " << trans_x << " " << trans_y << " " << m << " " << n
-              << " " << k << " " << batch_size << " " << broadcast_lhs << " "
-              << broadcast_rhs << " " << dtype << " " << device_id;
-      cache.Insert(matmul_parameters, se::blas::AlgorithmConfig(0));
-      algorithm = algorithms[0].get();
-    }
+StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
+  switch (dtype) {
+    case F16:
+      return se::blas::DataType::kHalf;
+    case BF16:
+      return se::blas::DataType::kBF16;
+    case F32:
+      return se::blas::DataType::kFloat;
+    case F64:
+      return se::blas::DataType::kDouble;
+    case C64:
+      return se::blas::DataType::kComplexFloat;
+    case C128:
+      return se::blas::DataType::kComplexDouble;
+    default:
+      return InternalError("unsupported type");
   }
+}
 
-  se::DeviceMemory<Input> output_data(output.data);
-  // NOLINTBEGIN: (b/223663260) ClangTidy mistakenly reports .get() as a
-  // redundant call
-  if (stream
-          ->ThenBlasLtMatmul(plan.get(), alpha, lhs.cast<Input>(),
-                             rhs.cast<Input>(), beta, &output_data,
-                             &scratch_allocator, algorithm, {}, profile_result)
-          .ok()) {
-    return Status::OK();
+StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+    mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue) {
+  switch (epilogue) {
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Default:
+      return se::cuda::BlasLt::Epilogue::kDefault;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
+      return se::cuda::BlasLt::Epilogue::kBias;
+    default:
+      return InternalError("unknown epilogue");
   }
-  // NOLINTEND
-  return InternalError("BlasLtMatmul failed.");
+}
+
+StatusOr<se::cuda::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
+    const MatrixLayout& layout) {
+  TF_ASSIGN_OR_RETURN(se::blas::DataType dtype, AsBlasDataType(layout.dtype));
+
+  auto order = (layout.order == MatrixLayout::Order::kColumnMajor)
+                   ? se::cuda::BlasLt::MatrixLayout::Order::kColumnMajor
+                   : se::cuda::BlasLt::MatrixLayout::Order::kRowMajor;
+
+  return se::cuda::BlasLt::MatrixLayout::Create(
+      dtype, layout.num_rows, layout.num_cols, order, layout.batch_size,
+      layout.leading_dim_stride, layout.batch_stride);
 }
 
 }  // namespace
 
-Status RunBlasLtMatmul(const GemmConfig& config,
-                       se::DeviceMemoryBase lhs_buffer,
-                       se::DeviceMemoryBase rhs_buffer,
-                       se::DeviceMemoryBase output_buffer, se::Stream* stream,
-                       se::ScratchAllocator& scratch_allocator,
-                       const se::blas::IBlasLtMatmulAlgorithm* algorithm,
-                       se::blas::ProfileResult* profile_result) {
-  int64_t m = config.output_layout.num_rows;
-  int64_t n = config.output_layout.num_cols;
-  int64_t k = config.lhs_layout.num_cols;
-  se::blas::MatrixDescriptor lhs = GetMatrixDesc(config.lhs_layout, lhs_buffer);
-  se::blas::MatrixDescriptor rhs = GetMatrixDesc(config.rhs_layout, rhs_buffer);
-  se::blas::MatrixDescriptor output =
-      GetMatrixDesc(config.output_layout, output_buffer);
-  int64_t batch_size = config.output_layout.batch_size;
+namespace cublas_lt {
 
-  // TODO(cjfj): Support transposed output when using cuBLASLt.
-  MakeBlasGemmCompatible(m, n, lhs, rhs, output);
+/*static*/ StatusOr<MatmulPlan> MatmulPlan::For(
+    mlir::lmhlo_gpu::CublasLtMatmulOp op) {
+  mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
 
-  switch (config.output_layout.dtype) {
-    case F16:
-      return DoGemmLt<Eigen::half>(
-          batch_size, m, n, k, lhs, rhs, output, stream,
-          static_cast<Eigen::half>(config.alpha.real()),
-          static_cast<Eigen::half>(config.beta), scratch_allocator, algorithm,
-          profile_result);
-    case F32:
-      return DoGemmLt<float>(batch_size, m, n, k, lhs, rhs, output, stream,
-                             static_cast<float>(config.alpha.real()),
-                             static_cast<float>(config.beta), scratch_allocator,
-                             algorithm, profile_result);
-    case F64:
-      return DoGemmLt<double>(batch_size, m, n, k, lhs, rhs, output, stream,
-                              static_cast<double>(config.alpha.real()),
-                              config.beta, scratch_allocator, algorithm,
+  int64_t compute_precision = 0;  // Default
+  if (op.getPrecisionConfig().hasValue()) {
+    auto precision_config = op.getPrecisionConfig();
+    for (auto attr : precision_config.getValue()) {
+      int64_t value = static_cast<int64_t>(
+          attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
+      if (value > compute_precision) {
+        compute_precision = value;
+      }
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      GemmConfig config,
+      GemmConfig::For(GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
+                      dot_dims.getLhsContractingDimensions(),
+                      GetShape(op.getB()), dot_dims.getRhsBatchingDimensions(),
+                      dot_dims.getRhsContractingDimensions(),
+                      GetShape(op.getC()), op.getAlphaReal().convertToDouble(),
+                      op.getAlphaImag().convertToDouble(),
+                      op.getBeta().convertToDouble(), op.getAlgorithm(),
+                      compute_precision));
+
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
+                      AsBlasLtEpilogue(op.getEpilogue()));
+  return From(config, epilogue);
+}
+
+/*static*/ StatusOr<MatmulPlan> MatmulPlan::From(
+    const GemmConfig& config, se::cuda::BlasLt::Epilogue epilogue) {
+  MatrixLayout lhs_layout = config.lhs_layout;
+  MatrixLayout rhs_layout = config.rhs_layout;
+  MatrixLayout output_layout = config.output_layout;
+
+  // cublasLt matmul requires batch sizes to be equal. If only one operand has a
+  // batch, the other will be broadcast (as its batch_stride == 0).
+  size_t batch_size = std::max(lhs_layout.batch_size, rhs_layout.batch_size);
+  lhs_layout.batch_size = batch_size;
+  rhs_layout.batch_size = batch_size;
+
+  bool must_swap_operands =
+      MakeOutputColumnMajor(lhs_layout, rhs_layout, output_layout);
+
+  TF_ASSIGN_OR_RETURN(se::blas::DataType output_dtype,
+                      AsBlasDataType(output_layout.dtype));
+  TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
+                      GetBlasComputationType(output_layout.dtype));
+  TF_ASSIGN_OR_RETURN(
+      se::cuda::BlasLt::MatmulDesc op_desc,
+      se::cuda::BlasLt::MatmulDesc::Create(
+          computation_type,
+          se::cuda::BlasLt::GetScaleType(output_dtype, computation_type),
+          /*trans_a=*/se::blas::Transpose::kNoTranspose,
+          /*trans_b=*/se::blas::Transpose::kNoTranspose, epilogue));
+
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout a_desc,
+                      AsBlasLtMatrixLayout(lhs_layout));
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout b_desc,
+                      AsBlasLtMatrixLayout(rhs_layout));
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout c_desc,
+                      AsBlasLtMatrixLayout(output_layout));
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout d_desc,
+                      AsBlasLtMatrixLayout(output_layout));
+
+  return MatmulPlan{
+      se::cuda::BlasLt::MatmulPlan{std::move(op_desc), std::move(a_desc),
+                                   std::move(b_desc), std::move(c_desc),
+                                   std::move(d_desc)},
+      config.alpha, config.beta, must_swap_operands};
+}
+
+template <typename Input, typename Scale>
+Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase a_buffer,
+                            se::DeviceMemoryBase b_buffer,
+                            se::DeviceMemoryBase c_buffer,
+                            se::DeviceMemoryBase d_buffer,
+                            se::DeviceMemoryBase bias_buffer,
+                            const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+                            se::ScratchAllocator& scratch_allocator,
+                            se::blas::ProfileResult* profile_result) {
+  se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
+  TF_RET_CHECK(blas_lt != nullptr);
+
+  Scale alpha;
+  if constexpr (std::is_same_v<Scale, complex64> ||
+                std::is_same_v<Scale, complex128>) {
+    alpha = static_cast<Scale>(alpha_);
+  } else {
+    alpha = static_cast<Scale>(alpha_.real());
+  }
+
+  Scale beta = static_cast<Scale>(beta_);
+
+  se::DeviceMemory<Input> output(d_buffer);
+  return blas_lt->DoMatmul(
+      stream, plan_, se::HostOrDeviceScalar<Scale>(alpha),
+      se::DeviceMemory<Input>(a_buffer), se::DeviceMemory<Input>(b_buffer),
+      se::HostOrDeviceScalar<Scale>(beta), se::DeviceMemory<Input>(c_buffer),
+      output, algorithm, scratch_allocator,
+      se::DeviceMemory<Input>(bias_buffer), profile_result);
+}
+
+Status MatmulPlan::ExecuteOnStream(
+    se::Stream* stream, se::DeviceMemoryBase a_buffer,
+    se::DeviceMemoryBase b_buffer, se::DeviceMemoryBase c_buffer,
+    se::DeviceMemoryBase d_buffer, se::DeviceMemoryBase bias_buffer,
+    const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+    se::ScratchAllocator& scratch_allocator,
+    se::blas::ProfileResult* profile_result) {
+  if (must_swap_operands_) {
+    std::swap(a_buffer, b_buffer);
+  }
+
+  switch (plan_.d_desc.type()) {
+    case CUDA_R_16F:
+      return DoMatmul<Eigen::half, float>(stream, a_buffer, b_buffer, c_buffer,
+                                          d_buffer, bias_buffer, algorithm,
+                                          scratch_allocator, profile_result);
+    case CUDA_R_16BF:
+      return DoMatmul<Eigen::bfloat16, float>(
+          stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
+          algorithm, scratch_allocator, profile_result);
+    case CUDA_R_32F:
+      return DoMatmul<float>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
+                             bias_buffer, algorithm, scratch_allocator,
+                             profile_result);
+    case CUDA_R_64F:
+      return DoMatmul<double>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
+                              bias_buffer, algorithm, scratch_allocator,
                               profile_result);
-    case C64:
-      return DoGemmLt<complex64>(batch_size, m, n, k, lhs, rhs, output, stream,
-                                 static_cast<complex64>(config.alpha),
-                                 static_cast<complex64>(config.beta),
-                                 scratch_allocator, algorithm, profile_result);
-    case C128:
-      return DoGemmLt<complex128>(batch_size, m, n, k, lhs, rhs, output, stream,
-                                  config.alpha,
-                                  static_cast<complex64>(config.beta),
-                                  scratch_allocator, algorithm, profile_result);
+    case CUDA_C_32F:
+      return DoMatmul<complex64>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
+                                 bias_buffer, algorithm, scratch_allocator,
+                                 profile_result);
+    case CUDA_C_64F:
+      return DoMatmul<complex128>(stream, a_buffer, b_buffer, c_buffer,
+                                  d_buffer, bias_buffer, algorithm,
+                                  scratch_allocator, profile_result);
     default:
-      return InternalError("Unexpected GEMMLt dtype: %s",
-                           primitive_util::LowercasePrimitiveTypeName(
-                               config.output_layout.dtype));
+      return InternalError("Unexpected dtype");
   }
 }
 
-std::optional<se::blas::AlgorithmConfig> BlasPlansAutotuneCache::Find(
-    const se::BatchMatmulParameters& params) const {
-  absl::MutexLock lock(&mu_);
-  auto it = blas_plans_algorithms_map_.find(params);
-  if (it == blas_plans_algorithms_map_.end()) {
-    return std::nullopt;
-  }
-  return it->second;
+StatusOr<std::vector<se::cuda::BlasLt::MatmulAlgorithm>>
+MatmulPlan::GetAlgorithms(se::Stream* stream) const {
+  se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
+  TF_RET_CHECK(blas_lt != nullptr);
+  TF_ASSIGN_OR_RETURN(auto preference,
+                      se::cuda::BlasLt::MatmulPreference::Create(
+                          /*max_workspace_size=*/1ll << 32));  // 4GB
+  return blas_lt->GetMatmulAlgorithms(plan_, preference);
 }
 
-void BlasPlansAutotuneCache::Insert(se::BatchMatmulParameters params,
-                                    se::blas::AlgorithmConfig config) {
-  absl::MutexLock lock(&mu_);
-  blas_plans_algorithms_map_.insert({std::move(params), std::move(config)});
-}
+}  // namespace cublas_lt
 
-BlasPlansAutotuneCache& GetBlasPlansAutotuneCache() {
-  static auto& instance = *new BlasPlansAutotuneCache();
-  return instance;
-}
+#endif  // GOOGLE_CUDA
 
 }  // namespace gpu
 }  // namespace xla

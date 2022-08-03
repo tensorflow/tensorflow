@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_DESTROY_TENSOR_HANDLE_NODE_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_DESTROY_TENSOR_HANDLE_NODE_H_
 
-#include "tensorflow/core/common_runtime/eager/context.h"
+#include <memory>
+#include <utility>
+
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 
 namespace tensorflow {

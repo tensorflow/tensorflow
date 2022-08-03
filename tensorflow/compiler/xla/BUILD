@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test", "tf_xla_acl_copts")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -18,12 +18,13 @@ package_group(
     name = "friends",
     includes = ["//tensorflow:internal"],
     packages = [
-        "//tensorflow/compiler/...",
-        "//tensorflow/python/tpu/...",
+        # copybara:uncomment "//learning/infra/mira/...",
         "//third_party/auroraml/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
+        "//tensorflow/compiler/...",
+        "//tensorflow/python/tpu/...",
     ],
 )
 
@@ -260,6 +261,7 @@ cc_library(
         ":types",
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -961,6 +963,7 @@ cc_library(
         "debug_options_parsers.h",
     ],
     hdrs = ["debug_options_flags.h"],
+    copts = tf_xla_acl_copts(),
     visibility = [":friends"],
     deps =
         [
@@ -1052,6 +1055,27 @@ cc_library(
 #     deps = [":xla_data_proto"],
 # )
 # copybara:uncomment_end
+
+cc_library(
+    name = "tfrt_utils",
+    srcs = ["tfrt_utils.cc"],
+    hdrs = ["tfrt_utils.h"],
+    deps = [
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:portable_gif_internal",
+        "@tf_runtime//:dtype",
+    ],
+)
+
+tf_cc_test(
+    name = "tfrt_utils_test",
+    srcs = ["tfrt_utils_test.cc"],
+    deps = [
+        ":tfrt_utils",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:test_main",
+    ],
+)
 
 # This is a headers target that extra XLA devices can use to prevent circular dependencies.  Devices that are compiled as separate shared objects can also use it to prevent linking of library code.
 cc_header_only_library(

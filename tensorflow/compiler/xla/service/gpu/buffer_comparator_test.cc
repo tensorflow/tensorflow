@@ -56,8 +56,7 @@ class BufferComparatorTest : public testing::Test {
             primitive_util::NativeToPrimitiveType<ElementType>(),
             {static_cast<int64_t>(lhs_buffer->ElementCount())}),
         HloModuleConfig());
-    return comparator.CompareEqual(&stream, *lhs_buffer, *rhs_buffer)
-        .ConsumeValueOrDie();
+    return comparator.CompareEqual(&stream, *lhs_buffer, *rhs_buffer).value();
   }
 
   // Take floats only for convenience. Still uses ElementType internally.

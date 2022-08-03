@@ -29,9 +29,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/op_logger.h"
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
@@ -93,22 +95,6 @@ void KernelFallbackEmitError(
       tfrt::ConvertTfErrorCodeToTfrtErrorCode(status));
   std::fill(results.begin(), results.end(), error);
   if (op_chain) *op_chain = std::move(error);
-}
-
-// Return the device to be used for the fallback kernel execution. The device is
-// guaranteed to be alive during the graph execution.
-tensorflow::Device* GetDeviceFromFallbackState(
-    const KernelFallbackCompatRequestState& fallback_request_state,
-    const OpKernelRunner& kernel_runner) {
-  // Return the user-specified the custom device instead, (eg. to use a custom
-  // thread pool).
-  //
-  // The device handling is similar to TF1 code in the below link:
-  // http://cs/?q=f:common_runtime%2Fexecutor.cc:692%20package:piper&rcl=351575626
-  if (auto* custom_device = fallback_request_state.custom_device()) {
-    return custom_device;
-  }
-  return kernel_runner.device();
 }
 
 std::function<void(std::function<void()>)>* GetDefaultRunner() {
@@ -222,28 +208,6 @@ static Status ValidateInputTypes(
 }
 
 namespace {
-
-void SetUpParams(const OpKernelRunner& runner,
-                 const KernelFallbackCompatRequestState& fallback_request_state,
-                 tensorflow::Device* device, OpKernelRunState& run_state) {
-  auto& params = run_state.params;
-  params.inputs = &run_state.input_tf_tensor_values;
-  params.device = device;
-  params.op_kernel = runner.op_kernel();
-  // Still use original device's resource_manager.
-  params.resource_manager = runner.resource_manager();
-  params.input_alloc_attrs = &runner.input_alloc_attrs();
-  params.output_attr_array = runner.output_alloc_attrs().data();
-  params.step_container = fallback_request_state.step_container();
-  // Following two parameters are used to support executing tf.data via
-  // fallback.
-  params.function_library = runner.function_library_runtime();
-  params.runner = fallback_request_state.runner();
-  params.collective_executor = fallback_request_state.collective_executor();
-  params.rendezvous = fallback_request_state.rendezvous();
-  params.session_metadata = &fallback_request_state.session_metadata();
-  params.cancellation_manager = fallback_request_state.cancellation_manager();
-}
 
 // Keep states needed by kernel execution in a thread local storage to avoid
 // repeated reallocation and destruction of them.
@@ -436,7 +400,7 @@ std::string GetTracingMetadata(llvm::ArrayRef<tfrt::AsyncValue*> args,
   auto request_id = exec_ctx.request_ctx()->id();
   // Get Long Name
   auto debug_info = exec_ctx.location().GetDebugInfo();
-  auto long_name = debug_info.hasValue() ? debug_info.getValue().info : "";
+  auto long_name = debug_info.has_value() ? debug_info.getValue().info : "";
 
   if (!profiler::TfOpDetailsEnabled()) {
     return profiler::TraceMeEncode(
@@ -524,8 +488,14 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
     const KernelFallbackCompatRequestState& fallback_request_state,
     const OpKernelRunner& kernel_runner, bool is_async,
     tensorflow::Device* device) {
-  tensorflow::profiler::TraceMe trace_me(
-      [&]() { return ToAbslStringView(frame.op_name().GetValue()); });
+  tensorflow::profiler::TraceMe trace_me([&]() -> std::string {
+    if (kernel_runner.op_kernel()) {
+      return tensorflow::profiler::TraceMeOp(
+          kernel_runner.op_kernel()->name_view(),
+          kernel_runner.op_kernel()->type_string_view());
+    }
+    return std::string(ToAbslStringView(frame.op_name().GetValue()));
+  });
 
   trace_me.AppendMetadata(
       [&]() { return GetTracingMetadata(args, exec_ctx, kernel_runner); });
@@ -564,6 +534,10 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
 
   SetUpParams(kernel_runner, fallback_request_state, device, run_state);
 
+  bool is_cost_measurement_enabled =
+      exec_ctx.request_ctx()->IsCostMeasurementEnabled();
+  auto run_start_time =
+      is_cost_measurement_enabled ? Env::Default()->NowMicros() : 0;
   if (is_async) {
     KernelFallbackExecuteCompatAsyncInternal<
         tensorflow::tfrt_stub::FallbackTensor>(
@@ -573,6 +547,14 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
         tensorflow::tfrt_stub::FallbackTensor>(
         exec_ctx, &fallback_request_state, &run_state, kernel_runner, op_chain,
         results);
+  }
+  if (is_cost_measurement_enabled) {
+    op_chain->AndThen([run_start_time, exec_ctx, frame] {
+      auto execution_time = Env::Default()->NowMicros() - run_start_time;
+      exec_ctx.host()
+          ->GetOrCreateSharedContext<tensorflow::tfrt_stub::CostRecorder>()
+          .RecordCost(frame.op_name().GetValue(), execution_time);
+    });
   }
 }
 
@@ -731,9 +713,18 @@ void FallbackAsyncExecuteOp(tfrt::AsyncKernelFrame* frame) {
       ->GetOrCreateSharedContext<OpLogger>()
       .LogOp(attr_frame.op_name().GetValue());
 #endif
-  KernelFallbackExecuteOp(frame->GetArguments(), frame->GetResults(),
-                          /*op_chain=*/nullptr, attr_frame,
-                          frame->GetExecutionContext());
+  // Create op_chain only when cost measurement is enabled. It is used for
+  // measuring async op's actual latency.
+  if (frame->GetExecutionContext().request_ctx()->IsCostMeasurementEnabled()) {
+    auto op_chain = tfrt::MakeUnconstructedAsyncValueRef<tfrt::Chain>();
+    KernelFallbackExecuteOp(frame->GetArguments(), frame->GetResults(),
+                            &op_chain, attr_frame,
+                            frame->GetExecutionContext());
+  } else {
+    KernelFallbackExecuteOp(frame->GetArguments(), frame->GetResults(),
+                            /*op_chain=*/nullptr, attr_frame,
+                            frame->GetExecutionContext());
+  }
 }
 
 // The implementation of tfrt_fallback_async.executeop.seq kernel. It executes a

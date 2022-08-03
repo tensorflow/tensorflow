@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -48,7 +49,7 @@ class XRTMetricsCollectOp : public OpKernel {
         CollectMetrics(metrics);
     OP_REQUIRES_OK(ctx, collected_metrics_or.status());
     xrt::MetricsReport collected_metrics =
-        collected_metrics_or.ConsumeValueOrDie();
+        std::move(collected_metrics_or).value();
     Tensor output(DT_STRING, TensorShape({}));
     output.scalar<tstring>()() = collected_metrics.SerializeAsString();
     ctx->set_output(0, output);

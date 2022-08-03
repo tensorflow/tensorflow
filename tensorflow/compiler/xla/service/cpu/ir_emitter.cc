@@ -597,8 +597,11 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
   // Normalize the shape and the dimension to sort.
   Shape normalized_keys_shape =
       ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(keys_shape);
-  int64_t physical_dimension_to_sort = LayoutUtil::MakeLogicalToPhysical(
-      keys_shape.layout())[sort->sort_dimension()];
+  auto logical_to_physical =
+      LayoutUtil::MakeLogicalToPhysical(keys_shape.layout());
+  TF_RET_CHECK(sort->sort_dimension() < logical_to_physical.size());
+  int64_t physical_dimension_to_sort =
+      logical_to_physical[sort->sort_dimension()];
 
   int64_t sort_dimension_elements =
       normalized_keys_shape.dimensions(physical_dimension_to_sort);
@@ -993,6 +996,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       bool use_mkl_dnn =
           hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn() &&
           convolution->feature_group_count() == 1;
+      bool use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
 
       auto valid_num_dims = [](absl::Span<const int64_t> xs) {
         return xs.size() >= 2 && xs.size() <= 3;
@@ -1015,8 +1019,10 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
                        ? runtime::kEigenConv2DF16SymbolName
                        : runtime::kEigenSingleThreadedConv2DF16SymbolName)
                 : (multi_threaded
-                       ? (use_mkl_dnn ? runtime::kMKLConv2DF32SymbolName
-                                      : runtime::kEigenConv2DF32SymbolName)
+                       ? (use_mkl_dnn
+                              ? runtime::kMKLConv2DF32SymbolName
+                              : (use_acl ? runtime::kACLConv2DF32SymbolName
+                                         : runtime::kEigenConv2DF32SymbolName))
                        : runtime::kEigenSingleThreadedConv2DF32SymbolName);
       } else if (input_dims.size() == 3) {
         fn_name =
@@ -1067,6 +1073,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         args.push_back(b_.getInt64(d));
       }
       args.push_back(b_.getInt64(convolution->feature_group_count()));
+
+      VLOG(1) << "Ir emitter emitted Convolution to runtime:" << fn_name;
       EmitCallToFunc(fn_name, args, b_.getVoidTy(), /*does_not_throw=*/true,
                      /*only_accesses_arg_memory=*/true);
 
@@ -1180,6 +1188,8 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
       case F16:
       case F32:
       case F64:
+      case C64:
+      case C128:
         return true;
       default:
         return false;
@@ -2517,9 +2527,9 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
         auto check = [this](const HloInstruction* a, const HloInstruction* b,
                             const ShapeIndex& index) {
           const BufferAllocation::Slice slice_a =
-              assignment_.GetUniqueSlice(a, index).ConsumeValueOrDie();
+              assignment_.GetUniqueSlice(a, index).value();
           const BufferAllocation::Slice slice_b =
-              assignment_.GetUniqueSlice(b, index).ConsumeValueOrDie();
+              assignment_.GetUniqueSlice(b, index).value();
           if (slice_a != slice_b) {
             return InternalError(
                 "instruction %s %s does not share slice with "

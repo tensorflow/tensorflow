@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -116,6 +121,25 @@ int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
   }
 }
 
+Status CheckNestedComputationThreadNameEqual(const HloComputation* comp,
+                                             bool skip_nested_async_op_check) {
+  for (const HloInstruction* instr : comp->instructions()) {
+    if (skip_nested_async_op_check && instr->IsAsynchronous()) {
+      continue;
+    }
+    for (const HloComputation* called_cmp : instr->called_computations()) {
+      if (called_cmp->execution_thread() != comp->execution_thread()) {
+        return InternalError(
+            "Nested computations expects same computation's thread name (%s vs "
+            "%s).",
+            called_cmp->execution_thread(), comp->execution_thread());
+      }
+      TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(
+          called_cmp, skip_nested_async_op_check));
+    }
+  }
+  return Status::OK();
+}
 }  // namespace
 
 Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
@@ -469,15 +493,8 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
 
   TF_RET_CHECK(all_to_all != nullptr);
 
-  // The size of each replica group must be the same (checked in
-  // CheckReplicaGroups). This is the split count of the operation). In case the
-  // empty replica group is used must not be an array all-to-all, as checked
-  // above), infer from the number of operands.
-  const int64_t split_count = hlo->replica_groups().empty()
-                                  ? hlo->operand_count()
-                                  : hlo->replica_groups()[0].replica_ids_size();
-
   if (all_to_all->split_dimension()) {
+    int64_t split_count = GetSubgroupSize(all_to_all, group_mode);
     TF_RET_CHECK(hlo->operand_count() == 1);
     return CheckShape(
         hlo, ShapeInference::InferAllToAllShape(
@@ -782,7 +799,7 @@ bool ShapeVerifier::HasCompatibleElementTypes(const Shape& shape_0,
                                               const Shape& result_shape) {
   return ShapeUtil::SameElementType(shape_0, shape_1) &&
          (ShapeUtil::SameElementType(shape_0, result_shape) ||
-          (allow_mixed_precision_ &&
+          (opts_.allow_mixed_precision &&
            ShapeUtil::SameElementTypeIgnoringFpPrecision(shape_0,
                                                          result_shape)));
 }
@@ -875,7 +892,8 @@ Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
                                                  reverse->dimensions()));
 }
 
-Status ShapeVerifier::HandleSort(HloInstruction* sort) {
+Status ShapeVerifier::HandleSort(HloInstruction* hlo) {
+  HloSortInstruction* sort = Cast<HloSortInstruction>(hlo);
   if (sort->operand_count() < 1) {
     return InternalError("Expected at least 1 operand for %s instruction: %s",
                          HloOpcodeString(sort->opcode()), sort->ToString());
@@ -926,6 +944,15 @@ Status ShapeVerifier::HandleSort(HloInstruction* sort) {
           StringifyShape(sort->operand(operand)->shape()));
     }
   }
+
+  // Verify the sort_dimension.
+  if (sort->sort_dimension() >= sort->operand(0)->shape().rank()) {
+    return InternalError(
+        "Expected the sort_dimension %d of sort to be smaller than the rank %d "
+        "of the operand(s).",
+        sort->sort_dimension(), sort->shape().rank());
+  }
+
   return CheckVariadicShape(sort);
 }
 
@@ -1008,21 +1035,21 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
                              operand_shapes, reduce->dimensions(),
                              reduce->to_apply()->ComputeProgramShape())));
 
-  return allow_mixed_precision_
+  return opts_.allow_mixed_precision
              ? OkStatus()
              : SameElementTypesForOperandsAndToApplyParameters(
                    *reduce, reduce->operand_count());
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
-  if (layout_sensitive_ &&
-      shape_size_function_(bitcast->shape()) !=
-          shape_size_function_(bitcast->operand(0)->shape())) {
+  if (opts_.layout_sensitive &&
+      opts_.shape_size(bitcast->shape()) !=
+          opts_.shape_size(bitcast->operand(0)->shape())) {
     return InternalError(
         "Bitcast cannot have different shape sizes of output (%d) and operand "
         "(%d) (%s) (%s)",
-        shape_size_function_(bitcast->shape()),
-        shape_size_function_(bitcast->operand(0)->shape()),
+        opts_.shape_size(bitcast->shape()),
+        opts_.shape_size(bitcast->operand(0)->shape()),
         bitcast->shape().ToString(true),
         bitcast->operand(0)->shape().ToString(true));
   }
@@ -1158,7 +1185,7 @@ Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
         ShapeUtil::GetSubshape(custom_call->shape(), pair.first);
     const Shape& operand_subshape = ShapeUtil::GetSubshape(
         custom_call->operand(pair.second.first)->shape(), pair.second.second);
-    if (layout_sensitive_) {
+    if (opts_.layout_sensitive) {
       TF_RET_CHECK(operand_subshape == output_subshape)
           << "Different aliasing shapes: " << operand_subshape.ToString()
           << " vs " << output_subshape.ToString();
@@ -1219,7 +1246,7 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
       ShapeInference::InferMapShape(
           operand_shapes, map->to_apply()->ComputeProgramShape(), map_dims)));
 
-  return allow_mixed_precision_
+  return opts_.allow_mixed_precision
              ? OkStatus()
              : SameElementTypesForOperandsAndToApplyParameters(
                    *map, map->operand_count());
@@ -1237,7 +1264,7 @@ Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
                          input_shapes, init_shapes, reduce_window->window(),
                          reduce_window->to_apply()->ComputeProgramShape())));
 
-  return allow_mixed_precision_
+  return opts_.allow_mixed_precision
              ? OkStatus()
              : SameElementTypesForOperandsAndToApplyParameters(
                    *reduce_window, reduce_window->operand_count());
@@ -1331,10 +1358,13 @@ Status CheckAsyncOpOperand(const HloInstruction* async_op) {
       *operand->async_wrapped_computation()) {
     return InternalError(
         "The %s expects its wrapped async computation to be identical to its "
-        "operand's wrapped async computation (%s vs %s).",
+        "operand's wrapped async computation (%s vs %s), thread name (%s vs "
+        "%s).",
         HloOpcodeString(async_op->opcode()),
         async_op->async_wrapped_instruction()->ToString(),
-        operand->async_wrapped_instruction()->ToString());
+        operand->async_wrapped_instruction()->ToString(),
+        async_op->async_wrapped_computation()->execution_thread(),
+        operand->async_wrapped_computation()->execution_thread());
   }
   if (async_op->async_group_id() != operand->async_group_id()) {
     return InternalError(
@@ -1377,11 +1407,47 @@ Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
   }
   return Status::OK();
 }
+
+Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
+  std::optional<absl::string_view> async_execution_thread =
+      async_op->async_execution_thread();
+  if (async_execution_thread !=
+      async_op->async_wrapped_computation()->execution_thread()) {
+    return InternalError(
+        "async-start expects same async thread name as wrapped computation's "
+        "thread name (%s vs %s).",
+        async_execution_thread ? absl::StrCat(*async_execution_thread) : "none",
+        async_op->async_wrapped_computation()->execution_thread());
+  }
+  return CheckNestedComputationThreadNameEqual(
+      async_op->async_wrapped_computation(),
+      /*skip_nested_async_op_check=*/false);
+}
+
+Status CheckCallableInstructionThreadName(const HloInstruction* instruction,
+                                          bool skip_nested_async_op_check) {
+  for (const HloComputation* computation : instruction->called_computations()) {
+    if (instruction->parent() != nullptr) {
+      if (instruction->parent()->execution_thread() !=
+          computation->execution_thread()) {
+        return InternalError(
+            "callable instruction %s expects parent computation thread name "
+            "same as called computation's thread name (%s vs %s).",
+            instruction->ToString(), instruction->parent()->execution_thread(),
+            computation->execution_thread());
+      }
+    }
+    TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(
+        computation, skip_nested_async_op_check));
+  }
+  return Status::OK();
+}
 }  // namespace
 
 Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
   TF_RETURN_IF_ERROR(
       CheckAsyncOpComputationShapes(async_start, async_start->shape()));
+  TF_RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_start));
   const Shape& param_shape = async_start->shape().tuple_shapes(0);
   for (int i = 0; i < async_start->operand_count(); ++i) {
     if (param_shape.tuple_shapes(i) != async_start->operand(i)->shape()) {
@@ -1397,6 +1463,7 @@ Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
 }
 
 Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
+  TF_RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_update));
   if (async_update->operand(0)->shape() != async_update->shape()) {
     return InternalError(
         "The %s expects the shape of operand and output to match (%s vs %s).",
@@ -1410,6 +1477,7 @@ Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
 }
 
 Status ShapeVerifier::HandleAsyncDone(HloInstruction* async_done) {
+  TF_RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_done));
   TF_RETURN_IF_ERROR(CheckAsyncOpComputationShapes(
       async_done, async_done->operand(0)->shape()));
   const Shape& root_shape = async_done->operand(0)->shape().tuple_shapes(1);
@@ -1628,7 +1696,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
   // If allow_mixed_precision_ is false, check if there are operands with
   // different precisions. We need this check because ShapeInference allows
   // mixed precision inputs.
-  if (!allow_mixed_precision_) {
+  if (!opts_.allow_mixed_precision) {
     TF_RETURN_IF_ERROR(CheckMixedPrecisionOperands(instruction));
   }
 
@@ -1676,7 +1744,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       // instructions, although this may be made more strict pending discussion
       // in b/112709536.
       default:
-        if (allow_mixed_precision_) {
+        if (opts_.allow_mixed_precision) {
           return ShapeUtil::CompatibleIgnoringFpPrecision(instruction->shape(),
                                                           inferred_shape);
         } else {
@@ -2284,13 +2352,13 @@ Status CheckElementwiseInstruction(HloInstruction* instruction) {
 // not check result shape as that is checked in the ShapeVerifier.
 class InstructionVerifier : public DfsHloVisitorWithDefault {
  public:
-  explicit InstructionVerifier(HloPredicate instruction_can_change_layout_func)
-      : instruction_can_change_layout_func_(
-            instruction_can_change_layout_func) {}
+  explicit InstructionVerifier(const HloVerifierOpts& opts) : opts_(opts) {}
 
   Status DefaultAction(HloInstruction*) override { return OkStatus(); }
 
   Status HandleFusion(HloInstruction* fusion) override {
+    TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
+        fusion, /*skip_nested_async_op_check*/ false));
     return CheckFusionInstruction(fusion);
   }
 
@@ -2305,6 +2373,11 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         << ") has invalid number of dimensions: "
         << broadcast->dimensions().size()
         << " != " << broadcast->operand(0)->shape().rank();
+    if (opts_.verify_broadcast_dimensions_order) {
+      TF_RET_CHECK(absl::c_is_sorted(broadcast->dimensions()))
+          << "Broadcast dimensions should be ordered, got: "
+          << broadcast->ToString();
+    }
     return OkStatus();
   }
 
@@ -2331,7 +2404,16 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           "While loop must have exactly one operand; had %d : %s",
           xla_while->operand_count(), xla_while->ToString());
     }
+    // Allow kWhile to contain computations on separate thread.
+    TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
+        xla_while, /*skip_nested_async_op_check=*/true));
     return OkStatus();
+  }
+
+  Status HandleCall(HloInstruction* call) override {
+    // Allow kCall to contain computations on separate thread.
+    return CheckCallableInstructionThreadName(
+        call, /*skip_nested_async_op_check=*/true);
   }
 
   Status HandleConditional(HloInstruction* conditional) override {
@@ -2343,6 +2425,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
             conditional->branch_computation(b)->num_parameters());
       }
     }
+    // Allow kConditional to contain computations on separate thread.
+    TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
+        conditional, /*skip_nested_async_op_check=*/true));
     return OkStatus();
   }
 
@@ -2384,6 +2469,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
+  Status HandleReshape(HloInstruction* hlo) override {
+    if (opts_.verify_reshape_is_bitcast && !hlo->IsFused()) {
+      TF_RET_CHECK(
+          ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(), hlo->shape()))
+          << "Reshape should be a physical bitcast, got: " << hlo->ToString();
+    }
+    return OkStatus();
+  }
+
   Status Preprocess(HloInstruction* instruction) override {
     auto previous = instructions_by_name_.find(instruction->name());
     TF_RET_CHECK(previous == instructions_by_name_.end())
@@ -2398,9 +2492,8 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status Postprocess(HloInstruction* instruction) override {
-    if (instruction_can_change_layout_func_ &&
-        LayoutUtil::IsDenseArray(instruction->shape()) &&
-        !instruction_can_change_layout_func_(instruction)) {
+    if (!opts_.InstructionCanChangeLayout(instruction) &&
+        LayoutUtil::IsDenseArray(instruction->shape())) {
       const Shape& result_shape = instruction->shape();
       const Layout& result_layout = result_shape.layout();
       for (HloInstruction* operand : instruction->operands()) {
@@ -2421,13 +2514,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
  private:
   absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
-  // Determines whether an instruction can change layouts.
-  HloPredicate instruction_can_change_layout_func_;
+  const HloVerifierOpts& opts_;
 };
 
 }  // namespace
 
-StatusOr<bool> HloVerifier::Run(HloModule* module) {
+StatusOr<bool> HloVerifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto disabled = module->config().debug_options().xla_disable_hlo_passes();
   if (std::find(disabled.begin(), disabled.end(), name()) != disabled.end()) {
     return false;
@@ -2447,7 +2541,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
     std::unique_ptr<ShapeVerifier> shape_verifier =
         target_metadata_->GetVerifier();
     InstructionVerifier instruction_verifier(
-        instruction_can_change_layout_func_);
+        target_metadata_->GetVerifierOpts());
     for (auto* computation : module->computations()) {
       TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
@@ -2463,8 +2557,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
 
     TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
         *module, [this](const Shape& shape) -> int64_t {
-          if (target_metadata_->IsLayoutSensitive()) {
-            return target_metadata_->ShapeSize(shape);
+          if (target_metadata_->GetVerifierOpts().IsLayoutSensitive()) {
+            return target_metadata_->GetVerifierOpts().ShapeSize(shape);
           } else {
             return 0;
           }

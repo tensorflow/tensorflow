@@ -25,7 +25,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -41,10 +41,10 @@
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
@@ -83,6 +83,7 @@ using mlir::func::ReturnOp;
 using mlir::gpu::GPUModuleOp;
 using mlir::gpu::LaunchFuncOp;
 using mlir::gpu::MemcpyOp;
+using mlir::gpu::MemsetOp;
 using mlir::lmhlo::AllGatherOp;
 using mlir::lmhlo::AllReduceOp;
 using mlir::lmhlo::AllToAllOp;
@@ -106,7 +107,6 @@ using mlir::lmhlo_gpu::ConvForwardFusedOp;
 using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
 using mlir::lmhlo_gpu::ConvForwardOp;
 using mlir::lmhlo_gpu::ConvolutionBackendConfigAttr;
-using mlir::lmhlo_gpu::GEMM_BiasOp;
 using mlir::lmhlo_gpu::GEMMOp;
 using mlir::memref::AllocaOp;
 using mlir::memref::GetGlobalOp;
@@ -283,6 +283,41 @@ class MemcpyOpLowering : public OpRewritePattern<MemcpyOp> {
 
 // -------------------------------------------------------------------------- //
 
+class MemsetOpLowering : public OpRewritePattern<MemsetOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(MemsetOp op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
+                          b.getStringAttr("xla.gpu.memset"));
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), "memset", custom_call_type,
+                                      custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(op->getParentOfType<ModuleOp>());
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Create a function launch call operation.
+    rewriter.replaceOpWithNewOp<CallOp>(op, inserted, TypeRange(),
+                                        op.getOperands());
+
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
+
 class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -334,8 +369,7 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
     auto gpu_binary = gpu_module->getAttrOfType<mlir::StringAttr>("binary");
 
     // Create a function launch call operation.
-    auto call =
-        rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(), args);
+    auto call = b.create<CallOp>(inserted, TypeRange(), args);
     call->setAttr(b.getStringAttr("ptx"), gpu_binary);
     call->setAttr(b.getStringAttr("kernel"), op.getKernelName());
 
@@ -360,24 +394,15 @@ class GemmUidGenerator {
   std::atomic<int64_t> cnt_;
 };
 
-template <typename Gemm>
-class GemmLowering : public OpRewritePattern<Gemm> {
+class GemmOpLowering : public OpRewritePattern<GEMMOp> {
  private:
   static StringRef CustomCallTarget(GEMMOp) { return "xla.gpu.gemm"; }
-  static StringRef CustomCallTarget(GEMM_BiasOp) { return "xla.gpu.gemm.bias"; }
-
-  static void SetOptionalAttrs(ImplicitLocOpBuilder& b, GEMMOp op,
-                               CallOp call) {}
-  static void SetOptionalAttrs(ImplicitLocOpBuilder& b, GEMM_BiasOp op,
-                               CallOp call) {
-    call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
-  }
 
  public:
-  GemmLowering(MLIRContext* ctx, GemmUidGenerator& uid)
-      : OpRewritePattern<Gemm>(ctx), uid_(uid) {}
+  GemmOpLowering(MLIRContext* ctx, GemmUidGenerator& uid)
+      : OpRewritePattern<GEMMOp>(ctx), uid_(uid) {}
 
-  LogicalResult matchAndRewrite(Gemm op,
+  LogicalResult matchAndRewrite(GEMMOp op,
                                 PatternRewriter& rewriter) const override {
     MLIRContext* ctx = this->getContext();
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -408,25 +433,14 @@ class GemmLowering : public OpRewritePattern<Gemm> {
     call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
 
     // Copy backend specific attributes.
-    call->setAttr(b.getStringAttr("algorithm"), op.getAlgorithmAttr());
+    auto algorithm_attr = op.getAlgorithm()
+                              ? op.getAlgorithmAttr()
+                              : b.getI64IntegerAttr(se::blas::kDefaultGemmAlgo);
+    call->setAttr(b.getStringAttr("algorithm"), algorithm_attr);
     call->setAttr(b.getStringAttr("alpha_imag"), op.getAlphaImagAttr());
     call->setAttr(b.getStringAttr("alpha_real"), op.getAlphaRealAttr());
-
-    // Set optional arguments that are defined only for some Gemm ops.
-    SetOptionalAttrs(b, op, call);
-
-    // TODO(ezhulenev): Once cutom calls support passing structured attributes
-    // we should be able to pass `mhlo.dot` attribute directly.
-    auto dot = op.getDotDimensionNumbers();
-    auto lhs_batch = b.getI64TensorAttr(dot.getLhsBatchingDimensions());
-    auto lhs_contract = b.getI64TensorAttr(dot.getLhsContractingDimensions());
-    auto rhs_batch = b.getI64TensorAttr(dot.getRhsBatchingDimensions());
-    auto rhs_contract = b.getI64TensorAttr(dot.getRhsContractingDimensions());
-
-    call->setAttr(b.getStringAttr("lhs_batching_dimensions"), lhs_batch);
-    call->setAttr(b.getStringAttr("lhs_contracting_dimensions"), lhs_contract);
-    call->setAttr(b.getStringAttr("rhs_batching_dimensions"), rhs_batch);
-    call->setAttr(b.getStringAttr("rhs_contracting_dimensions"), rhs_contract);
+    call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
+    call->setAttr(b.getStringAttr("dot_dims"), op.getDotDimensionNumbers());
 
     // Erase the original gemm operation.
     rewriter.eraseOp(op);
@@ -436,16 +450,6 @@ class GemmLowering : public OpRewritePattern<Gemm> {
 
  private:
   GemmUidGenerator& uid_;
-};
-
-class GemmOpLowering : public GemmLowering<GEMMOp> {
- public:
-  using GemmLowering::GemmLowering;
-};
-
-class GemmBiasOpLowering : public GemmLowering<GEMM_BiasOp> {
- public:
-  using GemmLowering::GemmLowering;
 };
 
 // -------------------------------------------------------------------------- //
@@ -507,17 +511,10 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
       call->setAttr(b.getStringAttr(name), attr);
     };
 
-    auto set_i64 = [&](StringRef name, int64_t value) {
-      set_attr(name, b.getI64IntegerAttr(value));
-    };
-
-    auto set_i64s = [&](StringRef name, ArrayRef<int64_t> values) {
-      set_attr(name, b.getI64TensorAttr(values));
-    };
-
     auto set_xi64 = [&](StringRef name, Optional<DenseIntElementsAttr> attr) {
       SmallVector<int64_t> values;
-      if (attr.hasValue()) values = llvm::to_vector(attr->getValues<int64_t>());
+      if (attr.has_value())
+        values = llvm::to_vector(attr->getValues<int64_t>());
       set_attr(name, b.getI64TensorAttr(values));
     };
 
@@ -525,26 +522,14 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     // TODO(ezhulenev): Allow passing boolean tensors to the JitRt custom calls.
     auto set_xi1 = [&](StringRef name, Optional<DenseElementsAttr> attr) {
       SmallVector<int64_t> values;
-      if (attr.hasValue())
+      if (attr.has_value())
         values.assign(attr->getValues<bool>().begin(),
                       attr->getValues<bool>().end());
       set_attr(name, b.getI64TensorAttr(values));
     };
 
     // Copy dimension number attributes.
-    ConvDimensionNumbersAttr dims = op.getDimensionNumbers();
-
-    set_i64("input_batch_dim", dims.getInputBatchDimension());
-    set_i64("input_feature_dim", dims.getInputFeatureDimension());
-    set_i64s("input_spatial_dims", dims.getInputSpatialDimensions());
-
-    set_i64("kernel_in_feature_dim", dims.getKernelInputFeatureDimension());
-    set_i64("kernel_out_feature_dim", dims.getKernelOutputFeatureDimension());
-    set_i64s("kernel_spatial_dims", dims.getKernelSpatialDimensions());
-
-    set_i64("output_batch_dim", dims.getOutputBatchDimension());
-    set_i64("output_feature_dim", dims.getOutputFeatureDimension());
-    set_i64s("output_spatial_dims", dims.getOutputSpatialDimensions());
+    call->setAttr(b.getStringAttr("conv_dims"), op.getDimensionNumbers());
 
     // Copy convolution window attributes.
     set_xi1("window_reversal", op.getWindowReversal());
@@ -554,19 +539,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     set_xi64("padding", op.getPadding());
 
     // Copy backend config.
-    ConvolutionBackendConfigAttr backend = op.getBackendConfig();
-
-    set_i64("algorithm", backend.getAlgorithm());
-    set_attr("tensor_ops_enabled",
-             b.getBoolAttr(backend.getTensorOpsEnabled()));
-    set_attr("is_cudnn_frontend", b.getBoolAttr(backend.getIsCudnnFrontend()));
-    set_i64("workspace_size", backend.getWorkspaceSize());
-
-    set_i64s("knob_ids", backend.getKnobIds());
-    set_i64s("knob_values", backend.getKnobValues());
-    set_i64s("operand_0_layout", backend.getOperand_0Layout());
-    set_i64s("operand_1_layout", backend.getOperand_1Layout());
-    set_i64s("result_layout", backend.getResultLayout());
+    call->setAttr(b.getStringAttr("backend_config"), op.getBackendConfig());
 
     // Copy remaining attributes.
     set_attr("feature_group_count", op.getFeatureGroupCountAttr());
@@ -574,20 +547,14 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
 
     // Copy attributes specific for fused convolutions.
     if (auto fused = dyn_cast<ConvForwardFusedOp>(op.getOperation())) {
-      auto activation_mode =
-          ConvertConvActivationMode(fused.getActivationMode());
-      if (!activation_mode.ok())
-        return op.emitOpError("failed to convert activation mode");
-      set_i64("activation_mode", static_cast<int64_t>(*activation_mode));
+      call->setAttr(b.getStringAttr("activation_mode"),
+                    fused.getActivationModeAttr());
     }
 
     // Copy attributes specific for fused convolutions with side input.
     if (auto fused = dyn_cast<ConvForwardFusedSideInputOp>(op.getOperation())) {
-      auto activation_mode =
-          ConvertConvActivationMode(fused.getActivationMode());
-      if (!activation_mode.ok())
-        return op.emitOpError("failed to convert activation mode");
-      set_i64("activation_mode", static_cast<int64_t>(*activation_mode));
+      call->setAttr(b.getStringAttr("activation_mode"),
+                    fused.getActivationModeAttr());
       set_attr("side_input_scale", fused.getSideInputScaleAttr());
     }
 
@@ -781,7 +748,7 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
 
     // If custom call has target arguments mapping, then we need to pass empty
     // memrefs in place of holes.
-    if (op.getTargetArgMapping().hasValue()) {
+    if (op.getTargetArgMapping().has_value()) {
       auto mapping = *op.getTargetArgMapping();
       int64_t num_args = mapping.getNumArgs();
       int64_t num_results = mapping.getNumResults();
@@ -872,7 +839,7 @@ class GetGlobalOpLowering : public OpRewritePattern<GetGlobalOp> {
     if (func_mapping == cst_args_.end()) return failure();
 
     // Check if the global operation correposponds to the LMHLO constant arg.
-    auto arg = func_mapping->second.find(op.name());
+    auto arg = func_mapping->second.find(op.getName());
     if (arg == func_mapping->second.end()) return failure();
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -949,8 +916,7 @@ class FftOpLowering : public OpRewritePattern<FftOp> {
 
     // Copy backend specific attributes.
     call->setAttr(b.getStringAttr("fft_length"), op.getFftLengthAttr());
-    call->setAttr(b.getStringAttr("fft_type"),
-                  b.getI32IntegerAttr(static_cast<int32_t>(op.getFftType())));
+    call->setAttr(b.getStringAttr("fft_type"), op.getFftTypeAttr());
 
     // Erase the original Fft operation.
     rewriter.eraseOp(op);
@@ -1007,8 +973,7 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
     call->setAttr(b.getStringAttr("batch_size"),
                   b.getI64IntegerAttr(batch_size));
     call->setAttr(b.getStringAttr("n"), b.getI64IntegerAttr(n));
-    call->setAttr(b.getStringAttr("uplo"),
-                  b.getI64IntegerAttr(op.getIsLower()));
+    call->setAttr(b.getStringAttr("is_lower"), op.getIsLowerAttr());
 
     // Erase the original Cholesky operation.
     rewriter.eraseOp(op);
@@ -1103,10 +1068,10 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
       return failure();
     }
 
-    for (int64_t i = 0; i < op.operands().size(); i++) {
+    for (int64_t i = 0; i < op.getInputs().size(); i++) {
       rewriter.create<gpu::MemcpyOp>(
           op.getLoc(), TypeRange(),
-          ValueRange({op.getResults()[i], op.getOperands()[i]}));
+          ValueRange({op.getOutputs()[i], op.getOperands()[i]}));
     }
     return success();
   }
@@ -1165,7 +1130,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllToAllOp op,
                                         CallOp call) {
     call->setAttr(b.getStringAttr("has_split_dimension"),
-                  b.getBoolAttr(op.getSplitDimension().hasValue()));
+                  b.getBoolAttr(op.getSplitDimension().has_value()));
     return success();
   }
   static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
@@ -1502,7 +1467,7 @@ void ConvertGpuToJitRtPass::runOnOperation() {
   // Convert gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<GpuModuleOpLowering, LaunchFuncOpLowering, MemcpyOpLowering,
-                  InfeedOpLowering, OutfeedOpLowering>(ctx);
+                  MemsetOpLowering, InfeedOpLowering, OutfeedOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();
@@ -1517,7 +1482,7 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
 
   // Each unique Gemm operation in the module will get assigned a uid.
   GemmUidGenerator gemm_uid;
-  patterns.insert<GemmOpLowering, GemmBiasOpLowering>(ctx, gemm_uid);
+  patterns.insert<GemmOpLowering>(ctx, gemm_uid);
 
   // Assign shared unique id to each unique pair of async start-done operations,
   // all other collective operations will get assigned uid.

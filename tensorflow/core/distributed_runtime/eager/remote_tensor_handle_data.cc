@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle_data.h"
 
+#include <memory>
+#include <utility>
+
 #include "tensorflow/core/distributed_runtime/eager/destroy_tensor_handle_node.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -199,8 +200,8 @@ Status RemoteTensorHandleData::SetShapeAndRemoteTask(
 }
 
 string RemoteTensorHandleData::DebugString() const {
-  return strings::StrCat("RemoteTensorHandleData:", " op_id: ", op_id_,
-                         " output_num: ", output_num_);
+  return absl::StrCat("RemoteTensorHandleData:", " op_id: ", op_id_,
+                      " output_num: ", output_num_);
 }
 
 Status RemoteTensorHandleData::OpIdAndOutputNum(const bool wait_util_ready,

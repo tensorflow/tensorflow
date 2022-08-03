@@ -34,9 +34,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -59,6 +56,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -82,10 +82,10 @@ StatusOr<TensorShape> GetTensorShapeFromXlaArgument(const XlaArgument& arg) {
   if (absl::holds_alternative<xla::Shape>(arg.shape)) {
     TensorShape arg_shape;
     TF_RETURN_IF_ERROR(
-        XLAShapeToTensorShape(absl::get<xla::Shape>(arg.shape), &arg_shape));
+        XLAShapeToTensorShape(std::get<xla::Shape>(arg.shape), &arg_shape));
     return arg_shape;
   } else {
-    return absl::get<TensorShape>(arg.shape);
+    return std::get<TensorShape>(arg.shape);
   }
 }
 
@@ -358,6 +358,8 @@ void CreateConvertMlirToXlaHloPipeline(
 
   pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
+  pm.addPass(mlir::mhlo::createLegalizeTFModulePass(
+      /*tf2xla_fallback_device_type=*/device_type));
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
       /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));

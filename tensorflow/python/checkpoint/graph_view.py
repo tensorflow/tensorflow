@@ -16,8 +16,8 @@
 import copy
 import weakref
 
+from tensorflow.python.checkpoint import save_util_v1
 from tensorflow.python.checkpoint import trackable_view
-from tensorflow.python.checkpoint import util
 from tensorflow.python.trackable import base
 from tensorflow.python.util.tf_export import tf_export
 
@@ -125,7 +125,7 @@ class ObjectGraphView(trackable_view.TrackableView):
 
   def _breadth_first_traversal(self):
     """Find shortest paths to all dependencies of self.root."""
-    return super(ObjectGraphView, self)._all_nodes_with_paths()
+    return super(ObjectGraphView, self)._descendants_with_paths()
 
   def serialize_object_graph(self, saveables_cache=None):
     """Determine checkpoint keys for variables and build a serialized graph.
@@ -154,8 +154,8 @@ class ObjectGraphView(trackable_view.TrackableView):
       ValueError: If there are invalid characters in an optimizer's slot names.
     """
     named_saveable_objects, object_graph_proto, feed_additions, _ = (
-        util.serialize_object_graph_with_registered_savers(self,
-                                                           saveables_cache))
+        save_util_v1.serialize_object_graph_with_registered_savers(
+            self, saveables_cache))
     return named_saveable_objects, object_graph_proto, feed_additions
 
   def frozen_saveable_objects(self,
@@ -163,5 +163,5 @@ class ObjectGraphView(trackable_view.TrackableView):
                               to_graph=None,
                               call_with_mapped_captures=None):
     """Creates SaveableObjects with the current object graph frozen."""
-    return util.frozen_saveables_and_savers(
+    return save_util_v1.frozen_saveables_and_savers(
         self, object_map, to_graph, call_with_mapped_captures)[0]

@@ -51,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/tpu/tpu_resources.h"
-// TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
@@ -728,8 +727,10 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
     // order as `input_tensors`.
     const auto& signature = signatures_.at(signature_name);
     const auto& input_names = signature.input_names;
-    TF_RETURN_IF_ERROR(
-        IsInputSpecsCorrect(signature_name, signature, input_tensors));
+    if (run_options.validate_input_specs) {
+      TF_RETURN_IF_ERROR(
+          IsInputSpecsCorrect(signature_name, signature, input_tensors));
+    }
     DCHECK(signature.captures.empty());
 
     TF_RET_CHECK(input_tensors.size() == signature_def.inputs().size())

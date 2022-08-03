@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"

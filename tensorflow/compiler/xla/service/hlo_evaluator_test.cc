@@ -74,7 +74,7 @@ class HloEvaluatorTest : public HloTestBase {
       HloElementTypeConverter(F32, BF16).Run(m_.get()).ValueOrDie();
     }
     return evaluator_.Evaluate(*module->entry_computation(), arg_literals)
-        .ConsumeValueOrDie();
+        .value();
   }
 
   void TestUnaryOp(HloOpcode opcode, Literal expected, Literal input,
@@ -1511,14 +1511,14 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGroupedConvolution) {
   std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape));
   std::iota(input_elems.begin(), input_elems.end(), -7);
   auto input_r1 = LiteralUtil::CreateR1<float>(input_elems);
-  auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+  auto input_r4 = input_r1.Reshape(input_dims).value();
   HloInstruction* lhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(input_r4)));
 
   std::vector<float> filter_elems(ShapeUtil::ElementsIn(filter_shape));
   std::iota(filter_elems.begin(), filter_elems.end(), -31);
   auto filter_r1 = LiteralUtil::CreateR1<float>(filter_elems);
-  auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+  auto filter_r4 = filter_r1.Reshape(filter_dims).value();
   HloInstruction* rhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(filter_r4)));
 
@@ -2578,7 +2578,7 @@ TEST_F(HloEvaluatorPreciseReduceTest, AddReductionPrecisionTest) {
   m->AddEntryComputation(b.Build());
 
   HloEvaluator hlo_eval;
-  Literal result = hlo_eval.Evaluate(reduce_instruction).ConsumeValueOrDie();
+  Literal result = hlo_eval.Evaluate(reduce_instruction).value();
   LiteralTestUtil::ExpectR0Equal<float>(kNumElements, result);
 }
 
@@ -2615,7 +2615,7 @@ void BM_ReducePrecisely(::testing::benchmark::State& state) {
   // Benchmark loop
   for (auto s : state) {
     HloEvaluator hlo_eval;
-    hlo_eval.Evaluate(reduce_instruction).ConsumeValueOrDie();
+    hlo_eval.Evaluate(reduce_instruction).value();
   }
 }
 
@@ -4311,7 +4311,7 @@ ENTRY main {
     hlo_text = absl::StrFormat(hlo_text_base, "f32", "f32", "f32");
   }
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
   TF_ASSERT_OK_AND_ASSIGN(Literal actual, Evaluate({&args[0]}));
   if (use_bfloat16_) {
     EXPECT_TRUE(
@@ -4450,7 +4450,7 @@ TEST_F(HloEvaluatorTest, PreserveFusionInputLayout) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
 
   TF_ASSERT_OK_AND_ASSIGN(Literal actual, Evaluate({&args[0]}));
   EXPECT_TRUE(absl::c_equal(args[0].data<float>(), actual.data<float>()));
@@ -4472,7 +4472,7 @@ TEST_F(HloEvaluatorTest, PreserveFusionOutputLayout) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
   TF_ASSERT_OK_AND_ASSIGN(Literal actual, Evaluate({&args[0]}));
   EXPECT_TRUE(absl::c_equal(args[0].data<float>(), actual.data<float>()));
 }
@@ -4494,7 +4494,7 @@ TEST_F(HloEvaluatorTest, PreserveMOFusionOutputLayout) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
   TF_ASSERT_OK_AND_ASSIGN(Literal actual_tuple, Evaluate({&args[0]}));
   std::vector<Literal> actual_literals = actual_tuple.DecomposeTuple();
   EXPECT_TRUE(
@@ -4513,7 +4513,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_NoHandler) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
   EXPECT_EQ(HloEvaluator().Evaluate(*m_, {&args[0]}).status().code(),
             ::tensorflow::error::UNIMPLEMENTED);
 }
@@ -4530,7 +4530,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
   HloEvaluator evaluator;
   evaluator.set_custom_call_handler(
       [](HloInstruction* custom_call, absl::Span<const Literal*> operands) {
@@ -4555,7 +4555,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_ManyInputs) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
   HloEvaluator evaluator;
   evaluator.set_custom_call_handler(
       [](HloInstruction* custom_call, absl::Span<const Literal*> operands) {

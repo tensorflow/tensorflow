@@ -67,17 +67,11 @@ XlaOp DiagonalBlocks(XlaOp a, int64_t block_size) {
                               /*broadcast_sizes=*/{2}),
                     /*permutation=*/{1, 0});
 
-      PaddingConfig padding_config =
-          MakeEdgePaddingConfig({{0, 0}, {ndims - 2, 0}});
-      start_indices =
-          Pad(start_indices, ConstantR0<int32_t>(builder, 0), padding_config);
-
       // Gather the diagonal blocks
       std::vector<int64_t> slice_sizes(ndims);
       GatherDimensionNumbers dim_numbers;
       for (int i = 0; i < ndims - 2; ++i) {
         dim_numbers.add_offset_dims(i);
-        dim_numbers.add_start_index_map(i);
         slice_sizes[i] = ShapeUtil::GetDimension(shape, i);
       }
       slice_sizes[ndims - 2] = slice_sizes[ndims - 1] = block_size;

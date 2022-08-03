@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <fstream>
+#include <memory>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -471,7 +472,7 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
   const int kSeqNumber = 4;
   const int kExpectedValue = 15;
 
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), kSeqNumber);
   builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
@@ -527,7 +528,7 @@ TEST_F(WhileTest, TestModelWriterFromSubgraphs) {
   const int kSeqNumber = 4;
   const int kExpectedValue = 15;
 
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), kSeqNumber);
   builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));

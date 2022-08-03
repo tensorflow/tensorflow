@@ -26,10 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/dnn.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -773,10 +773,13 @@ void VlogStats(HloModule* module) {
 
 }  // namespace
 
-StatusOr<bool> CudnnFusedConvRewriter::Run(HloModule* module) {
+StatusOr<bool> CudnnFusedConvRewriter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool any_changed = false;
 
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     // Fuse "inside out" starting with the operations closest to the conv.
     bool changed = false;
 
