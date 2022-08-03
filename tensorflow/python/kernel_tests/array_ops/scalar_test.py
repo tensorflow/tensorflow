@@ -32,13 +32,11 @@ from tensorflow.python.platform import test
 # and Reshape.
 class ScalarTest(test.TestCase):
 
-  def check(self, op, args, error, correct=None, lenient=None, strict=None):
+  def check(self, op, args, error, correct=None, lenient=None, strict=[5, 6]):
     if lenient is None:
       lenient = []
-    if strict is None:
-      strict = [5, 6]
     # Use placeholders to bypass shape inference, since only the C++
-    # GraphDef level is ever scalar lenient.
+    # G raphDef level is ever scalar lenient.
     def placeholders(args, feed):
       if isinstance(args, tuple):
         return [placeholders(x, feed) for x in args]
@@ -67,8 +65,7 @@ class ScalarTest(test.TestCase):
   def testConcat(self):
     for data in (2, [3], 7), ([2], 3, 7), ([2], [3], 7):
       self.check(array_ops.concat, (data, 0),
-                 r"Can't concatenate scalars \(use tf.stack instead\)",
-                 [2, 3, 7])
+                 r'Ranks of all input tensors should match', [2, 3, 7])
 
   def testFill(self):
     self.check(
