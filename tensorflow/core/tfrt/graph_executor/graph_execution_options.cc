@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+// TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
 #include "tensorflow/core/tfrt/utils/bridge_graph_analysis.h"
 
 namespace tensorflow {
