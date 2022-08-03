@@ -321,9 +321,6 @@ GPUOperation CreateGpuOperation(const OperationDef& definition,
   for (int i = 1; i < definition.src_tensors.size(); ++i) {
     const std::string tensor_name = "src_tensor_" + std::to_string(i);
     auto src_desc = definition.src_tensors[i];
-    if (definition.IsBatchSupported()) {
-      src_desc.SetStateVar("BatchedWidth", "true");
-    }
     op.AddSrcTensor(tensor_name, src_desc);
   }
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;

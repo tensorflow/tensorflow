@@ -87,7 +87,8 @@ class TensorDescriptor : public GPUObjectDescriptor {
 
   absl::Status GetLinkingContextFromWriteSelector(
       const std::vector<std::string>& args, std::string* value_name,
-      std::string* x_coord, std::string* y_coord, std::string* s_coord) const;
+      std::string* x_coord, std::string* y_coord, std::string* z_coord,
+      std::string* s_coord, std::string* b_coord) const;
 
   template <DataType T>
   void UploadData(const tflite::gpu::Tensor<BHWC, T>& src);

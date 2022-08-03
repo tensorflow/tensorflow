@@ -607,7 +607,8 @@ absl::Status TensorDescriptor::PerformReadPerChannelSelector(
 
 absl::Status TensorDescriptor::GetLinkingContextFromWriteSelector(
     const std::vector<std::string>& args, std::string* value_name,
-    std::string* x_coord, std::string* y_coord, std::string* s_coord) const {
+    std::string* x_coord, std::string* y_coord, std::string* z_coord,
+    std::string* s_coord, std::string* b_coord) const {
   std::string xc;
   std::string yc;
   std::string zc;
@@ -618,12 +619,10 @@ absl::Status TensorDescriptor::GetLinkingContextFromWriteSelector(
     return absl::NotFoundError("Unrecognized Write selector");
   }
   *value_name = args[0];
-  if (HasAxis(Axis::BATCH) && !IsBatchedWidth()) {
-    *x_coord = absl::StrCat("((", xc, ") * batch + (", bc, "))");
-  } else {
-    *x_coord = absl::StrCat("(", xc, ")");
-  }
+  *b_coord = absl::StrCat("(", bc, ")");
+  *x_coord = absl::StrCat("(", xc, ")");
   *y_coord = absl::StrCat("(", yc, ")");
+  *z_coord = absl::StrCat("(", zc, ")");
   *s_coord = absl::StrCat("(", sc, ")");
   return absl::OkStatus();
 }

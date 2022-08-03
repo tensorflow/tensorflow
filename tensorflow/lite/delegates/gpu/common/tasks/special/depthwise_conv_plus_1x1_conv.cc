@@ -329,7 +329,8 @@ void ThinPointwiseFuser::AddElementwiseNode(ElementwiseDescriptor&& op_desc) {
                                            {"out_value", outputs_[i]},
                                            {"X_COORD", "X"},
                                            {"Y_COORD", "Y"},
-                                           {"S_COORD", std::to_string(i)}});
+                                           {"S_COORD", std::to_string(i)},
+                                           {"B_COORD", "B"}});
     code_ += "  {  " + elementwise_new_code + "  }\n";
   }
 }
