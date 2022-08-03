@@ -5098,14 +5098,6 @@ class Graph(object):
       if c not in current:
         control_ops.append(c)
         current.add(c)
-        # Mark this op with an attribute indicating that it is used as a manual
-        # control dep in order to allow tracking how common utilization of
-        # manual control deps in graphs run through the MLIR Bridge are. See
-        # go/manual-control-dependencies-bridge for details.
-        # pylint: disable=protected-access
-        c._set_attr("_has_manual_control_dependencies",
-                    attr_value_pb2.AttrValue(b=True))
-        # pylint: enable=protected-access
     return self._ControlDependenciesController(self, control_ops)
 
   # pylint: disable=g-doc-return-or-yield
