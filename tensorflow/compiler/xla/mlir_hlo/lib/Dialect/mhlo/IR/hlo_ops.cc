@@ -2342,7 +2342,7 @@ SmallVector<int64_t> inferConvolutionOpReturnShape(
 // Some mhlo.convolutions are dot products, specifically when there is no
 // padding and no spatial dimensions. DotGeneralOp is general enough that it
 // can sufficiently describe it.
-struct ConvolutionIsDotOrMul : public OpRewritePattern<mhlo::ConvolutionOp> {
+struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
   using OpRewritePattern<mhlo::ConvolutionOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::ConvolutionOp op,
                                 PatternRewriter& rewriter) const override {
@@ -2350,7 +2350,6 @@ struct ConvolutionIsDotOrMul : public OpRewritePattern<mhlo::ConvolutionOp> {
     auto rhs = op.rhs();
     auto lhsTy = lhs.getType().cast<RankedTensorType>();
     auto rhsTy = rhs.getType().cast<RankedTensorType>();
-    auto resultTy = op.getResult().getType().cast<ShapedType>();
 
     if (lhsTy.getRank() != 2) return failure();
     if (rhsTy.getRank() != 2) return failure();
@@ -2363,7 +2362,6 @@ struct ConvolutionIsDotOrMul : public OpRewritePattern<mhlo::ConvolutionOp> {
     assert(dNums.getKernelSpatialDimensions().empty());
 
     auto lhsContractDim = dNums.getInputFeatureDimension();
-    auto rhsBatchDim = dNums.getKernelOutputFeatureDimension();
     auto rhsContractDim = dNums.getKernelInputFeatureDimension();
     auto outBatchDim = dNums.getOutputBatchDimension();
     auto outFeatureDim = dNums.getOutputFeatureDimension();
@@ -2388,37 +2386,6 @@ struct ConvolutionIsDotOrMul : public OpRewritePattern<mhlo::ConvolutionOp> {
       return success();
     }
 
-    if (op.feature_group_count() == lhsTy.getDimSize(lhsContractDim)) {
-      if (!rhsTy.hasStaticShape()) return failure();
-      if (!lhsTy.hasStaticShape()) return failure();
-      if (rhsTy.getDimSize(rhsContractDim) != 1) return failure();
-
-      rhsTy = RankedTensorType::get({rhsTy.getDimSize(rhsBatchDim)},
-                                    rhsTy.getElementType());
-      rhs = rewriter.create<mhlo::ReshapeOp>(op.getLoc(), rhsTy, rhs);
-
-      rhsTy = RankedTensorType::get(lhsTy.getShape(), rhsTy.getElementType());
-      rhs = rewriter.create<mhlo::BroadcastInDimOp>(
-          op.getLoc(), rhsTy, rhs, rewriter.getI64TensorAttr({1}));
-
-      lhs = rewriter.create<mhlo::ConvertOp>(
-          op.getLoc(), lhsTy.clone(resultTy.getElementType()), lhs);
-      rhs = rewriter.create<mhlo::ConvertOp>(
-          op.getLoc(), rhsTy.clone(resultTy.getElementType()), rhs);
-
-      auto mulTy =
-          RankedTensorType::get(lhsTy.getShape(), resultTy.getElementType());
-      auto mul = rewriter.create<mhlo::MulOp>(op.getLoc(), mulTy, lhs, rhs)
-                     .getResult();
-
-      mul = rewriter.create<mhlo::TransposeOp>(
-          op.getLoc(), resultTy, mul,
-          rewriter.getI64TensorAttr({outBatchDim, outFeatureDim}));
-
-      rewriter.replaceOp(op, mul);
-      return success();
-    }
-
     return failure();
   }
 };
@@ -2427,7 +2394,7 @@ struct ConvolutionIsDotOrMul : public OpRewritePattern<mhlo::ConvolutionOp> {
 
 void ConvolutionOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                 MLIRContext* context) {
-  results.add<ConvolutionIsDotOrMul>(context);
+  results.add<ConvolutionIsDot>(context);
 }
 
 /*
