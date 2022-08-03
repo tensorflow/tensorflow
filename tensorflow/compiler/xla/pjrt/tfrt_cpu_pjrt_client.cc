@@ -962,8 +962,6 @@ void TfrtCpuBuffer::ConfirmDonation(TrackedTfrtCpuDeviceBuffer* device_buffer) {
   CHECK_EQ(holds_[ScopedHold::kExternalReference], 0);
   CHECK_EQ(holds_[ScopedHold::kDonation], 1);
   holds_[ScopedHold::kDonation] = 0;
-  // As a sanity check ensure no more usage events can be added to the buffer.
-  device_buffer->LockUseAndTransferUsageEvents();
   // Give up ownership of the device memory so we don't free it when the last
   // reference to device_buffer_ goes away.
   device_buffer->ReleaseDeviceMemory();
