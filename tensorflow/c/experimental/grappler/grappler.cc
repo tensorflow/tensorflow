@@ -342,7 +342,7 @@ void TF_GetOutputPropertiesList(TF_GraphProperties* graph_properties,
 }
 
 TF_FunctionLibraryDefinition* TF_NewFunctionLibraryDefinition(
-    TF_Buffer* graph_buf, TF_Status* status) {
+    const TF_Buffer* graph_buf, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   tensorflow::GraphDef graph_def;
   tensorflow::Status s = tensorflow::BufferToMessage(graph_buf, &graph_def);

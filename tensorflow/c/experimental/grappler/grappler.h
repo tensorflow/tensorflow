@@ -274,7 +274,7 @@ typedef struct TF_FunctionLibraryDefinition TF_FunctionLibraryDefinition;
 
 // Create NewFunctionLibraryDefinition.
 TF_CAPI_EXPORT extern TF_FunctionLibraryDefinition*
-TF_NewFunctionLibraryDefinition(TF_Buffer* graph_buf, TF_Status* status);
+TF_NewFunctionLibraryDefinition(const TF_Buffer* graph_buf, TF_Status* status);
 
 // Delete NewFunctionLibraryDefinition.
 TF_CAPI_EXPORT extern void TF_DeleteFunctionLibraryDefinition(
