@@ -4681,6 +4681,12 @@ static bool CanVectorizeReduction(
     return false;
   }
 
+  // Enabling vectorization if number of threads is <= warpsize leads to half or
+  // more of the threads not doing any work.
+  if (reduction_dimensions.is_row_reduction && num_threads_x <= WarpSize()) {
+    return false;
+  }
+
   if (cc.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     return true;
   }
