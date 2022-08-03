@@ -1,6 +1,7 @@
 Checks: >
         # LINT.IfChange(checks)
         -*,clang-diagnostic-*,llvm-*,misc-*,
+        -misc-const-correctness,
         -misc-unused-parameters,
         -misc-non-private-member-variables-in-classes,
         -misc-no-recursion,
