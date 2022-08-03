@@ -107,6 +107,7 @@ using mlir::lmhlo_gpu::ConvForwardFusedOp;
 using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
 using mlir::lmhlo_gpu::ConvForwardOp;
 using mlir::lmhlo_gpu::ConvolutionBackendConfigAttr;
+using mlir::lmhlo_gpu::CublasLtMatmulOp;
 using mlir::lmhlo_gpu::GEMMOp;
 using mlir::memref::AllocaOp;
 using mlir::memref::GetGlobalOp;
@@ -443,6 +444,78 @@ class GemmOpLowering : public OpRewritePattern<GEMMOp> {
     call->setAttr(b.getStringAttr("dot_dims"), op.getDotDimensionNumbers());
 
     // Erase the original gemm operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  GemmUidGenerator& uid_;
+};
+
+// -------------------------------------------------------------------------- //
+
+class CublasLtMatmulOpLowering : public OpRewritePattern<CublasLtMatmulOp> {
+ private:
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.cublas.lt.matmul";
+
+ public:
+  CublasLtMatmulOpLowering(MLIRContext* ctx, GemmUidGenerator& uid)
+      : OpRewritePattern<CublasLtMatmulOp>(ctx), uid_(uid) {}
+
+  LogicalResult matchAndRewrite(CublasLtMatmulOp op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = this->getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    ModuleOp module = op->template getParentOfType<ModuleOp>();
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
+                          b.getStringAttr(kCustomCallTarget));
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
+                                      custom_call_type, custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(module);
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Convert matmul to a function call.
+    auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
+                                        op.getOperands());
+
+    // Assign a unique id to this instance of a matmul operation.
+    call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
+
+    // Copy backend specific attributes.
+    call->setAttr(b.getStringAttr("algorithm"), op.getAlgorithmAttr());
+    call->setAttr(b.getStringAttr("alpha_imag"), op.getAlphaImagAttr());
+    call->setAttr(b.getStringAttr("alpha_real"), op.getAlphaRealAttr());
+    call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
+    call->setAttr(b.getStringAttr("dot_dims"), op.getDotDimensionNumbers());
+    call->setAttr(b.getStringAttr("epilogue"), op.getEpilogueAttr());
+
+    // TODO(ezhulenev): Today we can't pass an array of enum attributes to the
+    // custom call. Also we do not have a corresponding precision enum on the
+    // SE/XLA side, so we encode it as an i32 array (tensor).
+    if (auto precisions = op.getPrecisionConfig()) {
+      llvm::SmallVector<int32_t> values;
+      for (auto precision : *precisions) {
+        auto value = precision.cast<mhlo::PrecisionAttr>().getValue();
+        values.push_back(static_cast<int32_t>(value));
+      }
+      call->setAttr(b.getStringAttr("precision"), b.getI32TensorAttr(values));
+    } else {
+      call->setAttr(b.getStringAttr("precision"), b.getI32TensorAttr({0, 0}));
+    }
+
+    // Erase the original matmul operation.
     rewriter.eraseOp(op);
 
     return success();
@@ -1480,9 +1553,9 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   // Convert lmhlo_gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
 
-  // Each unique Gemm operation in the module will get assigned a uid.
+  // Each unique Gemm/Matmul operation in the module will get assigned a uid.
   GemmUidGenerator gemm_uid;
-  patterns.insert<GemmOpLowering>(ctx, gemm_uid);
+  patterns.insert<GemmOpLowering, CublasLtMatmulOpLowering>(ctx, gemm_uid);
 
   // Assign shared unique id to each unique pair of async start-done operations,
   // all other collective operations will get assigned uid.

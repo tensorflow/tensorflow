@@ -2704,6 +2704,7 @@ test_suite(
         "//tensorflow/compiler/xla/tests:local_client_execute_test_gpu",
         "//tensorflow/compiler/xla/tests:log_test_gpu",
         "//tensorflow/compiler/xla/tests:map_test_gpu",
+        "//tensorflow/compiler/xla/tests:matmul_test_gpu",
         "//tensorflow/compiler/xla/tests:matrix_ops_simple_test_gpu",
         "//tensorflow/compiler/xla/tests:multidimensional_slice_test_gpu",
         "//tensorflow/compiler/xla/tests:multioutput_fusion_test_gpu",
