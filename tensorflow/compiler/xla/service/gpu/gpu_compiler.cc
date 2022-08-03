@@ -333,14 +333,10 @@ Status GpuCompiler::OptimizeHloModule(
 
       spmd_simplify.AddPass<SortSimplifier>();
       spmd_simplify.AddPass<TupleSimplifier>();
-      if (debug_options.xla_gpu_simplify_scatters()) {
-        spmd_simplify.AddPass<ScatterSimplifier>();
-      }
+      spmd_simplify.AddPass<ScatterSimplifier>();
       spmd_simplify.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
-      if (debug_options.xla_gpu_simplify_gathers()) {
-        spmd_simplify.AddPass<GatherSimplifier>();
-      }
+      spmd_simplify.AddPass<GatherSimplifier>();
       spmd_simplify.AddPass<GatherExpander>(
           GatherExpander::kEliminateSimpleGathers);
       spmd_simplify.AddPass<WhileLoopConstantSinking>();
@@ -476,13 +472,9 @@ Status GpuCompiler::OptimizeHloModule(
       // elimination has to come after that pass.
       pipeline.AddPass<ZeroSizedHloElimination>();
 
-      if (debug_options.xla_gpu_simplify_gathers()) {
-        pipeline.AddPass<GatherSimplifier>();
-      }
+      pipeline.AddPass<GatherSimplifier>();
       pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
-      if (debug_options.xla_gpu_simplify_scatters()) {
-        pipeline.AddPass<ScatterSimplifier>();
-      }
+      pipeline.AddPass<ScatterSimplifier>();
       pipeline.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
       pipeline.AddPass<AlgebraicSimplifier>(layout_insensitive_algsimp_opts);
