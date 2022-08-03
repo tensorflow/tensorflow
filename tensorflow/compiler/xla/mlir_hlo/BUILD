@@ -2802,6 +2802,7 @@ cc_library(
     deps = [
         ":gml_st",
         "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:ArithmeticUtils",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",

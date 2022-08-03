@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 
+#include <tuple>
 #include <utility>
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arithmetic/Utils/Utils.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -122,7 +124,7 @@ void generateLoopNest(OpBuilder &b, Location loc, ArrayRef<Range> loopRanges,
                                                     ValueRange, ValueRange)>
                           bodyBuilderFn,
                       ArrayRef<StringRef> distributionTypes) {
-  SmallVector<Value, 4> lbs, ubs, steps;
+  SmallVector<OpFoldResult, 4> lbs, ubs, steps;
   for (Range range : loopRanges) {
     lbs.emplace_back(range.offset);
     ubs.emplace_back(range.size);
@@ -141,9 +143,16 @@ void generateLoopNest(OpBuilder &b, Location loc, ArrayRef<Range> loopRanges,
 
   SmallVector<Value> inputOperands = linalgOp.getInputOperands();
   SmallVector<Value> outputOperands = linalgOp.getOutputOperands();
-  auto tiledLoop =
-      b.create<LoopOp>(loc, lbs, ubs, steps, inputOperands, outputOperands,
-                       b.getArrayAttr(iteratorTypes), wrappedBuilderFn);
+
+  SmallVector<Value> lbsValue =
+      mlir::getValueOrCreateConstantIndexOp(b, loc, lbs);
+  SmallVector<Value> ubsValue =
+      mlir::getValueOrCreateConstantIndexOp(b, loc, ubs);
+  SmallVector<Value> stepsValue =
+      mlir::getValueOrCreateConstantIndexOp(b, loc, steps);
+  auto tiledLoop = b.create<LoopOp>(
+      loc, lbsValue, ubsValue, stepsValue, inputOperands, outputOperands,
+      b.getArrayAttr(iteratorTypes), wrappedBuilderFn);
   if (!distributionTypes.empty())
     tiledLoop.setDistributionTypes(b, distributionTypes);
 }
@@ -175,6 +184,9 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
     return tiledOp;
   }
 
+  SmallVector<OpFoldResult> tileSizesFold;
+  for (Value tileSize : tileSizes) tileSizesFold.push_back(tileSize);
+
   // 1. Build the tiled loop ranges.
   auto allShapeSizes = op.createFlatListOfOperandDims(b, op.getLoc());
   AffineMap shapeSizesToLoopsMap = op.getShapesToLoopsMap();
@@ -184,7 +196,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
   mlir::linalg::LoopIndexToRangeIndexMap loopIndexToRangeIndex;
   std::tie(loopRanges, loopIndexToRangeIndex) =
       mlir::linalg::makeTiledLoopRanges(b, op.getLoc(), shapeSizesToLoopsMap,
-                                        allShapeSizes, tileSizes);
+                                        allShapeSizes, tileSizesFold);
 
   SmallVector<Attribute, 4> iteratorTypes;
   for (const auto &attr :
@@ -207,11 +219,12 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
                static_cast<size_t>(op.getNumInputsAndOutputs()) &&
            "expect the number of operands and inputs and outputs to match");
     SmallVector<Value> valuesToTile = operandValuesToUse;
-    auto sizeBounds =
-        applyMapToValues(b, loc, shapeSizesToLoopsMap, allShapeSizes);
-    SmallVector<Value, 4> tiledOperands =
-        makeTiledShapes(b, loc, op, valuesToTile, ivs, tileSizes, sizeBounds,
-                        /*omitPartialTileCheck=*/false);
+    auto sizeBounds = makeComposedFoldedMultiResultAffineApply(
+        b, loc, shapeSizesToLoopsMap, allShapeSizes);
+    SmallVector<OpFoldResult> ivsFold(ivs.begin(), ivs.end());
+    SmallVector<Value, 4> tiledOperands = makeTiledShapes(
+        b, loc, op, valuesToTile, ivsFold, tileSizesFold, sizeBounds,
+        /*omitPartialTileCheck=*/false);
 
     SmallVector<Type, 4> resultTensorTypes;
     for (OpOperand *opOperand : op.getOutputTensorOperands())
