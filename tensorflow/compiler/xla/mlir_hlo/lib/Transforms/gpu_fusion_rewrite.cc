@@ -200,23 +200,13 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   // pass when e.g. broadcasts are involved.
   TypeConverter converter;
   converter.addConversion([](Type type) { return type; });
-  // HloLegalizeToLinalgPass will rewrite unsigned to signless, which trips up
-  // canonicalization: load(to_memref(cast tensor to memref)) will be converted
-  // to extract(cast tensor to memref) and the tensor will then stick.
-  converter.addConversion([](IntegerType type) {
-    if (type.isUnsigned())
-      return IntegerType::get(type.getContext(), type.getWidth());
-    return type;
-  });
-  converter.addConversion([&](ShapedType type) {
+  converter.addConversion([](ShapedType type) {
     if (!type.hasStaticShape()) return type;
-    return type.clone(type.getNumElements(),
-                      converter.convertType(type.getElementType()));
+    return type.clone(type.getNumElements());
   });
   converter.addConversion([&](MemRefType type) {
     if (!type.hasStaticShape() || !type.getLayout().isIdentity()) return type;
-    return MemRefType::get(type.getNumElements(),
-                           converter.convertType(type.getElementType()),
+    return MemRefType::get(type.getNumElements(), type.getElementType(),
                            MemRefLayoutAttrInterface(), type.getMemorySpace());
   });
 
@@ -353,11 +343,8 @@ ConversionTarget FusionRewritePattern::getRewritableTarget(MLIRContext* ctx) {
       });
   // For now, use an explicit allow-list of hlo ops inside the fusion. If any
   // other op is present, the fusion will not be rewritten.
-  target.addLegalOp<mhlo::AbsOp, mhlo::CbrtOp, mhlo::CeilOp, mhlo::CosineOp,
-                    mhlo::ExpOp, mhlo::Expm1Op, mhlo::FloorOp, mhlo::LogOp,
-                    mhlo::Log1pOp, mhlo::LogisticOp, mhlo::NegOp, mhlo::RoundOp,
-                    /*unsupported: mhlo::RoundNearestEvenOp,*/ mhlo::RsqrtOp,
-                    mhlo::SignOp, mhlo::SineOp, mhlo::SqrtOp, mhlo::TanhOp>();
+  target.addLegalOp<mhlo::LogOp>();
+  target.addLegalOp<mhlo::AbsOp>();
   return target;
 }
 

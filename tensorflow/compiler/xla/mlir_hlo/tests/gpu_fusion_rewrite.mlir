@@ -81,7 +81,7 @@ func.func @empty(
 // -----
 
 // CHECK-LABEL: func.func @tanh
-// CHECK: gpu.launch_func
+// CHECK-NOT: gpu.launch_func
 func.func @tanh(
     %arg0: memref<8xf32> {lmhlo.params = 0 : index},
     %arg1: memref<8xf32> {lmhlo.output_index = dense<> : tensor<0xi64>}
@@ -90,61 +90,6 @@ func.func @tanh(
     %0 = bufferization.to_tensor %arg0 : memref<8xf32>
     %1 = mhlo.tanh %0 : tensor<8xf32>
     memref.tensor_store %1, %arg1 : memref<8xf32>
-    "lmhlo.terminator"() : () -> ()
-  }) : () -> ()
-  "lmhlo.terminator"() : () -> ()
-}
-
-// -----
-
-// Checks ui16, specifically that canonicalization doesn't rewrite `memref.load`
-// to `tensor.extract`.
-// CHECK-LABEL: func.func @negate
-// CHECK: gpu.launch_func
-func.func @negate(
-    %arg0: memref<8xui16> {lmhlo.params = 0 : index},
-    %arg1: memref<8xui16> {lmhlo.output_index = dense<> : tensor<0xi64>}
-) attributes {result_xla_shape = "f32[8]{0}"} {
-  "lmhlo.fusion"() ({
-    %0 = bufferization.to_tensor %arg0 : memref<8xui16>
-    %1 = mhlo.negate %0 : tensor<8xui16>
-    memref.tensor_store %1, %arg1 : memref<8xui16>
-    "lmhlo.terminator"() : () -> ()
-  }) : () -> ()
-  "lmhlo.terminator"() : () -> ()
-}
-
-// -----
-
-// Checks that binary ops are not rewritten.
-// CHECK-LABEL: func.func @add
-// CHECK-NOT: gpu.launch_func
-func.func @add(
-    %arg0: memref<8xf32> {lmhlo.params = 0 : index},
-    %arg1: memref<8xf32> {lmhlo.output_index = dense<> : tensor<0xi64>}
-) attributes {result_xla_shape = "f32[8]{0}"} {
-  "lmhlo.fusion"() ({
-    %0 = bufferization.to_tensor %arg0 : memref<8xf32>
-    %1 = mhlo.add %0, %0 : tensor<8xf32>
-    memref.tensor_store %1, %arg1 : memref<8xf32>
-    "lmhlo.terminator"() : () -> ()
-  }) : () -> ()
-  "lmhlo.terminator"() : () -> ()
-}
-
-// -----
-
-// Checks that complex typed ops are not rewritten.
-// CHECK-LABEL: func.func @complex
-// CHECK-NOT: gpu.launch_func
-func.func @complex(
-    %arg0: memref<4xcomplex<f32>> {lmhlo.params = 0 : index},
-    %arg1: memref<4xcomplex<f32>> {lmhlo.output_index = dense<> : tensor<0xi64>}
-) attributes {result_xla_shape = "f32[8]{0}"} {
-  "lmhlo.fusion"() ({
-    %0 = bufferization.to_tensor %arg0 : memref<4xcomplex<f32>>
-    %1 = mhlo.negate %0 : tensor<4xcomplex<f32>>
-    memref.tensor_store %1, %arg1 : memref<4xcomplex<f32>>
     "lmhlo.terminator"() : () -> ()
   }) : () -> ()
   "lmhlo.terminator"() : () -> ()
