@@ -60,6 +60,8 @@ namespace tensorflow {
 
 namespace {
 constexpr char kGrpcPrefixRegex[] = "^grpc.*://";
+constexpr char kDeviceFinderWaitForWorkerTimeoutMicros[] =
+    "DEVICE_FINDER_WAIT_FOR_WORKER_TIMEOUT_MICROS";
 }  // namespace
 
 Master::Master(MasterEnv* env, double session_gc_seconds)
@@ -158,6 +160,14 @@ class DeviceFinder {
       WorkerCacheInterface* worker_cache)
       : env_(env), worker_cache_(worker_cache) {
     CHECK(worker_cache) << "Worker cache was null!";
+
+    const char* wait_for_worker_timeout_micros_str =
+        std::getenv(kDeviceFinderWaitForWorkerTimeoutMicros);
+    if (wait_for_worker_timeout_micros_str != nullptr) {
+      strings::safe_strtou64(wait_for_worker_timeout_micros_str,
+                             &wait_for_worker_timeout_micros_);
+    }
+
     auto process_filter = [this](const string& filter) {
       DeviceNameUtils::ParsedName parsed;
       if (DeviceNameUtils::ParseFullName(filter, &parsed)) {
@@ -260,8 +270,7 @@ class DeviceFinder {
 
   Status Wait() {
     mutex_lock l(mu_);
-    // TODO(mrry): Propagate a timeout here, since `num_pending_` may
-    // never become zero.
+    auto start_time = env_->env->NowMicros();
     while (num_pending_ != 0) {
       pending_zero_.wait_for(l, std::chrono::milliseconds(kLoggingPeriodMs));
       if (num_pending_ != 0) {
@@ -272,6 +281,17 @@ class DeviceFinder {
                 << targets_[i];
           }
         }
+      }
+      if (env_->env->NowMicros() - start_time >
+          wait_for_worker_timeout_micros_) {
+        std::string unseen_workers;
+        for (size_t i = 0; i < targets_.size(); ++i) {
+          if (!seen_targets_[i]) {
+            unseen_workers += " " + targets_[i];
+          }
+        }
+        return errors::DeadlineExceeded(
+            "Unable to get responses from workers: ", unseen_workers);
       }
     }
     return status_;
@@ -298,6 +318,7 @@ class DeviceFinder {
   const MasterEnv* env_;
   WorkerCacheInterface* worker_cache_;
   std::vector<DeviceNameUtils::ParsedName> filters_;
+  uint64 wait_for_worker_timeout_micros_ = 0;  // Default no waiting time.
 
   mutex mu_;
   int num_pending_ TF_GUARDED_BY(mu_);
