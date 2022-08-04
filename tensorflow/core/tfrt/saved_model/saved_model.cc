@@ -24,6 +24,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/mira/mlarchive/posix_env.h"
+#include "third_party/mira/mlarchive/status_macro.h"
+#include "tensorflow/cc/experimental/tfa/saved_model_converter.h"
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
@@ -42,6 +45,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
@@ -430,6 +435,28 @@ void UpdateCompileOptions(SavedModel::Options& options) {
   }
 }
 
+StatusOr<std::string> GetSavedModelDirFromMlaDir(absl::string_view mla_dir) {
+  auto statusor_dir = [&]() -> absl::StatusOr<std::string> {
+    LOG(INFO) << "TFRT looking for saved model from MLA: " << mla_dir;
+    mlarchive::Env& env = mlarchive::GetPosixEnv();
+    ASSIGN_OR_RETURN(const auto mla,
+                     mlarchive::Mla::FromArchiveRoot(mla_dir, env));
+    ASSIGN_OR_RETURN(const auto* saved_model_module,
+                     mla.GetModule("saved_model"));
+    ASSIGN_OR_RETURN(const auto saved_model_path,
+                     tfa::GetSavedModelProtoPath(mla, *saved_model_module));
+    const auto saved_model_dir =
+        std::string(tensorflow::io::Dirname(saved_model_path));
+    LOG(INFO) << "TFRT found saved model: " << saved_model_dir;
+    return saved_model_dir;
+  }();
+
+  if (!statusor_dir.ok()) {
+    return tfrt::TfStatusFromAbslStatus(statusor_dir.status());
+  }
+  return statusor_dir.ValueOrDie();
+}
+
 StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags) {
@@ -454,6 +481,18 @@ StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
 std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     Options options, absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags, tensorflow::Status* status) {
+  std::string saved_model_dir_str = "unused";
+  if (options.load_from_mla) {
+    auto statusor_saved_model_dir =
+        GetSavedModelDirFromMlaDir(/*mla_dir=*/saved_model_dir);
+    if (!statusor_saved_model_dir.ok()) {
+      *status = statusor_saved_model_dir.status();
+      return nullptr;
+    }
+    saved_model_dir_str = statusor_saved_model_dir.ValueOrDie();
+    saved_model_dir = saved_model_dir_str;
+  }
+
   auto statusor_meta_graph_def = ReadSavedModel(saved_model_dir, tags);
   if (!statusor_meta_graph_def.ok()) {
     *status = statusor_meta_graph_def.status();
