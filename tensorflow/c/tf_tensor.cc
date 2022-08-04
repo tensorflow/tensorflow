@@ -148,6 +148,11 @@ TF_DataType TF_TensorType(const TF_Tensor* t) {
   return static_cast<TF_DataType>(t->tensor->Type());
 }
 
+void TF_SetShape(TF_Tensor* t, const int64_t* dims, int num_dims) {
+  tensorflow::down_cast<tensorflow::TensorInterface*>(t->tensor)->SetShape(
+      dims, num_dims);
+}
+
 int TF_NumDims(const TF_Tensor* t) { return t->tensor->NumDims(); }
 
 int64_t TF_Dim(const TF_Tensor* t, int dim_index) {
@@ -228,6 +233,14 @@ size_t TensorInterface::ByteSize() const {
 
 void* TensorInterface::Data() const {
   return tensorflow::TensorCApi::Buffer(tensor_)->data();
+}
+
+void TensorInterface::SetShape(const int64_t* dims, int num_dims) {
+  tensorflow::TensorShape s;
+  for (int i = 0; i < num_dims; ++i) {
+    s.AddDim(dims[i]);
+  }
+  tensor_.set_shape(s);
 }
 
 Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,

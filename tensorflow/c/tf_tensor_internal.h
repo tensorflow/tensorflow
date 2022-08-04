@@ -107,6 +107,7 @@ class TensorInterface : public AbstractTensorInterface {
   bool CanMove() const override;
   std::string SummarizeValue() const override;
 
+  void SetShape(const int64_t* dims, int num_dims);
   Status ToTensor(tensorflow::Tensor* dst) const;
   Status BitcastFrom(const TensorInterface& from, DataType type,
                      const int64_t* new_dims, int num_new_dims);
