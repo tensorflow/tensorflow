@@ -1126,16 +1126,6 @@ absl::Status TensorDescriptor::MaybeGetDataTypeFromTemplateArgs(
     const std::vector<std::string>& template_args, DataType* result) const {
   for (const auto& template_arg : template_args) {
     std::string read_type = template_arg;
-    if (read_type == "FLT" || read_type == "ACCUM_FLT") {
-      auto it = state_vars_.find(read_type);
-      if (it == state_vars_.end()) {
-        return absl::UnavailableError(
-            absl::StrCat("Template argument ", read_type, " uninitialized."));
-      } else {
-        read_type = it->second;
-      }
-    }
-
     if (read_type == "half") {
       *result = DataType::FLOAT16;
       return absl::OkStatus();
