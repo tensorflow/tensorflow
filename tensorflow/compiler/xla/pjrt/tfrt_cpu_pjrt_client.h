@@ -279,155 +279,6 @@ class TfrtCpuClient final : public PjRtClient {
 
 class TfrtCpuBuffer final : public PjRtBuffer {
  public:
-  // Helper class to retain a "hold" on a TfrtCpuBuffer. A ScopedHold may not
-  // outlive its parent TfrtCpuBuffer.
-  //
-  // There are three types of hold, as follows:
-  //
-  // 1) Usage hold: a transient hold while an operation using the buffer is
-  //    being enqueued to the runtime.
-  // A client acquires a usage hold by calling
-  // TfrtCpuBuffer::GetBufferWithHold(kUsage) or the convenience
-  // wrapper GetBufferWithUsageHold(). If the enqueue completes successfully the
-  // hold should be released using a call to ConvertUsageHold. If the ScopedHold
-  // is deleted without ConvertUsageHold being called, e.g., on error, the hold
-  // is dropped. It is legal to drop a usage hold instead of calling
-  // ConvertUsageHold, even if the buffer was successfully enqueued, as long as
-  // the client ensures that all necessary synchronization has been done.
-  //
-  // 2) External hold: a potentially long-lived hold while the buffer is being
-  //    shared by an external framework, e.g., NumPy.
-  // A client acquires an external hold by calling
-  // TfrtCpuBuffer::GetBufferWithHold(kExternal) or the convenience
-  // wrapper GetBufferWithExternalReference and releases it by deleting the
-  // ScopedHold. The external framework should not modify the underlying buffer
-  // unless it is confident via its own synchronization that modifications do
-  // not race with reads from the TfrtCpuBuffer.
-  //
-  // 3) Donation hold: a transient hold while an execution that donates the
-  //    buffer is being enqueued to the runtime.
-  // A client acquires a donation hold by calling
-  // TfrtCpuBuffer::GetBufferWithHold(kDonation). If the enqueue
-  // completes successfully the hold should be released using a call to
-  // ConfirmDonation after which the buffer is invalid. If the ScopedHold is
-  // deleted without ConfirmDonation being called, e.g., on error, the hold is
-  // dropped and the buffer remains valid. If the buffer is successfully
-  // enqueued the client *must* call ConfirmDonation.
-  //
-  // Donation holds behave like exclusive write locks: when a donation hold
-  // has been acquired, any attempt to acquire another hold of any type will
-  // block until the donation hold is dropped or confirmed. Acquiring a donation
-  // hold will fail with an error if there is any outstanding external hold, and
-  // will block if there are any outstanding usage holds until those holds are
-  // dropped or converted.
-  //
-  // Calls to TfrtCpuBuffer::ReleaseDeviceMemoryOwnership (and transitively to
-  // TfrtCpuBuffer::Delete() and ~TfrtCpuBuffer()) will block until all usage
-  // and donation holds are either deleted or converted/confirmed.
-  class ScopedHold {
-   public:
-    enum Type { kUsage = 0, kExternalReference, kDonation, kMaxValue };
-    // Use a State enum instead of encoding the state in an error Status to
-    // avoid creating Status values in non-error cases. Creating a Status
-    // entails several allocations and can add O(us) to every use of a hold.
-    enum State {
-      kUninitialized = 0,
-      kValid,
-      kMoved,
-      kConverted,
-      kReleased,
-      kDonated,
-      kError
-    };
-
-    ~ScopedHold();
-    ScopedHold(ScopedHold&& other);
-    ScopedHold& operator=(ScopedHold&& other);
-
-    ScopedHold(const ScopedHold&) = delete;
-    ScopedHold& operator=(const ScopedHold&) = delete;
-
-    Type type() const { return type_; }
-
-    Status status() const {
-      // Lazily create Status values only when they are requested.
-      switch (state_) {
-        case kUninitialized:
-          return InvalidArgument("Buffer has not been initialized");
-        case kValid:
-          return OkStatus();
-        case kMoved:
-          return InvalidArgument("Buffer has been moved.");
-        case kConverted:
-          return InvalidArgument("Buffer has been converted");
-        case kReleased:
-          return InvalidArgument("Buffer has been released");
-        case kDonated:
-          return InvalidArgument("Buffer has been donated");
-        case kError:
-          return status_;
-        default:
-          CHECK(false) << "Unexpected state value " << state_;
-      }
-    }
-    bool ok() const { return state_ == kValid; }
-
-    // Access to the underlying device buffer storage. Requires this->ok().
-    TrackedTfrtCpuDeviceBuffer* buffer() const {
-      CHECK_EQ(state_, kValid);
-      CHECK_NE(buffer_ptr_, nullptr);
-      return buffer_ptr_;
-    }
-    TrackedTfrtCpuDeviceBuffer* operator->() const { return buffer_ptr_; }
-    const TrackedTfrtCpuDeviceBuffer& operator*() const { return *buffer_ptr_; }
-
-    // Converts the hold into a usage event. Only valid for holds of type
-    // kUsage.
-    void ConvertUsageHold(absl::Span<tfrt::AsyncValueRef<CpuEvent>> events);
-
-    // Confirms that the buffer was successfully donated to an execution.
-    // Only valid for holds of type kDonation. Causes the buffer to become
-    // invalid.
-    void ConfirmDonation();
-
-   private:
-    friend class TfrtCpuClient;
-    friend class TfrtCpuBuffer;
-
-    ScopedHold(TfrtCpuBuffer* parent, Type type)
-        : parent_(parent), type_(type), state_(kUninitialized) {}
-
-    // Sets buffer state.
-    void SetState(State state) { state_ = state; }
-
-    // Acquires the unique ownership of the buffer. Called by parent_ to
-    // initialize the donation hold.
-    void AcquireDonation(
-        StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> buffer_or);
-
-    // Acquires a non-owning reference of the buffer. Called by parent_ to
-    // initialize the usage or external reference hold.
-    void AcquireUsageOrExternalReference(
-        StatusOr<TrackedTfrtCpuDeviceBuffer*> buffer_or);
-
-    // Drops this hold. It resets `holds_` counters. If it is a donation hold
-    // and an error occurs, it returns the device buffer to the TfrtCpuBuffer.
-    void DropHold();
-
-    TfrtCpuBuffer* parent_;
-    Type type_;
-
-    // There is an invariant that if ok() then buffer_ != nullptr.
-    State state_;
-    Status status_;
-    // The non-owning pointer to the underlying buffer. It is not nullptr for
-    // all types of holds.
-    TrackedTfrtCpuDeviceBuffer* buffer_ptr_ = nullptr;
-    // If it is a donation hold, `buffer_` will not be nullptr. Otherwise, it is
-    // a nullptr.
-    std::unique_ptr<TrackedTfrtCpuDeviceBuffer> buffer_;
-  };
-
   TfrtCpuBuffer(
       Shape on_device_shape,
       std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
@@ -489,16 +340,6 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   bool IsOnCpu() const override { return true; }
 
-  // Returns a hold on the TrackedTfrtCpuDeviceBuffer holding the device
-  // buffers. See comment on ScopedHold.
-  ScopedHold GetBufferWithHold(ScopedHold::Type type);
-  ScopedHold GetBufferWithUsageHold() {
-    return GetBufferWithHold(ScopedHold::kUsage);
-  }
-  ScopedHold GetBufferWithExternalReference() {
-    return GetBufferWithHold(ScopedHold::kExternalReference);
-  }
-
  private:
   bool IsEmptyTuple() const {
     return on_device_shape_.IsTuple() &&
@@ -508,29 +349,78 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   StatusOr<tfrt::AsyncValueRef<Literal>> CopyToHostAsyncInternal(
       bool discard_cached_copy, std::optional<xla::Layout> layout);
 
-  // Requires holds_[kDonation] == 0 (i.e., WaitForOutstandingDonationHolds()
-  // must be called first.)
-  StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
-  GetBufferForDonationHoldLocked() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Acquires the device buffer for shared read-only usages, and it also adds
+  // the `usage_event` to it. Any donation event in the future is expected to be
+  // serialized after all the usage events added through this method. Returns
+  // nullptr if the buffer is already donated or there is outstanding external
+  // references.
+  TrackedTfrtCpuDeviceBuffer* AcquireUsage(
+      tfrt::AsyncValueRef<CpuEvent> usage_event);
 
-  StatusOr<TrackedTfrtCpuDeviceBuffer*> GetBufferForUsageOrExternalHoldLocked(
-      ScopedHold::Type type) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // A helper class for managing a pending donation. It should be committed upon
+  // success. Otherwise, the donated buffer is returned to the TfrtCpuBuffer.
+  class DonationTransaction {
+   public:
+    explicit DonationTransaction(
+        TfrtCpuBuffer* buffer,
+        std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer)
+        : buffer_(buffer), device_buffer_(std::move(device_buffer)) {
+      CHECK(buffer_);
+    }
+    DonationTransaction(const DonationTransaction&) = delete;
+    DonationTransaction& operator=(const DonationTransaction&) = delete;
+    DonationTransaction(DonationTransaction&&) = default;
+    DonationTransaction& operator=(DonationTransaction&& other) {
+      Abort();
 
-  // Requires holds_[kDonation] == 0 (i.e., WaitForOutstandingDonationHolds()
-  // must be called first.)
-  void AcquireHoldLocked(ScopedHold* hold) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      buffer_ = other.buffer_;
+      device_buffer_ = std::move(other.device_buffer_);
+      return *this;
+    }
 
-  void ConvertUsageHold(TrackedTfrtCpuDeviceBuffer* buffer,
-                        absl::Span<tfrt::AsyncValueRef<CpuEvent>> events);
+    ~DonationTransaction() { Abort(); }
 
-  void ConfirmDonation(TrackedTfrtCpuDeviceBuffer* device_buffer);
+    // Commit the donation. The rvalue ref qualifier is used to ensure the
+    // semantic that it can be committed at most once.
+    void Commit() && {
+      buffer_->CommitDonation();
+      device_buffer_.reset();
+    }
 
-  void DropUsageOrExternalHold(ScopedHold::Type type,
-                               TrackedTfrtCpuDeviceBuffer* buffer);
-  void DropDonationHold(std::unique_ptr<TrackedTfrtCpuDeviceBuffer> buffer);
+    TrackedTfrtCpuDeviceBuffer* device_buffer() const {
+      return device_buffer_.get();
+    }
 
-  void WaitForOutstandingUsageHolds() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  void WaitForOutstandingDonationHold() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+   private:
+    void Abort() {
+      if (device_buffer_) buffer_->AbortDonation(std::move(device_buffer_));
+    }
+
+    TfrtCpuBuffer* buffer_ = nullptr;
+    std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer_;
+  };
+
+  // Acquires the device buffer for exclusive donation. The caller of this
+  // method is expected to use the usage events and definition events to
+  // serialize this donation with previous usages. After this method is called,
+  // calls to AcquireUsage() will fail. Returns error status if the buffer is
+  // already donated or there is outstanding external references.
+  StatusOr<DonationTransaction> AcquireDonation();
+
+  void DropExternalReference() {
+    absl::MutexLock lock(&mu_);
+    CHECK_GT(external_reference_counter_, 0);
+    --external_reference_counter_;
+  }
+
+  // Commits the pending donation by setting `pending_donation_` to false.
+  // `pending_donation_` must be true before calling this method.
+  void CommitDonation();
+
+  // Aborts the pending donation by returning the donated buffer, and setting
+  // `pending_donation_` to false. `pending_donation_` must be true before
+  // calling this method.
+  void AbortDonation(std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer);
 
   // Similar to Delete, drops the buffer's reference to its associated device
   // memory, leaving the buffer in an invalid state, but returns the
@@ -562,8 +452,17 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   mutable absl::Mutex mu_;
   std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer_
       ABSL_GUARDED_BY(mu_);
-  // Count of holds on the buffer.
-  std::array<int, ScopedHold::Type::kMaxValue> holds_ ABSL_GUARDED_BY(mu_);
+  // Count of external references on the buffer.
+  int external_reference_counter_ ABSL_GUARDED_BY(mu_) = 0;
+
+  // `pending_donation_` indicates whether a donation is pending. The destructor
+  // of the TfrtCpuBuffer will wait for a pending donation, as the donation
+  // might fail. Note that concurrent calls to AcquireUsage() and
+  // AcquireDonation() might fail even if the pending donation is aborted later.
+  bool pending_donation_ ABSL_GUARDED_BY(mu_) = false;
+
+  friend class TfrtCpuClient;
+  friend class TfrtCpuExecutable;
 };
 
 class TfrtCpuExecutable final : public PjRtLoadedExecutable {
