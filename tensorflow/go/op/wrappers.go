@@ -54130,6 +54130,69 @@ func UniformDequantize(scope *Scope, input tf.Output, scales tf.Output, zero_poi
 	return op.Output(0)
 }
 
+// UniformQuantizeAttr is an optional argument to UniformQuantize.
+type UniformQuantizeAttr func(optionalAttr)
+
+// UniformQuantizeQuantizationAxis sets the optional quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization. Otherwise, it must be set within range [0, input.dims()).
+// If not specified, defaults to -1
+func UniformQuantizeQuantizationAxis(value int64) UniformQuantizeAttr {
+	return func(m optionalAttr) {
+		m["quantization_axis"] = value
+	}
+}
+
+// Perform quantization on Tensor `input`.
+//
+// Given `input`, `scales` and `zero_points`, performs quantization using the formula:
+// quantized_data = floor(input_data * (1.0f / scale) + 0.5f) + zero_point
+//
+// Arguments:
+//
+//	input: Must be a Tensor of Tin.
+//	scales: The float value(s) to use as scale(s) to quantize `input`.
+//
+// Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).
+//
+//	zero_points: The int32 value(s) to use as zero_point(s) to quantize `input`.
+//
+// Same shape condition as scales.
+//
+//	Tout: The type of output Tensor. A tf.DType from: tf.float32
+//	quantization_min_val: The quantization min value to quantize `input`.
+//
+// The purpose of this attribute is typically (but not limited to) to indicate narrow range, where this is set to:
+// `(Tin lowest) + 1` if narrow range, and `(Tin lowest)` otherwise.
+// For example, if Tin is qint8, this is set to -127 if narrow range quantized or -128 if not.
+//
+//	quantization_max_val: The quantization max value to quantize `input`.
+//
+// The purpose of this attribute is typically (but not limited to) indicate narrow range, where this is set to:
+// `(Tout max)` for both narrow range and not narrow range.
+// For example, if Tin is qint8, this is set to 127.
+//
+// Returns The output quantized Tensor of Tout, whose shape is same as input.
+func UniformQuantize(scope *Scope, input tf.Output, scales tf.Output, zero_points tf.Output, Tout tf.DataType, quantization_min_val int64, quantization_max_val int64, optional ...UniformQuantizeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tout": Tout, "quantization_min_val": quantization_min_val, "quantization_max_val": quantization_max_val}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniformQuantize",
+		Input: []tf.Input{
+			input, scales, zero_points,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // UniformQuantizedDotHybridAttr is an optional argument to UniformQuantizedDotHybrid.
 type UniformQuantizedDotHybridAttr func(optionalAttr)
 
