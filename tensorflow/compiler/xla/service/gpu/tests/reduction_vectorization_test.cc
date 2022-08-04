@@ -112,10 +112,18 @@ ENTRY %fused_computation.371 (param_0: f32[6400,4,8,32]) -> f32[6400,4,8] {
   ROOT %reduce.277 = f32[6400,4,8]{2,1,0} reduce(f32[6400,4,8,32]{3,2,1,0} %param_0, f32[] %constant_0), dimensions={3}, to_apply=%search_fn
 }
 )";
+
   const char* expected_optimized_llvm_ir = R"(
 CHECK:  %[[thread_id:.*]] = tail call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
 CHECK:  %[[masked_thread_id:.*]] = and i32 %[[thread_id]], 31
+// Verify that there is no comparison masking half the warp.
 CHECK-NOT: icmp ult i32 %[[masked_thread_id]], 16
+// Verify that we only do one warp reducton by checking that there are 6
+// shfl.sync corresponding to 1 declaration and 5 shuffle instructions.  The
+// second warp reduction was originally produced for inter-warp reduction
+// which we have now optimized away.
+CHECK-COUNT-6: llvm.nvvm.shfl.sync.down.f32
+CHECK-NOT: llvm.nvvm.shfl.sync.down.f32
 )";
 
   CompileAndVerifyIr(hlo_text, expected_optimized_llvm_ir, true);
@@ -123,6 +131,7 @@ CHECK-NOT: icmp ult i32 %[[masked_thread_id]], 16
   // Check that there is a single scalar load.
   const char* expected_ptx = R"(
 CHECK: ld.global.nc.f32
+CHECK: shfl.sync.down
 CHECK-NOT: ld.global.nc.f32
 CHECK-NOT: ld.global.v2.f32
 )";

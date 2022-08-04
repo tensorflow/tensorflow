@@ -4058,9 +4058,16 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
       selected_values.push_back({selected_value, element_type});
     }
 
-    EmitFullWarpShuffleDownLoopForReduce(reducer,
-                                         absl::MakeSpan(selected_values),
-                                         tiling_scheme.GetNumThreadsPerBlock());
+    // If only one warp is present in the block, then we don't need inter-warp
+    // reduction.
+    // TODO(b/241414088) If only warp is present, then inter-warp communication
+    // using shared memory and synchronization using barrier is also unnecessary
+    // and should be removed.
+    if (tiling_scheme.GetNumThreadsPerBlock() > WarpSize()) {
+      EmitFullWarpShuffleDownLoopForReduce(
+          reducer, absl::MakeSpan(selected_values),
+          tiling_scheme.GetNumThreadsPerBlock());
+    }
 
     ksl.If("reduction_write_output", is_zero(thread_id_info.thread_id_x), [&] {
       for (int oidx = 0; oidx < num_outputs; oidx++) {
