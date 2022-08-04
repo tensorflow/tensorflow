@@ -58,6 +58,6 @@ foreach BinaryOpPair = [[TF_AddV2Op, TF_SubOp],
       (BinaryOpPair[1] $x, (TF_ConstOp:$cst1 $cst1_value)),
       (TF_ConstOp:$cst2 $cst2_value)),
     (BinaryOpPair[0]
-      $x, (TF_SubOp  $cst1, $cst2))>;
+      $x, (TF_SubOp  $cst2, $cst1))>;
 }
 

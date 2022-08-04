@@ -90,7 +90,7 @@ func.func @consecutive_add_sub(%arg0: tensor<i32>) -> (tensor<i32>) {
 
 // CHECK-LABEL: func.func @consecutive_add_sub
 
-// CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<-6> : tensor<i32>} : () -> tensor<i32>
+// CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
 // CHECK: %[[SUB:.*]] = "tf.Sub"(%arg0, %[[CST]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
 // CHECK: return %[[SUB]] : tensor<i32>
 }
@@ -104,7 +104,7 @@ func.func @consecutive_sub_add(%arg0: tensor<i32>) -> (tensor<i32>) {
 
 // CHECK-LABEL: func.func @consecutive_sub_add
 
-// CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<-6> : tensor<i32>} : () -> tensor<i32>
+// CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
 // CHECK: %[[ADD:.*]] = "tf.AddV2"(%arg0, %[[CST]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
 // CHECK: return %[[ADD]] : tensor<i32>
 }
