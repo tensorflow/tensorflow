@@ -82,8 +82,6 @@ class TensorDescriptor : public GPUObjectDescriptor {
   size_t GetSizeInBytesForShape(const BHWDC& shape5d) const;
 
   bool HasAxis(Axis axis) const;
-  int GetWidthSize(BHWDC shape) const;
-  int GetSliceStrideSize(BHWDC shape) const;
 
   absl::Status GetLinkingContextFromWriteSelector(
       const std::vector<std::string>& args, std::string* value_name,
@@ -210,8 +208,6 @@ class TensorDescriptor : public GPUObjectDescriptor {
   std::string Write(const GpuInfo& gpu_info, DataType write_type,
                     const std::string& var_name,
                     const std::vector<std::string>& coords) const;
-
-  bool IsBatchedWidth() const;
 
   absl::Status MaybeGetDataTypeFromTemplateArgs(
       const std::vector<std::string>& template_args, DataType* result) const;
