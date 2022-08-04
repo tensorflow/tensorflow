@@ -701,6 +701,10 @@ static void AllocateFlags() {
       "ReduceScatter-AllReduce-AllGather sequence, with the initial "
       "ReduceScatter being performed over all of the devices in the same host. "
       "Set to < 1 to disable all-reduce decomposition."));
+  flag_objects->push_back(
+      tensorflow::Flag("xla_gpu_dump_llvmir",
+                       bool_setter_for(&DebugOptions::set_xla_gpu_dump_llvmir),
+                       flag_values->xla_gpu_dump_llvmir(), "Dump LLVM IR."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_enable_cudnn_frontend",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_frontend),
