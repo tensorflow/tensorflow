@@ -1688,7 +1688,7 @@ Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
   // element. A mapping from the root instruction's dynamic dimension index
   // (represented by a shape index as output index and an int64_t dimension
   // number) to output index (represented by an int64_t) is tracked for the
-  // conditional instruction.
+  // while instruction.
   ShapeTree<absl::flat_hash_map<int64_t, int64_t>> dynamic_output_mapping(
       hlo->shape());
   std::vector<HloInstruction*> operands_to_add;
@@ -1702,7 +1702,27 @@ Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
                                                                operand_count++);
         return OkStatus();
       }));
-
+  ShapeUtil::ForEachSubshape(
+      hlo->while_body()->root_instruction()->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray()) {
+          return;
+        }
+        for (int64_t dim = 0; dim < subshape.rank(); ++dim) {
+          if (subshape.is_dynamic_dimension(dim)) {
+            if (!dynamic_output_mapping.mutable_element(index)->contains(dim)) {
+              // This dynamic dimension doesn't come from operand, but is
+              // generated in the middle of the while body. Its initial size
+              // should be static.
+              operands_to_add.push_back(hlo->parent()->AddInstruction(
+                  HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
+                      subshape.dimensions(dim)))));
+              dynamic_output_mapping.mutable_element(index)->emplace(
+                  dim, operand_count++);
+            }
+          }
+        }
+      });
   DynamicParameterBinding binding_for_while;
   if (!operands_to_add.empty()) {
     // Only replace the while loop if there are new parameters to add.
@@ -1721,33 +1741,32 @@ Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
     // newly created while loop so that the hlos that consumes the while loop
     // can see the dynamic dimensions. Also sets the dynamic parameter binding
     // for running inference in the while loop.
-    TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
-        hlo,
-        [&](HloInstruction*, ShapeIndex index, int64_t dimension,
-            int64_t operand_index, HloInstruction* dynamic_size) -> Status {
-          TF_RET_CHECK(!operands_to_add.empty());
-          const int64_t output_dynamic_size_index =
-              dynamic_output_mapping.element(index).at(dimension);
-          DynamicParameterBinding::DynamicParameter dynamic_parameter{
-              operand_index, {output_dynamic_size_index}};
-          DynamicParameterBinding::DynamicDimension dynamic_dimension{
-              operand_index, index, dimension};
-          TF_RETURN_IF_ERROR(
-              binding_for_while.Bind(dynamic_parameter, dynamic_dimension));
-          // This is the updated output dynamic size coming out of hlo while
-          // loop.
-          HloInstruction* output_dynamic_size = hlo->parent()->AddInstruction(
-              HloInstruction::CreateGetTupleElement(
-                  ShapeUtil::MakeScalarShape(S32), hlo,
-                  output_dynamic_size_index));
-          parent_->SetDynamicSize(result.replacement_instr, index, dimension,
-                                  output_dynamic_size);
+    TF_RETURN_IF_ERROR(dynamic_output_mapping.ForEachElementWithStatus(
+        [&](const ShapeIndex& index,
+            const absl::flat_hash_map<int64_t, int64_t>& dim_to_size) {
+          for (auto key : dim_to_size) {
+            int64_t dimension = key.first;
+            const int64_t output_dynamic_size_index = key.second;
+            DynamicParameterBinding::DynamicParameter dynamic_parameter{
+                0, {output_dynamic_size_index}};
+            DynamicParameterBinding::DynamicDimension dynamic_dimension{
+                0, index, dimension};
+            TF_RETURN_IF_ERROR(
+                binding_for_while.Bind(dynamic_parameter, dynamic_dimension));
+            // This is the updated output dynamic size coming out of hlo while
+            // loop.
+            HloInstruction* output_dynamic_size = hlo->parent()->AddInstruction(
+                HloInstruction::CreateGetTupleElement(
+                    ShapeUtil::MakeScalarShape(S32), hlo,
+                    output_dynamic_size_index));
+            parent_->SetDynamicSize(result.replacement_instr, index, dimension,
+                                    output_dynamic_size);
+          }
           return OkStatus();
         }));
     // Set the replacement instruction as visited to avoid visiting it again.
     SetVisited(*result.replacement_instr);
   }
-
   // Run inference in while body and condition.
   TF_RETURN_IF_ERROR(DynamicDimensionInferenceVisitor::Run(
       hlo->while_body(), binding_for_while, parent_));
