@@ -15,14 +15,12 @@
 """Converts a frozen graph into a TFLite FlatBuffer."""
 
 import distutils.spawn
-import enum  # pylint: disable=g-bad-import-order
+import enum
 import os as _os
 import platform as _platform
 import subprocess as _subprocess
 import tempfile as _tempfile
 import warnings
-
-import six
 
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
@@ -150,7 +148,7 @@ def _try_convert_to_unicode(output):
 
   if isinstance(output, bytes):
     try:
-      return six.ensure_text(output)
+      return output.decode("utf-8")
     except UnicodeDecodeError:
       pass
   return output
@@ -370,7 +368,7 @@ Alternative, use virtualenv.""")
 
       fp_model.write(model_flags_str)
       fp_conversion.write(conversion_flags_str)
-      fp_input.write(six.ensure_binary(input_data_str))
+      fp_input.write(input_data_str)
       debug_info_str = debug_info_str if debug_info_str else ""
       # if debug_info_str contains a "string value", then the call to
       # fp_debug.write(debug_info_str) will fail with the following error

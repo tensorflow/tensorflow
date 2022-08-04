@@ -677,6 +677,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # b/213388775
+        "no_oss",  # b/241013307
     ],
     tpu_tags = [
         "no_oss",
@@ -2028,6 +2029,9 @@ py_library(
     name = "multi_process_runner",
     srcs = ["multi_process_runner.py"],
     srcs_version = "PY3",
+    tags = [
+        "no_oss",  # b/241013307 disable flaky under docker
+    ],
     deps = [
         ":multi_process_lib",
         "//tensorflow/python:client_testlib",
@@ -2336,7 +2340,7 @@ tpu_py_test(
     name = "tpu_strategy_model_parallelism_test",
     srcs = ["tpu_strategy_model_parallelism_test.py"],
     disable_experimental = True,  # b/202779350
-    disable_v3_4chips = False,
+    disable_v3_4chips = True,  # b/241157356
     python_version = "PY3",
     tags = [
         "no_oss",

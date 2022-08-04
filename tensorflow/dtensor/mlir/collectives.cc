@@ -89,9 +89,10 @@ StatusOr<mlir::Value> EmitAllGather(
   TF_ASSIGN_OR_RETURN(mlir::TensorType output_type,
                       LocalTypeFromGlobalType(tgt_layout, global_type));
 
+  mlir::Location loc = DT_LOC2(input.getLoc(), "DTensorAllGatherOp");
   mlir::TF::DTensorAllGatherOp all_gather =
       builder.create<mlir::TF::DTensorAllGatherOp>(
-          input.getLoc(), output_type, input,
+          loc, output_type, input,
           mlir::dtensor::LayoutAttr::get(builder.getContext(), src_layout),
           mlir::dtensor::LayoutAttr::get(builder.getContext(), tgt_layout));
   SetSingleLayoutOnOp(all_gather, tgt_layout);
@@ -132,9 +133,10 @@ StatusOr<const mlir::Value> EmitAllScatter(
   TF_ASSIGN_OR_RETURN(const mlir::TensorType output_type,
                       LocalTypeFromGlobalType(desired_layout, global_type));
 
+  mlir::Location loc = DT_LOC2(original_value.getLoc(), "DTensorAllScatterOp");
   mlir::TF::DTensorAllScatterOp all_scatter =
       builder.create<mlir::TF::DTensorAllScatterOp>(
-          original_value.getLoc(), output_type, original_value,
+          loc, output_type, original_value,
           mlir::dtensor::LayoutAttr::get(builder.getContext(), original_layout),
           mlir::dtensor::LayoutAttr::get(builder.getContext(), desired_layout));
   SetSingleLayoutOnOp(all_scatter, desired_layout);
@@ -316,7 +318,7 @@ StatusOr<mlir::Operation*> EmitAllReduce(
   TF_ASSIGN_OR_RETURN(std::string device_type,
                       DeviceTypeFromMesh(output_layout.mesh()));
 
-  mlir::Location loc = DT_LOC(input);
+  mlir::Location loc = DT_LOC2(input->getLoc(), "DTensorAllReduceOp");
   auto all_reduce = builder.create<mlir::TF::DTensorAllReduceOp>(
       loc, input->getResultTypes()[0], input->getOpResult(0),
       builder.create<mlir::TF::ConstOp>(loc, group_assignment),

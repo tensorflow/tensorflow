@@ -46,12 +46,12 @@ index 985274e..7ebb1e1 100644
 -#define NCCL_PATCH ${nccl:Patch}
 -#define NCCL_SUFFIX "${nccl:Suffix}"
 +#define NCCL_MAJOR 2
-+#define NCCL_MINOR 12
-+#define NCCL_PATCH 12
++#define NCCL_MINOR 13
++#define NCCL_PATCH 4
 +#define NCCL_SUFFIX ""
  
 -#define NCCL_VERSION_CODE ${nccl:Version}
-+#define NCCL_VERSION_CODE 21212
++#define NCCL_VERSION_CODE 2134
  #define NCCL_VERSION(X,Y,Z) (((X) <= 2 && (Y) <= 8) ? (X) * 1000 + (Y) * 100 + (Z) : (X) * 10000 + (Y) * 100 + (Z))
  
  #ifdef __cplusplus

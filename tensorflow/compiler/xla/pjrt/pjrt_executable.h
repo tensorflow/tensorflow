@@ -68,12 +68,12 @@ class PjRtExecutable {
   }
 
   // Serialize this executable into a string and return the value.
-  StatusOr<std::string> SerializeExecutable() const {
+  virtual StatusOr<std::string> SerializeExecutable() const {
     return Unimplemented("Serializing executable is not supported.");
   }
 
   // Return a fingerprint of this executable.
-  StatusOr<std::string> FingerprintExecutable() const {
+  virtual StatusOr<std::string> FingerprintExecutable() const {
     return Unimplemented("Fingerprinting executable is not supported.");
   }
 };

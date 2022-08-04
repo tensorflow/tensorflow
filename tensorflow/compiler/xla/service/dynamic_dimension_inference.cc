@@ -854,11 +854,48 @@ Status DynamicDimensionInferenceVisitor::HandleElementwiseNary(
           TF_RETURN_IF_ERROR(
               InsertShapeCheck(existing_size, dynamic_size,
                                /*support_implicit_broadcast=*/true));
-          HloInstruction* max =
+
+          auto one = comp->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::One(S32)));
+
+          auto operand_needs_broadcast =
+              comp->AddInstruction(HloInstruction::CreateCompare(
+                  ShapeUtil::MakeShape(PRED, {}), dynamic_size, existing_size,
+                  ComparisonDirection::kLt));
+          auto is_one = comp->AddInstruction(HloInstruction::CreateCompare(
+              ShapeUtil::MakeShape(PRED, {}), dynamic_size, one,
+              ComparisonDirection::kEq));
+          operand_needs_broadcast =
               comp->AddInstruction(HloInstruction::CreateBinary(
-                  ShapeUtil::MakeScalarShape(S32), HloOpcode::kMaximum,
-                  dynamic_size, existing_size));
-          parent_->SetDynamicSize(hlo, index, dimension, max);
+                  ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, is_one,
+                  operand_needs_broadcast));
+
+          auto existing_needs_broadcast =
+              comp->AddInstruction(HloInstruction::CreateCompare(
+                  ShapeUtil::MakeShape(PRED, {}), existing_size, dynamic_size,
+                  ComparisonDirection::kLt));
+          is_one = comp->AddInstruction(HloInstruction::CreateCompare(
+              ShapeUtil::MakeShape(PRED, {}), existing_size, one,
+              ComparisonDirection::kEq));
+          existing_needs_broadcast =
+              comp->AddInstruction(HloInstruction::CreateBinary(
+                  ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, is_one,
+                  existing_needs_broadcast));
+
+          auto needs_broadcast =
+              comp->AddInstruction(HloInstruction::CreateBinary(
+                  ShapeUtil::MakeShape(PRED, {}), HloOpcode::kOr,
+                  operand_needs_broadcast, existing_needs_broadcast));
+          auto max_size = comp->AddInstruction(HloInstruction::CreateBinary(
+              ShapeUtil::MakeScalarShape(S32), HloOpcode::kMaximum,
+              dynamic_size, existing_size));
+          auto min_size = comp->AddInstruction(HloInstruction::CreateBinary(
+              ShapeUtil::MakeScalarShape(S32), HloOpcode::kMinimum,
+              dynamic_size, existing_size));
+          auto select_size = comp->AddInstruction(HloInstruction::CreateTernary(
+              ShapeUtil::MakeScalarShape(S32), HloOpcode::kSelect,
+              needs_broadcast, max_size, min_size));
+          parent_->SetDynamicSize(hlo, index, dimension, select_size);
         }
         return OkStatus();
       });

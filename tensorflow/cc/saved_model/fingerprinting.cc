@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/fingerprinting.h"
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
+#include "absl/container/btree_map.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/fingerprint.h"
@@ -31,7 +36,8 @@ namespace tensorflow::fingerprinting {
 
 namespace {
 
-// This function mutates the GraphDef, changing the names of the Function nodes.
+// This function mutates the GraphDef, changing the names and config_proto's
+// of the Function nodes.
 void CanonicalizeNodes(GraphDef* orig_graph_def) {
   for (NodeDef& node : *orig_graph_def->mutable_node()) {
     // Check if this is a function call.
@@ -42,6 +48,15 @@ void CanonicalizeNodes(GraphDef* orig_graph_def) {
       // and StatefulPartitionedCall ops.
       node.mutable_attr()->find("f")->second.mutable_func()->set_name(
           "FINGERPRINT_PASS");
+      // Erase the "config_proto" attribute which contains device-specific
+      // information.
+      node.mutable_attr()->find("config_proto")->second.mutable_s()->erase();
+    }
+    // Erase the value of string constants, which can vary based on platform.
+    if (grappler::IsConstant(node)) {
+      if (node.attr().at("dtype").type() == DT_STRING) {
+        node.mutable_attr()->find("value")->second.clear_value();
+      }
     }
   }
 }
@@ -55,8 +70,20 @@ uint64 ComputeHash(const GraphDef& graph_def) {
 }
 
 FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph) {
+  // Create a copy of `metagraph` which will be used and mutated for fingerprint
+  // computation.
+  MetaGraphDef metagraph_copy = metagraph;
   FingerprintDef fingerprint_def;
-  fingerprint_def.set_graph_def_hash(ComputeHash(metagraph.graph_def()));
+  // Set fingerprint field #1.
+  fingerprint_def.set_graph_def_checksum(
+      ComputeHash(metagraph_copy.graph_def()));
+  // Set fingerprint field #2.
+  CanonicalizeGraphDef(*metagraph_copy.mutable_graph_def());
+  fingerprint_def.set_graph_def_program_hash(
+      ComputeHash(metagraph_copy.graph_def()));
+  // Set fingerprint field #3.
+  fingerprint_def.set_signature_def_hash(
+      RegularizeAndHashSignatureDefs(metagraph_copy.signature_def()));
   return fingerprint_def;
 }
 
@@ -67,6 +94,24 @@ void CanonicalizeGraphDef(GraphDef& graph_def) {
   // TODO(b/240173815): Complete canonicalization of the FunctionDefLibrary.
   // For now, we just clear the FunctionDefLibrary.
   graph_def.mutable_library()->Clear();
+  graph_def.mutable_versions()->Clear();
+}
+
+uint64 RegularizeAndHashSignatureDefs(
+    const google::protobuf::Map<std::string, SignatureDef>& signature_def_map) {
+  // Sort `signature_def_map`, which is an unordered map from string keys to
+  // SignatureDefs.
+  absl::btree_map<std::string, SignatureDef> sorted_signature_defs;
+  sorted_signature_defs.insert(signature_def_map.begin(),
+                               signature_def_map.end());
+  uint64 result_hash = 0;
+  for (const auto& item : sorted_signature_defs) {
+    std::string signature_def_string;
+    SerializeToStringDeterministic(item.second, &signature_def_string);
+    result_hash = FingerprintCat64(
+        result_hash, tensorflow::Fingerprint64(signature_def_string));
+  }
+  return result_hash;
 }
 
 }  // namespace tensorflow::fingerprinting

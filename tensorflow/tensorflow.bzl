@@ -61,7 +61,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.10.0"
+VERSION = "2.11.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -1395,6 +1395,11 @@ def tf_cc_test(
         }),
         **kwargs
     )
+
+register_extension_info(
+    extension = tf_cc_test,
+    label_regex_for_dep = "{extension_name}",
+)
 
 def tf_gpu_cc_test(
         name,

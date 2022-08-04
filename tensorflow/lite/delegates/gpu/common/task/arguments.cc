@@ -547,11 +547,10 @@ absl::Status Arguments::ResolveSelector(
         return absl::FailedPreconditionError(absl::StrCat(
             "Object with name - ", object_name, " should have Write access."));
       }
-      std::string value_name, x_coord, y_coord, s_coord;
+      std::string value_name, x_coord, y_coord, z_coord, s_coord, b_coord;
       RETURN_IF_ERROR(tensor_desc->GetLinkingContextFromWriteSelector(
-          function_args_new, &value_name, &x_coord, &y_coord, &s_coord));
-      // x_coord can have batch size property of link_object
-      ResolveObjectNames(object_name, names, &x_coord);
+          function_args_new, &value_name, &x_coord, &y_coord, &z_coord,
+          &s_coord, &b_coord));
       const std::string new_value_name = value_name + "_final";
       *result = "{\n" +
                 GetTypeDeclaration(gpu_info, tensor_desc->GetDataType(), 4) +
@@ -560,7 +559,9 @@ absl::Status Arguments::ResolveSelector(
       ReplaceAllWords("out_value", new_value_name, result);
       ReplaceAllWords("X_COORD", x_coord, result);
       ReplaceAllWords("Y_COORD", y_coord, result);
+      ReplaceAllWords("Z_COORD", z_coord, result);
       ReplaceAllWords("S_COORD", s_coord, result);
+      ReplaceAllWords("B_COORD", b_coord, result);
       function_args_new[0] = new_value_name;
       RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, result));
       RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, {}, result));

@@ -47,15 +47,14 @@ TpuDevice::TpuDevice(int id, int process_index,
   debug_string_ =
       absl::StrFormat("TPU_%i(host=%i,(%i,%i,%i,%i))", id_, process_index_,
                       coords_[0], coords_[1], coords_[2], core_on_chip_);
+  to_string_ = absl::StrFormat(
+      "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)", id_,
+      process_index_, absl::StrJoin(coords_, ","), core_on_chip_);
 }
 
 absl::string_view TpuDevice::DebugString() const { return debug_string_; }
 
-std::string TpuDevice::ToString() const {
-  return absl::StrFormat(
-      "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)", id(),
-      process_index(), absl::StrJoin(coords(), ","), core_on_chip());
-}
+absl::string_view TpuDevice::ToString() const { return to_string_; }
 
 xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
 TpuDevice::GetTpuDevices(const tpu_driver::SystemInfo& system_info) {

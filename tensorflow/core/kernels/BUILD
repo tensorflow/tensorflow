@@ -4417,7 +4417,10 @@ tf_kernel_library(
         "topk_op_gpu_int8.cu.cc",
         "topk_op_gpu_uint8.cu.cc",
     ],
-    deps = NN_DEPS + [":gpu_prim_hdrs"],
+    deps = NN_DEPS + [
+        ":gpu_prim_hdrs",
+        ":gpu_prim_helpers",
+    ],
 )
 
 tf_kernel_library(

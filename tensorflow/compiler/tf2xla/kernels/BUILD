@@ -13,8 +13,9 @@ load(
 
 package(
     default_visibility = [
-        "//tensorflow/compiler/tf2xla:internal",
+        # copybara:uncomment "//learning/infra/mira:__subpackages__",
         "//third_party/cloud_tpu/inference_converter:__subpackages__",
+        "//tensorflow/compiler/tf2xla:internal",
     ],
     licenses = ["notice"],
 )
@@ -181,7 +182,7 @@ tf_kernel_library(
         "@llvm-project//mlir:Support",
         "//tensorflow/compiler/jit:xla_activity_listener",
         "//tensorflow/compiler/jit:xla_activity_proto_cc",
-        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",

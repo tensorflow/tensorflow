@@ -377,22 +377,17 @@ absl::Status TryMeanStdDevNormalization(
   if (consumers.size() != 2) {
     return absl::NotFoundError("MeanStdDevNormalization not suitable.");
   }
-  Node* pow_node = consumers[0];
+  Node* square_node = consumers[0];
   Node* sub_child_mul_node = consumers[1];
-  if (!CheckIfValidNodeOfType(pow_node, OperationType::POW).ok()) {
-    pow_node = consumers[1];
+  if (!CheckIfValidNodeOfType(square_node, OperationType::SQUARE).ok()) {
+    square_node = consumers[1];
     sub_child_mul_node = consumers[0];
   }
-  RETURN_IF_ERROR(CheckIfValidNodeOfType(pow_node, OperationType::POW));
+  RETURN_IF_ERROR(CheckIfValidNodeOfType(square_node, OperationType::SQUARE));
   RETURN_IF_ERROR(
       CheckIfValidNodeOfType(sub_child_mul_node, OperationType::MUL));
-  float pow_value;
-  RETURN_IF_ERROR(GetElementwiseScalarValue(pow_node, &pow_value));
-  if (pow_value != 2.0) {
-    return absl::NotFoundError("MeanStdDevNormalization not suitable.");
-  }
   Node* second_mean_node;
-  RETURN_IF_ERROR(GetNextSingleNode(graph, *pow_node, OperationType::MEAN,
+  RETURN_IF_ERROR(GetNextSingleNode(graph, *square_node, OperationType::MEAN,
                                     &second_mean_node));
   auto second_mean_attr =
       absl::any_cast<MeanAttributes>(second_mean_node->operation.attributes);
@@ -438,7 +433,7 @@ absl::Status TryMeanStdDevNormalization(
 
   consumed_nodes->insert(first_mean_node->id);
   consumed_nodes->insert(sub_node->id);
-  consumed_nodes->insert(pow_node->id);
+  consumed_nodes->insert(square_node->id);
   consumed_nodes->insert(second_mean_node->id);
   consumed_nodes->insert(add_node->id);
   consumed_nodes->insert(rsqrt_node->id);

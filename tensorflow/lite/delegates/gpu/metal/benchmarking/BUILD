@@ -11,6 +11,10 @@ objc_library(
     data = glob([
         "models/*.tflite",
     ]),
+    sdk_frameworks = [
+        "Metal",
+        "QuartzCore",
+    ],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
@@ -26,8 +30,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
-        "//third_party/apple_frameworks:Metal",
-        "//third_party/apple_frameworks:QuartzCore",
     ],
 )
 

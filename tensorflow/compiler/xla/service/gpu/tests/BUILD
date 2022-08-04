@@ -677,6 +677,18 @@ xla_test(
 )
 
 tf_cc_test(
+    name = "select_and_scatter_test",
+    srcs = ["select_and_scatter_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
     tags = tf_cuda_tests_tags(),

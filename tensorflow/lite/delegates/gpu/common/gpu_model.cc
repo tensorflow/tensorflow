@@ -415,13 +415,6 @@ absl::Status MergeNodes(const GpuInfo& gpu_info, GpuModel* gpu_model) {
         !IsReady(ready_tensors, linkable_node)) {
       continue;
     }
-    const auto& original_dst_def =
-        node.gpu_operation->GetDefinition().dst_tensors[0];
-    const auto& link_dst_def =
-        linkable_node.gpu_operation->GetDefinition().dst_tensors[0];
-    if (original_dst_def != link_dst_def) {
-      continue;
-    }
     RETURN_IF_ERROR(MergeGpuNodes(gpu_info, &linkable_node, &node));
     nodes.erase(nodes.begin() + next_nodes[0]);
     i -= 1;

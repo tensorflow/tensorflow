@@ -71,7 +71,7 @@ MeanStdDevNormalization CreateMeanStdDevNormalization(
 //     substraction
 //       /    \
 //      |      |
-//      |     pow
+//      |    square
 //      |      |
 //      |     mean
 //      |      |

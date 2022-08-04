@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/time/time.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/service/common.h"
@@ -967,7 +966,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     ClientHeartbeatUpdate* client_heartbeat = update.mutable_client_heartbeat();
     bool apply_update = false;
     client_heartbeat->set_iteration_client_id(request->iteration_client_id());
-    absl::optional<int64_t> blocked_round;
+    std::optional<int64_t> blocked_round;
     if (request->optional_blocked_round_case() ==
         ClientHeartbeatRequest::kBlockedRound) {
       blocked_round = request->blocked_round();

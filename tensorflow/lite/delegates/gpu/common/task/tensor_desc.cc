@@ -320,9 +320,14 @@ GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
 
 void TensorDescriptor::GetGpuResources(
     const BHWDC& tensor_shape, GenericGPUResourcesWithValue* resources) const {
-  resources->AddInt("slice_stride", GetSliceStrideSize(tensor_shape));
+  if (HasAxis(Axis::BATCH)) {
+    resources->AddInt("slice_stride",
+                      tensor_shape.w * tensor_shape.h * tensor_shape.b);
+  } else {
+    resources->AddInt("slice_stride", tensor_shape.w * tensor_shape.h);
+  }
   if (HasAxis(Axis::WIDTH)) {
-    resources->AddInt("width", GetWidthSize(tensor_shape));
+    resources->AddInt("width", tensor_shape.w);
   }
   if (HasAxis(Axis::HEIGHT)) {
     resources->AddInt("height", tensor_shape.h);
@@ -451,10 +456,6 @@ absl::Status TensorDescriptor::PerformReadSelector(
 absl::Status TensorDescriptor::PerformReadNearestSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
     std::string* result) const {
-  if (IsBatchedWidth()) {
-    return absl::NotFoundError(
-        "ReadNearest can not be used with BatchedWidth.");
-  }
   // ReadNearest(result, fc_x, fc_y, {fc_z}, slice);
   if (!((args.size() == 5 && HasAxis(Axis::DEPTH)) || args.size() == 4)) {
     return absl::NotFoundError("Unrecognized ReadNearest selector");
@@ -488,10 +489,6 @@ absl::Status TensorDescriptor::PerformReadNearestSelector(
 absl::Status TensorDescriptor::PerformReadBilinearSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
     std::string* result) const {
-  if (IsBatchedWidth()) {
-    return absl::NotFoundError(
-        "ReadBilinear can not be used with BatchedWidth.");
-  }
   // ReadBilinear(result, fc_x, fc_y, {fc_z}, slice);
   if (!((args.size() == 5 && HasAxis(Axis::DEPTH)) || args.size() == 4)) {
     return absl::NotFoundError("Unrecognized ReadBilinear selector");
@@ -607,7 +604,8 @@ absl::Status TensorDescriptor::PerformReadPerChannelSelector(
 
 absl::Status TensorDescriptor::GetLinkingContextFromWriteSelector(
     const std::vector<std::string>& args, std::string* value_name,
-    std::string* x_coord, std::string* y_coord, std::string* s_coord) const {
+    std::string* x_coord, std::string* y_coord, std::string* z_coord,
+    std::string* s_coord, std::string* b_coord) const {
   std::string xc;
   std::string yc;
   std::string zc;
@@ -618,12 +616,10 @@ absl::Status TensorDescriptor::GetLinkingContextFromWriteSelector(
     return absl::NotFoundError("Unrecognized Write selector");
   }
   *value_name = args[0];
-  if (HasAxis(Axis::BATCH) && !IsBatchedWidth()) {
-    *x_coord = absl::StrCat("((", xc, ") * batch + (", bc, "))");
-  } else {
-    *x_coord = absl::StrCat("(", xc, ")");
-  }
+  *b_coord = absl::StrCat("(", bc, ")");
+  *x_coord = absl::StrCat("(", xc, ")");
   *y_coord = absl::StrCat("(", yc, ")");
+  *z_coord = absl::StrCat("(", zc, ")");
   *s_coord = absl::StrCat("(", sc, ")");
   return absl::OkStatus();
 }
@@ -1113,12 +1109,11 @@ std::string TensorDescriptor::GetGlobalAddressNoDeclaration(
 std::vector<std::string> TensorDescriptor::GetPhysicalCoords(
     const std::string& xc, const std::string& yc, const std::string& zc,
     const std::string& sc, const std::string& bc) const {
-  if (layout_ == Layout::HWC || (IsBatchedWidth() && layout_ == Layout::BHWC)) {
+  if (layout_ == Layout::HWC) {
     return GetPhysicalCoordsWHS(xc, yc, sc);
   } else if (layout_ == Layout::BHWC) {
     return GetPhysicalCoordsWHSB(xc, yc, sc, bc);
-  } else if (layout_ == Layout::HWDC ||
-             (IsBatchedWidth() && layout_ == Layout::BHWDC)) {
+  } else if (layout_ == Layout::HWDC) {
     return GetPhysicalCoordsWHDS(xc, yc, zc, sc);
   } else if (layout_ == Layout::BHWDC) {
     return GetPhysicalCoordsWHDSB(xc, yc, zc, sc, bc);
@@ -1131,16 +1126,6 @@ absl::Status TensorDescriptor::MaybeGetDataTypeFromTemplateArgs(
     const std::vector<std::string>& template_args, DataType* result) const {
   for (const auto& template_arg : template_args) {
     std::string read_type = template_arg;
-    if (read_type == "FLT" || read_type == "ACCUM_FLT") {
-      auto it = state_vars_.find(read_type);
-      if (it == state_vars_.end()) {
-        return absl::UnavailableError(
-            absl::StrCat("Template argument ", read_type, " uninitialized."));
-      } else {
-        read_type = it->second;
-      }
-    }
-
     if (read_type == "half") {
       *result = DataType::FLOAT16;
       return absl::OkStatus();
@@ -1188,27 +1173,6 @@ bool TensorDescriptor::HasAxis(Axis axis) const {
   return false;
 }
 
-int TensorDescriptor::GetWidthSize(BHWDC shape) const {
-  int width = shape.w;
-  auto it = state_vars_.find("BatchedWidth");
-  if (it != state_vars_.end() && it->second == "true") {
-    width *= shape.b;
-  }
-  return width;
-}
-
-int TensorDescriptor::GetSliceStrideSize(BHWDC shape) const {
-  if (IsBatchedWidth()) {
-    return GetWidthSize(shape) * shape.h;
-  } else {
-    if (HasAxis(Axis::BATCH)) {
-      return GetWidthSize(shape) * shape.h * shape.b;
-    } else {
-      return GetWidthSize(shape) * shape.h;
-    }
-  }
-}
-
 bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
                                            int offset, std::string* xc,
                                            std::string* yc, std::string* zc,
@@ -1230,7 +1194,7 @@ bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
     if (offset >= args.size()) return false;
     *sc = args[offset++];
   }
-  if (HasAxis(Axis::BATCH) && !IsBatchedWidth()) {
+  if (HasAxis(Axis::BATCH)) {
     if (offset >= args.size()) {
       auto it = state_vars_.find("batch_id");
       if (it == state_vars_.end()) {
@@ -1243,11 +1207,6 @@ bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
     }
   }
   return true;
-}
-
-bool TensorDescriptor::IsBatchedWidth() const {
-  auto it = state_vars_.find("BatchedWidth");
-  return it != state_vars_.end() && it->second == "true";
 }
 
 size_t TensorDescriptor::GetSizeInBytesForShape(const BHWDC& shape5d) const {

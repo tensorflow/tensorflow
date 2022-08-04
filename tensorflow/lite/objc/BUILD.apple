@@ -118,10 +118,12 @@ ios_application(
     ],
     infoplists = ["apps/TestApp/TestApp/Info.plist"],
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    sdk_frameworks = [
+        "CoreGraphics",
+    ],
     tags = TFL_DEFAULT_TAGS,
     deps = [
         ":TestAppLibrary",
-        "//third_party/apple_frameworks:CoreGraphics",
     ],
 )
 

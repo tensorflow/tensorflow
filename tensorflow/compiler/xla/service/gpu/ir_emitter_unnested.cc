@@ -58,11 +58,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/gpu_passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
@@ -71,6 +66,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/gpu_passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
@@ -1769,8 +1769,8 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
           return ir_array.EmitReadArrayElement(index, builder);
         });
   }
-  // TODO(b/237581536): Remove the feature to iterate output in logical order.
-  launch_config.logical_order = false;
+  launch_config.logical_order = EnableLogicalIndexGenerationForOutput(
+      launch_config, launch_dimensions, operand_arrays, output_element_arrays);
   TF_ASSIGN_OR_RETURN(
       auto element_generator,
       fused_emitter.GetGenerator(*fused_computation->root_instruction()));
@@ -2125,7 +2125,8 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
   //         selected_value = operand(I)
   //         selected_index = I
   //         initialized_flag = true
-  //   output(selected_index) = scatter(output(selected_index), source(S))
+  //   if initialized_flag:
+  //     output(selected_index) = scatter(output(selected_index), source(S))
   auto loop_body_emitter = [&](const IrArray::Index& source_index) -> Status {
     // Allocate space to keep the currently selected value, its index, and a
     // boolean flag if the value is initialized. The initialized_flag is set
@@ -2251,12 +2252,21 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
           selected_value_address);
     save_operand_index(operand_index);
 
+    // If the initialized_flag is true, write to the selected index of the
+    // output; otherwise the window is outside the source (in the padding) and
+    // should be ignored.
+    llvm_ir::SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(),
+                                   &b_);
+    llvm_ir::LlvmIfData if_should_store = llvm_ir::EmitIfThenElse(
+        Load(initialized_flag_address->getAllocatedType(),
+             initialized_flag_address),
+        "should-store", &b_, /*emit_else=*/false);
+    llvm_ir::SetToFirstInsertPoint(if_should_store.true_block, &b_);
+
     // After iterating over the window elements, scatter the source element to
     // the selected index of the output. The value we store at the output
     // location is computed by calling the `scatter` function with the source
     // value and the current output value.
-    llvm_ir::SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(),
-                                   &b_);
     std::vector<llvm::Value*> selected_multi_index;
     for (int64_t i = 0; i < rank; ++i) {
       llvm::Value* selected_index_address_slot =
@@ -4668,6 +4678,12 @@ static bool CanVectorizeReduction(
 
   if (reduction_dimensions.dimensions[kDimX] % 2 != 0 ||
       MayPreventVectorization(fusion)) {
+    return false;
+  }
+
+  // Enabling vectorization if number of threads is <= warpsize leads to half or
+  // more of the threads not doing any work.
+  if (reduction_dimensions.is_row_reduction && num_threads_x <= WarpSize()) {
     return false;
   }
 

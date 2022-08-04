@@ -255,7 +255,9 @@ HloInstruction* SpmdBuilder::AddInstruction(
       }
     }
   }
-  if (hlo->IsElementwise() && hlo->operand_count() > 0) {
+  if (hlo->IsElementwise() && hlo->operand_count() > 0 &&
+      // Copy can have a tuple result.
+      hlo->shape().IsArray()) {
     absl::flat_hash_set<int64_t> broadcast_dims;
     for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
       broadcast_dims.insert(i);

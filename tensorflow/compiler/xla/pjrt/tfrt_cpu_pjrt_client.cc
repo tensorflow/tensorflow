@@ -65,6 +65,34 @@ limitations under the License.
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace xla {
+namespace {
+
+// A RAII helper class used to set an AsyncValueRef<CpuEvent> to a ready state
+// upon destruction. In many cases in PjRt implementation, there will be
+// multiple return statements in the function, all of which require setting some
+// AsyncValueRef<CpuEvent> to be ready. This class could make such code more
+// robust by using setting the AsyncValue in the destructor.
+class MarkEventReadyOnExit {
+ public:
+  explicit MarkEventReadyOnExit(tfrt::AsyncValueRef<CpuEvent> event)
+      : event_(std::move(event)) {}
+
+  MarkEventReadyOnExit(const MarkEventReadyOnExit&) = delete;
+  MarkEventReadyOnExit& operator=(const MarkEventReadyOnExit&) = delete;
+  MarkEventReadyOnExit(MarkEventReadyOnExit&&) = default;
+  MarkEventReadyOnExit& operator=(MarkEventReadyOnExit&&) = default;
+
+  ~MarkEventReadyOnExit() {
+    if (event_) event_.SetStateConcrete();
+  }
+
+  tfrt::AsyncValueRef<CpuEvent> Release() && { return std::move(event_); }
+
+ private:
+  tfrt::AsyncValueRef<CpuEvent> event_;
+};
+
+}  // namespace
 
 static const char kCpuPlatformName[] = "cpu";
 static constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
@@ -80,6 +108,7 @@ TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
     : id_(id),
       max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
   debug_string_ = absl::StrCat("TFRT_CPU_", id);
+  to_string_ = absl::StrCat("CpuDevice(id=", id, ")");
 }
 
 absl::string_view TfrtCpuDevice::device_kind() const {
@@ -88,9 +117,7 @@ absl::string_view TfrtCpuDevice::device_kind() const {
 
 absl::string_view TfrtCpuDevice::DebugString() const { return debug_string_; }
 
-std::string TfrtCpuDevice::ToString() const {
-  return absl::StrCat("CpuDevice(id=", id(), ")");
-}
+absl::string_view TfrtCpuDevice::ToString() const { return to_string_; }
 
 Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id(), literal);
@@ -413,7 +440,7 @@ StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBuffer(
     buffers.push_back(std::move(device_buffer));
     return std::make_unique<TfrtCpuBuffer>(
         on_device_shape,
-        std::make_shared<TrackedTfrtCpuDeviceBuffer>(
+        std::make_unique<TrackedTfrtCpuDeviceBuffer>(
             /*is_tuple=*/false, std::move(buffers),
             std::move(definition_events)),
         client, device);
@@ -428,7 +455,7 @@ StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBuffer(
   }
   return std::make_unique<TfrtCpuBuffer>(
       on_device_shape,
-      std::make_shared<TrackedTfrtCpuDeviceBuffer>(
+      std::make_unique<TrackedTfrtCpuDeviceBuffer>(
           /*is_tuple=*/true, std::move(buffers), std::move(definition_events)),
       client, device);
 }
@@ -442,7 +469,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateViewOfDeviceBuffer(
       std::make_shared<MaybeOwningCpuMemory>(device_ptr, byte_size);
   buffers.push_back(std::move(non_owning_buffer));
   absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> empty_definition_events;
-  auto tracked_device_buffer = std::make_shared<TrackedTfrtCpuDeviceBuffer>(
+  auto tracked_device_buffer = std::make_unique<TrackedTfrtCpuDeviceBuffer>(
       /*is_tuple=*/false, std::move(buffers),
       std::move(empty_definition_events), std::move(on_delete_callback));
   return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtCpuBuffer>(
@@ -549,7 +576,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
       }
     }
   }
-  auto tracked_device_buffer = std::make_shared<TrackedTfrtCpuDeviceBuffer>(
+  auto tracked_device_buffer = std::make_unique<TrackedTfrtCpuDeviceBuffer>(
       /*is_tuple=*/false, std::move(buffers), std::move(definition_events),
       std::move(on_delete_callback));
   return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtCpuBuffer>(
@@ -581,171 +608,97 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
                           shape, std::move(definition_events),
                           tensorflow::down_cast<TfrtCpuDevice*>(device), this));
 
+  auto usage_event = tfrt::MakeAvailableAsyncValueRef<CpuEvent>();
+  auto* device_buffer = output_buffer->AcquireUsage(std::move(usage_event));
+  CHECK(device_buffer);
   if (!shape.IsTuple()) {
-    TfrtCpuBuffer::ScopedHold device_buffer(
-        output_buffer->GetBufferWithUsageHold());
-    CHECK(device_buffer.ok());
     // It is OK to capture `buffer` pointer because the `output_buffer` can't be
     // deleted until all the usage holds have gone away.
-    tfrt::EnqueueWork(
-        GetHostContext(), [literal, av = avs[0].CopyRef(),
-                           db = std::move(device_buffer), shape]() mutable {
-          tensorflow::profiler::TraceMe traceme("H2D Dispatch");
-          TfrtCpuBuffer::ScopedHold device_buffer = std::move(db);
-          const std::shared_ptr<MaybeOwningCpuMemory>& b =
-              device_buffer->Buffers()[0];
-          CHECK_EQ(literal.size_bytes(), b->size());
-          std::memcpy(b->data(), literal.untyped_data(), b->size());
-          // Signal copy is complete.
-          av->SetStateConcrete();
-        });
+    tfrt::EnqueueWork(GetHostContext(), [literal, av = avs[0].CopyRef(),
+                                         device_buffer, shape]() mutable {
+      tensorflow::profiler::TraceMe traceme("H2D Dispatch");
+      const std::shared_ptr<MaybeOwningCpuMemory>& b =
+          device_buffer->Buffers()[0];
+      CHECK_EQ(literal.size_bytes(), b->size());
+      std::memcpy(b->data(), literal.untyped_data(), b->size());
+      // Signal copy is complete.
+      av->SetStateConcrete();
+    });
   } else {
     // For tuple, transfer leaf literal individually in parallel.
     for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
-      TfrtCpuBuffer::ScopedHold device_buffer(
-          output_buffer->GetBufferWithUsageHold());
-      CHECK(device_buffer.ok());
       // It is OK to capture `buffer` pointer because the `output_buffer` can't
       // be deleted until all the usage holds have gone away.
-      tfrt::EnqueueWork(
-          GetHostContext(), [i, literal, av = avs[i].CopyRef(), shape,
-                             db = std::move(device_buffer)]() mutable {
-            tensorflow::profiler::TraceMe traceme("H2D Dispatch");
-            TfrtCpuBuffer::ScopedHold device_buffer = std::move(db);
-            auto slice = LiteralSlice(literal, {i});
-            const std::shared_ptr<MaybeOwningCpuMemory>& b =
-                device_buffer->Buffers()[i];
-            CHECK_EQ(slice.size_bytes(), b->size());
-            std::memcpy(b->data(), slice.untyped_data(), slice.size_bytes());
-            // Signal copy is complete.
-            av->SetStateConcrete();
-          });
+      tfrt::EnqueueWork(GetHostContext(), [i, literal, av = avs[i].CopyRef(),
+                                           shape, device_buffer]() mutable {
+        tensorflow::profiler::TraceMe traceme("H2D Dispatch");
+        auto slice = LiteralSlice(literal, {i});
+        const std::shared_ptr<MaybeOwningCpuMemory>& b =
+            device_buffer->Buffers()[i];
+        CHECK_EQ(slice.size_bytes(), b->size());
+        std::memcpy(b->data(), slice.untyped_data(), slice.size_bytes());
+        // Signal copy is complete.
+        av->SetStateConcrete();
+      });
     }
   }
   return std::unique_ptr<PjRtBuffer>(std::move(output_buffer));
 }
 
-TfrtCpuBuffer::ScopedHold::~ScopedHold() {
-  if (ok()) {
-    parent_->DropHold(type_, buffer().get());
-  }
-}
-
-TfrtCpuBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
-    : parent_(other.parent_),
-      type_(other.type_),
-      state_(other.state_),
-      status_(std::move(other.status_)),
-      buffer_(std::move(other.buffer_)) {
-  // Preserve the invariant that status is invalid if buffer == nullptr.
-  other.SetState(kMoved);
-}
-
-TfrtCpuBuffer::ScopedHold& TfrtCpuBuffer::ScopedHold::operator=(
-    ScopedHold&& other) {
-  if (ok()) {
-    parent_->DropHold(type_, buffer().get());
-  }
-  parent_ = other.parent_;
-  type_ = other.type_;
-  state_ = other.state_;
-  status_ = std::move(other.status_);
-  buffer_ = std::move(other.buffer_);
-  // Preserve the invariant that status is invalid if buffer == nullptr.
-  other.SetState(kMoved);
-
-  return *this;
-}
-
-void TfrtCpuBuffer::ScopedHold::Acquire(
-    StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>&& buffer_or) {
-  CHECK(!ok());
-  if (buffer_or.ok()) {
-    buffer_ = buffer_or.ValueOrDie();
-    SetState(kValid);
-  } else {
-    status_ = buffer_or.status();
-    buffer_ = nullptr;
-    SetState(kError);
-  }
-  // Check the invariant holds.
-  CHECK(!ok() || buffer_ != nullptr);
-}
-
-void TfrtCpuBuffer::ScopedHold::ConvertUsageHold(
-    absl::Span<tfrt::AsyncValueRef<CpuEvent>> events) {
-  CHECK(ok());
-  CHECK_EQ(type_, kUsage);
-  parent_->ConvertUsageHold(buffer().get(), events);
-  SetState(kConverted);
-}
-
-void TfrtCpuBuffer::ScopedHold::ConfirmDonation() {
-  CHECK(ok());
-  CHECK_EQ(type_, kDonation);
-  parent_->ConfirmDonation(buffer().get());
-  SetState(kDonated);
-}
-
 TfrtCpuBuffer::TfrtCpuBuffer(
     Shape on_device_shape,
-    std::shared_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
+    std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
     TfrtCpuClient* client, TfrtCpuDevice* device)
     : client_(client),
       on_device_shape_(std::move(on_device_shape)),
       device_(device),
-      tracked_device_buffer_(std::move(tracked_device_buffer)) {
-  for (int i = 0; i < ScopedHold::Type::kMaxValue; ++i) {
-    holds_[i] = 0;
-  }
-}
+      tracked_device_buffer_(std::move(tracked_device_buffer)) {}
 
 TfrtCpuBuffer::~TfrtCpuBuffer() {
   Delete();
-  for (int i = 0; i < ScopedHold::Type::kMaxValue; ++i) {
-    CHECK_EQ(holds_[i], 0);
-  }
+  CHECK_EQ(external_reference_counter_, 0);
 }
 
 StatusOr<size_t> TfrtCpuBuffer::GetOnDeviceSizeInBytes() const {
   return ShapeUtil::ByteSizeOf(on_device_shape_);
 }
 
-namespace {
-
-// Implements PjRtBuffer::ExternalReference as a wrapped
-// ScopedHold::kExternalReference.
-class ScopedHoldAsExternalReference : public PjRtBuffer::ExternalReference {
- public:
-  explicit ScopedHoldAsExternalReference(TfrtCpuBuffer::ScopedHold hold)
-      : external_reference_(std::move(hold)) {
-    CHECK(external_reference_.type() ==
-          TfrtCpuBuffer::ScopedHold::kExternalReference);
-    data_ptr_ = external_reference_->Buffers()[0]->data();
-  }
-
-  ~ScopedHoldAsExternalReference() override = default;
-
- private:
-  TfrtCpuBuffer::ScopedHold external_reference_;
-};
-
-}  // namespace
-
 StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
 TfrtCpuBuffer::AcquireExternalReference() {
-  ScopedHold hold = GetBufferWithExternalReference();
-  Status hold_status = hold.status();
-  if (!hold_status.ok()) return hold_status;
-  return std::unique_ptr<ExternalReference>(
-      std::make_unique<ScopedHoldAsExternalReference>(std::move(hold)));
+  class ScopedExternalReference : public PjRtBuffer::ExternalReference {
+   public:
+    explicit ScopedExternalReference(TfrtCpuBuffer* buffer,
+                                     std::shared_ptr<MaybeOwningCpuMemory> data)
+        : buffer_(buffer), data_(std::move(data)) {
+      DCHECK(data_);
+      data_ptr_ = data_->data();
+    }
+
+    ~ScopedExternalReference() override { buffer_->DropExternalReference(); }
+
+   private:
+    TfrtCpuBuffer* buffer_ = nullptr;
+    // Keep a reference to the underlying data used. Note that it is still
+    // users' responsibility to synchronize reads and writes to the data.
+    std::shared_ptr<MaybeOwningCpuMemory> data_;
+  };
+
+  absl::MutexLock lock(&mu_);
+  if (tracked_device_buffer_ == nullptr) {
+    return InvalidArgument("Buffer has been deleted or donated.");
+  }
+
+  ++external_reference_counter_;
+
+  return {std::make_unique<ScopedExternalReference>(
+      this, tracked_device_buffer_->Buffers()[0])};
 }
 
 class TrackedCpuDeviceBufferExternalReference
     : public PjRtBuffer::ExternalReference {
  public:
   explicit TrackedCpuDeviceBufferExternalReference(
-      std::shared_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer)
+      std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer)
       : tracked_device_buffer_(std::move(tracked_device_buffer)) {
     data_ptr_ = tracked_device_buffer_->Buffers()[0]->data();
   }
@@ -753,7 +706,7 @@ class TrackedCpuDeviceBufferExternalReference
   ~TrackedCpuDeviceBufferExternalReference() override = default;
 
  private:
-  std::shared_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer_;
+  std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer_;
 };
 
 StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
@@ -764,7 +717,7 @@ TfrtCpuBuffer::ReleaseDeviceMemoryOwnership(
         "ReleaseDeviceMemoryOwnership allowed only for non-tuple");
   }
   TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
+      std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
       Release(wait_for_operations_to_complete));
 
   std::unique_ptr<PjRtBuffer::ExternalReference> ref;
@@ -775,9 +728,47 @@ TfrtCpuBuffer::ReleaseDeviceMemoryOwnership(
   return ref;
 }
 
+void TfrtCpuBuffer::CommitDonation() {
+  absl::MutexLock lock(&mu_);
+  CHECK(pending_donation_);
+  CHECK(!tracked_device_buffer_);
+  pending_donation_ = false;
+}
+
+void TfrtCpuBuffer::AbortDonation(
+    std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer) {
+  absl::MutexLock lock(&mu_);
+  CHECK(pending_donation_);
+  CHECK(!tracked_device_buffer_);
+  pending_donation_ = false;
+  tracked_device_buffer_ = std::move(device_buffer);
+}
+
 void TfrtCpuBuffer::Delete() {
-  // When wait_for_reads_to_complete is false, Release should never fail.
-  TF_CHECK_OK(Release(/*wait_for_operations_to_complete=*/false).status());
+  auto device_buffer = ReleaseBufferLocked();
+  if (device_buffer == nullptr) return;
+
+  // Now that all holds have completed and no more can be added, we can get
+  // the final set of usage events.
+  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> usage_events =
+      device_buffer->LockUseAndTransferUsageEvents();
+
+  // We should also wait for the definition events.
+  auto definition_events = device_buffer->DefinitionEvents();
+
+  std::vector<tfrt::AsyncValue*> event_avs;
+  event_avs.reserve(usage_events.size() + definition_events.size());
+  for (auto& event : usage_events) {
+    event_avs.push_back(event.GetAsyncValue());
+  }
+  for (auto& event : definition_events) {
+    event_avs.push_back(event.GetAsyncValue());
+  }
+
+  tfrt::RunWhenReady(event_avs,
+                     [device_buffer = std::move(device_buffer)]() mutable {
+                       device_buffer.reset();
+                     });
 }
 
 bool TfrtCpuBuffer::IsDeleted() {
@@ -785,42 +776,27 @@ bool TfrtCpuBuffer::IsDeleted() {
   return tracked_device_buffer_ == nullptr;
 }
 
-void TfrtCpuBuffer::WaitForOutstandingUsageHolds() {
-  auto not_in_usage_hold = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return holds_[ScopedHold::kUsage] == 0;
+std::unique_ptr<TrackedTfrtCpuDeviceBuffer>
+TfrtCpuBuffer::ReleaseBufferLocked() {
+  absl::MutexLock lock(&mu_);
+  auto condition = [this]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
+    return !pending_donation_;
   };
-  mu_.Await(absl::Condition(&not_in_usage_hold));
+  mu_.Await(absl::Condition(&condition));
+  return std::move(tracked_device_buffer_);
 }
 
-void TfrtCpuBuffer::WaitForOutstandingDonationHold() {
-  auto not_in_donation_hold = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return holds_[ScopedHold::kDonation] == 0;
-  };
-  mu_.Await(absl::Condition(&not_in_donation_hold));
-}
-
-StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>> TfrtCpuBuffer::Release(
+StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> TfrtCpuBuffer::Release(
     bool wait_for_operations_to_complete) {
-  std::shared_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer;
+  std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer =
+      ReleaseBufferLocked();
+  if (device_buffer == nullptr) return {nullptr};
+
   absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> events;
-  {
-    absl::MutexLock lock(&mu_);
-    // We first wait for a donation hold to complete if there is one in
-    // progress. If the donation succeeds via ConfirmDonation() then it will
-    // set device_buffer_ to nullptr before returning to this thread.
-    WaitForOutstandingDonationHold();
-    if (tracked_device_buffer_ == nullptr) {
-      // Buffer has been deleted.
-      return std::shared_ptr<TrackedTfrtCpuDeviceBuffer>();
-    }
-    // Set device_buffer_ to null now so that no other thread can add a hold
-    // while we are in WaitForOutstandingUsageHolds() below.
-    std::swap(tracked_device_buffer_, device_buffer);
-    WaitForOutstandingUsageHolds();
-    // Now that all holds have completed and no more can be added, we can get
-    // the final set of usage events.
-    events = device_buffer->LockUseAndTransferUsageEvents();
-  }
+  // Now that all holds have completed and no more can be added, we can get
+  // the final set of usage events.
+  events = device_buffer->LockUseAndTransferUsageEvents();
+
   if (wait_for_operations_to_complete) {
     // Block the host until all usage events have completed. Usage events
     // dominate definition events, so this also waits for the buffer to be
@@ -834,96 +810,39 @@ StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>> TfrtCpuBuffer::Release(
     }
     if (!first_error.ok()) return std::move(first_error);
   }
-  return std::move(device_buffer);
+
+  return device_buffer;
 }
 
-StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>
-TfrtCpuBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
-  // All callers should have called WaitForOutstandingDonationHold().
-  CHECK_EQ(holds_[ScopedHold::kDonation], 0);
-  if (type == ScopedHold::kDonation) {
-    if (tracked_device_buffer_ == nullptr) {
-      return InvalidArgument("Donation requested for invalid buffer");
-    }
-    if (holds_[ScopedHold::kExternalReference] > 0) {
-      return InvalidArgument(
-          "Donation requested for buffer with external reference");
-    }
-    // First add the donation hold.
-    ++holds_[type];
-    // Then wait for any usage holds to be dropped or converted. No new usage
-    // holds can be added until we drop the donation hold so this wait will
-    // complete eventually.
-    WaitForOutstandingUsageHolds();
-    // Because we added a donation hold, nobody could release the buffer while
-    // we were waiting.
-    CHECK(tracked_device_buffer_ != nullptr);
-  } else {
-    if (tracked_device_buffer_ == nullptr) {
-      return InvalidArgument("Buffer has been deleted or donated.");
-    } else {
-      ++holds_[type];
-    }
-  }
-  return tracked_device_buffer_;
-}
-
-void TfrtCpuBuffer::AcquireHoldLocked(ScopedHold* hold) {
-  hold->Acquire(GetBufferForHoldLocked(hold->type()));
-}
-
-TfrtCpuBuffer::ScopedHold TfrtCpuBuffer::GetBufferWithHold(
-    ScopedHold::Type type) {
+TrackedTfrtCpuDeviceBuffer* TfrtCpuBuffer::AcquireUsage(
+    tfrt::AsyncValueRef<CpuEvent> usage_event) {
   absl::MutexLock lock(&mu_);
-  // Ensure that at most one donation hold can be in progress at a time.
-  WaitForOutstandingDonationHold();
-  ScopedHold hold(this, type);
-  AcquireHoldLocked(&hold);
-  return hold;
-}
-
-void TfrtCpuBuffer::ConvertUsageHold(
-    TrackedTfrtCpuDeviceBuffer* buffer,
-    absl::Span<tfrt::AsyncValueRef<CpuEvent>> events) {
-  absl::MutexLock lock(&mu_);
-  CHECK(tracked_device_buffer_.get() == buffer ||
-        tracked_device_buffer_ == nullptr);
-  buffer->AddUsageEvents(events);
-  CHECK_GT(holds_[ScopedHold::kUsage], 0);
-  --holds_[ScopedHold::kUsage];
-}
-
-void TfrtCpuBuffer::ConfirmDonation(TrackedTfrtCpuDeviceBuffer* device_buffer) {
-  {
-    absl::MutexLock lock(&mu_);
-    CHECK_EQ(holds_[ScopedHold::kUsage], 0);
-    CHECK_EQ(holds_[ScopedHold::kExternalReference], 0);
-    CHECK_EQ(holds_[ScopedHold::kDonation], 1);
-    holds_[ScopedHold::kDonation] = 0;
-    CHECK(tracked_device_buffer_.get() == device_buffer);
-    // As a sanity check ensure no more usage events can be added to the buffer.
-    device_buffer->LockUseAndTransferUsageEvents();
-    // Give up ownership of the device memory so we don't free it when the last
-    // reference to device_buffer_ goes away.
-    device_buffer->ReleaseDeviceMemory();
-    // Make *this invalid so it can't be used again. Any threads blocking in
-    // Release or GetBufferWithHold will see an invalid buffer and return.
-    tracked_device_buffer_.reset();
+  if (!tracked_device_buffer_) {
+    return nullptr;
   }
+
+  tracked_device_buffer_->AddUsageEvents(absl::MakeSpan(&usage_event, 1));
+  return tracked_device_buffer_.get();
 }
 
-void TfrtCpuBuffer::DropHold(ScopedHold::Type type,
-                             TrackedTfrtCpuDeviceBuffer* buffer) {
+StatusOr<TfrtCpuBuffer::DonationTransaction> TfrtCpuBuffer::AcquireDonation() {
   absl::MutexLock lock(&mu_);
-  CHECK(tracked_device_buffer_.get() == buffer ||
-        tracked_device_buffer_ == nullptr);
-  CHECK_GT(holds_[type], 0);
-  --holds_[type];
-  if (type == ScopedHold::kDonation) {
-    CHECK_EQ(holds_[ScopedHold::kDonation], 0);
-    CHECK_EQ(holds_[ScopedHold::kUsage], 0);
-    CHECK_EQ(holds_[ScopedHold::kExternalReference], 0);
+
+  if (tracked_device_buffer_ == nullptr) {
+    return InvalidArgument("Donation requested for invalid buffer");
   }
+
+  if (external_reference_counter_ > 0) {
+    return InvalidArgument(
+        "Donation requested for buffer with external reference");
+  }
+
+  CHECK(!pending_donation_);
+  pending_donation_ = true;
+
+  // Swap out `tracked_device_buffer_` so that no one can acquire a usage event
+  // after this point.
+  return DonationTransaction(this, std::move(tracked_device_buffer_));
 }
 
 static ShapedBuffer AsShapedBuffer(
@@ -945,17 +864,14 @@ StatusOr<Shape> TfrtCpuBuffer::logical_on_device_shape() {
   if (on_device_shape_.is_static()) {
     return on_device_shape_;
   }
-  ScopedHold device_buffer(this, ScopedHold::kUsage);
-  {
-    absl::MutexLock lock(&mu_);
-    // We can't perform any other action while a donation hold is in progress.
-    WaitForOutstandingDonationHold();
-    if (tracked_device_buffer_ == nullptr) {
-      return InvalidArgument(
-          "logical_on_device_shape() called on deleted or donated buffer");
-    }
-    AcquireHoldLocked(&device_buffer);
+
+  auto usage_event = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto* device_buffer = AcquireUsage(usage_event);
+  if (device_buffer == nullptr) {
+    return InvalidArgument(
+        "logical_on_device_shape() called on deleted or donated buffer");
   }
+  MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
 
   // Wait for definition events.
   for (const auto& av : device_buffer->DefinitionEvents()) {
@@ -1009,21 +925,18 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
     return PjRtFuture<Status>(
         InvalidArgument("ToLiteral called on empty tuple"));
   }
-  TfrtCpuBuffer::ScopedHold device_buffer(this, ScopedHold::kUsage);
-  {
-    absl::MutexLock lock(&mu_);
-    // We can't perform any other action while a donation hold is in progress.
-    WaitForOutstandingDonationHold();
-    if (tracked_device_buffer_ == nullptr) {
-      return PjRtFuture<Status>(InvalidArgument(
-          "CopyToHostAsync() called on deleted or donated buffer"));
-    }
-    AcquireHoldLocked(&device_buffer);
+  auto usage_event = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto* device_buffer = AcquireUsage(usage_event);
+  if (device_buffer == nullptr) {
+    return PjRtFuture<Status>(InvalidArgument(
+        "CopyToHostAsync() called on deleted or donated buffer"));
   }
+  MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
+
   auto host_ctx = client_->GetHostContext();
 
   std::vector<tfrt::RCReference<tfrt::AsyncValue>> device_buffer_wait_avs =
-      GetAsyncValues(device_buffer.buffer()->DefinitionEvents());
+      GetAsyncValues(device_buffer->DefinitionEvents());
   std::vector<tfrt::RCReference<tfrt::AsyncValue>> device_buffer_wait_avs_copy =
       CopyAsyncValues(device_buffer_wait_avs);
 
@@ -1032,14 +945,14 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   if (should_sync_copy) {
     if (!on_device_shape().IsTuple()) {
       const std::shared_ptr<MaybeOwningCpuMemory>& b =
-          device_buffer.buffer()->Buffers()[0];
+          device_buffer->Buffers()[0];
       std::memcpy(literal->untyped_data(), b->data(), b->size());
     } else {
       // Tuple case.
       int num_leaves = literal->shape().tuple_shapes().size();
       for (int i = 0; i < num_leaves; ++i) {
         const std::shared_ptr<MaybeOwningCpuMemory>& b =
-            device_buffer.buffer()->Buffers()[i];
+            device_buffer->Buffers()[i];
         std::memcpy(literal->untyped_data({i}), b->data(), b->size());
       }
     }
@@ -1047,17 +960,16 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
     return PjRtFuture<Status>(OkStatus());
   } else {
     auto ready_event = tfrt::MakeUnconstructedAsyncValueRef<Status>();
-    // Wait for buffer definition events to finish before d2h dispatch.
-    // D2H dispatch should be in parallel, e.g. one Execute event finish may
-    // trigger multiple outputs' D2H, they should happen in different threads in
+    // Wait for buffer definition events to finish before d2h dispatch. D2H
+    // dispatch should be in parallel, e.g. one Execute event finish may trigger
+    // multiple outputs' D2H, they should happen in different threads in
     // parallel.
     EnqueueWorkWhenReady(
         host_ctx, device_buffer_wait_avs,
-        [this, db = std::move(device_buffer),
-         device_buffer_wait_avs = std::move(device_buffer_wait_avs_copy),
-         literal, ready_event = ready_event.CopyRef()]() mutable {
+        [this, device_buffer_wait_avs = std::move(device_buffer_wait_avs_copy),
+         literal, ready_event = ready_event.CopyRef(), device_buffer,
+         ready_on_exit = std::move(ready_on_exit)]() mutable {
           tensorflow::profiler::TraceMe traceme("D2H Dispatch");
-          TfrtCpuBuffer::ScopedHold device_buffer = std::move(db);
           // Errors in src buffer are surfaced to user.
           for (const auto& av : device_buffer_wait_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
@@ -1069,14 +981,14 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
 
           if (!on_device_shape().IsTuple()) {
             const std::shared_ptr<MaybeOwningCpuMemory>& b =
-                device_buffer.buffer()->Buffers()[0];
+                device_buffer->Buffers()[0];
             std::memcpy(literal->untyped_data(), b->data(), b->size());
           } else {
             // Tuple case.
             int num_leaves = literal->shape().tuple_shapes().size();
             for (int i = 0; i < num_leaves; ++i) {
               const std::shared_ptr<MaybeOwningCpuMemory>& b =
-                  device_buffer.buffer()->Buffers()[i];
+                  device_buffer->Buffers()[i];
               std::memcpy(literal->untyped_data({i}), b->data(), b->size());
             }
           }
@@ -1132,30 +1044,20 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
   }
 
   // Copy each leaf buffer to a destination buffer.
-  TfrtCpuBuffer::ScopedHold src_device_buffer(
-      this, TfrtCpuBuffer::ScopedHold::kUsage);
-  {
-    absl::MutexLock lock(&mu_);
-    WaitForOutstandingDonationHold();
-    if (tracked_device_buffer_ == nullptr) {
-      return InvalidArgument(
-          "CopyToDevice called on deleted or donated buffer");
-    }
-    AcquireHoldLocked(&src_device_buffer);
+  auto usage_event = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto* src_device_buffer = AcquireUsage(usage_event);
+  if (src_device_buffer == nullptr) {
+    return InvalidArgument("CopyToDevice called on deleted or donated buffer");
   }
+  MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
 
   int num_leaf_buffers = src_device_buffer->Buffers().size();
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> src_buffers;
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> dst_buffers;
-  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events;
-  absl::InlinedVector<tfrt::RCReference<tfrt::IndirectAsyncValue>, 4>
-      indirect_avs;
-  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> src_usage_events;
+  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> dst_definition_events;
   src_buffers.reserve(num_leaf_buffers);
   dst_buffers.reserve(num_leaf_buffers);
-  definition_events.reserve(num_leaf_buffers);
-  indirect_avs.reserve(num_leaf_buffers);
-  src_usage_events.reserve(num_leaf_buffers);
+  dst_definition_events.reserve(num_leaf_buffers);
 
   for (int i = 0; i < num_leaf_buffers; ++i) {
     auto src_buffer = src_device_buffer->Buffers()[i];
@@ -1163,41 +1065,26 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
                                              src_buffer->size()));
     src_buffers.push_back(std::move(src_buffer));
     dst_buffers.push_back(std::move(dst_buffer));
-    tfrt::RCReference<tfrt::IndirectAsyncValue> definition_event =
-        tfrt::MakeIndirectAsyncValue(client_->GetHostContext());
-    definition_events.push_back(
-        tfrt::AsyncValueRef<CpuEvent>(definition_event.CopyRef()));
-    indirect_avs.push_back(definition_event.CopyRef());
-    src_usage_events.push_back(
-        tfrt::AsyncValueRef<CpuEvent>(std::move(definition_event)));
+    dst_definition_events.push_back(
+        tfrt::MakeConstructedAsyncValueRef<CpuEvent>());
   }
 
   // Wait for src buffer definition events to finish before d2d dispatch.
   // Errors are propagated asynchronously in dst buffer's definition events.
   std::vector<tfrt::RCReference<tfrt::AsyncValue>>
       src_device_buffer_definition_events_avs =
-          GetAsyncValues(src_device_buffer.buffer()->DefinitionEvents());
+          GetAsyncValues(src_device_buffer->DefinitionEvents());
   std::vector<tfrt::RCReference<tfrt::AsyncValue>>
       src_device_buffer_definition_events_avs_copy =
           CopyAsyncValues(src_device_buffer_definition_events_avs);
 
-  // Grab a reference to the tracked device buffer object that underlies the
-  // source buffer. The tracked device buffer object may hold ownership of
-  // external objects, such as NumPy arrays, and we must not allow it to be
-  // deleted until the closure below completes.
-  std::shared_ptr<TrackedTfrtCpuDeviceBuffer> source_tdb =
-      src_device_buffer.buffer();
-
-  // Add d2d as usage event on src_buffer.
-  src_device_buffer.ConvertUsageHold(absl::MakeSpan(src_usage_events));
-
   EnqueueWorkWhenReady(
       client()->GetHostContext(), src_device_buffer_definition_events_avs,
       [client = client_, num_leaf_buffers, src_buffers = std::move(src_buffers),
-       dst_buffers_copies = dst_buffers, indirect_avs = std::move(indirect_avs),
+       dst_buffers_copies = dst_buffers, dst_definition_events,
        src_device_buffer_definition_events_avs =
            std::move(src_device_buffer_definition_events_avs_copy),
-       source_tdb{std::move(source_tdb)}]() mutable {
+       ready_on_exit = std::move(ready_on_exit)]() mutable {
         tensorflow::profiler::TraceMe traceme("D2D Dispatch");
         for (const auto& av : src_device_buffer_definition_events_avs) {
           if (auto* error = av->GetErrorIfPresent()) {
@@ -1205,7 +1092,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
               // Any error discovered in src buffer are propagated to dst buffer
               // definition events, which will surface to users in
               // dst_buffer->ToLiteral().
-              indirect_avs[i]->ForwardTo(av.CopyRef());
+              dst_definition_events[i].SetError(*error);
             }
             return;
           }
@@ -1214,76 +1101,71 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
         for (int i = 0; i < num_leaf_buffers; ++i) {
           std::memcpy(dst_buffers_copies[i]->data(), src_buffers[i]->data(),
                       src_buffers[i]->size());
-          indirect_avs[i]->ForwardTo(copy_ready.CopyRCRef());
+          dst_definition_events[i].SetStateConcrete();
         }
       });
 
   return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtCpuBuffer>(
       on_device_shape_,
-      std::make_shared<TrackedTfrtCpuDeviceBuffer>(
+      std::make_unique<TrackedTfrtCpuDeviceBuffer>(
           on_device_shape_.IsTuple(), std::move(dst_buffers),
-          std::move(definition_events)),
+          std::move(dst_definition_events)),
       client(), tensorflow::down_cast<TfrtCpuDevice*>(dst_device)));
 }
 
 PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
-  tfrt::AsyncValueRef<Status> definition_event;
-  std::shared_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer;
+  tfrt::AsyncValueRef<Status> definition_event =
+      tfrt::MakeUnconstructedAsyncValueRef<Status>();
+  absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 2> events;
   {
     absl::MutexLock lock(&mu_);
     if (!tracked_device_buffer_) {
       return PjRtFuture<Status>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
     }
-    if (!definition_event_) {
-      definition_event_ = tfrt::MakeUnconstructedAsyncValueRef<Status>();
-      tracked_device_buffer = tracked_device_buffer_;
+
+    events.reserve(tracked_device_buffer_->DefinitionEvents().size());
+    for (const auto& event : tracked_device_buffer_->DefinitionEvents()) {
+      events.push_back(event.CopyRCRef());
     }
-    definition_event = definition_event_;
   }
-  if (tracked_device_buffer) {
-    auto events = tracked_device_buffer->DefinitionEvents();
-    if (events.size() == 1) {
-      auto& event = events[0];
-      if (event.IsAvailable()) {
-        if (auto* error = event.GetErrorIfPresent()) {
+
+  if (events.size() == 1) {
+    auto& event = events[0];
+    if (event->IsAvailable()) {
+      if (auto* error = event->GetErrorIfPresent()) {
+        definition_event.emplace(
+            FailedPrecondition("Buffer Definition Event: %s", error->message));
+      } else {
+        definition_event.emplace(OkStatus());
+      }
+    } else {
+      event->AndThen([event = event.CopyRef(),
+                      definition_event = definition_event.CopyRef()]() {
+        if (auto* error = event->GetErrorIfPresent()) {
           definition_event.emplace(FailedPrecondition(
               "Buffer Definition Event: %s", error->message));
         } else {
           definition_event.emplace(OkStatus());
         }
-      } else {
-        event.AndThen([event = event.CopyRef(),
-                       definition_event = definition_event.CopyRef()]() {
-          if (auto* error = event.GetErrorIfPresent()) {
-            definition_event.emplace(FailedPrecondition(
-                "Buffer Definition Event: %s", error->message));
-          } else {
-            definition_event.emplace(OkStatus());
-          }
-        });
-      }
-    } else {
-      absl::InlinedVector<tfrt::AsyncValue*, 4> events;
-      events.reserve(tracked_device_buffer->DefinitionEvents().size());
-      for (const auto& ev : tracked_device_buffer->DefinitionEvents()) {
-        events.push_back(ev.GetAsyncValue());
-      }
-      tfrt::RunWhenReady(
-          {events.data(), events.size()},
-          [definition_event = definition_event.CopyRef(),
-           tracked_device_buffer = tracked_device_buffer]() {
-            Status s;
-            for (const auto& e : tracked_device_buffer->DefinitionEvents()) {
-              if (auto* error = e.GetErrorIfPresent()) {
-                s.Update(FailedPrecondition("Buffer Definition Event: %s",
-                                            error->message));
-              }
-            }
-            definition_event.emplace(std::move(s));
-          });
+      });
     }
+  } else {
+    llvm::ArrayRef<tfrt::RCReference<tfrt::AsyncValue>> events_span(
+        events.data(), events.size());
+    tfrt::RunWhenReady(
+        events_span, [definition_event, events = std::move(events)]() {
+          Status s;
+          for (const auto& e : events) {
+            if (auto* error = e->GetErrorIfPresent()) {
+              s.Update(FailedPrecondition("Buffer Definition Event: %s",
+                                          error->message));
+            }
+          }
+          definition_event.emplace(std::move(s));
+        });
   }
+
   if (definition_event.IsAvailable()) {
     return PjRtFuture<Status>(*definition_event);
   } else {
@@ -1376,10 +1258,9 @@ Status TfrtCpuExecutable::SetUpDonation(bool tuple_inputs) {
 // and assemble the buffer pointers in order to call into CpuExecutable.
 static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> MemoryForAllocation(
     const BufferAllocation& allocation,
-    absl::Span<const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>> arguments) {
+    absl::Span<TrackedTfrtCpuDeviceBuffer* const> arguments) {
   if (allocation.is_entry_computation_parameter()) {
-    const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>& arg =
-        arguments[allocation.parameter_number()];
+    TrackedTfrtCpuDeviceBuffer* arg = arguments[allocation.parameter_number()];
     std::shared_ptr<MaybeOwningCpuMemory> out =
         arg->Buffer(allocation.param_shape_index());
     CHECK_EQ(allocation.size(), out->size())
@@ -1406,9 +1287,8 @@ static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> MemoryForAllocation(
 }
 
 static StatusOr<std::vector<std::shared_ptr<MaybeOwningCpuMemory>>>
-CreateBufferTable(
-    const BufferAssignment& assignment,
-    absl::Span<const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>> arguments) {
+CreateBufferTable(const BufferAssignment& assignment,
+                  absl::Span<TrackedTfrtCpuDeviceBuffer* const> arguments) {
   std::vector<std::shared_ptr<MaybeOwningCpuMemory>> buffers(
       assignment.Allocations().size());
   for (BufferAllocation::Index i = 0; i < assignment.Allocations().size();
@@ -1419,22 +1299,21 @@ CreateBufferTable(
   return std::move(buffers);
 }
 
-static StatusOr<absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4>>
+static absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4>
 CreateResultShapedBuffer(
     absl::Span<const BufferAllocation::Index> buffer_indices,
     absl::Span<const std::shared_ptr<MaybeOwningCpuMemory>> buffer_table,
-    absl::Span<const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>> arguments) {
+    absl::Span<TrackedTfrtCpuDeviceBuffer* const> arguments) {
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> output_buffers;
   output_buffers.reserve(buffer_indices.size());
   for (int i = 0; i < buffer_indices.size(); ++i) {
     output_buffers.push_back(buffer_table[buffer_indices[i]]);
   }
-  return {std::move(output_buffers)};
+  return output_buffers;
 }
 
 Status TfrtCpuExecutable::CheckBufferCompatibilities(
-    absl::Span<const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>> input_buffers)
-    const {
+    absl::Span<TrackedTfrtCpuDeviceBuffer* const> input_buffers) const {
   if (input_buffers.size() != input_buffer_sizes_in_bytes_.size()) {
     return InvalidArgument(
         "Execution supplied %lld buffers but compiled program expected %lld "
@@ -1494,10 +1373,14 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     }
   }
 
-  absl::InlinedVector<TfrtCpuBuffer::ScopedHold, 4> device_buffers;
-  absl::InlinedVector<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>, 4>
-      tracked_buffers;
-  device_buffers.reserve(argument_handles.size());
+  // `execute_event` indicates whether cpu computation is complete and whether
+  // there was an error.
+  auto execute_event = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  MarkEventReadyOnExit ready_on_exit(execute_event);
+
+  absl::InlinedVector<TfrtCpuBuffer::DonationTransaction, 4>
+      donation_transactions;
+  absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4> tracked_buffers;
   tracked_buffers.reserve(argument_handles.size());
   // To avoid clobbering inputs, we must ensure that
   //   `extra_deps` = inputs' definition events + donated inputs' usage events.
@@ -1522,46 +1405,46 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
     bool must_donate =
         donate_it != parameters_that_must_be_donated_.end() && *donate_it == i;
+    TrackedTfrtCpuDeviceBuffer* tracked_buffer = nullptr;
     if (must_donate) {
       ++donate_it;
-    }
-    device_buffers.emplace_back(tfrt_buffer->GetBufferWithHold(
-        must_donate ? TfrtCpuBuffer::ScopedHold::kDonation
-                    : TfrtCpuBuffer::ScopedHold::kUsage));
-    TfrtCpuBuffer::ScopedHold& device_buffer = device_buffers.back();
-    if (!device_buffer.ok()) {
-      return InvalidArgument(
-          "Invalid buffer passed to Execute() as argument %d to replica %d: "
-          "%s",
-          i, replica, device_buffer.status().ToString());
-    }
+      TF_ASSIGN_OR_RETURN(auto donation_transaction,
+                          tfrt_buffer->AcquireDonation());
 
-    // Definition events are never modified after buffer construction.
-    for (const auto& ev : device_buffer->DefinitionEvents()) {
-      if (!ev.IsAvailable()) {
-        input_deps.push_back(ev.CopyRCRef());
-      }
-    }
-    // If we are trying to donate this buffer, we must wait on its usage
-    // events as well as its definition events to ensure that all reads on
-    // this buffer (e.g., d2h transfer) have been completed before it can be
-    // mutated. Usage holds on this buffer are excluded during a donation hold
-    // so we know that its usage events won't be modified while we are
-    // enqueueing.
-    if (must_donate) {
-      for (const auto& ev : device_buffer->UsageEvents()) {
+      // After acquiring the buffer for donation, we retrieve the dependent
+      // usage events. Note that we don't need any locking here as
+      // AcquireDonation() is supposed to synchronize with other usages.
+      for (const auto& ev :
+           donation_transaction.device_buffer()->UsageEvents()) {
         if (!ev.IsAvailable()) {
           input_deps.push_back(ev.CopyRCRef());
         }
       }
+      tracked_buffer = donation_transaction.device_buffer();
+      tracked_buffers.push_back(tracked_buffer);
+      donation_transactions.push_back(std::move(donation_transaction));
+
+    } else {
+      tracked_buffer = tfrt_buffer->AcquireUsage(execute_event);
+      if (!tracked_buffer)
+        return InvalidArgument(
+            "Invalid buffer passed: buffer has been deleted or donated.");
+      tracked_buffers.push_back(tracked_buffer);
     }
-    tracked_buffers.push_back(device_buffer.buffer());
+
+    // Definition events are never modified after buffer construction.
+    for (const auto& ev : tracked_buffer->DefinitionEvents()) {
+      if (!ev.IsAvailable()) {
+        input_deps.push_back(ev.CopyRCRef());
+      }
+    }
   }
 
   TF_RETURN_IF_ERROR(CheckBufferCompatibilities(tracked_buffers));
 
   // Tuplize the inputs if compiler expects a single tuple argument but runtime
   // gets many inputs that are not yet tupled.
+  std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tuplized_arg;
   if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
     absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> leaf_buffers;
     leaf_buffers.reserve(tracked_buffers.size());
@@ -1574,9 +1457,10 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     tracked_buffers.clear();
     absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4>
         empty_definition_events;
-    tracked_buffers.push_back(std::make_shared<TrackedTfrtCpuDeviceBuffer>(
+    tuplized_arg = std::make_unique<TrackedTfrtCpuDeviceBuffer>(
         /*is_tuple=*/true, std::move(leaf_buffers),
-        std::move(empty_definition_events)));
+        std::move(empty_definition_events));
+    tracked_buffers.push_back(tuplized_arg.get());
   }
 
   auto* cpu_executable =
@@ -1584,9 +1468,8 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   TF_ASSIGN_OR_RETURN(
       std::vector<std::shared_ptr<MaybeOwningCpuMemory>> buffer_table,
       CreateBufferTable(cpu_executable->buffer_assignment(), tracked_buffers));
-  TF_ASSIGN_OR_RETURN(auto result_buffers,
-                      CreateResultShapedBuffer(result_buffer_indices_,
-                                               buffer_table, tracked_buffers));
+  auto result_buffers = CreateResultShapedBuffer(result_buffer_indices_,
+                                                 buffer_table, tracked_buffers);
 
   // The choice of where we wait is arbitrary; the reason for the wait is
   // pacing to avoid problems such as memory fragmentation and running ahead
@@ -1595,10 +1478,6 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   // launch is delayed.
   auto compute_reservation = std::make_unique<Semaphore::ScopedReservation>(
       device->max_inflight_computations_semaphore().ScopedAcquire(1));
-
-  // execute_event indicates whether cpu computation is complete and whether
-  // there was an error.
-  tfrt::AsyncValueRef<CpuEvent> execute_event;
 
   // Call the computation function following the calling convention.
   std::vector<void*> buffer_pointers;
@@ -1633,7 +1512,6 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
   if (input_deps.empty() && execute_inline) {
     // Synchronously call generated function.
-    execute_event = GetOrCreateReadyEvent(host_context);
 
     // Set denormal and rounding behavior to match the default TF
     // ThreadPool behavior.
@@ -1647,16 +1525,20 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
                                        buffer_pointers.data(), &status,
                                        nullptr);
 
+    for (auto& donation_transaction : donation_transactions) {
+      std::move(donation_transaction).Commit();
+    }
+
     std::optional<absl::string_view> error_message =
         xla::CustomCallStatusGetMessage(&status);
     if (error_message) {
       return InternalError("Generated function failed: %s", *error_message);
     }
+
   } else {
     // TODO(zhangqiaorjc): Only async launch expensive computations. Need
     // heuristics to decide what computation is expensive.
     // Asynchronously call generated function.
-    execute_event = tfrt::MakeConstructedAsyncValueRef<CpuEvent>(host_context);
 
     // We only created enough threads for one collective to complete.
     // The next collective launch will not be scheduled onto threadpool until
@@ -1675,8 +1557,9 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
          cpu_executable_copy = cpu_executable_,
          device_assignment = std::move(device_assignment),
          compute_reservation = std::move(compute_reservation),
-         tracked_buffers = std::move(tracked_buffers),
-         execute_event = execute_event.CopyRef(),
+         tuplized_arg = std::move(tuplized_arg),
+         donation_transactions = std::move(donation_transactions),
+         execute_event = std::move(ready_on_exit).Release(),
          input_deps_avs = std::move(input_deps_avs_copy)]() mutable {
           for (const auto& av : input_deps_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
@@ -1700,27 +1583,21 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
           std::optional<absl::string_view> error_message =
               xla::CustomCallStatusGetMessage(&status);
+
+          for (auto& donation_transaction : donation_transactions) {
+            std::move(donation_transaction).Commit();
+          }
+
           if (error_message) {
             // CPU computation fails with an error.
             execute_event.SetError(absl::StrFormat(
                 "Generated function failed: %s", *error_message));
-          } else {
-            // CPU computation completes.
-            execute_event.SetStateConcrete();
+            return;
           }
-        });
-  }
 
-  // Handle input event recording.
-  for (TfrtCpuBuffer::ScopedHold& b : device_buffers) {
-    if (b.type() == TfrtCpuBuffer::ScopedHold::kUsage) {
-      std::array<tfrt::AsyncValueRef<CpuEvent>, 1> usage_events{
-          execute_event.CopyRef()};
-      b.ConvertUsageHold(absl::MakeSpan(usage_events));
-    } else {
-      CHECK(b.type() == TfrtCpuBuffer::ScopedHold::kDonation);
-      b.ConfirmDonation();
-    }
+          // CPU computation completes.
+          execute_event.SetStateConcrete();
+        });
   }
 
   // Create output TFRT buffers.
@@ -1735,7 +1612,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
       absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events;
       definition_events.push_back(execute_event.CopyRef());
       auto leaf_tracked_device_buffer =
-          std::make_shared<TrackedTfrtCpuDeviceBuffer>(
+          std::make_unique<TrackedTfrtCpuDeviceBuffer>(
               /*is_tuple=*/false, std::move(sub_buffer),
               std::move(definition_events));
       auto leaf_buffer = std::make_unique<TfrtCpuBuffer>(
@@ -1747,7 +1624,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     // Program execution writes to output buffers so it's a definition event.
     absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events;
     definition_events.push_back(execute_event.CopyRef());
-    auto tracked_device_buffer = std::make_shared<TrackedTfrtCpuDeviceBuffer>(
+    auto tracked_device_buffer = std::make_unique<TrackedTfrtCpuDeviceBuffer>(
         /*is_tuple=*/result_shape.IsTuple(), std::move(result_buffers),
         std::move(definition_events));
     auto tfrt_output_buffer = std::make_unique<TfrtCpuBuffer>(

@@ -675,16 +675,6 @@ static void AllocateFlags() {
       flag_values->xla_gpu_deterministic_ops(),
       "Guarantees run-to-run determinism on GPU."));
   flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_simplify_scatters",
-      bool_setter_for(&DebugOptions::set_xla_gpu_simplify_scatters),
-      flag_values->xla_gpu_simplify_scatters(),
-      "Simplifies all Scatters to a canonical form."));
-  flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_simplify_gathers",
-      bool_setter_for(&DebugOptions::set_xla_gpu_simplify_gathers),
-      flag_values->xla_gpu_simplify_gathers(),
-      "Simplifies all Gathers to a canonical form."));
-  flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_enable_async_all_reduce",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_reduce),
       flag_values->xla_gpu_enable_async_all_reduce(),
@@ -711,6 +701,10 @@ static void AllocateFlags() {
       "ReduceScatter-AllReduce-AllGather sequence, with the initial "
       "ReduceScatter being performed over all of the devices in the same host. "
       "Set to < 1 to disable all-reduce decomposition."));
+  flag_objects->push_back(
+      tensorflow::Flag("xla_gpu_dump_llvmir",
+                       bool_setter_for(&DebugOptions::set_xla_gpu_dump_llvmir),
+                       flag_values->xla_gpu_dump_llvmir(), "Dump LLVM IR."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_enable_cudnn_frontend",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_frontend),

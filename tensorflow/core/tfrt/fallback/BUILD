@@ -23,6 +23,7 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
+        "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
@@ -90,6 +91,7 @@ cc_library(
         ":op_cost_map_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/util:env_var",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@tf_runtime//:hostcontext",

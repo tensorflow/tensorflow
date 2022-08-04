@@ -564,18 +564,25 @@ void UpdateEagerClientErrorCounter(const string& error_source,
 
 void UpdateTfMlirBridgeGraphAnalysisPerOp(
     const std::string& op_name, const std::string& construction_context,
-    bool is_single_core_inference_mode, const std::string& unsupported_reason,
-    bool has_unsupported_features) {
-  static auto* metric = monitoring::Counter<5>::New(
+    bool is_single_core_inference_mode, const std::string& num_replicas,
+    const std::string& num_cores_per_replica, const std::string& use_tpu,
+    const std::string& allow_soft_placement,
+    const std::string& use_spmd_for_xla_partitioning,
+    const std::string& unsupported_reason, bool has_unsupported_features) {
+  static auto* metric = monitoring::Counter<10>::New(
       "/tensorflow/core/tf_mlir_bridge_graph_analysis_per_op",
       "Tracks processing state per op in first phase of mlir bridge", "op_name",
-      "construction_context", "is_single_core_inference_mode",
-      "unsupported_reason", "has_unsupported_features");
+      "construction_context", "is_single_core_inference_mode", "num_replicas",
+      "num_cores_per_replica", "use_tpu", "allow_soft_placement",
+      "use_spmd_for_xla_partitioning", "unsupported_reason",
+      "has_unsupported_features");
 
   metric
       ->GetCell(op_name, construction_context,
-                is_single_core_inference_mode ? "Yes" : "No",
-                unsupported_reason, has_unsupported_features ? "Yes" : "No")
+                is_single_core_inference_mode ? "Yes" : "No", num_replicas,
+                num_cores_per_replica, use_tpu, allow_soft_placement,
+                use_spmd_for_xla_partitioning, unsupported_reason,
+                has_unsupported_features ? "Yes" : "No")
       ->IncrementBy(1);
 }
 

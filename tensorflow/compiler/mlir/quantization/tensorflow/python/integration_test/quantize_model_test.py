@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for quantize_model."""
+import itertools
 import os
 from typing import List, Mapping, Optional
 import warnings
@@ -51,6 +52,16 @@ from tensorflow.python.types import core
 # Type aliases for quantization method protobuf enums.
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
+
+
+def parameter_combinations(test_parameters):
+  """Generate all combinations of test parameters."""
+  real_parameters = []
+  for parameters in test_parameters:
+    keys = parameters.keys()
+    for curr in itertools.product(*parameters.values()):
+      real_parameters.append(dict(zip(keys, curr)))
+  return real_parameters
 
 
 class MatmulModel(module.Module):
@@ -259,45 +270,42 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     return any(
         map(lambda warning: substring in str(warning.message), warnings_list))
 
-  @parameterized.named_parameters(
-      ('none', None, False),
-      ('relu', nn_ops.relu, False),
-      ('relu6', nn_ops.relu6, False),
-      ('with_bias', None, True),
-      ('with_bias_and_relu', nn_ops.relu, True),
-      ('with_bias_and_relu6', nn_ops.relu6, True),
-  )
+  @parameterized.parameters(
+      parameter_combinations([{
+          'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
+          'has_bias': [True, False],
+          'target_opset': [quant_opts_pb2.XLA],
+      }]))
   @test_util.run_in_graph_and_eager_modes
   def test_qat_conv_model(self, activation_fn: Optional[ops.Operation],
-                          has_bias: bool):
+                          has_bias: bool, target_opset: quant_opts_pb2.OpSet):
 
     class ConvModel(module.Module):
+
+      def __init__(self):
+        self.filter_value = np.random.uniform(
+            low=-0.5, high=0.5, size=(2, 3, 3, 2)).astype('f4')
 
       @def_function.function(input_signature=[
           tensor_spec.TensorSpec(
               name='input', shape=[1, 3, 4, 3], dtype=dtypes.float32),
-          tensor_spec.TensorSpec(
-              name='filter', shape=[2, 3, 3, 2], dtype=dtypes.float32),
       ])
-      def conv(self, input_tensor: core.Tensor,
-               filter_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+      def conv(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
         """Performs a 2D convolution operation.
 
         Args:
           input_tensor: Input tensor to perform convolution on.
-          filter_tensor: Filter tensor to perform convolution with.
 
         Returns:
           A map of: output key -> output result.
         """
         q_input = array_ops.fake_quant_with_min_max_args(
             input_tensor, min=-0.1, max=0.2, num_bits=8, narrow_range=False)
-        q_filters = array_ops.fake_quant_with_min_max_args(
-            filter_tensor, min=-1.0, max=2.0, num_bits=8, narrow_range=False)
-        bias = array_ops.constant([0, 0], dtype=dtypes.float32)
+        filter_tensor = ops.convert_to_tensor(self.filter_value)
+        bias = array_ops.constant([0.1, 0.2], dtype=dtypes.float32)
         out = nn_ops.conv2d(
             q_input,
-            q_filters,
+            filter_tensor,
             strides=[1, 1, 2, 1],
             dilations=[1, 1, 1, 1],
             padding='SAME',
@@ -316,11 +324,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = [tag_constants.SERVING]
-    output_directory = self.create_tempdir().full_path
 
+    # Check the converted model with TF opset as the baseline.
+    output_directory = self.create_tempdir().full_path
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=quant_opts_pb2.TF)
 
     converted_model = quantize_model.quantize(input_saved_model_path,
                                               [signature_key], tags,
@@ -332,13 +342,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     input_data = np.random.uniform(
         low=-0.1, high=0.2, size=(1, 3, 4, 3)).astype('f4')
-    filter_data = np.random.uniform(
-        low=-0.5, high=0.5, size=(2, 3, 3, 2)).astype('f4')
-
-    expected_outputs = model.conv(input_data, filter_data)
+    expected_outputs = model.conv(input_data)
     got_outputs = converted_model.signatures[signature_key](
-        input=ops.convert_to_tensor(input_data),
-        filter=ops.convert_to_tensor(filter_data))
+        input=ops.convert_to_tensor(input_data))
     # TODO(b/215633216): Check if the accuracy is acceptable.
     self.assertAllClose(expected_outputs, got_outputs, atol=0.01)
 
@@ -346,6 +352,32 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(
         self._contains_quantized_function_call(output_meta_graphdef))
+
+    # Check the converted model in the target opset.
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=target_opset)
+
+    output_directory = self.create_tempdir().full_path
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              [signature_key], tags,
+                                              output_directory,
+                                              quantization_options)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {signature_key})
+    loader = saved_model_loader.SavedModelLoader(output_directory)
+    meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
+    if target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(meta_graphdef, 'XlaConvV2'))
+
+    new_outputs = converted_model.signatures[signature_key](
+        input=ops.convert_to_tensor(input_data))
+    # The difference between TF and XLA path is expected to be small (smaller
+    # or equal to 1 in the quantized domain).
+    self.assertAllClose(new_outputs, got_outputs, atol=0.00275)
 
   # Run this test only with the eager mode.
   @test_util.run_v2_only
@@ -429,29 +461,38 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._contains_quantized_function_call(output_meta_graphdef))
 
   @parameterized.named_parameters(
-      ('none', None, False, False, quant_opts_pb2.TF),
-      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF),
-      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF),
-      ('bn', None, False, True, quant_opts_pb2.TF),
-      ('bn_and_relu', nn_ops.relu, False, True, quant_opts_pb2.TF),
-      ('with_bias', None, True, False, quant_opts_pb2.TF),
-      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF),
-      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True, quant_opts_pb2.TF),
-      ('with_bias_and_relu', nn_ops.relu, True, False, quant_opts_pb2.TF),
-      ('with_bias_and_relu6', nn_ops.relu6, True, False, quant_opts_pb2.TF),
-      ('with_bias_and_bn_to_xla', None, True, True, quant_opts_pb2.XLA),
+      ('none', None, False, False, quant_opts_pb2.TF, False),
+      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF, False),
+      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF, False),
+      ('bn', None, False, True, quant_opts_pb2.TF, False),
+      ('bn_and_relu', nn_ops.relu, False, True, quant_opts_pb2.TF, False),
+      ('with_bias', None, True, False, quant_opts_pb2.TF, False),
+      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF, False),
+      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True, quant_opts_pb2.TF,
+       False),
+      ('with_bias_and_relu', nn_ops.relu, True, False, quant_opts_pb2.TF,
+       False),
+      ('with_bias_and_relu6', nn_ops.relu6, True, False, quant_opts_pb2.TF,
+       False),
+      ('with_bias_and_bn_to_xla', None, True, True, quant_opts_pb2.XLA, False),
       ('with_bias_and_relu6_to_xla', nn_ops.relu6, True, False,
-       quant_opts_pb2.XLA),
+       quant_opts_pb2.XLA, False),
+      ('with_bias_and_bn_to_xla_dynamic', None, True, True, quant_opts_pb2.XLA,
+       True),
+      ('with_bias_and_relu6_to_xla_dynamic', nn_ops.relu6, True, False,
+       quant_opts_pb2.XLA, True),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model(self, activation_fn: Optional[ops.Operation],
                           has_bias: bool, has_bn: bool,
-                          target_opset: quant_opts_pb2.OpSet):
+                          target_opset: quant_opts_pb2.OpSet,
+                          input_shape_dynamic: bool):
+    input_shape = [None, None, None, 3] if input_shape_dynamic else [1, 3, 4, 3]
 
     class ConvModel(module.Module):
 
       @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
+          tensor_spec.TensorSpec(shape=input_shape, dtype=dtypes.float32)
       ])
       def conv(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
         """Performs a 2D convolution operation.
@@ -526,30 +567,39 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._contains_op(output_meta_graphdef, 'FusedBatchNormV3'))
 
   @parameterized.named_parameters(
-      ('none', None, False, False, quant_opts_pb2.TF),
-      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF),
-      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF),
-      ('bn', None, False, True, quant_opts_pb2.TF),
-      ('bn_and_relu', nn_ops.relu, False, True, quant_opts_pb2.TF),
-      ('with_bias', None, True, False, quant_opts_pb2.TF),
-      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF),
-      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True, quant_opts_pb2.TF),
-      ('with_bias_and_relu', nn_ops.relu, True, False, quant_opts_pb2.TF),
-      ('with_bias_and_relu6', nn_ops.relu6, True, False, quant_opts_pb2.TF),
-      ('bn_and_relu_to_xla', nn_ops.relu, False, True, quant_opts_pb2.XLA),
-      ('with_bias_and_relu_to_xla', nn_ops.relu, True, False,
-       quant_opts_pb2.XLA),
+      ('none', None, False, False, quant_opts_pb2.TF, False),
+      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF, False),
+      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF, False),
+      ('bn', None, False, True, quant_opts_pb2.TF, False),
+      ('bn_and_relu', nn_ops.relu, False, True, quant_opts_pb2.TF, False),
+      ('with_bias', None, True, False, quant_opts_pb2.TF, False),
+      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF, False),
+      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True, quant_opts_pb2.TF,
+       False),
+      ('with_bias_and_relu', nn_ops.relu, True, False, quant_opts_pb2.TF,
+       False),
+      ('with_bias_and_relu6', nn_ops.relu6, True, False, quant_opts_pb2.TF,
+       False),
+      ('with_bias_and_bn_to_xla', None, True, True, quant_opts_pb2.XLA, False),
+      ('with_bias_and_relu6_to_xla', nn_ops.relu6, True, False,
+       quant_opts_pb2.XLA, False),
+      ('with_bias_and_bn_to_xla_dynamic', None, True, True, quant_opts_pb2.XLA,
+       True),
+      ('with_bias_and_relu6_to_xla_dynamic', nn_ops.relu6, True, False,
+       quant_opts_pb2.XLA, True),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_depthwise_conv_ptq_model(self,
                                     activation_fn: Optional[ops.Operation],
                                     has_bias: bool, has_bn: bool,
-                                    target_opset: quant_opts_pb2.OpSet):
+                                    target_opset: quant_opts_pb2.OpSet,
+                                    input_shape_dynamic: bool):
+    input_shape = [None, None, None, 3] if input_shape_dynamic else [1, 3, 4, 3]
 
     class DepthwiseConvModel(module.Module):
 
       @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
+          tensor_spec.TensorSpec(shape=input_shape, dtype=dtypes.float32)
       ])
       def conv(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
         """Performs a 2D convolution operation.

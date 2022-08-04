@@ -1453,7 +1453,7 @@ class Context(object):
       self._physical_device_to_index = {
           p: i for i, p in enumerate(self._physical_devices)
       }
-      # We maintain a seperate list just so we can check whether the device in
+      # We maintain a separate list just so we can check whether the device in
       # _physical_devices is a PluggableDevice.
       pluggable_devs = pywrap_tfe.TF_ListPluggablePhysicalDevices()
       self._pluggable_devices = [

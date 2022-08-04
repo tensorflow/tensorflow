@@ -27,6 +27,9 @@ namespace mlir {
 namespace quant {
 class QuantizationDialect;
 }
+namespace quantfork {
+class QuantizationForkDialect;
+}
 namespace mhlo {
 class MhloDialect;
 }

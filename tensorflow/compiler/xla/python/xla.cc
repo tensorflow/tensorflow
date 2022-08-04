@@ -373,8 +373,15 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("get_compiled_memory_stats", &PyExecutable::GetCompiledMemoryStats)
       .def("delete", &PyExecutable::Delete)
       .def("execute", &PyExecutable::Execute, py::arg("arguments"))
+      // TODO(chky): Change execute() to always return token rather than hanving
+      // two API entry points.
+      .def("execute_with_token", &PyExecutable::ExecuteWithToken,
+           py::arg("arguments"))
       .def("execute_sharded_on_local_devices",
            &PyExecutable::ExecuteShardedOnLocalDevices, py::arg("arguments"))
+      .def("execute_sharded_on_local_devices_with_tokens",
+           &PyExecutable::ExecuteShardedOnLocalDevicesWithTokens,
+           py::arg("arguments"))
       .def("hlo_modules", &PyExecutable::HloModules)
       .def("keep_alive", &PyExecutable::KeepAlive)
       .def_property_readonly("traceback", &PyExecutable::traceback)
@@ -386,6 +393,8 @@ PYBIND11_MODULE(xla_extension, m) {
                                  return py::none();
                                }
                              });
+  py::class_<PyToken> token(m, "Token");
+  token.def("block_until_ready", &PyToken::Await);
 
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
         py::arg("buffer"), py::arg("take_ownership") = true);

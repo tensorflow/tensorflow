@@ -31,6 +31,17 @@ limitations under the License.
 
 namespace xla {
 
+class PyToken {
+ public:
+  PyToken() = default;
+  explicit PyToken(PjRtFuture<Status> future) : future_(std::move(future)) {}
+
+  Status Await();
+
+ private:
+  PjRtFuture<Status> future_;
+};
+
 // Python wrapper around PjRtExecutable. We use a wrapper class:
 // a) to keep the PyClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
@@ -70,12 +81,20 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   StatusOr<std::vector<PyBuffer::object>> Execute(
       absl::Span<PyBuffer::object const> args);
 
+  StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteWithToken(
+      absl::Span<PyBuffer::object const> args);
+
   // Takes args indexed by argid then deviceid, transposes them, and passes to
   // PjRtExecutable::Execute. The result is similarly transposed back into the
   // argid,deviceid format.
   // args is [num_args x num_devices].
   StatusOr<std::vector<std::vector<PyBuffer::object>>>
   ExecuteShardedOnLocalDevices(
+      absl::Span<const std::vector<PyBuffer::object>> args);
+
+  StatusOr<std::pair<std::vector<std::vector<PyBuffer::object>>,
+                     std::vector<PyToken>>>
+  ExecuteShardedOnLocalDevicesWithTokens(
       absl::Span<const std::vector<PyBuffer::object>> args);
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
@@ -94,6 +113,15 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   void KeepAlive(pybind11::object obj);
 
  private:
+  StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteInternal(
+      absl::Span<PyBuffer::object const> args,
+      std::optional<std::vector<PjRtFuture<Status>>>& returned_futures);
+  StatusOr<std::pair<std::vector<std::vector<PyBuffer::object>>,
+                     std::vector<PyToken>>>
+  ExecuteShardedOnLocalDevicesInternal(
+      absl::Span<const std::vector<PyBuffer::object>> args,
+      std::optional<std::vector<PjRtFuture<Status>>>& returned_futures);
+
   friend class PyClient;
 
   std::shared_ptr<PyClient> client_;

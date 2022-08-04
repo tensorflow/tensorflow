@@ -1,9 +1,8 @@
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "filegroup", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
@@ -331,8 +330,8 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/legalize_hlo_patterns.td",
     deps = [
-        "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncTdFiles",
     ],
@@ -351,7 +350,7 @@ cc_library(
         ":tensorflow",
         ":tf_device_pass_inc_gen",
         ":tf_pass_inc_gen",
-        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
@@ -1267,7 +1266,6 @@ cc_library(
         ":xla_sharding_util",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
-        "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
@@ -1276,6 +1274,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/client:sharding_builder",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -2097,9 +2096,9 @@ COMPILE_MLIR_UTIL_DEPS = [
     "@llvm-project//mlir:Support",
     "@llvm-project//mlir:TransformUtils",
     "@llvm-project//mlir:Transforms",
-    "//tensorflow/compiler/mlir/hlo:hlo",
-    "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
-    "//tensorflow/compiler/mlir/hlo:sink_constants_to_control_flow",
+    "//tensorflow/compiler/xla/mlir_hlo",
+    "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
+    "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
     "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
     "//tensorflow/compiler/mlir/xla:tf_xla_passes",
     "//tensorflow/compiler/mlir/xla:xla_passes",

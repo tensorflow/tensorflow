@@ -602,7 +602,6 @@ class Function(core.GenericFunction, trackable.Trackable):
     self._stateless_fn = None  # GUARDED_BY(self._lock)
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
-    self._input_signature = input_signature
     self._key_for_call_stats = self._get_key_for_call_stats()
     self._omit_frequent_tracing_warning = False
     ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
@@ -746,23 +745,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       kwds: Keyword arguments to the python callable.
       add_initializers_to: Where to collect variable initializers, if not None.
     """
-
-    if self._input_signature is not None:
-      arglen = len(self._input_signature)
-      arg_names_len = len(self.function_spec.arg_names)
-      default_arg_len = len(self.function_spec.fullargspec.defaults or ())
-      required_arg_len = arg_names_len - default_arg_len
-      # The input signature must cover all required function arguments.
-      if arglen < required_arg_len:
-        missing_tensor_specs = self.function_spec.arg_names[
-            arglen:required_arg_len]
-        raise TypeError(
-            f"The decorated function {self._name} has {required_arg_len} "
-            f"required argument(s), but tf.function was only passed an "
-            f"input_signature of length {arglen}. This covers {arglen} "
-            f"required argument(s): {self.function_spec.arg_names[:arglen]}, "
-            f"but TensorSpecs are still required for the remaining "
-            f"{len(missing_tensor_specs)} argument(s): {missing_tensor_specs}.")
+    self.function_spec.validate_input_signature_with_argspec()
 
     created_variables = []
     lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
@@ -803,7 +786,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         python_function=(self._python_function
                          if python_function is None else python_function),
         name=self._name,
-        input_signature=self._input_signature,
+        input_signature=self.input_signature,
         autograph=self._autograph,
         jit_compile=self._jit_compile,
         reduce_retracing=self._reduce_retracing,
@@ -981,7 +964,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     else:
       _, _, filtered_flat_args = (
           self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
-              *args, **kwds))
+              args, kwds))
       # If we did not create any variables the trace we have is good enough.
       return self._concrete_stateful_fn._call_flat(
           filtered_flat_args, self._concrete_stateful_fn.captured_inputs)  # pylint: disable=protected-access
@@ -1007,7 +990,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     # so we fall back to initializing with conds while running the function.
     canon_args, canon_kwds, filtered_flat_args = (
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
-            *args, **kwds))
+            args, kwds))
     return function_lib.defun(fn_with_cond)(canon_args, canon_kwds,
                                             filtered_flat_args)
 
@@ -1023,8 +1006,7 @@ class Function(core.GenericFunction, trackable.Trackable):
 
     # pylint: disable=protected-access
     _, _, filtered_flat_args = (
-        concrete_fn._function_spec.canonicalize_function_inputs(
-            *args, **kwargs))
+        concrete_fn._function_spec.canonicalize_function_inputs(args, kwargs))
 
     def compiler_ir_generator(stage="hlo", device_name=None):
       # TODO(cheshire): This is a hack to get the current "preferred" device,
@@ -1173,7 +1155,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         logging.info("Unsupported signature for serialization: %s.", signature)
         continue
       equal_to_signature = functools.partial(
-          function_lib.is_same_structure, signature, check_values=True)
+          function_spec_lib.is_same_structure, signature, check_values=True)
       if not any(equal_to_signature(s) for s in seen_signatures):
         seen_signatures.append(signature)
 
@@ -1640,10 +1622,6 @@ def function(func=None,
      `ValueError` when attempting to use `jit_compile=True`, but XLA support is
      not available.
   """
-  if func is not None:
-    function_lib.validate_python_function(func)
-  if input_signature is not None:
-    function_lib.validate_signature(input_signature)
   if experimental_follow_type_hints is None:
     experimental_follow_type_hints = False
 

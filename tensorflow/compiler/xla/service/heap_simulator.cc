@@ -872,6 +872,15 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
   absl::btree_map<int64_t, int64_t, std::greater<int64_t>> free_chunks{
       {0, INT64_MAX}};  // Initialize with "infinite" free memory.
 
+  // Find the max size of interval across its colocations and use this value to
+  // determine whether the buffer will fit in the heap.
+  int64_t max_colocation_size = buffer_interval.size;
+  for (const BufferType* colocation :
+       GetTransitiveColocations(buffer_interval)) {
+    max_colocation_size =
+        std::max(max_colocation_size, buffer_intervals_.at(colocation).size);
+  }
+
   // Subtract chunks that are in use from the free chunks.
   auto subtract_used_chunks = [&](const std::vector<Chunk>& used_chunks) {
     for (const Chunk& used_chunk : used_chunks) {
@@ -900,7 +909,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
 
       // Create a new free chunk after the used chunk, if it is large enough.
       int64_t chunk_end_aligned = RoundUpTo(used_chunk.chunk_end(), alignment_);
-      if (free_chunk_end - chunk_end_aligned >= buffer_interval.size) {
+      if (free_chunk_end - chunk_end_aligned >= max_colocation_size) {
         CHECK(free_chunks.insert({chunk_end_aligned, free_chunk_end}).second);
       }
     }
@@ -920,7 +929,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
   }
 
   // Try to find a large enough free chunk containing the preferred offset.
-  Chunk chunk{preferred_offset, buffer_interval.size};
+  Chunk chunk{preferred_offset, max_colocation_size};
   auto it = (preferred_offset < 0) ? free_chunks.end()
                                    : free_chunks.lower_bound(preferred_offset);
   if (it == free_chunks.end() || (it->second < chunk.chunk_end())) {
@@ -941,14 +950,21 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
         buffer_interval,
     GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk chunk) {
   // Update the maximum heap size according to the one determined by the chunk
-  // candidate.
+  // candidate. In case of colocations of different sizes, the chunk size
+  // returned is the maximum of all colocations, so use this value to update the
+  // heap size.
   result_.heap_size = result_.UpdatedHeapSize(chunk);
+  // Now, update the chunk size to the actual size of the buffer interval.
+  chunk.size = buffer_interval.size;
   interval_tree_.Add(buffer_interval.start, buffer_interval.end, chunk);
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
-    AddToChunkMap(colocation, chunk);
     auto colocation_interval = buffer_intervals_[colocation];
+    // Create a colocation chunk with the same offset but with the correct size
+    // of the colocated interval in case the colocations are of different sizes.
+    Chunk colocation_chunk{chunk.offset, colocation_interval.size};
+    AddToChunkMap(colocation, colocation_chunk);
     interval_tree_.Add(colocation_interval.start, colocation_interval.end,
-                       chunk);
+                       colocation_chunk);
   }
 
   AddToChunkMap(buffer_interval.buffer, chunk);

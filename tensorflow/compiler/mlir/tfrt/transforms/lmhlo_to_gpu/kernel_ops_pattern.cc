@@ -38,9 +38,8 @@
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -64,9 +63,13 @@
 namespace tensorflow {
 
 using mlir::ArrayRef;
+using mlir::FloatType;
 using mlir::Operation;
 using mlir::SmallVector;
 using mlir::Value;
+using mlir::arith::ConstantFloatOp;
+using mlir::arith::ConstantIntOp;
+using mlir::arith::ConstantOp;
 using mlir::memref::GetGlobalOp;
 using xla::gpu::DeviceToDeviceCopyThunk;
 using xla::gpu::IrEmitterContext;
@@ -77,6 +80,28 @@ using xla::gpu::ThunkSequence;
 using ConstantInfo = xla::gpu::GpuExecutable::ConstantInfo;
 
 namespace {
+
+mlir::Value MakeBitPatternConstant(mlir::OpBuilder& builder, mlir::Location loc,
+                                   mlir::Type type, uint32_t bit_pattern) {
+  // In XLA a 1-byte bit pattern copied to fill a 32-byte word when
+  // `Memset32BitValueThunk` is constructed, so to get back an `i1` constant we
+  // only need to check if any bit is set to `1`.
+  if (type.isInteger(1)) {
+    return builder.create<ConstantOp>(loc, builder.getBoolAttr(bit_pattern));
+  }
+
+  if (type.isInteger(32)) {
+    llvm::APInt i32(32, bit_pattern);
+    return builder.create<ConstantIntOp>(loc, i32.getSExtValue(), type);
+  }
+
+  if (type.isF32()) {
+    llvm::APFloat f32(llvm::APInt(32, bit_pattern).bitsToFloat());
+    return builder.create<ConstantFloatOp>(loc, f32, type.cast<FloatType>());
+  }
+
+  llvm_unreachable("unsupported type");
+}
 
 // Replaces lmhlo ops within a module with gpu.launch_func and gpu.memcpy ops.
 struct KernelOpsPattern : mlir::OpRewritePattern<mlir::ModuleOp> {
@@ -440,25 +465,46 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
   rewriter.eraseOp(op);
 }
 
+// An overload set for defining predicates for operations that should
+// conditionally go through the XLA GPU code emitters.
+template <typename OpTy>
+static bool HasGpuEmitter(OpTy) {
+  return true;
+}
+
+// Select custom calls that have corresponding GPU emitters.
+static bool HasGpuEmitter(mlir::lmhlo::CustomCallOp custom_call) {
+  llvm::StringRef target = custom_call.getCallTargetName();
+  return target == "SliceToDynamic" || target == "PadToStatic";
+}
+
 mlir::LogicalResult KernelOpsPattern::matchAndRewrite(
     mlir::ModuleOp module_op, mlir::PatternRewriter& rewriter) const {
   SmallVector<RewriteData, 4> rewrites;
 
   // Get data to rewrite kernel ops without changing the IR.
-  auto walk = [&](auto concrete_op) {
-    return module_op.walk([&](decltype(concrete_op) op) -> mlir::WalkResult {
+  auto walk = [&](auto op_type_tag) {
+    using OpTy = decltype(op_type_tag);
+
+    return module_op.walk([&](OpTy op) -> mlir::WalkResult {
+      if (!HasGpuEmitter(op)) return mlir::success();
+
       auto data = Match(op);
-      if (!data)
-        return rewriter.notifyMatchFailure(op, toString(data.takeError()));
+      if (auto err = data.takeError())
+        return rewriter.notifyMatchFailure(op, toString(std::move(err)));
+
       rewrites.emplace_back(std::move(*data));
       return mlir::success();
     });
   };
+
+  // Compile all operations that have GPU code emitters to the GPU binary,
   if (walk(mlir::lmhlo::FusionOp()).wasInterrupted() ||
       walk(mlir::lmhlo::RngGetAndUpdateStateOp()).wasInterrupted() ||
       walk(mlir::lmhlo::ScatterOp()).wasInterrupted() ||
       walk(mlir::lmhlo::SelectAndScatterOp()).wasInterrupted() ||
       walk(mlir::lmhlo::SortOp()).wasInterrupted() ||
+      walk(mlir::lmhlo::CustomCallOp()).wasInterrupted() ||
       walk(mlir::gpu::LaunchFuncOp()).wasInterrupted())
     return mlir::failure();
 

@@ -39,6 +39,7 @@
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/tfrt_utils.h"
 #include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
@@ -66,6 +67,8 @@ TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
 
 namespace xla {
 namespace gpu {
+
+using Eigen::half;
 
 using llvm::ArrayRef;
 using llvm::Error;
@@ -100,6 +103,8 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 
 // -------------------------------------------------------------------------- //
 
+// Add custom call arguments and attributes encoding for custom HLO enums and
+// structs, so that we can pass them to custom calls.
 void PopulateLmhloToXlaAttrEncoding(
     jitrt::CustomCallAttrEncodingSet& encoding) {
   encoding.Add<
@@ -107,6 +112,14 @@ void PopulateLmhloToXlaAttrEncoding(
                               se::dnn::ActivationMode>>(
       [](lmhlo_gpu::Activation value) -> se::dnn::ActivationMode {
         return ConvertConvActivationMode(value).value();
+      });
+
+  encoding.Add<jitrt::EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
+                                       lmhlo_gpu::CublasLtMatmulEpilogue,
+                                       se::cuda::BlasLt::Epilogue>>(
+      [](lmhlo_gpu::CublasLtMatmulEpilogue value)
+          -> se::cuda::BlasLt::Epilogue {
+        return cublas_lt::AsBlasLtEpilogue(value).value();
       });
 
   encoding.Add<
@@ -266,53 +279,8 @@ LogicalResult JitRtAsyncCollectiveSupport::PushEvent(int32_t uid,
 
 // -------------------------------------------------------------------------- //
 
-static PrimitiveType ToPrimitiveType(tfrt::DType dtype) {
-  switch (dtype) {
-    // Unsigned integer types.
-    case tfrt::DType::UI8:
-      return PrimitiveType::U8;
-    case tfrt::DType::UI16:
-      return PrimitiveType::U16;
-    case tfrt::DType::UI32:
-      return PrimitiveType::U32;
-    case tfrt::DType::UI64:
-      return PrimitiveType::U64;
-
-    // Signed integer types.
-    case tfrt::DType::I1:
-      return PrimitiveType::PRED;
-    case tfrt::DType::I8:
-      return PrimitiveType::S8;
-    case tfrt::DType::I16:
-      return PrimitiveType::S16;
-    case tfrt::DType::I32:
-      return PrimitiveType::S32;
-    case tfrt::DType::I64:
-      return PrimitiveType::S64;
-
-    // Floating point types.
-    case tfrt::DType::F16:
-      return PrimitiveType::F16;
-    case tfrt::DType::F32:
-      return PrimitiveType::F32;
-    case tfrt::DType::F64:
-      return PrimitiveType::F64;
-    case tfrt::DType::BF16:
-      return PrimitiveType::BF16;
-
-    // Complex types.
-    case tfrt::DType::Complex64:
-      return PrimitiveType::C64;
-    case tfrt::DType::Complex128:
-      return PrimitiveType::C128;
-
-    default:
-      LOG(FATAL) << "Unsupported data type: " << dtype;
-  }
-}
-
 static Shape ToShape(const jitrt::StridedMemrefView& memref) {
-  PrimitiveType type = ToPrimitiveType(memref.dtype);
+  PrimitiveType type = TfrtToPrimitiveType(memref.dtype);
 
   // Recover `minor_to_major` dimensions permutation from strides.
   auto indexed_strides_range =
@@ -388,7 +356,7 @@ FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
     int element_count = 1;
     for (int size : source->sizes) element_count *= size;
     device_buffers.emplace_back(DeviceBufferPair{
-        ToPrimitiveType(source->dtype), element_count,
+        TfrtToPrimitiveType(source->dtype), element_count,
         GetDeviceAddress(*source), GetDeviceAddress(*destination)});
   }
   return device_buffers;
@@ -564,6 +532,118 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .Attr<int64_t>("uid")
                              .To<RuntimeChecks()>(Gemm::Handler())
                              .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+}
+
+// -------------------------------------------------------------------------- //
+
+// TODO(ezhulenev): Cache matmul plans similar to GemmConfig for Gemm.
+
+namespace {
+struct CublasLtMatmul {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   const DebugOptions* debug_options,
+                   jitrt::StridedMemrefView a, jitrt::StridedMemrefView b,
+                   jitrt::StridedMemrefView c, jitrt::StridedMemrefView d,
+                   Optional<jitrt::StridedMemrefView> bias, int64_t algorithm,
+                   double alpha_real, double alpha_imag, double beta,
+                   DotDimensionNumbers dot_dims,
+                   se::cuda::BlasLt::Epilogue epilogue,
+                   ArrayRef<int32_t> precision, int64_t uid) const;
+
+  static CublasLtMatmul Handler() { return CublasLtMatmul(); }
+};
+}  // namespace
+
+Error CublasLtMatmul::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, jitrt::StridedMemrefView a,
+    jitrt::StridedMemrefView b, jitrt::StridedMemrefView c,
+    jitrt::StridedMemrefView d, Optional<jitrt::StridedMemrefView> bias,
+    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
+    DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
+    ArrayRef<int32_t> precision, int64_t uid) const {
+  VLOG(3) << "Running CublasLtMatmul";
+  se::Stream* stream = run_options->stream();
+
+  // Construct a plan from a gemm config and an epilogue.
+  auto cfg = GetGemmConfig(a, b, c, algorithm, alpha_real, alpha_imag, beta,
+                           dot_dims.lhs_batch, dot_dims.lhs_contract,
+                           dot_dims.rhs_batch, dot_dims.rhs_contract);
+  if (!cfg.ok()) return AsError(cfg);
+
+  auto plan = cublas_lt::MatmulPlan::From(*cfg, epilogue);
+  if (!plan.ok()) return AsError(plan);
+
+  auto algos = plan->GetAlgorithms(stream);
+  if (!algos.ok()) return AsError(algos);
+
+  se::DeviceMemoryBase a_data = GetDeviceAddress(a);
+  se::DeviceMemoryBase b_data = GetDeviceAddress(b);
+  se::DeviceMemoryBase c_data = GetDeviceAddress(c);
+  se::DeviceMemoryBase d_data = GetDeviceAddress(d);
+  se::DeviceMemoryBase bias_data;
+  if (bias.has_value()) bias_data = GetDeviceAddress(*bias);
+
+  se::OwningScratchAllocator<> scratch_allocator(
+      stream->parent()->device_ordinal(), stream->parent()->GetAllocator());
+
+  auto st =
+      plan->ExecuteOnStream(stream, a_data, b_data, c_data, d_data, bias_data,
+                            (*algos)[algorithm], scratch_allocator);
+  if (!st.ok()) return AsError(st);
+
+  return Error::success();
+}
+
+// Adds custom call bindings for matmul operations.
+template <typename... Ts>
+static auto BindMatmulAttributes(jitrt::CustomCallBinding<Ts...> binding) {
+  return std::move(binding)
+      .template Attr<int64_t>("algorithm")
+      .template Attr<double>("alpha_real")
+      .template Attr<double>("alpha_imag")
+      .template Attr<double>("beta")
+      .template Attr<DotDimensionNumbers>("dot_dims")
+      .template Attr<se::cuda::BlasLt::Epilogue>("epilogue")
+      .template Attr<ArrayRef<int32_t>>("precision")
+      .template Attr<int64_t>("uid");
+}
+
+static bool CublasLtMatmul(runtime::KernelContext* ctx, void** args,
+                           void** attrs) {
+  static auto* handler =
+      BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul")
+                               .UserData<const ServiceExecutableRunOptions*>()
+                               .UserData<const DebugOptions*>()
+                               .Arg<jitrt::StridedMemrefView>()  // a
+                               .Arg<jitrt::StridedMemrefView>()  // b
+                               .Arg<jitrt::StridedMemrefView>()  // c
+                               .Arg<jitrt::StridedMemrefView>()  // d
+                               .Value(CustomCall::None)          // bias
+                           )
+          .To<RuntimeChecks()>(CublasLtMatmul::Handler())
+          .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+}
+
+static bool CublasLtMatmulBias(runtime::KernelContext* ctx, void** args,
+                               void** attrs) {
+  static auto* handler =
+      BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul.bias")
+                               .UserData<const ServiceExecutableRunOptions*>()
+                               .UserData<const DebugOptions*>()
+                               .Arg<jitrt::StridedMemrefView>()  // a
+                               .Arg<jitrt::StridedMemrefView>()  // b
+                               .Arg<jitrt::StridedMemrefView>()  // c
+                               .Arg<jitrt::StridedMemrefView>()  // d
+                               .Arg<jitrt::StridedMemrefView>()  // bias
+                           )
+          .To<RuntimeChecks()>(CublasLtMatmul::Handler())
+          .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
@@ -878,7 +958,7 @@ Error Infeed::operator()(const ServiceExecutableRunOptions* run_options,
 
     // Check that destination shape matches the source shape.
     Shape dest_shape = ToShape(*dest);
-    if (!ShapeUtil::Equal(dest_shape, source_shape)) {
+    if (!ShapeUtil::ReshapeIsBitcast(dest_shape, source_shape)) {
       return MakeStringError(
           "The destination shape does not match the source shape");
     }
@@ -947,7 +1027,7 @@ Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
 
     // Check that destination shape matches the source shape.
     Shape source_shape = ToShape(*source);
-    if (!ShapeUtil::Equal(dest_shape, source_shape)) {
+    if (!ShapeUtil::ReshapeIsBitcast(dest_shape, source_shape)) {
       return MakeStringError(
           "The destination shape does not match the source shape");
     }
@@ -990,20 +1070,22 @@ enum class MemcpyDirection { kDeviceToDevice, kDeviceToHost, kHostToDevice };
 
 template <MemcpyDirection direction>
 struct Memcpy {
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           jitrt::FlatMemrefView dst,
-                           jitrt::FlatMemrefView src) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   jitrt::FlatMemrefView dst, jitrt::FlatMemrefView src) const;
   static Memcpy Handler() { return Memcpy(); }
 };
 }  // namespace
 
 template <MemcpyDirection direction>
-LogicalResult Memcpy<direction>::operator()(
+Error Memcpy<direction>::operator()(
     const ServiceExecutableRunOptions* run_options, jitrt::FlatMemrefView dst,
     jitrt::FlatMemrefView src) const {
   se::Stream* stream = run_options->stream();
 
-  if (dst.size_in_bytes != src.size_in_bytes) return failure();
+  if (dst.size_in_bytes != src.size_in_bytes) {
+    return MakeStringError(
+        "Source memref size does not match destination memref size");
+  }
 
   switch (direction) {
     case MemcpyDirection::kDeviceToDevice: {
@@ -1026,10 +1108,10 @@ LogicalResult Memcpy<direction>::operator()(
   // transfer is completed.
   if (direction != MemcpyDirection::kDeviceToDevice) {
     auto st = stream->BlockHostUntilDone();
-    if (!st.ok()) return failure();
+    if (!st.ok()) return AsError(st);
   }
 
-  return success();
+  return Error::success();
 }
 
 template <MemcpyDirection direction>
@@ -1049,33 +1131,54 @@ static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 
 struct Memset {
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           jitrt::FlatMemrefView dst,
-                           CustomCall::VariantArg constant) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   jitrt::FlatMemrefView dst,
+                   CustomCall::VariantArg constant) const;
   static Memset Handler() { return Memset(); }
 };
 
 }  // namespace
 
-LogicalResult Memset::operator()(const ServiceExecutableRunOptions* run_options,
-                                 jitrt::FlatMemrefView dst,
-                                 CustomCall::VariantArg constant) const {
-  uint32_t pattern;
-  if (constant.isa<int32_t>())
-    pattern = *constant.get<int32_t>();
-  else if (constant.isa<float>())
-    pattern = reinterpret_cast<uint32_t&>(*constant.get<float>());
-  else
-    return failure();
-
+Error Memset::operator()(const ServiceExecutableRunOptions* run_options,
+                         jitrt::FlatMemrefView dst,
+                         CustomCall::VariantArg constant) const {
   se::Stream* stream = run_options->stream();
-
-  if (dst.size_in_bytes % 4 != 0) return failure();
-
   se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
+
+  // If the constant is zero we can use memzero directly.
+  bool set_zero = false;
+
+  // Check all supported data types to see if we have a zero value.
+  if (auto i1 = constant.get<bool>(); succeeded(i1) && *i1 == false)
+    set_zero = true;
+  else if (auto i32 = constant.get<int32_t>(); succeeded(i32) && *i32 == 0)
+    set_zero = true;
+  else if (auto f16 = constant.get<half>(); succeeded(f16) && *f16 == half(0.0))
+    set_zero = true;
+  else if (auto f32 = constant.get<float>(); succeeded(f32) && *f32 == 0.0)
+    set_zero = true;
+
+  if (set_zero) {
+    stream->ThenMemZero(&dst_data, dst.size_in_bytes);
+    return Error::success();
+  }
+
+  // If the constant is not zero, use the given pattern to `memset`.
+  // TODO(ezhulenev): Support 16 and 8 bit patterns.
+  uint32_t pattern;
+  if (auto i32 = constant.get<int32_t>(); succeeded(i32))
+    pattern = *i32;
+  else if (auto f32 = constant.get<float>(); succeeded(f32))
+    pattern = reinterpret_cast<uint32_t&>(*f32);
+  else
+    return MakeStringError("Unsupported memset bit pattern type");
+
+  if (dst.size_in_bytes % 4 != 0)
+    return MakeStringError("Memref size is not divisible by 4");
+
   stream->ThenMemset32(&dst_data, pattern, dst.size_in_bytes);
 
-  return success();
+  return Error::success();
 }
 
 static bool MemsetFn(runtime::KernelContext* ctx, void** args, void** attrs) {
@@ -1094,20 +1197,19 @@ static bool MemsetFn(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct Fft {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           jitrt::StridedMemrefView input,
-                           jitrt::StridedMemrefView output,
-                           ArrayRef<int64_t> fft_length,
-                           se::fft::Type fft_type) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   jitrt::StridedMemrefView input,
+                   jitrt::StridedMemrefView output,
+                   ArrayRef<int64_t> fft_length, se::fft::Type fft_type) const;
   static Fft Handler() { return Fft(); }
 };
 }  // namespace
 
-LogicalResult Fft::operator()(const ServiceExecutableRunOptions* run_options,
-                              jitrt::StridedMemrefView input,
-                              jitrt::StridedMemrefView output,
-                              ArrayRef<int64_t> fft_length,
-                              se::fft::Type fft_type) const {
+Error Fft::operator()(const ServiceExecutableRunOptions* run_options,
+                      jitrt::StridedMemrefView input,
+                      jitrt::StridedMemrefView output,
+                      ArrayRef<int64_t> fft_length,
+                      se::fft::Type fft_type) const {
   // TODO(ezhulenev): Cache FFT plans in the GpuExecutable.
   FftPlanCache fft_plan_cache;
 
@@ -1131,7 +1233,7 @@ LogicalResult Fft::operator()(const ServiceExecutableRunOptions* run_options,
         fft_type = se::fft::Type::kZ2D;
         break;
       default:
-        return failure();
+        return MakeStringError("Unsupported FFT type");
     }
   }
 
@@ -1139,9 +1241,9 @@ LogicalResult Fft::operator()(const ServiceExecutableRunOptions* run_options,
       RunFft(GetDeviceAddress(input), ToShape(input), GetDeviceAddress(output),
              ToShape(output), fft_type, fft_length, executor->device_ordinal(),
              &fft_plan_cache, stream, run_options->allocator());
-  if (!st.ok()) return failure();
+  if (!st.ok()) return AsError(st);
 
-  return success();
+  return Error::success();
 }
 
 static bool Fft(runtime::KernelContext* ctx, void** args, void** attrs) {
@@ -1162,20 +1264,20 @@ static bool Fft(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct Cholesky {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           jitrt::MemrefView operand, jitrt::MemrefView a,
-                           jitrt::MemrefView workspace, jitrt::MemrefView info,
-                           int64_t batch_size, bool is_lower, int64_t n) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   const DebugOptions* debug_options, jitrt::MemrefView operand,
+                   jitrt::MemrefView a, jitrt::MemrefView workspace,
+                   jitrt::MemrefView info, int64_t batch_size, bool is_lower,
+                   int64_t n) const;
   static Cholesky Handler() { return Cholesky(); }
 };
 }  // namespace
 
-LogicalResult Cholesky::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, jitrt::MemrefView operand,
-    jitrt::MemrefView a, jitrt::MemrefView workspace, jitrt::MemrefView info,
-    int64_t batch_size, bool is_lower, int64_t n) const {
+Error Cholesky::operator()(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           jitrt::MemrefView operand, jitrt::MemrefView a,
+                           jitrt::MemrefView workspace, jitrt::MemrefView info,
+                           int64_t batch_size, bool is_lower, int64_t n) const {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
   se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
@@ -1194,11 +1296,12 @@ LogicalResult Cholesky::operator()(
 
   CholeskyParams params{n,        batch_size,       uplo,
                         a_buffer, workspace_buffer, info_buffer};
-  auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
-                              ToPrimitiveType(operand.dtype), &params, stream);
-  if (!executed.ok()) return failure();
+  auto executed =
+      RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
+                  TfrtToPrimitiveType(operand.dtype), &params, stream);
+  if (!executed.ok()) return AsError(executed);
 
-  return success();
+  return Error::success();
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return failure();
 #endif
@@ -1232,32 +1335,29 @@ namespace {
 // call (no need to pass config via the serialized string).
 struct TriangularSolve {
   // Adaptor from XlaCustomCall API to properly typed TriangularSolve handler.
-  static LogicalResult run(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           CustomCall::RemainingArgs args,
-                           StringRef backend_config);
+  static Error run(const ServiceExecutableRunOptions* run_options,
+                   const DebugOptions* debug_options,
+                   CustomCall::RemainingArgs args, StringRef backend_config);
 
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           jitrt::StridedMemrefView a,
-                           jitrt::StridedMemrefView b,
-                           jitrt::StridedMemrefView result,
-                           jitrt::FlatMemrefView temp, bool left_side,
-                           bool lower, bool unit_diagonal,
-                           TriangularSolveOptions::Transpose transpose_a) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   const DebugOptions* debug_options,
+                   jitrt::StridedMemrefView a, jitrt::StridedMemrefView b,
+                   jitrt::StridedMemrefView result, jitrt::FlatMemrefView temp,
+                   bool left_side, bool lower, bool unit_diagonal,
+                   TriangularSolveOptions::Transpose transpose_a) const;
   static TriangularSolve Handler() { return TriangularSolve(); }
 };
 
 }  // namespace
 
-LogicalResult TriangularSolve::run(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, CustomCall::RemainingArgs args,
-    StringRef backend_config) {
+Error TriangularSolve::run(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           CustomCall::RemainingArgs args,
+                           StringRef backend_config) {
   TriangularSolve handler = TriangularSolve::Handler();
 
-  // We expect 4 memref argumets.
-  if (args.size() != 4) return failure();
+  if (args.size() != 4)
+    return MakeStringError("Expected 4 arguments, got %n", args.size());
 
   // Check if all arguments have the correct type.
   auto a = args.get<jitrt::StridedMemrefView>(0);
@@ -1265,19 +1365,19 @@ LogicalResult TriangularSolve::run(
   auto result = args.get<jitrt::StridedMemrefView>(2);
   auto temp = args.get<jitrt::FlatMemrefView>(3);
   if (failed(a) || failed(b) || failed(result) || failed(temp))
-    return failure();
+    return MakeStringError("Incorrect argument types");
 
   // Parse backend config string.
   TriangularSolveOptions opts;
-  if (!tensorflow::HumanReadableJsonToProto(backend_config.str(), &opts).ok())
-    return failure();
+  auto st = tensorflow::HumanReadableJsonToProto(backend_config.str(), &opts);
+  if (!st.ok()) return AsError(st);
 
   return handler(run_options, debug_options, *a, *b, *result, *temp,
                  opts.left_side(), opts.lower(), opts.unit_diagonal(),
                  opts.transpose_a());
 }
 
-LogicalResult TriangularSolve::operator()(
+Error TriangularSolve::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, jitrt::StridedMemrefView a,
     jitrt::StridedMemrefView b, jitrt::StridedMemrefView result,
@@ -1303,7 +1403,7 @@ LogicalResult TriangularSolve::operator()(
       b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
       [](int64_t a, int64_t b) { return a * b; });
 
-  PrimitiveType elem_type = ToPrimitiveType(b.dtype);
+  PrimitiveType elem_type = TfrtToPrimitiveType(b.dtype);
   int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_type);
   int64_t a_batch_stride = left_side ? m * m * elem_size : n * n * elem_size;
   int64_t b_batch_stride = m * n * elem_size;
@@ -1331,15 +1431,16 @@ LogicalResult TriangularSolve::operator()(
     }
   }();
 
-  if (failed(transpose)) return failure();
+  if (failed(transpose))
+    return MakeStringError("Failed to convert transpose type");
 
   auto st = RunTriangulatSolve(
       a_data, result_data, temp_data, PtxOptsFromDebugOptions(*debug_options),
       uplo, side, diagonal, *transpose, elem_type, batch_size, m, n,
       a_batch_stride, b_batch_stride, stream);
-  if (!st.ok()) return failure();
+  if (!st.ok()) return AsError(st);
 
-  return success();
+  return Error::success();
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return failure();
 #endif
@@ -1355,20 +1456,19 @@ namespace {
 struct XlaCustomCall {
   using Stream = se::gpu::GpuStreamHandle;
 
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           CustomCall::RemainingArgs args,
-                           StringRef call_target_name, int32_t api_version,
-                           StringRef backend_config) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   const DebugOptions* debug_options,
+                   CustomCall::RemainingArgs args, StringRef call_target_name,
+                   int32_t api_version, StringRef backend_config) const;
   static XlaCustomCall Handler() { return XlaCustomCall(); }
 };
 }  // namespace
 
-LogicalResult XlaCustomCall::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, CustomCall::RemainingArgs args,
-    StringRef call_target_name, int32_t api_version,
-    StringRef backend_config) const {
+Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
+                                const DebugOptions* debug_options,
+                                CustomCall::RemainingArgs args,
+                                StringRef call_target_name, int32_t api_version,
+                                StringRef backend_config) const {
   // Pattern match custom call to a few special cases, otherwise find the custom
   // call handler regustered with the runtime.
   if (call_target_name == kTriangularSolveCallTarget)
@@ -1379,17 +1479,28 @@ LogicalResult XlaCustomCall::operator()(
   auto& platform_name = run_options->stream()->parent()->platform()->Name();
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name.str(), platform_name);
-  if (!call_target) return failure();
+  if (!call_target) {
+    return MakeStringError("Cannot find the Xla custom call handler ",
+                           call_target_name.str());
+  }
 
   // Prepare pointers to buffers to pass to the Xla custom call handler.
   llvm::SmallVector<void*> buffers;
   for (unsigned i = 0; i < args.size(); ++i) {
-    auto memref = args.get<jitrt::FlatMemrefView>(i);
-    if (failed(memref)) return failure();
-
     // We use zero-sized memrefs to represent holes in custom calls with target
     // arguments mapping (see `CustomCallTargetArgMapping`).
-    buffers.push_back(memref->size_in_bytes == 0 ? nullptr : memref->data);
+    if (auto memref = args.get<jitrt::FlatMemrefView>(i); succeeded(memref)) {
+      buffers.push_back(memref->size_in_bytes == 0 ? nullptr : memref->data);
+      continue;
+    }
+    if (auto strided = args.get<jitrt::StridedMemrefView>(i);
+        succeeded(strided)) {
+      int64_t size_in_bytes = GetHostSize(strided->dtype);
+      for (int64_t size : strided->sizes) size_in_bytes *= size;
+      buffers.push_back(size_in_bytes == 0 ? nullptr : strided->data);
+      continue;
+    }
+    return MakeStringError("Failed to get arguments as (strided) memref view");
   }
 
   // Original custom call API version that doesn't support returning status.
@@ -1401,7 +1512,7 @@ LogicalResult XlaCustomCall::operator()(
                     buffers.data(), backend_config.data(),
                     backend_config.size());
 
-    return success();
+    return Error::success();
   }
 
   // Xla Custom call API returning status.
@@ -1416,13 +1527,13 @@ LogicalResult XlaCustomCall::operator()(
                     backend_config.size(), &custom_call_status);
 
     if (auto message = CustomCallStatusGetMessage(&custom_call_status)) {
-      return failure();
+      return MakeStringError(message.value());
     } else {
-      return success();
+      return Error::success();
     }
   }
 
-  return failure();
+  return MakeStringError("Incorrect custom call API version");
 }
 
 static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
@@ -1444,23 +1555,23 @@ static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct AllReduce {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtCollectiveSupport* collectives,
-                           CustomCall::RemainingArgs args, int32_t uid,
-                           int64_t group_mode, int64_t op_id,
-                           int64_t reduction_kind,
-                           ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtCollectiveSupport* collectives,
+                   CustomCall::RemainingArgs args, int32_t uid,
+                   int64_t group_mode, int64_t op_id, int64_t reduction_kind,
+                   ArrayRef<int64_t> replica_group_offsets,
+                   ArrayRef<int64_t> replica_group_values) const;
   static AllReduce Handler() { return AllReduce(); }
 };
 }  // namespace
 
-LogicalResult AllReduce::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
+Error AllReduce::operator()(const ServiceExecutableRunOptions* run_options,
+                            JitRtCollectiveSupport* collectives,
+                            CustomCall::RemainingArgs args, int32_t uid,
+                            int64_t group_mode, int64_t op_id,
+                            int64_t reduction_kind,
+                            ArrayRef<int64_t> replica_group_offsets,
+                            ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduce";
   se::Stream* stream = run_options->stream();
@@ -1468,23 +1579,24 @@ LogicalResult AllReduce::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return comm;
+  if (failed(comm)) return MakeStringError("Failed to get NcclComm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers)) return device_buffers;
+  if (failed(device_buffers))
+    return MakeStringError("Failed to get device buffers");
 
   auto executed = RunAllReduce(static_cast<ReductionKind>(reduction_kind),
                                *device_buffers, *stream, **comm);
-  if (!executed.ok()) return failure();
+  if (!executed.ok()) return AsError(executed);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
-  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return failure();
+  auto st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
+  if (!st.ok()) return AsError(st);
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
   // NCCL disabled.
-  return failure();
+  return MakeStringError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1511,23 +1623,24 @@ static bool AllReduce(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct AllReduceStart {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtAsyncCollectiveSupport* async_collectives,
-                           CustomCall::RemainingArgs args, int64_t group_mode,
-                           int64_t op_id, int64_t reduction_kind,
-                           ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values,
-                           int32_t uid) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtAsyncCollectiveSupport* async_collectives,
+                   CustomCall::RemainingArgs args, int64_t group_mode,
+                   int64_t op_id, int64_t reduction_kind,
+                   ArrayRef<int64_t> replica_group_offsets,
+                   ArrayRef<int64_t> replica_group_values, int32_t uid) const;
   static AllReduceStart Handler() { return AllReduceStart(); }
 };
 }  // namespace
 
-LogicalResult AllReduceStart::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtAsyncCollectiveSupport* async_collectives,
-    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
-    int64_t reduction_kind, ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values, int32_t uid) const {
+Error AllReduceStart::operator()(const ServiceExecutableRunOptions* run_options,
+                                 JitRtAsyncCollectiveSupport* async_collectives,
+                                 CustomCall::RemainingArgs args,
+                                 int64_t group_mode, int64_t op_id,
+                                 int64_t reduction_kind,
+                                 ArrayRef<int64_t> replica_group_offsets,
+                                 ArrayRef<int64_t> replica_group_values,
+                                 int32_t uid) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduceStart";
   se::Stream* stream = run_options->stream();
@@ -1535,10 +1648,11 @@ LogicalResult AllReduceStart::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return comm;
+  if (failed(comm)) return MakeStringError("Failed to get NcclComm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers)) return device_buffers;
+  if (failed(device_buffers))
+    return MakeStringError("Failed to get device buffers");
 
   // Wait until compute inputs are ready.
   async_collectives->async_comm_stream()->ThenWaitFor(params.stream);
@@ -1546,20 +1660,20 @@ LogicalResult AllReduceStart::operator()(
   auto executed =
       RunAllReduce(static_cast<ReductionKind>(reduction_kind), *device_buffers,
                    *async_collectives->async_comm_stream(), **comm);
-  if (!executed.ok()) return failure();
+  if (!executed.ok()) return AsError(executed);
 
   // Create an event on the async stream for the completion of the all-reduce.
   se::Event done_event(async_collectives->async_comm_stream()->parent());
-  if (!done_event.Init()) return failure();
+  if (!done_event.Init()) return MakeStringError("Failed to create event");
   async_collectives->async_comm_stream()->ThenRecordEvent(&done_event);
 
   if (failed(async_collectives->PushEvent(
           uid, stream->parent()->device_ordinal(), std::move(done_event))))
-    return failure();
+    return MakeStringError("Failed to push event to async collectives");
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
-  return failure();  // NCCL disabled.
+  return MakeStringError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1587,35 +1701,35 @@ static bool AllReduceStart(runtime::KernelContext* ctx, void** args,
 namespace {
 struct AllReduceDone {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtCollectiveSupport* collectives,
-                           JitRtAsyncCollectiveSupport* async_collectives,
-                           CustomCall::RemainingArgs args, int32_t uid) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtCollectiveSupport* collectives,
+                   JitRtAsyncCollectiveSupport* async_collectives,
+                   CustomCall::RemainingArgs args, int32_t uid) const;
   static AllReduceDone Handler() { return AllReduceDone(); }
 };
 }  // namespace
 
-LogicalResult AllReduceDone::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives,
-    JitRtAsyncCollectiveSupport* async_collectives,
-    CustomCall::RemainingArgs args, int32_t uid) const {
+Error AllReduceDone::operator()(const ServiceExecutableRunOptions* run_options,
+                                JitRtCollectiveSupport* collectives,
+                                JitRtAsyncCollectiveSupport* async_collectives,
+                                CustomCall::RemainingArgs args,
+                                int32_t uid) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduceDone";
   se::Stream* stream = run_options->stream();
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
   auto event = async_collectives->PopEvent(uid, device_ordinal);
-  if (failed(event)) return failure();
+  if (failed(event)) return MakeStringError("Failed to pop event");
 
   stream->ThenWaitFor(&*event);
 
   if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return failure();
+    return MakeStringError("Failed to block host");
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
-  return failure();  // NCCL disabled.
+  return MakeStringError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1638,23 +1752,23 @@ static bool AllReduceDone(runtime::KernelContext* ctx, void** args,
 namespace {
 struct ReduceScatter {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtCollectiveSupport* collectives,
-                           CustomCall::RemainingArgs args, int32_t uid,
-                           int64_t group_mode, int64_t op_id,
-                           int64_t reduction_kind,
-                           ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtCollectiveSupport* collectives,
+                   CustomCall::RemainingArgs args, int32_t uid,
+                   int64_t group_mode, int64_t op_id, int64_t reduction_kind,
+                   ArrayRef<int64_t> replica_group_offsets,
+                   ArrayRef<int64_t> replica_group_values) const;
   static ReduceScatter Handler() { return ReduceScatter(); }
 };
 }  // namespace
 
-LogicalResult ReduceScatter::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
+Error ReduceScatter::operator()(const ServiceExecutableRunOptions* run_options,
+                                JitRtCollectiveSupport* collectives,
+                                CustomCall::RemainingArgs args, int32_t uid,
+                                int64_t group_mode, int64_t op_id,
+                                int64_t reduction_kind,
+                                ArrayRef<int64_t> replica_group_offsets,
+                                ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running ReduceScatter";
   se::Stream* stream = run_options->stream();
@@ -1662,23 +1776,23 @@ LogicalResult ReduceScatter::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return comm;
+  if (failed(comm)) return MakeStringError("Failed to get NcclComm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers)) return device_buffers;
+  if (failed(device_buffers))
+    return MakeStringError("Failed to get device buffers");
 
   auto executed = RunReduceScatter(static_cast<ReductionKind>(reduction_kind),
                                    *device_buffers, *stream, **comm);
-  if (!executed.ok()) return failure();
+  if (!executed.ok()) return AsError(executed);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
   if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return failure();
+    return MakeStringError("Failed to block host");
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
-  // NCCL disabled.
-  return failure();
+  return MakeStringError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1706,22 +1820,22 @@ static bool ReduceScatter(runtime::KernelContext* ctx, void** args,
 namespace {
 struct AllGather {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtCollectiveSupport* collectives,
-                           CustomCall::RemainingArgs args, int32_t uid,
-                           int64_t group_mode, int64_t op_id,
-                           ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtCollectiveSupport* collectives,
+                   CustomCall::RemainingArgs args, int32_t uid,
+                   int64_t group_mode, int64_t op_id,
+                   ArrayRef<int64_t> replica_group_offsets,
+                   ArrayRef<int64_t> replica_group_values) const;
   static AllGather Handler() { return AllGather(); }
 };
 }  // namespace
 
-LogicalResult AllGather::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, int64_t op_id,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
+Error AllGather::operator()(const ServiceExecutableRunOptions* run_options,
+                            JitRtCollectiveSupport* collectives,
+                            CustomCall::RemainingArgs args, int32_t uid,
+                            int64_t group_mode, int64_t op_id,
+                            ArrayRef<int64_t> replica_group_offsets,
+                            ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllGather";
   se::Stream* stream = run_options->stream();
@@ -1729,21 +1843,22 @@ LogicalResult AllGather::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return comm;
+  if (failed(comm)) return MakeStringError("Failed to get NCCL comm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers)) return device_buffers;
+  if (failed(device_buffers))
+    return MakeStringError("Failed to get device buffers");
 
-  if (!RunAllGather(*device_buffers, *stream, **comm).ok()) return failure();
+  auto st = RunAllGather(*device_buffers, *stream, **comm);
+  if (!st.ok()) return AsError(st);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
-  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return failure();
+  st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
+  if (!st.ok()) return AsError(st);
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
-  // NCCL disabled.
-  return failure();
+  return MakeStringError("NCCL diasbled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1769,23 +1884,23 @@ static bool AllGather(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct AllToAll {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtCollectiveSupport* collectives,
+                   CustomCall::RemainingArgs args, int32_t uid,
+                   int64_t group_mode, bool has_split_dimension, int64_t op_id,
+                   ArrayRef<int64_t> replica_group_offsets,
+                   ArrayRef<int64_t> replica_group_values) const;
+  static AllToAll Handler() { return AllToAll(); }
+};
+}  // namespace
+
+Error AllToAll::operator()(const ServiceExecutableRunOptions* run_options,
                            JitRtCollectiveSupport* collectives,
                            CustomCall::RemainingArgs args, int32_t uid,
                            int64_t group_mode, bool has_split_dimension,
                            int64_t op_id,
                            ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values) const;
-  static AllToAll Handler() { return AllToAll(); }
-};
-}  // namespace
-
-LogicalResult AllToAll::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, bool has_split_dimension, int64_t op_id,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
+                           ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllToAll";
   se::Stream* stream = run_options->stream();
@@ -1793,22 +1908,22 @@ LogicalResult AllToAll::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return comm;
+  if (failed(comm)) return MakeStringError("Failed to get NCCL comm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers)) return device_buffers;
+  if (failed(device_buffers))
+    return MakeStringError("Failed to get device buffers");
 
-  if (!RunAllToAll(has_split_dimension, *device_buffers, *stream, **comm).ok())
-    return failure();
+  auto st = RunAllToAll(has_split_dimension, *device_buffers, *stream, **comm);
+  if (!st.ok()) return AsError(st);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
-  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return failure();
+  st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
+  if (!st.ok()) return AsError(st);
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
-  // NCCL disabled.
-  return failure();
+  return MakeStringError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1835,19 +1950,19 @@ static bool AllToAll(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct CollectivePermute {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtCollectiveSupport* collectives,
-                           CustomCall::RemainingArgs args, int32_t uid,
-                           int64_t group_mode, int64_t op_id,
-                           ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values,
-                           ArrayRef<int64_t> source_peers,
-                           ArrayRef<int64_t> target_peers) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtCollectiveSupport* collectives,
+                   CustomCall::RemainingArgs args, int32_t uid,
+                   int64_t group_mode, int64_t op_id,
+                   ArrayRef<int64_t> replica_group_offsets,
+                   ArrayRef<int64_t> replica_group_values,
+                   ArrayRef<int64_t> source_peers,
+                   ArrayRef<int64_t> target_peers) const;
   static CollectivePermute Handler() { return CollectivePermute(); }
 };
 }  // namespace
 
-LogicalResult CollectivePermute::operator()(
+Error CollectivePermute::operator()(
     const ServiceExecutableRunOptions* run_options,
     JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id,
@@ -1861,18 +1976,22 @@ LogicalResult CollectivePermute::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return comm;
+  if (failed(comm)) return MakeStringError("Failed to get NcclComm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers)) return device_buffers;
-  if (device_buffers->size() != 1) return failure();
+  if (failed(device_buffers))
+    return MakeStringError("Failed to get device buffers");
+  if (device_buffers->size() != 1) {
+    return MakeStringError("Expected device buffer size: 1, got ",
+                           device_buffers->size());
+  }
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return failure();
+  if (!global_device_id.ok()) return AsError(global_device_id);
 
   StatusOr<DeviceAssignment::LogicalID> current_logical_id =
       params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!current_logical_id.ok()) return failure();
+  if (!current_logical_id.ok()) return AsError(current_logical_id);
 
   const int64_t current_id = static_cast<CollectiveOpGroupMode>(group_mode) ==
                                      CollectiveOpGroupMode::kCrossReplica
@@ -1894,16 +2013,15 @@ LogicalResult CollectivePermute::operator()(
   auto executed =
       RunCollectivePermute(source_target, (*device_buffers)[0], *stream, **comm,
                            device_string, current_id);
-  if (!executed.ok()) return failure();
+  if (!executed.ok()) return AsError(executed);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
-  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return failure();
+  auto st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
+  if (!st.ok()) return AsError(st);
 
-  return success();
+  return Error::success();
 #else   // XLA_ENABLE_XCCL
-  // NCCL disabled.
-  return failure();
+  return MakeStringError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
@@ -1932,31 +2050,30 @@ static bool CollectivePermute(runtime::KernelContext* ctx, void** args,
 namespace {
 struct ReplicaId {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           jitrt::FlatMemrefView result) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   jitrt::FlatMemrefView result) const;
   static ReplicaId Handler() { return ReplicaId(); }
 };
 }  // namespace
 
-LogicalResult ReplicaId::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    jitrt::FlatMemrefView result) const {
+Error ReplicaId::operator()(const ServiceExecutableRunOptions* run_options,
+                            jitrt::FlatMemrefView result) const {
   VLOG(3) << "Running ReplicaId";
   se::Stream* stream = run_options->stream();
   NcclExecuteParams params(*run_options, stream);
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return failure();
+  if (!global_device_id.ok()) return AsError(global_device_id);
 
   StatusOr<DeviceAssignment::LogicalID> logical_id =
       params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!logical_id.ok()) return failure();
+  if (!logical_id.ok()) return AsError(logical_id);
 
   se::DeviceMemoryBase result_data = GetDeviceAddress(result);
   params.stream->ThenMemset32(&result_data, logical_id.value().replica_id,
                               /*size=*/4);
 
-  return success();
+  return Error::success();
 }
 
 static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs) {
@@ -1974,31 +2091,30 @@ static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct PartitionId {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           jitrt::FlatMemrefView result) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   jitrt::FlatMemrefView result) const;
   static PartitionId Handler() { return PartitionId(); }
 };
 }  // namespace
 
-LogicalResult PartitionId::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    jitrt::FlatMemrefView result) const {
+Error PartitionId::operator()(const ServiceExecutableRunOptions* run_options,
+                              jitrt::FlatMemrefView result) const {
   VLOG(3) << "Running PartitionId";
   se::Stream* stream = run_options->stream();
   NcclExecuteParams params(*run_options, stream);
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return failure();
+  if (!global_device_id.ok()) return AsError(global_device_id);
 
   StatusOr<DeviceAssignment::LogicalID> logical_id =
       params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!logical_id.ok()) return failure();
+  if (!logical_id.ok()) return AsError(logical_id);
 
   se::DeviceMemoryBase result_data = GetDeviceAddress(result);
   params.stream->ThenMemset32(&result_data, logical_id.value().computation_id,
                               /*size=*/4);
 
-  return success();
+  return Error::success();
 }
 
 static bool PartitionId(runtime::KernelContext* ctx, void** args,
@@ -2022,6 +2138,8 @@ DirectCustomCallLibrary JitRtGpuCustomCalls() {
   lib.Insert("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
   lib.Insert("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   lib.Insert("xla.gpu.gemm", &xla::gpu::Gemm);
+  lib.Insert("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
+  lib.Insert("xla.gpu.cublas.lt.matmul.bias", &xla::gpu::CublasLtMatmulBias);
 
   auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
   lib.Insert(conv("forward"), &ConvFn<CudnnConvKind::kForward>);

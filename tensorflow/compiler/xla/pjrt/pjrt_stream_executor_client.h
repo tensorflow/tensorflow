@@ -74,9 +74,10 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   void SetClient(PjRtClient* client) {
     CHECK(client_ == nullptr);
     client_ = client;
-    // We have to define debug_string_ here, because platform_name() requires
-    // client_ to be set.
+    // We have to define debug_string_ and to_string_ here, because
+    // platform_name() requires client_ to be set.
     debug_string_ = absl::StrCat(platform_name(), ":", id());
+    to_string_ = absl::StrCat(platform_name(), "(id=", id(), ")");
   }
 
   int process_index() const override { return process_index_; }
@@ -109,7 +110,7 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   absl::string_view device_kind() const override { return device_kind_; }
 
-  std::string ToString() const override;
+  absl::string_view ToString() const override;
 
   absl::string_view DebugString() const override;
 
@@ -137,6 +138,7 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   const int process_index_;
   const std::string device_kind_;
   std::string debug_string_;
+  std::string to_string_;
   PjRtClient* client_ = nullptr;
 };
 

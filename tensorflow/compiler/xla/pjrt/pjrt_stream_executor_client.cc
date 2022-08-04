@@ -147,8 +147,8 @@ absl::string_view PjRtStreamExecutorDevice::DebugString() const {
   return debug_string_;
 }
 
-std::string PjRtStreamExecutorDevice::ToString() const {
-  return absl::StrCat(platform_name(), "(id=", id(), ")");
+absl::string_view PjRtStreamExecutorDevice::ToString() const {
+  return to_string_;
 }
 
 StatusOr<DeviceAssignment> DevicesToDeviceAssignment(

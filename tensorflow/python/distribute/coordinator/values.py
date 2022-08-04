@@ -173,10 +173,10 @@ class RemoteValueImpl(RemoteValue):
     self._status_available_event = threading.Event()
     self._status = RemoteValueStatus.NOT_READY
 
-  def _set_aborted(self):
+  def _set_aborted(self, error):
     self._status = RemoteValueStatus.ABORTED
     self._values = None
-    self._error = None
+    self._error = error
 
     # Wake up any waiting thread and clear the event.
     self._status_available_event.set()
@@ -192,10 +192,10 @@ class RemoteValueImpl(RemoteValue):
     self._error = None
     self._status_available_event.set()
 
-  def _set_error(self, exception):
+  def _set_error(self, error):
     self._status = RemoteValueStatus.READY
     self._values = None
-    self._error = exception
+    self._error = error
     self._status_available_event.set()
 
   def _get_values(self):

@@ -29,11 +29,11 @@ objc_library(
     copts = DEFAULT_COPTS + [
         "-ObjC++",
     ],
+    sdk_frameworks = ["Metal"],
     deps = [
         ":gpu_object",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
-        "//third_party/apple_frameworks:Metal",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -42,11 +42,13 @@ objc_library(
     name = "buffer_test_lib",
     testonly = 1,
     srcs = ["buffer_test.mm"],
+    sdk_frameworks = [
+        "XCTest",
+        "Metal",
+    ],
     deps = [
         ":buffer",
         "//tensorflow/lite/delegates/gpu/common:types",
-        "//third_party/apple_frameworks:Metal",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -55,11 +57,13 @@ objc_library(
     srcs = ["buffer_convert.mm"],
     hdrs = ["buffer_convert.h"],
     copts = DEFAULT_COPTS,
+    sdk_frameworks = [
+        "Metal",
+    ],
     deps = [
         ":common",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:util",
-        "//third_party/apple_frameworks:Metal",
     ],
 )
 
@@ -68,6 +72,9 @@ objc_library(
     srcs = ["common.mm"],
     hdrs = ["common.h"],
     copts = DEFAULT_COPTS,
+    sdk_frameworks = [
+        "Metal",
+    ],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -79,9 +86,9 @@ objc_library(
     name = "common_test_lib",
     testonly = 1,
     srcs = ["common_test.mm"],
+    sdk_frameworks = ["XCTest"],
     deps = [
         ":common",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -104,6 +111,7 @@ objc_library(
     copts = DEFAULT_COPTS + [
         "-ObjC++",
     ],
+    sdk_frameworks = ["Metal"],
     deps = [
         ":common",
         ":metal_arguments",
@@ -117,7 +125,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
-        "//third_party/apple_frameworks:Metal",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -126,6 +133,7 @@ objc_library(
     name = "gpu_object",
     hdrs = ["gpu_object.h"],
     copts = DEFAULT_COPTS,
+    sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
@@ -142,6 +150,7 @@ objc_library(
         "-ObjC++",
     ],
     features = ["-layering_check"],
+    sdk_frameworks = ["Metal"],
     deps = [
         ":compute_task",
         ":inference_context_cc_fbs",
@@ -164,7 +173,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/task:serialization_base",
         "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
         "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
-        "//third_party/apple_frameworks:Metal",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
@@ -191,6 +199,7 @@ objc_library(
     copts = DEFAULT_COPTS + [
         "-ObjC++",
     ],
+    sdk_frameworks = ["Metal"],
     deps = [
         ":common",
         ":gpu_object",
@@ -199,7 +208,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
-        "//third_party/apple_frameworks:Metal",
     ],
 )
 
@@ -210,6 +218,7 @@ objc_library(
     copts = DEFAULT_COPTS + [
         "-ObjC++",
     ],
+    sdk_frameworks = ["Metal"],
     deps = [
         ":buffer",
         ":gpu_object",
@@ -222,7 +231,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/task:arguments",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common/task:util",
-        "//third_party/apple_frameworks:Metal",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -234,6 +242,7 @@ objc_library(
     copts = DEFAULT_COPTS + [
         "-ObjC++",
     ],
+    sdk_frameworks = ["Metal"],
     deps = ["//tensorflow/lite/delegates/gpu/common:gpu_info"],
 )
 
@@ -244,6 +253,7 @@ objc_library(
     copts = DEFAULT_COPTS + [
         "-ObjC++",
     ],
+    sdk_frameworks = ["Metal"],
     deps = [
         ":common",
         ":gpu_object",
@@ -253,7 +263,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_tensor",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
-        "//third_party/apple_frameworks:Metal",
     ],
 )
 
@@ -261,11 +270,13 @@ objc_library(
     name = "metal_spatial_tensor_test_lib",
     testonly = 1,
     srcs = ["metal_spatial_tensor_test.mm"],
+    sdk_frameworks = [
+        "XCTest",
+        "Metal",
+    ],
     deps = [
         ":metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
-        "//third_party/apple_frameworks:Metal",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -276,13 +287,13 @@ objc_library(
     copts = DEFAULT_COPTS + [
         "-ObjC++",
     ],
+    sdk_frameworks = ["Metal"],
     deps = [
         ":common",
         ":gpu_object",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
-        "//third_party/apple_frameworks:Metal",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -291,11 +302,13 @@ objc_library(
     name = "texture2d_test_lib",
     testonly = 1,
     srcs = ["texture2d_test.mm"],
+    sdk_frameworks = [
+        "XCTest",
+        "Metal",
+    ],
     deps = [
         ":texture2d",
         "//tensorflow/lite/delegates/gpu/common:types",
-        "//third_party/apple_frameworks:Metal",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -303,7 +316,7 @@ objc_library(
     name = "TestBinary",
     testonly = 1,
     srcs = ["host.m"],
-    deps = ["//third_party/apple_frameworks:UIKit"],
+    sdk_frameworks = ["UIKit"],
 )
 
 # Application for local testing in XCode
@@ -335,13 +348,13 @@ objc_library(
     ],
     hdrs = [
     ],
+    sdk_frameworks = ["XCTest"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/metal:buffer",
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/metal:texture2d",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 

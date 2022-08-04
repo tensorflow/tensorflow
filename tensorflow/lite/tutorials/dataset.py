@@ -22,9 +22,9 @@ import gzip
 import os
 import shutil
 import tempfile
+import urllib
 
 import numpy as np
-from six.moves import urllib
 import tensorflow as tf
 
 

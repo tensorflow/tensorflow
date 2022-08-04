@@ -3879,6 +3879,24 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "factory_ops_test",
+    size = "small",
+    srcs = ["ops/factory_ops_test.py"],
+    tags = [
+        "no_gpu",  # TODO(b/213596871): a similar test times out (delete
+        # the "no_gpu" tag once this is bug is fully resolved)
+    ],
+    deps = [
+        ":sparse_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_gen_op_wrapper_private_py(
     name = "decode_proto_ops_gen",
     deps = [

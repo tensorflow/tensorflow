@@ -121,6 +121,12 @@ class GpuExecutable::JitRtExecutable {
       jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
     };
 
+    // TODO(b/241296710): LLVM optimizations interact badly with the memory
+    // loads and stores pattern generated in very large XLA programs, and can
+    // take minutes to run. Currently we do not expect any expensive code
+    // running on the host, so we can safely disable optimization passes.
+    opts.jit_code_opt_level = llvm::CodeGenOpt::None;
+
     // Instantiate new JitExecutable from the MLIR source.
     auto jit_executable = jitrt::JitExecutable::Instantiate(
         program->module, program->entry_point, opts);
@@ -615,7 +621,7 @@ static Status ExecuteJitRt(const std::string& module_name,
   }
 
   // JitRt executables do not return any values.
-  jitrt::NoOpReturnValueConverter converter;
+  jitrt::NoResultConverter converter;
 
   // Prepare options for executing JitRt program.
   jitrt::Executable::ExecuteOpts opts;

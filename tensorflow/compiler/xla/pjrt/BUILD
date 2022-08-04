@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -488,13 +489,13 @@ cc_library(
     hdrs = ["mlir_to_hlo.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:all_passes",
-        "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:legalize_trigonometric_to_approximation",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -579,6 +580,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "tfrt_cpu_pjrt_client_test",
+    srcs = ["tfrt_cpu_pjrt_client_test.cc"],
+    deps = [
+        ":tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla/service:custom_call_status_public_headers",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "lru_cache",
     hdrs = ["lru_cache.h"],
@@ -646,10 +659,29 @@ tf_cc_test(
     ],
 )
 
+# If false, PjRtCApiClient will raise an error on methods unimplemented in the PJRT C API. If
+# true, PjRtCApiClient and related classes will assume the wrapper impl is being used and call
+# directly into the wrapped C++ PJRT client. This can be useful for testing, but is generally not
+# safe to use across library boundaries.
+bool_flag(
+    name = "pjrt_c_api_bypass",
+    build_setting_default = True,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "pjrt_c_api_bypass_enabled",
+    flag_values = {":pjrt_c_api_bypass": "True"},
+)
+
 cc_library(
     name = "pjrt_c_api_client",
     srcs = ["pjrt_c_api_client.cc"],
     hdrs = ["pjrt_c_api_client.h"],
+    defines = select({
+        ":pjrt_c_api_bypass_enabled": ["PJRT_C_API_BYPASS"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":pjrt_client",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",

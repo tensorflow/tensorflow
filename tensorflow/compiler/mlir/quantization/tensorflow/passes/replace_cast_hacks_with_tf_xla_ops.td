@@ -41,7 +41,7 @@ def ConvertTFConv2DToXLAConvOp : Pat<
    (IsInt32ElementType $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
-   (HasStaticShapeAtDimsConstraint<"1, 2, 3"> $input)],
+   (HasStaticShapeAtDimsConstraint<"3"> $input)],
   (addBenefit 10)>;
 
 // Same as ConvertTFConv2DToXLAConvOp but handles the case where input zero
@@ -59,7 +59,7 @@ def ConvertTFConv2DWithNoZeroPointToXLAConvOp : Pat<
    (IsInt32ElementType $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
-   (HasStaticShapeAtDimsConstraint<"1, 2, 3"> $input)],
+   (HasStaticShapeAtDimsConstraint<"3"> $input)],
   (addBenefit 10)>;
 
 // Converts inlined DepthwiseConv2D pattern to TF XlaConvV2 op. This pattern
@@ -82,7 +82,7 @@ def ConvertTFDepthwiseConv2DToXLAConvOp : Pat<
    (IsInt32ElementType $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
-   (HasStaticShapeAtDimsConstraint<"1, 2, 3"> $input)],
+   (HasStaticShapeAtDimsConstraint<"3"> $input)],
   (addBenefit 10)>;
 
 // Same as ConvertTFDepthwiseConv2DToXLAConvOp but handles the case where input
@@ -104,5 +104,5 @@ def ConvertTFDepthwiseConv2DWithNoZeroPointToXLAConvOp : Pat<
    (IsInt32ElementType $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
-   (HasStaticShapeAtDimsConstraint<"1, 2, 3"> $input)],
+   (HasStaticShapeAtDimsConstraint<"3"> $input)],
   (addBenefit 10)>;

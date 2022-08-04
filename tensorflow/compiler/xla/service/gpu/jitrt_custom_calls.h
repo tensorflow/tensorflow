@@ -71,8 +71,10 @@ struct ConvBackendConfig {
 
 namespace tfrt {
 namespace jitrt {
+
 JITRT_REGISTER_ENUM_ATTR_DECODING(stream_executor::dnn::ActivationMode);
 JITRT_REGISTER_ENUM_ATTR_DECODING(stream_executor::fft::Type);
+JITRT_REGISTER_ENUM_ATTR_DECODING(stream_executor::cuda::BlasLt::Epilogue);
 
 JITRT_REGISTER_AGGREGATE_ATTR_DECODING(
     xla::gpu::DotDimensionNumbers,

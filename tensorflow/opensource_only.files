@@ -5,9 +5,9 @@ tensorflow/api_template_v1.__init__:.py
 tensorflow/compat_template.__init__:.py
 tensorflow/compat_template_v1.__init__:.py
 tensorflow/compiler/mlir/glob_lit_test.bzl:
-tensorflow/compiler/mlir/hlo/WORKSPACE:
 tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.bzl:
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
+tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
 tensorflow/core/platform/default/build_config/BUILD:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:

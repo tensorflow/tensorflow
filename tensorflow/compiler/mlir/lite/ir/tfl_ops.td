@@ -23,6 +23,7 @@ include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
@@ -4923,7 +4924,7 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield",
     [{
       build($_builder, $_state, {});
     }]>
-  ];	
+  ];
 }
 
 def TFL_IfOp : Op<TFL_Dialect, "if", [
