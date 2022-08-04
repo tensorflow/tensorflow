@@ -172,3 +172,50 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK: %[[ADDV2_1:.*]] = "tf.AddV2"(%[[SUB_0]], %[[CONST_8]]) : (tensor<1x2x2x3xi32>, tensor<3xi32>) -> tensor<1x2x2x3xi32>
 }
 
+// -----
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1205 : i32}} {
+  func.func @dynamic_shaped_conv2d_with_bias_and_relu6_inlined(%arg0: tensor<?x?x?x3xf32>) -> tensor<?x?x?x2xf32> {
+    %cst = "tf.Const"() {device = "", value = dense<127> : tensor<i32>} : () -> tensor<i32>
+    %cst_0 = "tf.Const"() {device = "", value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+    %cst_1 = "tf.Const"() {device = "", value = dense<[1.8772192, 1.82187414]> : tensor<2xf32>} : () -> tensor<2xf32>
+    %cst_2 = "tf.Const"() {device = "", value = opaque<"elided_large_const", "0xDEADBEEF"> : tensor<2x3x3x2xi32>} : () -> tensor<2x3x3x2xi32>
+    %cst_3 = "tf.Const"() {device = "", value = dense<[161, 165]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %cst_4 = "tf.Const"() {device = "", value = dense<0.587548196> : tensor<f32>} : () -> tensor<f32>
+    %cst_5 = "tf.Const"() {device = "", value = dense<0.0235294122> : tensor<f32>} : () -> tensor<f32>
+    %0 = "tf.Div"(%arg0, %cst_4) {device = ""} : (tensor<?x?x?x3xf32>, tensor<f32>) -> tensor<?x?x?x3xf32>
+    %1 = "tf.Round"(%0) {device = ""} : (tensor<?x?x?x3xf32>) -> tensor<?x?x?x3xf32>
+    %2 = "tf.Cast"(%1) {device = ""} : (tensor<?x?x?x3xf32>) -> tensor<?x?x?x3xi32>
+    %3 = "tf.AddV2"(%2, %cst_0) {device = ""} : (tensor<?x?x?x3xi32>, tensor<i32>) -> tensor<?x?x?x3xi32>
+    %4 = "tf.Cast"(%3) {Truncate = false, device = ""} : (tensor<?x?x?x3xi32>) -> tensor<?x?x?x3xi8>
+    %5 = "tf.Cast"(%4) {Truncate = false, device = ""} : (tensor<?x?x?x3xi8>) -> tensor<?x?x?x3xi32>
+    %6 = "tf.Sub"(%5, %cst_0) {device = ""} : (tensor<?x?x?x3xi32>, tensor<i32>) -> tensor<?x?x?x3xi32>
+    %7 = "tf.Conv2D"(%6, %cst_2) {device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<?x?x?x3xi32>, tensor<2x3x3x2xi32>) -> tensor<?x?x?x2xi32>
+    %8 = "tf.AddV2"(%7, %cst_3) {device = ""} : (tensor<?x?x?x2xi32>, tensor<2xi32>) -> tensor<?x?x?x2xi32>
+    %9 = "tf.Cast"(%8) {Truncate = false, device = ""} : (tensor<?x?x?x2xi32>) -> tensor<?x?x?x2xf32>
+    %10 = "tf.Mul"(%9, %cst_1) {device = ""} : (tensor<?x?x?x2xf32>, tensor<2xf32>) -> tensor<?x?x?x2xf32>
+    %11 = "tf.Round"(%10) {device = ""} : (tensor<?x?x?x2xf32>) -> tensor<?x?x?x2xf32>
+    %12 = "tf.Cast"(%11) {Truncate = false, device = ""} : (tensor<?x?x?x2xf32>) -> tensor<?x?x?x2xi32>
+    %13 = "tf.AddV2"(%12, %cst_0) {device = ""} : (tensor<?x?x?x2xi32>, tensor<i32>) -> tensor<?x?x?x2xi32>
+    %14 = "tf.ClipByValue"(%13, %cst_0, %cst) {device = ""} : (tensor<?x?x?x2xi32>, tensor<i32>, tensor<i32>) -> tensor<?x?x?x2xi32>
+    %15 = "tf.Cast"(%14) {Truncate = false, device = ""} : (tensor<?x?x?x2xi32>) -> tensor<?x?x?x2xi8>
+    %16 = "tf.Cast"(%15) {device = ""} : (tensor<?x?x?x2xi8>) -> tensor<?x?x?x2xi32>
+    %17 = "tf.Sub"(%16, %cst_0) {device = ""} : (tensor<?x?x?x2xi32>, tensor<i32>) -> tensor<?x?x?x2xi32>
+    %18 = "tf.Cast"(%17) {device = ""} : (tensor<?x?x?x2xi32>) -> tensor<?x?x?x2xf32>
+    %19 = "tf.Mul"(%18, %cst_5) {device = ""} : (tensor<?x?x?x2xf32>, tensor<f32>) -> tensor<?x?x?x2xf32>
+    return %19 : tensor<?x?x?x2xf32>
+  }
+
+// CHECK-LABEL: func @dynamic_shaped_conv2d_with_bias_and_relu6_inlined
+// CHECK-DAG: %[[filter:.*]] = "tf.Const"() {device = "", value = opaque<"elided_large_const", "0xDEADBEEF"> : tensor<2x3x3x2xi32>} : () -> tensor<2x3x3x2xi32>
+// CHECK-DAG: %[[filter_i8:.*]] = "tf.Cast"(%[[filter]]) {Truncate = false} : (tensor<2x3x3x2xi32>) -> tensor<2x3x3x2xi8>
+// CHECK-DAG: %[[input_shape:.*]] = "tf.Shape"({{.*}}) : (tensor<?x?x?x3xi8>) -> tensor<4xi32>
+// CHECK-DAG: %[[input_dim_1:.*]] = "tf.StridedSlice"(%[[input_shape]], {{.*}}, {{.*}}, {{.*}}) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
+// CHECK-DAG: %[[input_dim_2:.*]] = "tf.StridedSlice"(%[[input_shape]], {{.*}}, {{.*}}, {{.*}}) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
+// CHECK-DAG: %[[padding_rank_1:.*]] = "tf.Concat"({{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}) : (tensor<i32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<8xi32>
+// CHECK-DAG: %[[padding_rank_2:.*]] = "tf.Reshape"(%[[padding_rank_1]], {{.*}}) : (tensor<8xi32>, tensor<2xi64>) -> tensor<4x2xi32>
+// CHECK-DAG: %[[input_padded:.*]] = "tf.PadV2"(%{{.*}}, %[[padding_rank_2]], {{.*}}) : (tensor<?x?x?x3xi8>, tensor<4x2xi32>, tensor<i8>) -> tensor<?x?x?x3xi8>
+// CHECK: %[[conv_output:.*]] = "tf.XlaConvV2"(%[[input_padded]], %[[filter_i8]], {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}) {batch_group_count = 1 : i64, dimension_numbers = "{{.*}}", precision_config = ""} : (tensor<?x?x?x3xi8>, tensor<2x3x3x2xi8>, tensor<2xi32>, tensor<2x2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<i32>) -> tensor<?x?x?x2xi32>
+// CHECK: %[[conv_output_sub:.*]] = "tf.Sub"(%[[conv_output]], {{.*}}) : (tensor<?x?x?x2xi32>, tensor<2xi32>) -> tensor<?x?x?x2xi32>
+// CHECK: %[[conv_output_add:.*]] = "tf.AddV2"(%[[conv_output_sub]], {{.*}}) {device = ""} : (tensor<?x?x?x2xi32>, tensor<2xi32>) -> tensor<?x?x?x2xi32>
+}
