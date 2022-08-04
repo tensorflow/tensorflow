@@ -55,11 +55,15 @@ add_mlir_library(GmlStComposeSetInterface
 add_mlir_library(GmlStBufferizableOpInterface
   bufferizable_op_interface_impl.cc
 
+  DEPENDS
+  MLIRgml_st_opsIncGen
+
   LINK_LIBS PUBLIC
   MLIRBufferizationDialect
   MLIRBufferizationTransforms
   MLIRIR
   MLIRSupport
+  GmlStDialect
 )
 
 add_mlir_library(GmlStPasses
@@ -117,4 +121,13 @@ add_mlir_library(GmlStTestPasses
   GmlStTransforms
   MLIRPass
   MLIRTransforms
+)
+
+add_library(AllGmlStPasses INTERFACE)
+target_link_libraries(AllGmlStPasses INTERFACE
+  GmlStPasses
+  GmlStTestPasses
+  MLIRHLOGmlStPipeline
+  MLIRFuncDialect
+  MLIRPass
 )

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 
 #include <tuple>
 #include <utility>

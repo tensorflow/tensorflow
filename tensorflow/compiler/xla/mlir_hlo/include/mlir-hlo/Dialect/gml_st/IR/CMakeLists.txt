@@ -22,3 +22,5 @@ mlir_tablegen(gml_st_dialect.cc.inc -gen-dialect-defs)
 
 add_public_tablegen_target(MLIRgml_st_opsIncGen)
 add_dependencies(mlir-headers MLIRgml_st_opsIncGen)
+
+add_dependencies(MLIRgml_st_opsIncGen MLIRGmlStComposeSetInterfaceIncGen MLIRGmlStFusionInterfaceIncGen)

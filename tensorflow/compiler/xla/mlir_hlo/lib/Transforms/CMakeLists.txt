@@ -41,6 +41,7 @@ add_mlir_library(MLIRBufferTransforms
   MLIRPass
   MLIRShapeDialect
   MLIRTransforms
+  GmlStBufferizableOpInterface
 )
 
 add_mlir_library(MLIRHLOGPUTransforms

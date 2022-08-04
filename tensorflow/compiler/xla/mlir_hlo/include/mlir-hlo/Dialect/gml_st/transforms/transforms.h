@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TRANSFORMS_H
 #define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TRANSFORMS_H
 
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/IR/PatternMatch.h"
 
 namespace mlir {
 namespace gml_st {
+class LoopOp;
 
 /// Rewrite a gml_st::LoopOp with bounds/step that potentially do not divide
 /// evenly into a gml_st::LoopOp where the step divides the iteration space

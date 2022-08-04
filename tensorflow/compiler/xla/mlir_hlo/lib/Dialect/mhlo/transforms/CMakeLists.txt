@@ -278,11 +278,3 @@ target_link_libraries(AllMhloPasses INTERFACE
   MhloShapeOpsToStandard
 )
 
-add_library(AllGmlStPasses INTERFACE)
-target_link_libraries(AllGmlStPasses INTERFACE
-  GmlStPasses
-  GmlStTestPasses
-  MLIRHLOGmlStPipeline
-  MLIRFuncDialect
-  MLIRPass
-)
