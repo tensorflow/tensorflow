@@ -2512,6 +2512,50 @@ cc_library(
     ],
 )
 
+td_library(
+    name = "tiling_interface_td_files",
+    srcs = ["include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td"],
+    includes = ["include"],
+    deps = ["@llvm-project//mlir:OpBaseTdFiles"],
+)
+
+gentbl_cc_library(
+    name = "tiling_interface_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-op-interface-decls"],
+            "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td",
+    deps = ["@llvm-project//mlir:OpBaseTdFiles"],
+)
+
+cc_library(
+    name = "tiling_interface",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.cc.inc",
+        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h.inc",
+        "lib/Dialect/gml_st/transforms/tiling_interface.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":tiling_interface_inc_gen",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:ViewLikeInterface",
+    ],
+)
+
 gentbl_cc_library(
     name = "fusion_interface_inc_gen",
     compatible_with = get_compatible_with_cloud(),
