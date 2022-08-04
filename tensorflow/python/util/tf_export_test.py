@@ -18,7 +18,6 @@
 import sys
 
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export
 
@@ -157,18 +156,6 @@ class ValidateExportTest(test.TestCase):
     self.assertEqual(['TestClassA1'], tf_export.get_v1_names(TestClassA))
     self.assertEqual(['estimator.TestClassB1'],
                      tf_export.get_v1_names(TestClassB))
-
-  @test.mock.patch.object(logging, 'warning', autospec=True)
-  def testExportIsDeprecated(self, mock_warning):
-    export_decorator = tf_export.estimator_export(
-        'estimator.TestClassA1', is_deprecated=True)
-    export_decorator(TestClassA)
-
-    TestClassA()
-    self.assertEqual(1, mock_warning.call_count)
-    TestClassA()
-    self.assertEqual(1, mock_warning.call_count)
-    self.assertIn('IS DEPRECATED', TestClassA.__doc__)
 
   def testExportSingleConstant(self):
     module1 = self._CreateMockModule('module1')
