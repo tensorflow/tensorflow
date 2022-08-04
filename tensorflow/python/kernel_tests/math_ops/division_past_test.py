@@ -58,7 +58,7 @@ class DivisionTestCase(test.TestCase):
                 tf_div = tf_x / tf_y
                 # In NumPy 1.23, np.int16(x) / np.int16(y) now has np.float64
                 # type, which disagrees with TF.
-                if x.dtype != np.int16:
+                if x.dtype not in (np.int8, np.int16):
                   check(div, tf_div)
                 floordiv = x // y
                 tf_floordiv = tf_x // tf_y
