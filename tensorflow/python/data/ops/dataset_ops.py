@@ -1789,12 +1789,6 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     tf.Tensor(1, shape=(), dtype=int64)
 
 
-    Note that to load a previously saved dataset, you need to specify
-    `element_spec` -- a type signature of the elements of the saved dataset,
-    which can be obtained via `tf.data.Dataset.element_spec`. This requirement
-    exists so that shape inference of the loaded dataset does not need to
-    perform I/O.
-
     If the default option of sharding the saved dataset was used, the element
     order of the saved dataset will be preserved when loading it.
 
@@ -1818,8 +1812,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       element_spec: Optional. A nested structure of `tf.TypeSpec` objects
         matching the structure of an element of the saved dataset and specifying
         the type of individual element components. If not provided, the nested
-        structure of `tf.TypeSpec` saved with the saved dataset is used. This
-        argument needs to be provided if the method is executed in graph mode.
+        structure of `tf.TypeSpec` saved with the saved dataset is used. Note
+        that this argument is required in graph mode.
       compression: Optional. The algorithm to use to decompress the data when
         reading it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
       reader_func: Optional. A function to control how to read data from shards.
