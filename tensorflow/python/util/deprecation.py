@@ -351,7 +351,7 @@ def deprecated(date, instructions, warn_once=True):
               'From %s: %s (from %s) is deprecated and will be removed %s.\n'
               'Instructions for updating:\n%s',
               _call_location(), decorator_utils.get_qualified_name(func),
-              func.__module__,
+              func_or_class.__module__,
               'in a future version' if date is None else ('after %s' % date),
               instructions)
       return func(*args, **kwargs)
