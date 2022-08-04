@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/python/profiler/internal/python_hooks.h"
 
 #include <atomic>
-#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
@@ -90,9 +89,13 @@ void ForEachThread(PyThreadState* curr_thread, ForEachThreadFunc&& callback) {
   // Py_LIMITED_API definition nuances. We can not iterate all threads through
   // that PyInterpreterState.
   for (PyThreadState* p = curr_thread; p != nullptr; p = p->next) {
+    PyThreadState_Swap(p);
+    std::atomic_thread_fence(std::memory_order_release);
     callback(p);
   }
   for (PyThreadState* p = curr_thread->prev; p != nullptr; p = p->prev) {
+    PyThreadState_Swap(p);
+    std::atomic_thread_fence(std::memory_order_release);
     callback(p);
   }
 }
@@ -343,7 +346,7 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
   PyThreadState* curr_thread = PyThreadState_Get();
   ForEachThread(curr_thread, [](PyThreadState* thread) {
     VLOG(1) << "Setting profiler in " << thread->thread_id;
-    _PyEval_SetProfile(thread, &PythonHooks::ProfileFunction, nullptr);
+    PyEval_SetProfile(&PythonHooks::ProfileFunction, nullptr);
   });
   PyThreadState_Swap(curr_thread);
 }
@@ -352,7 +355,7 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
   PyThreadState* curr_thread = PyThreadState_Get();
   ForEachThread(curr_thread, [](PyThreadState* thread) {
     VLOG(1) << "Clearing profiler in " << thread->thread_id;
-    _PyEval_SetProfile(thread, nullptr, nullptr);
+    PyEval_SetProfile(nullptr, nullptr);
   });
   PyThreadState_Swap(curr_thread);
 
