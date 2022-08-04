@@ -90,7 +90,61 @@ func.func @dynamic_broadcast_in_dim_at_point(%arg : tensor<?x?xf32>,
 
 // -----
 
-// TODO(frgossen): Add test for tiled concatenate when implemented.
+// CHECK-LABEL: @concatenate_at_tile
+// CHECK-SAME:  %[[INIT:.*]]: tensor<?x?xi32>, %[[ARG_A:.*]]: tensor<?x?xi32>, %[[ARG_B:.*]]: tensor<?x?xi32>, %[[ARG_C:.*]]: tensor<?x?xi32>, %[[TILE:.*]]: !gml_st.tile<?x?>
+func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
+    %b: tensor<?x?xi32>, %c: tensor<?x?xi32>, %tile : !gml_st.tile<?x?>)
+    -> tensor<?x?xi32> {
+  // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+  // CHECK-DAG:  %[[TILE_OFFSET_D0:.*]] = gml_st.offset %[[TILE]][%[[C0]]]
+  // CHECK-DAG:  %[[REMAINING_TILE_OFFSET_IN_CCAT_DIM:.*]] = gml_st.offset %[[TILE]][%[[C1]]]
+  // CHECK-DAG:  %[[TILE_SIZE_D0:.*]] = gml_st.size %[[TILE]][%[[C0]]]
+  // CHECK-DAG:  %[[TILE_SIZE_D1:.*]] = gml_st.size %[[TILE]][%[[C1]]]
+  // CHECK-DAG:  %[[TILE_STRIDE_D0:.*]] = gml_st.stride %[[TILE]][%[[C0]]]
+  // CHECK-DAG:  %[[TILE_STRIDE_D1:.*]] = gml_st.stride %[[TILE]][%[[C1]]]
+  // CHECK-DAG:  %[[ANY_ARG_D0:.*]] = tensor.dim %[[ARG_A]], %[[C0]]
+  // CHECK-DAG:  %[[ARG_A_D1:.*]] = tensor.dim %[[ARG_A]], %[[C1]]
+  // CHECK-DAG:  %[[ARG_A_SPACE:.*]] = gml_st.space [%[[ANY_ARG_D0]], %[[ARG_A_D1]]]
+  // CHECK-DAG:  %[[ARG_A_TILE_OFFSET_D1:.*]] = arith.minui %[[REMAINING_TILE_OFFSET_IN_CCAT_DIM]], %[[ARG_A_D1]]
+  // CHECK-DAG:  %[[ARG_A_TILE_SIZE_D1_UNBOUND:.*]] = arith.subi %[[ARG_A_D1]], %[[ARG_A_TILE_OFFSET_D1]]
+  // CHECK-DAG:  %[[ARG_A_TILE_SIZE_D1:.*]] = arith.minui %[[ARG_A_TILE_SIZE_D1_UNBOUND]], %[[TILE_SIZE_D1]]
+  // CHECK-DAG:  %[[ARG_A_TILE:.*]] = gml_st.tile %[[ARG_A_SPACE]] [%[[TILE_OFFSET_D0]], %[[ARG_A_TILE_OFFSET_D1]]] [%[[TILE_SIZE_D0]], %[[ARG_A_TILE_SIZE_D1]]] [%[[TILE_STRIDE_D0]], %[[TILE_STRIDE_D1]]]
+  // CHECK-DAG:  %[[ARG_A_UPDATE_PRED:.*]] = arith.cmpi ule, %[[REMAINING_TILE_OFFSET_IN_CCAT_DIM]], %[[ARG_A_D1]]
+  // CHECK-DAG:  %[[ARG_A_UPDATE_VAL:.*]] = arith.subi %[[REMAINING_TILE_OFFSET_IN_CCAT_DIM]], %[[ARG_A_D1]]
+  // CHECK-DAG:  %[[REMAINING_TILE_OFFSET_IN_CCAT_DIM_:.*]] = arith.select %[[ARG_A_UPDATE_PRED]], %[[C0]], %[[ARG_A_UPDATE_VAL]]
+  // CHECK-DAG:  %[[ARG_B_D1:.*]] = tensor.dim %[[ARG_B]], %[[C1]]
+  // CHECK-DAG:  %[[ARG_B_SPACE:.*]] = gml_st.space [%[[ANY_ARG_D0]], %[[ARG_B_D1]]]
+  // CHECK-DAG:  %[[ARG_B_TILE_OFFSET_D1:.*]] = arith.minui %[[REMAINING_TILE_OFFSET_IN_CCAT_DIM_]], %[[ARG_B_D1]]
+  // CHECK-DAG:  %[[ARG_B_TILE_SIZE_D1_UNBOUND:.*]] = arith.subi %[[ARG_B_D1]], %[[ARG_B_TILE_OFFSET_D1]]
+  // CHECK-DAG:  %[[ARG_B_TILE_SIZE_D1:.*]] = arith.minui %[[ARG_B_TILE_SIZE_D1_UNBOUND]], %[[TILE_SIZE_D1]]
+  // CHECK-DAG:  %[[ARG_B_TILE:.*]] = gml_st.tile %[[ARG_B_SPACE]] [%[[TILE_OFFSET_D0]], %[[ARG_B_TILE_OFFSET_D1]]] [%[[TILE_SIZE_D0]], %[[ARG_B_TILE_SIZE_D1]]] [%[[TILE_STRIDE_D0]], %[[TILE_STRIDE_D1]]]
+  // CHECK-DAG:  %[[ARG_B_UPDATE_PRED:.*]] = arith.cmpi ule, %[[REMAINING_TILE_OFFSET_IN_CCAT_DIM_]], %[[ARG_B_D1]]
+  // CHECK-DAG:  %[[ARG_B_UPDATE_VAL:.*]] = arith.subi %[[REMAINING_TILE_OFFSET_IN_CCAT_DIM_]], %[[ARG_B_D1]]
+  // CHECK-DAG:  %[[REMAINING_TILE_OFFSET_IN_CCAT_DIM__:.*]] = arith.select %[[ARG_B_UPDATE_PRED]], %[[C0]], %[[ARG_B_UPDATE_VAL]]
+  // CHECK-DAG:  %[[ARG_C_D1:.*]] = tensor.dim %[[ARG_C]], %[[C1]]
+  // CHECK-DAG:  %[[ARG_C_SPACE:.*]] = gml_st.space [%[[ANY_ARG_D0]], %[[ARG_C_D1]]]
+  // CHECK-DAG:  %[[ARG_C_TILE_OFFSET_D1:.*]] = arith.minui %[[REMAINING_TILE_OFFSET_IN_CCAT_DIM__]], %[[ARG_C_D1]]
+  // CHECK-DAG:  %[[ARG_C_TILE_SIZE_D1_UNBOUND:.*]] = arith.subi %[[ARG_C_D1]], %[[ARG_C_TILE_OFFSET_D1]]
+  // CHECK-DAG:  %[[ARG_C_TILE_SIZE_D1:.*]] = arith.minui %[[ARG_C_TILE_SIZE_D1_UNBOUND]], %[[TILE_SIZE_D1]]
+  // CHECK-DAG:  %[[ARG_C_TILE:.*]] = gml_st.tile %[[ARG_C_SPACE]] [%[[TILE_OFFSET_D0]], %[[ARG_C_TILE_OFFSET_D1]]] [%[[TILE_SIZE_D0]], %[[ARG_C_TILE_SIZE_D1]]] [%[[TILE_STRIDE_D0]], %[[TILE_STRIDE_D1]]]
+  // CHECK-DAG:  %[[ARG_A_SUB:.*]] = gml_st.materialize %[[ARG_A]][%[[ARG_A_TILE]]]
+  // CHECK-DAG:  %[[ARG_B_SUB:.*]] = gml_st.materialize %[[ARG_B]][%[[ARG_B_TILE]]]
+  // CHECK-DAG:  %[[ARG_C_SUB:.*]] = gml_st.materialize %[[ARG_C]][%[[ARG_C_TILE]]]
+  // CHECK-DAG:  %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
+  // CHECK:      %[[CONCAT_SUB:.*]] = gml_st.concatenate
+  // CHECK-SAME:     ins(%[[ARG_A_SUB]] : tensor<?x?xi32>, %[[ARG_B_SUB]] : tensor<?x?xi32>, %[[ARG_C_SUB]] : tensor<?x?xi32>)
+  // CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<?x?xi32>)
+  // CHECK-SAME:     {dimension = 1 : i64}
+  // CHECK:      return %[[CONCAT_SUB]]
+  %concat = gml_st.concatenate
+      ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
+      outs(%init : tensor<?x?xi32>)
+      {dimension = 1 : i64}
+  %concat_sub = gml_st.materialize %concat[%tile]
+      : tensor<?x?xi32>[!gml_st.tile<?x?>]
+  func.return %concat_sub : tensor<?x?xi32>
+}
 
 // -----
 

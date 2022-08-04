@@ -21,6 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -28,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
@@ -212,9 +216,113 @@ void GmlStDialect::initialize() {
 
 namespace {
 
+Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
+                                   Location loc, Value tile) {
+  uint64_t concatDim = op.dimension();
+  auto resultTy = op.getResult().getType().cast<RankedTensorType>();
+  int64_t rank = resultTy.getRank();
+  OperandRange allOperands = op.operands();
+  Value anyOperand = allOperands.front();
+
+  // Create the shared tile strides, which are the exact same for every operand
+  // tile. Also create a basis for the space sizes, tile offsets, and tile
+  // sizes. These hold the shared values in all non-concat dimensions and can be
+  // amended in the concat dimension to create the individual operand tiles.
+  SmallVector<Value> sharedTileStrides(rank);
+  SmallVector<Value> baseSpaceSizes(rank);
+  SmallVector<Value> baseTileOffsets(rank);
+  SmallVector<Value> baseTileSizes(rank);
+  for (int64_t i = 0; i < rank; ++i) {
+    Value iCst = builder.create<arith::ConstantIndexOp>(loc, i);
+    sharedTileStrides[i] = builder.create<StrideOp>(loc, tile, iCst);
+
+    // The space sizes, tile offsets, and tile sizes differ in the concat
+    // dimension. Do not populate these.
+    if (i == concatDim) {
+      continue;
+    }
+
+    baseSpaceSizes[i] =
+        builder.createOrFold<tensor::DimOp>(loc, anyOperand, iCst);
+    baseTileOffsets[i] = builder.create<OffsetOp>(loc, tile, iCst);
+    baseTileSizes[i] = builder.create<SizeOp>(loc, tile, iCst);
+  }
+
+  // Some shared values.
+  ArrayAttr allDynamicStridesOrOffsetsAttr = builder.getI64ArrayAttr(
+      SmallVector<int64_t>(rank, ShapedType::kDynamicStrideOrOffset));
+  ArrayAttr allDynamicSizesAttr = builder.getI64ArrayAttr(
+      SmallVector<int64_t>(rank, ShapedType::kDynamicSize));
+  Value zeroCst = builder.create<arith::ConstantIndexOp>(loc, 0);
+  Value concatDimCst = builder.create<arith::ConstantIndexOp>(loc, concatDim);
+  Value maxTileSizeInConcatDim =
+      builder.create<SizeOp>(loc, tile, concatDimCst);
+
+  // The remaining tile offset in the concat dimension is subtracted by each
+  // operand's size in that dimension. We maintain the invariant
+  // remainingTileOffsetInConcatDim >= 0.
+  Value remainingTileOffsetInConcatDim =
+      builder.create<OffsetOp>(loc, tile, concatDimCst);
+
+  // Create the relevant subsets per operand. These tiles can be empty at
+  // runtime.
+  SmallVector<Value> subOperands;
+  subOperands.reserve(allOperands.size());
+  for (Value operand : allOperands) {
+    // Create operand space.
+    Value operandSizeInConcatDim =
+        builder.create<tensor::DimOp>(loc, operand, concatDimCst);
+    baseSpaceSizes[concatDim] = operandSizeInConcatDim;
+    Value operandSpace =
+        builder.create<SpaceOp>(loc, baseSpaceSizes, allDynamicSizesAttr);
+
+    // Find the current operand's tile offset in the concat dimension. This is
+    // the remaining offset clamped into the bounds of the operand. Note that
+    // the remaining offset is always >= 0.
+    Value operandTileOffsetInConcatDim = builder.create<arith::MinUIOp>(
+        loc, remainingTileOffsetInConcatDim, operandSizeInConcatDim);
+    baseTileOffsets[concatDim] = operandTileOffsetInConcatDim;
+
+    // Find the current operand's tile size in the concat dimension.
+    Value remainingOperandSizeInConcatDim = builder.create<arith::SubIOp>(
+        loc, operandSizeInConcatDim, operandTileOffsetInConcatDim);
+    baseTileSizes[concatDim] = builder.create<arith::MinUIOp>(
+        loc, remainingOperandSizeInConcatDim, maxTileSizeInConcatDim);
+
+    // Create the operand tile and materialize the subset for this operand.
+    Value tile = builder.create<TileOp>(
+        loc, operandSpace, baseTileOffsets, baseTileSizes, sharedTileStrides,
+        allDynamicStridesOrOffsetsAttr, allDynamicSizesAttr,
+        allDynamicStridesOrOffsetsAttr);
+    subOperands.push_back(builder.create<MaterializeOp>(loc, operand, tile));
+
+    // Unless it is the last operand, update the remaining tile offset in the
+    // concat dimension. The remaining offset is subtracted by the operand's
+    // size but must remain >= 0.
+    if (operand != allOperands.back()) {
+      remainingTileOffsetInConcatDim = builder.create<arith::SelectOp>(
+          loc,
+          builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ule,
+                                        remainingTileOffsetInConcatDim,
+                                        operandSizeInConcatDim),
+          zeroCst,
+          builder.create<arith::SubIOp>(loc, remainingTileOffsetInConcatDim,
+                                        operandSizeInConcatDim));
+    }
+  }
+
+  // Create the tiled concat op.
+  auto tileType = tile.getType().cast<TileType>();
+  Value subInit = builder.create<MaterializeOp>(loc, op.init(), tile);
+  auto subResultType =
+      RankedTensorType::get(tileType.getShape(), resultTy.getElementType());
+  return builder.create<gml_st::ConcatenateOp>(loc, subResultType, subOperands,
+                                               subInit, concatDim);
+}
+
 Value fuseConcatenateOpThroughPointRecursively(
     OpBuilder &builder, Location loc, RankedTensorType rankedTy,
-    uint64_t concatDim, const SmallVector<Value> &remainingOffsets,
+    uint64_t concatDim, SmallVector<Value> &remainingOffsets,
     ValueRange remainingOperands) {
   // Bail if called for no operands.
   if (remainingOperands.empty()) {
@@ -225,16 +333,15 @@ Value fuseConcatenateOpThroughPointRecursively(
   // Terminal case of exactly one operand.
   if (remainingOperands.size() == 1) {
     // Create operand space.
-    const SmallVector<Value> dynamicDims =
+    SmallVector<Value> dynamicDims =
         tensor::createDynamicDimValues(builder, loc, leadingOperand);
-    const ArrayAttr staticDims = builder.getI64ArrayAttr(rankedTy.getShape());
-    const Value operandSpace =
-        builder.create<SpaceOp>(loc, dynamicDims, staticDims);
+    ArrayAttr staticDims = builder.getI64ArrayAttr(rankedTy.getShape());
+    Value operandSpace = builder.create<SpaceOp>(loc, dynamicDims, staticDims);
 
     // Create operand point.
-    const SmallVector<int64_t> allDynamicOffsets(
-        rankedTy.getRank(), ShapedType::kDynamicStrideOrOffset);
-    const Value operandPoint =
+    SmallVector<int64_t> allDynamicOffsets(rankedTy.getRank(),
+                                           ShapedType::kDynamicStrideOrOffset);
+    Value operandPoint =
         builder.create<PointOp>(loc, operandSpace, remainingOffsets,
                                 builder.getI64ArrayAttr(allDynamicOffsets));
 
@@ -245,16 +352,16 @@ Value fuseConcatenateOpThroughPointRecursively(
   // remainder.
   assert(remainingOperands.size() > 1 &&
          "expect more than 1 operand at this point");
-  const Value leadingOperandConcatDim =
+  Value leadingOperandConcatDim =
       builder.create<tensor::DimOp>(loc, leadingOperand, concatDim);
-  const Value leadingOperandPredicate = builder.create<arith::CmpIOp>(
+  Value leadingOperandPredicate = builder.create<arith::CmpIOp>(
       loc, arith::CmpIPredicate::ult, remainingOffsets[concatDim],
       leadingOperandConcatDim);
   auto ifOp = builder.create<scf::IfOp>(
       loc, rankedTy.getElementType(), leadingOperandPredicate,
       [&](OpBuilder &builder, Location loc) {
         // For the leading operand, recur with the current offsets.
-        const Value fused = fuseConcatenateOpThroughPointRecursively(
+        Value fused = fuseConcatenateOpThroughPointRecursively(
             builder, loc, rankedTy, concatDim, remainingOffsets,
             leadingOperand);
         builder.create<scf::YieldOp>(loc, fused);
@@ -266,7 +373,7 @@ Value fuseConcatenateOpThroughPointRecursively(
                                                 remainingOffsets.end());
         thenRemainingOffsets[concatDim] = builder.create<arith::SubIOp>(
             loc, remainingOffsets[concatDim], leadingOperandConcatDim);
-        const Value fused = fuseConcatenateOpThroughPointRecursively(
+        Value fused = fuseConcatenateOpThroughPointRecursively(
             builder, loc, rankedTy, concatDim, thenRemainingOffsets,
             remainingOperands.drop_front());
         builder.create<scf::YieldOp>(loc, fused);
@@ -277,8 +384,8 @@ Value fuseConcatenateOpThroughPointRecursively(
 Value fuseConcatenateOpThroughPoint(ConcatenateOp op, OpBuilder &builder,
                                     Location loc, Value subset) {
   auto resultTy = op.getType().cast<RankedTensorType>();
-  const int64_t resultRank = resultTy.getRank();
-  const uint64_t concatDim = op.dimension();
+  int64_t resultRank = resultTy.getRank();
+  uint64_t concatDim = op.dimension();
 
   // Materialize initial offsets.
   SmallVector<Value> initialOffsets;
@@ -288,7 +395,7 @@ Value fuseConcatenateOpThroughPoint(ConcatenateOp op, OpBuilder &builder,
         loc, subset, builder.create<arith::ConstantIndexOp>(loc, i)));
   }
 
-  const ValueRange initialOperands = op.operands();
+  ValueRange initialOperands = op.operands();
   return fuseConcatenateOpThroughPointRecursively(
       builder, loc, resultTy, concatDim, initialOffsets, initialOperands);
 }
@@ -296,7 +403,10 @@ Value fuseConcatenateOpThroughPoint(ConcatenateOp op, OpBuilder &builder,
 }  // namespace
 
 Value ConcatenateOp::fuse(Location loc, Value subset, OpBuilder &builder) {
-  const Type subsetTy = subset.getType();
+  Type subsetTy = subset.getType();
+  if (subsetTy.isa<TileType>()) {
+    return fuseConcatenateOpThroughTile(*this, builder, loc, subset);
+  }
   if (subsetTy.isa<PointType>()) {
     return fuseConcatenateOpThroughPoint(*this, builder, loc, subset);
   }
