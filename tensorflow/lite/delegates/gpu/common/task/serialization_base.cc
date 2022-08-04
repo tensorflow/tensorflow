@@ -130,6 +130,8 @@ data::Layout ToFB(Layout type) {
       return data::Layout::HWDC;
     case Layout::BHWDC:
       return data::Layout::BHWDC;
+    case Layout::LINEAR:
+      return data::Layout::LINEAR;
     default:
       return data::Layout::UNKNOWN;
   }
@@ -226,6 +228,8 @@ Layout ToEnum(data::Layout type) {
       return Layout::HWDC;
     case data::Layout::BHWDC:
       return Layout::BHWDC;
+    case data::Layout::LINEAR:
+      return Layout::LINEAR;
     default:
       return Layout::UNKNOWN;
   }
