@@ -74,4 +74,6 @@ CheckOptions:
     value:           camelBack
   - key:             readability-identifier-naming.IgnoreMainLikeFunctions
     value:           1
+  - key:             google-readability-braces-around-statements.ShortStatementLines
+    value:           2
   # LINT.ThenChange(METADATA:check-options)
