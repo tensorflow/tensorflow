@@ -164,6 +164,9 @@ class GPUOperation {
                              GPUOperation* op);
   friend GPUOperation CreateGpuOperation(const OperationDef& definition,
                                          ElementwiseDescriptor&& descriptor);
+  friend GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                         ElementwiseDescriptor&& descriptor,
+                                         const BHWC& second_shape);
 
   virtual int3 GetGridSize() const;
   virtual void GetPossibleKernelWorkGroups(
@@ -190,6 +193,10 @@ class GPUOperation {
 GPUOperation CreateGpuOperation(const OperationDef& definition,
                                 ElementwiseDescriptor&& descriptor);
 
+// For creating elementwise operations with 2 runtime inputs
+GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                ElementwiseDescriptor&& descriptor,
+                                const BHWC& second_shape);
 }  // namespace gpu
 }  // namespace tflite
 

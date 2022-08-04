@@ -345,25 +345,9 @@ GPUOperation CreateElementwiseTwoInput(const OperationDef& definition,
                                        const OperationType& op_type,
                                        const BHWC& shape) {
   ElementwiseDescriptor op_desc;
-  const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
-  const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
-  const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
-  std::string coords = absl::StrCat(x_coord, ", ", y_coord, ", ", s_coord);
-  if (definition.src_tensors[1].HasAxis(Axis::BATCH)) {
-    const std::string b_coord = shape.b == 1 ? "0" : "B_COORD";
-    coords += ", " + b_coord;
-  }
-  op_desc.code = absl::StrCat(
-      "args.src_tensor_1::type second_val = args.src_tensor_1.Read(", coords,
-      ");\n");
-  if (shape.c == 1) {
-    op_desc.code += "  second_val.y = second_val.x;\n";
-    op_desc.code += "  second_val.z = second_val.x;\n";
-    op_desc.code += "  second_val.w = second_val.x;\n";
-  }
-  op_desc.code +=
-      GetTwoInputCode(op_type, "out_value", "in_value", "second_val", false);
-  return CreateGpuOperation(definition, std::move(op_desc));
+  op_desc.code =
+      GetTwoInputCode(op_type, "out_value", "in_value", "in2_value", false);
+  return CreateGpuOperation(definition, std::move(op_desc), shape);
 }
 
 }  // namespace gpu
