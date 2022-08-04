@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <memory>
 
 #include <gmock/gmock.h>
@@ -47,7 +48,8 @@ TEST_P(SavedModelTest, BasicV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.enable_lazy_loading = GetParam().enable_lazy_loading;
+  options.lazy_loading_threshold =
+      GetParam().enable_lazy_loading ? 0 : INT32_MAX;
   options.graph_execution_options.compile_options.enable_native_ops =
       GetParam().enable_native_ops;
   options.graph_execution_options.compile_options.enable_grappler =
@@ -206,40 +208,6 @@ std::vector<tensorflow::Tensor> CreateExpectedOutputs(
   }
 
   return outputs;
-}
-
-TEST(SavedModelTest, LoadSavedModelWithMetaGraphDef) {
-  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
-  // using the following python code:
-  //  x = tf.placeholder(tf.int32, shape=(3))
-  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
-  //  r = tf.matmul(x, y)
-  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
-
-  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
-  auto options = DefaultSavedModelOptions(runtime.get());
-
-  tensorflow::MetaGraphDef meta_graph_def;
-  TF_CHECK_OK(tensorflow::ReadMetaGraphDefFromSavedModel(
-      saved_model_dir, /*tags=*/{"serve"}, &meta_graph_def));
-
-  tensorflow::Status status;
-  auto saved_model = SavedModelImpl::LoadSavedModel(
-      options, saved_model_dir, std::move(meta_graph_def), &status);
-  TF_CHECK_OK(status);
-
-  // Set input 'x' to [[1, 1, 1]]
-  std::vector<tensorflow::Tensor> inputs;
-  inputs.push_back(
-      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
-
-  std::vector<tensorflow::Tensor> outputs;
-  TF_ASSERT_OK(saved_model->Run({}, "toy", inputs, &outputs));
-  ASSERT_EQ(outputs.size(), 1);
-
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
-              ::testing::ElementsAreArray({6}));
 }
 
 TEST(SavedModelTest, RunMultipleSignatures) {

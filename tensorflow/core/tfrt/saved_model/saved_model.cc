@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -48,10 +49,10 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
+#include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/tpu/tpu_resources.h"
-#include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
@@ -381,32 +382,6 @@ tfrt::HostContext* SavedModel::GetHostContext() const {
   return runtime_->core_runtime()->GetHostContext();
 }
 
-std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
-    Options options, absl::string_view saved_model_dir,
-    const std::unordered_set<std::string>& tags, tensorflow::Status* status) {
-  LOG(INFO) << "TFRT reading v1 savedmodel: " << saved_model_dir;
-  auto read_start_time = absl::Now();
-
-  tensorflow::MetaGraphDef meta_graph_def;
-  auto read_status = tensorflow::ReadMetaGraphDefFromSavedModel(
-      std::string(saved_model_dir), tags, &meta_graph_def);
-
-  if (!read_status.ok()) {
-    *status = read_status;
-    return nullptr;
-  }
-
-  auto read_meta_graph_duration = absl::Now() - read_start_time;
-  saved_model_read_meta_graph_time_seconds
-      ->GetCell(std::string(saved_model_dir))
-      ->Set(absl::ToInt64Seconds(read_meta_graph_duration));
-  LOG(INFO) << "TFRT finished reading meta graph. Took "
-            << absl::ToInt64Milliseconds(read_meta_graph_duration) << " ms.";
-
-  return LoadSavedModel(std::move(options), saved_model_dir,
-                        std::move(meta_graph_def), status);
-}
-
 namespace {
 
 // Gets the signatures from `signature_defs` and inserts them into `signatures`.
@@ -455,11 +430,37 @@ void UpdateCompileOptions(SavedModel::Options& options) {
   }
 }
 
+StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
+    absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& tags) {
+  LOG(INFO) << "TFRT reading v1 savedmodel: " << saved_model_dir;
+  auto read_start_time = absl::Now();
+
+  tensorflow::MetaGraphDef meta_graph_def;
+  TF_RETURN_IF_ERROR(tensorflow::ReadMetaGraphDefFromSavedModel(
+      std::string(saved_model_dir), tags, &meta_graph_def));
+
+  auto read_meta_graph_duration = absl::Now() - read_start_time;
+  saved_model_read_meta_graph_time_seconds
+      ->GetCell(std::string(saved_model_dir))
+      ->Set(absl::ToInt64Seconds(read_meta_graph_duration));
+  LOG(INFO) << "TFRT finished reading meta graph. Took "
+            << absl::ToInt64Milliseconds(read_meta_graph_duration) << " ms.";
+  return std::move(meta_graph_def);
+}
+
 }  // namespace
 
 std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     Options options, absl::string_view saved_model_dir,
-    tensorflow::MetaGraphDef meta_graph_def, tensorflow::Status* status) {
+    const std::unordered_set<std::string>& tags, tensorflow::Status* status) {
+  auto statusor_meta_graph_def = ReadSavedModel(saved_model_dir, tags);
+  if (!statusor_meta_graph_def.ok()) {
+    *status = statusor_meta_graph_def.status();
+    return nullptr;
+  }
+  auto meta_graph_def = statusor_meta_graph_def.ValueOrDie();
+
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
   tfrt::metrics::AddTFRTVersionMetric();
 
@@ -470,6 +471,9 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
   auto statusor_saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {
     mlir::MLIRContext context;
+
+    const bool lazy_loading_enabled =
+        meta_graph_def.signature_def_size() > options.lazy_loading_threshold;
 
     // Step 1: Import saved model from a proto to an MLIR module.
     auto import_start_time = absl::Now();
@@ -493,7 +497,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
         ImportSavedModel(
             &context, meta_graph_def, *fallback_state,
             std::string(saved_model_dir),
-            /*import_user_signatures=*/!options.enable_lazy_loading,
+            /*import_user_signatures=*/!lazy_loading_enabled,
             options.graph_execution_options.run_placer_grappler_on_functions,
             options.graph_execution_options.enable_tfrt_gpu));
 
@@ -511,7 +515,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     // If lazy loading is enabled, the user signatures are not exported via MLIR
     // module, so we need to get them from the proto.
     // TODO(b/187228559): Unify the code paths for populating the signature map.
-    if (options.enable_lazy_loading) {
+    if (lazy_loading_enabled) {
       GetSignaturesFromSignatureDef(initializers_and_signatures.signature_map,
                                     meta_graph_def.signature_def(), options);
     }
@@ -588,7 +592,9 @@ SavedModelImpl::SavedModelImpl(
       fallback_state_(std::move(fallback_state)),
       tpu_model_resource_(std::move(tpu_model_resource)),
       resource_context_(std::move(resource_context)),
-      graph_executor_(std::move(graph_executor)) {}
+      graph_executor_(std::move(graph_executor)),
+      lazy_loading_enabled_(meta_graph_def_.signature_def_size() >
+                            options.lazy_loading_threshold) {}
 
 SavedModelImpl::~SavedModelImpl() = default;
 
@@ -661,7 +667,7 @@ tensorflow::Status SavedModelImpl::Run(
 
   const tfrt::Function* func;
   tfrt::ResourceContext* resource_context;
-  if (options_.enable_lazy_loading) {
+  if (lazy_loading_enabled_) {
     // If lazy loading is enabled, no signature is loaded into `bef_file_`, so
     // we need to find the BEF from the cache or create one.
     TF_ASSIGN_OR_RETURN(const LoadingResult& loading_result,
