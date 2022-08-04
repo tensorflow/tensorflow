@@ -107,7 +107,7 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
                                 uint64* num_elements) {
   IteratorContext::Params params(ctx);
   auto function_handle_cache =
-      absl::make_unique<FunctionHandleCache>(params.flr);
+      std::make_unique<FunctionHandleCache>(params.flr);
   params.function_handle_cache = function_handle_cache.get();
   ResourceMgr resource_mgr;
   params.resource_mgr = &resource_mgr;
@@ -228,7 +228,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -567,7 +567,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 

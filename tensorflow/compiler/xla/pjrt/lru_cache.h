@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_LRU_CACHE_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_LRU_CACHE_H_
 
+#include <optional>
+
 #include "absl/container/node_hash_map.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {

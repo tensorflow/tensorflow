@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
@@ -83,12 +85,53 @@ struct NodeSubset {
   std::vector<int> output_tensors;
 };
 
-// Partitions a list of node indices `nodes_to_partition` into node sub sets.
-// Each node sub set is in dependency order (i.e. all members of the node sub
-// sets). `node_subsets` is assumed to be empty.
+// Node edge.second depends on node edge.first.
+using ControlEdge = std::pair<int32_t, int32_t>;
+using ControlEdges = std::vector<ControlEdge>;
+
+// Partitions a list of node indices `nodes_to_partition` into node subsets.
+// Each node subset is in dependency order (i.e. all members of the node subsets
+// can be executed in the order they occur). Maintains the relative ordering of
+// nodes that have their `might_have_side_effects` attribute set. `node_subsets`
+// is assumed to be empty.
 TfLiteStatus PartitionGraphIntoIndependentNodeSubsets(
     const GraphInfo* info, const TfLiteIntArray* nodes_to_partition,
     std::vector<NodeSubset>* node_subsets);
+
+// Partitions a list of node indices `nodes_to_partition` into node subsets.
+// Each node subset is in dependency order (i.e. all members of the node subset
+// can be executed in the order they occur). `control_edges` specified a control
+// dependency DAG on the nodes contained in `info`. The resulting partitioning
+// will respect these control dependencies. This way, restrictions (in addition
+// to the nodes' data dependencies) can be imposed on the ultimate execution
+// order of the graph.
+//
+// (Example: with `control_edges.empty()` and `nodes_to_partition == {2, 3}`,
+// the graph
+//                    /------------\
+//                    |            v
+// 0 --> 1 --> 2* --> 3*     4 --> 5
+//       |                   ^
+//       \-------------------/
+//
+// will be partitioned as {{0, 1, 4}, {2, 3}, {5}}, since data dependencies
+// (notated '-->') allow for execution of 4 immediately after 1.
+//
+// With an additional control dependency `control_edges == {{3, 4}}` (notated
+// '==>'), execution of node 4 requires prior execution of node 3:
+//
+//                    /------------\
+//                    |            v
+// 0 --> 1 --> 2* --> 3* ==> 4 --> 5
+//       |                   ^
+//       \-------------------/
+//
+// and the partitioning will be {{0, 1}, {2, 3}, {4, 5}}.)
+//
+// `node_subsets` is assumed to be empty.
+TfLiteStatus PartitionGraphIntoIndependentNodeSubsets(
+    const GraphInfo* info, const TfLiteIntArray* nodes_to_partition,
+    const ControlEdges& control_edges, std::vector<NodeSubset>* node_subsets);
 
 }  // namespace tflite
 

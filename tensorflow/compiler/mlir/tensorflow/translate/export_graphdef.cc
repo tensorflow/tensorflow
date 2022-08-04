@@ -172,7 +172,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     BlockArgument arg, unsigned index, llvm::StringRef name) {
   auto func = arg.getParentRegion()->getParentOfType<FuncOp>();
 
-  auto node_def = absl::make_unique<NodeDef>();
+  auto node_def = std::make_unique<NodeDef>();
   if (!name.empty())
     node_def->set_name(std::string(ParseTensorName(name.str()).node()));
   else
@@ -232,7 +232,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     FuncOp function, Value operand, unsigned index, llvm::StringRef name) {
-  auto node_def = absl::make_unique<NodeDef>();
+  auto node_def = std::make_unique<NodeDef>();
   if (!name.empty())
     node_def->set_name(std::string(ParseTensorName(name.str()).node()));
   else
@@ -444,7 +444,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         output_names, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
   }
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
 
   // Extract version info.
   VersionDef versions;
@@ -753,7 +753,7 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
     TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(flib));
   }
 
-  auto graphdef = absl::make_unique<GraphDef>();
+  auto graphdef = std::make_unique<GraphDef>();
   graph->ToGraphDef(graphdef.get());
   if (!configs.export_library) graphdef->clear_library();
   if (!configs.export_shapes) {

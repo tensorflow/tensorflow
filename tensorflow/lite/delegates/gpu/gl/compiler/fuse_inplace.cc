@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/compiler/fuse_inplace.h"
 
+#include <any>
 #include <cstring>
 #include <string>
 
@@ -80,7 +81,7 @@ class InplaceCodeRewrite : public InlineRewrite {
 TransformResult RemoveUnusedInplaceUpdates::ApplyToNode(Node* node,
                                                         GraphFloat32* graph) {
   auto& attr =
-      absl::any_cast<CompiledNodeAttributes&>(node->operation.attributes);
+      std::any_cast<CompiledNodeAttributes&>(node->operation.attributes);
   // Remove inplace block by rewriting to empty string.
   EmptyInplaceRewrite rewrite;
   TextPreprocessor preprocessor('$', true);
@@ -99,9 +100,9 @@ TransformResult FuseInplaceUpdate::ApplyToNodesSequence(
   Node* node1 = sequence.front();
   Node* node2 = sequence.back();
   auto& attr1 =
-      absl::any_cast<CompiledNodeAttributes&>(node1->operation.attributes);
+      std::any_cast<CompiledNodeAttributes&>(node1->operation.attributes);
   auto& attr2 =
-      absl::any_cast<CompiledNodeAttributes&>(node2->operation.attributes);
+      std::any_cast<CompiledNodeAttributes&>(node2->operation.attributes);
 
   if (graph->FindInputs(node2->id).size() != 1 ||
       graph->FindOutputs(node2->id).size() != 1 ||

@@ -25,6 +25,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save as saved_model_save
@@ -77,10 +78,11 @@ class MultiThreadedTest(test.TestCase):
     model = quantize_model.quantize(
         temp_path, ['serving_default'], [tag_constants.SERVING],
         quantization_options=quantization_options,
-        representative_dataset=data_gen)
+        representative_dataset=data_gen())
     return model
 
-  def testMultipleConversionJobsWithCalibration(self):
+  @test_util.run_in_graph_and_eager_modes
+  def test_multiple_conversion_jobs_with_calibration(self):
     # Ensure that multiple conversion jobs with calibration won't encounter any
     # concurrency issue.
     with self.pool:

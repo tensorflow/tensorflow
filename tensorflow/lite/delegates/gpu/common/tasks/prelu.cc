@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
@@ -23,23 +27,19 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-GPUOperation CreatePReLU(const GpuInfo& gpu_info,
-                         const OperationDef& definition,
-                         const PReLUAttributes& attr) {
-  GPUOperation result(definition);
-  result.elementwise_ = true;
-
+ElementwiseDescriptor CreatePReLU(const PReLUAttributes& attr,
+                                  TensorDescriptor tensor_desc) {
+  ElementwiseDescriptor op_desc;
   std::string alpha_read;
   auto alpha_linear =
       absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
   if (alpha_linear) {
     TensorLinearDescriptor desc;
-    desc.storage_type =
-        DeduceLinearStorageType(definition.GetPrimaryStorageType());
-    desc.element_type = definition.GetPrimaryDataType();
+    desc.storage_type = DeduceLinearStorageType(tensor_desc.GetStorageType());
+    desc.element_type = tensor_desc.GetDataType();
     desc.UploadLinearData(*alpha_linear);
-    result.args_.AddObject(
-        "alpha", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+    op_desc.args.AddObject(
+        "alpha", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
     alpha_read = "FLT4 alpha_val = args.alpha.Read(S_COORD);\n";
   }
 
@@ -48,17 +48,10 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
   if (alpha_hwc) {
     const BHWC shape =
         BHWC(1, alpha_hwc->shape.h, alpha_hwc->shape.w, alpha_hwc->shape.c);
-    TensorStorageType storage_type;
-    auto status = SelectBestStorageType(
-        gpu_info, shape, definition.GetPrimaryStorageType(),
-        definition.GetDataType(), Layout::HWC, &storage_type);
-    if (!status.ok()) {
-      storage_type = TensorStorageType::BUFFER;
-    }
-    TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
-    desc.UploadData(*alpha_hwc);
-    result.args_.AddObject(
-        "alpha", absl::make_unique<TensorDescriptor>(std::move(desc)));
+    TensorDescriptor const_tensor_desc = tensor_desc;
+    const_tensor_desc.UploadData(*alpha_hwc);
+    op_desc.args.AddObject("alpha", std::make_unique<TensorDescriptor>(
+                                        std::move(const_tensor_desc)));
     const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
     const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
     const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
@@ -71,24 +64,18 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
     }
   }
 
-  if (attr.clip != 0) {
-    if (definition.precision == CalculationsPrecision::F32) {
-      result.args_.AddFloat("clip", attr.clip);
-    } else {
-      result.args_.AddHalf("clip", half(attr.clip));
-    }
-    result.code_ = alpha_read +
-                   "in_out_value = clamp(in_out_value, INIT_FLT4(0.0f), "
-                   "INIT_FLT4(args.clip)) + "
-                   "min(INIT_FLT4(0.0f), in_out_value) * alpha_val;";
-  } else {
-    result.code_ = alpha_read +
-                   "in_out_value = max(INIT_FLT4(0.0f), in_out_value) + "
-                   "min(INIT_FLT4(0.0f), "
-                   "in_out_value) * alpha_val;";
-  }
+  op_desc.code = alpha_read +
+                 "out_value = max(INIT_FLT4(0.0f), in_value) + "
+                 "min(INIT_FLT4(0.0f), "
+                 "in_value) * alpha_val;";
+  return op_desc;
+}
 
-  return result;
+GPUOperation CreatePReLU(const GpuInfo& gpu_info,
+                         const OperationDef& definition,
+                         const PReLUAttributes& attr) {
+  ElementwiseDescriptor op_desc = CreatePReLU(attr, definition.src_tensors[0]);
+  return CreateGpuOperation(definition, std::move(op_desc));
 }
 
 }  // namespace gpu

@@ -66,7 +66,7 @@ Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   VLOG(2) << "Infeeding to GPU complete";
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gpu

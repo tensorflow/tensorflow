@@ -43,6 +43,9 @@ tf_py_test(
     name = "failure_handler_test",
     srcs = ["failure_handler_test.py"],
     shard_count = 4,
+    tags = [
+        "no_windows",  # TODO(b/197981388)
+    ],
     deps = [
         ":failure_handling_lib",
         "//tensorflow/python:variables",
@@ -68,7 +71,7 @@ tf_py_test(
 tf_py_test(
     name = "gce_failure_handler_test",
     srcs = ["gce_failure_handler_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "noasan",  # TODO(b/226154233): Flaky test
         "nomsan",  # TODO(b/226154233): Flaky test

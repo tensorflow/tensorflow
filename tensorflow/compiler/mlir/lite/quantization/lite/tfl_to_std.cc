@@ -16,9 +16,9 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 namespace mlir {
@@ -29,12 +29,12 @@ void ConvertTFLQuantOpsToMlirQuantOps(func::FuncOp func) {
   func.walk([&](Operation* op) {
     b.setInsertionPoint(op);
     if (auto dq = llvm::dyn_cast<DequantizeOp>(op)) {
-      auto dcast = b.create<quant::DequantizeCastOp>(
+      auto dcast = b.create<quantfork::DequantizeCastOp>(
           dq.getLoc(), dq.output().getType(), dq.input());
       dq.output().replaceAllUsesWith(dcast);
       dq.erase();
     } else if (auto q = llvm::dyn_cast<QuantizeOp>(op)) {
-      auto qcast = b.create<quant::QuantizeCastOp>(
+      auto qcast = b.create<quantfork::QuantizeCastOp>(
           q.getLoc(), q.output().getType(), q.input());
       q.output().replaceAllUsesWith(qcast);
       q.erase();
@@ -58,17 +58,17 @@ void ConvertMlirQuantOpsToTFLQuantOps(func::FuncOp func) {
   OpBuilder b(func);
   func.walk([&](Operation* op) {
     b.setInsertionPoint(op);
-    if (auto dq = llvm::dyn_cast<quant::DequantizeCastOp>(op)) {
+    if (auto dq = llvm::dyn_cast<quantfork::DequantizeCastOp>(op)) {
       auto dcast = b.create<DequantizeOp>(dq.getLoc(), dq.getResult().getType(),
-                                          dq.arg());
+                                          dq.getArg());
       dq.getResult().replaceAllUsesWith(dcast);
       if (auto extra_attr = op->getAttr(mlir::quant::kVolatileOpAttrName)) {
         dcast->setAttr(mlir::quant::kVolatileOpAttrName, extra_attr);
       }
       dq.erase();
-    } else if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(op)) {
+    } else if (auto q = llvm::dyn_cast<quantfork::QuantizeCastOp>(op)) {
       auto out_type = q.getResult().getType();
-      auto qcast = b.create<QuantizeOp>(q.getLoc(), out_type, q.arg(),
+      auto qcast = b.create<QuantizeOp>(q.getLoc(), out_type, q.getArg(),
                                         TypeAttr::get(out_type));
       q.getResult().replaceAllUsesWith(qcast);
       if (auto extra_attr = op->getAttr(mlir::quant::kVolatileOpAttrName)) {

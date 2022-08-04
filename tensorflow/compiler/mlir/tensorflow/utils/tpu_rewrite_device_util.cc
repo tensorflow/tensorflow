@@ -523,7 +523,7 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
       tensorflow::GetTPUCompilationAndExecutionDevices(
           devices.device_names(), /*num_replicas=*/1,
           /*num_cores_per_replica=*/1, topology_attr.getValue(),
-          status_or_device_coodinates.ConsumeValueOrDie());
+          std::move(status_or_device_coodinates).value());
   if (!status_or_tpu_device_assignment.ok())
     return cluster.emitError()
            << "error in fetching TPU compilation/execution devices: "

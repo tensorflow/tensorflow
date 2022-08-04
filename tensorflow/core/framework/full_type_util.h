@@ -107,6 +107,17 @@ inline bool IsHostMemoryType(const FullTypeDef& t) {
       return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
     case TFT_STRING:
       return true;
+    case TFT_ITERATOR:
+      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
+    case TFT_OPTIONAL:
+      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
+    case TFT_PRODUCT:
+      for (int i = 0; i < t.args_size(); i++) {
+        if (IsHostMemoryType(full_type::GetArgDefaultAny(t, i))) {
+          return true;
+        }
+      }
+      return false;
     default:
       return false;
   }

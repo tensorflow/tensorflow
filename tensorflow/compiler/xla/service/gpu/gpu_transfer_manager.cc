@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_transfer_manager.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/cleanup/cleanup.h"
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
@@ -102,12 +102,12 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
-          return ::tensorflow::OkStatus();
+          return OkStatus();
         }
         Shape& device_sub_shape =
             *ShapeUtil::GetMutableSubshape(device_shape, index);
         if (device_sub_shape.is_static()) {
-          return ::tensorflow::OkStatus();
+          return OkStatus();
         }
 
         // Read the dynamic shape metadata from the device stream.  The dynamic
@@ -124,7 +124,7 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
             stream->parent()->GetSubBuffer(&buffer_8, offset, metadata_size);
         copies.push_back(std::make_pair(metadata_buffer, &device_sub_shape));
 
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       }));
 
   // Check out pinned memory for each buffer we want to copy.  If there aren't
@@ -135,11 +135,11 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   std::vector<std::unique_ptr<char[]>> fallback_buffers;
 
   // Return checked-out buffers at the end of this function.
-  auto cleanup = tensorflow::gtl::MakeCleanup([&] {
+  absl::Cleanup cleanup = [&] {
     absl::MutexLock lock(&mu_);
     pinned_buffers_.insert(pinned_buffers_.end(), checked_out_buffers.begin(),
                            checked_out_buffers.end());
-  });
+  };
 
   {
     absl::MutexLock lock(&mu_);
@@ -157,7 +157,7 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
             << "Unable to copy dynamic shape buffer of size " << src.size()
             << " to host using pinned memory.  Falling back to unpinned "
                "memory, which may be slow.";
-        fallback_buffers.push_back(absl::make_unique<char[]>(src.size()));
+        fallback_buffers.push_back(std::make_unique<char[]>(src.size()));
         h2d_memcpy_dsts.push_back(
             reinterpret_cast<int32_t*>(fallback_buffers.back().get()));
       }
@@ -184,21 +184,21 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   device_shape->clear_dynamic_dimensions();
   TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
                                                    original_device_shape));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gpu
 }  // namespace xla
 
 static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
-  return absl::make_unique<xla::gpu::GpuTransferManager>(
+  return std::make_unique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::cuda::kCudaPlatformId,
       /*pointer_size=*/llvm::DataLayout(xla::gpu::nvptx::DataLayout())
           .getPointerSize(0 /* default address space */));
 }
 
 static std::unique_ptr<xla::TransferManager> CreateAMDGPUTransferManager() {
-  return absl::make_unique<xla::gpu::GpuTransferManager>(
+  return std::make_unique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::rocm::kROCmPlatformId,
       /*pointer_size=*/llvm::DataLayout(xla::gpu::amdgpu::DataLayout())
           .getPointerSize(0 /* default address space */));

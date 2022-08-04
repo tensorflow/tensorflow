@@ -210,7 +210,7 @@ void ExpectSameModels(const ModelT& model, const ModelT& expected_model) {
           continue;
         }
         ExpectEqualTensor(tensor.get(), expected_tensor);
-        if (tensor->buffer >= 0) {
+        if (expected_tensor->buffer > 0) {
           const int buffer_idx = tensor->buffer;
           const int expected_buffer_idx = expected_tensor->buffer;
           const auto buffer = model.buffers[buffer_idx].get()->data;
@@ -1112,13 +1112,10 @@ TEST_F(QuantizeFCTest, VerifyFC) {
   EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
 
   // check op and versioning.
-  EXPECT_EQ(model_.operator_codes.size(), 2);
+  EXPECT_EQ(model_.operator_codes.size(), 1);
   EXPECT_EQ(GetBuiltinCode(model_.operator_codes[0].get()),
             BuiltinOperator_FULLY_CONNECTED);
-  EXPECT_EQ(model_.operator_codes[0]->version, 4);
-  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[1].get()),
-            BuiltinOperator_RESHAPE);
-  EXPECT_EQ(model_.operator_codes[1]->version, 1);
+  EXPECT_EQ(model_.operator_codes[0]->version, 5);
 }
 
 class QuantizeCustomOpTest

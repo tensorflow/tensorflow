@@ -66,7 +66,7 @@ void FakeSession::BuildDeviceManager() {
   auto device =
       tensorflow::DeviceFactory::NewDevice("CPU", {}, kDeviceNamePrefix);
   device_mgr_ =
-      absl::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
+      std::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
 }
 
 void FakeSession::InitVariables() {

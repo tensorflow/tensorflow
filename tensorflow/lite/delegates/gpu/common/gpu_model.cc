@@ -16,7 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
 
 #include <algorithm>
+#include <any>
+#include <map>
+#include <memory>
+#include <set>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -44,13 +49,14 @@ bool IsReady(const absl::flat_hash_set<ValueId>& ready_tensors,
   return true;
 }
 
-absl::Status MergeGpuNodes(GpuNode* src, GpuNode* dst) {
+absl::Status MergeGpuNodes(const GpuInfo& gpu_info, GpuNode* src,
+                           GpuNode* dst) {
   for (int j = 1; j < src->inputs.size(); ++j) {
     dst->inputs.push_back(src->inputs[j]);
   }
   dst->outputs[0] = src->outputs[0];
-  dst->name += " linked : " + src->name;
-  return dst->gpu_operation->AddOperation(src->gpu_operation.get());
+  dst->name += " -> " + src->name;
+  return dst->gpu_operation->AddOperation(gpu_info, src->gpu_operation.get());
 }
 
 flatbuffers::Offset<data::TensorDescWithId> Encode(
@@ -88,7 +94,7 @@ flatbuffers::Offset<data::GpuNode> Encode(
 absl::Status Decode(const data::GpuNode* fb_node, GpuNode* node) {
   GPUOperation op;
   RETURN_IF_ERROR(Decode(fb_node->gpu_op(), &op));
-  node->gpu_operation = absl::make_unique<GPUOperation>(std::move(op));
+  node->gpu_operation = std::make_unique<GPUOperation>(std::move(op));
   for (auto in_fb : *fb_node->input_ids()) {
     node->inputs.push_back(in_fb);
   }
@@ -134,32 +140,20 @@ absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
                                             const TensorDescriptor& tensor_desc,
                                             const BHWC& shape,
                                             DataType data_type) {
-  if (tensor_desc.data_type != data_type) {
+  if (tensor_desc.GetDataType() != data_type) {
     return absl::InvalidArgumentError(
         "Global precision and precision of predefined/external tensors must be "
         "synchronized.");
   }
-  const bool tensor_supported_layout = tensor_desc.layout == Layout::HWDC ||
-                                       tensor_desc.layout == Layout::BHWDC ||
-                                       tensor_desc.layout == Layout::HWC ||
-                                       tensor_desc.layout == Layout::BHWC;
-  if (!tensor_supported_layout) {
-    return absl::InvalidArgumentError(
-        "Currently no support of this layouts for spatial tensors.");
-  }
-  const bool has_depth =
-      tensor_desc.layout == Layout::HWDC || tensor_desc.layout == Layout::BHWDC;
-  if (has_depth) {
+  if (tensor_desc.HasAxis(Axis::DEPTH)) {
     return absl::InvalidArgumentError(
         "Currently no support of Depth dimension in predefined/external "
         "tensors.");
   }
-  const bool has_batch =
-      tensor_desc.layout == Layout::BHWC || tensor_desc.layout == Layout::BHWDC;
-  if (has_batch && shape.b == 1) {
+  if (tensor_desc.HasAxis(Axis::BATCH) && shape.b == 1) {
     return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
   }
-  if (!has_batch && shape.b != 1) {
+  if (!tensor_desc.HasAxis(Axis::BATCH) && shape.b != 1) {
     return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
   }
   if (!tensor_desc.CanCreateTensorWithShape(gpu_info, shape).ok()) {
@@ -243,21 +237,19 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
           storage_type == TensorStorageType::TEXTURE_2D ||
           storage_type == TensorStorageType::TEXTURE_3D ||
           storage_type == TensorStorageType::TEXTURE_ARRAY;
-      if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
-        if (shape.c < 4 && can_use_single_texture &&
-            TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
-                             layout}
-                .CanCreateTensorWithShape(gpu_info, shape)
-                .ok()) {
-          storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
-        }
+      if (shape.c < 4 && can_use_single_texture &&
+          TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
+                           layout}
+              .CanCreateTensorWithShape(gpu_info, shape)
+              .ok()) {
+        storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
       }
-      RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
-                                            data_type, layout, &storage_type));
       tensor_desc = TensorDescriptor{data_type, storage_type, layout};
+      RETURN_IF_ERROR(
+          tensor_desc.UpdateToSupportedStorageType(gpu_info, shape));
       if (gpu_info.IsApiMetal() &&
           storage_type == TensorStorageType::TEXTURE_2D) {
-        tensor_desc.use_buffer_for_write_only_2d_texture = true;
+        tensor_desc.SetUseBufferForWriteOnlyTexture2d(true);
       }
     }
     tensor_desc.SetBHWCShape(shape);
@@ -347,17 +339,13 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
     absl::flat_hash_map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
       const auto& t = gpu_subgraph.new_tensors[j];
-      if (!t.second.GetData().empty()) {  // constant tensor
+      if (!t.GetData().empty()) {  // constant tensor
         auto global_id = tensor_reserver->GetNewId();
         gpu_model->const_tensors[global_id] =
-            std::move(gpu_subgraph.new_tensors[j].second);
-        const auto& shape = gpu_subgraph.new_tensors[j].first;
-        gpu_model->const_tensors[global_id].SetBHWCShape(shape);
+            std::move(gpu_subgraph.new_tensors[j]);
         mapping_to_global_ids[j] = global_id;
       } else {
-        TensorDescriptor td = t.second;
-        td.SetBHWCShape(t.first);
-        auto global_id = tensor_reserver->Add(td);
+        auto global_id = tensor_reserver->Add(t);
         mapping_to_global_ids[j] = global_id;
       }
     }
@@ -394,7 +382,7 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
   return absl::OkStatus();
 }
 
-absl::Status MergeNodes(GpuModel* gpu_model) {
+absl::Status MergeNodes(const GpuInfo& gpu_info, GpuModel* gpu_model) {
   absl::flat_hash_set<ValueId> ready_tensors;
   for (const auto& input : gpu_model->input_ids_and_refs) {
     ready_tensors.insert(input.first);
@@ -427,14 +415,7 @@ absl::Status MergeNodes(GpuModel* gpu_model) {
         !IsReady(ready_tensors, linkable_node)) {
       continue;
     }
-    const auto& original_dst_def =
-        node.gpu_operation->GetDefinition().dst_tensors[0];
-    const auto& link_dst_def =
-        linkable_node.gpu_operation->GetDefinition().dst_tensors[0];
-    if (original_dst_def != link_dst_def) {
-      continue;
-    }
-    RETURN_IF_ERROR(MergeGpuNodes(&linkable_node, &node));
+    RETURN_IF_ERROR(MergeGpuNodes(gpu_info, &linkable_node, &node));
     nodes.erase(nodes.begin() + next_nodes[0]);
     i -= 1;
   }
@@ -468,6 +449,12 @@ void RemoveUnusedTensors(GpuModel* gpu_model) {
     for (const auto& id : node.outputs) {
       used_tensors.insert(id);
     }
+  }
+  for (const auto& inputs : gpu_model->input_ids_and_refs) {
+    used_tensors.insert(inputs.first);
+  }
+  for (const auto& outputs : gpu_model->output_ids_and_refs) {
+    used_tensors.insert(outputs.first);
   }
   for (auto it = gpu_model->tensors.begin(); it != gpu_model->tensors.end();) {
     if (used_tensors.find(it->first) == used_tensors.end()) {
@@ -538,7 +525,7 @@ absl::Status GraphToGpuModel(const GraphFloat32& graph,
   CopyExternals(graph, gpu_model);
   RETURN_IF_ERROR(ConvertOperations(gpu_info, graph, create_info,
                                     &tensor_reserver, gpu_model));
-  RETURN_IF_ERROR(MergeNodes(gpu_model));
+  RETURN_IF_ERROR(MergeNodes(gpu_info, gpu_model));
   gpu_model->tensors = std::move(tensor_reserver.reservations_);
   RemoveUnusedTensors(gpu_model);
 

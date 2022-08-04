@@ -70,8 +70,7 @@ tf_cuda_library(
 tf_cc_test(
     name = "coordination_service_test",
     srcs = ["coordination_service_test.cc"],
-    tags = ["noasan"] + if_oss([
-        # TODO(b/235274974): Flaky.
+    tags = if_oss([
         "manual",
         "no_oss",
     ]),  # b/169705709, no protobuf matchers in OSS.

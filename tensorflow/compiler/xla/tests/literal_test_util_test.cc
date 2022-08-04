@@ -152,8 +152,7 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
     LiteralProto literal_proto;
     TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), result,
                                             &literal_proto));
-    Literal literal =
-        Literal::CreateFromProto(literal_proto).ConsumeValueOrDie();
+    Literal literal = Literal::CreateFromProto(literal_proto).value();
     if (result.find("expected") != std::string::npos) {
       EXPECT_EQ("f32[] 2", literal.ToString());
     } else if (result.find("actual") != std::string::npos) {

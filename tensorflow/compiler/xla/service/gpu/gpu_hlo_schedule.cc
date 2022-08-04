@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
@@ -64,7 +63,7 @@ GpuHloOrdering::GpuHloOrdering(
   // The entry computation has a total order when there's only one stream.
   if (stream_assignment.StreamCount() == 1) {
     entry_sequence_ =
-        absl::make_unique<HloInstructionSequence>(thunk_launch_order);
+        std::make_unique<HloInstructionSequence>(thunk_launch_order);
   }
 
   // The ordering of instructions for the entry computation is determined by the
@@ -79,7 +78,7 @@ GpuHloOrdering::GpuHloOrdering(
   // same-stream predecessors of each instruction.
 
   // Compute the set of all instructions we will want to set reachability on.
-  auto predecessor_map = absl::make_unique<HloReachabilityMap>(
+  auto predecessor_map = std::make_unique<HloReachabilityMap>(
       module->entry_computation()->MakeInstructionPostOrder());
 
   // The most recently visited instruction per stream.
@@ -334,11 +333,11 @@ StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
     schedule->thunk_launch_order_ =
         sequences.sequence(entry_computation).instructions();
     schedule->hlo_ordering_ =
-        absl::make_unique<SequentialHloOrdering>(sequences);
+        std::make_unique<SequentialHloOrdering>(sequences);
   } else {
     // BFS tends to increase concurrency, but also increases memory usage.
     BFSLaunchOrder(entry_computation, &schedule->thunk_launch_order_);
-    schedule->hlo_ordering_ = absl::make_unique<GpuHloOrdering>(
+    schedule->hlo_ordering_ = std::make_unique<GpuHloOrdering>(
         module, stream_assignment, schedule->thunk_launch_order_);
   }
 

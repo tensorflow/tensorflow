@@ -135,7 +135,7 @@ func.func @main(%value0: tensor<2x2xf32>, %value1: tensor<2x2xf32>) -> tensor<2x
 // CHECK: lmhlo.fusion
 // CHECK: mhlo.compare
 // CHECK: lmhlo.terminator
-  %res = "mhlo.compare"(%value0, %value1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
+  %res = "mhlo.compare"(%value0, %value1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
   func.return %res : tensor<2x2xi1>
 }
 
@@ -689,7 +689,7 @@ func.func @main(%value0: tensor<2x2xi32>, %value1: tensor<2x2xi32>) -> tensor<2x
 func.func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> (tensor<5x5xi32>, tensor<5x5xf32>) {
   %res:2 = "mhlo.sort"(%key, %value) ({
   ^bb0(%a: tensor<i32>, %b: tensor<i32>, %c: tensor<f32>, %d: tensor<f32>):
-    %ret = "mhlo.compare"(%c, %d) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %ret = "mhlo.compare"(%c, %d) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%ret) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true}: (tensor<5x5xi32>, tensor<5x5xf32>) -> (tensor<5x5xi32>, tensor<5x5xf32>)
 
@@ -716,7 +716,7 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
       %result = "mhlo.add"(%arg2, %arg3): (tensor<f32>, tensor<f32>) -> tensor<f32>
       "mhlo.return"(%result) : (tensor<f32>) -> ()
-    }) { fusion_kind = #mhlo<"fusion_kind kLoop"> } : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    }) { fusion_kind = #mhlo<fusion_kind kLoop> } : (tensor<f32>, tensor<f32>) -> tensor<f32>
 
   func.return %result : tensor<f32>
 }
@@ -741,7 +741,7 @@ func.func @main(%arg0: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg1: tuple<tens
   %result:3 = "mhlo.fusion"(%1, %2, %3) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>, %arg4: tensor<f32>):
       "mhlo.return"(%arg2, %arg3, %arg4) : (tensor<f32>, tensor<f32>, tensor<f32>) -> ()
-    }) { fusion_kind = #mhlo<"fusion_kind kLoop"> } : (tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
+    }) { fusion_kind = #mhlo<fusion_kind kLoop> } : (tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
 
   %4 = "mhlo.tuple"(%result#0, %result#1, %result#2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>>
   func.return %4 : tuple<tensor<f32>, tensor<f32>, tensor<f32>>
@@ -843,17 +843,17 @@ func.func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tens
 // -----
 
 // CHECK-LABEL: func @main
-// CHECK: "mhlo.dynamic-slice"(%{{.*}}, %{{.*}}, %{{.*}}) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xf32>, tensor<i64>, tensor<i64>) -> tensor<1x4xf32>
+// CHECK: "mhlo.dynamic_slice"(%{{.*}}, %{{.*}}, %{{.*}}) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xf32>, tensor<i64>, tensor<i64>) -> tensor<1x4xf32>
 func.func @main(%arg: tensor<3x4xf32>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<1x4xf32> {
-  %0 = "mhlo.dynamic-slice"(%arg, %start1, %start2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xf32>, tensor<i64>, tensor<i64>) -> tensor<1x4xf32>
+  %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xf32>, tensor<i64>, tensor<i64>) -> tensor<1x4xf32>
   func.return %0 : tensor<1x4xf32>
 }
 
 // -----
 
 // CHECK-LABEL: func @main
-// CHECK: "mhlo.dynamic-update-slice"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
+// CHECK: "mhlo.dynamic_update_slice"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
 func.func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<1x4xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<4x4xf32> {
-  %0 = "mhlo.dynamic-update-slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
+  %0 = "mhlo.dynamic_update_slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
   func.return %0 : tensor<4x4xf32>
 }

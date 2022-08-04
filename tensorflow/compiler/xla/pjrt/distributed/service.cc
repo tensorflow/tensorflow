@@ -52,7 +52,7 @@ EnableCoordinationService(
   server_def.set_task_index(0);
   auto job_def = server_def.mutable_cluster()->add_job();
   job_def->set_name(job_name);
-  for (size_t i = 0; i < options.num_nodes; ++i) {
+  for (int32_t i = 0; i < options.num_nodes; ++i) {
     job_def->mutable_tasks()->insert({i, "UNKNOWN_SERVER_ADDRESS"});
   }
 
@@ -117,7 +117,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateNodeId(int node_id) {
         "Invalid node ID %d, must be in the range [0, %d)", node_id,
         options_.num_nodes);
   }
-  return ::tensorflow::OkStatus();
+  return xla::OkStatus();
 }
 
 xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
@@ -127,7 +127,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
         "Session ID of request %llu does not match active session ID %llu",
         session_id, session_id_);
   }
-  return ::tensorflow::OkStatus();
+  return xla::OkStatus();
 }
 
 ::grpc::Status DistributedRuntimeServiceImpl::Connect(
@@ -478,6 +478,9 @@ CoordinationServiceImpl::CoordinationServiceImpl(
 }
 
 CoordinationServiceImpl::~CoordinationServiceImpl() {
+  // Service object must be destroyed to clear all pending RPCs before shutting
+  // down the RPC service.
+  coord_service_ = nullptr;
   coord_rpc_service_->Shutdown();
 }
 
@@ -527,6 +530,11 @@ void DistributedRuntimeService::Shutdown() {
     server_->Shutdown();
     server_->Wait();
   }
+
+  // Explicitly destroy coordination service before the gRPC server. This clears
+  // all pending RPCs before the gRPC server is destroyed.
+  coord_impl_ = nullptr;
+  server_ = nullptr;
 }
 
 }  // namespace xla

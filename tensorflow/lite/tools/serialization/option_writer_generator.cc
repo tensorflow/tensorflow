@@ -15,6 +15,7 @@ limitations under the License.
 #include <ctype.h>
 
 #include <iostream>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -95,7 +96,8 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteHashtableSizeParams",
                                       "TfLiteConv3DTransposeParams",
                                       "TfLiteVarHandleParams",
-                                      "TfLiteUnsortedSegmentProdParams",
+                                      "TfLiteUnsortedSegmentSumParams",
+                                      "TfLiteUnsortedSegmentMinParams",
                                       nullptr};
 }  // namespace
 

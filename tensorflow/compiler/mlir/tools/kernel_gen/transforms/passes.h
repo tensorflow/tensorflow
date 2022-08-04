@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -91,12 +91,6 @@ std::unique_ptr<mlir::OperationPass<func::FuncOp>> CreateMapParallelLoopsPass();
 /// be closed from above.
 std::unique_ptr<mlir::OperationPass<func::FuncOp>>
 CreateFuseInnerParallelLoopsPass();
-
-// Pass to create vectorized code for CPU.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationPass();
-
-// Pass to remove unneeded code generated in VectorizationPass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationCleanupPass();
 
 // Pass to remove copies which are consumed by a GenericOp.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateCopyCleanupPass();

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_METRICS_JPEG_HEADER_PARSER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_METRICS_JPEG_HEADER_PARSER_H_
 
+#include <string>
 #include <tuple>
 
 #include "tensorflow/lite/c/c_api_types.h"

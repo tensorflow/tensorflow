@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <fstream>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/operator_property.h"

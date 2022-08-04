@@ -117,8 +117,12 @@ class HloLiveRange {
   // recurse into each called computations in module_scoped_analysis mode. As it
   // walks it also tracks down the ordinal number of each instruction in the
   // schedule and store it in the `instruction_schedule` and
-  // 'flattened_instruction_sequence`.
-  void FlattenSchedule(const HloComputation& computation);
+  // 'flattened_instruction_sequence`. async_context contains the asynchronous
+  // computation that this computation is in, if any. When this value is
+  // non-null, it means that this computation is called by an async op or
+  // another op in an asynchronous context.
+  void FlattenSchedule(const HloComputation& computation,
+                       const HloComputation* async_context = nullptr);
 
   // Returns the last position of a value.
   TimeBound GetLastPosition(const HloValue& value,
@@ -144,7 +148,7 @@ class HloLiveRange {
   // After:
   //
   //           +----------+    live range of buffer1
-  //   +------+                live range of buffer2
+  //   +-------+               live range of buffer2
   //
   // Before(buffer1 and 2 are aliased):
   //
@@ -154,7 +158,7 @@ class HloLiveRange {
   // After:
   //
   //           +----------+    live range of buffer1
-  //   +------+                live range of buffer2
+  //   +-------+               live range of buffer2
   //
   // Before(buffer1 and 2 are aliased):
   //
@@ -192,19 +196,19 @@ class HloLiveRange {
   //                     a      p1    p2    e     b
   // a = ...             +
   //                     |
-  // {                   +
-  //   p1 = param                +
+  // {                   |
+  //   p1 = param        +       +
   //   ROOT true                 |
-  // }                           +
-  // { // body
-  //   p2 = param                      +
+  // }                           |
+  // { // body                   |
+  //   p2 = param                +     +
   //   c = p2 + 1                      +
   //   d = c + 1
   //   ROOT e = d + 1                       +
   // }                                      |
   //                                        |
-  // b = while (a)                          +
-  //                                              +
+  // b = while (a)                          +     +
+  //                                              |
   // f = b + 1                                    +
   //
   // Note there is no overlap of live ranges after normalization.
@@ -221,6 +225,8 @@ class HloLiveRange {
   absl::flat_hash_map<const HloInstruction*, LogicalTime> instruction_schedule_;
   absl::flat_hash_map<const HloComputation*, TimeBound> computation_span_times_;
   absl::flat_hash_map<const HloValue*, TimeBound> buffer_live_ranges_;
+  absl::flat_hash_map<const HloComputation*, const HloComputation*>
+      computations_in_async_context_;
 };
 
 }  // namespace xla

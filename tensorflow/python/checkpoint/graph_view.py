@@ -13,14 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import collections
 import copy
 import weakref
 
+from tensorflow.python.checkpoint import save_util_v1
 from tensorflow.python.checkpoint import trackable_view
-from tensorflow.python.checkpoint import util
 from tensorflow.python.trackable import base
-from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -63,7 +61,7 @@ class ObjectGraphView(trackable_view.TrackableView):
     return copied
 
   def list_children(self, obj, save_type=base.SaveType.CHECKPOINT, **kwargs):
-    """Returns all child trackables attached to obj.
+    """Returns list of all child trackables attached to obj.
 
     Args:
       obj: A `Trackable` object.
@@ -82,6 +80,22 @@ class ObjectGraphView(trackable_view.TrackableView):
     # actually attached, e.g. a Checkpoint object's save_counter.
     if obj is self.root and self._attached_dependencies:
       children.extend(self._attached_dependencies)
+    return children
+
+  def children(self, obj, save_type=base.SaveType.CHECKPOINT, **kwargs):
+    """Returns all child trackables attached to obj.
+
+    Args:
+      obj: A `Trackable` object.
+      save_type: A string, can be 'savedmodel' or 'checkpoint'.
+      **kwargs: kwargs to use when retrieving the object's children.
+
+    Returns:
+      Dictionary of all children attached to the object with name to trackable.
+    """
+    children = {}
+    for name, ref in self.list_children(obj, **kwargs):
+      children[name] = ref
     return children
 
   @property
@@ -111,20 +125,7 @@ class ObjectGraphView(trackable_view.TrackableView):
 
   def _breadth_first_traversal(self):
     """Find shortest paths to all dependencies of self.root."""
-    bfs_sorted = []
-    to_visit = collections.deque([self.root])
-    node_paths = object_identity.ObjectIdentityDictionary()
-    node_paths[self.root] = ()
-    while to_visit:
-      current_trackable = to_visit.popleft()
-      bfs_sorted.append(current_trackable)
-      for name, dependency in self.list_children(current_trackable):
-        if dependency not in node_paths:
-          node_paths[dependency] = (
-              node_paths[current_trackable] + (
-                  base.TrackableReference(name, dependency),))
-          to_visit.append(dependency)
-    return bfs_sorted, node_paths
+    return super(ObjectGraphView, self)._descendants_with_paths()
 
   def serialize_object_graph(self, saveables_cache=None):
     """Determine checkpoint keys for variables and build a serialized graph.
@@ -153,8 +154,8 @@ class ObjectGraphView(trackable_view.TrackableView):
       ValueError: If there are invalid characters in an optimizer's slot names.
     """
     named_saveable_objects, object_graph_proto, feed_additions, _ = (
-        util.serialize_object_graph_with_registered_savers(self,
-                                                           saveables_cache))
+        save_util_v1.serialize_object_graph_with_registered_savers(
+            self, saveables_cache))
     return named_saveable_objects, object_graph_proto, feed_additions
 
   def frozen_saveable_objects(self,
@@ -162,5 +163,5 @@ class ObjectGraphView(trackable_view.TrackableView):
                               to_graph=None,
                               call_with_mapped_captures=None):
     """Creates SaveableObjects with the current object graph frozen."""
-    return util.frozen_saveables_and_savers(
+    return save_util_v1.frozen_saveables_and_savers(
         self, object_map, to_graph, call_with_mapped_captures)[0]

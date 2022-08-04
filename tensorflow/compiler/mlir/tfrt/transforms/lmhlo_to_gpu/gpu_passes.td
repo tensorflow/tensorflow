@@ -15,15 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertLmhloToGpuPass : Pass<"lmhlo-to-gpu", "mlir::ModuleOp"> {
-  let summary = "Convert lmhlo ops to gpu dialect.";
-  let description = [{
-    Some lmhlo ops are converted to gpu dialect. Others are moved inside
-    tfrt_gpu_conversion.execute ops and converted to tfrt_gpu dialect.
-  }];
-  let constructor = "createConvertLmhloToGpuPass()";
-}
-
 def ConvertLmhloToGpuBinaryPass :
     Pass<"lmhlo-to-gpu-binary", "mlir::ModuleOp"> {
   let summary = "Compile lmhlo ops to gpu device code.";

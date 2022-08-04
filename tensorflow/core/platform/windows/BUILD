@@ -62,6 +62,7 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",

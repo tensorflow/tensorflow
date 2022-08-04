@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -142,8 +143,7 @@ TemporaryMemoryManager::AllocateArray(uint64_t element_count) {
   }
 
   return std::unique_ptr<TemporaryDeviceMemory<T>>(
-      reinterpret_cast<TemporaryDeviceMemory<T>*>(
-          temporary_memory.ConsumeValueOrDie().release()));
+      reinterpret_cast<TemporaryDeviceMemory<T>*>(temporary_memory->release()));
 }
 
 }  // namespace internal

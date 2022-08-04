@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_OPCODE_H_
 
 #include <iosfwd>
+#include <optional>
 #include <string>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -43,6 +43,10 @@ namespace xla {
 // - In fully qualified names (HloInstruction::FullyQualifiedName()), to
 //   separate the qualifiers (name of the computation and potentially the
 //   fusion instruction) from the name
+//
+// If you change one of these opcodes, please make the corresponding change to
+// the MHLO opset to keep both opsets synchronized.
+// LINT.IfChange
 #define HLO_OPCODE_LIST(V)                                                     \
   V(kAbs, "abs", 1)                                                            \
   V(kAdd, "add", 2)                                                            \
@@ -160,6 +164,7 @@ namespace xla {
   V(kTriangularSolve, "triangular-solve", 2)                                   \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                                     \
   V(kWhile, "while", 1)
+// LINT.ThenChange(../../mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td)
 
 enum class HloOpcode {
 #define DECLARE_ENUM(enum_name, opcode_name, ...) enum_name,

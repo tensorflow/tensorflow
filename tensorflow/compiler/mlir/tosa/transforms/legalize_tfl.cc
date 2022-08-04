@@ -27,17 +27,17 @@ limitations under the License.
 #include <unordered_set>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/Quant/QuantOps.h"        // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"      // from @llvm-project
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"       // from @llvm-project
-#include "mlir/Dialect/Traits.h"                // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"          // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"               // from @llvm-project
-#include "mlir/IR/Matchers.h"                   // from @llvm-project
-#include "mlir/IR/PatternMatch.h"               // from @llvm-project
-#include "mlir/Support/LLVM.h"                  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
@@ -866,9 +866,8 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
     // quantized average pool, while TOSA does. Force the TOSA
     // zero_points to zero to ensure that the calculations match
 
-    auto zero = rewriter.getI32IntegerAttr(0);
-    auto quant_attr = tosa::UnaryOpQuantizationAttr::get(
-        /*input_zp=*/zero, /*output_zp=*/zero, rewriter.getContext());
+    auto quant_attr = rewriter.getAttr<tosa::UnaryOpQuantizationAttr>(
+        /*input_zp=*/0, /*output_zp=*/0);
     result = CreateOpAndInfer<tosa::AvgPool2dOp>(
         rewriter, op->getLoc(), average_type, tfl_avgpool_op.input(),
         kernel_size, stride, pad, quant_attr);

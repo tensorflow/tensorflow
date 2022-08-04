@@ -1,0 +1,69 @@
+// Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "mlir/Dialect/Tosa/IR/TosaOps.td"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
+
+// Nullary ops.
+Pattern =>
+  replace op<mhlo.constant> {value = input: Attr<_: Tosa_Tensor>}
+     with op<tosa.const> {value = input};
+
+// Unary ops.
+Pattern =>
+  replace op<mhlo.abs>(input : Value<_: Tosa_Tensor>)
+     with op<tosa.abs>(input);
+Pattern =>
+  replace op<mhlo.ceil>(input : Value<_: Tosa_Tensor>)
+     with op<tosa.ceil>(input);
+Pattern =>
+  replace op<mhlo.exponential>(input : Value<_: Tosa_Tensor>)
+     with op<tosa.exp>(input);
+Pattern =>
+  replace op<mhlo.floor>(input : Value<_: Tosa_Tensor>)
+     with op<tosa.floor>(input);
+Pattern =>
+  replace op<mhlo.log>(input : Value<_: Tosa_Tensor>)
+     with op<tosa.log>(input);
+Pattern =>
+  replace op<mhlo.negate>(input : Value<_: Tosa_Tensor>)
+     with op<tosa.negate>(input);
+Pattern =>
+  replace op<mhlo.tanh>(input : Value<_: Tosa_Tensor>)
+     with op<tosa.tanh>(input);
+
+// Binary ops.
+Pattern =>
+  replace op<mhlo.add>(input0 : Value<_: Tosa_Tensor>,
+                       input1 : Value<_: Tosa_Tensor>)
+     with op<tosa.add>(input0, input1);
+Pattern =>
+  replace op<mhlo.maximum>(input0 : Value<_: Tosa_Tensor>,
+                           input1 : Value<_: Tosa_Tensor>)
+     with op<tosa.maximum>(input0, input1);
+Pattern =>
+  replace op<mhlo.multiply>(input0 : Value<_: Tosa_Tensor>,
+                            input1 : Value<_: Tosa_Tensor>)
+     with op<tosa.mul>(input0, input1) {shift = attr<"0 : i32">};
+Pattern =>
+  replace op<mhlo.subtract>(input0 : Value<_: Tosa_Tensor>,
+                            input1 : Value<_: Tosa_Tensor>)
+     with op<tosa.sub>(input0, input1);
+
+// Ternary ops.
+Pattern =>
+  replace op<mhlo.select>(input0 : Value<_: Tosa_Tensor>,
+                          input1 : Value<_: Tosa_Tensor>,
+                          input2 : Value<_: Tosa_Tensor>)
+     with op<tosa.select>(input0, input1, input2);

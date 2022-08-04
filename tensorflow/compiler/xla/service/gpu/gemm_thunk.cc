@@ -19,43 +19,29 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
 namespace gpu {
 
 GemmThunk::GemmThunk(ThunkInfo thunk_info, GemmConfig config,
-                     const BufferAllocation::Slice &lhs_buffer,
-                     const BufferAllocation::Slice &rhs_buffer,
-                     const BufferAllocation::Slice &output_buffer)
+                     const BufferAllocation::Slice& lhs_buffer,
+                     const BufferAllocation::Slice& rhs_buffer,
+                     const BufferAllocation::Slice& output_buffer)
     : Thunk(Kind::kGemm, thunk_info),
       config_(std::move(config)),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
       output_buffer_(output_buffer) {}
 
-Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
-  auto get_device_address = [&](const BufferAllocation::Slice &slice) {
-    return params.buffer_allocations->GetDeviceAddress(slice);
-  };
-
-  se::DeviceMemoryBase lhs_data = get_device_address(lhs_buffer_);
-  se::DeviceMemoryBase rhs_data = get_device_address(rhs_buffer_);
-  se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
-
+Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Running GEMM thunk";
-  if (config_.use_cublaslt && params.stream->parent()->SupportsBlasPlans()) {
-    auto &buffer_allocations = *params.buffer_allocations;
-    se::OwningScratchAllocator<> scratch_allocator(
-        buffer_allocations.device_ordinal(),
-        buffer_allocations.memory_allocator());
-    return RunBlasLtMatmul(config_, lhs_data, rhs_data, output_data,
-                           params.stream, scratch_allocator);
-  } else {
-    return RunGemm(config_, lhs_data, rhs_data, output_data, params.stream);
-  }
+  const BufferAllocations& allocs = *params.buffer_allocations;
+  return RunGemm(config_, allocs.GetDeviceAddress(lhs_buffer_),
+                 allocs.GetDeviceAddress(rhs_buffer_),
+                 allocs.GetDeviceAddress(output_buffer_), params.stream);
 }
 
 }  // namespace gpu

@@ -129,7 +129,7 @@ class ExecutionInput {
  private:
   void SetHostShape(xla::Shape host_shape) {
     if (shape() != host_shape) {
-      host_shape_ = absl::make_unique<Shape>(std::move(host_shape));
+      host_shape_ = std::make_unique<Shape>(std::move(host_shape));
     }
   }
 
@@ -370,7 +370,9 @@ class Executable {
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
     hlo_proto_ = std::move(hlo_proto);
   }
-  bool dumping_snapshot() const { return hlo_proto_ != nullptr; }
+  bool dumping_snapshot() const {
+    return module_config().debug_options().xla_dump_hlo_snapshots();
+  }
   HloProto const* hlo_proto() const { return hlo_proto_.get(); }
 
   std::string& debug_info() { return debug_info_; }

@@ -76,6 +76,7 @@ cc_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/dtensor/proto:layout_proto_cc",

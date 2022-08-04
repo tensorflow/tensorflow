@@ -230,7 +230,7 @@ Status UpdateNodeDef(utils::MutableNodeView* node_view, const string& funcName,
 }
 
 Status ImplementationSelector::LoadFunctions(const GraphDef& graph) {
-  lib_info_ = absl::make_unique<FunctionLibraryApiInfo>();
+  lib_info_ = std::make_unique<FunctionLibraryApiInfo>();
   TF_RETURN_IF_ERROR(lib_info_->Init(graph.library()));
   return OkStatus();
 }

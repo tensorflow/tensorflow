@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/fft.h"
-#include "tensorflow/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -89,6 +88,17 @@ struct NonDeduced {
 };
 template <typename T>
 using NonDeducedType = typename NonDeduced<T>::type;
+
+// Helper to return if `T` is the same type as `First` or any or `Rest`.
+template <typename T>
+constexpr bool is_any_of() {
+  return false;
+}
+
+template <typename T, typename First, typename... Rest>
+constexpr bool is_any_of() {
+  return std::is_same_v<T, First> || is_any_of<T, Rest...>();
+}
 
 }  // namespace detail
 
@@ -1176,11 +1186,23 @@ class Stream {
                             uint64_t m, uint64 n, uint64 k,
                             const DeviceMemory<InputType> &a, int lda,
                             const DeviceMemory<InputType> &b, int ldb,
-                            DeviceMemory<InputType> *c, int ldc) {
+                            DeviceMemory<InputType> *c, int ldc,
+                            blas::ComputePrecision precision) {
     InputType alpha{1.0};
     InputType beta{0.0};
     return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
-                        ldc);
+                        ldc, precision);
+  }
+
+  // TODO(parkers): Update all callers to pass kDefaultComputePrecision.
+  template <typename InputType>
+  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                            uint64_t m, uint64 n, uint64 k,
+                            const DeviceMemory<InputType> &a, int lda,
+                            const DeviceMemory<InputType> &b, int ldb,
+                            DeviceMemory<InputType> *c, int ldc) {
+    return ThenBlasGemm(transa, transb, m, n, k, a, lda, b, ldb, c, ldc,
+                        blas::kDefaultComputePrecision);
   }
 
   template <typename InputType, typename ConstantType>
@@ -1189,25 +1211,19 @@ class Stream {
                             const DeviceMemory<InputType> &a, int lda,
                             const DeviceMemory<InputType> &b, int ldb,
                             ConstantType beta, DeviceMemory<InputType> *c,
-                            int ldc) {
-    static_assert(!std::is_same<InputType, Eigen::half>::value ||
-                      std::is_same<ConstantType, float>::value ||
-                      std::is_same<ConstantType, Eigen::half>::value,
+                            int ldc, blas::ComputePrecision precision) {
+    static_assert(
+        detail::is_any_of<InputType, Eigen::half, Eigen::bfloat16, float,
+                          double, std::complex<float>, std::complex<double>>(),
+        "Input can be half, bf16, float, double, std::complex<float> or "
+        "std::complex<double>");
+    static_assert(!std::is_same_v<InputType, Eigen::half> ||
+                      detail::is_any_of<ConstantType, float, Eigen::half>(),
                   "If input is Eigen::half, constant has to be either "
                   "Eigen::half or float");
     static_assert(
-        std::is_same<InputType, Eigen::half>::value ||
-            std::is_same<InputType, ConstantType>::value,
+        detail::is_any_of<InputType, Eigen::half, ConstantType>(),
         "If input is not Eigen::half, constant and input types have to match");
-    static_assert(
-        std::is_same<InputType, Eigen::half>::value ||
-            std::is_same<InputType, Eigen::bfloat16>::value ||
-            std::is_same<InputType, float>::value ||
-            std::is_same<InputType, double>::value ||
-            std::is_same<InputType, std::complex<float>>::value ||
-            std::is_same<InputType, std::complex<double>>::value,
-        "Input can be half, bf16, float, double, std::complex<float> or "
-        "std::complex<double>");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return port::InternalError(
@@ -1223,7 +1239,19 @@ class Stream {
 
     return blas->DoBlasGemm(this, transa, transb, m, n, k,
                             blas::ToDataType<InputType>::value, alpha_ptr, a,
-                            lda, b, ldb, beta_ptr, c, ldc);
+                            lda, b, ldb, beta_ptr, c, ldc, precision);
+  }
+
+  // TODO(parkers): Update all callers to pass kDefaultComputePrecision.
+  template <typename InputType, typename ConstantType>
+  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                            uint64_t m, uint64 n, uint64 k, ConstantType alpha,
+                            const DeviceMemory<InputType> &a, int lda,
+                            const DeviceMemory<InputType> &b, int ldb,
+                            ConstantType beta, DeviceMemory<InputType> *c,
+                            int ldc) {
+    return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
+                        ldc, blas::kDefaultComputePrecision);
   }
 
   Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
@@ -1438,17 +1466,15 @@ class Stream {
       int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
       int64_t stride_b, ConstantType beta, DeviceMemory<InputType> *c, int ldc,
       int64_t stride_c, int batch_count) {
-    static_assert(((std::is_same<InputType, Eigen::half>::value ||
-                    std::is_same<InputType, Eigen::bfloat16>::value) &&
-                   std::is_same<ConstantType, float>::value) ||
-                      ((std::is_same<InputType, float>::value ||
-                        std::is_same<InputType, Eigen::half>::value ||
-                        std::is_same<InputType, Eigen::bfloat16>::value ||
-                        std::is_same<InputType, double>::value ||
-                        std::is_same<InputType, std::complex<float>>::value ||
-                        std::is_same<InputType, std::complex<double>>::value) &&
-                       std::is_same<ConstantType, InputType>::value),
-                  "Input or constant type mismatch");
+    static_assert(
+        detail::is_any_of<InputType, float, Eigen::half, Eigen::bfloat16,
+                          double, std::complex<float>, std::complex<double>>(),
+        "Unsupported input type");
+    static_assert(
+        std::is_same_v<ConstantType, InputType> ||
+            (detail::is_any_of<InputType, Eigen::half, Eigen::bfloat16>() &&
+             std::is_same_v<ConstantType, float>),
+        "Mismatched input and alpha/beta types");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return port::InternalError(
@@ -1637,25 +1663,6 @@ class Stream {
                               const DeviceMemory<std::complex<double> *> &as,
                               int lda, DeviceMemory<std::complex<double> *> *bs,
                               int ldb, int batch_count);
-
-  // See BlasSupport::DoBlatLtMatmul.
-  // Note that we prevent alpha and beta from being used to deduce CType so that
-  // they can be constructed implicitly from values of type CType. Without this,
-  // type deduction would fail when this function is called with a value of type
-  // CType for alpha or beta.
-  template <typename ABType, typename CType>
-  Stream &ThenBlasLtMatmul(
-      const blas::IBlasLtMatmulPlan *plan,
-      const detail::NonDeducedType<HostOrDeviceScalar<CType>> &alpha,
-      const DeviceMemory<ABType> &a, const DeviceMemory<ABType> &b,
-      const detail::NonDeducedType<HostOrDeviceScalar<CType>> &beta,
-      DeviceMemory<CType> *c, ScratchAllocator *scratch_allocator,
-      const blas::IBlasLtMatmulAlgorithm *algorithm,
-      const DeviceMemory<CType> &bias = {},
-      blas::ProfileResult *output_profile_result = nullptr) {
-    return ThenBlasLtMatmulImpl(plan, alpha, a, b, beta, c, scratch_allocator,
-                                algorithm, bias, output_profile_result);
-  }
 
   // See FftSupport::DoFft.
   Stream &ThenFft(fft::Plan *plan,
@@ -2032,40 +2039,48 @@ class Stream {
   friend class ocl::CLBlas;    // for parent_.
 
   // Checks whether types match before a call to extended BLAS version.
-  template <typename InputType, typename OutputType, typename ConstantType>
+  template <typename ABType, typename CType, typename ScaleType>
   port::Status CheckTypesForExtendedBlas(
       blas::ComputationType computation_type) {
-    static_assert(std::is_same<InputType, Eigen::half>::value ||
-                      std::is_same<InputType, Eigen::bfloat16>::value ||
-                      std::is_same<InputType, float>::value ||
-                      std::is_same<InputType, double>::value ||
-                      std::is_same<InputType, int8>::value ||
-                      std::is_same<InputType, std::complex<float>>::value ||
-                      std::is_same<InputType, std::complex<double>>::value,
-                  "The only buffer types supported are: Eigen::half, float, "
-                  "double, int8, std::complex<float> and std::complex<double>");
     static_assert(
-        std::is_same<InputType, OutputType>::value ||
-            (std::is_same<InputType, int8>::value &&
-             std::is_same<OutputType, int32>::value),
+        detail::is_any_of<ABType, Eigen::half, Eigen::bfloat16, float, double,
+                          int8_t, std::complex<float>, std::complex<double>>(),
+        "The only buffer types supported are: Eigen::half, float, "
+        "double, int8, std::complex<float> and std::complex<double>");
+    static_assert(
+        std::is_same_v<ABType, CType> ||
+            (std::is_same_v<ABType, int8_t> && std::is_same_v<CType, int32_t>),
         "Input and output buffer types should be the same unless input is "
         "int8 and output is int32");
-    static_assert(std::is_same<ConstantType, OutputType>::value ||
-                      (std::is_same<ConstantType, float>::value &&
-                       (std::is_same<OutputType, Eigen::half>::value ||
-                        std::is_same<OutputType, Eigen::bfloat16>::value)),
-                  "Constant and output types should match");
-    blas::ComputationType expected_computation_type =
-        blas::ToComputationType<ConstantType>::value;
-    if (expected_computation_type != computation_type &&
-        !(computation_type == blas::ComputationType::kF32 &&
-          (expected_computation_type == blas::ComputationType::kF16 ||
-           expected_computation_type == blas::ComputationType::kBF16AsF32))) {
+    static_assert(
+        std::is_same_v<ScaleType, CType> ||
+            (std::is_same_v<ScaleType, float> &&
+             detail::is_any_of<CType, Eigen::half, Eigen::bfloat16>()),
+        "Mismatched alpha/beta and output types");
+
+    bool valid_computation_type = [computation_type] {
+      switch (computation_type) {
+        case blas::ComputationType::kF16:
+          return std::is_same_v<CType, Eigen::half>;
+        case blas::ComputationType::kF32:
+          return detail::is_any_of<CType, Eigen::half, Eigen::bfloat16, float,
+                                   std::complex<float>>();
+        case blas::ComputationType::kF64:
+          return detail::is_any_of<CType, double, std::complex<double>>();
+        case blas::ComputationType::kI32:
+          return std::is_same_v<CType, int32_t>;
+        case blas::ComputationType::kF16AsF32:   // fall-through
+        case blas::ComputationType::kBF16AsF32:  // fall-through
+        case blas::ComputationType::kTF32AsF32:
+          return detail::is_any_of<CType, float, std::complex<float>>();
+      }
+    }();
+
+    if (!valid_computation_type) {
       return port::InternalError(absl::StrCat(
-          "Alpha/beta type and computation type have to match, got ",
-          blas::ComputationTypeString(computation_type),
-          " for computation type, expected: ",
-          blas::ComputationTypeString(expected_computation_type)));
+          "Invalid computation type ",
+          blas::ComputationTypeString(computation_type), " for output type: ",
+          blas::DataTypeString(blas::ToDataType<CType>::value)));
     }
     return ::tensorflow::OkStatus();
   }
@@ -2128,19 +2143,6 @@ class Stream {
   // Callbacks enqueued to be run after the next call to BlockHostUntilDone().
   std::vector<std::function<void()>> after_block_host_until_done_callbacks_
       ABSL_GUARDED_BY(mu_);
-
-  // Implementation of ThenBlasLtMatmul that is shared by all types.
-  template <typename ABType, typename CType>
-  Stream &ThenBlasLtMatmulImpl(const blas::IBlasLtMatmulPlan *plan,
-                               const HostOrDeviceScalar<CType> &alpha,
-                               const DeviceMemory<ABType> &a,
-                               const DeviceMemory<ABType> &b,
-                               const HostOrDeviceScalar<CType> &beta,
-                               DeviceMemory<CType> *c,
-                               ScratchAllocator *scratch_allocator,
-                               const blas::IBlasLtMatmulAlgorithm *algorithm,
-                               const DeviceMemory<CType> &bias,
-                               blas::ProfileResult *output_profile_result);
 
   // Non-extended BLAS interface requires alpha/beta to be floats when input
   // type is Eigen::half. However, for consistency purposes it is convenient

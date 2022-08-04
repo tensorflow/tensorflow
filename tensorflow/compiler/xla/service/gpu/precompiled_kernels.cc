@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/precompiled_kernels.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
@@ -113,7 +114,7 @@ class LazyKernel {
           se::CompileGpuAsmOrGetCached(stream_exec->device_ordinal(), ptx_,
                                        asm_opts_);
       if (compiled_ptx_or.ok()) {
-        compiled_ptx = compiled_ptx_or.ConsumeValueOrDie();
+        compiled_ptx = std::move(compiled_ptx_or).value();
       } else {
         static absl::once_flag logged_once;
         absl::call_once(logged_once, [&]() {
@@ -176,7 +177,7 @@ Status MakeBatchPointers(se::Stream* stream, const se::GpuAsmOpts& asm_opts,
                          se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), *kernel,
                          base_ptr, stride_bytes, n, ptrs_out));
 #endif
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gpu

@@ -18,9 +18,6 @@ limitations under the License.
 
 // Functor definition for StridedSliceOp, must be compilable by nvcc.
 
-#include "tensorflow/core/kernels/slice_op.h"
-#include "tensorflow/core/kernels/strided_slice_op.h"
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -31,6 +28,8 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/slice_op.h"
+#include "tensorflow/core/kernels/strided_slice_op.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mem.h"
@@ -60,8 +59,7 @@ class HandleStridedSliceAssignCase {
                   const gtl::ArraySlice<int64_t>& begin,
                   const gtl::ArraySlice<int64_t>& end,
                   const gtl::ArraySlice<int64_t>& strides,
-                  const TensorShape& processing_shape, bool is_simple_slice,
-                  Tensor* result);
+                  const StridedSliceAssignBCast& bcast, Tensor* result);
 };
 }  // namespace tensorflow
 
@@ -144,8 +142,7 @@ void HandleStridedSliceAssignCase<Device, T, NDIM>::operator()(
     OpKernelContext* context, const gtl::ArraySlice<int64_t>& begin,
     const gtl::ArraySlice<int64_t>& end,
     const gtl::ArraySlice<int64_t>& strides,
-    const TensorShape& processing_shape, bool is_simple_slice, Tensor* result) {
-  gtl::InlinedVector<int64_t, 4> processing_dims = processing_shape.dim_sizes();
+    const StridedSliceAssignBCast& bcast, Tensor* result) {
   typedef typename proxy_type<Device, T>::type Proxy;
   Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
   Eigen::DSizes<Eigen::DenseIndex, NDIM> end_di;
@@ -155,10 +152,13 @@ void HandleStridedSliceAssignCase<Device, T, NDIM>::operator()(
     end_di[i] = end[i];
     strides_di[i] = strides[i];
   }
+
+  constexpr int kRhsInput = 4;
+  const Tensor& input = context->input(kRhsInput);
   functor::StridedSliceAssign<Device, Proxy, NDIM>()(
       context->eigen_device<Device>(), result->bit_casted_tensor<Proxy, NDIM>(),
-      context->input(4).bit_casted_shaped<Proxy, NDIM>(processing_dims),
-      begin_di, end_di, strides_di);
+      input.bit_casted_shaped<Proxy, NDIM>(bcast.reshape()), begin_di, end_di,
+      strides_di, bcast);
 }
 
 template <typename Device, typename T>
@@ -169,8 +169,7 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
                   const gtl::ArraySlice<int64_t>& begin,
                   const gtl::ArraySlice<int64_t>& end,
                   const gtl::ArraySlice<int64_t>& strides,
-                  const TensorShape& processing_shape, bool is_simple_slice,
-                  Tensor* result) {
+                  const StridedSliceAssignBCast& bcast, Tensor* result) {
     gtl::InlinedVector<int64_t, 1> processing_dims(1);
     processing_dims[0] = 1;
 
@@ -219,7 +218,8 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
       typename TTypes<T, NDIM>::ConstTensor input,                 \
       const Eigen::DSizes<Eigen::DenseIndex, NDIM>& start,         \
       const Eigen::DSizes<Eigen::DenseIndex, NDIM>& stop,          \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& strides);      \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& strides,       \
+      const StridedSliceAssignBCast& bcast);                       \
   extern template struct StridedSliceAssign<GPUDevice, T, NDIM>;   \
   }  // namespace functor
 #define PREVENT_INSTANTIATE_DIM0_ONLY(T, NDIM)                   \

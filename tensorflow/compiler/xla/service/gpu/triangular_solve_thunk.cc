@@ -219,7 +219,7 @@ Status RunTriangulatSolve(se::DeviceMemoryBase a_data,
   if (!launch_ok) {
     return InternalError("Unable to launch triangular solve");
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gpu

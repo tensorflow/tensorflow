@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <deque>
+#include <memory>
 #include <numeric>
 #include <ostream>
 #include <utility>
@@ -27,7 +28,6 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -157,9 +157,13 @@ Status GatherComputationsByAllocationType(
           case HloOpcode::kCall:
           case HloOpcode::kConditional:
           case HloOpcode::kWhile:
-            // Call and while must be called from a computation with global
-            // allocations as they may return references to buffers inside the
-            // called computation which cannot be thread-local.
+          case HloOpcode::kAsyncStart:
+          case HloOpcode::kAsyncUpdate:
+          case HloOpcode::kAsyncDone:
+            // Call, conditional, while, and async operations must be called
+            // from a computation with global allocations as they may return
+            // references to buffers inside the called computation which cannot
+            // be thread-local.
             if (is_thread_local) {
               return InvalidArgument(
                   "computation %s cannot contain call/while op because it "
@@ -180,8 +184,6 @@ Status GatherComputationsByAllocationType(
           case HloOpcode::kSelectAndScatter:
           case HloOpcode::kSort:
           case HloOpcode::kFusion:
-          case HloOpcode::kAsyncStart:
-          case HloOpcode::kAsyncDone:
             // Map/reduce etc computations are always thread-local.
             worklist.push_back(std::make_pair(subcomputation,
                                               true));  // Thread local.
@@ -488,8 +490,8 @@ StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueTopLevelSlice(
 bool BufferAssignment::SharesSliceAtIndex(
     const HloInstruction* hlo_a, const ShapeIndex& shape_index_a,
     const HloInstruction* hlo_b, const ShapeIndex& shape_index_b) const {
-  return GetUniqueSlice(hlo_a, shape_index_a).ConsumeValueOrDie() ==
-         GetUniqueSlice(hlo_b, shape_index_b).ConsumeValueOrDie();
+  return GetUniqueSlice(hlo_a, shape_index_a).value() ==
+         GetUniqueSlice(hlo_b, shape_index_b).value();
 }
 
 bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
@@ -976,11 +978,11 @@ bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
 
   auto live_range_it1 = buffer_live_ranges.find(buffer1);
   CHECK(live_range_it1 != buffer_live_ranges.end())
-      << "Buffer doesn't have a proper live range:" << buffer1;
+      << "Buffer doesn't have a proper live range:" << buffer1->ToString();
 
   auto live_range_it2 = buffer_live_ranges.find(buffer2);
   CHECK(live_range_it2 != buffer_live_ranges.end())
-      << "Buffer doesn't have a proper live range:" << buffer2;
+      << "Buffer doesn't have a proper live range:" << buffer2->ToString();
 
   // Check if a user value can share the same buffer as its operand.
   auto can_share_as_operand =
@@ -1470,17 +1472,17 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
   // Returns a heap algorithm that chooses the best result from several
   // algorithms.
   auto get_heap_algorithm = [&](int64_t alignment) {
-    auto algorithms = absl::make_unique<
+    auto algorithms = std::make_unique<
         std::vector<std::unique_ptr<HeapAlgorithm<HloValue>>>>();
     algorithms->push_back(
-        absl::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+        std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
             assignment->multiheap_size_constraint_per_heap(), alignment,
             GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial));
     algorithms->push_back(
-        absl::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+        std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
             assignment->multiheap_size_constraint_per_heap(), alignment,
             GlobalDecreasingSizeBestFitHeap<HloValue>::kTemporal));
-    return absl::make_unique<ChooseBestHeapAlgorithm<HloValue>>(
+    return std::make_unique<ChooseBestHeapAlgorithm<HloValue>>(
         std::move(algorithms));
   };
 
@@ -1738,7 +1740,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   VLOG(1) << "Number of buffers to assign: "
           << alias_analysis->buffers().size();
 
-  // Can't use absl::make_unique because BufferAssignment constructor is
+  // Can't use std::make_unique because BufferAssignment constructor is
   // private.
   std::unique_ptr<BufferAssignment> assignment(new BufferAssignment(
       module, std::move(hlo_ordering), std::move(buffer_size),

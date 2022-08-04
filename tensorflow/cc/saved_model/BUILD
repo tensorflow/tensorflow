@@ -26,6 +26,7 @@ exports_files(["loader.h"])
 cc_library(
     name = "constants",
     hdrs = ["constants.h"],
+    deps = ["@com_google_absl//absl/strings"],
 )
 
 cc_library(
@@ -247,7 +248,7 @@ py_binary(
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:save_options",
-        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/trackable:asset",
         "@absl_py//absl:app",
     ],
 )
@@ -267,6 +268,14 @@ filegroup(
         "testdata/VarsAndArithmeticObjectGraph/**",
         "testdata/fuzz_generated/**",
         "testdata/SimpleV1Model/**",
+    ]),
+)
+
+filegroup(
+    name = "saved_model_fingerprinting_test_files",
+    srcs = glob([
+        "testdata/bert2/**",
+        "testdata/bert1/**",
     ]),
 )
 
@@ -354,6 +363,60 @@ tf_cc_test(
     deps = [
         ":util",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
+# Linked directly into ":tensorflow_framework".
+cc_library(
+    name = "fingerprinting_impl",
+    srcs = [
+        "fingerprinting.cc",
+        "fingerprinting.h",
+    ],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:types",
+        "@com_google_protobuf//:protobuf_headers",
+        "//tensorflow/core/grappler:op_types",
+        "@com_google_absl//absl/container:btree",
+    ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
+    alwayslink = True,
+)
+
+cc_library(
+    name = "fingerprinting",
+    hdrs = ["fingerprinting.h"],
+    visibility = ["//tensorflow/python/saved_model:__subpackages__"],
+    deps = if_static([
+        ":fingerprinting_impl",
+        "@com_google_protobuf//:protobuf_headers",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core:protos_all_cc",
+    ]) + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
+)
+
+tf_cc_test(
+    name = "fingerprinting_test",
+    size = "small",
+    srcs = ["fingerprinting_test.cc"],
+    data = [
+        ":saved_model_fingerprinting_test_files",
+        ":saved_model_test_files",
+    ],
+    deps = [
+        ":fingerprinting",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:for_core_protos_cc",

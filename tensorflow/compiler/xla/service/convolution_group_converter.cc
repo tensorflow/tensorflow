@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -675,11 +674,13 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
 
 }  // namespace
 
-StatusOr<bool> ConvolutionGroupConverter::Run(HloModule* module) {
+StatusOr<bool> ConvolutionGroupConverter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       2, "ConvolutionGroupConverter::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     if (ConvolutionVisitor::Run(comp, should_expand_, is_cost_viable_,
                                 convert_batch_groups_only_,
                                 filter_expansion_)) {

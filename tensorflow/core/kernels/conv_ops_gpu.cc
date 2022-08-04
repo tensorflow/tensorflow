@@ -60,7 +60,7 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
             ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
             : static_cast<se::ScratchAllocator*>(&scratch_allocator);
 
-    SE_ASSIGN_OR_RETURN(auto desc, runner->ToAlgorithmDesc());
+    TF_ASSIGN_OR_RETURN(auto desc, runner->ToAlgorithmDesc());
     se::dnn::ProfileResult profile_result;
     Status cudnn_launch_status =
         actually_do_autotune
@@ -157,7 +157,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
 
     std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
     auto element_type = se::dnn::ToDataType<T>::value;
-    SE_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
+    TF_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
         CudnnUseFrontend(), se::dnn::ConvolutionKind::FORWARD, element_type,
         element_type, element_type, conv_scale, side_input_scale, stream,
         input_desc, filter_desc, bias_desc, output_desc, conv_desc,
@@ -173,7 +173,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
                        side_input_ptr, bias_ptr, output_ptr_rz);
     };
 
-    SE_ASSIGN_OR_RETURN(
+    TF_ASSIGN_OR_RETURN(
         auto results,
         AutotuneConvImpl(ctx, runners, cudnn_use_autotune, launch_func,
                          scratch_size_limit, rz_allocator));
@@ -207,13 +207,13 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
           << params.ToString();
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>>
           fallback_runners;
-      SE_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
+      TF_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
           CudnnUseFrontend(), se::dnn::ConvolutionKind::FORWARD, element_type,
           element_type, element_type, conv_scale, side_input_scale, stream,
           input_desc, filter_desc, bias_desc, output_desc, conv_desc,
           /*use_fallback=*/true, activation_mode, &fallback_runners));
 
-      SE_ASSIGN_OR_RETURN(
+      TF_ASSIGN_OR_RETURN(
           auto fallback_results,
           AutotuneConvImpl(ctx, fallback_runners, cudnn_use_autotune,
                            launch_func, scratch_size_limit, rz_allocator));
@@ -270,6 +270,24 @@ template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv<float>(
     se::DeviceMemory<float> filter_ptr, se::DeviceMemory<float> output_ptr,
     se::DeviceMemory<float> bias_ptr, se::DeviceMemory<float> side_input_ptr,
     int64_t scratch_size_limit);
+
+template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+AutotuneFusedConv<Eigen::half>(
+    bool cudnn_use_autotune,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
+        autotune_map,
+    const ConvParameters& params, OpKernelContext* ctx,
+    const se::dnn::BatchDescriptor& input_desc,
+    const se::dnn::FilterDescriptor& filter_desc,
+    const se::dnn::BatchDescriptor& bias_desc,
+    const se::dnn::BatchDescriptor& output_desc,
+    const se::dnn::ConvolutionDescriptor& conv_desc,
+    const se::dnn::ActivationMode activation_mode, double conv_scale,
+    double side_input_scale, se::DeviceMemory<Eigen::half> input_ptr,
+    se::DeviceMemory<Eigen::half> filter_ptr,
+    se::DeviceMemory<Eigen::half> output_ptr,
+    se::DeviceMemory<Eigen::half> bias_ptr,
+    se::DeviceMemory<Eigen::half> side_input_ptr, int64_t scratch_size_limit);
 
 template <typename T>
 StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
@@ -331,7 +349,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
       return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,
                        output_ptr);
     };
-    SE_ASSIGN_OR_RETURN(
+    TF_ASSIGN_OR_RETURN(
         auto results,
         AutotuneConvImpl(ctx, runners, cudnn_use_autotune, launch_func,
                          scratch_size_limit, rz_allocator));
@@ -353,7 +371,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     }
 
     if (!CudnnUseFrontend() || found_working_engine) {
-      SE_ASSIGN_OR_RETURN(
+      TF_ASSIGN_OR_RETURN(
           autotune_entry,
           BestCudnnConvAlgorithm<se::dnn::ConvOp>(results, std::move(runners)));
     } else {
@@ -368,7 +386,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
           output_ptr, conv_desc, /*use_fallback=*/true, &rz_allocator,
           &fallback_runners));
 
-      SE_ASSIGN_OR_RETURN(
+      TF_ASSIGN_OR_RETURN(
           auto fallback_results,
           AutotuneConvImpl(ctx, fallback_runners, cudnn_use_autotune,
                            launch_func, scratch_size_limit, rz_allocator));
@@ -378,7 +396,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
                              output_desc, conv_desc, stream->parent(),
                              fallback_results);
 
-      SE_ASSIGN_OR_RETURN(autotune_entry,
+      TF_ASSIGN_OR_RETURN(autotune_entry,
                           BestCudnnConvAlgorithm<se::dnn::ConvOp>(
                               fallback_results, std::move(fallback_runners)));
     }
@@ -432,7 +450,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
                            filter_ptr, output_ptr, input_desc, filter_desc,
                            output_desc, conv_desc, stream->parent(), results);
 
-    SE_ASSIGN_OR_RETURN(auto algo_desc, BestCudnnConvAlgorithm(results));
+    TF_ASSIGN_OR_RETURN(auto algo_desc, BestCudnnConvAlgorithm(results));
     autotune_entry = AutotuneEntry<se::dnn::ConvOp>(algo_desc);
 #endif
 

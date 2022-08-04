@@ -536,7 +536,7 @@ def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]
 }
 
 def TF_StatefulPartitionedCallOp : TF_Op<"StatefulPartitionedCall",
-                                         [CallOpInterface]> {
+                                         [CallOpInterface, SymbolUserOpInterface]> {
   let summary =
     "returns `f(inputs)`, where `f`'s body is placed and partitioned.";
 
@@ -579,9 +579,10 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
-  }];
 
-  let hasVerifier = 1;
+    // SymbolUserOpInterface verifier.
+    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
+  }];
 }
 
 def TF_WhileOp : TF_Op<"While", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
@@ -772,7 +773,7 @@ Example:
   DerivedAttr shape = DerivedAttr<
       "ShapedType",
       "return resource_subtype().cast<ShapedType>();",
-      [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
+      [{ mlir::TF::ShapeAttr::get($_ctxt, $_self) }]>;
 
   let extraClassDeclaration = [{
     TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }
@@ -971,7 +972,7 @@ This function is faster and numerically stabler than `bessel_i1(x)`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
+def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface, SymbolUserOpInterface]> {
   let summary = "Calls a function placed on a specified TPU device.";
 
   let arguments = (ins
@@ -1006,9 +1007,10 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
-  }];
 
-  let hasVerifier = 1;
+    // SymbolUserOpInterface verifier.
+    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
+  }];
 }
 
 def TF_StatefulUniformFullIntOp : TF_Op<"StatefulUniformFullInt", []> {
@@ -1611,7 +1613,7 @@ topology.
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
-    Variadic<TF_I32OrI64Tensor>:$static_shapes,
+    Variadic<TF_Int64Tensor>:$static_shapes,
     OptionalAttr<I32ArrayAttr>:$operands_with_static_shape,
     DefaultValuedStrAttr<StrAttr, "">:$mlir_module,
     StrAttr:$metadata,

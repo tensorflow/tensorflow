@@ -25,6 +25,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -89,11 +90,22 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
         attributes={"experimental_ints_on_device": True},
         autograph=False)  # Pure graph code.
     def _remote_next_func(string_handle):
-      return functional_ops.remote_call(
+      return_values = functional_ops.remote_call(
           target=source_device,
           args=[string_handle] + next_func_concrete.captured_inputs,
           Tout=structure.get_flat_tensor_types(self._element_spec),
           f=next_func_concrete)
+      # Add full type information to the graph so that the RemoteCall op
+      # can determine for each of its outputs whether or not they are ragged
+      # tensors (or other types that use variants) that contain strings
+      # (or other host memory types). Then RemoteCall can
+      # appropriately set AllocatorAttributes to control copies so
+      # strings/host memory types stay on CPU.
+      fulltype_list = type_utils.fulltypes_for_flat_tensors(self._element_spec)
+      fulltype = type_utils.fulltype_list_to_product(fulltype_list)
+      for return_value in return_values:
+        return_value.op.experimental_set_type(fulltype)
+      return return_values
 
     self._next_func = _remote_next_func.get_concrete_function()
     self._next_captured_args = self._next_func.captured_inputs

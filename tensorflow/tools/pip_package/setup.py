@@ -45,7 +45,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.10.0'
+_VERSION = '2.11.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -75,9 +75,7 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    # TODO(b/187981032): remove the constraint for 2.0 once the incompatibile
-    # issue is resolved.
-    'flatbuffers >= 1.12, <2',
+    'flatbuffers >= 2.0',
     # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
@@ -113,10 +111,10 @@ REQUIRED_PACKAGES = [
     # version name.
     # These are all updated during the TF release process.
     standard_or_nightly('tensorboard >= 2.9, < 2.10', 'tb-nightly ~= 2.10.0.a'),
-    standard_or_nightly('tensorflow_estimator >= 2.9.0rc0, < 2.10',
-                        'tf-estimator-nightly ~= 2.10.0.dev'),
-    standard_or_nightly('keras >= 2.9.0rc0, < 2.10',
-                        'keras-nightly ~= 2.10.0.dev'),
+    standard_or_nightly('tensorflow_estimator >= 2.10.0rc0, < 2.11',
+                        'tf-estimator-nightly ~= 2.11.0.dev'),
+    standard_or_nightly('keras >= 2.10.0rc0, < 2.11',
+                        'keras-nightly ~= 2.11.0.dev'),
 ]
 REQUIRED_PACKAGES = [ p for p in REQUIRED_PACKAGES if p is not None ]
 

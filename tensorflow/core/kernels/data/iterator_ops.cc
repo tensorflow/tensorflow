@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
@@ -307,7 +308,7 @@ class IteratorStateVariant {
     if (data.type_name() != TypeName()) {
       return false;
     }
-    auto tensor_data = absl::make_unique<VariantTensorData>();
+    auto tensor_data = std::make_unique<VariantTensorData>();
     std::swap(*tensor_data, data);
     data_ = std::move(tensor_data);
     return true;
@@ -391,7 +392,7 @@ class IteratorVariantSerializer {
       }
       data.push_back(w->GetData());
     }
-    reader_ = absl::make_unique<VariantTensorDataReader>(data);
+    reader_ = std::make_unique<VariantTensorDataReader>(data);
     num_tensors_ = data.size();
     return OkStatus();
   }
@@ -526,13 +527,13 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
   // in that device's resource manager.
 
   *device_mgr =
-      absl::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
+      std::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
           ctx->device()->name(), down_cast<Device*>(ctx->device()),
           false /* owns_underlying */, false /* isolate_session_state */));
-  *flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  *flib_def = std::make_unique<FunctionLibraryDefinition>(
       *ctx->function_library()->GetFunctionLibraryDefinition());
   const auto* config = ctx->function_library()->config_proto();
-  *pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  *pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr->get(), ctx->env(),
       /*config=*/config, graph_def_version_, flib_def->get(),
       config->graph_options().optimizer_options());
@@ -892,6 +893,14 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   auto cleanup = gtl::MakeCleanup([ctx] {
     VLOG(3) << "IteratorGetNextOp exit. iter_id=" << ctx->frame_iter().iter_id;
   });
+  activity_watcher::ActivityScope activity_scope([ctx = ctx]() {
+    return std::make_unique<activity_watcher::Activity>(
+        "IteratorGetNextOp::DoCompute",
+        activity_watcher::ActivityCategory::kDatasetOp,
+        activity_watcher::Activity::Attributes{
+            {"step_id", std::to_string(ctx->step_id())},
+            {"iter_num", std::to_string(ctx->frame_iter().iter_id)}});
+  });
   profiler::TraceMe traceme(
       [&] {
         return profiler::TraceMeEncode(
@@ -926,6 +935,14 @@ Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
   auto cleanup = gtl::MakeCleanup([ctx] {
     VLOG(3) << "IteratorGetNextAsOptionalOp exit. iter_id="
             << ctx->frame_iter().iter_id;
+  });
+  activity_watcher::ActivityScope activity_scope([ctx = ctx]() {
+    return std::make_unique<activity_watcher::Activity>(
+        "IteratorGetNextAsOptionalOp::DoCompute",
+        activity_watcher::ActivityCategory::kDatasetOp,
+        activity_watcher::Activity::Attributes{
+            {"step_id", std::to_string(ctx->step_id())},
+            {"iter_num", std::to_string(ctx->frame_iter().iter_id)}});
   });
   profiler::TraceMe traceme(
       [&] {

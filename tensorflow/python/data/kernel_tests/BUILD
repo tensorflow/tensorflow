@@ -110,14 +110,14 @@ tf_py_test(
     grpc_enabled = True,
     deps = [
         ":test_base",
-        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -135,13 +135,16 @@ py_library(
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:util",
+        "//tensorflow/python/ops/ragged:ragged_tensor_value",
+        "//tensorflow/python/training:saver",
+        "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],
 )
@@ -217,7 +220,7 @@ tf_py_test(
     name = "filter_test",
     size = "small",
     srcs = ["filter_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -398,7 +401,7 @@ tf_py_test(
 
 tf_py_test(
     name = "group_by_window_test",
-    size = "small",
+    size = "medium",
     srcs = ["group_by_window_test.py"],
     shard_count = 4,
     deps = [
@@ -501,13 +504,13 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -708,11 +711,8 @@ cuda_py_test(
 
 tf_py_test(
     name = "prefetch_test",
-    size = "small",
+    size = "medium",
     srcs = ["prefetch_test.py"],
-    tags = [
-        "noasan",  # TODO(b/231979296)
-    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -757,7 +757,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "reduce_test",
-    size = "small",
+    size = "medium",
     srcs = ["reduce_test.py"],
     tags = [
         "no_cuda_asan",  # times out
@@ -839,9 +839,9 @@ cuda_py_test(
 
 tf_py_test(
     name = "shard_test",
-    size = "small",
+    size = "medium",
     srcs = ["shard_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",

@@ -14,12 +14,32 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/profiling/time.h"
 
+#if defined(_MSC_VER)
+#include <chrono>  // NOLINT(build/c++11)
+#include <thread>  // NOLINT(build/c++11)
+#else
 #include <sys/time.h>
 #include <time.h>
+#endif
 
 namespace tflite {
 namespace profiling {
 namespace time {
+
+#if defined(_MSC_VER)
+
+uint64_t NowMicros() {
+  return static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count());
+}
+
+void SleepForMicros(uint64_t micros) {
+  std::this_thread::sleep_for(std::chrono::microseconds(micros));
+}
+
+#else
 
 uint64_t NowMicros() {
   struct timespec ts;
@@ -35,6 +55,8 @@ void SleepForMicros(uint64_t micros) {
   sleep_time.tv_nsec = micros * 1e3;
   nanosleep(&sleep_time, nullptr);
 }
+
+#endif  // defined(_MSC_VER)
 
 }  // namespace time
 }  // namespace profiling

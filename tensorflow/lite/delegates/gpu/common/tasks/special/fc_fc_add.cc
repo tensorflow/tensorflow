@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/fc_fc_add.h"
 
+#include <map>
+#include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
@@ -237,7 +239,7 @@ void FCFCAdd::UploadQuantizedWeights(
     args_.AddHalf(q_name + "a", half(-scale * (127.0 + zero_point)));
   }
   args_.AddObject("weights" + std::to_string(index),
-                  absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                  std::make_unique<Texture2DDescriptor>(std::move(desc)));
 }
 
 FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
@@ -255,14 +257,14 @@ FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
   desc0.element_type = definition.GetDataType();
   desc0.UploadLinearData(attr0.bias);
   result.args_.AddObject(
-      "biases0", absl::make_unique<TensorLinearDescriptor>(std::move(desc0)));
+      "biases0", std::make_unique<TensorLinearDescriptor>(std::move(desc0)));
 
   TensorLinearDescriptor desc1;
   desc1.storage_type = LinearStorageType::TEXTURE_2D;
   desc1.element_type = definition.GetDataType();
   desc1.UploadLinearData(attr1.bias);
   result.args_.AddObject(
-      "biases1", absl::make_unique<TensorLinearDescriptor>(std::move(desc1)));
+      "biases1", std::make_unique<TensorLinearDescriptor>(std::move(desc1)));
 
   return result;
 }
@@ -283,16 +285,138 @@ FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
   desc0.element_type = definition.GetDataType();
   desc0.UploadLinearData(attr0.bias);
   result.args_.AddObject(
-      "biases0", absl::make_unique<TensorLinearDescriptor>(std::move(desc0)));
+      "biases0", std::make_unique<TensorLinearDescriptor>(std::move(desc0)));
 
   TensorLinearDescriptor desc1;
   desc1.storage_type = LinearStorageType::TEXTURE_2D;
   desc1.element_type = definition.GetDataType();
   desc1.UploadLinearData(attr1.bias);
   result.args_.AddObject(
-      "biases1", absl::make_unique<TensorLinearDescriptor>(std::move(desc1)));
+      "biases1", std::make_unique<TensorLinearDescriptor>(std::move(desc1)));
 
   return result;
+}
+
+// fully connected + fully connected + add
+absl::Status TryFCFCAdd(
+    const GpuInfo& gpu_info, CalculationsPrecision precision,
+    const GraphFloat32& graph, NodeId first_node_id,
+    const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
+  if (!(gpu_info.IsIntel() || gpu_info.IsNvidia() || gpu_info.IsAMD())) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  auto* fc0_node = graph.GetNode(first_node_id);
+  if (fc0_node == nullptr) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  auto first_op_type = OperationTypeFromString(fc0_node->operation.type);
+  if (first_op_type != OperationType::FULLY_CONNECTED &&
+      first_op_type != OperationType::FULLY_CONNECTED_INT8) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  const bool first_quantized =
+      first_op_type == OperationType::FULLY_CONNECTED_INT8;
+  auto fc0_inputs = graph.FindInputs(fc0_node->id);
+  if (fc0_inputs.size() != 1) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  auto fc0_output_id = graph.FindOutputs(fc0_node->id)[0]->id;
+  auto consumers = graph.FindConsumers(fc0_output_id);
+  if (consumers.size() != 1) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  auto* add_node = consumers[0];
+  if (add_node == nullptr) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  if (consumed_nodes->find(add_node->id) != consumed_nodes->end()) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  if (OperationTypeFromString(add_node->operation.type) != OperationType::ADD) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  auto add_inputs = graph.FindInputs(add_node->id);
+  if (add_inputs.size() != 2) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  auto fc1_output_id = add_inputs[0]->id + add_inputs[1]->id - fc0_output_id;
+  auto* fc1_node = graph.FindProducer(fc1_output_id);
+  if (fc1_node == nullptr) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  auto second_op_type = OperationTypeFromString(fc1_node->operation.type);
+  if (second_op_type != OperationType::FULLY_CONNECTED &&
+      second_op_type != OperationType::FULLY_CONNECTED_INT8) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  const bool second_quantized =
+      second_op_type == OperationType::FULLY_CONNECTED_INT8;
+  const bool both_quantized = first_quantized && second_quantized;
+  const bool both_not_quantized = !first_quantized && !second_quantized;
+  if (!(both_quantized || both_not_quantized)) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  if (consumed_nodes->find(fc1_node->id) != consumed_nodes->end()) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  auto fc1_inputs = graph.FindInputs(fc1_node->id);
+  if (fc1_inputs.size() != 1) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  auto add_outputs = graph.FindOutputs(add_node->id);
+
+  OperationDef op_def;
+  op_def.precision = precision;
+  auto it = tensor_descriptors.find(fc0_inputs[0]->id);
+  if (it != tensor_descriptors.end()) {
+    op_def.src_tensors.push_back(it->second);
+  }
+  it = tensor_descriptors.find(fc1_inputs[0]->id);
+  if (it != tensor_descriptors.end()) {
+    op_def.src_tensors.push_back(it->second);
+  }
+  it = tensor_descriptors.find(add_outputs[0]->id);
+  if (it != tensor_descriptors.end()) {
+    op_def.dst_tensors.push_back(it->second);
+  }
+
+  for (int i = 0; i < fc1_inputs.size(); ++i) {
+    fc0_inputs.push_back(fc1_inputs[i]);
+  }
+  std::unique_ptr<GPUOperation>* gpu_op =
+      InitSingleOpSubgraph(fc0_inputs, add_outputs, gpu_subgraph);
+  FCFCAdd fc;
+  if (both_not_quantized) {
+    auto fc0_attr = absl::any_cast<FullyConnectedAttributes>(
+        fc0_node->operation.attributes);
+    auto fc1_attr = absl::any_cast<FullyConnectedAttributes>(
+        fc1_node->operation.attributes);
+    if (fc0_attr.weights.shape.o != fc1_attr.weights.shape.o) {
+      return absl::NotFoundError("FCFCAdd not suitable.");
+    }
+    fc = CreateFCFCAdd(gpu_info, op_def, fc0_attr, fc1_attr);
+  } else {
+    // both_quantized
+    auto fc0_attr = absl::any_cast<FullyConnectedInt8Attributes>(
+        fc0_node->operation.attributes);
+    auto fc1_attr = absl::any_cast<FullyConnectedInt8Attributes>(
+        fc1_node->operation.attributes);
+    if (fc0_attr.weights.shape.o != fc1_attr.weights.shape.o) {
+      return absl::NotFoundError("FCFCAdd not suitable.");
+    }
+    fc = CreateFCFCAdd(gpu_info, op_def, fc0_attr, fc1_attr);
+  }
+  *gpu_op = std::make_unique<FCFCAdd>(std::move(fc));
+  const std::string fused_nodes = std::to_string(fc0_node->id) + " " +
+                                  std::to_string(fc1_node->id) + " " +
+                                  std::to_string(add_node->id);
+  gpu_subgraph->operations[0].name =
+      "fully_connected_x2_and_add " + fused_nodes;
+  consumed_nodes->insert(fc0_node->id);
+  consumed_nodes->insert(fc1_node->id);
+  consumed_nodes->insert(add_node->id);
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

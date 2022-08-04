@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -1090,7 +1091,7 @@ bool IsTensorListType(Type type, llvm::Optional<Value> value) {
   }
   // If subtype info is not available, check if the value is used by any of
   // the following TensorList operations.
-  if (!value.hasValue()) {
+  if (!value.has_value()) {
     return false;
   }
   for (const mlir::OpOperand &use : value.getValue().getUses()) {

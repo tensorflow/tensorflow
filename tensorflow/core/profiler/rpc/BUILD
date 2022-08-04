@@ -45,6 +45,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
         "//tensorflow/core/profiler:profiler_service_cc_grpc_proto",

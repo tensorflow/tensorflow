@@ -42,9 +42,12 @@ limitations under the License.
 namespace xla {
 
 // TODO(b/181653482): Fix for interprocedural collectives as well.
-StatusOr<bool> CollectivesScheduleLinearizer::Run(HloModule* module) {
+StatusOr<bool> CollectivesScheduleLinearizer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     std::unique_ptr<HloReachabilityMap> reachability =
         HloReachabilityMap::Build(computation);
     HloCollectiveInstruction* prev = nullptr;

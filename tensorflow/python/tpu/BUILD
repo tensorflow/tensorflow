@@ -32,7 +32,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_oss_py2",
         "no_oss_py35",
         "no_pip",
     ],

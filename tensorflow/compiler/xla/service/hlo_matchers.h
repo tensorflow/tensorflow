@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 
+#include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -237,6 +237,9 @@ HLO_MATCHER(Abs);
 HLO_MATCHER(Add);
 HLO_MATCHER(AddDependency);
 HLO_MATCHER(AfterAll);
+HLO_MATCHER(AsyncStart);
+HLO_MATCHER(AsyncUpdate);
+HLO_MATCHER(AsyncDone);
 HLO_MATCHER(AllGather);
 HLO_MATCHER(AllReduce);
 HLO_MATCHER(AllToAll);

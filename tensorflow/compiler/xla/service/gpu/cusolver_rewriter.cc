@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <numeric>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -180,9 +180,12 @@ StatusOr<bool> GpusolverRewriter::RunOnComputation(
 
 GpusolverRewriter::GpusolverRewriter() = default;
 
-StatusOr<bool> GpusolverRewriter::Run(HloModule* module) {
+StatusOr<bool> GpusolverRewriter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }

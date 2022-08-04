@@ -29,7 +29,10 @@ class CanonicalizeAllGatherForCSE : public HloModulePass {
   ~CanonicalizeAllGatherForCSE() override = default;
   absl::string_view name() const override { return "canon-all-gather-for-cse"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation* comp);

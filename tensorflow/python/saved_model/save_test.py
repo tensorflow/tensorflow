@@ -20,8 +20,10 @@ from absl.testing import parameterized
 
 from google.protobuf import text_format
 
+from tensorflow.core.config import flags
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import mirrored_strategy
@@ -53,9 +55,9 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training import saver
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util
 from tensorflow.python.util import compat
 
 
@@ -88,7 +90,7 @@ def _import_and_infer(
 class SaveTest(test.TestCase, parameterized.TestCase):
 
   def test_method_save_signature(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
@@ -98,7 +100,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     self.assertEqual({"output_0": 2.}, _import_and_infer(save_dir, {"x": 1.}))
 
   def test_method_save_list_func(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @def_function.function
     def case_fn(x):
@@ -116,7 +118,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     self.assertEqual({"output_0": 4.}, _import_and_infer(save_dir, {"x": 1.}))
 
   def test_method_save_concrete(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(lambda z: {"out": 2. * z})
     root.f(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -134,7 +136,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     # This test is only meaningful with Python 3 because Python 2's
     # inspect.getargspec doesn't save annotations.
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     class UnknownType(object):  # pylint: disable=unused-variable
       pass
@@ -194,7 +196,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
 
   def test_version_information_included(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(root, save_dir)
     saved_model_proto = loader_impl.parse_saved_model(save_dir)
@@ -206,7 +208,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
         saved_model_proto.meta_graphs[0].meta_info_def.tensorflow_git_version)
 
   def test_non_concrete_error(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
     root.f(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -214,7 +216,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       save.save(root, save_dir, root.f)
 
   def test_captures_unreachable_variable(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     unreachable_variable = variables.Variable([5.0, 2.0])
     root.reachable_variable = variables.Variable([1.0, 3.0])
 
@@ -233,7 +235,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       save.save(root, save_dir)
 
   def test_nested_inputs(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(
         lambda x: 2. * x[0],
         input_signature=([
@@ -243,7 +245,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     root.f([constant_op.constant(1.), constant_op.constant(1.)])
 
   def test_nested_outputs(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(lambda x: (2. * x, (3. * x, 4. * x)))
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
@@ -252,7 +254,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       save.save(root, save_dir, to_save)
 
   def test_nested_dict_outputs(self):
-    root = util.Checkpoint(
+    root = checkpoint.Checkpoint(
         f=def_function.function(lambda x: {  # pylint: disable=g-long-lambda
             "a": 2. * x,
             "b": (3. * x, 4. * x)
@@ -264,7 +266,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       save.save(root, save_dir, to_save)
 
   def test_variable(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -276,7 +278,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
                         _import_and_infer(save_dir, {"x": 2.}))
 
   def test_single_function_default_signature(self):
-    model = tracking.AutoTrackable()
+    model = autotrackable.AutoTrackable()
     model.f = def_function.function(lambda: 3., input_signature=())
     model.f()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -284,7 +286,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose({"output_0": 3.}, _import_and_infer(save_dir, {}))
 
   def test_single_function_no_signature(self):
-    model = tracking.AutoTrackable()
+    model = autotrackable.AutoTrackable()
     model.f = def_function.function(lambda: 3.)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(model, save_dir)
@@ -315,7 +317,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
 
   def test_find_default_save_function(self):
 
-    class ObjWithDefaultSignature(util.Checkpoint):
+    class ObjWithDefaultSignature(checkpoint.Checkpoint):
 
       @def_function.function(input_signature=[
           tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
@@ -348,7 +350,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
 
   def test_datastructures(self):
 
-    class HasDatastructures(util.Checkpoint):
+    class HasDatastructures(checkpoint.Checkpoint):
 
       def __init__(self):
         self.a = [1.]
@@ -370,7 +372,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
 
   def test_default_attr_stripping(self):
 
-    class Complex(util.Checkpoint):
+    class Complex(checkpoint.Checkpoint):
 
       @def_function.function(input_signature=[])
       def __call__(self):
@@ -392,7 +394,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       self.assertNotIn("Tout", complex_node.attr)
 
   def test_signature_attribute_reserved(self):
-    root = util.Checkpoint(signatures=variables.Variable(1.))
+    root = checkpoint.Checkpoint(signatures=variables.Variable(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     with self.assertRaisesRegex(ValueError, "del obj.signatures"):
       save.save(root, save_dir)
@@ -434,7 +436,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     def f(unused_v):
       return 1
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = f.get_concrete_function()
     with self.assertRaisesRegex(ValueError,
                                 "tf.Variable inputs cannot be exported"):
@@ -450,7 +452,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     outputs. When exporting to SavedModel, the shapes of the additional outputs
     were incorrectly added to the FunctionDef proto (b/133666530).
     """
-    obj = tracking.AutoTrackable()
+    obj = autotrackable.AutoTrackable()
     obj.v = variables.Variable(2.)
 
     @def_function.function(
@@ -493,7 +495,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
 
   def test_save_cached_variable(self):
     with ops.Graph().as_default(), session_lib.Session() as session:
-      obj = tracking.AutoTrackable()
+      obj = autotrackable.AutoTrackable()
       obj.v = variables.Variable(2., caching_device=lambda op: op.device)
       obj.w = variables.Variable(3.)
       session.run([obj.v.initializer, obj.w.initializer])
@@ -525,7 +527,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
           ])
     context.ensure_initialized()
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     with ops.device("CPU:0"):
       root.v0 = variables.Variable(1., name="v0")
     with ops.device("CPU:1"):
@@ -601,7 +603,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"])
     strategy.extended._use_var_policy = policy
     with strategy.scope():
-      root = tracking.AutoTrackable()
+      root = autotrackable.AutoTrackable()
       root.v = variables.Variable([1., 1.], name="v")
 
       @def_function.function(input_signature=[])
@@ -645,7 +647,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       self.assertLen(saved_function.signature.input_arg, 1)
 
   def test_save_uninitialized_variable(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.uninitialized_variable = resource_variable_ops.UninitializedVariable(
         name="uninitialized_variable", dtype=dtypes.float32)
     root.initialized_variable = variables.Variable(
@@ -677,7 +679,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       x.set_shape((5, 1))
       return x
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     path = os.path.join(self.get_temp_dir(), "saved_model")
     concrete = f.get_concrete_function(
         tensor_spec.TensorSpec((None, 1), name="name"))
@@ -691,7 +693,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
         input_signature=[ragged_tensor.RaggedTensorSpec(ragged_rank=2)])
     def f(x):
       return {"output_key": x}
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     path = os.path.join(self.get_temp_dir(), "saved_model")
     inp = ragged_factory_ops.constant([[[1.0, 2.0], [3.0]], [[5.]]])
     flat_inp = {
@@ -739,7 +741,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
 
     # Colons are not usable as name scopes.
     unsanitized_name = "foo:bar"
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     path = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(
         root, path, signatures={unsanitized_name: f.get_concrete_function()})
@@ -757,7 +759,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
 
   def test_save_returns_none(self):
     # Test that `tf.saved_model.save` API returns None to user.
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     result = save.save(root, save_dir)
     self.assertIsNone(result)
@@ -768,7 +770,7 @@ class DependencyTest(test.TestCase):
 
   def test_validate_dependencies(self):
 
-    class Valid(tracking.AutoTrackable):
+    class Valid(autotrackable.AutoTrackable):
 
       def _deserialization_dependencies(self, children):
         return children
@@ -781,7 +783,7 @@ class DependencyTest(test.TestCase):
   def test_validate_dependencies_error_untracked(self):
     untracked = variables.Variable(1.0)
 
-    class Invalid(tracking.AutoTrackable):
+    class Invalid(autotrackable.AutoTrackable):
 
       def _deserialization_dependencies(self, children):
         del children  # Unused.
@@ -793,7 +795,7 @@ class DependencyTest(test.TestCase):
 
   def test_validate_dependencies_error_cyclic(self):
 
-    class Invalid(tracking.AutoTrackable):
+    class Invalid(autotrackable.AutoTrackable):
 
       def __init__(self):
         self.cycle_ref = None
@@ -886,7 +888,7 @@ class SavingOptionsTest(test.TestCase):
       save._verify_ops(graph_def, [])
 
   def test_save_debug_info_enabled(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(
         lambda x: math_ops.mul(2., x, name="DEBUG_INFO_OP"),
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
@@ -913,7 +915,7 @@ class SavingOptionsTest(test.TestCase):
     self.assertTrue(found_op, "Did not find DEBUG_INFO_OP in trace")
 
   def test_save_debug_info_disabled(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(
         lambda x: math_ops.mul(2., x, name="DEBUG_INFO_OP"),
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
@@ -928,7 +930,7 @@ class SavingOptionsTest(test.TestCase):
     self.assertFalse(os.path.exists(debug_info_file_name))
 
   def test_function_aliases(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
@@ -987,8 +989,8 @@ class AssetTests(test.TestCase):
       f.write("alpha\nbeta\ngamma\n")
 
   def test_asset_path_returned(self):
-    root = tracking.AutoTrackable()
-    root.path = tracking.Asset(self._vocab_path)
+    root = autotrackable.AutoTrackable()
+    root.path = asset.Asset(self._vocab_path)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     root.get_asset = def_function.function(lambda: root.path.asset_path)
     save.save(root, save_dir, signatures=root.get_asset.get_concrete_function())
@@ -1005,7 +1007,7 @@ class AssetTests(test.TestCase):
         key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
         value_dtype=dtypes.int64,
         value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
-    root = util.Checkpoint(
+    root = checkpoint.Checkpoint(
         table=lookup_ops.HashTable(initializer, default_value=-1))
     root.table_user = def_function.function(
         root.table.lookup,
@@ -1043,11 +1045,11 @@ class AssetTests(test.TestCase):
       save.save(root, save_dir)
 
   def test_unused_asset(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
-    root.asset = tracking.Asset(self._vocab_path)
+    root.asset = asset.Asset(self._vocab_path)
 
     export_dir = os.path.join(self.get_temp_dir(), "save_dir")
     save.save(root, export_dir)
@@ -1055,7 +1057,7 @@ class AssetTests(test.TestCase):
                         _import_and_infer(export_dir, {"x": [0.1]}))
 
   def test_sensible_function_building_exception(self):
-    root = util.Checkpoint(v=variables.Variable(2.))
+    root = checkpoint.Checkpoint(v=variables.Variable(2.))
     root.f = def_function.function(
         lambda x: 2. * root.v,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
@@ -1072,7 +1074,7 @@ class AssetTests(test.TestCase):
 class ExportMetaGraphTests(test.TestCase):
 
   def test_export_meta_graph(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.variable = resource_variable_ops.UninitializedVariable(
         name="some_variable", dtype=dtypes.float32)
 
@@ -1117,6 +1119,14 @@ class ExportMetaGraphTests(test.TestCase):
       _run_signature(session, meta_graph_def, {"y": 2}, "update")
       out = _run_signature(session, meta_graph_def, {"x": 4}, "multiply_var")
       self.assertAllEqual(out, {"output_0": 12})
+
+
+class FingerprintingTests(test.TestCase):
+
+  def test_toggle_flag(self):
+    self.assertFalse(flags.config().saved_model_fingerprinting.value())
+    flags.config().saved_model_fingerprinting.reset(True)
+    self.assertTrue(flags.config().saved_model_fingerprinting.value())
 
 
 if __name__ == "__main__":

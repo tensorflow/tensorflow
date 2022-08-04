@@ -68,7 +68,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -250,7 +250,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
           TranslateFileName(dataset()->filenames_[current_file_index_]),
           &file_));
-      reader_ = absl::make_unique<io::SequentialRecordReader>(
+      reader_ = std::make_unique<io::SequentialRecordReader>(
           file_.get(), dataset()->options_);
       return OkStatus();
     }

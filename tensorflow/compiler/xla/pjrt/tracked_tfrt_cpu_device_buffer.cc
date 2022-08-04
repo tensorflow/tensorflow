@@ -70,7 +70,6 @@ std::shared_ptr<MaybeOwningCpuMemory> TrackedTfrtCpuDeviceBuffer::Buffer(
 
 void TrackedTfrtCpuDeviceBuffer::AddUsageEvents(
     absl::Span<tfrt::AsyncValueRef<CpuEvent>> events) {
-  absl::MutexLock lock(&mu_);
   // Periodically remove available usage events to prevent memory blowup.
   if (usage_events_.size() >= 1024) {
     int i = 0;
@@ -90,14 +89,8 @@ void TrackedTfrtCpuDeviceBuffer::AddUsageEvents(
   }
 }
 
-absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4>
-TrackedTfrtCpuDeviceBuffer::ConsumeBuffers() {
-  return std::move(buffers_);
-}
-
 absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4>
 TrackedTfrtCpuDeviceBuffer::LockUseAndTransferUsageEvents() {
-  absl::MutexLock lock(&mu_);
   return std::move(usage_events_);
 }
 
@@ -105,10 +98,7 @@ void TrackedTfrtCpuDeviceBuffer::ReleaseDeviceMemory() {
   tuple_index_table_.reset();
   buffers_.clear();
   definition_events_.clear();
-  {
-    absl::MutexLock lock(&mu_);
-    usage_events_.clear();
-  }
+  usage_events_.clear();
 }
 
 }  // namespace xla

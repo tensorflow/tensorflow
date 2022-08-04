@@ -110,10 +110,13 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   int64_t reduce_window_size_;
 };
 
-StatusOr<bool> TreeReductionRewriter::Run(HloModule *module) {
+StatusOr<bool> TreeReductionRewriter::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   ReductionRewriterVisitor visitor(reduce_window_size_);
   bool changed = false;
-  for (const auto &computation : module->MakeNonfusionComputations()) {
+  for (const auto &computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }

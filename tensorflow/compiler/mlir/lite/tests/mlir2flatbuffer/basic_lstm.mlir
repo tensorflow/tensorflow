@@ -15,63 +15,72 @@ func.func @main(tensor<1x384xf32>, tensor<1x96xf32>, tensor<384x480xf32>, tensor
 // CHECK-NEXT:      name: "arg0",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 96 ],
 // CHECK-NEXT:      buffer: 2,
 // CHECK-NEXT:      name: "arg1",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 384, 480 ],
 // CHECK-NEXT:      buffer: 3,
 // CHECK-NEXT:      name: "arg2",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 384 ],
 // CHECK-NEXT:      buffer: 4,
 // CHECK-NEXT:      name: "arg3",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 96 ],
 // CHECK-NEXT:      buffer: 5,
 // CHECK-NEXT:      name: "arg4",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 96 ],
 // CHECK-NEXT:      buffer: 6,
 // CHECK-NEXT:      name: "tfl.basic_lstm",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 96 ],
 // CHECK-NEXT:      buffer: 7,
 // CHECK-NEXT:      name: "tfl.basic_lstm:1",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 480 ],
 // CHECK-NEXT:      buffer: 8,
 // CHECK-NEXT:      name: "tfl.basic_lstm:2",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 384 ],
 // CHECK-NEXT:      buffer: 9,
 // CHECK-NEXT:      name: "tfl.basic_lstm:3",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0, 1, 2, 3, 4 ],
 // CHECK-NEXT:    outputs: [ 5 ],

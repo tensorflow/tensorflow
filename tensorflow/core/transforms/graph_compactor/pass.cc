@@ -102,7 +102,7 @@ class NameCompressPass : public NameCompressBase<NameCompressPass> {
     // Rename the arguments and results.
     NamedAttrList attrs = func->getAttrDictionary();
     if (func.getNumArguments()) {
-      assert(func.arg_attrs().hasValue() && "expected argument attributes");
+      assert(func.arg_attrs().has_value() && "expected argument attributes");
       SmallVector<Attribute> arg_attrs;
       arg_attrs.reserve(func.getNumArguments());
       // Iterate over the function arguments, skipping the control tokens.
@@ -114,7 +114,7 @@ class NameCompressPass : public NameCompressBase<NameCompressPass> {
       attrs.set(func.arg_attrsAttrName(), b.getArrayAttr(arg_attrs));
     }
     if (func.getNumResults()) {
-      assert(func.res_attrs().hasValue() && "expected result attributes");
+      assert(func.res_attrs().has_value() && "expected result attributes");
       SmallVector<Attribute> res_attrs;
       res_attrs.reserve(func.getNumResults());
       for (NamedAttrList attrs :

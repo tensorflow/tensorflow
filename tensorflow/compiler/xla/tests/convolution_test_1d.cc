@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -106,24 +105,22 @@ class Convolve1D1WindowTestBase
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape),
                                static_cast<T>(1.0f));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r3 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r3 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(1.0f));
 
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r3 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r3 = filter_r1.Reshape(filter_dims).value();
 
     std::vector<T> expect_elems(batch * output_feature * num_windows,
                                 static_cast<T>(window_size * input_feature));
     auto expected_r1 = LiteralUtil::CreateR1<T>(expect_elems);
-    auto expected_r3 = expected_r1.Reshape({batch, num_windows, output_feature})
-                           .ConsumeValueOrDie();
+    auto expected_r3 =
+        expected_r1.Reshape({batch, num_windows, output_feature}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r3).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r3).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r3).value();
+    auto filter_literal = client_->TransferToServer(filter_r3).value();
     ComputeAndCompareLiteral(&builder, expected_r3,
                              {input_literal.get(), filter_literal.get()},
                              error_spec_);
@@ -220,10 +217,10 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
 
   auto input_literal =
       client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .ConsumeValueOrDie();
+          .value();
   auto filter_literal =
       client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .ConsumeValueOrDie();
+          .value();
 
   ComputeAndCompareR3<float>(&builder, expected,
                              {input_literal.get(), filter_literal.get()},
@@ -255,10 +252,10 @@ class Convolve1D_1x2x5_1x2x2_WithRHSDilation : public ConvolutionTest {
 
     auto input_literal =
         client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-            .ConsumeValueOrDie();
+            .value();
     auto filter_literal =
         client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-            .ConsumeValueOrDie();
+            .value();
 
     ComputeAndCompareR3<T>(&builder, expected,
                            {input_literal.get(), filter_literal.get()},
@@ -290,10 +287,10 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSDilation) {
 
   auto input_literal =
       client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .ConsumeValueOrDie();
+          .value();
   auto filter_literal =
       client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .ConsumeValueOrDie();
+          .value();
 
   ComputeAndCompareR3<float>(&builder, expected,
                              {input_literal.get(), filter_literal.get()},
@@ -321,10 +318,10 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
 
   auto input_literal =
       client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .ConsumeValueOrDie();
+          .value();
   auto filter_literal =
       client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .ConsumeValueOrDie();
+          .value();
 
   ComputeAndCompareR3<float>(&builder, expected,
                              {input_literal.get(), filter_literal.get()},
@@ -357,10 +354,10 @@ class Convolve1D_1x2x5_1x2x2_WithPadding : public ConvolutionTest {
 
     auto input_literal =
         client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-            .ConsumeValueOrDie();
+            .value();
     auto filter_literal =
         client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-            .ConsumeValueOrDie();
+            .value();
 
     ComputeAndCompareR3<T>(&builder, expected,
                            {input_literal.get(), filter_literal.get()},

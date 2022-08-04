@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/profiler/internal/python_hooks.h"
 
+#include <atomic>
+
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/core/platform/env.h"
@@ -88,10 +90,12 @@ void ForEachThread(PyThreadState* curr_thread, ForEachThreadFunc&& callback) {
   // that PyInterpreterState.
   for (PyThreadState* p = curr_thread; p != nullptr; p = p->next) {
     PyThreadState_Swap(p);
+    std::atomic_thread_fence(std::memory_order_release);
     callback(p);
   }
   for (PyThreadState* p = curr_thread->prev; p != nullptr; p = p->prev) {
     PyThreadState_Swap(p);
+    std::atomic_thread_fence(std::memory_order_release);
     callback(p);
   }
 }

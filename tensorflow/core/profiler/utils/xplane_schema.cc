@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -29,6 +31,7 @@ namespace profiler {
 const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kTpuPlanePrefix = "/device:TPU:";
+const char kTpuPlaneRegex[] = {"/device:TPU:[0-9]*$"};
 // TODO(b/195582092): change it to /device:custom once all literals are
 // migrated.
 const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
@@ -45,6 +48,7 @@ const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
 const absl::string_view kTensorFlowOpLineName = "TensorFlow Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
 const absl::string_view kXlaOpLineName = "XLA Ops";
+const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const absl::string_view kSourceLineName = "Source code";
 
@@ -216,6 +220,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"_a", kIsAsync},
       // Device trace arguments.
       {"device_id", kDeviceId},
+      {"device_type_string", kDeviceTypeString},
       {"context_id", kContextId},
       {"correlation_id", kCorrelationId},
       {"memcpy_details", kMemcpyDetails},
@@ -272,6 +277,16 @@ const StatTypeMap& GetStatTypeMap() {
       {"theoretical_occupancy_pct", kTheoreticalOccupancyPct},
       {"occupancy_min_grid_size", kOccupancyMinGridSize},
       {"occupancy_suggested_block_size", kOccupancySuggestedBlockSize},
+      // Aggregrated Stat
+      {"self_duration_ps", kSelfDurationPs},
+      {"min_duration_ps", kMinDurationPs},
+      {"max_iteration_num", kMaxIterationNum},
+      {"device_type", kDeviceType},
+      {"uses_megacore", kUsesMegaCore},
+      {"symbol_id", kSymbolId},
+      {"hlo_category", kHloCategory},
+      {"tf_op_name", kTfOpName},
+      {"dma_stall_duration_ps", kDmaStallDurationPs},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;

@@ -1869,7 +1869,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     StatusOr<TRT_ShapedWeights> tmp = params->weight_store->GetTempWeights(
         nvinfer1::DataType::kFLOAT, weights_shape);
     TRT_ENSURE_OK(tmp);
-    weights_rsck = tmp.ConsumeValueOrDie();
+    weights_rsck = std::move(tmp).value();
   }
 
   // In explcit precision mode, trace the input back to the constant while also
@@ -3401,7 +3401,7 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
 
   auto tmp = weight_store->GetTempWeights(trt_dtype, weight_dims->AsTrtDims());
   TRT_ENSURE_OK(tmp);
-  *weights = tmp.ConsumeValueOrDie();
+  *weights = std::move(tmp).value();
 
   // Copy the tensor directly if the tensor does not require cast to the
   // supported type.
@@ -4490,7 +4490,7 @@ StatusOr<ITensorProxyPtr> ConvertFullyConnectedImpl(OpConverterParams* params,
   if (!transpose_b) {
     auto tmp = params->weight_store->GetTempWeights(weights_2D);
     TRT_ENSURE_OK(tmp);
-    weights = tmp.ConsumeValueOrDie();
+    weights = std::move(tmp).value();
     ReorderCKtoKC(weights_2D, &weights);
   } else {
     weights = weights_2D;

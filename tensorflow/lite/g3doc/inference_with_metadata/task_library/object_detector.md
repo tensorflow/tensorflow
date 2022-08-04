@@ -69,9 +69,9 @@ dependencies {
     // Other dependencies
 
     // Import the Task Vision Library dependency (NNAPI is included)
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.4.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-vision'
     // Import the GPU delegate plugin Library for GPU inference
-    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin'
 }
 ```
 
@@ -142,7 +142,7 @@ let options = ObjectDetectorOptions(modelPath: modelPath)
 // Configure any additional options:
 // options.classificationOptions.maxResults = 3
 
-let detector = try ObjectDetector.objectDetector(options: options)
+let detector = try ObjectDetector.detector(options: options)
 
 // Convert the input image to MLImage.
 // There are other sources for MLImage. For more details, please see:
@@ -150,7 +150,7 @@ let detector = try ObjectDetector.objectDetector(options: options)
 guard let image = UIImage (named: "cats_and_dogs.jpg"), let mlImage = MLImage(image: image) else { return }
 
 // Run inference
-let detectionResult = try detector.detect(gmlImage: mlImage)
+let detectionResult = try detector.detect(mlImage: mlImage)
 ```
 
 #### Objective C
@@ -224,8 +224,13 @@ for more options to configure `ObjectDetector`.
 ```c++
 // Initialization
 ObjectDetectorOptions options;
-options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_path);
 std::unique_ptr<ObjectDetector> object_detector = ObjectDetector::CreateFromOptions(options).value();
+
+// Create input frame_buffer from your inputs, `image_data` and `image_dimension`.
+// See more information here: tensorflow_lite_support/cc/task/vision/utils/frame_buffer_common_utils.h
+std::unique_ptr<FrameBuffer> frame_buffer = CreateFromRgbRawBuffer(
+      image_data, image_dimension);
 
 // Run inference
 const DetectionResult result = object_detector->Detect(*frame_buffer).value();

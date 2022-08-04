@@ -47,8 +47,9 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import resource
 from tensorflow.python.training import saver
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -844,7 +845,7 @@ def _get_resource_handle(name, device):
     return gen_trt_ops.create_trt_resource_handle(resource_name=name)
 
 
-class _TRTEngineResource(tracking.TrackableResource):
+class _TRTEngineResource(resource.TrackableResource):
   """Class to track the serialized engines resource."""
 
   def __init__(self,
@@ -856,7 +857,7 @@ class _TRTEngineResource(tracking.TrackableResource):
     self._resource_name = resource_name
     # Track the serialized engine file in the SavedModel.
     self._filename = self._track_trackable(
-        tracking.Asset(filename), "_serialized_trt_resource_filename")
+        asset.Asset(filename), "_serialized_trt_resource_filename")
     self._maximum_cached_engines = maximum_cached_engines
 
   def _create_resource(self):
@@ -1525,7 +1526,7 @@ class TrtGraphConverterV2(object):
       reset_converted_func.graph.structured_outputs = nest.pack_sequence_as(
           self._converted_func.graph.structured_outputs,
           reset_converted_func.graph.structured_outputs)
-      reset_converted_func.graph.strucutred_input_signature = (
+      reset_converted_func.graph.structured_input_signature = (
           self._converted_func.structured_input_signature)
       self._converted_func = reset_converted_func
 

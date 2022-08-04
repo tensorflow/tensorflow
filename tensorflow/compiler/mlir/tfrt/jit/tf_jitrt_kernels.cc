@@ -62,12 +62,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#if __cplusplus >= 201703L
 using ::std::any_cast;
-#else
-using ::llvm::any_cast;
-#endif
 
+using ::llvm::cast;
 using ::llvm::Expected;
 using ::llvm::MutableArrayRef;
 using ::llvm::None;
@@ -103,6 +100,7 @@ using ::tfrt::StrCat;
 using ::tfrt::StringAttribute;
 using ::tfrt::TaskFunction;
 
+using ::tfrt::jitrt::ArgumentsRef;
 using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
@@ -117,13 +115,16 @@ using ::tfrt::jitrt::ReturnErrors;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConversion;
 using ::tfrt::jitrt::SpecializationListener;
-using ::tfrt::jitrt::StaticReturnValueConverter;
+using ::tfrt::jitrt::StaticRemainingResultsConverter;
 
 using ::tensorflow::profiler::TraceMe;
 using ::tensorflow::profiler::TraceMeEncode;
 using ::tensorflow::tfd::KernelFallbackCompatRequestState;
 using ::tensorflow::tfrt_stub::FallbackTensor;
 using ::tensorflow::thread::ThreadPool;
+
+template <typename T>
+using KernelArgument = ::tfrt::Argument<T>;
 
 // -------------------------------------------------------------------------- //
 // Dedicated thread pool for running compilation tasks.
@@ -334,10 +335,9 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // into the dedicated thread pool and adds tracing.
   auto runner = [kernel_info](size_t specialization,
                               ArrayRef<OperandConstraint> constraints,
-                              ArrayRef<MemrefDesc> operands,
-                              TaskFunction compile,
+                              ArgumentsRef arguments, TaskFunction compile,
                               JitExecutable::UserData user_data) {
-    assert(operands.size() == constraints.size());
+    assert(arguments.size() == constraints.size());
 
     // Get the context of the request that triggered specialization compilation.
     RequestContext* req_ctx = any_cast<RequestContext*>(user_data);
@@ -347,17 +347,18 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // because operands lifetime is shorter than the compilation task.
     using SpecializationArg = std::pair<std::string, std::string>;
     llvm::SmallVector<SpecializationArg> args;
-    args.reserve(operands.size());
+    args.reserve(arguments.size());
 
     // Trace types of all operands of the specialization.
-    for (size_t i = 0; i < operands.size(); ++i)
-      args.emplace_back(StrCat("%arg", i, " type"), AsTensorType(operands[i]));
+    for (size_t i = 0; i < arguments.size(); ++i)
+      args.emplace_back(StrCat("%arg", i, " type"),
+                        AsTensorType(cast<MemrefDesc>(arguments[i])));
 
     // Trace content of all operands that require value specializations.
     for (size_t i = 0; i < constraints.size(); ++i) {
       if (constraints[i] != OperandConstraint::kValue) continue;
       args.emplace_back(StrCat("%arg", i, " value"),
-                        AsTensorContent(operands[i]));
+                        AsTensorContent(cast<MemrefDesc>(arguments[i])));
     }
 
     // Schedule specialization compilation task into the dedicated thread pool.
@@ -535,7 +536,7 @@ static AsyncValueRef<Chain> Compile(StringAttribute device,
 // -------------------------------------------------------------------------- //
 
 static AsyncValueRef<Chain> WaitForCompilation(
-    Argument<Chain> chain, CompilationUnitAttribute kernel,
+    KernelArgument<Chain> chain, CompilationUnitAttribute kernel,
     const ExecutionContext& exec_ctx) {
   // Request context must be initialized with the tf_jitrt state.
   auto* state = exec_ctx.request_ctx()->GetDataIfExists<TfJitRtRequestState>();
@@ -556,7 +557,7 @@ static AsyncValueRef<Chain> WaitForCompilation(
 // -------------------------------------------------------------------------- //
 
 static AsyncValueRef<Chain> ResetCompilationThreadPool(
-    Argument<Chain> chain, const ExecutionContext& exec_ctx) {
+    KernelArgument<Chain> chain, const ExecutionContext& exec_ctx) {
   // Make sure that we reset the compilation thread pool only from a thread pool
   // (concurrent work queue) managed by the HostContext.
   return EnqueueWork(exec_ctx, [host = exec_ctx.host()]() -> Chain {
@@ -573,9 +574,9 @@ using ReturnTensorflowTensor =
     ReturnValueConversion<TensorflowConversionContext,
                           ReturnStridedMemref<ConvertTensor>>;
 
-using TensorflowReturnValueConverter =
-    StaticReturnValueConverter<TensorflowConversionContext,
-                               ReturnTensorflowTensor>;
+using TensorflowResultConverter =
+    StaticRemainingResultsConverter<TensorflowConversionContext,
+                                    ReturnTensorflowTensor>;
 
 static MemrefDesc ConvertTensorToMemrefDesc(const tensorflow::Tensor& tensor) {
   // Fills memref sizes and strides with a tensor shape;
@@ -650,7 +651,7 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
         "tf_jitrt.Execute",
         {{"id", id},
          {"executable", name},
-         {"specialization", !executable.specialization().hasValue()
+         {"specialization", !executable.specialization().has_value()
                                 ? "default"
                                 : std::to_string(*executable.specialization())},
          {"time_to_compile_ms", executable.time_to_compile().count()}});
@@ -666,7 +667,7 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
   for (auto& t : operands)
     ctx.runtime_tensors.insert({t.tensor().data(), &t.tensor()});
 
-  TensorflowReturnValueConverter converter(results, ctx);
+  TensorflowResultConverter converter(results, ctx);
 
   // Get the worker threads from the execution context.
   Expected<Eigen::ThreadPoolInterface*> worker_threads =

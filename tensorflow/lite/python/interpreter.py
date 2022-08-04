@@ -41,7 +41,7 @@ else:
 # pylint: enable=g-import-not-at-top
 
 
-class Delegate(object):
+class Delegate:
   """Python wrapper class to manage TfLiteDelegate objects.
 
   The shared library is expected to have two functions:
@@ -95,7 +95,7 @@ class Delegate(object):
       options_keys[idx] = str(key).encode('utf-8')
       options_values[idx] = str(value).encode('utf-8')
 
-    class ErrorMessageCapture(object):
+    class ErrorMessageCapture:
 
       def __init__(self):
         self.message = ''
@@ -178,7 +178,7 @@ def load_delegate(library, options=None):
   return delegate
 
 
-class SignatureRunner(object):
+class SignatureRunner:
   """SignatureRunner class for running TFLite models using SignatureDef.
 
   This class should be instantiated through TFLite Interpreter only using
@@ -352,7 +352,7 @@ def _get_op_resolver_id(op_resolver_type=OpResolverType.AUTO):
 
 
 @_tf_export('lite.Interpreter')
-class Interpreter(object):
+class Interpreter:
   """Interpreter interface for running TensorFlow Lite models.
 
   Models obtained from `TfLiteConverter` can be run in Python with
@@ -834,7 +834,7 @@ class Interpreter(object):
         signature_key = next(iter(self._signature_defs))
     return SignatureRunner(interpreter=self, signature_key=signature_key)
 
-  def get_tensor(self, tensor_index):
+  def get_tensor(self, tensor_index, subgraph_index=0):
     """Gets the value of the output tensor (get a copy).
 
     If you wish to avoid the copy, use `tensor()`. This function cannot be used
@@ -843,11 +843,13 @@ class Interpreter(object):
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from
         the 'index' field in get_output_details.
+      subgraph_index: Index of the subgraph to fetch the tensor. Default value
+        is 0, which means to fetch from the primary subgraph.
 
     Returns:
       a numpy array.
     """
-    return self._interpreter.GetTensor(tensor_index)
+    return self._interpreter.GetTensor(tensor_index, subgraph_index)
 
   def tensor(self, tensor_index):
     """Returns function that gives a numpy view of the current tensor buffer.

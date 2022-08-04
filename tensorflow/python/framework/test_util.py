@@ -1094,6 +1094,43 @@ def run_all_in_graph_and_eager_modes(cls):
   return cls
 
 
+def enable_nested_function_shape_inference(fn):
+  """Decorator for enabling nested_function_shape_inference on a test.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will set nested_function_shape_inference,
+  reset the context, execute the test, then reset the context to the state
+  it was in prior to this test.
+
+  Example:
+
+  class MyTest(test.TestCase):
+
+    @enable_nested_function_shape_inference
+    def testFoo(self):
+      ...
+
+  Args:
+    fn: the function to be wrapped.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def wrapper(*args, **kwargs):
+    # If `nested_function_shape_inference` is already enabled do nothing.
+    if flags.config().enable_nested_function_shape_inference.value():
+      return fn(*args, **kwargs)
+
+    flags.config().enable_nested_function_shape_inference.reset(True)
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      flags.config().enable_nested_function_shape_inference.reset(False)
+
+  return wrapper
+
+
 def enable_eager_op_as_function(fn):
   """Decorator for enabling eager_op_as_function on a test.
 
@@ -1487,6 +1524,7 @@ def run_in_graph_and_eager_modes(func=None,
           "Did you mean to use `run_all_in_graph_and_eager_modes`?")
 
     def decorated(self, *args, **kwargs):
+      logging.info("Running %s in GRAPH mode.", f.__name__)
       try:
         with context.graph_mode():
           with self.test_session(use_gpu=use_gpu, config=config):
@@ -1495,6 +1533,7 @@ def run_in_graph_and_eager_modes(func=None,
         pass
 
       def run_eagerly(self, **kwargs):
+        logging.info("Running %s in EAGER mode.", f.__name__)
         if not use_gpu:
           with ops.device("/device:CPU:0"):
             f(self, *args, **kwargs)
@@ -2603,6 +2642,7 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._eval_helper(tensor())
     else:
       try:
+        # for compatibility with TF1 test cases
         if sparse_tensor.is_sparse(tensor):
           return sparse_tensor.SparseTensorValue(tensor.indices.numpy(),
                                                  tensor.values.numpy(),
@@ -2617,11 +2657,18 @@ class TensorFlowTestCase(googletest.TestCase):
               indices=tensor.indices.numpy(),
               dense_shape=None
               if tensor.dense_shape is None else tensor.dense_shape.numpy())
-        # Convert tensors and composite tensors to numpy arrays.
-        return nest.map_structure(lambda t: t.numpy(), tensor,
-                                  expand_composites=True)
+        else:
+          if hasattr(tensor, "numpy") and callable(tensor.numpy):
+            return tensor.numpy()
+          else:
+            # Try our best to convert CompositeTensor components to NumPy
+            # arrays. Officially, we don't support NumPy arrays as
+            # CompositeTensor components. So don't be surprised if this doesn't
+            # work.
+            return nest.map_structure(lambda t: t.numpy(), tensor,
+                                      expand_composites=True)
       except AttributeError as e:
-        six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
+        raise ValueError(f"Unsupported type {type(tensor).__name__!r}.") from e
 
   def _eval_helper(self, tensors):
     if tensors is None:

@@ -517,8 +517,7 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
               result.ToString().c_str());
       auto& snapshot = snapshots[i];
       if (snapshot.has_result()) {
-        Literal literal =
-            Literal::CreateFromProto(snapshot.result()).ConsumeValueOrDie();
+        Literal literal = Literal::CreateFromProto(snapshot.result()).value();
         fprintf(
             stdout, "was %s:%s\n",
             ShapeUtil::HumanString(Shape(snapshot.result().shape())).c_str(),

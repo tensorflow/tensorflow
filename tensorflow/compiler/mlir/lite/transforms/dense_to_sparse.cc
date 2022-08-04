@@ -255,28 +255,24 @@ std::vector<T> BuildSparsityParameterAttribute(
   const auto& metadata = format_converter.GetDimMetadata();
   const auto& compressed_data = format_converter.GetData();
   const int dim_size = metadata.size() / 2;
-  std::vector<Attribute> dim_metadata(traversal_order.size());
+  std::vector<DimensionMetadataAttr> dim_metadata(traversal_order.size());
   for (int i = 0; i < dim_size; i++) {
     if (format[i] == kTfLiteDimDense) {
       dim_metadata[i] = DimensionMetadataAttr::get(
+          builder->getContext(),
           ::mlir::TFL::DimensionTypeAttr::get(
               builder->getContext(), ::mlir::TFL::DimensionType::DENSE),
-          builder->getI32IntegerAttr(metadata[2 * i][0]),
-          builder->getArrayAttr({}), builder->getArrayAttr({}),
-          builder->getContext());
+          metadata[2 * i][0], {}, {});
     } else {
       dim_metadata[i] = DimensionMetadataAttr::get(
+          builder->getContext(),
           ::mlir::TFL::DimensionTypeAttr::get(
               builder->getContext(), ::mlir::TFL::DimensionType::SPARSE_CSR),
-          builder->getI32IntegerAttr(0),
-          builder->getI32ArrayAttr(metadata[2 * i]),
-          builder->getI32ArrayAttr(metadata[2 * i + 1]), builder->getContext());
+          0, metadata[2 * i], metadata[2 * i + 1]);
     }
   }
-  *s_param = SparsityParameterAttr::get(
-      builder->getI32ArrayAttr(traversal_order),
-      builder->getI32ArrayAttr(b_map), builder->getArrayAttr(dim_metadata),
-      builder->getContext());
+  *s_param = SparsityParameterAttr::get(builder->getContext(), traversal_order,
+                                        b_map, dim_metadata);
 
   return compressed_data;
 }

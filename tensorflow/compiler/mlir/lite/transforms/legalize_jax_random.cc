@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -46,10 +47,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace TFL {
@@ -100,7 +101,8 @@ void LegalizeJaxRandomPass::runOnOperation() {
     result_shape_i32.push_back(static_cast<int32_t>(element));
   }
   auto result_shape_attr = builder.getI32TensorAttr(result_shape_i32);
-  Value result_shape_tensor = builder.create<mhlo::ConstOp>(result_shape_attr);
+  Value result_shape_tensor =
+      builder.create<mhlo::ConstantOp>(result_shape_attr);
   auto custom_code =
       IsJaxRandomUniform(func) ? "RandomUniform" : "RandomStandardNormal";
 

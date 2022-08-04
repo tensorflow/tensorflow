@@ -481,6 +481,23 @@ cc_library(
 )
 
 cc_library(
+    name = "quantized_leaky_relu_tester",
+    testonly = 1,
+    srcs = ["quantized_leaky_relu_tester.cc"],
+    hdrs = ["quantized_leaky_relu_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "quantized_pad_tester",
     testonly = 1,
     srcs = ["quantized_pad_tester.cc"],
@@ -1143,6 +1160,66 @@ cc_test(
 )
 
 cc_test(
+    name = "quantize_float32_to_int8_test",
+    srcs = ["quantize_float32_to_int8_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantize_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "quantize_float32_to_uint8_test",
+    srcs = ["quantize_float32_to_uint8_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantize_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "quantize_int8_to_int8_test",
+    srcs = ["quantize_int8_to_int8_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantize_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "quantize_uint8_to_uint8_test",
+    srcs = ["quantize_uint8_to_uint8_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantize_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "relu_test",
     srcs = ["relu_test.cc"],
     linkopts = select({
@@ -1248,21 +1325,6 @@ cc_test(
 )
 
 cc_test(
-    name = "signed_quantize_test",
-    srcs = ["signed_quantize_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":quantize_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
     name = "signed_quantized_add_test",
     srcs = ["signed_quantized_add_test.cc"],
     linkopts = select({
@@ -1361,6 +1423,21 @@ cc_test(
     }),
     deps = [
         ":quantized_fully_connected_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_leaky_relu_test",
+    srcs = ["signed_quantized_leaky_relu_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_leaky_relu_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1653,21 +1730,6 @@ cc_test(
 )
 
 cc_test(
-    name = "unsigned_quantize_test",
-    srcs = ["unsigned_quantize_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":quantize_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
     name = "unsigned_quantized_add_test",
     srcs = ["unsigned_quantized_add_test.cc"],
     linkopts = select({
@@ -1751,6 +1813,21 @@ cc_test(
     }),
     deps = [
         ":quantized_fully_connected_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_leaky_relu_test",
+    srcs = ["unsigned_quantized_leaky_relu_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_leaky_relu_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1910,9 +1987,6 @@ cc_test(
 cc_test(
     name = "weights_cache_test",
     srcs = ["weights_cache_test.cc"],
-    data = [
-        "//tensorflow/lite:testdata/conv_huge_im2col.bin",
-    ],
     deps = [
         ":conv_2d_tester",
         ":test_main",

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/root_dataset.h"
 
+#include <algorithm>
 #include <functional>
 #include <string>
 #include <utility>
@@ -61,11 +62,15 @@ void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
   }
   params->autotune = ShouldUseAutotuning(options);
   if (params->autotune) {
-    params->autotune_algorithm =
-        options.autotune_options().optional_autotune_algorithm_case() ==
-                AutotuneOptions::kAutotuneAlgorithm
-            ? options.autotune_options().autotune_algorithm()
-            : model::AutotuneAlgorithm::DEFAULT;
+    params->autotune_algorithm = model::AutotuneAlgorithm::DEFAULT;
+    if (GetExperiments().contains("stage_based_autotune")) {
+      params->autotune_algorithm = model::AutotuneAlgorithm::STAGE_BASED;
+    }
+    if (options.autotune_options().optional_autotune_algorithm_case() ==
+        AutotuneOptions::kAutotuneAlgorithm) {
+      params->autotune_algorithm =
+          options.autotune_options().autotune_algorithm();
+    }
     params->autotune_cpu_budget = value_or_default(
         options.autotune_options().cpu_budget(), 0, GetCpuBudget());
     params->autotune_ram_budget =
@@ -134,6 +139,9 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       : DatasetIterator<RootDataset>(params) {
     if (dataset()->params_.autotune) {
       model_ = std::make_shared<model::Model>();
+      if (GetExperiments().contains("autotune_buffer_optimization")) {
+        model_->SetExperiment("autotune_buffer_optimization");
+      }
     }
     if (dataset()->params_.max_intra_op_parallelism >= 0) {
       max_intra_op_parallelism_ =
@@ -144,11 +152,11 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       threadpool_size_ =
           value_or_default(dataset()->params_.private_threadpool_size, 0,
                            port::MaxParallelism());
-      thread_pool_ = absl::make_unique<thread::ThreadPool>(
+      thread_pool_ = std::make_unique<thread::ThreadPool>(
           Env::Default(), ThreadOptions{}, "data_private_threadpool",
           threadpool_size_);
     }
-    cancellation_manager_ = absl::make_unique<CancellationManager>();
+    cancellation_manager_ = std::make_unique<CancellationManager>();
   }
 
   ~Iterator() override { cancellation_manager_->StartCancel(); }
@@ -160,11 +168,22 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
+    {
+      tf_shared_lock l(mu_);
+      if (model_ != nullptr && end_time_usec_ > 0) {
+        model_->RecordIteratorGapTime(ctx->env()->NowMicros() - end_time_usec_);
+      }
+    }
     if (dataset()->params_.autotune) {
       TF_RETURN_IF_ERROR(EnsureModelThreadStarted(ctx));
     }
-    return input_impl_->GetNext(IteratorContext(CreateParams(ctx)), out_tensors,
-                                end_of_sequence);
+    TF_RETURN_IF_ERROR(input_impl_->GetNext(IteratorContext(CreateParams(ctx)),
+                                            out_tensors, end_of_sequence));
+    {
+      mutex_lock l(mu_);
+      end_time_usec_ = std::max(ctx->env()->NowMicros(), end_time_usec_);
+    }
+    return OkStatus();
   }
 
  protected:
@@ -202,7 +221,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
         strings::Printf("%lld out of %lld (%.2f%%)",
                         static_cast<long long>(memory_usage / 1.0e6),
                         static_cast<long long>(memory_info.total / 1.0e6),
-                        static_cast<double>(memory_usage) /
+                        static_cast<double>(100 * memory_usage) /
                             static_cast<double>(memory_info.total))));
     if (model_node() != nullptr) {
       traceme_metadata.push_back(std::make_pair(
@@ -261,6 +280,9 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   int64_t threadpool_size_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
+  // The end time of the previous `GetNextInternal` call.
+  uint64_t end_time_usec_ TF_GUARDED_BY(mu_) = 0;
+
   // Must be ordered last as its execution may depend on other members.
   std::unique_ptr<IteratorBase> input_impl_;
 };
@@ -287,7 +309,7 @@ RootDataset::~RootDataset() {}
 
 std::unique_ptr<IteratorBase> RootDataset::MakeIteratorInternal(
     const string& prefix) const {
-  return absl::make_unique<Iterator>(
+  return std::make_unique<Iterator>(
       Iterator::Params{this, name_utils::IteratorPrefix(kDatasetType, prefix)});
 }
 

@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -117,7 +117,7 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
   auto module_op = module.release();
 
   // Create the context
-  return absl::make_unique<TFRDecomposeContext>(module_op);
+  return std::make_unique<TFRDecomposeContext>(module_op);
 }
 
 StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,

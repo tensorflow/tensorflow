@@ -196,6 +196,24 @@ TEST(XlaCompilationTest, StringUnsupported) {
   EXPECT_TRUE(clusters.empty());
 }
 
+TEST(XlaCompilationTest, WhereUnsupported) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Node* a = ops::SourceOp("Const", builder.opts()
+                                         .WithName("A")
+                                         .WithAttr("dtype", DT_INT32)
+                                         .WithAttr("value", Tensor()));
+    Node* b = ops::UnaryOp("Where", a, builder.opts().WithName("B"));
+    ops::BinaryOp("Gather", b, a, builder.opts().WithName("C"));
+    TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
+  }
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+  auto clusters = GetClusters(*graph);
+  EXPECT_TRUE(!clusters.empty());
+}
+
 TEST(XlaCompilationTest, HalfSupported) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   {
@@ -998,7 +1016,7 @@ TEST(XlaCompilationTest, RandomShapeWithFunc) {
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_ASSERT_OK(root.ToGraph(graph.get()));
-  auto fld = absl::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
+  auto fld = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
                                                           flib_def);
   TF_ASSERT_OK(
       MarkForCompilationPassTestHelper::MarkForCompilation(&graph, fld.get()));
@@ -1946,7 +1964,7 @@ TEST(XlaCompilationTest, XLALiteAllowlist) {
     }
   }
   EXPECT_TRUE(unknow_op.empty())
-      << "Someone added support for a new TF opeations inside XLA. They must "
+      << "Someone added support for a new TF operations inside XLA. They must "
          "be included in the XLALite allowlist or denylist:\n"
       << absl::StrJoin(unknow_op, "\n");
 }

@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 
 #include <iterator>
+#include <optional>
 #include <sstream>
 #include <string>
 
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -34,7 +34,7 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_NoReplicaGroups) {
   std::vector<int> actual = GetParticipatingIDs(
                                 /*current_id=*/0, /*total_participant_count=*/3,
                                 /*groups=*/{})
-                                .ConsumeValueOrDie();
+                                .value();
   std::vector<int> expected = {0, 1, 2};
   EXPECT_EQ(actual, expected);
 }
@@ -52,7 +52,7 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_ReplicaGroups) {
       GetParticipatingIDs(
           /*current_id=*/1, /*total_participant_count=*/std::nullopt,
           replica_groups)
-          .ConsumeValueOrDie();
+          .value();
   std::vector<int> expected = {1, 5};
   EXPECT_EQ(actual, expected);
 }

@@ -16,15 +16,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 
 #include <string>
+#include <vector>
 
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -36,7 +37,9 @@ using ::int64_t;
 using mlir::IntegerType;
 using mlir::MemRefType;
 using mlir::RankedTensorType;
+using mlir::ShapedType;
 using mlir::VectorType;
+using mlir::mhlo::TypeExtensionsAttr;
 using xla::PrimitiveType;
 using xla::ShapeUtil;
 
@@ -161,18 +164,34 @@ Shape TypeToShape(mlir::Type type) {
   } else if (auto t = type.dyn_cast<mlir::RankedTensorType>()) {
     // TODO(jpienaar): This is only handling the base case with primitive
     // element type.
-    llvm::SmallVector<int64_t, 4> span(t.getShape().begin(),
-                                       t.getShape().end());
-    // Only fully static shapes are supported.
-    // TODO(b/115638799): Update once xla::Shape can support dynamic shapes.
-    if (std::find(t.getShape().begin(), t.getShape().end(), -1) !=
-        t.getShape().end())
-      return {};
-    mlir::Type element_type = t.getElementType();
-    PrimitiveType primitive_type = TypeToPrimitiveType(element_type);
-    // Only primitive element type supported.
-    if (primitive_type != PrimitiveType::PRIMITIVE_TYPE_INVALID)
-      return ShapeUtil::MakeShape(primitive_type, span);
+    int64_t rank = t.getRank();
+    llvm::SmallVector<int64_t, 4> bounds;
+    if (auto extn = t.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>()) {
+      bounds = llvm::to_vector<4>(extn.getBounds());
+    } else {
+      bounds.assign(rank, ShapedType::kDynamicSize);
+    }
+
+    llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamicSize);
+    std::vector<bool> is_dynamic(rank, false);
+    for (int64_t dim = 0; dim < rank; ++dim) {
+      // Only fully static shapes are supported.
+      // TODO(b/115638799): Update once xla::Shape can support dynamic shapes.
+      int64_t size = t.getDimSize(dim);
+      if (size == ShapedType::kDynamicSize) {
+        if (bounds[dim] == ShapedType::kDynamicSize) return {};
+        shape[dim] = bounds[dim];
+        is_dynamic[dim] = true;
+      } else {
+        if (bounds[dim] != ShapedType::kDynamicSize) return {};
+        shape[dim] = size;
+      }
+    }
+
+    PrimitiveType primitive_type = TypeToPrimitiveType(t.getElementType());
+    if (primitive_type == PrimitiveType::PRIMITIVE_TYPE_INVALID) return {};
+
+    return ShapeUtil::MakeShape(primitive_type, shape, is_dynamic);
   } else if (auto tuple_type = type.dyn_cast<mlir::TupleType>()) {
     llvm::SmallVector<Shape, 4> shapes;
     shapes.reserve(tuple_type.size());

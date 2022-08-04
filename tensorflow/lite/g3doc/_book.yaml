@@ -99,8 +99,7 @@ upper_tabs:
 
       - heading: "Images & video"
       - title: "Object detection"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android
-        status: external
+        path: /lite/android/tutorials/object_detection
       - title: "Image classification"
         path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/
         status: external
@@ -117,12 +116,8 @@ upper_tabs:
         status: external
 
       - heading: "Audio"
-      - title: "Voice commands"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/speech_commands/android
-        status: external
-      - title: "Sound classification"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/sound_classification/android
-        status: external
+      - title: "Sound and word recognition"
+        path: /lite/android/tutorials/audio_classification
 
       - heading: "Hardware acceleration"
       - title: "NNAPI delegate"
@@ -255,6 +250,8 @@ upper_tabs:
       - heading: "Convert models"
       - title: "Overview"
         path: /lite/models/convert/
+      - title: "TensorFlow Lite converter"
+        path: /lite/models/convert/convert_models
       - title: "Model compatibility"
         section:
         - title: "Overview"

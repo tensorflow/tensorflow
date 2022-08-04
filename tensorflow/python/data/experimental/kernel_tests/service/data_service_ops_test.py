@@ -18,6 +18,7 @@ import time
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import service_config_pb2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
@@ -35,6 +36,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -385,6 +387,42 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       get_next = self.getNext(dataset)
       self.assertEqual(self.getIteratorOutput(get_next), list(range(10)))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testStringDatasetId(self):
+    """Tests passing a dataset ID of string Tensor."""
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher.target,
+                                                   dataset)
+    dataset_id_str = (
+        dataset_id if dataset_id.dtype == dtypes.string else
+        string_ops.as_string(dataset_id))
+    dataset = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id_str,
+        element_spec=dataset.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        job_name="job_name")
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testPyStringDatasetId(self):
+    """Tests passing a dataset ID of Python string."""
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher.target,
+                                                   dataset)
+    dataset_id_val = tensor_util.constant_value(dataset_id)
+    dataset_id_str = (
+        dataset_id_val.decode()
+        if isinstance(dataset_id_val, bytes) else str(dataset_id_val))
+    dataset = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id_str,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        job_name="job_name")
+    self.assertDatasetProduces(dataset, list(range(10)))
+
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(),
                          combinations.combine(job_name=[None, "test"])))
@@ -657,9 +695,11 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements)
-    dataset_id = self.register_dataset(cluster.dispatcher_address(), ds)
-    from_dataset_id_ds = self.from_dataset_id("parallel_epochs", cluster,
-                                              dataset_id, ds.element_spec)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
+                                                   ds)
+    from_dataset_id_ds = data_service_ops.from_dataset_id(
+        "parallel_epochs", cluster.dispatcher.target, dataset_id,
+        ds.element_spec)
     self.assertDatasetProduces(from_dataset_id_ds, list(range(num_elements)))
 
   @combinations.generate(test_base.default_test_combinations())
@@ -673,16 +713,17 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     dataset_ids = []
 
     for ds in datasets:
-      dataset_id = self.register_dataset(cluster.dispatcher_address(), ds)
+      dataset_id = data_service_ops.register_dataset(
+          cluster.dispatcher_address(), ds)
       dataset_ids.append(dataset_id)
 
     # Read from both jobs in parallel, with 2 consumers for each job.
     data_service_datasets = []
     for _ in range(2):
       for dataset, dataset_id in zip(datasets, dataset_ids):
-        ds = self.from_dataset_id(
+        ds = data_service_ops.from_dataset_id(
             "distributed_epoch",
-            cluster,
+            cluster.dispatcher.target,
             dataset_id,
             dataset.element_spec,
             job_name="shared_job")
@@ -698,12 +739,13 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements)
-    register_func = def_function.function(self.register_dataset)
+    register_func = def_function.function(data_service_ops.register_dataset)
     dataset_id = register_func(
         (constant_op.constant("grpc"),
          constant_op.constant(cluster.dispatcher_address())), ds)
-    from_dataset_id_ds = self.from_dataset_id("parallel_epochs", cluster,
-                                              dataset_id, ds.element_spec)
+    from_dataset_id_ds = data_service_ops.from_dataset_id(
+        "parallel_epochs", cluster.dispatcher.target, dataset_id,
+        ds.element_spec)
     self.assertDatasetProduces(from_dataset_id_ds, list(range(num_elements)))
 
   @combinations.generate(test_base.default_test_combinations())
@@ -713,9 +755,11 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements)
     ds = dataset_ops.Dataset.zip({"a": (ds, ds), "b": ds})
-    dataset_id = self.register_dataset(cluster.dispatcher_address(), ds)
-    from_dataset_id_ds = self.from_dataset_id("parallel_epochs", cluster,
-                                              dataset_id, ds.element_spec)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
+                                                   ds)
+    from_dataset_id_ds = data_service_ops.from_dataset_id(
+        "parallel_epochs", cluster.dispatcher.target, dataset_id,
+        ds.element_spec)
     output = self.getDatasetOutput(from_dataset_id_ds)
     for i in range(num_elements):
       self.assertEqual(i, output[i]["a"][0])
@@ -728,29 +772,27 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements)
-    dataset_id = self.register_dataset(cluster.dispatcher_address(), ds)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
+                                                   ds)
     wrong_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
-    from_dataset_id_ds = self.from_dataset_id("parallel_epochs", cluster,
-                                              dataset_id, wrong_spec)
+    from_dataset_id_ds = data_service_ops.from_dataset_id(
+        "parallel_epochs", cluster.dispatcher.target, dataset_id, wrong_spec)
 
-    if data_service_test_base.TRANSFER_PROTOCOL.value:
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  "Data type mismatch at component 0"):
-        self.evaluate(self.getNext(from_dataset_id_ds)())
-    else:
-      with self.assertRaisesRegex(errors.FailedPreconditionError,
-                                  "Expected a tensor of type variant"):
-        self.evaluate(self.getNext(from_dataset_id_ds)())
+    with self.assertRaisesRegex(errors.FailedPreconditionError,
+                                "Expected a tensor of type variant"):
+      self.evaluate(self.getNext(from_dataset_id_ds)())
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromDatasetIdNotRegistered(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
-
-    dataset_id = 0
+    dataset_id = ("UnregisteredID"
+                  if compat.forward_compatible(2022, 8, 31) else 0)
     element_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
-    with self.assertRaisesRegex(errors.NotFoundError, "Dataset id 0 not found"):
-      from_dataset_id_ds = self.from_dataset_id("parallel_epochs", cluster,
-                                                dataset_id, element_spec)
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                f"Dataset id {dataset_id} not found."):
+      from_dataset_id_ds = data_service_ops.from_dataset_id(
+          data_service_ops.ShardingPolicy.OFF, cluster.dispatcher.target,
+          dataset_id, element_spec)
       self.evaluate(self.getNext(from_dataset_id_ds)())
 
   @combinations.generate(test_base.default_test_combinations())
@@ -777,8 +819,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds_1 = dataset_ops.Dataset.range(10)
     ds_2 = dataset_ops.Dataset.range(10)
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    id_1 = self.register_dataset(cluster.dispatcher_address(), ds_1)
-    id_2 = self.register_dataset(cluster.dispatcher_address(), ds_2)
+    id_1 = data_service_ops.register_dataset(cluster.dispatcher_address(), ds_1)
+    id_2 = data_service_ops.register_dataset(cluster.dispatcher_address(), ds_2)
     self.assertEqual(self.evaluate(id_1), self.evaluate(id_2))
 
   @combinations.generate(test_base.default_test_combinations())
@@ -786,9 +828,132 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds_1 = dataset_ops.Dataset.range(10)
     ds_2 = dataset_ops.Dataset.range(20)
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    id_1 = self.register_dataset(cluster.dispatcher_address(), ds_1)
-    id_2 = self.register_dataset(cluster.dispatcher_address(), ds_2)
+    id_1 = data_service_ops.register_dataset(cluster.dispatcher_address(), ds_1)
+    id_2 = data_service_ops.register_dataset(cluster.dispatcher_address(), ds_2)
     self.assertNotEqual(self.evaluate(id_1), self.evaluate(id_2))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRegisterWithExplicitDatasetId(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    dataset_id = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset, dataset_id="dataset_id")
+    dataset = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id,
+        element_spec=dataset.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target)
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+    # Verifies the dataset ID is indeed "dataset_id".
+    dataset = data_service_ops.from_dataset_id(
+        dataset_id="dataset_id",
+        element_spec=dataset.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target)
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+  # Eager mode only: In the graph mode, `register_dataset` may not run before
+  # `from_dataset_id` if `from_dataset_id` does not use its return value.
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFromRegisteredStringDatasetId(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    _ = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset, dataset_id="dataset_id")
+    dataset = data_service_ops.from_dataset_id(
+        dataset_id="dataset_id",
+        element_spec=dataset.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target)
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRegisterSameDatasetIds(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset1 = dataset_ops.Dataset.range(10)
+    dataset2 = dataset_ops.Dataset.range(10)
+    dataset_id1 = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset1, dataset_id="dataset_id")
+    dataset_id2 = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset2, dataset_id="dataset_id")
+    dataset1 = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id1,
+        element_spec=dataset1.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        job_name="job_name")
+    dataset2 = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id2,
+        element_spec=dataset2.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        job_name="job_name")
+    # `dataset2` is empty because the datasets share the same job and `dataset1`
+    # has exhausted the dataset.
+    self.assertDatasetProduces(dataset1, list(range(10)))
+    self.assertDatasetProduces(dataset2, list())
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              different_dataset_id=[None, "another_dataset_id"])))
+  def testRegisterDifferentDatasetIds(self, different_dataset_id):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset1 = dataset_ops.Dataset.range(10)
+    dataset2 = dataset_ops.Dataset.range(10)
+    dataset_id1 = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset1, dataset_id="dataset_id")
+    dataset_id2 = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset2, dataset_id=different_dataset_id)
+    dataset1 = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id1,
+        element_spec=dataset1.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        job_name="job_name")
+    dataset2 = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id2,
+        element_spec=dataset2.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        job_name="job_name")
+    # `dataset1` and `dataset2` are different datasets.
+    self.assertDatasetProduces(dataset1, list(range(10)))
+    self.assertDatasetProduces(dataset2, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetsDoNotMatch(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset1 = dataset_ops.Dataset.range(10)
+    dataset2 = dataset_ops.Dataset.from_tensor_slices(list("Test dataset."))
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Datasets with the same ID should have the same structure"):
+      dataset_id1 = data_service_ops.register_dataset(
+          cluster.dispatcher.target,
+          dataset1,
+          compression=None,
+          dataset_id="dataset_id")
+      dataset_id2 = data_service_ops.register_dataset(
+          cluster.dispatcher.target,
+          dataset2,
+          compression=None,
+          dataset_id="dataset_id")
+      dataset1 = data_service_ops.from_dataset_id(
+          dataset_id=dataset_id1,
+          element_spec=dataset1.element_spec,
+          processing_mode=data_service_ops.ShardingPolicy.OFF,
+          service=cluster.dispatcher.target)
+      dataset2 = data_service_ops.from_dataset_id(
+          dataset_id=dataset_id2,
+          element_spec=dataset2.element_spec,
+          processing_mode=data_service_ops.ShardingPolicy.OFF,
+          service=cluster.dispatcher.target)
+      self.getDatasetOutput(dataset1)
+      self.getDatasetOutput(dataset2)
 
   @combinations.generate(test_base.default_test_combinations())
   def testDoubleDistribute(self):

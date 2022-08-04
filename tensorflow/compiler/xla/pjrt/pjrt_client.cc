@@ -66,7 +66,7 @@ Status CopyToDeviceStream::AddChunk(PjRtChunk chunk) {
   }
 
   buffered_chunks_.push_back(std::move(chunk));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 std::optional<PjRtChunk> CopyToDeviceStream::ConsumeNextChunk() {
@@ -81,7 +81,12 @@ std::optional<PjRtChunk> CopyToDeviceStream::ConsumeNextChunk() {
       &buffered_chunks_));
   PjRtChunk chunk = std::move(buffered_chunks_.front());
   buffered_chunks_.pop_front();
-  return chunk;
+  return std::move(chunk);
 }
+
+// Defining the first virtual non-pure method, which is usually the virtual
+// destructor, makes it a key function. This reduces the program size and takes
+// fewer linker resources.
+PjRtHostMemoryForDeviceManager::~PjRtHostMemoryForDeviceManager() = default;
 
 }  // namespace xla

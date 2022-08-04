@@ -291,7 +291,7 @@ TEST(BasicFlatBufferModel, TestWithNumThreads) {
   ASSERT_EQ(interpreter->subgraph(0)->context()->recommended_num_threads, -1);
 
   ASSERT_EQ(reporter.num_calls(), 0);
-  interpreter.reset(new Interpreter);
+  interpreter = std::make_unique<Interpreter>();
   ASSERT_EQ(builder(&interpreter, -2), kTfLiteError);
   ASSERT_EQ(interpreter, nullptr);
   ASSERT_EQ(reporter.num_calls(), 1);
@@ -731,7 +731,9 @@ TEST(TestAddDelegateOwnership, AddDelegateDoesNotTakeOwnership) {
       ASSERT_TRUE(model);
       // Now try to build it into an interpreter.
       std::unique_ptr<Interpreter> interpreter;
-      InterpreterBuilder builder(*model, TrivialResolver());
+
+      TrivialResolver resolver;
+      InterpreterBuilder builder(*model, resolver);
       builder.AddDelegate(delegate.get());  // Does not transfer ownership.
       // Loop to check we can construct multiple interpreters from one builder.
       for (int i = 0; i < 3; i++) {

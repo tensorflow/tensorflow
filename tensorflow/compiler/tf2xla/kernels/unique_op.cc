@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -99,7 +100,7 @@ class UniqueOpBase : public XlaOpKernel {
       auto limit = xla::ConstantR0<int32_t>(builder.get(), size);
       xla::Lt(counter, limit);
 
-      cond = builder->Build().ConsumeValueOrDie();
+      cond = builder->Build().value();
     }
 
     {
@@ -132,7 +133,7 @@ class UniqueOpBase : public XlaOpKernel {
       counter = counter + xla::One(builder.get(), xla::S32);
 
       xla::Tuple(builder.get(), {counter, data_stack, mask_stack, accum_stack});
-      body = builder->Build().ConsumeValueOrDie();
+      body = builder->Build().value();
     }
 
     auto zero = xla::Zero(ctx->builder(), xla::S32);

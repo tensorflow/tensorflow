@@ -1,4 +1,11 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_features_nolayering_check_if_ios")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_mobile",
+    "if_not_mobile",
+    "tf_cc_test",
+    "tf_features_nolayering_check_if_ios",
+)
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -16,7 +23,8 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
-        "//tensorflow/core/tfrt/...",
+        "//tensorflow/compiler/mlir/tfrt/...",
+        "//tensorflow/core/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
     ],
@@ -63,22 +71,43 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/container:inlined_vector",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework",
-            "//tensorflow/core:core_cpu_base",
-            "//tensorflow/core/framework:node_def_proto_cc",
-            "//tensorflow/core/framework:op_def_proto_cc",
-            "//tensorflow/core/platform:errors",
-            "//tensorflow/core/platform:status",
-        ],
-    }),
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/core:framework",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:op_def_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+    ]),
+)
+
+cc_library(
+    name = "cost_recorder",
+    srcs = ["cost_recorder.cc"],
+    hdrs = ["cost_recorder.h"],
+    deps = [
+        ":op_cost_map_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/util:env_var",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
+tf_cc_test(
+    name = "cost_recorder_test",
+    srcs = ["cost_recorder_test.cc"],
+    deps = [
+        ":cost_recorder",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 tf_cuda_cc_test(
@@ -100,4 +129,10 @@ tf_cuda_cc_test(
         ],
         [],
     ),
+)
+
+tf_proto_library(
+    name = "op_cost_map_proto",
+    srcs = ["op_cost_map.proto"],
+    cc_api_version = 2,
 )

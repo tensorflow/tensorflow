@@ -53,7 +53,9 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       int64_t* next_channel_id, spmd::SpmdLogger* logger,
       spmd::SpmdPartitionerOptions options) override;
 
-  Status PreprocessSharding(HloModule* module) override;
+  Status PreprocessSharding(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
   bool CanSideEffectingHaveReplicatedSharding(
       const HloInstruction* hlo) override;
 

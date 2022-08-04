@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_DEPTHWISE_CONV_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_DEPTHWISE_CONV_H_
 
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -24,14 +27,91 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
+
+class DepthwiseConv : public GPUOperation {
+ public:
+  int3 GetGridSize() const override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
+
+  // Move only
+  DepthwiseConv(DepthwiseConv&& operation) = default;
+  DepthwiseConv& operator=(DepthwiseConv&& operation) = default;
+  DepthwiseConv(const DepthwiseConv&) = delete;
+  DepthwiseConv& operator=(const DepthwiseConv&) = delete;
+
+  friend DepthwiseConv CreateDepthwiseConvolution2D(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const DepthwiseConvolution2DAttributes& attr);
+
+  friend DepthwiseConv CreateDepthwiseConvolution2DDynamicWeights(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const DepthwiseConvolution2DAttributes& attr);
+
+  friend DepthwiseConv CreateDepthwiseConvolution3D(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const DepthwiseConvolution3DAttributes& attr);
+
+ private:
+  struct DepthwiseConvParams {
+    bool UseLocalMem() const {
+      return use_weights_caching || use_spatial_caching;
+    }
+    int GetKernelsTotalSize() const {
+      return x_kernel_size * y_kernel_size * z_kernel_size;
+    }
+    int GetWorkGroupTotalSize() const {
+      return work_group_size.x * work_group_size.y * work_group_size.z;
+    }
+    int channel_multiplier;
+    // Supportd only tensors with Width & Height spatial dimensions
+    // optional, if true, spatial dims will be uploaded to local mem
+    bool use_spatial_caching = false;
+    // optional, if true, weights will be uploaded to local memory
+    bool use_weights_caching = false;
+    // optional, if UsesLocalMem() return true this field must be initialized
+    int3 work_group_size = int3(1, 1, 1);
+
+    // optional, if UsesLocalMem() return true this field must be initialized
+    int x_kernel_size = 1;
+    // optional, if UsesLocalMem() return true this field must be initialized
+    int y_kernel_size = 1;
+    // optional, if UsesLocalMem() return true this field must be initialized
+    int z_kernel_size = 1;
+
+    // optional, if use_spatial_caching true this field must be initialized
+    int x_dilation_size = 1;
+    // optional, if use_spatial_caching true this field must be initialized
+    int y_dilation_size = 1;
+    // optional, if use_spatial_caching true this field must be initialized
+    int z_dilation_size = 1;
+  };
+
+  explicit DepthwiseConv(const OperationDef& definition,
+                         const DepthwiseConvParams& params);
+
+  std::string GenerateSrcUpload(const GpuInfo& gpu_info);
+  std::string GenerateWeightsUpload(const GpuInfo& gpu_info);
+  std::string GenerateCode(const GpuInfo& gpu_info);
+
+  template <DataType T>
+  void UploadWeightsForDWConv2D(const tflite::gpu::Tensor<OHWI, T>& weights,
+                                bool weights_are_buffer);
+
+  template <DataType T>
+  void UploadWeightsForDWConv3D(const tflite::gpu::Tensor<OHWDI, T>& weights,
+                                bool weights_are_buffer);
+
+  DepthwiseConvParams params_;
+};
 
 template <DataType S, typename T>
 void RearrangeWeightsForDWConv2D(const tflite::gpu::Tensor<OHWI, S>& weights,
@@ -63,10 +143,8 @@ void RearrangeWeightsForDWConv2D(const tflite::gpu::Tensor<OHWI, S>& weights,
 }
 
 template <DataType T>
-void UploadWeightsForDWConv2D(const tflite::gpu::Tensor<OHWI, T>& weights,
-                              bool weights_are_buffer,
-                              CalculationsPrecision precision,
-                              GPUOperation* op) {
+void DepthwiseConv::UploadWeightsForDWConv2D(
+    const tflite::gpu::Tensor<OHWI, T>& weights, bool weights_are_buffer) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_slices = DivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
@@ -74,7 +152,7 @@ void UploadWeightsForDWConv2D(const tflite::gpu::Tensor<OHWI, T>& weights,
 
   const int elements_count = kernel_x * kernel_y * dst_slices;
 
-  const bool fp32_weights = precision == CalculationsPrecision::F32;
+  const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
   const int float4_size = fp32_weights ? 16 : 8;
 
   std::vector<uint8_t> data(float4_size * elements_count);
@@ -93,14 +171,13 @@ void UploadWeightsForDWConv2D(const tflite::gpu::Tensor<OHWI, T>& weights,
     desc.element_size = 4;
     desc.size = float4_size * elements_count;
     desc.data = std::move(data);
-    op->args_.AddObject("weights", absl::make_unique<BufferDescriptor>(desc));
+    args_.AddObject("weights", std::make_unique<BufferDescriptor>(desc));
   } else {
     Texture2DDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
     desc.size = int2(kernel_x * kernel_y, dst_slices);
     desc.data = std::move(data);
-    op->args_.AddObject("weights",
-                        absl::make_unique<Texture2DDescriptor>(desc));
+    args_.AddObject("weights", std::make_unique<Texture2DDescriptor>(desc));
   }
 }
 
@@ -137,10 +214,8 @@ void RearrangeWeightsForDWConv3D(const tflite::gpu::Tensor<OHWDI, S>& weights,
 }
 
 template <DataType T>
-void UploadWeightsForDWConv3D(const tflite::gpu::Tensor<OHWDI, T>& weights,
-                              bool weights_are_buffer,
-                              CalculationsPrecision precision,
-                              GPUOperation* op) {
+void DepthwiseConv::UploadWeightsForDWConv3D(
+    const tflite::gpu::Tensor<OHWDI, T>& weights, bool weights_are_buffer) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_slices = DivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
@@ -149,7 +224,7 @@ void UploadWeightsForDWConv3D(const tflite::gpu::Tensor<OHWDI, T>& weights,
 
   const int elements_count = kernel_x * kernel_y * kernel_z * dst_slices;
 
-  const bool fp32_weights = precision == CalculationsPrecision::F32;
+  const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
   const int float4_size = fp32_weights ? 16 : 8;
 
   std::vector<uint8_t> data(float4_size * elements_count);
@@ -168,27 +243,27 @@ void UploadWeightsForDWConv3D(const tflite::gpu::Tensor<OHWDI, T>& weights,
     desc.element_size = 4;
     desc.size = float4_size * elements_count;
     desc.data = std::move(data);
-    op->args_.AddObject("weights",
-                        absl::make_unique<BufferDescriptor>(std::move(desc)));
+    args_.AddObject("weights",
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     Texture2DDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
     desc.size = int2(kernel_x * kernel_y * kernel_z, dst_slices);
     desc.data = std::move(data);
-    op->args_.AddObject(
-        "weights", absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+    args_.AddObject("weights",
+                    std::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 }
 
-GPUOperation CreateDepthwiseConvolution2D(
+DepthwiseConv CreateDepthwiseConvolution2D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr);
 
-GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
+DepthwiseConv CreateDepthwiseConvolution2DDynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr);
 
-GPUOperation CreateDepthwiseConvolution3D(
+DepthwiseConv CreateDepthwiseConvolution3D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr);
 

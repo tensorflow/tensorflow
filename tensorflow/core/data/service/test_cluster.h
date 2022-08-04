@@ -131,10 +131,11 @@ class DatasetClient {
 
  private:
   // Registers the dataset and returns the dataset ID.
-  StatusOr<int64_t> RegisterDataset(const DatasetDef& dataset);
+  StatusOr<std::string> RegisterDataset(const DatasetDef& dataset);
   // Creates an iteration and returns the iteration client ID.
   StatusOr<int64_t> CreateIteration(
-      int64 dataset_id, ProcessingModeDef::ShardingPolicy sharding_policy,
+      const std::string& dataset_id,
+      ProcessingModeDef::ShardingPolicy sharding_policy,
       TargetWorkers target_workers);
   // Reads values from `tasks`, one task at a time, until all tasks have
   // finished.
@@ -151,13 +152,13 @@ class DatasetClient {
 template <class T>
 DatasetClient<T>::DatasetClient(const TestCluster& cluster)
     : cluster_(cluster) {
-  dispatcher_client_ = absl::make_unique<DataServiceDispatcherClient>(
+  dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
       cluster_.DispatcherAddress(), "grpc");
 
   for (size_t i = 0; i < cluster.NumWorkers(); ++i) {
     worker_clients_[cluster_.WorkerAddress(i)] =
-        absl::make_unique<DataServiceWorkerClient>(cluster_.WorkerAddress(i),
-                                                   "grpc", "grpc");
+        std::make_unique<DataServiceWorkerClient>(cluster_.WorkerAddress(i),
+                                                  "grpc", "grpc");
   }
 }
 
@@ -166,7 +167,7 @@ StatusOr<typename DatasetClient<T>::WorkerResultMap> DatasetClient<T>::Read(
     const DatasetDef& dataset,
     ProcessingModeDef::ShardingPolicy sharding_policy,
     TargetWorkers target_workers) {
-  TF_ASSIGN_OR_RETURN(const int64 dataset_id, RegisterDataset(dataset));
+  TF_ASSIGN_OR_RETURN(const std::string dataset_id, RegisterDataset(dataset));
   TF_ASSIGN_OR_RETURN(
       const int64 iteration_client_id,
       CreateIteration(dataset_id, sharding_policy, target_workers));
@@ -176,16 +177,19 @@ StatusOr<typename DatasetClient<T>::WorkerResultMap> DatasetClient<T>::Read(
 }
 
 template <class T>
-StatusOr<int64_t> DatasetClient<T>::RegisterDataset(const DatasetDef& dataset) {
-  int64 dataset_id = 0;
+StatusOr<std::string> DatasetClient<T>::RegisterDataset(
+    const DatasetDef& dataset) {
+  std::string dataset_id;
   TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
-      dataset, DataServiceMetadata(), dataset_id));
+      dataset, DataServiceMetadata(), /*requested_dataset_id=*/std::nullopt,
+      dataset_id));
   return dataset_id;
 }
 
 template <class T>
 StatusOr<int64_t> DatasetClient<T>::CreateIteration(
-    const int64 dataset_id, ProcessingModeDef::ShardingPolicy sharding_policy,
+    const std::string& dataset_id,
+    ProcessingModeDef::ShardingPolicy sharding_policy,
     TargetWorkers target_workers) {
   ProcessingModeDef processing_mode_def;
   processing_mode_def.set_sharding_policy(sharding_policy);
@@ -202,7 +206,7 @@ StatusOr<int64_t> DatasetClient<T>::CreateIteration(
 
 template <class T>
 StatusOr<int64_t> DatasetClient<T>::CreateIteration(const DatasetDef& dataset) {
-  TF_ASSIGN_OR_RETURN(const int64 dataset_id, RegisterDataset(dataset));
+  TF_ASSIGN_OR_RETURN(const std::string dataset_id, RegisterDataset(dataset));
   return CreateIteration(dataset_id, ProcessingModeDef::OFF,
                          TARGET_WORKERS_ANY);
 }

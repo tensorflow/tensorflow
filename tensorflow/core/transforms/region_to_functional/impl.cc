@@ -508,9 +508,9 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
 
   SmallVector<Attribute> arg_attrs, res_attrs;
   ArrayAttr preserved_arg_attrs =
-      preserved ? preserved.getArg_attrs() : ArrayAttr();
+      preserved ? preserved.getArgAttrs() : ArrayAttr();
   ArrayAttr preserved_res_attrs =
-      preserved ? preserved.getRes_attrs() : ArrayAttr();
+      preserved ? preserved.getResAttrs() : ArrayAttr();
 
   // For each argument and result, lookup a name and regenerate output shapes.
   const auto build_attrs = [&](ArrayAttr attr, auto &it,

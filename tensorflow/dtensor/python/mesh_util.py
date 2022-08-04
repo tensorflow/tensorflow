@@ -25,6 +25,8 @@ from tensorflow.dtensor.python import tpu_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import device as tf_device
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -39,9 +41,6 @@ def _print_context(num_global_devices: int, num_clients: int, client_id: int,
   logging.info('Local devices: %s',
                [d.to_string() for d in mesh._local_devices])
   # pylint: enable=protected-access
-
-
-_in_multi_client_mode = None
 
 
 @tf_export('experimental.dtensor.create_mesh', v1=[])
@@ -76,15 +75,16 @@ def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
         for d in tf_config.list_logical_devices(device_type)
     ]
   else:
-    devices = [
-        tf_device.DeviceSpec.from_string('/job:localhost/replica:0/task:0/' + d)
-        for d in devices
-    ]
+    devices = [tf_device.DeviceSpec.from_string(d) for d in devices]
     if device_type is None:
       device_type = devices[0].device_type
     if device_type.upper() != devices[0].device_type.upper():
       raise ValueError(
           f'Conflicting devices {str(devices)} and device_type {device_type}')
+
+  local_spec = tf_device.DeviceSpec(job='localhost', replica=0, task=0)
+  devices = [local_spec.make_merged_spec(d) for d in devices]
+
   if mesh_dims is None:
     mesh_dims = [('x', len(devices))]
   elif len(mesh_dims) == 1 and mesh_dims[0][1] == -1:
@@ -162,10 +162,9 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
     if num_clients <= 0:
       raise ValueError(f'num_clients ({num_clients}) must be > 0')
 
-    if _in_multi_client_mode is None and num_clients > 1:
-      raise ValueError(
-          'Invalid multi-client topology, run dtensor.initialize_multi_client() first'
-      )
+    if api.num_clients() > 1 and not multi_client_util.is_initialized():
+      raise ValueError('Invalid multi-client topology, please run '
+                       'dtensor.initialize_multi_client() first.')
 
     if client_id is None:
       client_id = api.client_id()
@@ -260,31 +259,17 @@ def dtensor_initialize_multi_client(
       service to make sure that workers know the devices on each other, a
       prerequisite for data transfer through cross-worker rendezvous.
   """
-  global _in_multi_client_mode
   assert context.executing_eagerly()
-
-  _in_multi_client_mode = api.job_name() != 'localhost'
-
-  if not _in_multi_client_mode and api.num_clients() != 1:
-    raise ValueError(
-        'DTENSOR_NUM_CLIENTS is set and not 1, while DTENSOR_JOB_NAME is '
-        'set to localhost for single client mode.')
 
   # Collective GRPC servers are only necessary in multi-client setup.
   # Single clients can use local mode of collectives.
-  if _in_multi_client_mode:
-    if api.jobs() is None:
-      raise ValueError(
-          'DTENSOR_JOBS environment variable is required when'
-          'using multi-client to properly set up communications between servers'
-      )
+  if api.num_clients() > 1:
     multi_client_util.initialize_multi_client_cluster(
         job_name=api.job_name(),
         dtensor_jobs=api.jobs(),
         client_id=api.client_id(),
         collective_leader=api.full_job_name(task_id=0),
-        enable_coordination_service=enable_coordination_service,
-        protocol='grpc')
+        enable_coordination_service=enable_coordination_service)
 
   # Make sure the server change is fully propagated before returning.
   context.ensure_initialized()
@@ -293,3 +278,59 @@ def dtensor_initialize_multi_client(
 
   # Unlike TPU, do not enable heartbeat service.
   # They tend to interfere with regular GPU/CPU collective Ops.
+
+
+@tf_export('experimental.dtensor.barrier', v1=[])
+def barrier(mesh: layout.Mesh, barrier_name: Optional[str] = None):
+  """Runs a barrier on the mesh.
+
+  Upon returning from the barrier, all operations run before the barrier
+  would have completed across all clients. Currently we allocate a fully
+  sharded tensor with mesh shape and run an all_reduce on it.
+
+  Example:
+
+  A barrier can be used before application exit to ensure completion of pending
+  ops.
+
+  ```python
+
+  x = [1, 2, 3]
+  x = dtensor.relayout(x, dtensor.Layout.batch_sharded(mesh, 'batch', 1))
+  dtensor.barrier(mesh)
+
+  # At this point all devices on all clients in the mesh have completed
+  # operations before the barrier. Therefore it is OK to tear down the clients.
+  sys.exit()
+  ```
+
+  Args:
+    mesh: The mesh to run the barrier on.
+    barrier_name: The name of the barrier. mainly used for logging purpose.
+  """
+  if barrier_name is None:
+    barrier_name = '(barrier)'
+
+  logging.info('entering barrier before op: %s', barrier_name)
+
+  # Make sure all ops are consumed before running the sync.
+  context.async_wait()
+
+  # Reduction on a fully sharded tensor requires all devices to participate
+  # and serves as a barrier on the mesh.
+  component = array_ops.reshape(1.0, [1] * len(mesh.shape()))
+  ones = api.pack([component] * mesh.num_local_devices(),
+                  layout.Layout(mesh.dim_names, mesh))
+
+  mesh_size = math_ops.reduce_sum(ones)
+  if mesh_size != mesh.size:
+    raise ValueError(
+        'Global barrier produced wrong mesh size : {0} while mesh has actual'
+        'size : {1}'.format(mesh_size, mesh.size))
+
+  # TODO(hthu): This isn't strictly needed but might cause confusing behaviors
+  # from users. Consider dropping this if there is a `big` performance hit.
+  context.async_wait()
+
+  logging.info('finished running barrier across all clients after '
+               'op: %s', barrier_name)

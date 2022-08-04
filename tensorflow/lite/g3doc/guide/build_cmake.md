@@ -67,6 +67,32 @@ found in the next subsection.
 cmake ../tensorflow_src/tensorflow/lite -DTFLITE_KERNEL_TEST=on
 ```
 
+#### Build installable package
+
+To build an installable package that can be used as a dependency by another
+CMake project with `find_package(tensorflow-lite CONFIG)`, use the
+`-DTFLITE_ENABLE_INSTALL=ON` option.
+
+You should ideally also provide your own versions of library dependencies.
+These will also need to used by the project that depends on TF Lite. You can
+use the `-DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON` and set the `<PackageName>_DIR`
+variables to point to your library installations.
+
+```sh
+cmake ../tensorflow_src/tensorflow/lite -DTFLITE_ENABLE_INSTALL=ON \
+  -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON \
+  -Dabsl_DIR=<install path>/lib/cmake/absl \
+  -DEigen3_DIR=<install path>/share/eigen3/cmake \
+  -DFlatbuffers_DIR=<install path>/lib/cmake/flatbuffers \
+  -DNEON_2_SSE_DIR=<install path>/lib/cmake/NEON_2_SSE \
+  -Dcpuinfo_DIR=<install path>/share/cpuinfo \
+  -Druy_DIR=<install path>/lib/cmake/ruy
+```
+
+**Note:** Refer to CMake documentation for
+[`find_package`](https://cmake.org/cmake/help/latest/command/find_package.html)
+to learn more about handling and locating packages.
+
 #### Cross-compilation
 
 You can use CMake to build binaries for ARM64 or Android target architectures.

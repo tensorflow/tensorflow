@@ -151,6 +151,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_oss",
         "no_rocm",
         "no_windows",
         "nomac",

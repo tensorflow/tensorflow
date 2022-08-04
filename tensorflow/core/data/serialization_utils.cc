@@ -389,7 +389,7 @@ Status VariantTensorDataWriter::WriteTensorInternal(StringPiece n,
   }
   keys_[name].push_back(string(key));
   if (data_.count(name) == 0) {
-    data_[name] = absl::make_unique<VariantTensorData>();
+    data_[name] = std::make_unique<VariantTensorData>();
     data_[name]->set_type_name("tensorflow::Iterator");
   }
   *(data_[name]->add_tensors()) = val;

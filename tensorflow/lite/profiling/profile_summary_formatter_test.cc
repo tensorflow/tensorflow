@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
 
 namespace tflite {
 namespace profiling {
@@ -65,14 +66,14 @@ TEST(SummaryWriterTest, SingleSubgraphOutputString) {
   std::string output = writer.GetOutputString(
       stats_calculator_map,
       tensorflow::StatsCalculator(writer.GetStatSummarizerOptions()));
-  ASSERT_TRUE(output.find("Run Order") != std::string::npos);
-  ASSERT_TRUE(output.find("Top by Computation Time") != std::string::npos);
-  ASSERT_TRUE(output.find("Top by Memory Use") == std::string::npos);
-  ASSERT_TRUE(output.find("Summary by node type") != std::string::npos);
-  ASSERT_TRUE(output.find("nodes observed") != std::string::npos);
-  ASSERT_TRUE(output.find("Primary graph") == std::string::npos);
-  ASSERT_TRUE(output.find("Subgraph") == std::string::npos);
-  ASSERT_TRUE(output.find("Delegate internal") == std::string::npos);
+  ASSERT_TRUE(absl::StrContains(output, "Run Order"));
+  ASSERT_TRUE(absl::StrContains(output, "Top by Computation Time"));
+  ASSERT_TRUE(!absl::StrContains(output, "Top by Memory Use"));
+  ASSERT_TRUE(absl::StrContains(output, "Summary by node type"));
+  ASSERT_TRUE(absl::StrContains(output, "nodes observed"));
+  ASSERT_TRUE(!absl::StrContains(output, "Primary graph"));
+  ASSERT_TRUE(!absl::StrContains(output, "Subgraph"));
+  ASSERT_TRUE(!absl::StrContains(output, "Delegate internal"));
 }
 
 TEST(SummaryWriterTest, SingleSubgraphShortSummary) {
@@ -84,14 +85,14 @@ TEST(SummaryWriterTest, SingleSubgraphShortSummary) {
   std::string output = writer.GetShortSummary(
       stats_calculator_map,
       tensorflow::StatsCalculator(writer.GetStatSummarizerOptions()));
-  ASSERT_TRUE(output.find("Run Order") == std::string::npos);
-  ASSERT_TRUE(output.find("Top by Computation Time") == std::string::npos);
-  ASSERT_TRUE(output.find("Top by Memory Use") == std::string::npos);
-  ASSERT_TRUE(output.find("Summary by node type") == std::string::npos);
-  ASSERT_TRUE(output.find("nodes observed") != std::string::npos);
-  ASSERT_TRUE(output.find("Primary graph") == std::string::npos);
-  ASSERT_TRUE(output.find("Subgraph") == std::string::npos);
-  ASSERT_TRUE(output.find("Delegate internal") == std::string::npos);
+  ASSERT_TRUE(!absl::StrContains(output, "Run Order"));
+  ASSERT_TRUE(!absl::StrContains(output, "Top by Computation Time"));
+  ASSERT_TRUE(!absl::StrContains(output, "Top by Memory Use"));
+  ASSERT_TRUE(!absl::StrContains(output, "Summary by node type"));
+  ASSERT_TRUE(absl::StrContains(output, "nodes observed"));
+  ASSERT_TRUE(!absl::StrContains(output, "Primary graph"));
+  ASSERT_TRUE(!absl::StrContains(output, "Subgraph"));
+  ASSERT_TRUE(!absl::StrContains(output, "Delegate internal"));
 }
 
 TEST(SummaryWriterTest, MultiSubgraphOutputString) {
@@ -105,9 +106,9 @@ TEST(SummaryWriterTest, MultiSubgraphOutputString) {
   std::string output = writer.GetOutputString(
       stats_calculator_map,
       tensorflow::StatsCalculator(writer.GetStatSummarizerOptions()));
-  ASSERT_TRUE(output.find("Primary graph") != std::string::npos);
-  ASSERT_TRUE(output.find("Subgraph") != std::string::npos);
-  ASSERT_TRUE(output.find("Delegate internal") == std::string::npos);
+  ASSERT_TRUE(absl::StrContains(output, "Primary graph"));
+  ASSERT_TRUE(absl::StrContains(output, "Subgraph"));
+  ASSERT_TRUE(!absl::StrContains(output, "Delegate internal"));
 }
 
 TEST(SummaryWriterTest, MultiSubgraphShortSummary) {
@@ -121,9 +122,9 @@ TEST(SummaryWriterTest, MultiSubgraphShortSummary) {
   std::string output = writer.GetShortSummary(
       stats_calculator_map,
       tensorflow::StatsCalculator(writer.GetStatSummarizerOptions()));
-  ASSERT_TRUE(output.find("Primary graph") != std::string::npos);
-  ASSERT_TRUE(output.find("Subgraph") != std::string::npos);
-  ASSERT_TRUE(output.find("Delegate internal") == std::string::npos);
+  ASSERT_TRUE(absl::StrContains(output, "Primary graph"));
+  ASSERT_TRUE(absl::StrContains(output, "Subgraph"));
+  ASSERT_TRUE(!absl::StrContains(output, "Delegate internal"));
 }
 
 TEST(SummaryWriterTest, DelegationOutputString) {
@@ -134,9 +135,9 @@ TEST(SummaryWriterTest, DelegationOutputString) {
   std::string output = writer.GetOutputString(
       std::map<uint32_t, std::unique_ptr<tensorflow::StatsCalculator>>(),
       delegate_stats_calculator);
-  ASSERT_TRUE(output.find("Primary graph") == std::string::npos);
-  ASSERT_TRUE(output.find("Subgraph") == std::string::npos);
-  ASSERT_TRUE(output.find("Delegate internal") != std::string::npos);
+  ASSERT_TRUE(!absl::StrContains(output, "Primary graph"));
+  ASSERT_TRUE(!absl::StrContains(output, "Subgraph"));
+  ASSERT_TRUE(absl::StrContains(output, "Delegate internal"));
 }
 
 TEST(SummaryWriterTest, DelegationShortSummary) {
@@ -147,9 +148,9 @@ TEST(SummaryWriterTest, DelegationShortSummary) {
   std::string output = writer.GetShortSummary(
       std::map<uint32_t, std::unique_ptr<tensorflow::StatsCalculator>>(),
       delegate_stats_calculator);
-  ASSERT_TRUE(output.find("Primary graph") == std::string::npos);
-  ASSERT_TRUE(output.find("Subgraph") == std::string::npos);
-  ASSERT_TRUE(output.find("Delegate internal") != std::string::npos);
+  ASSERT_TRUE(!absl::StrContains(output, "Primary graph"));
+  ASSERT_TRUE(!absl::StrContains(output, "Subgraph"));
+  ASSERT_TRUE(absl::StrContains(output, "Delegate internal"));
 }
 
 }  // namespace

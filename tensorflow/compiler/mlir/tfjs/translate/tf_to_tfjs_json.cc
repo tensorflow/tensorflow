@@ -136,7 +136,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
         input_filename, tags, absl::Span<std::string>(exported_names), context);
     if (!module_or.status().ok()) return module_or.status();
     TF_RETURN_IF_ERROR(RegisterCustomOps(extra_tf_opdefs));
-    return module_or.ConsumeValueOrDie();
+    return std::move(module_or).value();
   } else if (import_saved_model_v1) {
     tensorflow::MLIRImportOptions import_options;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
@@ -144,7 +144,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
 
     if (!module_or.status().ok()) return module_or.status();
     TF_RETURN_IF_ERROR(RegisterCustomOps(extra_tf_opdefs));
-    return module_or.ConsumeValueOrDie();
+    return std::move(module_or).value();
   } else {
     return tensorflow::errors::InvalidArgument(
         "Should be either saved model v1 or v2");

@@ -37,7 +37,7 @@ namespace tfd {
 class OpLogger : public tfrt::SharedContext {
  public:
   explicit OpLogger(tfrt::HostContext* host)
-      : op_names_(absl::make_unique<tfrt::ConcurrentVector<std::string>>(8)) {}
+      : op_names_(std::make_unique<tfrt::ConcurrentVector<std::string>>(8)) {}
 
   void LogOp(tfrt::string_view op_name) {
     op_names_->emplace_back(op_name.str());
@@ -49,7 +49,7 @@ class OpLogger : public tfrt::SharedContext {
 
   // Cannot be called concurrently with any API in this class.
   void Clear() {
-    op_names_ = absl::make_unique<tfrt::ConcurrentVector<std::string>>(8);
+    op_names_ = std::make_unique<tfrt::ConcurrentVector<std::string>>(8);
   }
 
  private:

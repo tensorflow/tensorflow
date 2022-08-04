@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+#include <utility>
+
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -35,7 +37,7 @@ TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
   xla::se::StreamExecutorMemoryAllocator allocator(platform, executors);
   const xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {});
   const int kDeviceOrdinal = 0;
-  auto scoped_buffer = absl::make_unique<xla::ScopedShapedBuffer>(
+  auto scoped_buffer = std::make_unique<xla::ScopedShapedBuffer>(
       shape, shape, &allocator, kDeviceOrdinal);
   std::unique_ptr<xla::ShapedBuffer> buffer = std::move(scoped_buffer);
   buffer = nullptr;
@@ -167,7 +169,7 @@ TEST(ScopedShapedBufferTest, TestSubShapeTree) {
       });
   auto ssb_statusor = sb.SubShapedBuffer({1});
   ASSERT_TRUE(ssb_statusor.ok());
-  auto ssb = ssb_statusor.ConsumeValueOrDie();
+  auto ssb = std::move(ssb_statusor).value();
   EXPECT_EQ(ssb.on_host_shape(), array_shape);
   EXPECT_EQ(ssb.on_device_shape(), array_shape);
 }

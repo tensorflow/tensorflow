@@ -209,7 +209,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
                          std::unique_ptr<BatchTask>* output) const override {
     const tfrt::ExecutionContext* exec_ctx = nullptr;
     TF_RETURN_IF_ERROR(GetTfrtExecutionContext(c, &exec_ctx));
-    *output = absl::make_unique<FallbackBatchTask>(*exec_ctx);
+    *output = std::make_unique<FallbackBatchTask>(*exec_ctx);
     return OkStatus();
   }
 

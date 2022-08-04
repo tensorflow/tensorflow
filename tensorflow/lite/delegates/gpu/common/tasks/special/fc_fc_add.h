@@ -18,13 +18,17 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <map>
+#include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
@@ -157,7 +161,7 @@ void FCFCAdd::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
       RearrangeFCWeightsToIOO4I4(weights, ptr);
     }
 
-    args_.AddObject(name, absl::make_unique<BufferDescriptor>(std::move(desc)));
+    args_.AddObject(name, std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     Texture2DDescriptor desc;
     desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
@@ -177,7 +181,7 @@ void FCFCAdd::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
     }
 
     args_.AddObject(name,
-                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                    std::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 }
 
@@ -188,6 +192,12 @@ FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
 FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
                       const FullyConnectedInt8Attributes& attr0,
                       const FullyConnectedInt8Attributes& attr1);
+
+absl::Status TryFCFCAdd(
+    const GpuInfo& gpu_info, CalculationsPrecision precision,
+    const GraphFloat32& graph, NodeId first_node_id,
+    const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph);
 
 }  // namespace gpu
 }  // namespace tflite

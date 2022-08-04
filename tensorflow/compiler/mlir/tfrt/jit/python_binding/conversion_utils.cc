@@ -18,7 +18,6 @@ limitations under the License.
 #include <stdexcept>
 
 #include "pybind11/numpy.h"
-#include "tfrt/jitrt/types.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
 namespace tensorflow {

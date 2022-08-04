@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_ALGORITHM_PICKER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_ALGORITHM_PICKER_H_
 
+#include <optional>
+
 #include "absl/time/time.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -49,7 +50,10 @@ class GpuConvAlgorithmPicker : public HloModulePass {
     return "gpu-conv-algorithm-picker";
   }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);

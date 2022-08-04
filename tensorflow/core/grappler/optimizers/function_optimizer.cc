@@ -1216,7 +1216,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
   FunctionLibraryDefinition flib_def =
       FunctionLibraryDefinition(OpRegistry::Global(), item.graph.library());
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(flib_def);
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(flib_def);
 
   GraphConstructorOptions graph_constructor_options;
   graph_constructor_options.allow_internal_ops = true;
@@ -1393,7 +1393,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     std::vector<std::unique_ptr<Device>> fake_devices;  // owns fake devices
 
     for (const string& name : item.devices()) {
-      auto device = absl::make_unique<FakeDevice>(name);
+      auto device = std::make_unique<FakeDevice>(name);
       device_set.AddDevice(device.get());
       fake_devices.push_back(std::move(device));
     }

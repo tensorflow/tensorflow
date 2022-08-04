@@ -46,9 +46,25 @@ func.func @h() {
 
 // -----
 // Handle error case of infinite recursion.
-// expected-error @+1 {{reached cloning limit}}
-func.func private @f() {
-  func.call @f() : () -> ()
-  func.call @f() : () -> ()
-  func.return
+// expected-error @+1 {{recursive call graph cannot be transformed}}
+module {
+  func.func private @f() {
+    func.call @f() : () -> ()
+    func.call @f() : () -> ()
+    func.return
+  }
+}
+
+// -----
+// Handle error case of infinite recursion with mutually recursive ops.
+// expected-error @+1 {{recursive call graph cannot be transformed}}
+module {
+  func.func private @f() {
+    func.call @g() : () -> ()
+    func.return
+  }
+  func.func private @g() {
+    func.call @f() : () -> ()
+    func.return
+  }
 }

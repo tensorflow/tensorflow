@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/call_graph.h"
 
+#include <memory>
 #include <queue>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -56,10 +56,10 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
-      return CallContext::kControlFlow;
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncDone:
+      return CallContext::kControlFlow;
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
@@ -281,7 +281,7 @@ void CallGraph::SetNodeDepths() {
 
 /* static */
 std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
-  // Constructor for CallGraph is private so absl::make_unique can't be used.
+  // Constructor for CallGraph is private so std::make_unique can't be used.
   auto call_graph = absl::WrapUnique<CallGraph>(new CallGraph(module));
 
   VLOG(3) << "Building call graph for:";
@@ -363,6 +363,7 @@ bool CallGraph::IsFlattened() const {
       return false;
     }
     if (node.context() == CallContext::kControlFlow &&
+        !node.computation()->IsAsyncComputation() &&
         node.caller_callsites().size() > 1) {
       return false;
     }

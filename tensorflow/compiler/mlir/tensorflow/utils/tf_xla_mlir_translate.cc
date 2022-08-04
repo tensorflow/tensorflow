@@ -26,12 +26,12 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -136,7 +136,7 @@ Status ParseArgumentShapes(
   TF_RETURN_IF_ERROR(ParseNodeShapes(input_shapes_str, input_shapes_vector));
   arg_shapes.resize(input_shapes_vector.size());
   for (const auto& shape : llvm::enumerate(input_shapes_vector)) {
-    if (!shape.value().hasValue()) {
+    if (!shape.value().has_value()) {
       TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
           static_cast<int*>(nullptr), 0, &arg_shapes[shape.index()].shape));
       continue;
@@ -231,7 +231,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
     XlaArgument& arg = std::get<0>(arg_components);
     TensorShape shape;
     auto input_shapes = std::get<1>(arg_components);
-    if (input_shapes.hasValue()) {
+    if (input_shapes.has_value()) {
       TF_RETURN_IF_ERROR(
           TensorShapeUtils::MakeShape(input_shapes.getValue(), &shape));
     } else {

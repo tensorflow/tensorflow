@@ -137,7 +137,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
         UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
     options.shape_determination_fns = {shape_representation_fns};
-    auto device = absl::make_unique<XlaDevice>(session_options, options);
+    auto device = std::make_unique<XlaDevice>(session_options, options);
 
     Status status = device->UseAcceleratorDeviceInfo();
     if (!status.ok()) {

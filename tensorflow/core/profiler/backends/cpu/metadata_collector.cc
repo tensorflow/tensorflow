@@ -18,27 +18,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#if defined(__clang__) && __cplusplus >= 201703L  // clang C++17
-#define TF_PROFILER_DISABLE_CXX17_WARNINGS \
-  _Pragma("clang diagnostic push")         \
-      _Pragma("clang diagnostic ignored \"-Wc++98-c++11-c++14-compat\"")
-#define TF_PROFILER_ENABLE_CXX17_WARNINGS _Pragma("clang diagnostic pop")
-#else
-#define TF_PROFILER_DISABLE_CXX17_WARNINGS
-#define TF_PROFILER_ENABLE_CXX17_WARNINGS
-#endif
-
-TF_PROFILER_DISABLE_CXX17_WARNINGS
-#include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
-TF_PROFILER_ENABLE_CXX17_WARNINGS
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/profiler/backends/cpu/metadata_utils.h"
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
@@ -73,15 +61,9 @@ class MetadataCollector : public ProfilerInterface {
   Status CollectData(XSpace* space) override {
     if (!debug_info_.empty()) {
       XPlane* plane = FindOrAddMutablePlaneWithName(space, kMetadataPlaneName);
-      XPlaneBuilder xplane(plane);
-      const XStatMetadata& hlo_proto_stat =
-          *xplane.GetOrCreateStatMetadata(kHloProto);
+      MetadataXPlaneBuilder metadata_plane(plane);
       for (auto& hlo_proto : debug_info_) {
-        XEventMetadata* metadata =
-            xplane.GetOrCreateEventMetadata(hlo_proto->hlo_module().id());
-        metadata->set_name(hlo_proto->hlo_module().name());
-        XStatsBuilder<XEventMetadata> stats(metadata, &xplane);
-        stats.AddStatValue(hlo_proto_stat, *hlo_proto);
+        metadata_plane.AddHloProto(hlo_proto->hlo_module().id(), *hlo_proto);
         hlo_proto.reset();
       }
       debug_info_.clear();
@@ -98,7 +80,7 @@ class MetadataCollector : public ProfilerInterface {
 
 std::unique_ptr<ProfilerInterface> CreatMetadataCollector(
     const ProfileOptions& options) {
-  return options.enable_hlo_proto() ? absl::make_unique<MetadataCollector>()
+  return options.enable_hlo_proto() ? std::make_unique<MetadataCollector>()
                                     : nullptr;
 }
 

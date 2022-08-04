@@ -35,6 +35,9 @@ namespace tensorrt {
 namespace convert {
 
 namespace {
+
+#if !IS_TRT_VERSION_GE(8, 2, 0, 0)
+
 // Finds the indices of elements in [begin, end) in array
 // [array_begin, array_end), and appends the indices to permute. This is used to
 // construct the permutation sequence for the operand with input labels
@@ -471,8 +474,7 @@ Status ConditionEinsumOperand(TRTNetworkBuilder* builder,
     StatusOr<TRT_TensorOrWeights> result =
         ConditionEinsumWeights(builder, **operand, desc, need_transpose);
     TRT_ENSURE_OK(result);
-    *operand =
-        std::make_unique<TRT_TensorOrWeights>(result.ConsumeValueOrDie());
+    *operand = std::make_unique<TRT_TensorOrWeights>(std::move(result).value());
   }
 
   // If we didn't convert the operand to a tensor, we can return here.
@@ -645,18 +647,18 @@ Status ParseEquation(const std::string& equation,
   auto desc = EinsumDescriptor::Create(**input_a, input_labels[0], label_types,
                                        EinsumLayout::BFC);
   TF_RETURN_IF_ERROR(desc.status());
-  *descriptor_a = desc.ConsumeValueOrDie();
+  *descriptor_a = std::move(desc).value();
 
   desc = EinsumDescriptor::Create(**input_b, input_labels[1], label_types,
                                   EinsumLayout::BCF, *descriptor_a);
   TF_RETURN_IF_ERROR(desc.status());
-  *descriptor_b = desc.ConsumeValueOrDie();
+  *descriptor_b = std::move(desc).value();
 
   auto out_transpose =
       GetOutputTranspose(**descriptor_a, **descriptor_b, output_labels);
 
   TRT_ENSURE_OK(out_transpose)
-  *final_transpose = out_transpose.ConsumeValueOrDie();
+  *final_transpose = std::move(out_transpose).value();
   return Status::OK();
 }
 
@@ -730,6 +732,185 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
   std::unique_ptr<EinsumDescriptor> descriptor_a{nullptr};
   std::unique_ptr<EinsumDescriptor> descriptor_b{nullptr};
 };
+#else
+
+// Helper class to reindex equations to contain only lowercase characters. We
+// simply define a mapping from the old character set to a new set.
+// - The input is assumed to be a valid TF equation.
+// - The input is TRT compatible, therefore it has max 8 dims. (Thus we have
+//   enough lowercase English characters to represent the equation.)
+// How do we reindex/map equations:
+// - Only uppercase letters are changed, if possible we just lowercase them.
+// - If the equation contains both upper and lowercase variant of a letter, say
+//   X and x, then we map X to the first unused lowercase letter.
+class ReIndexer {
+ public:
+  // Initializes the index map with existing lowercase labels.
+  ReIndexer(std::string eq) {
+    for (char c : eq) {
+      if (islower(c)) {
+        idx_map_[c] = c;
+      }
+    }
+  }
+  // Finds new character for uppercase character c.
+  char operator()(char c) {
+    if (!std::isupper(c)) return c;
+    if (idx_map_.count(c) > 0) return idx_map_[c];
+    char new_idx = std::tolower(c);
+
+    // If lower(c) is not used in the equation, use it to replace c.
+    if (idx_map_.count(new_idx) == 0) {
+      idx_map_[c] = new_idx;
+      idx_map_[new_idx] = new_idx;  // mark that new_idx is taken
+      return new_idx;
+    }
+
+    // Otherwise, find the first available lower case to replace c.
+    for (char k = 'a'; k <= 'z'; k++) {
+      if (idx_map_.count(k) == 0) {
+        new_idx = k;
+        idx_map_[c] = new_idx;
+        idx_map_[new_idx] = new_idx;  // mark that new_idx is taken
+        break;
+      }
+    }
+    return new_idx;
+  }
+
+ private:
+  // Each key is an index used in the original or in the reindexed equation.
+  // The values are the corresponding new lowercase indices.
+  std::map<char, char> idx_map_;
+};
+
+class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
+ public:
+  explicit ConvertEinsum(OpConverterParams* params)
+      : OpConverterBase<ConvertEinsum>(params) {}
+
+  static constexpr std::array<DataType, 3> AllowedDataTypes() {
+    return {DataType::DT_FLOAT, DataType::DT_HALF};
+  }
+
+  Status ValidateInputs() {
+    TRT_ENSURE(params_->inputs.size() <= 2);
+    return Status::OK();
+  }
+  static constexpr bool HasFixNumberOfInputs() { return false; }
+
+  static constexpr std::array<InputArgSpec, 2> InputSpec() {
+    return {InputArgSpec::Create("input_a", TrtInputArg::kBoth),
+            InputArgSpec::Create("input_b", TrtInputArg::kBoth)};
+  }
+
+  std::string MakeLowerCase(const std::string& eq) {
+    std::string res = eq;
+    ReIndexer reindexer(eq);
+    std::transform(eq.begin(), eq.end(), res.begin(), reindexer);
+    return res;
+  }
+
+  // Checks if the equation is supported by TRT.
+  Status ValidateEinsumEquation(const std::string& eq) {
+    const auto& inputs = params_->inputs;
+    OperandLabels input_labels;
+    Labels output_labels;
+    std::vector<EinsumDimensionType> label_types;
+    OperandLabelCounts input_label_counts;
+    LabelCounts output_label_counts;
+    absl::InlinedVector<bool, 2> input_has_ellipsis;
+    bool output_has_ellipsis;
+    VLOG(2) << "Parsing equation " << eq;
+    TF_RETURN_IF_ERROR(ParseEinsumEquation(
+        eq, &input_labels, &output_labels, &label_types, &input_label_counts,
+        &output_label_counts, &input_has_ellipsis, &output_has_ellipsis));
+
+    Status unimplemented =
+        errors::Unimplemented("No conversion for einsum equation.");
+    if (input_has_ellipsis[0] || (inputs.size() > 1 && input_has_ellipsis[1]) ||
+        output_has_ellipsis) {
+      VLOG(2) << "Ellipsis not yet supported";
+      return unimplemented;
+    }
+    for (int i = 0; i < input_label_counts.size(); i++) {
+      for (int k = 0; k < input_label_counts[i].size(); k++) {
+        if (input_label_counts[i][k] > 1) {
+          VLOG(2) << "Diagonal operation or reduction not yet supported";
+          return unimplemented;
+        }
+      }
+    }
+    bool has_out_idx =
+        std::reduce(output_label_counts.begin(), output_label_counts.end(),
+                    false, std::logical_or<int>());
+    if (!has_out_idx) {
+      VLOG(2) << "Scalar output not allowed in dynamic shape mode";
+      return unimplemented;
+    }
+    // Check for outer product
+    if (input_label_counts.size() == 2 && output_label_counts.size() == 2 &&
+        output_label_counts[0] == 1 && output_label_counts[1] == 1) {
+      VLOG(2) << "Outer product not supported";
+      return unimplemented;
+    }
+    return Status::OK();
+  }
+
+  Status Validate() {
+    VLOG(2) << "Running validation using the new einsum "
+               "converter";
+    if (params_->use_implicit_batch) {
+      return errors::Unimplemented(
+          "Einsum converter requires dynamic shape mode");
+    }
+
+    StatusOr<std::string> eq = GetAttrValue<std::string>("equation");
+    TRT_ENSURE_OK(eq);
+
+    TF_RETURN_IF_ERROR(ValidateEinsumEquation(*eq));
+
+    // While TF has case sensitive equations, TensorRT expects lowercase eq (as
+    // of version 8.4). See
+    // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#einsum-layer
+    equation = MakeLowerCase(*eq);
+
+    return Status::OK();
+  }
+
+  Status Convert() {
+    auto builder = TRTNetworkBuilder::Create(params_->converter->network(),
+                                             params_->weight_store);
+    TRT_ENSURE_OK(builder);
+
+    std::vector<nvinfer1::ITensor*> trt_input;
+    for (const TRT_TensorOrWeights& input_arg : params_->inputs) {
+      ITensorProxyPtr ptr = nullptr;
+      if (input_arg.is_tensor()) {
+        ptr = input_arg.tensor();
+      } else {
+        StatusOr<nvinfer1::IConstantLayer*> const_layer =
+            builder->WeightsToConstant(input_arg.weights().GetTrtWeights(),
+                                       input_arg.GetTrtDims());
+        TRT_ENSURE_PTR_OK(const_layer);
+        ptr = (*const_layer)->getOutput(0);
+      }
+      trt_input.push_back(ptr->trt_tensor());
+    }
+    nvinfer1::IEinsumLayer* layer = params_->converter->network()->addEinsum(
+        trt_input.data(), trt_input.size(), equation.c_str());
+    TRT_ENSURE(layer);
+
+    ITensorProxyPtr output = layer->getOutput(0);
+    this->AddOutput(output);
+    return Status::OK();
+  }
+
+ private:
+  std::string equation;
+};
+
+#endif
 
 }  // namespace
 

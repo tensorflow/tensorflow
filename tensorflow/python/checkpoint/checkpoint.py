@@ -30,6 +30,8 @@ from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import graph_view as graph_view_lib
+from tensorflow.python.checkpoint import restore as restore_lib
+from tensorflow.python.checkpoint import save_util_v1
 from tensorflow.python.checkpoint import util
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
@@ -63,7 +65,6 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
-
 
 # The callable that provide Keras default session that is needed for saving.
 _SESSION_PROVIDER = None
@@ -325,14 +326,14 @@ class _CheckpointRestoreCoordinator(object):
 
   def restore_saveables(self,
                         tensor_saveables,
-                        python_saveables,
+                        python_positions,
                         registered_savers=None):
     """Run or build restore operations for SaveableObjects.
 
     Args:
       tensor_saveables: `SaveableObject`s which correspond to Tensors.
-      python_saveables: `PythonStateSaveable`s which correspond to Python
-        values.
+      python_positions: List of CheckpointPositions bound to `PythonState`
+        objects which must be restored eagerly.
       registered_savers: a dict mapping saver names-> object name -> Trackable.
 
     Returns:
@@ -341,22 +342,16 @@ class _CheckpointRestoreCoordinator(object):
     """
     restore_ops = []
     # Eagerly run restorations for Python state.
-    for saveable in python_saveables:
-      spec_names = [spec.name for spec in saveable.specs]
-      saveable.python_restore(
-          [self.reader.get_tensor(name) for name in spec_names])
+    for position in python_positions:
+      key = position.object_proto.attributes[0].checkpoint_key
+      position.trackable.deserialize(self.reader.get_tensor(key))
 
     # If we have new SaveableObjects, extract and cache restore ops.
     if tensor_saveables or registered_savers:
-      validated_saveables = saveable_object_util.validate_and_slice_inputs(
+      flat_saveables = saveable_object_util.validate_and_slice_inputs(
           tensor_saveables)
-      validated_names = set(saveable.name for saveable in validated_saveables)
-      if set(tensor_saveables.keys()) != validated_names:
-        raise AssertionError(
-            "Saveable keys changed when validating. Got back "
-            f"{tensor_saveables.keys()}, was expecting {validated_names}")
       new_restore_ops = functional_saver.MultiDeviceSaver(
-          validated_saveables,
+          flat_saveables,
           registered_savers).restore(self.save_path_tensor, self.options)
       if not context.executing_eagerly():
         for name, restore_op in sorted(new_restore_ops.items()):
@@ -1180,11 +1175,19 @@ class TrackableSaver(object):
     # Op caching for restore, shared between _CheckpointRestoreCoordinators
     self._restore_op_cache = {}
 
+    # Object map used for checkpoint. This attribute is to be overridden by a
+    # Checkpoint subclass, e.g., AsyncCheckpoint, to replace the trackable
+    # objects for checkpoint saving.
+    self._object_map = None
+
   def _gather_saveables(self, object_graph_tensor=None):
     """Wraps _serialize_object_graph to include the object graph proto."""
     named_saveable_objects, graph_proto, feed_additions, registered_savers = (
-        util.serialize_object_graph_with_registered_savers(
-            self._graph_view, self._saveables_cache))
+        save_util_v1.serialize_gathered_objects(
+            graph_view=self._graph_view,
+            object_map=self._object_map,
+            saveables_cache=self._saveables_cache))
+
     if object_graph_tensor is None:
       with ops.device("/cpu:0"):
         object_graph_tensor = constant_op.constant(
@@ -1489,7 +1492,7 @@ class TrackableSaver(object):
         graph_view=self._graph_view,
         options=options,
         saveables_cache=self._saveables_cache)
-    base.CheckpointPosition(
+    restore_lib.CheckpointPosition(
         checkpoint=checkpoint, proto_id=0).restore(self._graph_view.root)
 
     # Attached dependencies are not attached to the root, so should be restored
@@ -1516,7 +1519,7 @@ class TrackableSaver(object):
           # Could not find attached dependency in proto.
           continue
 
-        base.CheckpointPosition(
+        restore_lib.CheckpointPosition(
             checkpoint=checkpoint, proto_id=proto_id).restore(ref.ref)
 
     load_status = CheckpointLoadStatus(
@@ -1548,7 +1551,7 @@ def frozen_saver(root_trackable):
     the time `frozen_saver` was called.
   """
   named_saveable_objects, registered_savers = (
-      util.frozen_saveables_and_savers(
+      save_util_v1.frozen_saveables_and_savers(
           graph_view_lib.ObjectGraphView(root_trackable)))
   return functional_saver.MultiDeviceSaver(named_saveable_objects,
                                            registered_savers)

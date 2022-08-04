@@ -6,10 +6,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 cuda_py_test(
     name = "array_ops_test",
@@ -140,6 +137,7 @@ cuda_py_test(
     name = "concat_op_test",
     size = "medium",
     srcs = ["concat_op_test.py"],
+    shard_count = 4,
     tags = ["no_windows"],  # b/126916429
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -609,6 +607,7 @@ cuda_py_test(
     name = "split_op_test",
     size = "medium",
     srcs = ["split_op_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

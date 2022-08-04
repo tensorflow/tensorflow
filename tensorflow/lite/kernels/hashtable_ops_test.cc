@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <initializer_list>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -107,7 +109,7 @@ class HashtableGraph {
  public:
   HashtableGraph(TfLiteType key_type, TfLiteType value_type)
       : key_type_(key_type), value_type_(value_type) {
-    interpreter_ = absl::make_unique<Interpreter>(&error_reporter_);
+    interpreter_ = std::make_unique<Interpreter>(&error_reporter_);
     InitOpRegistrations();
   }
   ~HashtableGraph() {}
@@ -506,8 +508,8 @@ class HashtableDefaultGraphTest {
                             std::initializer_list<KeyType> queries,
                             ValueType default_value, int table_size,
                             std::initializer_list<ValueType> lookup_result) {
-    graph_ = absl::make_unique<HashtableGraph<KeyType, ValueType>>(key_type,
-                                                                   value_type);
+    graph_ = std::make_unique<HashtableGraph<KeyType, ValueType>>(key_type,
+                                                                  value_type);
     graph_->SetTable(keys, values);
     graph_->SetQuery(queries, default_value);
     graph_->AddTensors();

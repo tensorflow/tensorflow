@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_concat_code_motion.h"
 
 #include <map>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -1021,9 +1021,12 @@ StatusOr<bool> RunOnLoop(HloInstruction* loop,
 
 }  // namespace
 
-StatusOr<bool> WhileLoopConcatCodeMotion::Run(HloModule* module) {
+StatusOr<bool> WhileLoopConcatCodeMotion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeComputationPostOrder()) {
+  for (HloComputation* comp :
+       module->MakeComputationPostOrder(execution_threads)) {
     for (HloInstruction* hlo : comp->MakeInstructionPostOrder()) {
       if (hlo->opcode() == HloOpcode::kWhile) {
         TF_ASSIGN_OR_RETURN(bool loop_changed,
@@ -1039,7 +1042,7 @@ StatusOr<bool> WhileLoopConcatCodeMotion::Run(HloModule* module) {
     pipeline.AddPass<WhileLoopSimplifier>();
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<HloDCE>();
-    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
+    TF_RETURN_IF_ERROR(pipeline.Run(module, execution_threads).status());
   }
   return changed;
 }

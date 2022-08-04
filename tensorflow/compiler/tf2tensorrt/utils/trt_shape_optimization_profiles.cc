@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -139,6 +140,9 @@ void TrtShapeOptimizationProfile::OptimalStrategy(
 // Collects the values of tensors that are ShapeTensorCompatible to. The values
 // are stored in the actual_shape_values_ member variable.
 Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
+  tensorflow::profiler::TraceMe activity(
+      "TrtShapeOptimizationProfile::CollectShapeValues",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   const cudaStream_t* stream = CHECK_NOTNULL(
       reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
                                                 ->stream()
@@ -466,6 +470,9 @@ void TrtShapeOptimizationProfile::SetShapeTensorMask(
 
 int TrtShapeOptimizationProfile::GetProfileNumber(
     const std::vector<TensorShape>& shapes) {
+  tensorflow::profiler::TraceMe activity(
+      "TrtShapeOptimizationProfile::GetProfileNumber",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   if (!need_profiles_) return 0;
   // TODO(tfeher): Return the best profile not just the first compatible.
   for (int i = 0; i < profiles_.size(); i++) {
@@ -509,6 +516,9 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
 Status TrtShapeOptimizationProfile::SetInputShapeBinding(
     int input_index, int binding_index, nvinfer1::ICudaEngine* cuda_engine,
     nvinfer1::IExecutionContext* exec_context) const {
+  tensorflow::profiler::TraceMe activity(
+      "TrtShapeOptimizationProfile::SetInputShapeBinding",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   if (cuda_engine->isShapeBinding(binding_index)) {
     // Input shape binding data has to be in host memory. That is the reason
     // we can't use input_tensor.flat().data(). which contains the same

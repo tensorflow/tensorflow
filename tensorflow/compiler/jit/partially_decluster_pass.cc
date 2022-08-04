@@ -293,7 +293,7 @@ Status PartiallyDeclusterGraph(Graph* graph,
                                Env* env) {
   std::vector<bool> compile_time_const_nodes(graph->num_node_ids());
   OptimizerOptions opts;
-  auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  auto pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
       nullptr, env, /*config=*/nullptr, TF_GRAPH_DEF_VERSION, flib_def, opts);
   FunctionLibraryRuntime* lib_runtime =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);

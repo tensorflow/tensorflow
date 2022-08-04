@@ -191,7 +191,7 @@ struct EigenExpApproximation : public OpRewritePattern<math::ExpOp> {
 LogicalResult EigenExpApproximation::matchAndRewrite(
     math::ExpOp op, PatternRewriter &rewriter) const {
   auto shape = vectorShape(op.getOperand().getType(), isF32);
-  if (!shape.hasValue())
+  if (!shape.has_value())
     return rewriter.notifyMatchFailure(op, "unsupported operand type");
   ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
 

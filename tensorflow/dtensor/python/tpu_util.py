@@ -170,22 +170,14 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
   # Reconfigure TensorFlow to use TFRT TPU runtime if requested.
   _configure_tpu_runtime()
 
-  in_multi_client_mode = api.job_name() != "localhost"
-
   # Collective GRPC servers are only necessary in mutli-client setup.
   # Single clients can use local mode of collectives.
-  if in_multi_client_mode:
-    if api.jobs() is None:
-      raise ValueError(
-          "DTENSOR_JOBS environment variable is required when"
-          "using multi-client to properly set up communications between servers"
-      )
+  if api.num_clients() > 1 and not multi_client_util.is_initialized():
     multi_client_util.initialize_multi_client_cluster(
         job_name=api.job_name(),
         dtensor_jobs=api.jobs(),
         client_id=api.client_id(),
         collective_leader=api.full_job_name(task_id=0),
-        protocol="grpc+loas",
         enable_coordination_service=enable_coordination_service)
 
   # Make sure the server change is fully propagated before attempting to run
@@ -197,6 +189,10 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
   @function.defun
   def _tpu_init_fn():
     return gen_dtensor_ops.configure_and_initialize_global_tpu()
+
+  @def_function.function
+  def _set_global_tpu_array_fn(topology_proto):
+    gen_dtensor_ops.d_tensor_set_global_tpu_array(topology_proto)
 
   try:
     with ops.device("/job:" + api.full_job_name() + "/device:TPU_SYSTEM:0"):  # pylint: disable=protected-access
@@ -287,6 +283,8 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
 
     tpu_topology = _create_tpu_topology(all_core_locations, num_tasks,
                                         num_devices_per_task)
+
+    _set_global_tpu_array_fn(tpu_topology.serialized())
     global _tpu_topology
     _tpu_topology = tpu_topology
     logging.vlog(1, "TPU Topology: %s, %s", tpu_topology.mesh_shape,
@@ -310,7 +308,7 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
     raise e
 
   # Optionally exchange heartbeats between workers every minute.
-  if in_multi_client_mode and api.heartbeat_enabled():
+  if api.num_clients() > 1 and api.heartbeat_enabled():
     logging.info(
         "Starting DTensor heartbeat service exchanging signals every 10 minutes"
     )
@@ -673,7 +671,6 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   logging.info("Actual ring_axes: %s", ring_axes)
 
   # Validate ring_bounds values.
-  global _tpu_topology
   if _tpu_topology is None:
     raise ValueError(
         "Invalid TPU topology, run dtensor.initialize_tpu_system() first")
@@ -727,7 +724,6 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   # For this point on, change from List[CoreLocation] to List[List[int]] for
   # easier interaction with the C++ API.
   global_core_locations = [l.to_list() for l in global_core_locations]
-  global _dtensor_device
   if _dtensor_device is None:
     raise ValueError(
         "Invalid system device, run dtensor.initialize_tpu_system() first")
@@ -817,4 +813,3 @@ def _configure_tpu_runtime():
     tfrt_utils.set_tfrt_enabled(True)
   if not was_enabled:
     context._reset_context()  # pylint:disable=protected-access
-

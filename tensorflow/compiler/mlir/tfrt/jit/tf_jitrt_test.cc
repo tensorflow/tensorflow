@@ -21,7 +21,7 @@
 
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "testing/base/public/benchmark.h"
-#include "testing/base/public/gunit.h"
+#include <gtest/gtest.h>
 
 namespace tensorflow {
 
@@ -33,15 +33,15 @@ using ::tfrt::RemainingResults;
 using ::tfrt::jitrt::MemrefType;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConversion;
-using ::tfrt::jitrt::StaticReturnValueConverter;
+using ::tfrt::jitrt::StaticRemainingResultsConverter;
 
 using ReturnTensorflowTensor =
     ReturnValueConversion<TensorflowConversionContext,
                           ReturnStridedMemref<ConvertTensor>>;
 
-using TensorflowReturnValueConverter =
-    StaticReturnValueConverter<TensorflowConversionContext,
-                               ReturnTensorflowTensor>;
+using TensorflowResultConverter =
+    StaticRemainingResultsConverter<TensorflowConversionContext,
+                                    ReturnTensorflowTensor>;
 
 static void BM_ReturnTensor(benchmark::State& state) {
   auto dims = std::array<int64_t, 4>({1, 2, 3, 4});
@@ -60,7 +60,7 @@ static void BM_ReturnTensor(benchmark::State& state) {
     RemainingResults results(storage);
 
     TensorflowConversionContext context(0, /*num_results=*/1);
-    TensorflowReturnValueConverter converter(results, context);
+    TensorflowResultConverter converter(results, context);
 
     auto converted = converter.ReturnValue(0, type.get(), type.get(), &memref);
     CHECK(mlir::succeeded(converted)) << "Failed to convert memref";
