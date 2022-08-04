@@ -170,6 +170,32 @@ TEST_P(PjRtClientTest, ExecuteWithDonation) {
                                      *literal));
 }
 
+TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  auto executable =
+      MakeIncrementProgram(client.get(), /*alias=*/true, /*device=*/0);
+
+  std::vector<int32_t> data(4, 0);
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer, client->BufferFromHostBuffer(
+                       data.data(), shape.element_type(), shape.dimensions(),
+                       /*byte_strides=*/std::nullopt,
+                       PjRtClient::HostBufferSemantics::kZeroCopy, nullptr,
+                       client->addressable_devices()[0]));
+
+  auto external_reference = buffer->AcquireExternalReference();
+
+  ExecuteOptions options;
+  options.execution_mode = GetParam();
+
+  auto resultsor = executable->Execute({{buffer.get()}}, options);
+  ASSERT_FALSE(resultsor.ok());
+  EXPECT_THAT(resultsor.status().error_message(),
+              ::testing::HasSubstr(
+                  "Donation requested for buffer with external reference"));
+}
+
 TEST_P(PjRtClientTest, ExecuteWithConcurrentUsage) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
   auto executable =
