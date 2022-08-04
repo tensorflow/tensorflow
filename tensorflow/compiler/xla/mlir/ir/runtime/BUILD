@@ -29,17 +29,11 @@ gentbl_cc_library(
     compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
-            [
-                "-gen-dialect-decls",
-                "-dialect=rt",
-            ],
+            ["-gen-dialect-decls"],
             "rt_dialect.h.inc",
         ),
         (
-            [
-                "-gen-dialect-defs",
-                "-dialect=rt",
-            ],
+            ["-gen-dialect-defs"],
             "rt_dialect.cpp.inc",
         ),
         (
