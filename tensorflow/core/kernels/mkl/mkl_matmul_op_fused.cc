@@ -317,7 +317,9 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
   std::vector<string> fused_ops_;
   const int kInputIndex_Add = 3;
   const int kOutputIndex_Dst = 0;
+#ifdef DNNL_AARCH64_USE_ACL  
   const int kWeightTensorHashLength = 1024;
+#endif  
 };  // namespace tensorflow
 
 // Register mkl kernels for supported operations and types.
