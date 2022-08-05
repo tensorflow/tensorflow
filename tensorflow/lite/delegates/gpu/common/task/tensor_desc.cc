@@ -174,6 +174,22 @@ void TensorDescriptor::CopyWithoutData(TensorDescriptor* desc) const {
 
 std::vector<uint64_t> TensorDescriptor::GetStorageDims() const {
   const int slices = DivideRoundUp(shape_.c, 4);
+  if (layout_ == Layout::LINEAR) {
+    switch (storage_type_) {
+      case TensorStorageType::BUFFER:
+      case TensorStorageType::IMAGE_BUFFER:
+        return {static_cast<uint64_t>(slices)};
+      case TensorStorageType::TEXTURE_ARRAY:
+      case TensorStorageType::TEXTURE_3D:
+        return {static_cast<uint64_t>(slices), 1u, 1u};
+      case TensorStorageType::TEXTURE_2D:
+      case TensorStorageType::SINGLE_TEXTURE_2D:
+        return {static_cast<uint64_t>(slices), 1u};
+      case TensorStorageType::UNKNOWN:
+        return {};
+    }
+  }
+  // HWC/BHWC/HWDC/BHWDC
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
@@ -197,6 +213,10 @@ std::vector<uint64_t> TensorDescriptor::GetStorageDims() const {
 
 int3 TensorDescriptor::GetFullTensorRegion() const {
   std::vector<uint64_t> storage_dims = GetStorageDims();
+  if (layout_ == Layout::LINEAR) {
+    return int3(static_cast<int>(storage_dims[0]), 1, 1);
+  }
+  // HWC/BHWC/HWDC/BHWDC
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
@@ -415,6 +435,14 @@ absl::Status TensorDescriptor::PerformReadSelector(
   DataType read_as_type = data_type_;
   RETURN_IF_ERROR(
       MaybeGetDataTypeFromTemplateArgs(template_args, &read_as_type));
+  if (layout_ == Layout::LINEAR) {
+    if (args.size() != 1) {
+      return absl::InvalidArgumentError(
+          "Read selector for LINEAR tensor require single argument");
+    }
+    *result = Read(gpu_info, read_as_type, GetPhysicalCoordsLinear(args[0]));
+    return absl::OkStatus();
+  }
   if (args.size() == 1) {  // function overload for 1D linear types.
     if (storage_type_ == TensorStorageType::BUFFER ||
         storage_type_ == TensorStorageType::IMAGE_BUFFER) {
@@ -961,6 +989,26 @@ std::string TensorDescriptor::StorageTypeToAddressType() const {
   }
 }
 
+std::vector<std::string> TensorDescriptor::GetPhysicalCoordsLinear(
+    const std::string& x) const {
+  switch (storage_type_) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      return {absl::Substitute("($0)", x)};
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return {absl::Substitute("($0)", x), "0"};
+      return {absl::Substitute("($0)", x), "0"};
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
+      return {absl::Substitute("($0)", x), "0", "0"};
+    case TensorStorageType::UNKNOWN:
+      return {""};
+    default:
+      return {""};
+  }
+}
+
 std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHS(
     const std::string& x, const std::string& y, const std::string& s) const {
   switch (storage_type_) {
@@ -1229,12 +1277,6 @@ void TensorDescriptor::UploadData(
   UploadData(src.data.data());
 }
 
-void TensorDescriptor::UploadData(
-    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
-  shape_ = BHWDC(1, 1, 1, 1, src.shape.v);
-  UploadData(src.data.data());
-}
-
 bool TensorDescriptor::SupportsZeroClamp(const Axis& axis,
                                          const GpuInfo& gpu_info) const {
   switch (storage_type_) {
@@ -1470,5 +1512,41 @@ TensorDescriptor CreateHwcTensorDescriptor(DataType data_type,
   tensor_desc.SetBHWCShape(BHWC(1, shape.h, shape.w, shape.c));
   return tensor_desc;
 }
+
+TensorStorageType GetStorageTypeForLinearTensor(const GpuInfo& gpu_info,
+                                                DataType data_type,
+                                                const Linear& shape) {
+  if (gpu_info.IsApple()) {
+    if (gpu_info.apple_info.IsA7GenerationGpu() ||
+        gpu_info.apple_info.IsA8GenerationGpu()) {
+      return TensorStorageType::TEXTURE_2D;
+    }
+  }
+  if (!gpu_info.SupportsImages() || gpu_info.IsMali() || gpu_info.IsApple() ||
+      gpu_info.IsAMD()) {
+    return TensorStorageType::BUFFER;
+  } else {
+    return TensorStorageType::TEXTURE_2D;
+  }
+}
+
+TensorDescriptor CreateConstantLinearTensorDescriptor(
+    DataType data_type, TensorStorageType storage_type,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
+  TensorDescriptor tensor_desc =
+      TensorDescriptor(data_type, storage_type, Layout::LINEAR);
+  tensor_desc.SetBHWDCShape(BHWDC(1, 1, 1, 1, src.shape.v));
+  tensor_desc.UploadData(src.data.data());
+  return tensor_desc;
+}
+
+TensorDescriptor CreateConstantLinearTensorDescriptor(
+    const GpuInfo& gpu_info, DataType data_type,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
+  return CreateConstantLinearTensorDescriptor(
+      data_type, GetStorageTypeForLinearTensor(gpu_info, data_type, src.shape),
+      src);
+}
+
 }  // namespace gpu
 }  // namespace tflite
