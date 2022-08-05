@@ -56,6 +56,11 @@ jobs:
         map sigbuild-r2.10-python3.8 2.10-python3.8
         map sigbuild-r2.10-python3.9 2.10-python3.9
         map sigbuild-r2.10-python3.10 2.10-python3.10
+        map sigbuild-r2.11 2.11-python3.9
+        map sigbuild-r2.11-python3.7 2.11-python3.7
+        map sigbuild-r2.11-python3.8 2.11-python3.8
+        map sigbuild-r2.11-python3.9 2.11-python3.9
+        map sigbuild-r2.11-python3.11 2.11-python3.11
     - name: Create Pull Request with changes
       uses: peter-evans/create-pull-request@v3
       with:
