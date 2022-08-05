@@ -500,4 +500,24 @@ PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args) {
   return nullptr;
 }
 
+// -------------------------------- Events -------------------------------------
+
+PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Event_Destroy", PJRT_Event_Destroy_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  delete args->event;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Event_IsReady", PJRT_Event_IsReady_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->is_ready = args->event->future.IsReady();
+  return nullptr;
+}
+
 }  // namespace pjrt

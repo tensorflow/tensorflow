@@ -74,4 +74,16 @@ void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api) {
   }
 }
 
+PJRT_EventDeleter MakeEventDeleter(const PJRT_Api* api) {
+  CHECK(api != nullptr);
+  return [api](PJRT_Event* managed) {
+    PJRT_Event_Destroy_Args args;
+    args.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.event = managed;
+
+    LogFatalIfPjrtError(api->PJRT_Event_Destroy(&args), api);
+  };
+}
+
 }  // namespace pjrt

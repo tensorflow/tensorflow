@@ -64,6 +64,40 @@ const size_t PJRT_Error_Message_Args_STRUCT_SIZE =
 // `error`.
 typedef void PJRT_Error_Message(PJRT_Error_Message_Args* args);
 
+// ---------------------------------- Events -----------------------------------
+
+// Represents a notifying event that is returned by PJRT APIs that enqueue
+// asynchronous work, informing callers when the work is complete and reporting
+// a value of type `PJRT_Error*` or `nullptr` as error status.
+//
+// Callers are always responsible for freeing `PJRT_Event`s by calling
+// `PJRT_Event_Destroy`.
+typedef struct PJRT_Event PJRT_Event;
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Event* event;
+} PJRT_Event_Destroy_Args;
+const size_t PJRT_Event_Destroy_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Event_Destroy_Args, event);
+
+// Frees `event`. `event` can be `nullptr`.
+typedef PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Event* event;
+  bool is_ready;  // out
+} PJRT_Event_IsReady_Args;
+const size_t PJRT_Event_IsReady_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Event_IsReady_Args, is_ready);
+
+// Returns true if this PJRT_Event has completed, including if an error has
+// occurred.
+typedef PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args);
+
 // ---------------------------------- Client -----------------------------------
 
 typedef struct PJRT_Client PJRT_Client;
@@ -596,6 +630,9 @@ typedef struct {
 
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Message);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_Destroy);
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_IsReady);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Create);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Destroy);
