@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
 namespace xla {
 namespace {
@@ -1725,6 +1726,16 @@ StatusOr<Literal> LiteralBase::BitcastConvert(const Shape& dest_shape) const {
   Literal out(dest_shape);
   std::memcpy(out.root_piece_.buffer(), root_piece().buffer(),
               root_piece().size_bytes());
+
+  if (!tensorflow::port::kLittleEndian) {
+    //Endianness swap as per input data type
+    size_t input_elem_size = ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
+    tensorflow::ByteSwapArray(out.root_piece().buffer(), input_elem_size, out.root_piece().size_bytes()/input_elem_size);
+    //Endianness swap as per output data type
+    size_t output_elem_size = ShapeUtil::ByteSizeOfPrimitiveType(dest_shape.element_type());
+    tensorflow::ByteSwapArray(out.root_piece().buffer(), output_elem_size, out.root_piece().size_bytes()/output_elem_size);
+  }
+
   return out;
 }
 
