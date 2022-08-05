@@ -19,6 +19,7 @@ import tempfile
 from typing import Callable, Collection, Dict, Mapping, Optional, Sequence
 import uuid
 import warnings
+import sys
 
 import numpy as np
 
@@ -41,6 +42,7 @@ from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.saved_model.load import load as saved_model_load
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
@@ -643,6 +645,13 @@ def _static_range_quantize(
     v1_builder = builder.SavedModelBuilder(calibrated_model_dir)
 
     with session.Session(graph=ops.Graph()) as sess:
+      if sys.byteorder == 'big':
+        for function in graph_def.library.function:
+          node_def = function.node_def
+          for node in node_def:
+            if node.op == "Const":
+              tensor = node.attr["value"].tensor
+              saved_model_utils.byte_swap_tensor_content(tensor, "little", "big")
       importer.import_graph_def(graph_def, name='')
       working_graph = ops.get_default_graph()
       graph_def = working_graph.as_graph_def()
