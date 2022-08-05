@@ -318,7 +318,7 @@ class DeviceFinder {
   const MasterEnv* env_;
   WorkerCacheInterface* worker_cache_;
   std::vector<DeviceNameUtils::ParsedName> filters_;
-  uint64 wait_for_worker_timeout_micros_ = 0;  // Default no waiting time.
+  uint64 wait_for_worker_timeout_micros_ = 1000000;  // Default to 1 sec.
 
   mutex mu_;
   int num_pending_ TF_GUARDED_BY(mu_);
