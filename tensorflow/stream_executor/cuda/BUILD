@@ -2,7 +2,7 @@
 #   CUDA-platform specific StreamExecutor support code.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "check_deps", "filegroup")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -699,6 +699,30 @@ cc_library(
         ":curand_plugin",
     ],
     alwayslink = 1,
+)
+
+# To avoid duplication, check that the C++ or python library does not depend on
+# the stream executor cuda plugins. Targets that want to use cuda APIs should
+# instead depend on the dummy plugins in //tensorflow/core/platform/default/build_config
+# and use header only targets.
+check_deps(
+    name = "cuda_plugins_check_deps",
+    disallowed_deps = if_static(
+        [],
+        otherwise = [
+            ":all_runtime",
+            ":cuda_driver",
+            ":cuda_platform",
+            ":cudnn_plugin",
+            ":cufft_plugin",
+            ":curand_plugin",
+            "//tensorflow/stream_executor:cuda_platform",
+        ],
+    ),
+    deps = [
+        "//tensorflow:tensorflow_cc",
+        "//tensorflow/python:pywrap_tensorflow_internal",
+    ],
 )
 
 tf_cuda_cc_test(
