@@ -2082,6 +2082,8 @@ def _collect_deps_aspect_impl(target, ctx):
         all_deps += ctx.rule.attr.deps
     if hasattr(ctx.rule.attr, "data"):
         all_deps += ctx.rule.attr.data
+    if hasattr(ctx.rule.attr, "roots"):
+        all_deps += ctx.rule.attr.roots
     for dep in all_deps:
         direct.append(dep.label)
         if hasattr(dep, "tf_collected_deps"):
@@ -2089,7 +2091,7 @@ def _collect_deps_aspect_impl(target, ctx):
     return struct(tf_collected_deps = depset(direct = direct, transitive = transitive))
 
 collect_deps_aspect = aspect(
-    attr_aspects = ["deps", "data"],
+    attr_aspects = ["deps", "data", "roots"],
     implementation = _collect_deps_aspect_impl,
 )
 
@@ -2285,10 +2287,13 @@ _append_init_to_versionscript = rule(
 def pywrap_tensorflow_macro(
         name,
         srcs = [],
+        roots = [],
         deps = [],
+        dynamic_deps = [],
+        static_deps = [],
         copts = [],
         version_script = None,
-        **kwargs):
+        win_def_file = None):
     """Builds the pywrap_tensorflow_internal shared object."""
     module_name = name.split("/")[-1]
 
@@ -2298,7 +2303,7 @@ def pywrap_tensorflow_macro(
 
     # TODO(b/137885063): tf_cc_shared_object needs to be cleaned up; we really
     # shouldn't be passing a name qualified with .so here.
-    cc_library_name = cc_library_base + ".so"
+    cc_shared_library_name = cc_library_base + ".so"
     cc_library_pyd_name = "/".join(
         name.split("/")[:-1] + ["_" + module_name + ".pyd"],
     )
@@ -2334,12 +2339,7 @@ def pywrap_tensorflow_macro(
             "$(location %s.lds)" % vscriptname,
         ],
     })
-    extra_deps += select({
-        clean_dep("//tensorflow:windows"): [],
-        "//conditions:default": [
-            "%s.lds" % vscriptname,
-        ],
-    })
+    additional_linker_inputs = if_windows([], otherwise = ["%s.lds" % vscriptname])
 
     # Due to b/149224972 we have to add libtensorflow_framework.so
     # as a dependency so the linker doesn't try and optimize and
@@ -2353,8 +2353,8 @@ def pywrap_tensorflow_macro(
         ],
     )
 
-    tf_cc_shared_object(
-        name = cc_library_name,
+    tf_cc_shared_library(
+        name = cc_shared_library_name,
         srcs = srcs,
         # framework_so is no longer needed as libtf.so is included via the extra_deps.
         framework_so = [],
@@ -2365,8 +2365,12 @@ def pywrap_tensorflow_macro(
         ]),
         linkopts = extra_linkopts,
         linkstatic = 1,
+        roots = roots,
         deps = deps + extra_deps,
-        **kwargs
+        dynamic_deps = dynamic_deps,
+        static_deps = static_deps,
+        win_def_file = win_def_file,
+        additional_linker_inputs = additional_linker_inputs,
     )
 
     # When a non-versioned .so is added as a 'src' to a bazel target, it uses
@@ -2382,14 +2386,14 @@ def pywrap_tensorflow_macro(
         name_os = pattern % (cc_library_base, "")
         native.genrule(
             name = name_os + "_rule",
-            srcs = [":" + cc_library_name],
+            srcs = [":" + cc_shared_library_name],
             outs = [name_os],
             cmd = "cp $< $@",
         )
 
     native.genrule(
         name = "gen_" + cc_library_pyd_name,
-        srcs = [":" + cc_library_name],
+        srcs = [":" + cc_shared_library_name],
         outs = [cc_library_pyd_name],
         cmd = "cp $< $@",
     )
@@ -2414,7 +2418,7 @@ def pywrap_tensorflow_macro(
         srcs_version = "PY3",
         data = select({
             clean_dep("//tensorflow:windows"): [":" + cc_library_pyd_name],
-            "//conditions:default": [":" + cc_library_name],
+            "//conditions:default": [":" + cc_shared_library_name],
         }),
     )
 
