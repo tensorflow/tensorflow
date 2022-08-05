@@ -273,6 +273,7 @@ class OpSharding:
   tile_assignment_devices: Sequence[int]
   tuple_shardings: Sequence[OpSharding]
   def SerializeToString(self) -> bytes: ...
+  def clone(self) -> OpSharding: ...
 
 class HloSharding:
   @staticmethod
