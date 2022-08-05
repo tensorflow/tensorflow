@@ -19,4 +19,6 @@ message FingerprintDef {
   uint64 graph_def_program_hash = 2;
   // Hash of the regularized (sorted) SignatureDefs.
   uint64 signature_def_hash = 3;
+  // Hash of the regularized SavedObjectGraph.
+  uint64 saved_object_graph_hash = 4;
 }

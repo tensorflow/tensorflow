@@ -33,6 +33,10 @@ uint64 ComputeHash(const GraphDef& graph_def);
 uint64 RegularizeAndHashSignatureDefs(
     const google::protobuf::Map<std::string, SignatureDef>& signature_def_map);
 
+// Canonicalizes and computes the Fingerprint64 hash of the SavedObjectGraph.
+uint64 RegularizeAndHashSavedObjectGraph(
+    const SavedObjectGraph& object_graph_def);
+
 // Creates a FingerprintDef proto from a MetaGraph.
 FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph);
 

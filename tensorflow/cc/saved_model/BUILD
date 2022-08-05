@@ -386,6 +386,7 @@ cc_library(
         "@com_google_protobuf//:protobuf_headers",
         "//tensorflow/core/grappler:op_types",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/strings",
     ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
     alwayslink = True,
 )
