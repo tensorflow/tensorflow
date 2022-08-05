@@ -1010,6 +1010,11 @@ Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
   ShapeTree<std::unique_ptr<OutfeedBuffer>>* dest_buffers =
       outfeed_manager->BlockingGetNextDestination();
 
+  // Nothing to be done for an outfeed with no inputs.
+  // Note: Must do this after `BlockingGetNextDestination` above to dequeue an
+  // entry from the outfeed manager.
+  if (args.empty()) return Error::success();
+
   // Check that we have correct number of arguments.
   if (args.size() != dest_buffers->leaf_count())
     return MakeStringError("Incorrect number of arguments");

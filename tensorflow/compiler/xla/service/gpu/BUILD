@@ -2590,6 +2590,7 @@ cc_library(
 test_suite(
     name = "jitrt_executable_tests",
     tests = [
+        # copybara:uncomment "//platforms/xla/tests/internal:xfeed_test_gpu",
         "//tensorflow/compiler/tests:fft_test_gpu",
         "//tensorflow/compiler/xla/service/gpu:cudnn_fused_conv_rewriter_test",
         "//tensorflow/compiler/xla/service/gpu:custom_call_test",
