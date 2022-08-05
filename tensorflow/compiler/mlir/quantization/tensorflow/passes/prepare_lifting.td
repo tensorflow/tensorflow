@@ -23,7 +23,7 @@ include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
 
 // Converts arith.constant ops from freezing passes back to tf.Const ops.
 def ConvertArithConstToTfConst : Pat<
-  (Arith_ConstantOp:$res NonOpaqueElementsAttr:$value),
+  (Arith_ConstantOp:$res DenseElementsAttr:$value),
   (TF_ConstOp $value),
   [(AnyStaticShapeTensor $res)]>;
 

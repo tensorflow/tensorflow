@@ -601,8 +601,8 @@ class QuantizeConstPattern
     }
 
     ShapedType tensor_qtype = q_op.getResult().getType().cast<ShapedType>();
-    Attribute quantized_attr = Quantize(attr, tensor_qtype);
-    if (!quantized_attr) {
+    Attribute tensor_proto_attr = Quantize(attr, tensor_qtype);
+    if (!tensor_proto_attr) {
       return failure();
     }
 
@@ -616,23 +616,21 @@ class QuantizeConstPattern
       new_type = ConvertIntToQint(new_type, rewriter.getContext());
       tensor_qtype = ConvertIntToQint(tensor_qtype, rewriter.getContext());
 
-      // TODO(b/225793355): It adds OpaqueElementsAttr to the constant as a
+      // TODO(b/225793355): It adds TensorProtoAttr to the constant as a
       // workaround.
       tensorflow::TensorProto tensor_proto;
-      if (!mlir::tfg::ConvertToTensorProto(quantized_attr, &tensor_proto)
+      if (!mlir::tfg::ConvertToTensorProto(tensor_proto_attr, &tensor_proto)
                .ok()) {
         return failure();
       }
 
       tensor_proto.set_dtype(tensorflow::DT_QINT8);
 
-      Dialect* dialect = rewriter.getContext()->getLoadedDialect("tf");
-
-      quantized_attr = ElementsAttr(OpaqueElementsAttr::get(
-          dialect, new_type,
-          tensorflow::mangling_util::MangleTensor(tensor_proto)));
+      tensor_proto_attr = ElementsAttr(TF::TensorProtoAttr::get(
+          new_type, tensorflow::mangling_util::MangleTensor(tensor_proto)));
     }
-    auto const_op = rewriter.create<TF::ConstOp>(loc, new_type, quantized_attr);
+    auto const_op =
+        rewriter.create<TF::ConstOp>(loc, new_type, tensor_proto_attr);
     // Add scast op to match quantize -> composition pattern. The added scast
     // is then removed by canonicalization. ([scast - scast] -> [])
     auto scast_op = rewriter.create<quantfork::StorageCastOp>(

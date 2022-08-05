@@ -19,6 +19,7 @@ limitations under the License.
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/SubElementInterfaces.td"
 include "tensorflow/core/ir/types/dialect.td"
+include "mlir/IR/BuiltinAttributeInterfaces.td"
 
 // Base class for TFType dialect attributes.
 class TFType_Attr<string name, list<Trait> traits = []>
@@ -447,6 +448,7 @@ def TFType_VersionAttr : TFType_Attr<"Version"> {
 
 //===----------------------------------------------------------------------===//
 // Tensorflow devices metadata
+//===----------------------------------------------------------------------===//
 
 // Tensorflow GPU device metadata.
 def TFType_GpuDeviceMetadata : TFType_Attr<"GpuDeviceMetadata"> {
@@ -454,6 +456,30 @@ def TFType_GpuDeviceMetadata : TFType_Attr<"GpuDeviceMetadata"> {
   let summary = "Attribute that specifies a GPU's compute capability";
   let parameters = (ins "int32_t":$cc_major, "int32_t":$cc_minor);
   let assemblyFormat = "`<` struct(params) `>`";
+}
+
+//===----------------------------------------------------------------------===//
+// TensorProtoAttr
+//===----------------------------------------------------------------------===//
+
+def TF_TensorProtoAttr : TFType_Attr<"TensorProto", [ElementsAttrInterface]> {
+  let mnemonic = "tensor_proto";
+
+  let summary = "Attribute that stores TensorFlow TensorProto debug string";
+
+  let parameters = (ins AttributeSelfTypeParameter<"", "ShapedType">:$type,
+                        StringRefParameter<"">:$value);
+  let builders = [
+    AttrBuilderWithInferredContext<(ins "ShapedType":$type,
+                                        "StringRef":$value), [{
+      return $_get(type.getContext(), type, value);
+    }]>,
+  ];
+  let extraClassDeclaration = [{
+    using ValueType = StringRef;
+  }];
+
+  let hasCustomAssemblyFormat = 1;
 }
 
 
