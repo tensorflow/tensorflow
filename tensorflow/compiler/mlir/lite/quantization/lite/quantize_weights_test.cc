@@ -181,6 +181,12 @@ const Tensor* FindMatchingExpectedTensor(
         // Otherwise, do additional checks for data type and buffer contents.
         const std::vector<uint8_t> quantized_buffer =
             quant_model->buffers[quantized_tensor->buffer()].get()->data;
+        if (!FLATBUFFERS_LITTLEENDIAN) {
+          const auto* buffer = &(quantized_buffer);
+          int32_t *p = reinterpret_cast<int32_t*>(const_cast<uint8_t*>(buffer->data()));
+          for (size_t i = 0; i < buffer->size(); i+=4, ++p)
+            *p = flatbuffers::EndianSwap(*p);
+        }
         const std::vector<uint8_t> float_buffer =
             float_model->buffers[float_tensor->buffer()].get()->data;
         if ((quantized_buffer == float_buffer) &&
