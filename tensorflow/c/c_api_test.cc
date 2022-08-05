@@ -1534,11 +1534,13 @@ TEST(CAPI, TestBitcastFrom_Reshape) {
   EXPECT_EQ(6 * TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(a));
   EXPECT_EQ(6 * TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(b));
 
-  // Check that a write to one tensor shows up in the other.
-  *(static_cast<int64_t*>(TF_TensorData(a))) = 4;
-  EXPECT_EQ(4, *(static_cast<int64_t*>(TF_TensorData(b))));
-  *(static_cast<int64_t*>(TF_TensorData(b))) = 6;
-  EXPECT_EQ(6, *(static_cast<int64_t*>(TF_TensorData(a))));
+  if (tensorflow::port::kLittleEndian) {
+    // Check that a write to one tensor shows up in the other.
+    *(static_cast<int64_t*>(TF_TensorData(a))) = 4;
+    EXPECT_EQ(4, *(static_cast<int64_t*>(TF_TensorData(b))));
+    *(static_cast<int64_t*>(TF_TensorData(b))) = 6;
+    EXPECT_EQ(6, *(static_cast<int64_t*>(TF_TensorData(a))));
+  }
 
   TF_DeleteTensor(a);
   TF_DeleteTensor(b);

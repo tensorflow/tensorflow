@@ -864,6 +864,8 @@ tf_cuda_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/core/public:version",
         "//tensorflow/core/util:managed_stack_trace",
+        "//tensorflow/core/util/tensor_bundle",
+        "//tensorflow/core:framework",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
