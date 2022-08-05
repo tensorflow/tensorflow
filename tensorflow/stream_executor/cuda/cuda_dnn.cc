@@ -335,13 +335,12 @@ port::Status GetLoadedCudnnVersion(CudnnVersion* version) {
 
 enum class PreloadCudnnType { ConvFwd, ConvBwdFilter, ConvBwdData, Rnn };
 
-// Preload sub libs for cudnn 8.0.4+
+// Preload sub libs for cudnn 8.0.4+ to make sure that the loading time isn't
+// measured in the autotuning.
 void PreloadCudnnSubLibs(PreloadCudnnType type) {
 #if CUDNN_VERSION >= 8004
   switch (type) {
-    case PreloadCudnnType::ConvBwdFilter: {
-      [[clang::fallthrough]];
-    }
+    case PreloadCudnnType::ConvBwdFilter:
     case PreloadCudnnType::ConvBwdData: {
       cudnnOpsTrainVersionCheck();
       cudnnCnnTrainVersionCheck();
@@ -378,7 +377,8 @@ void PreloadCudnnSubLibsHelper(dnn::ConvolutionKind kind) {
       break;
     }
     default: {
-      LOG(WARNING) << "Unsupported dnn::ConvolutionKind for cuDNN preload.";
+      LOG(WARNING) << "Unsupported dnn::ConvolutionKind: "
+                   << static_cast<int>(kind) << " for cuDNN preload.";
       break;
     }
   }
