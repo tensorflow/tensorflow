@@ -5428,18 +5428,23 @@ LogicalResult XlaRngGetAndUpdateStateOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult SelectOp::verify() {
-  // Either, all operands could be the same shape ...
-  if (succeeded(verifyCompatibleShapes(getOperandTypes()))) return success();
+  // The operands 'on_true' and 'on_false' should have compatible types, i.e.,
+  //   (a) have the same element type, and
+  //   (b) have compatible shapes (i.e. the same shape and/or at least one
+  //       dynamic shape)
+  if (!compatibleShapeAndElementType(on_true().getType(), on_false().getType()))
+    return emitOpError()
+           << "requires compatible types for non-predicate operands";
 
-  // ... or the predicate could be a scalar and the remaining two operands could
-  // be of the same shape.
+  // The predicate, if not-scalar, should have the same shape as the remaining
+  // operands.
   auto predTy = pred().getType().dyn_cast<RankedTensorType>();
   bool predMayBeScalar = !predTy || predTy.getRank() == 0;
-  if (!predMayBeScalar || failed(verifyCompatibleShapes(
-                              {on_true().getType(), on_false().getType()}))) {
-    return emitOpError()
-           << "requires the same type for all operands and results";
-  }
+  if (predMayBeScalar) return success();
+
+  if (failed(verifyCompatibleShape(pred().getType(), on_true().getType())))
+    return emitOpError() << "requires the same shape for all operands";
+
   return success();
 }
 
@@ -5494,18 +5499,7 @@ LogicalResult SelectOp::inferReturnTypeComponents(
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   SelectOp::Adaptor op(operands, attributes);
   auto trueType = op.on_true().getType().cast<TensorType>();
-  auto falseType = op.on_true().getType().cast<TensorType>();
-
-  // Check for type compatibility in the select op. This requires that the two
-  // non-predicate operands:
-  //   (a) have the same element type
-  //   (b) have compatible shapes (i.e. the same shape and/or at least one
-  //       dynamic shape)
-  if (trueType.getElementType() != falseType.getElementType() ||
-      failed(mlir::verifyCompatibleShape(trueType, falseType))) {
-    return emitOptionalError(location, "incompatible operand types: ", trueType,
-                             " and ", falseType);
-  }
+  auto falseType = op.on_false().getType().cast<TensorType>();
 
   // The output shape should be the most general of the operand shapes at each
   // dimension.
