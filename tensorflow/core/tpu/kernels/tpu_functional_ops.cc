@@ -2063,7 +2063,8 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
 }
 
 Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
-    Graph* graph, int num_cores_per_replica, OpKernelContext* ctx) {
+    Graph* graph, const std::string& cluster_name, int num_cores_per_replica,
+    OpKernelContext* ctx) {
   for (Node* replicated_input_node : graph->nodes()) {
     if (replicated_input_node->type_string() != "TPUReplicatedInput") continue;
 
@@ -2144,7 +2145,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
               .Attr("T", replicated_input_node->output_type(0))
               .Attr(kXLAShardingAttrName, sharding->SerializeAsString())
               .Attr(kXLAShardingAttrAltName, sharding->SerializeAsString())
-              .Attr("_tpu_replicate", "cluster")
+              .Attr("_tpu_replicate", cluster_name)
               .Finalize(graph, &sharding_op));
       for (const Edge* edge : edges_to_remove) {
         VLOG(3) << "XlaSharding op creation output edge "
@@ -2181,12 +2182,15 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
     Graph* graph, bool enable_spmd_xla_partitioning, int num_cores_per_replica,
     std::map<std::string, std::vector<int>>& named_input_shapes,
     OpKernelContext* ctx) {
+  std::string cluster_name;
+  TF_RETURN_IF_ERROR(GetClusterName(graph, &cluster_name));
+
   if (runtime_params_.enable_auto_xla_input_sharding) {
     VLOG(2) << DumpGraphToFile("before_enable_auto_xla_input_sharding", *graph,
                                flib_def_.get());
 
-    TF_RETURN_IF_ERROR(
-        ShardInputsWithXlaSharding(graph, num_cores_per_replica, ctx));
+    TF_RETURN_IF_ERROR(ShardInputsWithXlaSharding(graph, cluster_name,
+                                                  num_cores_per_replica, ctx));
   }
 
   GraphShapeInfo tpu_inferred_info;
@@ -2242,9 +2246,6 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
 
   VLOG(2) << DumpGraphToFile("before_optimize_tpu_input_output_tensors", *graph,
                              flib_def_.get());
-
-  string cluster_name;
-  TF_RETURN_IF_ERROR(GetClusterName(graph, &cluster_name));
 
   if (runtime_params_.minimum_output_tensors_packing > 1) {
     // Copy graph to shape_inference_graph
