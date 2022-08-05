@@ -520,4 +520,15 @@ PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Event_Await(PJRT_Event_Await_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Event_Await", PJRT_Event_Await_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  PJRT_Event* event = args->event;
+  event->status.emplace(event->future.Await());
+  PJRT_RETURN_IF_ERROR(event->status.value());
+  return nullptr;
+}
+
 }  // namespace pjrt

@@ -98,6 +98,20 @@ const size_t PJRT_Event_IsReady_Args_STRUCT_SIZE =
 // occurred.
 typedef PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Event* event;
+} PJRT_Event_Await_Args;
+
+const size_t PJRT_Event_Await_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Event_Await_Args, event);
+
+// Blocks the calling thread until `event` is ready, then returns the error
+// status (with `nullptr` indicating no error). The returned status should be
+// freed with `PJRT_Error_Destroy`.
+typedef PJRT_Error* PJRT_Event_Await(PJRT_Event_Await_Args* args);
+
 // ---------------------------------- Client -----------------------------------
 
 typedef struct PJRT_Client PJRT_Client;
@@ -633,6 +647,7 @@ typedef struct {
 
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_IsReady);
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_Await);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Create);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Destroy);
