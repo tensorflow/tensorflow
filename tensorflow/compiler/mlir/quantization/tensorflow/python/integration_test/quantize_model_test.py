@@ -855,6 +855,56 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertTrue(
         self._contains_quantized_function_call(output_meta_graphdef))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_model_ptq_call_twice(self):
+    model = MatmulModel()
+    input_savedmodel_dir = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_savedmodel_dir)
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+    output_savedmodel_dir_1 = self.create_tempdir().full_path
+    tags = {tag_constants.SERVING}
+    signature_def_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+
+    representative_dataset: repr_dataset.RepresentativeDataset = [{
+        'input_tensor': random_ops.random_uniform(shape=(1, 4)),
+    } for _ in range(8)]
+
+    # Test the first run.
+    converted_model_1 = quantize_model.quantize(
+        input_savedmodel_dir,
+        signature_def_keys,
+        output_directory=output_savedmodel_dir_1,
+        quantization_options=quantization_options,
+        representative_dataset=representative_dataset)
+
+    self.assertIsNotNone(converted_model_1)
+    self.assertCountEqual(converted_model_1.signatures._signatures.keys(),
+                          signature_def_keys)
+    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir_1)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(
+        self._contains_quantized_function_call(output_meta_graphdef))
+
+    # Test the second run on the same model.
+    output_savedmodel_dir_2 = self.create_tempdir().full_path
+    converted_model_2 = quantize_model.quantize(
+        input_savedmodel_dir,
+        signature_def_keys,
+        output_directory=output_savedmodel_dir_2,
+        quantization_options=quantization_options,
+        representative_dataset=representative_dataset)
+
+    self.assertIsNotNone(converted_model_2)
+    self.assertCountEqual(converted_model_2.signatures._signatures.keys(),
+                          signature_def_keys)
+    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir_2)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(
+        self._contains_quantized_function_call(output_meta_graphdef))
+
   # tf.data.Dataset is as an Iterable (thus can be used as representative
   # dataset) only in TF2 (eager mode).
   @test_util.run_v2_only
