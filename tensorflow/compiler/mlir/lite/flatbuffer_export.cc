@@ -1015,7 +1015,7 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
     Operation* inst, mlir::TFL::CustomOp op,
     const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
   const std::string attrs =
-      op.custom_option().cast<mlir::OpaqueElementsAttr>().getValue().str();
+      op.custom_option().cast<mlir::TFL::ConstBytesAttr>().getValue().str();
   std::vector<uint8_t> custom_option_vector(attrs.size());
   memcpy(custom_option_vector.data(), attrs.data(), attrs.size());
   auto opcode_index =

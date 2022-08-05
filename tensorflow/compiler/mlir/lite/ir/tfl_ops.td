@@ -58,20 +58,6 @@ def TFL_Control: Type<CPred<"$_self.isa<ControlType>()">, "control">,
 // A type attribute containing the TensorType.
 def TensorTypeAttr : TypeAttrBase<"TensorType", "Tensor type attribute">;
 
-// A type attribute containing OpaqueElementsAttr and bytes.
-def OpaqueBytesAttr : ElementsAttrBase<
-  And<[
-    CPred<"$_self.isa<OpaqueElementsAttr>() ">,
-    CPred<"$_self.cast<OpaqueElementsAttr>().getType()"
-          ".getElementType().isInteger(8)">,
-  ]>,
-  "opaque bytes attribute"
- > {
-  let storageType = [{ OpaqueElementsAttr }];
-  let returnType = [{ OpaqueElementsAttr }];
-  let convertFromStorage = "$_self";
-}
-
 //===----------------------------------------------------------------------===//
 // Derived shape attribute class.
 //===----------------------------------------------------------------------===//
@@ -5069,7 +5055,7 @@ def TFL_CustomOp : Op<TFL_Dialect, "custom", [
   let arguments = (ins
     Variadic<TFL_TensorOfOrNone<[AnyType]>>:$input,
     StrAttr:$custom_code,
-    OpaqueBytesAttr:$custom_option
+    TFL_ConstBytesAttr:$custom_option
   );
   let results = (outs Variadic<AnyTensor>:$output);
 

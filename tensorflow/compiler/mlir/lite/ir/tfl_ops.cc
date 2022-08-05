@@ -22,6 +22,7 @@ limitations under the License.
 #include <numeric>
 #include <string>
 
+#include "absl/strings/escaping.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Threading.h"
@@ -910,12 +912,11 @@ OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
 
 mlir::LogicalResult CustomOp::verify() {
   CustomOp op = *this;
-  OpaqueElementsAttr opaque_attr =
-      op.custom_option().cast<OpaqueElementsAttr>();
-  if (!opaque_attr.getType().hasStaticShape())
-    return op.emitOpError("custom_option should have a static shape.");
-  const int attribute_size = opaque_attr.getValue().size();
-  if (attribute_size != opaque_attr.getType().cast<ShapedType>().getDimSize(0))
+  ConstBytesAttr const_bytes_attr = op.custom_option().cast<ConstBytesAttr>();
+  const int attribute_size = const_bytes_attr.getValue().size();
+  if (const_bytes_attr.getType().isa<ShapedType>() &&
+      attribute_size !=
+          const_bytes_attr.getType().cast<ShapedType>().getDimSize(0))
     return op.emitOpError(
         "custom_option should have the same length of content with shape.");
   return success();
@@ -3944,6 +3945,33 @@ ParseResult ControlNodeOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 //===----------------------------------------------------------------------===//
+// ConstBytesAttr
+//===----------------------------------------------------------------------===//
+
+Attribute ConstBytesAttr::parse(AsmParser &parser, Type type) {
+  if (parser.parseColon()) {
+    return nullptr;
+  }
+
+  std::string data;
+  if (parser.parseString(&data)) {
+    return nullptr;
+  }
+  if (data.size() < 2 || data.substr(0, 2) != "0x") {
+    parser.emitError(parser.getNameLoc(), "Hex string doesn't start with `0x`");
+    return nullptr;
+  }
+
+  std::string bytes_data = absl::HexStringToBytes(data.substr(2));
+  return ConstBytesAttr::get(parser.getBuilder().getContext(), bytes_data);
+}
+
+void ConstBytesAttr::print(mlir::AsmPrinter &printer) const {
+  StringRef bytes_str = getValue();
+  printer << " : \"0x" << llvm::toHex(bytes_str) << "\"";
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
@@ -3980,9 +4008,9 @@ namespace TFL {
 
 Operation *TFLDialect::materializeConstant(OpBuilder &builder, Attribute value,
                                            Type type, Location loc) {
-  // If this is an opaque elements attribute or the result type doesn't match
-  // the attribute type, then generate a tfl.pseudo_const.
-  if (value.isa<OpaqueElementsAttr>() ||
+  // If this is a constant bytes attribute or the result type doesn't match the
+  // attribute type, then generate a tfl.pseudo_const.
+  if (value.isa<ConstBytesAttr>() ||
       (value.isa<ElementsAttr>() && value.getType() != type))
     return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
   if (arith::ConstantOp::isBuildableWith(value, type))
