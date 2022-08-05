@@ -22,7 +22,7 @@ from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
 
 class FingerprintingTest(test.TestCase):
 
-  def test_graphdef_basic(self):
+  def test_module_basic(self):
     sm_pb_file = test.test_src_dir_path(
         "cc/saved_model/testdata/VarsAndArithmeticObjectGraph/saved_model.pb")
     with file_io.FileIO(sm_pb_file, "rb") as f:
@@ -37,6 +37,8 @@ class FingerprintingTest(test.TestCase):
     self.assertEqual(fingerprint_def.graph_def_program_hash,
                      13188891313422428336)
     self.assertEqual(fingerprint_def.signature_def_hash, 5693392539583495303)
+    self.assertEqual(fingerprint_def.saved_object_graph_hash,
+                     3678101440349108924)
 
 
 if __name__ == "__main__":
