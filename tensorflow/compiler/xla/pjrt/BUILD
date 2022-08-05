@@ -534,6 +534,16 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "tracked_tfrt_cpu_device_buffer_test",
+    srcs = ["tracked_tfrt_cpu_device_buffer_test.cc"],
+    deps = [
+        ":tracked_tfrt_cpu_device_buffer",
+        "@com_google_googletest//:gtest_main",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
 cc_library(
     name = "tfrt_cpu_pjrt_client",
     srcs = ["tfrt_cpu_pjrt_client.cc"],
