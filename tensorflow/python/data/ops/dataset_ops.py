@@ -1721,7 +1721,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       ```python
       dataset = make_dataset()
       def custom_shard_func(element):
-        return 0
+        return np.int64(0)
       dataset.save(
           path="/path/to/data", ..., shard_func=custom_shard_func)
       ```
