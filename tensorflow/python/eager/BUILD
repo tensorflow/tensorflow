@@ -1193,6 +1193,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/distribute/failure_handling:check_preemption_py",
         "@absl_py//absl/testing:parameterized",
     ],
 )

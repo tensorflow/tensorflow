@@ -193,6 +193,7 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime/coordination:coordination_service",
             "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
             "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
+            "//tensorflow/core/distributed_runtime/preemption:preemption_notifier",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
