@@ -173,7 +173,7 @@ std::string GenerateBlockCoords(const int4& block_size,
 
 void GetPowerVRRecommendedWorkGroupAndBlockSizeForF16(
     const BHWC& dst_shape, int dst_depth, int src_depth,
-    ConvPowerVR::ConvParams& conv_params, int3& work_group_size) {
+    ConvGeneric::ConvParams& conv_params, int3& work_group_size) {
   conv_params.weights_layout =
       WeightsLayout::kPowerVRConvF16OSpatialIOGroupI4O4;
 
@@ -222,7 +222,7 @@ void GetPowerVRRecommendedWorkGroupAndBlockSizeForF16(
 }
 
 bool UsePowerVRDotF16(const GpuInfo& gpu_info,
-                      const ConvPowerVR::ConvParams& conv_params) {
+                      const ConvGeneric::ConvParams& conv_params) {
   return gpu_info.IsPowerVR() && gpu_info.powervr_info.hasDotF16() &&
          gpu_info.IsApiOpenCl() &&
          conv_params.weights_data_type == DataType::FLOAT16 &&

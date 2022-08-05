@@ -42,28 +42,6 @@ namespace gpu {
 
 class ConvGeneric : public GPUOperation {
  public:
-  ConvPowerVR() = default;
-  void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const GpuInfo& gpu_info,
-      const KernelInfo& kernel_info,
-      std::vector<int3>* work_groups) const override;
-  absl::Status BindArguments(ArgumentsBinder* args) override;
-  int3 GetGridSize() const override;
-
-  WeightsDescription GetWeightsDescription() const {
-    WeightsDescription desc;
-    desc.type = conv_params_.weights_data_type;
-    desc.layout = conv_params_.weights_layout;
-    desc.output_group_size = conv_params_.block_size.w;
-    return desc;
-  }
-
-  // Move only
-  ConvPowerVR(ConvPowerVR&& operation);
-  ConvPowerVR& operator=(ConvPowerVR&& operation);
-  ConvPowerVR(const ConvPowerVR&) = delete;
-  ConvPowerVR& operator=(const ConvPowerVR&) = delete;
-
   enum class WeightsUploadType {
     LOCAL_MEM_ASYNC_SUBGROUP,  // we use it for PowerVR with workgroup size = 32
     LOCAL_MEM_BY_THREADS,
@@ -114,7 +92,6 @@ class ConvGeneric : public GPUOperation {
   absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
 
-<<<<<<< HEAD:tensorflow/lite/delegates/gpu/common/tasks/conv_generic.h
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
     desc.type = conv_params_.weights_data_type;
@@ -131,11 +108,6 @@ class ConvGeneric : public GPUOperation {
 
  private:
   ConvGeneric(const OperationDef& definition,
-=======
-
- private:
-  ConvPowerVR(const OperationDef& definition,
->>>>>>> Optimizing and improving accuracy of fp16 conv2d for new powervr gpu generation.:tensorflow/lite/delegates/gpu/common/tasks/conv_powervr.h
               const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
               const BHWC* dst_shape = nullptr);
   ConvGeneric(const OperationDef& definition,
