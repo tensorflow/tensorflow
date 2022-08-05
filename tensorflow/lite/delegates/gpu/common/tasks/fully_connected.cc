@@ -224,17 +224,10 @@ FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
   result.code_ = result.GetFullyConnectedKernelCode(
       definition, gpu_info, UseBufferForWeights(gpu_info), false);
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = gpu_info.SupportsImages() ? LinearStorageType::TEXTURE_2D
-                                                : LinearStorageType::BUFFER;
-  if (gpu_info.IsApple()) {
-    desc.storage_type =
-        DeduceLinearStorageType(definition.GetPrimaryStorageType());
-  }
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
 
   return result;
 }
@@ -247,17 +240,10 @@ FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
   result.code_ =
       result.GetFullyConnectedKernelCode(definition, gpu_info, false, true);
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = gpu_info.SupportsImages() ? LinearStorageType::TEXTURE_2D
-                                                : LinearStorageType::BUFFER;
-  if (gpu_info.IsApple()) {
-    desc.storage_type =
-        DeduceLinearStorageType(definition.GetPrimaryStorageType());
-  }
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
 
   return result;
 

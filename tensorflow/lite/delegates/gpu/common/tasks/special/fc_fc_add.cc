@@ -252,19 +252,15 @@ FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
   result.code_ = result.GetFCFCAddKernelCode(definition, gpu_info,
                                              weights_are_buffer, false, false);
 
-  TensorLinearDescriptor desc0;
-  desc0.storage_type = LinearStorageType::TEXTURE_2D;
-  desc0.element_type = definition.GetDataType();
-  desc0.UploadLinearData(attr0.bias);
-  result.args_.AddObject(
-      "biases0", std::make_unique<TensorLinearDescriptor>(std::move(desc0)));
+  TensorDescriptor bias0_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr0.bias);
+  result.args_.AddObject("biases0", std::make_unique<TensorDescriptor>(
+                                        std::move(bias0_tensor_desc)));
 
-  TensorLinearDescriptor desc1;
-  desc1.storage_type = LinearStorageType::TEXTURE_2D;
-  desc1.element_type = definition.GetDataType();
-  desc1.UploadLinearData(attr1.bias);
-  result.args_.AddObject(
-      "biases1", std::make_unique<TensorLinearDescriptor>(std::move(desc1)));
+  TensorDescriptor bias1_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr1.bias);
+  result.args_.AddObject("biases1", std::make_unique<TensorDescriptor>(
+                                        std::move(bias1_tensor_desc)));
 
   return result;
 }
@@ -280,19 +276,15 @@ FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
   result.code_ =
       result.GetFCFCAddKernelCode(definition, gpu_info, false, true, true);
 
-  TensorLinearDescriptor desc0;
-  desc0.storage_type = LinearStorageType::TEXTURE_2D;
-  desc0.element_type = definition.GetDataType();
-  desc0.UploadLinearData(attr0.bias);
-  result.args_.AddObject(
-      "biases0", std::make_unique<TensorLinearDescriptor>(std::move(desc0)));
+  TensorDescriptor bias0_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr0.bias);
+  result.args_.AddObject("biases0", std::make_unique<TensorDescriptor>(
+                                        std::move(bias0_tensor_desc)));
 
-  TensorLinearDescriptor desc1;
-  desc1.storage_type = LinearStorageType::TEXTURE_2D;
-  desc1.element_type = definition.GetDataType();
-  desc1.UploadLinearData(attr1.bias);
-  result.args_.AddObject(
-      "biases1", std::make_unique<TensorLinearDescriptor>(std::move(desc1)));
+  TensorDescriptor bias1_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr1.bias);
+  result.args_.AddObject("biases1", std::make_unique<TensorDescriptor>(
+                                        std::move(bias1_tensor_desc)));
 
   return result;
 }
