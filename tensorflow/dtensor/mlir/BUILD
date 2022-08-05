@@ -477,6 +477,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dstatus",
+        "//tensorflow/dtensor/cc:dtensor_utils",
         "//tensorflow/dtensor/cc:save_restore_util",
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/proto:layout_proto_cc",
