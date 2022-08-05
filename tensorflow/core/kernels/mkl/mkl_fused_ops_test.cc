@@ -1367,7 +1367,7 @@ class BiasCacheTest : public OpsTestBase {
 
     } else {
       TF_EXPECT_OK(
-          NodeDefBuilder("quantized_conv2d_bias_cache", "_QuantizedConv2D")
+          NodeDefBuilder("quantized_conv2d_bias_cache", "_FusedQuantizedConv2D")
               .Attr("Thost_inputs",
                     {dtype, DT_QINT8, DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT,
                      DT_FLOAT, DT_FLOAT, DT_FLOAT})

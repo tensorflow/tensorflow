@@ -59,7 +59,8 @@ class QuantizedConv2DPerChannelTest : public OpsTestBase {
                        .Finalize(node_def()));
     } else {
       TF_ASSERT_OK(
-          NodeDefBuilder("quantized_conv_perchannel_op", "_QuantizedConv2D")
+          NodeDefBuilder("quantized_conv_perchannel_op",
+                         "_FusedQuantizedConv2D")
               .Attr("Thost_inputs", {DT_QUINT8, DT_QINT8, DT_FLOAT, DT_FLOAT,
                                      DT_FLOAT, DT_FLOAT})
               .Attr("Thost_outputs", {DT_QINT32, DT_FLOAT, DT_FLOAT})
@@ -186,9 +187,9 @@ class QuantizedConv2DPerChannelTest : public OpsTestBase {
   }
 };
 
-TEST_F(QuantizedConv2DPerchannelTest, SmallOldAPI) { TestSmall(true); }
+TEST_F(QuantizedConv2DPerChannelTest, SmallOldAPI) { TestSmall(true); }
 
-TEST_F(QuantizedConv2DPerchannelTest, SmallNewAPI) { TestSmall(false); }
+TEST_F(QuantizedConv2DPerChannelTest, SmallNewAPI) { TestSmall(false); }
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL && ENABLE_MKL
