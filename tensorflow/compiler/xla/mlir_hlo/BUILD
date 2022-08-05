@@ -853,6 +853,7 @@ cc_library(
         "@llvm-project//mlir:ArithmeticUtils",
         "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:ComplexDialect",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgDialect",

@@ -5266,3 +5266,110 @@ func.func @reduce_precision(%arg0: tensor<1x2x3x4xf32>)
   %0 = "mhlo.reduce_precision"(%arg0) {exponent_bits=3:i32, mantissa_bits=3:i32} : (tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
   return %0 : tensor<1x2x3x4xf32>
 }
+
+// -----
+
+// The following pattern only tests the general structure of the code and the
+// affine maps as it is better tested by tests executing the result, and as it
+// includes many ops which could lead to a high load of refactoring.
+//
+// This op has non-default values for everything except feature_group_count to
+// ensure the correct default pattern is tested instead of any specializations.
+
+
+// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3) -> (-d0 + 12, -d1 + 12, d2, d3)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (d0, d7, d5 * 2 + d6, d3 * 2 + d4, d1)>
+// CHECK-DAG: #[[MAP3:.*]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (d4, d6, d1, d0, d2)>
+// CHECK-DAG: #[[MAP4:.*]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (d7, d3, d5, d0, d2)>
+
+// CHECK-LABEL: @batch_group_count_convolution
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x14x12x1xf64>
+// CHECK-SAME: %[[ARG1:.*]]: tensor<7x7x1x2xf64>)
+// CHECK-SAME -> tensor<1x6x8x2xf64>
+
+  // Check for padding and dilation
+  // CHECK-DAG: %[[PADDED_LHS:.*]] = tensor.insert_slice %[[ARG0]] into %{{.*}}[0, 0, 1, 0] [2, 14, 12, 1] [1, 2, 2, 1] : tensor<2x14x12x1xf64> into tensor<2x28x24x1xf64>
+
+  // Check for padding and dilation
+  // CHECK-DAG: %[[PADDED_RHS:.*]] = tensor.insert_slice %[[ARG1]] into %{{.*}}[0, 0, 0, 0] [7, 7, 1, 2] [2, 2, 1, 1] : tensor<7x7x1x2xf64> into tensor<13x13x1x2xf64>
+
+  // Check for reversing window
+  // CHECK: linalg.generic {indexing_maps = [#[[MAP0]], #[[MAP1]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins(%[[PADDED_RHS]] : tensor<13x13x1x2xf64>) outs(%{{.*}} : tensor<13x13x1x2xf64>) {
+
+  // Check Convolution
+  // CHECK: linalg.generic {indexing_maps = [#[[MAP2]], #[[MAP3]], #[[MAP4]]],
+  // CHECK-SAME: iterator_types = ["parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "reduction", "parallel"]}
+  // CHECK-SAME: ins(%8, %9 : tensor<2x1x28x24x1xf64>, tensor<13x13x1x2x1xf64>)
+  // CHECK-SAME: outs(%11 : tensor<1x6x8x2x1xf64>) {
+  // CHECK: ^bb0(%[[LHS:.*]]: f64, %[[RHS:.*]]: f64, %[[OUT:.*]]: f64):
+    // CHECK: %[[MUL:.*]] = arith.mulf %[[LHS]], %[[RHS]] : f64
+    // CHECK: %[[RES:.*]] = arith.addf %[[OUT]], %[[MUL]] : f64
+    // CHECK: linalg.yield %[[RES]] : f64
+  // CHECK: } -> tensor<1x6x8x2x1xf64>
+  // Check proper shape is returned
+  // CHECK: return {{.*}} : tensor<1x6x8x2xf64>
+
+func.func @batch_group_count_convolution(%arg0: tensor<2x14x12x1xf64>, %arg1: tensor<7x7x1x2xf64>)
+                            -> tensor<1x6x8x2xf64> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {stride = [2, 2], pad = [[1, 0], [0, 1]], lhs_dilate = [2, 2], rhs_dilate = [2, 2], reverse = [1, 1]}
+    {batch_group_count = 2 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<precision HIGHEST>, #mhlo<precision HIGHEST>]}
+    : (tensor<2x14x12x1xf64>, tensor<7x7x1x2xf64>) -> tensor<1x6x8x2xf64>
+  return %0 : tensor<1x6x8x2xf64>
+}
+
+// -----
+// The following pattern only tests the general structure of the code and the
+// affine maps as it is better tested by tests executing the result, and as it
+// includes many ops which could lead to a high load of refactoring.
+//
+// This op has non-default values for everything except batch_group_count to
+// ensure the correct default pattern is tested instead of any specializations.
+
+// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3) -> (-d0 + 12, -d1 + 12, d2, d3)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (d7, d5 * 2 + d6, d3 * 2 + d4, d0, d1)>
+// CHECK-DAG: #[[MAP3:.*]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (d4, d6, d1, d0, d2)>
+// CHECK-DAG: #[[MAP4:.*]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (d7, d3, d5, d0, d2)>
+
+// CHECK-LABEL: @feature_group_count_convolution
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x14x12x2xf64>
+// CHECK-SAME: %[[ARG1:.*]]: tensor<7x7x1x2xf64>)
+// CHECK-SAME -> tensor<2x6x8x2xf64>
+
+  // Check for padding and dilation
+  // CHECK-DAG: %[[PADDED_LHS:.*]] = tensor.insert_slice %[[ARG0]] into %{{.*}}[0, 0, 1, 0] [2, 14, 12, 2] [1, 2, 2, 1] : tensor<2x14x12x2xf64> into tensor<2x28x24x2xf64>
+
+  // Check for padding and dilation
+  // CHECK-DAG: %[[PADDED_RHS:.*]] = tensor.insert_slice %[[ARG1]] into %{{.*}}[0, 0, 0, 0] [7, 7, 1, 2] [2, 2, 1, 1] : tensor<7x7x1x2xf64> into tensor<13x13x1x2xf64>
+
+  // Check for reversing window
+  // CHECK: linalg.generic {indexing_maps = [#[[MAP0]], #[[MAP1]]],
+  // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel"]}
+  // CHECK-SAME: ins(%[[PADDED_RHS]] : tensor<13x13x1x2xf64>)
+  // CHECK-SAME: outs(%{{.*}} : tensor<13x13x1x2xf64>) {
+
+  // Check Convolution
+  // CHECK: linalg.generic {indexing_maps = [#[[MAP2]], #[[MAP3]], #[[MAP4]]],
+  // CHECK-SAME: iterator_types = ["parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "reduction", "parallel"]}
+  // CHECK-SAME: ins(%8, %9 : tensor<2x28x24x2x1xf64>, tensor<13x13x1x2x1xf64>)
+  // CHECK-SAME: outs(%11 : tensor<2x6x8x2x1xf64>) {
+  // CHECK: ^bb0(%[[LHS:.*]]: f64, %[[RHS:.*]]: f64, %[[OUT:.*]]: f64):
+    // CHECK: %[[MUL:.*]] = arith.mulf %[[LHS]], %[[RHS]] : f64
+    // CHECK: %[[RES:.*]] = arith.addf %[[OUT]], %[[MUL]] : f64
+    // CHECK: linalg.yield %[[RES]] : f64
+  // CHECK: } -> tensor<2x6x8x2x1xf64>
+  // Check proper shape is returned
+  // CHECK: return {{.*}} : tensor<2x6x8x2xf64>
+
+func.func @feature_group_count_convolution(%arg0: tensor<2x14x12x2xf64>, %arg1: tensor<7x7x1x2xf64>)
+                            -> tensor<2x6x8x2xf64> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {stride = [2, 2], pad = [[1, 0], [0, 1]], lhs_dilate = [2, 2], rhs_dilate = [2, 2], reverse = [1, 1]}
+    {batch_group_count = 1 : i64, feature_group_count = 2 : i64, precision_config = [#mhlo<precision HIGHEST>, #mhlo<precision HIGHEST>]}
+    : (tensor<2x14x12x2xf64>, tensor<7x7x1x2xf64>) -> tensor<2x6x8x2xf64>
+  return %0 : tensor<2x6x8x2xf64>
+}
