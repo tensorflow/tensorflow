@@ -74,19 +74,6 @@ def make_unsorted_segment_tests(options, unsorted_segment_op):
       "segment_id_2": [[0, 0]],
       "num_segments_2": [1],
       "multi_node": [1]
-  }, {
-      "data_shape": [[2, 2, 3]],
-      "segment_id": [[[1, 2], [3, 4]], [4, 5],
-                     [[[1, 2, 3], [3, 4, 5]], [[1, 2, 4], [0, 0, -1]]]],
-      "num_segments": [10],
-      "dtype": [tf.int32, tf.float32],
-      "multi_node": [0]
-  }, {
-      "data_shape": [[2, 0, 3]],
-      "segment_id": [[1, 1]],
-      "num_segments": [2],
-      "dtype": [tf.int32, tf.float32],
-      "multi_node": [0]
   }]
 
   def build_graph_one_node(parameters):

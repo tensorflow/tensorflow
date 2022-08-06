@@ -86,6 +86,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 namespace tflite {
 
 namespace reference_ops {
@@ -1140,11 +1141,9 @@ inline void UnsortedSegmentRef(const RuntimeShape& input_shape,
     output_data[i] = Op<T>::kInitialValue;
   }
   Op<T> op;
-  int segment_flat_size = 1;
-  for (int i = 1; i < output_shape.DimensionsCount(); ++i) {
-    segment_flat_size *= output_shape.Dims(i);
-  }
-  for (int i = 0; i < segment_ids_shape.FlatSize(); i++) {
+  const int segment_flat_size =
+      MatchingFlatSizeSkipDim(input_shape, 0, output_shape);
+  for (int i = 0; i < input_shape.Dims(0); i++) {
     int output_index = segment_ids_data[i];
     if (output_index < 0) continue;
     for (int j = 0; j < segment_flat_size; ++j) {
