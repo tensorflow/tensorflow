@@ -348,7 +348,10 @@ android_library(
     exports_manifest = 1,
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
-    deps = [":tensorflowlite_api"],
+    deps = [
+        ":tensorflowlite_api",
+        "//third_party/java/error_prone:annotations",
+    ],
 )
 
 #-----------------------------------------------------------------------------
