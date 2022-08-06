@@ -238,6 +238,7 @@ pytype_strict_library(
 tf_py_test(
     name = "representative_dataset_test",
     srcs = ["representative_dataset_test.py"],
+    tags = ["no_pip"],  # b/241528672
     deps = [
         ":representative_dataset",
         "//tensorflow/python/client:session",
