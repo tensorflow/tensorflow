@@ -55,5 +55,76 @@ TEST_P(UnsortedSegmentTest, NumSegmentsNotScalarShapeFails) {
   model.PopulateTensor<int32_t>(model.num_segments(), {2, 1});
   ASSERT_EQ(model.Invoke(), kTfLiteError);
 }
+TEST_P(UnsortedSegmentTest, Rank2SegIdsNotPrefixFails) {
+  UnsortedSegmentModel<int32_t> model =
+      getModel({TensorType_INT32, {2, 2, 2}}, {TensorType_INT32, {2, 1}},
+               {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {1, 1});
+  model.PopulateTensor<int32_t>(model.num_segments(), {3});
+  ASSERT_EQ(model.Invoke(), kTfLiteError);
+}
+TEST_P(UnsortedSegmentTest, Rank2SegIdsHasShapeNumSegDataShapeSuffix) {
+  UnsortedSegmentModel<int32_t> model =
+      getModel({TensorType_INT32, {2, 2, 2}}, {TensorType_INT32, {2, 2}},
+               {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {1, 2, 0, 8});
+  model.PopulateTensor<int32_t>(model.num_segments(), {10});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), testing::ElementsAreArray({10, 2}));
+}
+TEST_P(UnsortedSegmentTest, Rank2SegIdsHasShapeNumSegDataShapeSuffixConst) {
+  UnsortedSegmentModel<int32_t> model = getConstModel(
+      {TensorType_INT32, {2, 2, 2}}, {1, 2, -1, -1}, {2, 2}, {3}, {1});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), testing::ElementsAreArray({3, 2}));
+}
+TEST_P(UnsortedSegmentTest, SegIdsHasSameShapeAsData2d) {
+  UnsortedSegmentModel<int32_t> model =
+      getModel({TensorType_INT32, {2, 2}}, {TensorType_INT32, {2, 2}},
+               {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 1, 5, 2, 4});
+  model.PopulateTensor<int32_t>(model.num_segments(), {10});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), testing::ElementsAreArray({10}));
+}
+TEST_P(UnsortedSegmentTest, SegIdsHasSameShapeAsData2dConst) {
+  UnsortedSegmentModel<int32_t> model =
+      getConstModel({TensorType_INT32, {2, 2}}, {1, 1, 1, 1}, {2, 2}, {3}, {1});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), testing::ElementsAreArray({3}));
+}
+TEST_P(UnsortedSegmentTest, SegIdsHasSameShapeAsData3d) {
+  UnsortedSegmentModel<int32_t> model =
+      getModel({TensorType_INT32, {2, 2, 2}}, {TensorType_INT32, {2, 2, 2}},
+               {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int32_t>(model.num_segments(), {10});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), testing::ElementsAreArray({10}));
+}
+TEST_P(UnsortedSegmentTest, SegIdsHasSameShapeAsData3dConst) {
+  UnsortedSegmentModel<int32_t> model =
+      getConstModel({TensorType_INT32, {2, 2, 2}}, {0, 1, 2, -1, 3, -1, 4, -1},
+                    {2, 2, 2}, {8}, {1});
+  model.PopulateTensor<int32_t>(model.data(), {1, 1, 1, 1, 1, 1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), testing::ElementsAreArray({8}));
+}
+TEST_P(UnsortedSegmentTest, Data5dHasShapeNumSegDataShapeSuffix) {
+  UnsortedSegmentModel<int32_t> model =
+      getModel({TensorType_INT32, {2, 1, 2, 1, 2}}, {TensorType_INT32, {2, 1}},
+               {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6, 7, 8});
+  model.PopulateTensor(model.segment_ids(), {0, 1});
+  model.PopulateTensor(model.num_segments(), {10});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), testing::ElementsAreArray({10, 2, 1, 2}));
+}
 }  // namespace
 }  // namespace tflite
