@@ -1772,21 +1772,29 @@ Node::NodeVector Node::CollectNodes(
   return CollectNodesLocked(order, collect_node);
 }
 
-void Node::TryDownsizeBuffer() {
-  Node::ModelParameters buffer_size_parameters;
+bool Node::TryDownsizeBuffer() {
+  if (!IsAsync()) {
+    return false;
+  }
+  Node::ModelParameters tunable_parameters;
   {
     tf_shared_lock l(mu_);
     if (buffered_elements_low_ > buffered_elements_high_) {
       // No element is stored in the buffer yet. Do nothing.
-      return;
+      return false;
     }
-    CollectTunableParametersHelper(&buffer_size_parameters);
+    CollectTunableParametersHelper(&tunable_parameters);
   }
-  // Sync buffer state values to parameter values
-  for (auto& [node_name, parameter] : buffer_size_parameters) {
-    if (parameter->name != kBufferSize) {
+  Node::ModelParameters buffer_size_parameters;
+  for (auto& parameter : tunable_parameters) {
+    if (parameter.second->name != kBufferSize) {
       continue;
     }
+    buffer_size_parameters.push_back(std::move(parameter));
+  }
+  bool downsized = false;
+  // Sync buffer state values to parameter values
+  for (auto& [node_name, parameter] : buffer_size_parameters) {
     tf_shared_lock l(*parameter->state->mu);
     parameter->value = parameter->state->value;
   }
@@ -1794,22 +1802,31 @@ void Node::TryDownsizeBuffer() {
     // Downsize buffers
     tf_shared_lock l(mu_);
     for (auto& [node_name, parameter] : buffer_size_parameters) {
-      if (parameter->name != kBufferSize) {
-        continue;
-      }
       if (buffered_elements_low_ > 0 &&
-          buffered_elements_high_ <= parameter->value) {
+          (buffered_elements_high_ - buffered_elements_low_ + 1) <
+              parameter->value) {
         double old_value = parameter->value;
-        parameter->value = buffered_elements_high_ - buffered_elements_low_ + 1;
-        VLOG(2) << "Downsize buffer " << long_name() << "::" << parameter->name
-                << " from " << old_value << " to " << parameter->value;
-        ResetBufferWatermarks();
+        // By default, we double buffer sizes if there is enough RAM in
+        // upsize. We cap the downsize by 1/4 of the current size to avoid
+        // undoing the previous upsize.
+        parameter->value =
+            std::max(buffered_elements_high_ - buffered_elements_low_ + 1,
+                     static_cast<int64_t>(old_value * 0.75));
+        if (old_value != parameter->value) {
+          VLOG(2) << "Downsize buffer " << long_name()
+                  << "::" << parameter->name << " from " << old_value << " to "
+                  << parameter->value;
+          downsized = true;
+        }
       }
     }
   }
   // Since SharedState locks are the same as the Ops iterator locks, locking of
   // the SharedState locks should be minimized in the optimization thread.
-  UpdateStateValues(&buffer_size_parameters);
+  if (downsized) {
+    UpdateStateValues(&buffer_size_parameters);
+  }
+  return downsized;
 }
 
 void Node::CollectBufferParametersToUpsize(
@@ -1918,6 +1935,8 @@ std::shared_ptr<Node> Node::SnapshotHelper(
     cloned_current->autotune_.store(autotune_);
     cloned_current->buffered_bytes_.store(buffered_bytes_);
     cloned_current->buffered_elements_.store(buffered_elements_);
+    cloned_current->buffered_elements_low_.store(buffered_elements_low_);
+    cloned_current->buffered_elements_high_.store(buffered_elements_high_);
     cloned_current->bytes_consumed_.store(bytes_consumed_);
     cloned_current->bytes_produced_.store(bytes_produced_);
     cloned_current->num_elements_.store(num_elements_);
@@ -2203,15 +2222,17 @@ Model::ModelParameters Model::CollectTunableParameters(
   return node->CollectTunableParameters();
 }
 
-void Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
+bool Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
   Node::NodeVector nodes =
       snapshot->CollectNodes(TraversalOrder::BFS, IsAsyncNode);
-  if (snapshot->IsAsync()) {
-    snapshot->TryDownsizeBuffer();
-  }
+  nodes.push_back(snapshot);
+  bool downsized = false;
   for (auto& node : nodes) {
-    node->TryDownsizeBuffer();
+    if (node->TryDownsizeBuffer()) {
+      downsized = true;
+    }
   }
+  return downsized;
 }
 
 absl::flat_hash_map<Node*, Parameter*> Model::CollectBufferParametersToUpsize(
@@ -2554,11 +2575,19 @@ void Model::OptimizeBuffers(std::shared_ptr<Node> snapshot,
   LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
       << "Starting optimization of buffer_size parameters (message logged "
          "every 10 minutes).";
-  DownsizeBuffers(snapshot);
-  UpsizeBuffers(snapshot, ram_budget);
+  // Reset node watermarks if any node's buffer is upsized or downsized. We
+  // reset the watermarks of not only those nodes whose sizes change but all
+  // nodes. The reason is that the optimization algorithm works on a snapshot of
+  // nodes. There is no back references from snapshot of nodes to nodes. We
+  // could add these back references but it is probably not necessary.
+  bool downsized = DownsizeBuffers(snapshot);
+  bool upsized = UpsizeBuffers(snapshot, ram_budget);
+  if (downsized || upsized) {
+    ResetBufferWatermarks();
+  }
 }
 
-void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
+bool Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
   // Find buffers that should be up-sized.
   absl::flat_hash_map<Node*, Parameter*> node_parameters =
       CollectBufferParametersToUpsize(snapshot);
@@ -2567,7 +2596,7 @@ void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
   double available_ram_bytes =
       static_cast<double>(ram_budget) - TotalMaximumBufferedBytes(snapshot);
 
-  // Compute memory used by all buffers that should be upsized.
+  // Compute the max memory used by all buffers that should be upsized.
   double max_buffered_bytes = 0;
   for (auto& [node, parameter] : node_parameters) {
     if (node->buffered_elements() == 0) {
@@ -2585,6 +2614,7 @@ void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
         1.0 + std::min(1.0, available_ram_bytes / max_buffered_bytes);
   }
 
+  bool upsized = false;
   // Up-size all buffers by the scaling factor.
   for (auto& [node, parameter] : node_parameters) {
     double old_value = parameter->value;
@@ -2601,9 +2631,18 @@ void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
         parameter->state->value = parameter->value;
         parameter->state->cond_var->notify_all();
       }
-      // Reset node buffer watermarks
-      node->ResetBufferWatermarks();
+      upsized = true;
     }
+  }
+  return upsized;
+}
+
+void Model::ResetBufferWatermarks() {
+  Node::NodeVector nodes =
+      output()->CollectNodes(TraversalOrder::BFS, IsAsyncNode);
+  nodes.push_back(output());
+  for (auto& node : nodes) {
+    node->ResetBufferWatermarks();
   }
 }
 

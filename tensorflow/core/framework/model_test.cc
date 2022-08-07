@@ -1945,8 +1945,8 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
         ratio: 1
         parameters: {
           name: "buffer_size"
-          value: 5
-          state_value: 5
+          value: 3
+          state_value: 3
           min: 1
           max: 10
           tunable: true
@@ -2007,11 +2007,33 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
         num_elements: 100
         processing_time: 2000
         node_class: ASYNC_KNOWN_RATIO
+        inputs: 5
         ratio: 1
         parameters: {
           name: "buffer_size"
           value: 5
           state_value: 5
+          min: 1
+          max: 8
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 5
+      value: {
+        id: 5
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 8
+          state_value: 8
           min: 1
           max: 8
           tunable: true
@@ -2025,6 +2047,7 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
   std::shared_ptr<Node> node_2 = GetNode(2);
   std::shared_ptr<Node> node_3 = GetNode(3);
   std::shared_ptr<Node> node_4 = GetNode(4);
+  std::shared_ptr<Node> node_5 = GetNode(5);
   // Set node 1 low watermark to 1 and high watermark to 2. Expect that it is
   // downsized to 2.
   node_1->record_buffer_event(100, 1);
@@ -2054,13 +2077,31 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
   node_4->record_buffer_event(-100, -1);
   EXPECT_EQ(0, node_4->buffered_elements_low());
   EXPECT_EQ(5, node_4->buffered_elements_high());
+  // Set node 5 low watermark to 1 and high watermark to 2. Its current buffer
+  // size is set to 8. Expect that it is downsized to 8/2 rather than (2 - 1 + 1
+  // = 3) because downsize is capped to half its size.
+  node_5->record_buffer_event(100, 1);
+  node_5->record_buffer_event(-100, 1);
+  EXPECT_EQ(1, node_5->buffered_elements_low());
+  EXPECT_EQ(2, node_5->buffered_elements_high());
 
-  model_->OptimizeBuffers(node_1, 10000);
+  model_->OptimizeBuffers(node_1->Snapshot(), 10000);
 
   EXPECT_EQ(2, node_1->parameter_value(kBufferSize));
   EXPECT_EQ(5, node_2->parameter_value(kBufferSize));
   EXPECT_EQ(10, node_3->parameter_value(kBufferSize));
   EXPECT_EQ(8, node_4->parameter_value(kBufferSize));
+  EXPECT_EQ(6, node_5->parameter_value(kBufferSize));
+  EXPECT_EQ(2, node_1->buffered_elements_low());
+  EXPECT_EQ(2, node_1->buffered_elements_high());
+  EXPECT_EQ(4, node_2->buffered_elements_low());
+  EXPECT_EQ(4, node_2->buffered_elements_high());
+  EXPECT_EQ(4, node_3->buffered_elements_low());
+  EXPECT_EQ(4, node_3->buffered_elements_high());
+  EXPECT_EQ(4, node_4->buffered_elements_low());
+  EXPECT_EQ(4, node_4->buffered_elements_high());
+  EXPECT_EQ(2, node_5->buffered_elements_low());
+  EXPECT_EQ(2, node_5->buffered_elements_high());
 }
 
 TEST_F(BufferSizeTest, OptimizeBuffers_TightMemory) {
@@ -2187,12 +2228,20 @@ TEST_F(BufferSizeTest, OptimizeBuffers_TightMemory) {
   EXPECT_EQ(0, node_4->buffered_elements_low());
   EXPECT_EQ(5, node_4->buffered_elements_high());
 
-  model_->OptimizeBuffers(node_1, 3000);
+  model_->OptimizeBuffers(node_1->Snapshot(), 3000);
 
   EXPECT_DOUBLE_EQ(7.0, node_1->parameter_value(kBufferSize));
   EXPECT_DOUBLE_EQ(7.0, node_2->parameter_value(kBufferSize));
   EXPECT_DOUBLE_EQ(7.0, node_3->parameter_value(kBufferSize));
   EXPECT_DOUBLE_EQ(7.0, node_4->parameter_value(kBufferSize));
+  EXPECT_EQ(5, node_1->buffered_elements_low());
+  EXPECT_EQ(5, node_1->buffered_elements_high());
+  EXPECT_EQ(5, node_2->buffered_elements_low());
+  EXPECT_EQ(5, node_2->buffered_elements_high());
+  EXPECT_EQ(5, node_3->buffered_elements_low());
+  EXPECT_EQ(5, node_3->buffered_elements_high());
+  EXPECT_EQ(4, node_4->buffered_elements_low());
+  EXPECT_EQ(4, node_4->buffered_elements_high());
 }
 
 TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
