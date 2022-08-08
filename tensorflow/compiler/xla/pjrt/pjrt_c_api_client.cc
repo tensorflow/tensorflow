@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 // TODO(skyewm): remove when everything goes through C API
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -645,11 +646,11 @@ bool PjRtCApiExecutable::IsDeleted() {
 // ---------------------------------- Buffers ----------------------------------
 
 PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
-    : client_(client), buffer_(buffer), wrapped_(buffer->buffer.get()) {
+    : client_(client),
+      buffer_(buffer, ::pjrt::MakeBufferDeleter(client->pjrt_c_api())),
+      wrapped_(buffer_->buffer.get()) {
   set_shape();
 }
-
-PjRtCApiBuffer::~PjRtCApiBuffer() { delete buffer_; }
 
 const Shape& PjRtCApiBuffer::on_device_shape() const {
   CHECK(shape_.has_value())
@@ -661,7 +662,7 @@ void PjRtCApiBuffer::set_shape() {
   PJRT_Buffer_OnDeviceTrimmedShape_Args args;
   args.struct_size = PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.buffer = buffer_.get();
 
   pjrt::LogFatalIfPjrtError(
       client_->pjrt_c_api()->PJRT_Buffer_OnDeviceTrimmedShape(&args),
@@ -708,7 +709,7 @@ StatusOr<size_t> PjRtCApiBuffer::GetOnDeviceSizeInBytes() const {
   PJRT_Buffer_OnDeviceSizeInBytes_Args args;
   args.struct_size = PJRT_Buffer_OnDeviceSizeInBytes_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.buffer = buffer_.get();
   RETURN_STATUS_IF_ERROR(
       client_->pjrt_c_api()->PJRT_Buffer_OnDeviceSizeInBytes(&args),
       client_->pjrt_c_api());
@@ -720,7 +721,7 @@ PjRtDevice* PjRtCApiBuffer::device() const {
   PJRT_Buffer_Device_Args args;
   args.struct_size = PJRT_Buffer_Device_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.buffer = buffer_.get();
   const PJRT_Api* api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_Device(&args), api);
   return client_->GetCppDevice(args.device);
@@ -730,7 +731,7 @@ void PjRtCApiBuffer::Delete() {
   PJRT_Buffer_Delete_Args args;
   args.struct_size = PJRT_Buffer_Delete_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.buffer = buffer_.get();
   const PJRT_Api* api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_Delete(&args), api);
 }
@@ -739,7 +740,7 @@ bool PjRtCApiBuffer::IsDeleted() {
   PJRT_Buffer_IsDeleted_Args args;
   args.struct_size = PJRT_Buffer_IsDeleted_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.buffer = buffer_.get();
   const PJRT_Api* api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_IsDeleted(&args), api);
   return args.is_deleted;
@@ -751,7 +752,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
     PJRT_Buffer_CopyToDevice_Args args;
     args.struct_size = PJRT_Buffer_CopyToDevice_Args_STRUCT_SIZE;
     args.priv = nullptr;
-    args.buffer = buffer_;
+    args.buffer = buffer_.get();
     args.dst_device =
         tensorflow::down_cast<PjRtCApiDevice*>(dst_device)->c_device();
     const PJRT_Api* api = pjrt_c_api();
@@ -769,7 +770,7 @@ bool PjRtCApiBuffer::IsOnCpu() const {
   PJRT_Buffer_IsOnCpu_Args args;
   args.struct_size = PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.buffer = buffer_.get();
   const PJRT_Api* api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_IsOnCpu(&args), api);
   return args.is_on_cpu;

@@ -532,6 +532,18 @@ typedef PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args);
 
 // ---------------------------------- Buffers ----------------------------------
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+} PJRT_Buffer_Destroy_Args;
+const size_t PJRT_Buffer_Destroy_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_Destroy_Args, buffer);
+
+// Deletes the underlying runtime objects as if 'PJRT_Buffer_Delete' were
+// called and frees `buffer`. `buffer` can be nullptr.
+typedef PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
+
 // This trimmed shape doesn't have any Tuple information. In case of Tuple,
 // assert is triggered from the C API  Client.
 // TODO(b/238999986): This is a temporary solution. Remove this later.
@@ -675,6 +687,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Execute);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);
