@@ -41,7 +41,7 @@ ENTRY %tfcompile.48 {
   // CHECK-NEXT: %[[VAL_11:.*]] = "mhlo.broadcast_in_dim"(%[[VAL_10]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<300x1x5xf32>
   %broadcast.33 = f32[300,1,5] broadcast(%constant.32), dimensions={}
 
-  // CHECK-NEXT: %[[VAL_12:.*]] = "mhlo.compare"(%[[VAL_9]], %[[VAL_11]]) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<300x1x5xf32>, tensor<300x1x5xf32>) -> tensor<300x1x5xi1>
+  // CHECK-NEXT: %[[VAL_12:.*]] = mhlo.compare GT, %[[VAL_9]], %[[VAL_11]] : (tensor<300x1x5xf32>, tensor<300x1x5xf32>) -> tensor<300x1x5xi1>
   %compare.34 = pred[300,1,5] compare(%multiply.31, %broadcast.33), direction=GT
 
   // CHECK-NEXT: %[[VAL_13:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>

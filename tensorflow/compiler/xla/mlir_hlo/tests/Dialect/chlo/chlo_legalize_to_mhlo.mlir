@@ -135,7 +135,7 @@ func.func @asinh_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_1:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_2:.*]] = mhlo.constant dense<1.797{{.*}}E+308>
   // CHECK: %[[TMP_3:.*]] = mhlo.sqrt %[[TMP_2]]
-  // CHECK: %[[TMP_4:.*]] = "mhlo.compare"(%[[TMP_1]], %[[TMP_3]]) {comparison_direction = #mhlo<comparison_direction GE>}
+  // CHECK: %[[TMP_4:.*]] = mhlo.compare GE, %[[TMP_1]], %[[TMP_3]]
   // CHECK: %[[TMP_5:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_6:.*]] = mhlo.log %[[TMP_5]]
   // CHECK: %[[TMP_7:.*]] = mhlo.constant dense<2.000{{.*}}e+00>
@@ -143,7 +143,7 @@ func.func @asinh_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_9:.*]] = mhlo.add %[[TMP_6]], %[[TMP_8]]
   // CHECK: %[[TMP_10:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_11:.*]] = mhlo.constant dense<1.000{{.*}}e+00>
-  // CHECK: %[[TMP_12:.*]] = "mhlo.compare"(%[[TMP_10]], %[[TMP_11]]) {comparison_direction = #mhlo<comparison_direction LE>}
+  // CHECK: %[[TMP_12:.*]] = mhlo.compare LE, %[[TMP_10]], %[[TMP_11]]
   // CHECK: %[[TMP_13:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_14:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_15:.*]] = mhlo.abs %[[ARG]]
@@ -382,19 +382,19 @@ func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_142:.*]] = mhlo.add %[[TMP_140]], %[[TMP_141]]
   // CHECK: %[[TMP_143:.*]] = mhlo.divide %[[TMP_120]], %[[TMP_142]]
   // CHECK: %[[TMP_144:.*]] = mhlo.constant dense<8.000000e+00>
-  // CHECK: %[[TMP_145:.*]] = "mhlo.compare"(%[[TMP_42]], %[[TMP_144]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_145:.*]] = mhlo.compare LT, %[[TMP_42]], %[[TMP_144]], NOTYPE
   // CHECK: %[[TMP_146:.*]] = "mhlo.select"(%[[TMP_145]], %[[TMP_100]], %[[TMP_143]])
   // CHECK: %[[TMP_147:.*]] = mhlo.constant dense<-709.78271289338397>
-  // CHECK: %[[TMP_148:.*]] = "mhlo.compare"(%[[TMP_40]], %[[TMP_147]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_148:.*]] = mhlo.compare LT, %[[TMP_40]], %[[TMP_147]], NOTYPE
   // CHECK: %[[TMP_149:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK: %[[TMP_150:.*]] = "mhlo.select"(%[[TMP_148]], %[[TMP_149]], %[[TMP_146]])
-  // CHECK: %[[TMP_152:.*]] = "mhlo.compare"(%[[ARG]], %[[TMP_149]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_152:.*]] = mhlo.compare LT, %[[ARG]], %[[TMP_149]], NOTYPE
   // CHECK: %[[TMP_153:.*]] = mhlo.constant dense<2.000000e+00>
   // CHECK: %[[TMP_154:.*]] = mhlo.subtract %[[TMP_153]], %[[TMP_150]]
   // CHECK: %[[TMP_155:.*]] = "mhlo.select"(%[[TMP_152]], %[[TMP_154]], %[[TMP_150]])
   // CHECK: %[[TMP_156:.*]] = mhlo.subtract %[[TMP_38]], %[[TMP_155]]
   // CHECK: %[[TMP_157:.*]] = mhlo.abs %[[ARG]]
-  // CHECK: %[[TMP_159:.*]] = "mhlo.compare"(%[[TMP_157]], %[[TMP_38]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_159:.*]] = mhlo.compare LT, %[[TMP_157]], %[[TMP_38]], NOTYPE
   // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[TMP_159]], %[[TMP_37]], %[[TMP_156]])
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<f64>) -> tensor<f64>
@@ -485,11 +485,11 @@ func.func @erf_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
 func.func @acosh(%arg: tensor<f16>) -> tensor<f16> {
   // CHECK: %[[MINUSONE:.*]] = mhlo.constant dense<-1.000000e+00>
-  // CHECK: %[[CMP:.*]] = "mhlo.compare"(%[[ARG]], %[[MINUSONE]]) {comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[CMP:.*]] = mhlo.compare LT, %[[ARG]], %[[MINUSONE]]
   // CHECK-DAG: %[[NAN:.*]] = mhlo.constant dense<0x7E00>
   // CHECK-DAG: %[[MAX:.*]] = mhlo.constant dense<6.550400e+04>
   // CHECK: %[[SQRTMAX:.*]] = mhlo.sqrt %[[MAX]]
-  // CHECK: %[[OVERFLOW:.*]] = "mhlo.compare"(%[[ARG]], %[[SQRTMAX]]) {comparison_direction = #mhlo<comparison_direction GE>}
+  // CHECK: %[[OVERFLOW:.*]] = mhlo.compare GE, %[[ARG]], %[[SQRTMAX]]
   // CHECK: %[[LOGARG:.*]] = mhlo.log %[[ARG]]
   // CHECK: %[[TWO:.*]] = mhlo.constant dense<2.000000e+00>
   // CHECK: %[[LOGTWO:.*]] = mhlo.log %[[TWO]]
@@ -638,13 +638,13 @@ func.func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-NEXT: %[[TMP_103:.*]] = mhlo.add %[[TMP_101]], %[[TMP_102]]
   // CHECK-NEXT: %[[TMP_104:.*]] = mhlo.divide %[[TMP_81]], %[[TMP_103]]
   // CHECK-NEXT: %[[TMP_105:.*]] = mhlo.constant dense<8.000000e+00>
-  // CHECK-NEXT: %[[TMP_106:.*]] = "mhlo.compare"(%[[TMP_3]], %[[TMP_105]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK-NEXT: %[[TMP_106:.*]] = mhlo.compare LT, %[[TMP_3]], %[[TMP_105]], NOTYPE
   // CHECK-NEXT: %[[TMP_107:.*]] = "mhlo.select"(%[[TMP_106]], %[[TMP_61]], %[[TMP_104]])
   // CHECK-NEXT: %[[TMP_108:.*]] = mhlo.constant dense<-709.78271289338397>
-  // CHECK-NEXT: %[[TMP_109:.*]] = "mhlo.compare"(%[[TMP_1]], %[[TMP_108]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK-NEXT: %[[TMP_109:.*]] = mhlo.compare LT, %[[TMP_1]], %[[TMP_108]], NOTYPE
   // CHECK-NEXT: %[[TMP_110:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK-NEXT: %[[TMP_111:.*]] = "mhlo.select"(%[[TMP_109]], %[[TMP_110]], %[[TMP_107]])
-  // CHECK-NEXT: %[[TMP_113:.*]] = "mhlo.compare"(%[[ARG]], %[[TMP_110]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK-NEXT: %[[TMP_113:.*]] = mhlo.compare LT, %[[ARG]], %[[TMP_110]], NOTYPE
   // CHECK-NEXT: %[[TMP_114:.*]] = mhlo.constant dense<2.000000e+00>
   // CHECK-NEXT: %[[TMP_115:.*]] = mhlo.subtract %[[TMP_114]], %[[TMP_111]]
   // CHECK-NEXT: %[[TMP_116:.*]] = "mhlo.select"(%[[TMP_113]], %[[TMP_115]], %[[TMP_111]])
@@ -689,7 +689,7 @@ func.func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-NEXT: %[[TMP_155:.*]] = mhlo.divide %[[TMP_135]], %[[TMP_154]]
   // CHECK-NEXT: %[[TMP_156:.*]] = mhlo.subtract %[[TMP_117]], %[[TMP_155]]
   // CHECK-NEXT: %[[TMP_157:.*]] = mhlo.abs %[[ARG]]
-  // CHECK-NEXT: %[[TMP_159:.*]] = "mhlo.compare"(%[[TMP_157]], %[[TMP_117]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK-NEXT: %[[TMP_159:.*]] = mhlo.compare LT, %[[TMP_157]], %[[TMP_117]], NOTYPE
   // CHECK-NEXT: %[[RESULT:.*]] = "mhlo.select"(%[[TMP_159]], %[[TMP_156]], %[[TMP_116]])
   // CHECK-NEXT: return %[[RESULT]]
   %1 = "chlo.erfc"(%arg) : (tensor<f64>) -> tensor<f64>
@@ -710,7 +710,7 @@ func.func @erfc_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_7:.*]] = mhlo.divide %[[TMP_3]], %[[TMP_2]]
   // CHECK: %[[TMP_8:.*]] = mhlo.multiply %[[TMP_5]], %[[TMP_7]]
   // CHECK: %[[TMP_9:.*]] = mhlo.constant dense<2.000000e+00>
-  // CHECK: %[[TMP_10:.*]] = "mhlo.compare"(%[[TMP_2]], %[[TMP_9]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_10:.*]] = mhlo.compare LT, %[[TMP_2]], %[[TMP_9]], NOTYPE
   // CHECK: %[[TMP_11:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK: %[[TMP_12:.*]] = mhlo.multiply %[[TMP_11]], %[[TMP_4]]
   // CHECK: %[[TMP_13:.*]] = mhlo.constant dense<2.326820e-02>
@@ -767,10 +767,10 @@ func.func @erfc_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_64:.*]] = "mhlo.select"(%[[TMP_10]], %[[TMP_38]], %[[TMP_63]])
   // CHECK: %[[TMP_65:.*]] = mhlo.multiply %[[TMP_8]], %[[TMP_64]]
   // CHECK: %[[TMP_66:.*]] = mhlo.constant dense<-88.7228394>
-  // CHECK: %[[TMP_67:.*]] = "mhlo.compare"(%[[TMP_1]], %[[TMP_66]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_67:.*]] = mhlo.compare LT, %[[TMP_1]], %[[TMP_66]], NOTYPE
   // CHECK: %[[TMP_68:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK: %[[TMP_69:.*]] = "mhlo.select"(%[[TMP_67]], %[[TMP_68]], %[[TMP_65]])
-  // CHECK: %[[TMP_71:.*]] = "mhlo.compare"(%[[ARG]], %[[TMP_68]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_71:.*]] = mhlo.compare LT, %[[ARG]], %[[TMP_68]], NOTYPE
   // CHECK: %[[TMP_73:.*]] = mhlo.subtract %[[TMP_9]], %[[TMP_69]]
   // CHECK: %[[TMP_74:.*]] = "mhlo.select"(%[[TMP_71]], %[[TMP_73]], %[[TMP_69]])
   // CHECK: %[[TMP_75:.*]] = mhlo.constant dense<1.000000e+00>
@@ -800,7 +800,7 @@ func.func @erfc_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_99:.*]] = mhlo.multiply %[[ARG]], %[[TMP_98]]
   // CHECK: %[[TMP_100:.*]] = mhlo.subtract %[[TMP_75]], %[[TMP_99]]
   // CHECK: %[[TMP_101:.*]] = mhlo.abs %[[ARG]]
-  // CHECK: %[[TMP_103:.*]] = "mhlo.compare"(%[[TMP_101]], %[[TMP_75]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_103:.*]] = mhlo.compare LT, %[[TMP_101]], %[[TMP_75]], NOTYPE
   // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[TMP_103]], %[[TMP_100]], %[[TMP_74]])
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erfc"(%arg) : (tensor<f32>) -> tensor<f32>
@@ -838,7 +838,7 @@ func.func @erfc_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 func.func @is_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
   // CHECK: %[[ABS:.*]] = mhlo.abs %arg0 : tensor<f32>
   // CHECK: %[[POS_INF:.*]] = mhlo.constant dense<0x7F800000> : tensor<f32>
-  // CHECK: %[[RESULT:.*]] = "mhlo.compare"(%[[ABS]], %[[POS_INF]]) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK: %[[RESULT:.*]] = mhlo.compare EQ, %[[ABS]], %[[POS_INF]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: return %[[RESULT]] : tensor<i1>
   %1 = chlo.is_inf %arg : tensor<f32> -> tensor<i1>
   func.return %1 : tensor<i1>
@@ -850,7 +850,7 @@ func.func @is_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
 func.func @is_pos_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
   // CHECK: %[[POS_INF:.*]] = mhlo.constant dense<0x7F800000> : tensor<f32>
-  // CHECK: %[[RESULT:.*]] = "mhlo.compare"(%[[ARG]], %[[POS_INF]]) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK: %[[RESULT:.*]] = mhlo.compare EQ, %[[ARG]], %[[POS_INF]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: return %[[RESULT]] : tensor<i1>
   %1 = chlo.is_pos_inf %arg : tensor<f32> -> tensor<i1>
   func.return %1 : tensor<i1>
@@ -862,7 +862,7 @@ func.func @is_pos_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
 func.func @is_neg_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
   // CHECK: %[[NEG_INF:.*]] = mhlo.constant dense<0xFF800000> : tensor<f32>
-  // CHECK: %[[RESULT:.*]] = "mhlo.compare"(%[[ARG]], %[[NEG_INF]]) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK: %[[RESULT:.*]] = mhlo.compare EQ, %[[ARG]], %[[NEG_INF]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: return %[[RESULT]] : tensor<i1>
   %1 = chlo.is_neg_inf %arg : tensor<f32> -> tensor<i1>
   func.return %1 : tensor<i1>
@@ -874,7 +874,7 @@ func.func @is_neg_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f64>)
 func.func @lgamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_1:.*]] = mhlo.constant dense<5.000000e-01>
-  // CHECK: %[[TMP_9:.*]] = "mhlo.compare"(%[[ARG]], %[[TMP_1]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_9:.*]] = mhlo.compare LT, %[[ARG]], %[[TMP_1]], NOTYPE
   // CHECK: %[[TMP_10:.*]] = mhlo.negate %[[ARG]]
   // CHECK: %[[TMP_2:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_11:.*]] = mhlo.subtract %[[ARG]], %[[TMP_2]]
@@ -937,7 +937,7 @@ func.func @lgamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_64:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_65:.*]] = mhlo.floor %[[TMP_64]]
   // CHECK: %[[TMP_66:.*]] = mhlo.subtract %[[TMP_64]], %[[TMP_65]]
-  // CHECK: %[[TMP_67:.*]] = "mhlo.compare"(%[[TMP_1]], %[[TMP_66]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_67:.*]] = mhlo.compare LT, %[[TMP_1]], %[[TMP_66]], NOTYPE
   // CHECK: %[[TMP_68:.*]] = mhlo.subtract %[[TMP_2]], %[[TMP_66]]
   // CHECK: %[[TMP_69:.*]] = "mhlo.select"(%[[TMP_67]], %[[TMP_68]], %[[TMP_66]])
   // CHECK: %[[TMP_3:.*]] = mhlo.constant dense<3.1415926535897931>
@@ -953,7 +953,7 @@ func.func @lgamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_78:.*]] = "mhlo.select"(%[[TMP_9]], %[[TMP_77]], %[[TMP_63]])
   // CHECK: %[[TMP_79:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_80:.*]] = mhlo.constant dense<0x7FF0000000000000>
-  // CHECK: %[[TMP_81:.*]] = "mhlo.compare"(%[[TMP_79]], %[[TMP_80]]) {comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_81:.*]] = mhlo.compare EQ, %[[TMP_79]], %[[TMP_80]]
   // CHECK: %[[TMP_0:.*]] = mhlo.constant dense<0x7FF0000000000000>
   // CHECK: %[[TMP_82:.*]] = "mhlo.select"(%[[TMP_81]], %[[TMP_0]], %[[TMP_78]])
   // CHECK: return %[[TMP_82]]
@@ -967,7 +967,7 @@ func.func @lgamma_f64(%arg : tensor<f64>) -> tensor<f64> {
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
 func.func @lgamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_1:.*]] = mhlo.constant dense<5.000000e-01>
-  // CHECK: %[[TMP_9:.*]] = "mhlo.compare"(%[[ARG]], %[[TMP_1]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_9:.*]] = mhlo.compare LT, %[[ARG]], %[[TMP_1]], NOTYPE
   // CHECK: %[[TMP_10:.*]] = mhlo.negate %[[ARG]]
   // CHECK: %[[TMP_2:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_11:.*]] = mhlo.subtract %[[ARG]], %[[TMP_2]]
@@ -1030,7 +1030,7 @@ func.func @lgamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_64:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_65:.*]] = mhlo.floor %[[TMP_64]]
   // CHECK: %[[TMP_66:.*]] = mhlo.subtract %[[TMP_64]], %[[TMP_65]]
-  // CHECK: %[[TMP_67:.*]] = "mhlo.compare"(%[[TMP_1]], %[[TMP_66]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_67:.*]] = mhlo.compare LT, %[[TMP_1]], %[[TMP_66]], NOTYPE
   // CHECK: %[[TMP_68:.*]] = mhlo.subtract %[[TMP_2]], %[[TMP_66]]
   // CHECK: %[[TMP_69:.*]] = "mhlo.select"(%[[TMP_67]], %[[TMP_68]], %[[TMP_66]])
   // CHECK: %[[TMP_3:.*]] = mhlo.constant dense<3.14159274>
@@ -1046,7 +1046,7 @@ func.func @lgamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_78:.*]] = "mhlo.select"(%[[TMP_9]], %[[TMP_77]], %[[TMP_63]])
   // CHECK: %[[TMP_79:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_80:.*]] = mhlo.constant dense<0x7F800000>
-  // CHECK: %[[TMP_81:.*]] = "mhlo.compare"(%[[TMP_79]], %[[TMP_80]]) {comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_81:.*]] = mhlo.compare EQ, %[[TMP_79]], %[[TMP_80]]
   // CHECK: %[[TMP_0:.*]] = mhlo.constant dense<0x7F800000>
   // CHECK: %[[TMP_82:.*]] = "mhlo.select"(%[[TMP_81]], %[[TMP_0]], %[[TMP_78]])
   // CHECK: return %[[TMP_82]]
@@ -1072,7 +1072,7 @@ func.func @lgamma_f16(%arg : tensor<f16>) -> tensor<f16> {
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f64>)
 func.func @digamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_0:.*]] = mhlo.constant dense<5.000000e-01>
-  // CHECK: %[[TMP_1:.*]] = "mhlo.compare"(%arg0, %[[TMP_0]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_1:.*]] = mhlo.compare LT, %arg0, %[[TMP_0]], NOTYPE
   // CHECK: %[[TMP_2:.*]] = mhlo.negate %arg0
   // CHECK: %[[TMP_3:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_4:.*]] = mhlo.subtract %arg0, %[[TMP_3]]
@@ -1167,9 +1167,9 @@ func.func @digamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_93:.*]] = mhlo.divide %[[TMP_91]], %[[TMP_92]]
   // CHECK: %[[TMP_94:.*]] = mhlo.subtract %[[TMP_82]], %[[TMP_93]]
   // CHECK: %[[TMP_95:.*]] = "mhlo.select"(%[[TMP_1]], %[[TMP_94]], %[[TMP_82]])
-  // CHECK: %[[TMP_96:.*]] = "mhlo.compare"(%arg0, %[[TMP_6]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LE>}
+  // CHECK: %[[TMP_96:.*]] = mhlo.compare LE, %arg0, %[[TMP_6]], NOTYPE
   // CHECK: %[[TMP_97:.*]] = mhlo.floor %arg0
-  // CHECK: %[[TMP_98:.*]] = "mhlo.compare"(%arg0, %[[TMP_97]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_98:.*]] = mhlo.compare EQ, %arg0, %[[TMP_97]], NOTYPE
   // CHECK: %[[TMP_99:.*]] = mhlo.and %[[TMP_96]], %[[TMP_98]]
   // CHECK: %[[TMP_100:.*]] = mhlo.constant dense<0x7FF8000000000000>
   // CHECK: %[[RES:.*]] = "mhlo.select"(%[[TMP_99]], %[[TMP_100]], %[[TMP_95]])
@@ -1184,7 +1184,7 @@ func.func @digamma_f64(%arg : tensor<f64>) -> tensor<f64> {
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
 func.func @digamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_0:.*]] = mhlo.constant dense<5.000000e-01>
-  // CHECK: %[[TMP_1:.*]] = "mhlo.compare"(%arg0, %[[TMP_0]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_1:.*]] = mhlo.compare LT, %arg0, %[[TMP_0]], NOTYPE
   // CHECK: %[[TMP_2:.*]] = mhlo.negate %arg0
   // CHECK: %[[TMP_3:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_4:.*]] = mhlo.subtract %arg0, %[[TMP_3]]
@@ -1279,9 +1279,9 @@ func.func @digamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_93:.*]] = mhlo.divide %[[TMP_91]], %[[TMP_92]]
   // CHECK: %[[TMP_94:.*]] = mhlo.subtract %[[TMP_82]], %[[TMP_93]]
   // CHECK: %[[TMP_95:.*]] = "mhlo.select"(%[[TMP_1]], %[[TMP_94]], %[[TMP_82]])
-  // CHECK: %[[TMP_96:.*]] = "mhlo.compare"(%arg0, %[[TMP_6]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LE>}
+  // CHECK: %[[TMP_96:.*]] = mhlo.compare LE, %arg0, %[[TMP_6]], NOTYPE
   // CHECK: %[[TMP_97:.*]] = mhlo.floor %arg0
-  // CHECK: %[[TMP_98:.*]] = "mhlo.compare"(%arg0, %[[TMP_97]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_98:.*]] = mhlo.compare EQ, %arg0, %[[TMP_97]], NOTYPE
   // CHECK: %[[TMP_99:.*]] = mhlo.and %[[TMP_96]], %[[TMP_98]]
   // CHECK: %[[TMP_100:.*]] = mhlo.constant dense<0x7FC00000>
   // CHECK: %[[RES:.*]] = "mhlo.select"(%[[TMP_99]], %[[TMP_100]], %[[TMP_95]])
@@ -1460,29 +1460,29 @@ func.func @zeta_f16(%arg0: tensor<f16>, %arg1: tensor<f16>) -> tensor<f16> {
   // CHECK: %[[TMP_150:.*]] = mhlo.abs %[[TMP_32]]
   // CHECK: %[[TMP_151:.*]] = mhlo.constant dense<1.401300e-45>
   // CHECK: %[[TMP_152:.*]] = mhlo.multiply %[[TMP_150]], %[[TMP_151]]
-  // CHECK: %[[TMP_153:.*]] = "mhlo.compare"(%[[TMP_149]], %[[TMP_152]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_153:.*]] = mhlo.compare LT, %[[TMP_149]], %[[TMP_152]], NOTYPE
   // CHECK: %[[TMP_154:.*]] = "mhlo.select"(%[[TMP_153]], %[[TMP_32]], %[[TMP_148]])
   // CHECK: %[[TMP_155:.*]] = mhlo.constant dense<0x7FC00000>
-  // CHECK: %[[TMP_156:.*]] = "mhlo.compare"(%[[TMP_0]], %[[TMP_35]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_156:.*]] = mhlo.compare LT, %[[TMP_0]], %[[TMP_35]], NOTYPE
   // CHECK: %[[TMP_157:.*]] = "mhlo.select"(%[[TMP_156]], %[[TMP_155]], %[[TMP_154]])
-  // CHECK: %[[TMP_158:.*]] = "mhlo.compare"(%[[TMP_1]], %[[TMP_2]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LE>}
+  // CHECK: %[[TMP_158:.*]] = mhlo.compare LE, %[[TMP_1]], %[[TMP_2]], NOTYPE
   // CHECK: %[[TMP_159:.*]] = mhlo.floor %[[TMP_0]]
-  // CHECK: %[[TMP_160:.*]] = "mhlo.compare"(%[[TMP_0]], %[[TMP_159]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction NE>}
+  // CHECK: %[[TMP_160:.*]] = mhlo.compare NE, %[[TMP_0]], %[[TMP_159]], NOTYPE
   // CHECK: %[[TMP_161:.*]] = mhlo.and %[[TMP_158]], %[[TMP_160]] : tensor<i1>
   // CHECK: %[[TMP_162:.*]] = "mhlo.select"(%[[TMP_161]], %[[TMP_155]], %[[TMP_157]])
   // CHECK: %[[TMP_163:.*]] = mhlo.constant dense<0x7F800000>
   // CHECK: %[[TMP_164:.*]] = mhlo.floor %[[TMP_1]]
-  // CHECK: %[[TMP_165:.*]] = "mhlo.compare"(%[[TMP_1]], %[[TMP_164]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_165:.*]] = mhlo.compare EQ, %[[TMP_1]], %[[TMP_164]], NOTYPE
   // CHECK: %[[TMP_166:.*]] = mhlo.and %[[TMP_158]], %[[TMP_165]] : tensor<i1>
   // CHECK: %[[TMP_167:.*]] = mhlo.constant dense<2.000000e+00>
   // CHECK: %[[TMP_168:.*]] = mhlo.floor %[[TMP_0]]
-  // CHECK: %[[TMP_169:.*]] = "mhlo.compare"(%[[TMP_0]], %[[TMP_168]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_169:.*]] = mhlo.compare EQ, %[[TMP_0]], %[[TMP_168]], NOTYPE
   // CHECK: %[[TMP_170:.*]] = mhlo.remainder %[[TMP_0]], %[[TMP_167]]
-  // CHECK: %[[TMP_171:.*]] = "mhlo.compare"(%[[TMP_170]], %[[TMP_2]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_171:.*]] = mhlo.compare EQ, %[[TMP_170]], %[[TMP_2]], NOTYPE
   // CHECK: %[[TMP_172:.*]] = mhlo.and %[[TMP_169]], %[[TMP_171]] : tensor<i1>
   // CHECK: %[[TMP_173:.*]] = "mhlo.select"(%[[TMP_172]], %[[TMP_163]], %[[TMP_155]])
   // CHECK: %[[TMP_174:.*]] = "mhlo.select"(%[[TMP_166]], %[[TMP_173]], %[[TMP_162]])
-  // CHECK: %[[TMP_175:.*]] = "mhlo.compare"(%[[TMP_0]], %[[TMP_5]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_175:.*]] = mhlo.compare EQ, %[[TMP_0]], %[[TMP_5]], NOTYPE
   // CHECK: %[[TMP_176:.*]] = "mhlo.select"(%[[TMP_175]], %[[TMP_163]], %[[TMP_174]])
   // CHECK: %[[TMP_177:.*]] = mhlo.convert(%[[TMP_176]]) : (tensor<f32>) -> tensor<f16>
   %0 = chlo.zeta %arg0, %arg1 : tensor<f16>, tensor<f16> -> tensor<f16>
@@ -1501,7 +1501,7 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_4:.*]] = mhlo.subtract %[[TMP_3]], %[[TMP_0]]
   // CHECK: %[[TMP_5:.*]] = mhlo.add %[[ARG0]], %[[TMP_0]]
   // CHECK: %[[TMP_6:.*]] = mhlo.constant dense<5.000000e-01>
-  // CHECK: %[[TMP_7:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_6]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_7:.*]] = mhlo.compare LT, %[[TMP_5]], %[[TMP_6]], NOTYPE
   // CHECK: %[[TMP_8:.*]] = mhlo.negate %[[TMP_5]]
   // CHECK: %[[TMP_9:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_10:.*]] = mhlo.subtract %[[TMP_5]], %[[TMP_9]]
@@ -1564,7 +1564,7 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_67:.*]] = mhlo.abs %[[TMP_5]]
   // CHECK: %[[TMP_68:.*]] = mhlo.floor %[[TMP_67]]
   // CHECK: %[[TMP_69:.*]] = mhlo.subtract %[[TMP_67]], %[[TMP_68]]
-  // CHECK: %[[TMP_70:.*]] = "mhlo.compare"(%[[TMP_6]], %[[TMP_69]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_70:.*]] = mhlo.compare LT, %[[TMP_6]], %[[TMP_69]], NOTYPE
   // CHECK: %[[TMP_71:.*]] = mhlo.subtract %[[TMP_9]], %[[TMP_69]]
   // CHECK: %[[TMP_72:.*]] = "mhlo.select"(%[[TMP_70]], %[[TMP_71]], %[[TMP_69]])
   // CHECK: %[[TMP_73:.*]] = mhlo.constant dense<3.14159274>
@@ -1580,7 +1580,7 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_83:.*]] = "mhlo.select"(%[[TMP_7]], %[[TMP_82]], %[[TMP_66]])
   // CHECK: %[[TMP_84:.*]] = mhlo.abs %[[TMP_5]]
   // CHECK: %[[TMP_85:.*]] = mhlo.constant dense<0x7F800000>
-  // CHECK: %[[TMP_86:.*]] = "mhlo.compare"(%[[TMP_84]], %[[TMP_85]]) {comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_86:.*]] = mhlo.compare EQ, %[[TMP_84]], %[[TMP_85]]
   // CHECK: %[[TMP_87:.*]] = mhlo.constant dense<0x7F800000>
   // CHECK: %[[TMP_88:.*]] = "mhlo.select"(%[[TMP_86]], %[[TMP_87]], %[[TMP_83]])
   // CHECK: %[[TMP_89:.*]] = mhlo.exponential %[[TMP_88]]
@@ -1735,36 +1735,36 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_238:.*]] = mhlo.abs %[[TMP_120]]
   // CHECK: %[[TMP_239:.*]] = mhlo.constant dense<1.401300e-45>
   // CHECK: %[[TMP_240:.*]] = mhlo.multiply %[[TMP_238]], %[[TMP_239]]
-  // CHECK: %[[TMP_241:.*]] = "mhlo.compare"(%[[TMP_237]], %[[TMP_240]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_241:.*]] = mhlo.compare LT, %[[TMP_237]], %[[TMP_240]], NOTYPE
   // CHECK: %[[TMP_242:.*]] = "mhlo.select"(%[[TMP_241]], %[[TMP_120]], %[[TMP_236]])
   // CHECK: %[[TMP_243:.*]] = mhlo.constant dense<0x7FC00000>
-  // CHECK: %[[TMP_244:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_123]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_244:.*]] = mhlo.compare LT, %[[TMP_5]], %[[TMP_123]], NOTYPE
   // CHECK: %[[TMP_245:.*]] = "mhlo.select"(%[[TMP_244]], %[[TMP_243]], %[[TMP_242]])
-  // CHECK: %[[TMP_246:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_90]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LE>}
+  // CHECK: %[[TMP_246:.*]] = mhlo.compare LE, %[[ARG1]], %[[TMP_90]], NOTYPE
   // CHECK: %[[TMP_247:.*]] = mhlo.floor %[[TMP_5]]
-  // CHECK: %[[TMP_248:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_247]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction NE>}
+  // CHECK: %[[TMP_248:.*]] = mhlo.compare NE, %[[TMP_5]], %[[TMP_247]], NOTYPE
   // CHECK: %[[TMP_249:.*]] = mhlo.and %[[TMP_246]], %[[TMP_248]]
   // CHECK: %[[TMP_250:.*]] = "mhlo.select"(%[[TMP_249]], %[[TMP_243]], %[[TMP_245]])
   // CHECK: %[[TMP_251:.*]] = mhlo.constant dense<0x7F800000>
   // CHECK: %[[TMP_252:.*]] = mhlo.floor %[[ARG1]]
-  // CHECK: %[[TMP_253:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_252]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_253:.*]] = mhlo.compare EQ, %[[ARG1]], %[[TMP_252]], NOTYPE
   // CHECK: %[[TMP_254:.*]] = mhlo.and %[[TMP_246]], %[[TMP_253]]
   // CHECK: %[[TMP_255:.*]] = mhlo.constant dense<2.000000e+00>
   // CHECK: %[[TMP_256:.*]] = mhlo.floor %[[TMP_5]]
-  // CHECK: %[[TMP_257:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_256]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_257:.*]] = mhlo.compare EQ, %[[TMP_5]], %[[TMP_256]], NOTYPE
   // CHECK: %[[TMP_258:.*]] = mhlo.remainder %[[TMP_5]], %[[TMP_255]]
-  // CHECK: %[[TMP_259:.*]] = "mhlo.compare"(%[[TMP_258]], %[[TMP_90]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_259:.*]] = mhlo.compare EQ, %[[TMP_258]], %[[TMP_90]], NOTYPE
   // CHECK: %[[TMP_260:.*]] = mhlo.and %[[TMP_257]], %[[TMP_259]]
   // CHECK: %[[TMP_261:.*]] = "mhlo.select"(%[[TMP_260]], %[[TMP_251]], %[[TMP_243]])
   // CHECK: %[[TMP_262:.*]] = "mhlo.select"(%[[TMP_254]], %[[TMP_261]], %[[TMP_250]])
-  // CHECK: %[[TMP_263:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_93]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_263:.*]] = mhlo.compare EQ, %[[TMP_5]], %[[TMP_93]], NOTYPE
   // CHECK: %[[TMP_264:.*]] = "mhlo.select"(%[[TMP_263]], %[[TMP_251]], %[[TMP_262]])
   // CHECK: %[[TMP_265:.*]] = mhlo.multiply %[[TMP_4]], %[[TMP_89]]
   // CHECK: %[[TMP_266:.*]] = mhlo.multiply %[[TMP_265]], %[[TMP_264]]
   // CHECK: %[[TMP_267:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_268:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_267]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_268:.*]] = mhlo.compare EQ, %[[ARG0]], %[[TMP_267]], NOTYPE
   // CHECK: %[[TMP_269:.*]] = mhlo.constant dense<5.000000e-01>
-  // CHECK: %[[TMP_270:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_269]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_270:.*]] = mhlo.compare LT, %[[ARG1]], %[[TMP_269]], NOTYPE
   // CHECK: %[[TMP_271:.*]] = mhlo.negate %[[ARG1]]
   // CHECK: %[[TMP_272:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_273:.*]] = mhlo.subtract %[[ARG1]], %[[TMP_272]]
@@ -1859,16 +1859,16 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_362:.*]] = mhlo.divide %[[TMP_361]], %[[TMP_360]]
   // CHECK: %[[TMP_363:.*]] = mhlo.subtract %[[TMP_351]], %[[TMP_362]]
   // CHECK: %[[TMP_364:.*]] = "mhlo.select"(%[[TMP_270]], %[[TMP_363]], %[[TMP_351]])
-  // CHECK: %[[TMP_365:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_275]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LE>}
+  // CHECK: %[[TMP_365:.*]] = mhlo.compare LE, %[[ARG1]], %[[TMP_275]], NOTYPE
   // CHECK: %[[TMP_366:.*]] = mhlo.floor %[[ARG1]]
-  // CHECK: %[[TMP_367:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_366]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_367:.*]] = mhlo.compare EQ, %[[ARG1]], %[[TMP_366]], NOTYPE
   // CHECK: %[[TMP_368:.*]] = mhlo.and %[[TMP_365]], %[[TMP_367]]
   // CHECK: %[[TMP_369:.*]] = mhlo.constant dense<0x7FC00000>
   // CHECK: %[[TMP_370:.*]] = "mhlo.select"(%[[TMP_368]], %[[TMP_369]], %[[TMP_364]])
   // CHECK: %[[TMP_371:.*]] = "mhlo.select"(%[[TMP_268]], %[[TMP_370]], %[[TMP_266]])
   // CHECK: %[[TMP_372:.*]] = mhlo.floor %[[ARG0]]
-  // CHECK: %[[TMP_373:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_372]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction NE>}
-  // CHECK: %[[TMP_374:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_267]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_373:.*]] = mhlo.compare NE, %[[ARG0]], %[[TMP_372]], NOTYPE
+  // CHECK: %[[TMP_374:.*]] = mhlo.compare LT, %[[ARG0]], %[[TMP_267]], NOTYPE
   // CHECK: %[[TMP_375:.*]] = mhlo.or %[[TMP_373]], %[[TMP_374]]
   // CHECK: %[[TMP_376:.*]] = mhlo.constant dense<0x7FC00000>
   // CHECK: %[[TMP_377:.*]] = "mhlo.select"(%[[TMP_375]], %[[TMP_376]], %[[TMP_371]])
@@ -1888,7 +1888,7 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_4:.*]] = mhlo.subtract %[[TMP_3]], %[[TMP_0]]
   // CHECK: %[[TMP_5:.*]] = mhlo.add %[[ARG0]], %[[TMP_0]]
   // CHECK: %[[TMP_6:.*]] = mhlo.constant dense<5.000000e-01>
-  // CHECK: %[[TMP_7:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_6]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_7:.*]] = mhlo.compare LT, %[[TMP_5]], %[[TMP_6]], NOTYPE
   // CHECK: %[[TMP_8:.*]] = mhlo.negate %[[TMP_5]]
   // CHECK: %[[TMP_9:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_10:.*]] = mhlo.subtract %[[TMP_5]], %[[TMP_9]]
@@ -1951,7 +1951,7 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_67:.*]] = mhlo.abs %[[TMP_5]]
   // CHECK: %[[TMP_68:.*]] = mhlo.floor %[[TMP_67]]
   // CHECK: %[[TMP_69:.*]] = mhlo.subtract %[[TMP_67]], %[[TMP_68]]
-  // CHECK: %[[TMP_70:.*]] = "mhlo.compare"(%[[TMP_6]], %[[TMP_69]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_70:.*]] = mhlo.compare LT, %[[TMP_6]], %[[TMP_69]], NOTYPE
   // CHECK: %[[TMP_71:.*]] = mhlo.subtract %[[TMP_9]], %[[TMP_69]]
   // CHECK: %[[TMP_72:.*]] = "mhlo.select"(%[[TMP_70]], %[[TMP_71]], %[[TMP_69]])
   // CHECK: %[[TMP_73:.*]] = mhlo.constant dense<3.1415926535897931>
@@ -1967,7 +1967,7 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_83:.*]] = "mhlo.select"(%[[TMP_7]], %[[TMP_82]], %[[TMP_66]])
   // CHECK: %[[TMP_84:.*]] = mhlo.abs %[[TMP_5]]
   // CHECK: %[[TMP_85:.*]] = mhlo.constant dense<0x7FF0000000000000>
-  // CHECK: %[[TMP_86:.*]] = "mhlo.compare"(%[[TMP_84]], %[[TMP_85]]) {comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_86:.*]] = mhlo.compare EQ, %[[TMP_84]], %[[TMP_85]]
   // CHECK: %[[TMP_87:.*]] = mhlo.constant dense<0x7FF0000000000000>
   // CHECK: %[[TMP_88:.*]] = "mhlo.select"(%[[TMP_86]], %[[TMP_87]], %[[TMP_83]])
   // CHECK: %[[TMP_89:.*]] = mhlo.exponential %[[TMP_88]]
@@ -2122,36 +2122,36 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_238:.*]] = mhlo.abs %[[TMP_120]]
   // CHECK: %[[TMP_239:.*]] = mhlo.constant dense<4.940660e-324>
   // CHECK: %[[TMP_240:.*]] = mhlo.multiply %[[TMP_238]], %[[TMP_239]]
-  // CHECK: %[[TMP_241:.*]] = "mhlo.compare"(%[[TMP_237]], %[[TMP_240]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_241:.*]] = mhlo.compare LT, %[[TMP_237]], %[[TMP_240]], NOTYPE
   // CHECK: %[[TMP_242:.*]] = "mhlo.select"(%[[TMP_241]], %[[TMP_120]], %[[TMP_236]])
   // CHECK: %[[TMP_243:.*]] = mhlo.constant dense<0x7FF8000000000000>
-  // CHECK: %[[TMP_244:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_123]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_244:.*]] = mhlo.compare LT, %[[TMP_5]], %[[TMP_123]], NOTYPE
   // CHECK: %[[TMP_245:.*]] = "mhlo.select"(%[[TMP_244]], %[[TMP_243]], %[[TMP_242]])
-  // CHECK: %[[TMP_246:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_90]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LE>}
+  // CHECK: %[[TMP_246:.*]] = mhlo.compare LE, %[[ARG1]], %[[TMP_90]], NOTYPE
   // CHECK: %[[TMP_247:.*]] = mhlo.floor %[[TMP_5]]
-  // CHECK: %[[TMP_248:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_247]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction NE>}
+  // CHECK: %[[TMP_248:.*]] = mhlo.compare NE, %[[TMP_5]], %[[TMP_247]], NOTYPE
   // CHECK: %[[TMP_249:.*]] = mhlo.and %[[TMP_246]], %[[TMP_248]]
   // CHECK: %[[TMP_250:.*]] = "mhlo.select"(%[[TMP_249]], %[[TMP_243]], %[[TMP_245]])
   // CHECK: %[[TMP_251:.*]] = mhlo.constant dense<0x7FF0000000000000>
   // CHECK: %[[TMP_252:.*]] = mhlo.floor %[[ARG1]]
-  // CHECK: %[[TMP_253:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_252]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_253:.*]] = mhlo.compare EQ, %[[ARG1]], %[[TMP_252]], NOTYPE
   // CHECK: %[[TMP_254:.*]] = mhlo.and %[[TMP_246]], %[[TMP_253]]
   // CHECK: %[[TMP_255:.*]] = mhlo.constant dense<2.000000e+00>
   // CHECK: %[[TMP_256:.*]] = mhlo.floor %[[TMP_5]]
-  // CHECK: %[[TMP_257:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_256]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_257:.*]] = mhlo.compare EQ, %[[TMP_5]], %[[TMP_256]], NOTYPE
   // CHECK: %[[TMP_258:.*]] = mhlo.remainder %[[TMP_5]], %[[TMP_255]]
-  // CHECK: %[[TMP_259:.*]] = "mhlo.compare"(%[[TMP_258]], %[[TMP_90]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_259:.*]] = mhlo.compare EQ, %[[TMP_258]], %[[TMP_90]], NOTYPE
   // CHECK: %[[TMP_260:.*]] = mhlo.and %[[TMP_257]], %[[TMP_259]]
   // CHECK: %[[TMP_261:.*]] = "mhlo.select"(%[[TMP_260]], %[[TMP_251]], %[[TMP_243]])
   // CHECK: %[[TMP_262:.*]] = "mhlo.select"(%[[TMP_254]], %[[TMP_261]], %[[TMP_250]])
-  // CHECK: %[[TMP_263:.*]] = "mhlo.compare"(%[[TMP_5]], %[[TMP_93]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_263:.*]] = mhlo.compare EQ, %[[TMP_5]], %[[TMP_93]], NOTYPE
   // CHECK: %[[TMP_264:.*]] = "mhlo.select"(%[[TMP_263]], %[[TMP_251]], %[[TMP_262]])
   // CHECK: %[[TMP_265:.*]] = mhlo.multiply %[[TMP_4]], %[[TMP_89]]
   // CHECK: %[[TMP_266:.*]] = mhlo.multiply %[[TMP_265]], %[[TMP_264]]
   // CHECK: %[[TMP_267:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_268:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_267]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_268:.*]] = mhlo.compare EQ, %[[ARG0]], %[[TMP_267]], NOTYPE
   // CHECK: %[[TMP_269:.*]] = mhlo.constant dense<5.000000e-01>
-  // CHECK: %[[TMP_270:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_269]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_270:.*]] = mhlo.compare LT, %[[ARG1]], %[[TMP_269]], NOTYPE
   // CHECK: %[[TMP_271:.*]] = mhlo.negate %[[ARG1]]
   // CHECK: %[[TMP_272:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_273:.*]] = mhlo.subtract %[[ARG1]], %[[TMP_272]]
@@ -2246,16 +2246,16 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_362:.*]] = mhlo.divide %[[TMP_361]], %[[TMP_360]]
   // CHECK: %[[TMP_363:.*]] = mhlo.subtract %[[TMP_351]], %[[TMP_362]]
   // CHECK: %[[TMP_364:.*]] = "mhlo.select"(%[[TMP_270]], %[[TMP_363]], %[[TMP_351]])
-  // CHECK: %[[TMP_365:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_275]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LE>}
+  // CHECK: %[[TMP_365:.*]] = mhlo.compare LE, %[[ARG1]], %[[TMP_275]], NOTYPE
   // CHECK: %[[TMP_366:.*]] = mhlo.floor %[[ARG1]]
-  // CHECK: %[[TMP_367:.*]] = "mhlo.compare"(%[[ARG1]], %[[TMP_366]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>}
+  // CHECK: %[[TMP_367:.*]] = mhlo.compare EQ, %[[ARG1]], %[[TMP_366]], NOTYPE
   // CHECK: %[[TMP_368:.*]] = mhlo.and %[[TMP_365]], %[[TMP_367]]
   // CHECK: %[[TMP_369:.*]] = mhlo.constant dense<0x7FF8000000000000>
   // CHECK: %[[TMP_370:.*]] = "mhlo.select"(%[[TMP_368]], %[[TMP_369]], %[[TMP_364]])
   // CHECK: %[[TMP_371:.*]] = "mhlo.select"(%[[TMP_268]], %[[TMP_370]], %[[TMP_266]])
   // CHECK: %[[TMP_372:.*]] = mhlo.floor %[[ARG0]]
-  // CHECK: %[[TMP_373:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_372]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction NE>}
-  // CHECK: %[[TMP_374:.*]] = "mhlo.compare"(%[[ARG0]], %[[TMP_267]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>}
+  // CHECK: %[[TMP_373:.*]] = mhlo.compare NE, %[[ARG0]], %[[TMP_372]], NOTYPE
+  // CHECK: %[[TMP_374:.*]] = mhlo.compare LT, %[[ARG0]], %[[TMP_267]], NOTYPE
   // CHECK: %[[TMP_375:.*]] = mhlo.or %[[TMP_373]], %[[TMP_374]]
   // CHECK: %[[TMP_376:.*]] = mhlo.constant dense<0x7FF8000000000000>
   // CHECK: %[[TMP_377:.*]] = "mhlo.select"(%[[TMP_375]], %[[TMP_376]], %[[TMP_371]])
@@ -2300,7 +2300,7 @@ func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[SUM:.*]] = mhlo.add %[[EXPM1]], %[[RATIO]] : tensor<f32>
   // CHECK: %[[SMALL_SINH_RESULT:.*]] = mhlo.multiply %[[HALF]], %[[SUM]] : tensor<f32>
   // CHECK: %[[ABS_X:.*]] = mhlo.abs %[[X]] : tensor<f32>
-  // CHECK: %[[ABS_X_LT_ONE:.*]] = "mhlo.compare"(%[[ABS_X]], %[[ONE]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK: %[[ABS_X_LT_ONE:.*]] = mhlo.compare LT, %[[ABS_X]], %[[ONE]], NOTYPE : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[ABS_X_LT_ONE]], %[[SMALL_SINH_RESULT]], %[[LARGE_SINH_RESULT]]) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK: return %[[RESULT]] : tensor<f32>
   %1 = chlo.sinh %x : tensor<f32> -> tensor<f32>
@@ -2398,7 +2398,7 @@ func.func @cosh_complex_f32(%x : tensor<complex<f32>>) -> tensor<complex<f32>> {
 func.func @atanh_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT: %[[TMP_0:.*]] = mhlo.abs %[[ARG]]
   // CHECK-NEXT: %[[TMP_1:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK-NEXT: %[[TMP_2:.*]] = "mhlo.compare"(%[[TMP_0]], %[[TMP_1]]) {comparison_direction = #mhlo<comparison_direction GT>}
+  // CHECK-NEXT: %[[TMP_2:.*]] = mhlo.compare GT, %[[TMP_0]], %[[TMP_1]]
   // CHECK-NEXT: %[[TMP_3:.*]] = mhlo.constant dense<0x7FC00000>
   // CHECK-NEXT: %[[TMP_4:.*]] = mhlo.log_plus_one %[[ARG]]
   // CHECK-NEXT: %[[TMP_5:.*]] = mhlo.negate %[[ARG]]
@@ -2435,8 +2435,8 @@ func.func @atanh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>
 func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: %[[X_AS_INT:.*]] = "mhlo.bitcast_convert"(%[[ARG0]]) : (tensor<2xf32>) -> tensor<2xi32>
   // CHECK: %[[Y_AS_INT:.*]] = "mhlo.bitcast_convert"(%[[ARG1]]) : (tensor<2xf32>) -> tensor<2xi32>
-  // CHECK: %[[X_IS_NAN:.*]] = "mhlo.compare"(%[[ARG0]], %[[ARG0]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction NE>} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
-  // CHECK: %[[Y_IS_NAN:.*]] = "mhlo.compare"(%[[ARG1]], %[[ARG1]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction NE>} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHECK: %[[X_IS_NAN:.*]] = mhlo.compare NE, %[[ARG0]], %[[ARG0]], NOTYPE : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHECK: %[[Y_IS_NAN:.*]] = mhlo.compare NE, %[[ARG1]], %[[ARG1]], NOTYPE : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
   // CHECK: %[[INPUT_IS_NAN:.*]] = mhlo.or %[[X_IS_NAN]], %[[Y_IS_NAN]] : tensor<2xi1>
   // CHECK: %[[NAN:.*]] = mhlo.constant dense<0x7FC00000> : tensor<2xf32>
   // CHECK: %[[NAN_AS_INT:.*]] = "mhlo.bitcast_convert"(%[[NAN]]) : (tensor<2xf32>) -> tensor<2xi32>
@@ -2444,16 +2444,16 @@ func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32>
   // CHECK-DAG: %[[NEGATED_SIGN_MASK:.*]] = mhlo.constant dense<2147483647> : tensor<2xi32>
   // CHECK: %[[X_ABS:.*]] = mhlo.and %[[X_AS_INT]], %[[NEGATED_SIGN_MASK]] : tensor<2xi32>
   // CHECK: %[[Y_ABS:.*]] = mhlo.and %[[Y_AS_INT]], %[[NEGATED_SIGN_MASK]] : tensor<2xi32>
-  // CHECK: %[[X_AND_Y_ARE_EQUAL:.*]] = "mhlo.compare"(%[[ARG0]], %[[ARG1]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHECK: %[[X_AND_Y_ARE_EQUAL:.*]] = mhlo.compare EQ, %[[ARG0]], %[[ARG1]], NOTYPE : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
   // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<2xi32>
-  // CHECK: %[[X_ABS_IS_ZERO:.*]] = "mhlo.compare"(%[[X_ABS]], %[[ZERO]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-  // CHECK: %[[Y_ABS_IS_ZERO:.*]] = "mhlo.compare"(%[[Y_ABS]], %[[ZERO]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  // CHECK: %[[X_ABS_IS_ZERO:.*]] = mhlo.compare EQ, %[[X_ABS]], %[[ZERO]], NOTYPE : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  // CHECK: %[[Y_ABS_IS_ZERO:.*]] = mhlo.compare EQ, %[[Y_ABS]], %[[ZERO]], NOTYPE : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   // CHECK: %[[X_SIGN:.*]] = mhlo.and %[[X_AS_INT]], %[[SIGN_MASK]] : tensor<2xi32>
   // CHECK: %[[Y_SIGN:.*]] = mhlo.and %[[Y_AS_INT]], %[[SIGN_MASK]] : tensor<2xi32>
   // CHECK: %[[ONE:.*]] = mhlo.constant dense<1> : tensor<2xi32>
   // CHECK: %[[RESULT_FOR_X_ZERO_Y_NON_ZERO:.*]] = mhlo.or %[[Y_SIGN]], %[[ONE]] : tensor<2xi32>
-  // CHECK: %[[SIGNS_DISAGREE:.*]] = "mhlo.compare"(%[[X_SIGN]], %[[Y_SIGN]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction NE>} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-  // CHECK: %[[X_MAGNITUDE_LARGER_THAN_Y:.*]] = "mhlo.compare"(%[[X_ABS]], %[[Y_ABS]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction GT>} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  // CHECK: %[[SIGNS_DISAGREE:.*]] = mhlo.compare NE, %[[X_SIGN]], %[[Y_SIGN]], NOTYPE : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  // CHECK: %[[X_MAGNITUDE_LARGER_THAN_Y:.*]] = mhlo.compare GT, %[[X_ABS]], %[[Y_ABS]], NOTYPE : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   // CHECK: %[[RESULT_HAS_SMALLER_MAGNITUDE:.*]] = mhlo.or %[[X_MAGNITUDE_LARGER_THAN_Y]], %[[SIGNS_DISAGREE]] : tensor<2xi1>
   // CHECK: %[[MINUS_ONE:.*]] = mhlo.constant dense<-1> : tensor<2xi32>
   // CHECK: %[[MAGNITUDE_ADJUSTMENT:.*]] = "mhlo.select"(%[[RESULT_HAS_SMALLER_MAGNITUDE]], %[[MINUS_ONE]], %[[ONE]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
@@ -2504,7 +2504,7 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
   // CHECK:      %[[IOTA:.*]] = "mhlo.iota"() {iota_dimension = 1 : i64}
   // CHECK-NEXT: %[[SORT:.*]]:2 = "mhlo.sort"(%[[ARG]], %[[IOTA]]) ({
   // CHECK-NEXT: ^{{.*}}(%[[LHS:.*]]: tensor<f32>, %[[RHS:.*]]: tensor<f32>, %{{.*}}: tensor<i32>, %{{.*}}: tensor<i32>):
-  // CHECK-NEXT:   %[[CMP:.*]] = "mhlo.compare"(%[[LHS]], %[[RHS]]) {compare_type = #mhlo<comparison_type TOTALORDER>, comparison_direction = #mhlo<comparison_direction GT>}
+  // CHECK-NEXT:   %[[CMP:.*]] = mhlo.compare GT, %[[LHS]], %[[RHS]], TOTALORDER
   // CHECK-NEXT:   "mhlo.return"(%[[CMP]])
   // CHECK-NEXT: }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   // CHECK-NEXT: %[[VAL:.*]] = "mhlo.slice"(%[[SORT]]#0) {limit_indices = dense<[16, 8]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}
@@ -2643,7 +2643,7 @@ func.func @bessel_i1e_f16(%arg: tensor<16x16xf16>) -> tensor<16x16xf16> {
   // CHECK-NEXT:  %[[TMP_118:.*]] = mhlo.multiply %[[TMP_116]], %[[TMP_117]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_119:.*]] = mhlo.sqrt %[[TMP_1]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_120:.*]] = mhlo.divide %[[TMP_118]], %[[TMP_119]] : tensor<16x16xf32>
-  // CHECK-NEXT:  %[[TMP_121:.*]] = "mhlo.compare"(%[[TMP_1]], %[[TMP_5]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LE>} : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xi1>
+  // CHECK-NEXT:  %[[TMP_121:.*]] = mhlo.compare LE, %[[TMP_1]], %[[TMP_5]], NOTYPE : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xi1>
   // CHECK-NEXT:  %[[TMP_122:.*]] = "mhlo.select"(%[[TMP_121]], %[[TMP_82]], %[[TMP_120]]) : (tensor<16x16xi1>, tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_123:.*]] = mhlo.sign %[[TMP_0]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_124:.*]] = mhlo.multiply %[[TMP_123]], %[[TMP_122]] : tensor<16x16xf32>
@@ -2778,7 +2778,7 @@ func.func @bessel_i1e_f32(%arg : tensor<16x16xf32>) -> tensor<16x16xf32> {
   // CHECK-NEXT:  %[[TMP_117:.*]] = mhlo.multiply %[[TMP_115]], %[[TMP_116]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_118:.*]] = mhlo.sqrt %[[TMP_0]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_119:.*]] = mhlo.divide %[[TMP_117]], %[[TMP_118]] : tensor<16x16xf32>
-  // CHECK-NEXT:  %[[TMP_120:.*]] = "mhlo.compare"(%[[TMP_0]], %[[TMP_4]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LE>} : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xi1>
+  // CHECK-NEXT:  %[[TMP_120:.*]] = mhlo.compare LE, %[[TMP_0]], %[[TMP_4]], NOTYPE : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xi1>
   // CHECK-NEXT:  %[[TMP_121:.*]] = "mhlo.select"(%[[TMP_120]], %[[TMP_81]], %[[TMP_119]]) : (tensor<16x16xi1>, tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_122:.*]] = mhlo.sign %[[ARG0]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_123:.*]] = mhlo.multiply %[[TMP_122]], %[[TMP_121]] : tensor<16x16xf32>
@@ -3032,7 +3032,7 @@ func.func @bessel_i1e_f64(%arg : tensor<16x16xf64>) -> tensor<16x16xf64> {
   // CHECK-NEXT: %[[TMP_237:.*]] = mhlo.multiply %[[TMP_235]], %[[TMP_236]] : tensor<16x16xf64>
   // CHECK-NEXT: %[[TMP_238:.*]] = mhlo.sqrt %[[TMP_0]] : tensor<16x16xf64>
   // CHECK-NEXT: %[[TMP_239:.*]] = mhlo.divide %[[TMP_237]], %[[TMP_238]] : tensor<16x16xf64>
-  // CHECK-NEXT: %[[TMP_240:.*]] = "mhlo.compare"(%[[TMP_0]], %[[TMP_4]]) {compare_type = #mhlo<comparison_type NOTYPE>, comparison_direction = #mhlo<comparison_direction LE>} : (tensor<16x16xf64>, tensor<16x16xf64>) -> tensor<16x16xi1>
+  // CHECK-NEXT: %[[TMP_240:.*]] = mhlo.compare LE, %[[TMP_0]], %[[TMP_4]], NOTYPE : (tensor<16x16xf64>, tensor<16x16xf64>) -> tensor<16x16xi1>
   // CHECK-NEXT: %[[TMP_241:.*]] = "mhlo.select"(%[[TMP_240]], %[[TMP_129]], %[[TMP_239]]) : (tensor<16x16xi1>, tensor<16x16xf64>, tensor<16x16xf64>) -> tensor<16x16xf64>
   // CHECK-NEXT: %[[TMP_242:.*]] = mhlo.sign %[[ARG0]] : tensor<16x16xf64>
   // CHECK-NEXT: %[[TMP_243:.*]] = mhlo.multiply %[[TMP_242]], %[[TMP_241]] : tensor<16x16xf64>

@@ -1138,6 +1138,13 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameOperandsElementType,
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.compare LT, %arg0, %arg1 : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+    %1 = mhlo.compare LT, %arg0, %arg1, TOTALORDER : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+    ```
   }];
   let arguments = (ins
     HLO_Tensor:$lhs,
@@ -1162,6 +1169,11 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameOperandsElementType,
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return succeeded(mlir::verifyCompatibleShapes(l, r));
     }
+  }];
+
+  let assemblyFormat = [{
+    $comparison_direction `,` $lhs `,` $rhs (`,` $compare_type^)?
+      attr-dict `:` functional-type(operands, results)
   }];
 }
 

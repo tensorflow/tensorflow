@@ -689,7 +689,7 @@ func.func @while_cond_body(%arg0: tensor<f32>) -> tensor<f32> {
     // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_while_cond_htod_0"}
     %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_cond", send_key = "send_while_cond", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
-    // CHECK:      [[COND_COMPARE:%.*]] = "mhlo.compare"([[COND_RECV_TUPLE]]#0, [[COND_RECV_TUPLE]]#0)
+    // CHECK:      [[COND_COMPARE:%.*]] = mhlo.compare LT, [[COND_RECV_TUPLE]]#0, [[COND_RECV_TUPLE]]#0
     %2 = "mhlo.compare"(%1, %1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
     // CHECK:      "mhlo.return"([[COND_COMPARE]])
@@ -735,7 +735,7 @@ func.func @while_cond(%arg0: tensor<f32>) -> tensor<f32> {
     // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_while_cond_htod_0"}
     %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_cond", send_key = "send_while_cond", host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
-    // CHECK:      [[COND_COMPARE:%.*]] = "mhlo.compare"([[COND_RECV_TUPLE]]#0, [[COND_RECV_TUPLE]]#0)
+    // CHECK:      [[COND_COMPARE:%.*]] = mhlo.compare LT, [[COND_RECV_TUPLE]]#0, [[COND_RECV_TUPLE]]#0
     %2 = "mhlo.compare"(%1, %1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
     // CHECK:      "mhlo.return"([[COND_COMPARE]])
@@ -763,7 +763,7 @@ func.func @while_body(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<f32>):
 
-    // CHECK:      [[COND_COMPARE:%.*]] = "mhlo.compare"([[ITER_ARG_VALUE]], [[ITER_ARG_VALUE]])
+    // CHECK:      [[COND_COMPARE:%.*]] = mhlo.compare LT, [[ITER_ARG_VALUE]], [[ITER_ARG_VALUE]]
     %2 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
     // CHECK:      "mhlo.return"([[COND_COMPARE]])
