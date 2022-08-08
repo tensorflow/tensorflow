@@ -2367,6 +2367,7 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
     auto rhs = op.rhs();
     auto lhsTy = lhs.getType().cast<RankedTensorType>();
     auto rhsTy = rhs.getType().cast<RankedTensorType>();
+    auto resultTy = op.getType().cast<RankedTensorType>();
 
     if (lhsTy.getRank() != 2) return failure();
     if (rhsTy.getRank() != 2) return failure();
@@ -2378,6 +2379,8 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
     assert(!op.padding() || op.padding()->empty());
     assert(dNums.getKernelSpatialDimensions().empty());
 
+    auto lhsBatchDim = dNums.getInputBatchDimension();
+    auto rhsBatchDim = dNums.getKernelOutputFeatureDimension();
     auto lhsContractDim = dNums.getInputFeatureDimension();
     auto rhsContractDim = dNums.getKernelInputFeatureDimension();
     auto outBatchDim = dNums.getOutputBatchDimension();
@@ -2403,7 +2406,52 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
       return success();
     }
 
-    return failure();
+    int64_t featureGroupCount = op.feature_group_count();
+    int64_t lhsBatchSize = lhsTy.getDimSize(lhsBatchDim);
+    int64_t lhsContractSize = lhsTy.getDimSize(lhsContractDim);
+    int64_t rhsBatchSize = rhsTy.getDimSize(rhsBatchDim);
+    int64_t rhsContractSize = rhsTy.getDimSize(rhsContractDim);
+
+    llvm::SmallVector<int64_t> lhsShape;
+    llvm::SmallVector<int64_t> rhsShape;
+    lhsShape.resize(3, lhsBatchSize);
+    rhsShape.resize(3, rhsContractSize);
+    lhsShape[lhsContractDim] = featureGroupCount;
+    lhsShape[lhsContractDim + 1] = lhsContractSize / featureGroupCount;
+    rhsShape[rhsContractDim] = featureGroupCount;
+    rhsShape[rhsContractDim + 1] = rhsBatchSize / featureGroupCount;
+
+    lhsTy = RankedTensorType::get(lhsShape, lhsTy.getElementType());
+    rhsTy = RankedTensorType::get(rhsShape, rhsTy.getElementType());
+
+    lhs = rewriter.create<mhlo::ReshapeOp>(op.getLoc(), lhsTy, lhs);
+    rhs = rewriter.create<mhlo::ReshapeOp>(op.getLoc(), rhsTy, rhs);
+
+    auto dotTy = RankedTensorType::get(
+        {featureGroupCount, lhsBatchSize, rhsBatchSize / featureGroupCount},
+        resultTy.getElementType());
+
+    auto dotNums = DotDimensionNumbersAttr::get(
+        op.getContext(), {lhsContractDim}, {rhsContractDim},
+        {lhsContractDim + 1}, {rhsContractDim == 0 ? 2 : 0});
+    auto dotOp = rewriter.create<mhlo::DotGeneralOp>(
+        op.getLoc(), dotTy, lhs, rhs, dotNums,
+        op.precision_config().getValueOr(nullptr));
+
+    llvm::SmallVector<int64_t> perms;
+    perms.resize(3, dNums.getOutputBatchDimension() == 0 ? 0 : 2);
+    perms[0] = dNums.getOutputFeatureDimension();
+    perms[2] = dNums.getOutputFeatureDimension() + 1;
+
+    auto transposeTy = RankedTensorType::get(
+        {dotTy.getDimSize(perms[0]), dotTy.getDimSize(perms[1]),
+         dotTy.getDimSize(perms[2])},
+        dotTy.getElementType());
+    auto transposeOp = rewriter.create<mhlo::TransposeOp>(
+        op.getLoc(), transposeTy, dotOp, rewriter.getI64TensorAttr(perms));
+
+    rewriter.replaceOpWithNewOp<mhlo::ReshapeOp>(op, resultTy, transposeOp);
+    return success();
   }
 };
 
