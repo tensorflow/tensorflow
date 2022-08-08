@@ -267,12 +267,17 @@ Value CalculateZeroPointOffset(
       Create1DConstValue<int64_t>(builder, loc, weight_non_output_indices);
   Value zp = CreateScalarConstValue<int32_t>(builder, loc, input_zp);
 
+  TensorType filter_type = filter.getType().dyn_cast<TensorType>();
+  Value filter_i32 = builder.create<TF::CastOp>(
+      loc, filter_type.clone(builder.getIntegerType(32)), filter);
   auto zp_mul_output_type =
       RankedTensorType::get({output_dim}, builder.getIntegerType(32));
   auto reduced = builder.create<TF::SumOp>(
-      loc, zp_mul_output_type, filter, reduction_indices_value,
+      loc, zp_mul_output_type, filter_i32, reduction_indices_value,
       /*keep_dims=*/builder.getBoolAttr(false));
-  return builder.create<TF::MulOp>(loc, zp, reduced).getResult();
+  TF::MulOp mul_op = builder.create<TF::MulOp>(loc, zp, reduced);
+  llvm::SmallVector<Value> folded_results = ConstantFoldOpIfPossible(mul_op);
+  return folded_results.front();
 }
 
 // Helper function to create a XlaConvV2Op for Conv2DOp and DepthwiseConv2DOp.
@@ -321,15 +326,12 @@ Value CreateXLAConvOp(OpBuilder &builder, Location loc, Value input,
   input = CalculatePaddingAndPadIfNeeded(
       builder, loc, input, filter, input_zp_value, strides, dilations,
       conv_padding, explicit_paddings, padding);
-  TensorType filter_type = filter.getType().dyn_cast<TensorType>();
-  Value filter_i8 = builder.create<TF::CastOp>(
-      loc, filter_type.clone(builder.getIntegerType(8)), filter);
   Value xla_conv_output =
       builder
           .create<TF::XlaConvV2Op>(
               loc, /*output_type=*/conv_output.getType(),
               /*lhs=*/input,
-              /*rhs=*/filter_i8, window_strides, padding, lhs_dilation,
+              /*rhs=*/filter, window_strides, padding, lhs_dilation,
               rhs_dilation, feature_group_count,
               builder.getStringAttr(dnums.SerializeAsString()),
               /*precision_config=*/builder.getStringAttr(""))

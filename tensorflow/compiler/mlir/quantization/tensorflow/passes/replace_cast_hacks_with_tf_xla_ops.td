@@ -31,14 +31,15 @@ def CreateXLAConvOpFromTFDepthwiseConv2DOp : NativeCodeCall<
 def ConvertTFConv2DToXLAConvOp : Pat<
   (TF_Conv2DOp:$conv
     (TF_SubOp (TF_CastOp $input, $truncate), $input_zp),
-    (TF_ConstOp:$filter $filter_value),
+    (TF_CastOp (TF_IdentityOp $filter), $truncate1),
     $strides, $use_cudnn, $padding, $explicit_padding,
     IsDataFormatNHWC:$data_format, $dilations),
   (CreateXLAConvOpFromTFConv2DOp
     $input, $filter, $input_zp, $conv, $strides,
     $dilations, $padding, $explicit_padding),
   [(IsInt8ElementType $input),
-   (IsInt32ElementType $filter),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
@@ -49,14 +50,15 @@ def ConvertTFConv2DToXLAConvOp : Pat<
 def ConvertTFConv2DWithNoZeroPointToXLAConvOp : Pat<
   (TF_Conv2DOp:$conv
     (TF_CastOp $input, $truncate),
-    (TF_ConstOp:$filter $filter_value),
+    (TF_CastOp (TF_IdentityOp $filter), $truncate1),
     $strides, $use_cudnn, $padding, $explicit_padding,
     IsDataFormatNHWC:$data_format, $dilations),
   (CreateXLAConvOpFromTFConv2DOp
     $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $conv, $strides, $dilations, $padding, $explicit_padding),
   [(IsInt8ElementType $input),
-   (IsInt32ElementType $filter),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
@@ -71,15 +73,16 @@ def ConvertTFDepthwiseConv2DToXLAConvOp : Pat<
       (TF_CastOp:$casted_input
         (TF_SubOp (TF_CastOp $input, $truncate1), $input_zp), $truncate2),
       (TF_CastOp
-        (TF_IdentityOp (TF_ConstOp:$filter $filter_value)), $truncate3),
+        (TF_CastOp (TF_IdentityOp $filter), $truncate3), $truncate4),
       $strides, $padding, $explicit_padding,
-      IsDataFormatNHWC:$data_format, $dilations), $truncate4),
+      IsDataFormatNHWC:$data_format, $dilations), $truncate5),
   (CreateXLAConvOpFromTFDepthwiseConv2DOp
     $input, $filter, $input_zp, $conv, $strides,
     $dilations, $padding, $explicit_padding),
   [(IsInt8ElementType $input),
    (IsF32ElementType $casted_input),
-   (IsInt32ElementType $filter),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
@@ -93,16 +96,49 @@ def ConvertTFDepthwiseConv2DWithNoZeroPointToXLAConvOp : Pat<
       (TF_CastOp:$casted_input
         (TF_CastOp $input, $truncate1), $truncate2),
       (TF_CastOp
-        (TF_IdentityOp (TF_ConstOp:$filter $filter_value)), $truncate3),
+        (TF_CastOp (TF_IdentityOp $filter), $truncate3), $truncate4),
       $strides, $padding, $explicit_padding,
-      IsDataFormatNHWC:$data_format, $dilations), $truncate4),
+      IsDataFormatNHWC:$data_format, $dilations), $truncate5),
   (CreateXLAConvOpFromTFDepthwiseConv2DOp
     $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $conv, $strides, $dilations, $padding, $explicit_padding),
   [(IsInt8ElementType $input),
    (IsF32ElementType $casted_input),
-   (IsInt32ElementType $filter),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
   (addBenefit 10)>;
+
+// TODO(b/241478226): Remove these rules after these binary ops support folding
+// with broadcastable shapes.
+// Fold the Add/Sub op if the rhs is 0.
+foreach BinaryOp = [TF_AddV2Op, TF_SubOp] in {
+  def FoldI32#BinaryOp : Pat<
+    (BinaryOp $x, (TF_ConstOp:$cst $cst_value)),
+    (replaceWithValue $x),
+    [(TensorOf<[I32]> $x),
+     (IsIntSplatValueEqual<"int32_t", "0"> $cst)]>;
+
+  def FoldF32#BinaryOp : Pat<
+    (BinaryOp $x, (TF_ConstOp:$cst $cst_value)),
+    (replaceWithValue $x),
+    [(TensorOf<[F32]> $x),
+     (IsSplatValueEqual<"0.f"> $cst)]>;
+}
+
+// Fold the Add/Sub op if the rhs is 1.
+foreach BinaryOp = [TF_MulOp, TF_DivOp] in {
+  def FoldI32#BinaryOp : Pat<
+    (BinaryOp $x, (TF_ConstOp:$cst $cst_value)),
+    (replaceWithValue $x),
+    [(TensorOf<[I32]> $x),
+     (IsIntSplatValueEqual<"int32_t", "1"> $cst)]>;
+
+  def FoldF32#BinaryOp : Pat<
+    (BinaryOp $x, (TF_ConstOp:$cst $cst_value)),
+    (replaceWithValue $x),
+    [(TensorOf<[F32]> $x),
+     (IsSplatValueEqual<"1.f"> $cst)]>;
+}
