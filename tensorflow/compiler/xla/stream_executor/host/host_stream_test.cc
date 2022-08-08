@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace se = stream_executor;
 

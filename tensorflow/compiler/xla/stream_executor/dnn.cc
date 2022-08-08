@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
@@ -593,7 +593,7 @@ int64_t BatchDescriptor::FullyConnectedBiasCount(
 }
 
 BatchDescriptor BatchDescriptor::DepthConcatenateOutputDescriptor(
-    port::ArraySlice<dnn::BatchDescriptor> inputs) {
+    port::ArraySlice<dnn::BatchDescriptor> inputs) {  // non-absl ok
   if (inputs.empty()) {
     return BatchDescriptor();
   }

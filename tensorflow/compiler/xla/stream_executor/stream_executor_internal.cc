@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/stream_executor_internal.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
 namespace internal {

@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/temporary_memory_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/temporary_memory_manager.h"
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 
 namespace stream_executor {
 namespace internal {

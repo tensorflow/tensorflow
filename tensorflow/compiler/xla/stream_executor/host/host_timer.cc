@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/host/host_timer.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
 
-#include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor_internal.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
 namespace host {

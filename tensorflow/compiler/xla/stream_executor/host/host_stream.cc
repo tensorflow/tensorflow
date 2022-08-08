@@ -15,7 +15,7 @@ limitations under the License.
 
 // Class method definitions for HostStream, the Stream implementation for
 // the HostExecutor implementation.
-#include "tensorflow/stream_executor/host/host_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
 
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/platform/denormal.h"

@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/platform.h"
-
-#include "tensorflow/stream_executor/platform/port.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 
 namespace stream_executor {
 

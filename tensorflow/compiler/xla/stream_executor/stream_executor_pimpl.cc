@@ -17,7 +17,7 @@ limitations under the License.
 // implementation_ value (in pointer-to-implementation style), which
 // implements StreamExecutorInterface.
 
-#include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 
 #include <atomic>
 #include <memory>
@@ -28,18 +28,18 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/fft.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/stacktrace.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/compiler/xla/stream_executor/rng.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/fft.h"
-#include "tensorflow/stream_executor/lib/env.h"
-#include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/stacktrace.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/lib/threadpool.h"
-#include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/rng.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace {
 bool FLAGS_check_device_leaks = false;

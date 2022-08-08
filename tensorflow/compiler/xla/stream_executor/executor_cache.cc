@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/executor_cache.h"
+#include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
+
+#include <memory>
 
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"

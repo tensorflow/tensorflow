@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/host/host_platform.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_platform.h"
 
 #include <thread>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/stream_executor/host/host_gpu_executor.h"
-#include "tensorflow/stream_executor/host/host_platform_id.h"
-#include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_gpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 
 namespace stream_executor {
 namespace host {
@@ -70,8 +70,8 @@ port::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = absl::make_unique<StreamExecutor>(
-      this, absl::make_unique<HostExecutor>(config.plugin_config),
+  auto executor = std::make_unique<StreamExecutor>(
+      this, std::make_unique<HostExecutor>(config.plugin_config),
       config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {

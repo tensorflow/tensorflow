@@ -17,15 +17,15 @@ limitations under the License.
 // kernel abstraction. KernelBase just delegates to the internal
 // platform-specific implementation instance.
 
-#include "tensorflow/stream_executor/kernel.h"
+#include "tensorflow/compiler/xla/stream_executor/kernel.h"
 
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/stream_executor/lib/demangle.h"
-#include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/demangle.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 
