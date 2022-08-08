@@ -227,6 +227,15 @@ func.func @uniform_dequantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 34.0:16>
 
 // -----
 
+// CHECK-LABEL: func @fft
+func.func @fft(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xindex> {
+  %0 = "mhlo.fft"(%arg0) { fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type FFT> } : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xindex>
+// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [3, 9], element_type0 = complex<f32>} : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xindex>
+  func.return %1 : tensor<3x9xindex>
+}
+
 #CSR = #sparse_tensor.encoding<{
   dimLevelType = ["dense", "compressed"]
 }>

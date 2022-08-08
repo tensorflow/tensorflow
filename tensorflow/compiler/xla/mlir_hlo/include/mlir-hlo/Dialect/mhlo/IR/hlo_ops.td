@@ -1811,7 +1811,7 @@ def HLO_UnaryEinsumOp: HLO_Op<"unary_einsum", [NoSideEffect]>, BASE_EinsumOp {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]> {
+def HLO_FftOp: HLO_Op<"fft", [InferTensorType, NoSideEffect]> {
   let summary = "Fast fourier transform operator";
   let description = [{
     Returns the fast-fourier-transform of the input array.
@@ -1825,7 +1825,6 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]> {
     I64ElementsAttr:$fft_length
   );
 
-  let hasVerifier = 1;
   let results = (outs HLO_Tensor);
 }
 
