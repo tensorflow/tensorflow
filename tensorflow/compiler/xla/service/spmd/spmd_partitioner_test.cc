@@ -41,7 +41,8 @@ class SpmdPartitioningTest : public HloTestBase {
       bool conv_halo_exchange_always_on_lhs = true,
       bool choose_faster_windowed_einsum = false,
       bool unroll_windowed_einsum = false,
-      bool bidirectional_windowed_einsum = false) {
+      bool bidirectional_windowed_einsum = false,
+      int64_t threshold_for_windowed_einsum_mib = -1) {
     // Some tests (BackpropFilter convs) set this flag false to test two
     // different paths of the implementation.
     SpmdPartitionerOptions options;
@@ -51,6 +52,10 @@ class SpmdPartitioningTest : public HloTestBase {
         choose_faster_windowed_einsum;
     options.unroll_windowed_einsum = unroll_windowed_einsum;
     options.bidirectional_windowed_einsum = bidirectional_windowed_einsum;
+    if (threshold_for_windowed_einsum_mib >= 0) {
+      options.threshold_for_windowed_einsum_mib =
+          threshold_for_windowed_einsum_mib;
+    }
     auto collective_ops_creator =
         GetDefaultCollectiveOpsCreator(num_devices, /*num_replicas=*/1);
     // Do not use all-gather for pattern-matching purpose, as the partitioner
@@ -3875,6 +3880,110 @@ ENTRY entry {
                              op::Parameter(1), op::Reshape(), op::Constant())),
                          op::Shape("f32[19648,64]"));
   EXPECT_THAT(root, AllOf(op::Dot(lhs, rhs), op::Shape("f32[24,19648]")));
+}
+
+TEST_F(SpmdPartitioningTest, WindowedEinsumTwoContractingDimsLhsReshard) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p0 = f32[2048,2,3264]{2,1,0} parameter(0), sharding={devices=[1,1,2]0,1}
+  %p1 = f32[2,3264,2176]{2,1,0} parameter(1), sharding={devices=[2,1,1]0,1}
+  ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/2,
+                           /*conv_halo_exchange_always_on_lhs=*/true,
+                           /*choose_faster_windowed_einsum=*/false,
+                           /*unroll_windowed_einsum=*/false,
+                           /*bidirectional_windowed_einsum=*/false,
+                           /*threshold_for_windowed_einsum_mib=*/0));
+  VLOG(1) << module->ToString();
+
+  // Check while op.
+  const auto arg0 = AllOf(
+      op::Reshape(op::Transpose(op::AllToAll(op::Reshape(op::Parameter(0))))),
+      op::Shape("f32[2048,1,3264]"));
+  const auto arg1 = AllOf(op::Parameter(1), op::Shape("f32[1,3264,2176]"));
+
+  const auto while_op =
+      AllOf(op::While(op::Tuple(arg0, arg1, op::Broadcast(), op::Broadcast(),
+                                op::Constant())),
+            op::Shape("(f32[2048,1,3264]{2,1,0}, f32[1,3264,2176]{2,1,0},"
+                      " f32[2048,1088]{1,0}, f32[2048,1088]{1,0}, u32[])"));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, AllOf(op::GetTupleElement(while_op), op::Shape("f32[2048,1088]")));
+
+  // Check while op body.
+  const auto while_loop = root->operand(0);
+  const auto next_i =
+      op::Add(op::GetTupleElement(op::Parameter(0)), op::Constant());
+  auto lhs = AllOf(op::GetTupleElement(op::Parameter(0)),
+                   op::Shape("f32[2048,1,3264]"));
+  auto rhs = AllOf(op::DynamicSlice(), op::Shape("f32[1,3264,1088]"));
+  auto dot_op = op::Dot(lhs, rhs);
+  auto add_op = op::Add(op::GetTupleElement(op::Parameter(0)), dot_op);
+  auto cond_op =
+      op::Conditional(op::Compare(next_i, op::Constant()), add_op, add_op);
+  EXPECT_THAT(while_loop->while_body()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::Parameter(0)),
+                        op::GetTupleElement(op::Parameter(0)), cond_op,
+                        op::GetTupleElement(op::Parameter(0)), next_i));
+}
+
+TEST_F(SpmdPartitioningTest, WindowedEinsumTwoContractingDimsRhsReshard) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p0 = f32[4096,2,3264]{2,1,0} parameter(0), sharding={devices=[1,1,2]0,1}
+  %p1 = f32[2,3264,2176]{2,1,0} parameter(1), sharding={devices=[2,1,1]0,1}
+  ROOT %dot.224 = f32[4096,2176]{1,0} dot(f32[4096,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/2,
+                           /*conv_halo_exchange_always_on_lhs=*/true,
+                           /*choose_faster_windowed_einsum=*/false,
+                           /*unroll_windowed_einsum=*/false,
+                           /*bidirectional_windowed_einsum=*/false,
+                           /*threshold_for_windowed_einsum_mib=*/0));
+  VLOG(1) << module->ToString();
+
+  // Check while op.
+  const auto arg0 = AllOf(op::Parameter(0), op::Shape("f32[4096,2,1632]"));
+  const auto arg1 = AllOf(
+      op::Reshape(op::Transpose(op::AllToAll(op::Reshape(op::Parameter(1))))),
+      op::Shape("f32[2,1632,2176]"));
+
+  const auto while_op =
+      AllOf(op::While(op::Tuple(arg0, arg1, op::Broadcast(), op::Broadcast(),
+                                op::Constant())),
+            op::Shape("(f32[4096,2,1632]{2,1,0}, f32[2,1632,2176]{2,1,0},"
+                      " f32[4096,1088]{1,0}, f32[4096,1088]{1,0}, u32[])"));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, AllOf(op::GetTupleElement(while_op), op::Shape("f32[4096,1088]")));
+
+  // Check while op body.
+  const auto while_loop = root->operand(0);
+  const auto next_i =
+      op::Add(op::GetTupleElement(op::Parameter(0)), op::Constant());
+  auto lhs = AllOf(op::GetTupleElement(op::Parameter(0)),
+                   op::Shape("f32[4096,2,1632]"));
+  auto rhs = AllOf(op::DynamicSlice(), op::Shape("f32[2,1632,1088]"));
+  auto dot_op = op::Dot(lhs, rhs);
+  auto add_op = op::Add(op::GetTupleElement(op::Parameter(0)), dot_op);
+  auto cond_op =
+      op::Conditional(op::Compare(next_i, op::Constant()), add_op, add_op);
+  EXPECT_THAT(while_loop->while_body()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::Parameter(0)),
+                        op::GetTupleElement(op::Parameter(0)), cond_op,
+                        op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
 TEST_F(SpmdPartitioningTest, DotPartialDeviceOrder) {
