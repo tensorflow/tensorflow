@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TRANSFORMS_REMAPPER_REMAPPING_HELPER_H_
 #define TENSORFLOW_CORE_TRANSFORMS_REMAPPER_REMAPPING_HELPER_H_
 
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/transforms/utils/op_cat_helper.h"
 #include "tensorflow/core/transforms/utils/utils.h"
 
@@ -22,7 +23,7 @@ namespace mlir {
 namespace tfg {
 namespace remapping {
 
-// The following structures stores info of the operations to be fused. These
+// The following structures store info of the operations to be fused. These
 // are mainly used for combining operands info and attributes for a fused
 // operation. They are also used for some predicate functions like
 // `IsCpuCompatible` and `IsGpuCompatible` to check if the relevant fusion is
@@ -113,7 +114,7 @@ class OpPropertyHelper : public OpCatHelper {
   }
 
   bool HaveSameDataType(Operation* lhs_op, Operation* rhs_op,
-                        const StringRef& attr_name = "T") const {
+                        StringRef attr_name = "T") const {
     auto lhs_attr = lhs_op->getAttrOfType<TypeAttr>(attr_name);
     auto rhs_attr = rhs_op->getAttrOfType<TypeAttr>(attr_name);
     if (!lhs_attr || !rhs_attr) return false;
@@ -122,7 +123,7 @@ class OpPropertyHelper : public OpCatHelper {
 
   // This function is currently used by contraction ops.
   bool IsGpuCompatibleDataType(Operation* contraction_op,
-                               const StringRef& attr_name = "T") const {
+                               StringRef attr_name = "T") const {
     auto attr = contraction_op->getAttrOfType<TypeAttr>(attr_name);
     if (!attr) return false;
     Type dtype = attr.getValue();
@@ -137,7 +138,7 @@ class OpPropertyHelper : public OpCatHelper {
 
   // This function is currently used by contraction ops.
   bool IsCpuCompatibleDataType(Operation* contraction_op,
-                               const StringRef& attr_name = "T") const {
+                               StringRef attr_name = "T") const {
     auto attr = contraction_op->getAttrOfType<TypeAttr>(attr_name);
     if (!attr) return false;
     Type dtype = attr.getValue();
@@ -160,8 +161,8 @@ class OpPropertyHelper : public OpCatHelper {
   }
 
   // This function is currently used by convolution type op
-  bool IsGpuCompatibleDataFormat(
-      Operation* conv_op, const StringRef& attr_name = "data_format") const {
+  bool IsGpuCompatibleDataFormat(Operation* conv_op,
+                                 StringRef attr_name = "data_format") const {
     StringRef data_format;
     if (auto attr = conv_op->getAttrOfType<StringAttr>(attr_name)) {
       data_format = attr.getValue();
@@ -176,8 +177,8 @@ class OpPropertyHelper : public OpCatHelper {
   }
 
   // This function is currently used by convolution type op
-  bool IsCpuCompatibleDataFormat(
-      Operation* conv_op, const StringRef& attr_name = "data_format") const {
+  bool IsCpuCompatibleDataFormat(Operation* conv_op,
+                                 StringRef attr_name = "data_format") const {
     StringRef data_format;
     if (auto attr = conv_op->getAttrOfType<StringAttr>(attr_name)) {
       data_format = attr.getValue();
@@ -205,7 +206,8 @@ class OpPropertyHelper : public OpCatHelper {
     // is no true benefit from doing this optimization if XLA is going to
     // compile the unfused operations anyway.
     if (is_xla_auto_clustering_enabled_) return false;
-    if (!util::NodeIsOnGpu(pattern.contraction)) return false;
+    if (!util::OpHasDevice(pattern.contraction, tensorflow::DEVICE_GPU))
+      return false;
     if (!dialect_->IsRelu(pattern.activation)) return false;
     if (dialect_->IsMatMul(pattern.contraction)) {
       return IsGpuCompatibleDataType(pattern.contraction);
@@ -219,7 +221,8 @@ class OpPropertyHelper : public OpCatHelper {
   bool IsGpuCompatible(const ContractionBiasAdd&) const { return false; }
 
   bool IsCpuCompatible(Operation* contraction_op) const {
-    if (!util::NodeIsOnCpu(contraction_op)) return false;
+    if (!util::OpHasDevice(contraction_op, tensorflow::DEVICE_CPU))
+      return false;
     if (dialect_->IsConv2D(contraction_op) ||
         dialect_->IsConv3D(contraction_op)) {
       return IsCpuCompatibleDataType(contraction_op) &&

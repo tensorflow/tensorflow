@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"                        // from @llvm-project
 #include "mlir/Parser/Parser.h"                          // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/transforms/pass_detail.h"
@@ -57,7 +58,7 @@ class MatchMulSigmoid : public RewritePattern {
         !dtype_attr.getValue().isa<BFloat16Type>())
       return failure();
 
-    if (!util::NodeIsOnCpu(op)) return failure();
+    if (!util::OpHasDevice(op, tensorflow::DEVICE_CPU)) return failure();
 
     TFOp mul_wrapper(op);
 

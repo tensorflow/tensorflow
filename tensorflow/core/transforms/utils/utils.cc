@@ -35,18 +35,11 @@ namespace mlir {
 namespace tfg {
 namespace util {
 
-bool NodeIsOnCpu(Operation *op) {
+bool OpHasDevice(Operation *op, const char *device_name) {
   std::string task, device;
   return tensorflow::DeviceNameUtils::SplitDeviceName(TFOp(op).device().data(),
                                                       &task, &device) &&
-         absl::StartsWith(device, tensorflow::DEVICE_CPU);
-}
-
-bool NodeIsOnGpu(Operation *op) {
-  std::string task, device;
-  return tensorflow::DeviceNameUtils::SplitDeviceName(TFOp(op).device().data(),
-                                                      &task, &device) &&
-         absl::StartsWith(device, tensorflow::DEVICE_GPU);
+         absl::StartsWith(device, device_name);
 }
 
 void EraseRegularNodeAttributes(NamedAttrList &attr_list) {
