@@ -13,18 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/InitAllDialects.h"  // from @llvm-project
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/transforms/memref/passes.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/rt_passes.h"
+#ifndef XLA_MLIR_MEMREF_PASSES_H_
+#define XLA_MLIR_MEMREF_PASSES_H_
 
-int main(int argc, char **argv) {
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
+#include <memory>
 
-  registry.insert<xla::runtime::RuntimeDialect>();
-  xla::runtime::registerMemrefTransformsPasses();
-  xla::runtime::registerRuntimeTransformsPasses();
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 
-  return failed(MlirOptMain(argc, argv, "Xla Runtime Pass Driver\n", registry));
-}
+namespace xla {
+namespace runtime {
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateAlignedAllocationsPass(int64_t alignment = 64);
+
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/xla/mlir/transforms/memref/passes.h.inc"
+
+}  // namespace runtime
+}  // namespace xla
+
+#endif  // XLA_MLIR_MEMREF_PASSES_H_
