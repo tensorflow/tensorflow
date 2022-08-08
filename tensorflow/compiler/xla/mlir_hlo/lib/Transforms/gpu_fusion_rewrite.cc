@@ -285,6 +285,8 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
 }
 
 bool FusionRewritePattern::isRewritable(lmhlo::FusionOp fusionOp) const {
+  if (fusionOp.getFusionResults().size() > 1)
+    return false;  // Do not rewrite fusions with multiple outputs.
   auto callback = [this](Operation* op) {
     if (rewritableTarget.isLegal(op)) return WalkResult::advance();
     return WalkResult::interrupt();
@@ -324,6 +326,9 @@ static bool isRewritableType(Type type) {
   // MemRef types need to have identity layout.
   if (auto memrefType = shapedType.dyn_cast<MemRefType>())
     return memrefType.getLayout().isIdentity();
+  // Unsigned integers are not yet supported.
+  if (auto intType = shapedType.getElementType().dyn_cast<IntegerType>())
+    return !intType.isUnsigned();
   return true;
 }
 
@@ -343,8 +348,12 @@ ConversionTarget FusionRewritePattern::getRewritableTarget(MLIRContext* ctx) {
       });
   // For now, use an explicit allow-list of hlo ops inside the fusion. If any
   // other op is present, the fusion will not be rewritten.
-  target.addLegalOp<mhlo::LogOp>();
-  target.addLegalOp<mhlo::AbsOp>();
+  target.addLegalOp<
+      mhlo::AddOp, mhlo::AbsOp, mhlo::CbrtOp, mhlo::CeilOp, mhlo::CosineOp,
+      mhlo::DivOp, mhlo::ExpOp, mhlo::Expm1Op, mhlo::FloorOp, mhlo::LogOp,
+      mhlo::Log1pOp, mhlo::LogisticOp, mhlo::MulOp, mhlo::NegOp, mhlo::RoundOp,
+      /*unsupported: mhlo::RoundNearestEvenOp,*/ mhlo::RsqrtOp, mhlo::SignOp,
+      mhlo::SineOp, mhlo::SqrtOp, mhlo::SubtractOp, mhlo::TanhOp>();
   return target;
 }
 
