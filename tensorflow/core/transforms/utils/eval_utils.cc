@@ -149,8 +149,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
     }
 
     tensorflow::StatusOr<ElementsAttr> attr_or =
-        ConvertTensor(*(op_context.mutable_output(i)), builder,
-                      cast<TFGraphDialect>(op->getDialect()));
+        ConvertTensor(*(op_context.mutable_output(i)), builder);
     if (!attr_or.status().ok()) {
       VLOG(3) << attr_or.status().error_message();
       return failure();

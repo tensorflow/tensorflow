@@ -32,13 +32,11 @@ namespace tfg {
 
 // Converts an TensorFlow tensor proto into an MLIR elements attribute.
 tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
-    const tensorflow::TensorProto& input_tensor, Builder builder,
-    TFGraphDialect* tfgDialect);
+    const tensorflow::TensorProto& input_tensor, Builder builder);
 
 // Converts an TensorFlow tensor into an MLIR elements attribute.
 tensorflow::StatusOr<ElementsAttr> ConvertTensor(
-    const tensorflow::Tensor& input_tensor, Builder builder,
-    TFGraphDialect* tfgDialect);
+    const tensorflow::Tensor& input_tensor, Builder builder);
 
 // Converts a shape from MLIR to a TensorFlow tensor shape proto.
 void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,

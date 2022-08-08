@@ -224,7 +224,7 @@ LogicalResult StripDefaultAttrsPass::removeDefaultValuedAttrs(Operation *op) {
     // Convert the TensorFlow attribute value and compare it to the MLIR
     // attribute.
     tensorflow::StatusOr<Attribute> maybe_attr =
-        ConvertAttributeValue(attr.default_value(), b, dialect_);
+        ConvertAttributeValue(attr.default_value(), b);
     if (!maybe_attr.ok())
       return op->emitError(maybe_attr.status().error_message());
     if (maybe_attr.ValueOrDie() == it.first->getValue())
@@ -313,7 +313,7 @@ LogicalResult AddDefaultAttrsPass::addDefaultValuedAttrs(Operation *op) {
     if (attrs.get(attr.name())) continue;
     // Convert the TensorFlow attribute value and set it.
     tensorflow::StatusOr<Attribute> maybe_attr =
-        ConvertAttributeValue(attr.default_value(), b, dialect_);
+        ConvertAttributeValue(attr.default_value(), b);
     if (!maybe_attr.ok())
       return op->emitError(maybe_attr.status().error_message());
     attrs.set(attr.name(), maybe_attr.ValueOrDie());
