@@ -36,6 +36,10 @@ class PyToken {
   PyToken() = default;
   explicit PyToken(PjRtFuture<Status> future) : future_(std::move(future)) {}
 
+  static PyToken ReadyPyToken() {
+    return PyToken(PjRtFuture<Status>(OkStatus()));
+  }
+
   Status Await();
 
  private:

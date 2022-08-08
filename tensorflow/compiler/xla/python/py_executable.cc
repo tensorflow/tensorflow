@@ -135,8 +135,8 @@ PyExecutable::ExecuteInternal(
   // implement this. So we have to check whether returned_futures is empty.
   // Remove this check once the implementation is fixed.
   if (!returned_futures.has_value()) {
-    return std::pair<std::vector<PyBuffer::object>, PyToken>(std::move(outputs),
-                                                             PyToken());
+    return std::pair<std::vector<PyBuffer::object>, PyToken>(
+        std::move(outputs), PyToken::ReadyPyToken());
   }
   return std::pair<std::vector<PyBuffer::object>, PyToken>(
       std::move(outputs), PyToken(std::move(returned_futures->at(0))));
@@ -145,7 +145,7 @@ PyExecutable::ExecuteInternal(
 StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
 PyExecutable::ExecuteWithToken(absl::Span<PyBuffer::object const> args) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
-  returned_futures.emplace();
+  if (executable_->IsReturnedFutureSupported()) returned_futures.emplace();
   return ExecuteInternal(args, returned_futures);
 }
 
@@ -244,8 +244,10 @@ PyExecutable::ExecuteShardedOnLocalDevicesInternal(
   // implement this. So we have to check whether returned_futures is empty.
   // Remove this check once the implementation is fixed.
   if (!returned_futures.has_value()) {
+    std::vector<PyToken> tokens(num_computations, PyToken::ReadyPyToken());
     return std::pair<std::vector<std::vector<PyBuffer::object>>,
-                     std::vector<PyToken>>(std::move(outputs), {});
+                     std::vector<PyToken>>(std::move(outputs),
+                                           std::move(tokens));
   }
 
   std::vector<PyToken> tokens;
@@ -273,7 +275,7 @@ StatusOr<
 PyExecutable::ExecuteShardedOnLocalDevicesWithTokens(
     absl::Span<const std::vector<PyBuffer::object>> args) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
-  returned_futures.emplace();
+  if (executable_->IsReturnedFutureSupported()) returned_futures.emplace();
   return ExecuteShardedOnLocalDevicesInternal(args, returned_futures);
 }
 

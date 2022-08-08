@@ -1229,6 +1229,15 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   // True if on-device resources associated with the executable are freed.
   virtual bool IsDeleted() = 0;
 
+  // True if the `returned_futures` output parameter is supported in the
+  // Execute*() methods.
+  //
+  // TODO(b/240696624): Although the PjRt interface require `returned_futures`
+  // to be resized correctly if it is not nullopt, some implementation does not
+  // implement this. So we have to check whether returned_futures is empty.
+  // Remove this method once the implementation is fixed.
+  virtual bool IsReturnedFutureSupported() const { return false; }
+
  protected:
   // Value returned internally from routines that enqueue an execution,
   // combining the result buffers with a future that becomes ready when the
