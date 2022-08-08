@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
 // Required for IS_MOBILE_PLATFORM definition
 #include "tensorflow/core/platform/platform.h"
@@ -622,6 +623,12 @@ uint64_t TF_GetFrameId(TF_OpKernelContext* ctx) {
       .frame_id;
 }
 
+int TF_GetGraphDefVersion(TF_OpKernelContext* ctx) {
+  return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)
+      ->function_library()
+      ->graph_def_version();
+}
+
 int64_t TF_GetIterId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)
       ->frame_iter()
@@ -634,6 +641,16 @@ TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx) {
   opkernel_name_sv.data = cc_ctx->op_kernel().name().data();
   opkernel_name_sv.len = cc_ctx->op_kernel().name().length();
   return opkernel_name_sv;
+}
+
+TF_StringView TF_GetResourceMgrDefaultContainerName(TF_OpKernelContext* ctx) {
+  auto cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  TF_StringView default_container_name_sv;
+  default_container_name_sv.data =
+      cc_ctx->resource_manager()->default_container().data();
+  default_container_name_sv.len =
+      cc_ctx->resource_manager()->default_container().length();
+  return default_container_name_sv;
 }
 
 TF_StringView TF_GetOpKernelRequestedInput(TF_OpKernelContext* ctx,

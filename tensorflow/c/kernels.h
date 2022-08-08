@@ -245,11 +245,21 @@ TF_CAPI_EXPORT extern uint64_t TF_GetFrameId(TF_OpKernelContext* ctx);
 // Returns the Iter ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_GetIterId(TF_OpKernelContext* ctx);
 
+// Returns the graph def version of the given context.
+TF_CAPI_EXPORT extern int TF_GetGraphDefVersion(TF_OpKernelContext* ctx);
+
 // Returns the name of the OpKernel.
 //
 // The returned TF_StringView's underlying string is owned by the OpKernel and
 // has the same lifetime as the OpKernel.
 TF_CAPI_EXPORT extern TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx);
+
+// Returns the default container of the resource manager in OpKernelContext.
+//
+// The returned TF_StringView's underlying string is owned by the OpKernel and
+// has the same lifetime as the OpKernel.
+TF_CAPI_EXPORT extern TF_StringView TF_GetResourceMgrDefaultContainerName(
+    TF_OpKernelContext* ctx);
 
 // Returns the name of the requested input at `index` from the OpKernel.
 //
