@@ -67,7 +67,6 @@ TEST_F(GpuUnrollingTest, UnrollFourTimes) {
   // We request a factor of 8, but the computation works on 4 elements, limiting
   // the maximum unroll factor.
   debug_options.set_xla_gpu_max_kernel_unroll_factor(8);
-  debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
   auto hlo_module =
       ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
@@ -88,9 +87,7 @@ TEST_F(GpuUnrollingTest, UnrollFourTimes) {
 TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   // The default unrolling factor is 4.
   HloModuleConfig config;
-  auto debug_options = GetDebugOptionsFromFlags();
-  debug_options.set_xla_gpu_enable_mlir_lowering(false);
-  config.set_debug_options(debug_options);
+  config.set_debug_options(GetDebugOptionsFromFlags());
   auto hlo_module =
       ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
 
@@ -113,7 +110,6 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
   debug_options.set_xla_gpu_max_kernel_unroll_factor(4);
-  debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
 
   const char *const kUnfusedAddModule = R"(
