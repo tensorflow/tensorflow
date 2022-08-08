@@ -5293,6 +5293,18 @@ tf_module {
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'range_max\', \'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'None\'], "
   }
   member_method {
+    name: "UniformDequantize"
+    argspec: "args=[\'input\', \'scales\', \'zero_points\', \'Tout\', \'quantization_min_val\', \'quantization_max_val\', \'quantization_axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
+    name: "UniformQuantize"
+    argspec: "args=[\'input\', \'scales\', \'zero_points\', \'Tout\', \'quantization_min_val\', \'quantization_max_val\', \'quantization_axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
+    name: "UniformQuantizedDotHybrid"
+    argspec: "args=[\'lhs\', \'rhs\', \'rhs_scales\', \'rhs_zero_points\', \'Tout\', \'rhs_quantization_min_val\', \'rhs_quantization_max_val\', \'rhs_quantization_axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
     name: "Unique"
     argspec: "args=[\'x\', \'out_idx\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }

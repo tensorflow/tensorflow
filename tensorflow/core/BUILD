@@ -1053,6 +1053,7 @@ filegroup(
         "tpu_replication_ops_op_lib",
         "tpu_sharding_util_ops_op_lib",
         "training_ops_op_lib",
+        "uniform_quant_ops_op_lib",
         "word2vec_ops",
     ]
 ]
