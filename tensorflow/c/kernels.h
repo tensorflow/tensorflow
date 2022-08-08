@@ -235,6 +235,10 @@ TF_CAPI_EXPORT extern bool TF_IsHostMemoryOutput(TF_OpKernelContext* ctx, int i,
 // Returns the step ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
 
+// Returns the serialized NodeDef protocol buffer for the kernel
+TF_CAPI_EXPORT extern TF_Buffer* TF_OpKernelConstruction_GetNodeDef(
+    TF_OpKernelConstruction* ctx, TF_Status* status);
+
 // Returns the frame ID of the given context.
 TF_CAPI_EXPORT extern uint64_t TF_GetFrameId(TF_OpKernelContext* ctx);
 

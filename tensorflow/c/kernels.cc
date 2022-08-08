@@ -604,6 +604,18 @@ int64_t TF_StepId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
 }
 
+TF_Buffer* TF_OpKernelConstruction_GetNodeDef(TF_OpKernelConstruction* ctx,
+                                              TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  TF_Buffer* ret = TF_NewBuffer();
+  status->status = MessageToBuffer(cc_ctx->def(), ret);
+  if (!status->status.ok()) {
+    TF_DeleteBuffer(ret);
+    return nullptr;
+  }
+  return ret;
+}
+
 uint64_t TF_GetFrameId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)
       ->frame_iter()
