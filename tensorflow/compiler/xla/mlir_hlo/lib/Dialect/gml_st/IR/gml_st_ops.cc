@@ -1535,6 +1535,19 @@ LogicalResult YieldOp::verify() {
 // SpaceOp
 //===----------------------------------------------------------------------===//
 
+void SpaceOp::build(OpBuilder &builder, OperationState &result,
+                    ArrayRef<OpFoldResult> sizes,
+                    ArrayRef<NamedAttribute> attrs) {
+  SmallVector<Value> dynamicSizes;
+  SmallVector<int64_t> staticSizes;
+  for (OpFoldResult size : sizes)
+    dispatchIndexOpFoldResult(size, dynamicSizes, staticSizes,
+                              ShapedType::kDynamicSize);
+  build(builder, result, TileType::get(builder.getContext(), staticSizes),
+        dynamicSizes, builder.getI64ArrayAttr(staticSizes));
+  result.addAttributes(attrs);
+}
+
 LogicalResult SpaceOp::inferReturnTypes(
     MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
@@ -1573,6 +1586,19 @@ mlir::Value SpaceOp::getDynamicSize(unsigned idx) {
 // PointOp
 //===----------------------------------------------------------------------===//
 
+void PointOp::build(OpBuilder &builder, OperationState &result, Value superset,
+                    ArrayRef<OpFoldResult> offsets,
+                    ArrayRef<NamedAttribute> attrs) {
+  SmallVector<Value> dynamicOffsets;
+  SmallVector<int64_t> staticOffsets;
+  for (OpFoldResult offset : offsets)
+    dispatchIndexOpFoldResult(offset, dynamicOffsets, staticOffsets,
+                              ShapedType::kDynamicStrideOrOffset);
+  build(builder, result, PointType::get(builder.getContext()), superset,
+        dynamicOffsets, builder.getI64ArrayAttr(staticOffsets));
+  result.addAttributes(attrs);
+}
+
 LogicalResult PointOp::verify() {
   auto tileShape = superset().getType().cast<TileType>().getShape();
   if (failed(mlir::verifyListOfOperandsOrIntegers(
@@ -1601,6 +1627,25 @@ LogicalResult PointOp::verify() {
 //===----------------------------------------------------------------------===//
 // TileOp
 //===----------------------------------------------------------------------===//
+
+void TileOp::build(OpBuilder &b, OperationState &result, Value superset,
+                   ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> sizes,
+                   ArrayRef<OpFoldResult> strides,
+                   ArrayRef<NamedAttribute> attrs) {
+  SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
+  SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
+  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets,
+                             ShapedType::kDynamicStrideOrOffset);
+  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes,
+                             ShapedType::kDynamicSize);
+  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides,
+                             ShapedType::kDynamicStrideOrOffset);
+  auto tileType = TileType::get(b.getContext(), staticSizes);
+  build(b, result, tileType, superset, dynamicOffsets, dynamicSizes,
+        dynamicStrides, b.getI64ArrayAttr(staticOffsets),
+        b.getI64ArrayAttr(staticSizes), b.getI64ArrayAttr(staticStrides));
+  result.addAttributes(attrs);
+}
 
 LogicalResult TileOp::inferReturnTypes(
     MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
@@ -1780,21 +1825,17 @@ Value TileOp::compose(OpBuilder &builder) {
   // Compose offsets with newOffset = supersetOffset + supersetStride *
   // offset.
   auto loc = getLoc();
-  auto composedOffsets = decomposeMixedStridesOrOffsets(
-      builder,
+  auto composedOffsets =
       composeOffsets(supersetOp.getMixedOffsets(), supersetOp.getMixedStrides(),
-                     getMixedOffsets(), loc, builder));
+                     getMixedOffsets(), loc, builder);
 
   // Compose strides with newStride = supersetStride * stride.
-  auto composedStrides = decomposeMixedStridesOrOffsets(
-      builder, composeStrides(builder, loc, supersetOp.getMixedStrides(),
-                              getMixedStrides()));
+  auto composedStrides = composeStrides(
+      builder, loc, supersetOp.getMixedStrides(), getMixedStrides());
 
   // Build the composed tile op.
-  return builder.create<TileOp>(loc, supersetOp.superset(),
-                                composedOffsets.second, sizes(),
-                                composedStrides.second, composedOffsets.first,
-                                static_sizes(), composedStrides.first);
+  return builder.create<TileOp>(loc, supersetOp.superset(), composedOffsets,
+                                getMixedSizes(), composedStrides);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1836,16 +1877,13 @@ Value PointOp::compose(OpBuilder &builder) {
   // Compose offsets with newOffset = supersetOffset + supersetStride *
   // offset.
   auto loc = getLoc();
-  auto composedOffsets = decomposeMixedStridesOrOffsets(
-      builder,
-      composeOffsets(
-          supersetOp.getMixedOffsets(), supersetOp.getMixedStrides(),
-          getMixedStridesOrOffsets(static_indices(), dynamic_indices()), loc,
-          builder));
+  auto composedOffsets = composeOffsets(
+      supersetOp.getMixedOffsets(), supersetOp.getMixedStrides(),
+      getMixedStridesOrOffsets(static_indices(), dynamic_indices()), loc,
+      builder);
 
   // Build the composed point op.
-  return builder.create<PointOp>(loc, supersetOp.superset(),
-                                 composedOffsets.second, composedOffsets.first);
+  return builder.create<PointOp>(loc, supersetOp.superset(), composedOffsets);
 }
 
 //===----------------------------------------------------------------------===//

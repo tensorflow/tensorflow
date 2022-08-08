@@ -59,6 +59,10 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
     custom<OperandsOrIntegersSizesList>($dynamic_sizes, $static_sizes)
     attr-dict `:` qualified(type($result))
   }];
+  let builders = [
+    OpBuilder<(ins "ArrayRef<OpFoldResult>":$sizes,
+                    CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+  ];
   let extraClassDeclaration = [{
     unsigned getNumDynamicEntriesUpToIdx(unsigned idx);
     mlir::Value getDynamicSize(unsigned idx);
@@ -78,6 +82,10 @@ def GMLST_PointOp : GMLST_Op<"point", [
     custom<OperandsOrIntegersOffsetsOrStridesList>($dynamic_indices, $static_indices)
     attr-dict `:` qualified(type($superset)) `to` qualified(type($result))
   }];
+  let builders = [
+    OpBuilder<(ins "Value":$superset, "ArrayRef<OpFoldResult>":$offsets,
+                   CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+  ];
   let extraClassDeclaration = [{
     unsigned getRank() { return static_indices().size(); }
   }];
@@ -105,7 +113,11 @@ def GMLST_TileOp : GMLST_Op<"tile", [
     custom<OperandsOrIntegersOffsetsOrStridesList>($strides, $static_strides)
     attr-dict `:` qualified(type($superset)) `to` qualified(type($result))
   }];
-
+  let builders = [
+   OpBuilder<(ins "Value":$superset, "ArrayRef<OpFoldResult>":$offsets,
+      "ArrayRef<OpFoldResult>":$sizes, "ArrayRef<OpFoldResult>":$strides,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+  ];
   let extraClassDeclaration = [{
     /// Return the expected rank of each of the`static_offsets`, `static_sizes`
     /// and `static_strides` attributes.
