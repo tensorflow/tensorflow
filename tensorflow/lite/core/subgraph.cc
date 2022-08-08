@@ -707,7 +707,6 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
 }
 
 TfLiteStatus Subgraph::AllocateTensors() {
-  TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(), "AllocateTensors");
   if (!consistent_) {
     ReportError("AllocateTensors() called on inconsistent model.");
     return kTfLiteError;
@@ -740,6 +739,9 @@ TfLiteStatus Subgraph::AllocateTensors() {
     }
     return kTfLiteOk;
   }
+
+  // Profile "AllocateTensors" only when memory planning is needed.
+  TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(), "AllocateTensors");
 
   next_execution_plan_index_to_prepare_ = 0;
   next_execution_plan_index_to_plan_allocation_ = 0;
@@ -950,6 +952,7 @@ TfLiteStatus Subgraph::ResizeInputTensorStrict(int tensor_index,
 }
 
 TfLiteStatus Subgraph::ReleaseNonPersistentMemory() {
+  state_ = kStateUninvokable;
   if (memory_planner_) {
     TF_LITE_ENSURE_STATUS(memory_planner_->ReleaseNonPersistentMemory());
   }
