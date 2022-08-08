@@ -149,18 +149,6 @@ class ServerLibTest(test.TestCase):
     worker.stop()
     worker.join()
 
-  def testWithDispatcher(self):
-    with server_lib.DispatchServer() as dispatcher:
-      pass
-    dispatcher.join()
-
-  def testWithWorker(self):
-    dispatcher = server_lib.DispatchServer()
-    with server_lib.WorkerServer(
-      server_lib.WorkerConfig(dispatcher._address)) as worker:
-      pass
-    worker.join()
-
   def testDispatcherNumWorkers(self):
     dispatcher = server_lib.DispatchServer()
     self.assertEqual(0, dispatcher._num_workers())

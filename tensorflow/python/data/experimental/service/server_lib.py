@@ -126,17 +126,8 @@ class DispatchServer:
   dispatcher.join()
   ```
 
-  Call stop() to gracefully terminate the dispatcher. Alternatively, use
-  the dispatcher in a `with` context to automatically stop it when leaving
-  the context.
-
-  ```
-  config = tf.data.experimental.service.DispatcherConfig(port=5050)
-  with tf.data.experimental.service.DispatchServer(config) as dispatcher:
-      ...
-  ```
-
-  The server automatically stops when all reference to it have been deleted.
+  Call stop() to gracefully terminate the dispatcher. The server automatically
+  stops when all reference to it have been deleted.
 
   To start a `DispatchServer` in fault-tolerant mode, set `work_dir` and
   `fault_tolerant_mode` like below:
@@ -248,9 +239,6 @@ class DispatchServer:
   def __del__(self):
     self._stop()
 
-  def __exit__(self, exc_type, exc_val, exc_tb):
-    self._stop()
-
   @property
   def _address(self):
     """Returns the address of the server.
@@ -346,17 +334,8 @@ class WorkerServer:
   worker.join()
   ```
 
-  Call stop() to gracefully terminate the worker. Alternatively, use
-  the worker in a `with` context to automatically stop it when leaving
-  the context.
-
-  ```
-  with tf.data.experimental.service.WorkerServer(
-      port=5051, dispatcher_address="localhost:5050") as worker:
-      ...
-  ```
-
-  The worker automatically stops when all reference to it have been deleted.
+  Call stop() to gracefully terminate the worker. The worker automatically stops
+  when all reference to it have been deleted.
   """
 
   def __init__(self, config, start=True):
@@ -434,9 +413,6 @@ class WorkerServer:
     self._server.stop()
 
   def __del__(self):
-    self._stop()
-
-  def __exit__(self, exc_type, exc_val, exc_tb):
     self._stop()
 
   @property
