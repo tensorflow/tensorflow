@@ -3894,10 +3894,6 @@ cuda_py_test(
     name = "factory_ops_test",
     size = "small",
     srcs = ["ops/factory_ops_test.py"],
-    tags = [
-        "no_gpu",  # TODO(b/213596871): a similar test times out (delete
-        # the "no_gpu" tag once this is bug is fully resolved)
-    ],
     deps = [
         ":sparse_ops",
         "//tensorflow/python:platform_test",
