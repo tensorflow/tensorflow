@@ -139,6 +139,27 @@ TfLiteRegistrationExternalCreate(const char* custom_name, const int version);
 TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalDelete(
     TfLiteRegistrationExternal* registration);
 
+// Sets the initialization callback for the registration.
+//
+// The callback is called to initialize the op from serialized data.
+// Please refer `init` of `TfLiteRegistration` for the detail.
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetInit(
+    TfLiteRegistrationExternal* registration,
+    void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
+                  size_t length));
+
+// Sets the deallocation callback for the registration.
+//
+// This callback is called to deallocate the data returned by the init callback.
+// The value passed in the `data` parameter is the value that was returned by
+// the `init` callback.
+// Please refer `free` of `TfLiteRegistration` for the detail.
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetFree(
+    TfLiteRegistrationExternal* registration,
+    void (*free)(TfLiteOpaqueContext* context, void* data));
+
 // Sets the preparation callback for the registration.
 //
 // The callback is called when the inputs of operator have been resized.
