@@ -130,6 +130,8 @@ data::Layout ToFB(Layout type) {
       return data::Layout::HWDC;
     case Layout::BHWDC:
       return data::Layout::BHWDC;
+    case Layout::LINEAR:
+      return data::Layout::LINEAR;
     default:
       return data::Layout::UNKNOWN;
   }
@@ -226,6 +228,8 @@ Layout ToEnum(data::Layout type) {
       return Layout::HWDC;
     case data::Layout::BHWDC:
       return Layout::BHWDC;
+    case data::Layout::LINEAR:
+      return Layout::LINEAR;
     default:
       return Layout::UNKNOWN;
   }
@@ -823,7 +827,6 @@ absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op) {
   op->work_group_size_.y = fb_op->work_group_size()->y();
   op->work_group_size_.z = fb_op->work_group_size()->z();
   op->tensor_to_grid_ = ToEnum(fb_op->tensor_to_grid());
-  op->elementwise_ = fb_op->elementwise();
   op->flops_ = fb_op->flops();
   Decode(fb_op->definition(), &op->definition_);
   op->grid_dimension_ = fb_op->grid_dimension();
@@ -844,7 +847,6 @@ absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op) {
   op->work_groups_count_.x = fb_op->work_groups_count()->x();
   op->work_groups_count_.y = fb_op->work_groups_count()->y();
   op->work_groups_count_.z = fb_op->work_groups_count()->z();
-  op->linkable_count_ = fb_op->linkable_count();
   op->CalculateConstArgsSize();
   return absl::OkStatus();
 }
@@ -878,7 +880,6 @@ flatbuffers::Offset<data::GPUOperation> Encode(
   op_builder.add_arguments(args_fb);
   op_builder.add_work_group_size(work_group_size_fb);
   op_builder.add_tensor_to_grid(ToFB(op.tensor_to_grid_));
-  op_builder.add_elementwise(op.elementwise_);
   op_builder.add_flops(op.flops_);
   op_builder.add_definition(def_fb);
   op_builder.add_grid_dimension(op.grid_dimension_);
@@ -887,7 +888,6 @@ flatbuffers::Offset<data::GPUOperation> Encode(
   op_builder.add_src_tensors_names(src_names_fb_vec);
   op_builder.add_dst_tensors_names(dst_names_fb_vec);
   op_builder.add_work_groups_count(work_groups_count_fb);
-  op_builder.add_linkable_count(op.linkable_count_);
   return op_builder.Finish();
 }
 

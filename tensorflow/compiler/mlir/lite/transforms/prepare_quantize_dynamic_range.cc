@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/CommandLine.h"
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -398,7 +399,7 @@ class PrepareDynamicRangeQuantizableOp
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.
 void PrepareDynamicRangeQuantizePass::removeAllStatsOp(func::FuncOp func) {
-  func.walk([&](quant::StatisticsOp stats_op) {
+  func.walk([&](quantfork::StatisticsOp stats_op) {
     stats_op.replaceAllUsesWith(stats_op.getArg());
     stats_op.erase();
   });

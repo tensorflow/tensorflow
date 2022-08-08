@@ -3,7 +3,7 @@
 // CHECK-LABEL: @if
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<f32>, [[ARG1:%.+]]: tensor<f32>)
 func.func @if(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
-  // CHECK: [[VAL0:%.+]] = "mhlo.compare"([[ARG0]], [[ARG1]]) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK: [[VAL0:%.+]] = mhlo.compare GT, [[ARG0]], [[ARG1]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: [[VAL2:%.+]] = "mhlo.if"([[VAL0]]) ({
   // CHECK:   [[VAL3:%.+]] = func.call @cond_true([[ARG0]], [[ARG1]])
@@ -33,7 +33,7 @@ attributes  {tf._input_shapes = ["tfshape$", "tfshape$"]} {
 // CHECK-LABEL: @ifRegion
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<f32>, [[ARG1:%.+]]: tensor<f32>)
 func.func @ifRegion(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
-  // CHECK: [[VAL0:%.+]] = "mhlo.compare"([[ARG0]], [[ARG1]]) {comparison_direction = #mhlo<comparison_direction GT>}
+  // CHECK: [[VAL0:%.+]] = mhlo.compare GT, [[ARG0]], [[ARG1]]
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: [[VAL1:%.+]] = "mhlo.if"([[VAL0]]) ({
   %1 = "tf.IfRegion"(%0) ({
@@ -152,7 +152,7 @@ func.func @whileRegion() -> tensor<i32> {
   ^cond(%carg0: tensor<i32>, %carg1: tensor<i32>, %carg2: tensor<i32>):
     // CHECK: [[VAL3:%.+]] = mhlo.constant dense<10>
     %3 = mhlo.constant dense<10> : tensor<i32>
-    // CHECK: [[VAL4:%.+]] = "mhlo.compare"([[ITER_ARG2]], [[VAL3]]) {comparison_direction = #mhlo<comparison_direction LT>}
+    // CHECK: [[VAL4:%.+]] = mhlo.compare LT, [[ITER_ARG2]], [[VAL3]]
     %4 = "mhlo.compare"(%carg2, %3) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     // CHECK: "mhlo.return"([[VAL4]])
     "tf.Yield"(%4) : (tensor<i1>) -> ()
@@ -182,8 +182,8 @@ func.func @whileRegionImplicitInputs(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: [[VAL2:%.+]]:3 = mhlo.while([[ITER_ARG0:.*]] = [[ARG0]], [[ITER_ARG1:.*]] = [[VAL0]], [[ITER_ARG2:.*]] = [[VAL1]])
   %2 = "tf.WhileRegion"(%arg0) ({
   ^cond(%carg0: tensor<i32>):
-    // CHECK: [[VAL3:%.+]] = "mhlo.compare"([[ITER_ARG0]], [[ITER_ARG1]])
-    %3 = "mhlo.compare"(%carg0, %0) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    // CHECK: [[VAL3:%.+]] = mhlo.compare LT, [[ITER_ARG0]], [[ITER_ARG1]]
+    %3 = mhlo.compare LT, %carg0, %0 : (tensor<i32>, tensor<i32>) -> tensor<i1>
     // CHECK: "mhlo.return"([[VAL3]])
     "tf.Yield"(%3) : (tensor<i1>) -> ()
   }, {
@@ -208,7 +208,7 @@ func.func @whileRegionMultipleImplicitInputs() {
   %1 = mhlo.constant dense<-1> : tensor<i32>
   // CHECK: [[VAL2:%.+]]:2 = mhlo.while([[ITER_ARG0:.*]] = [[VAL0]], [[ITER_ARG1:.*]] = [[VAL1]])
   "tf.WhileRegion"() ({
-    // CHECK: [[VAL3:%.+]] = "mhlo.compare"([[ITER_ARG0]], [[ITER_ARG1]]) {comparison_direction = #mhlo<comparison_direction LT>}
+    // CHECK: [[VAL3:%.+]] = mhlo.compare LT, [[ITER_ARG0]], [[ITER_ARG1]]
     %2 = "mhlo.compare"(%0, %1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     // CHECK: "mhlo.return"([[VAL3]])
     "tf.Yield"(%2) : (tensor<i1>) -> ()

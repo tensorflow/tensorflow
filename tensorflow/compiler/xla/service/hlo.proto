@@ -491,6 +491,9 @@ message HloModuleProto {
 
   repeated xla.OpSharding spmd_parameters_shardings = 14;
 
+  // Uses AutoSharding pass or not.
+  bool use_auto_spmd_partitioning = 16;
+
   // The type of optimization profile in use for module-level optimizations.
   enum ProfileType {
     INVALID = 0;

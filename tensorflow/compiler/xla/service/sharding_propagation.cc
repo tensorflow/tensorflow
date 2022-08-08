@@ -1207,6 +1207,32 @@ bool IsCSEPreventionSharding(const HloSharding& sharding) {
 
 }  // namespace
 
+std::optional<HloSharding> InferBroadcastOperandSharding(
+    const HloInstruction& instruction, bool is_spmd) {
+  if (instruction.sharding().IsReplicated()) {
+    return instruction.sharding();
+  }
+  std::vector<int64_t> dims_to_replicate;
+  bool needs_replication = false;
+  for (int64_t i = 0; i < instruction.shape().rank(); ++i) {
+    if (absl::c_count(instruction.dimensions(), i) == 0) {
+      dims_to_replicate.push_back(i);
+      if (instruction.sharding().tile_assignment().dim(i) > 1) {
+        needs_replication = true;
+      }
+    }
+  }
+  // If not SPMD, only support when none of the partitioned dimensions in
+  // the broadcast output belong to new dimensions.
+  if (!is_spmd && needs_replication) {
+    return std::nullopt;
+  }
+  return hlo_sharding_util::RemoveShapeDimensions(
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+          instruction.sharding(), dims_to_replicate),
+      dims_to_replicate);
+}
+
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
 // copy node for reshard.
@@ -1302,28 +1328,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
 
   switch (user.opcode()) {
     case HloOpcode::kBroadcast: {
-      if (user.sharding().IsReplicated()) {
-        return user.sharding();
-      }
-      std::vector<int64_t> dims_to_replicate;
-      bool needs_replication = false;
-      for (int64_t i = 0; i < user.shape().rank(); ++i) {
-        if (absl::c_count(user.dimensions(), i) == 0) {
-          dims_to_replicate.push_back(i);
-          if (user.sharding().tile_assignment().dim(i) > 1) {
-            needs_replication = true;
-          }
-        }
-      }
-      // If not SPMD, only support when none of the partitioned dimensions in
-      // the broadcast output belong to new dimensions.
-      if (!is_spmd && needs_replication) {
-        return std::nullopt;
-      }
-      return hlo_sharding_util::RemoveShapeDimensions(
-          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-              user.sharding(), dims_to_replicate),
-          dims_to_replicate);
+      return InferBroadcastOperandSharding(user, is_spmd);
     }
     case HloOpcode::kConcatenate: {
       if (aggressiveness == 0) {

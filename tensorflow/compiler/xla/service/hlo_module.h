@@ -153,6 +153,14 @@ class HloModule {
     return config_.entry_computation_layout();
   }
 
+  void set_use_auto_spmd_partitioning(bool use) {
+    use_auto_spmd_partitioning_ = use;
+  }
+
+  bool use_auto_spmd_partitioning() const {
+    return use_auto_spmd_partitioning_;
+  }
+
   // Based on module's entry_computation sharded shapes,
   // layout_canonicalization_callback_ computes and
   // returns <argument_layouts, result_layout> for module's entry computation.
@@ -581,6 +589,8 @@ class HloModule {
 
   // The unoptimized module fingerprint.
   std::string autofdo_fingerprint_;
+
+  bool use_auto_spmd_partitioning_ = false;
 
   // Layout canonicalization callback, used only when
   // use_auto_spmd_partitioning_ = true.

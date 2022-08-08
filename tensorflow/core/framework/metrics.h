@@ -224,8 +224,11 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
 
 void UpdateTfMlirBridgeGraphAnalysisPerOp(
     const std::string& op_name, const std::string& construction_context,
-    bool is_single_core_inference_mode, const std::string& unsupported_reason,
-    bool has_unsupported_features);
+    bool is_single_core_inference_mode, const std::string& num_replicas,
+    const std::string& num_cores_per_replica, const std::string& use_tpu,
+    const std::string& allow_soft_placement,
+    const std::string& use_spmd_for_xla_partitioning,
+    const std::string& unsupported_reason, bool has_unsupported_features);
 
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>

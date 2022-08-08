@@ -39,7 +39,6 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -62,7 +61,7 @@ check_deps(
     disallowed_deps = select({
         ":is_xlir_enabled": [],
         "//conditions:default": [
-            ":jitrt_custom_calls",
+            # copybara:uncomment ":jitrt_custom_calls",
         ],
     }),
     deps = [
@@ -95,7 +94,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/stream_executor:dnn_proto",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
     ],
 )
 
@@ -574,86 +573,45 @@ config_setting(
     flag_values = {":enable_xlir": "True"},
 )
 
-gentbl_cc_library(
-    name = "xlir_opdefs_inc_gen",
-    tags = ["manual"],
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "xlir_opdefs.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "xlir_opdefs.cpp.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "xlir_ops.td",
-    visibility = ["//visibility:private"],
-    deps = [
-        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
-        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
-        "@tf_runtime//:OpBaseTdFiles",
-        "@tf_runtime//backends/gpu:GpuOpBaseTdFile",
-    ],
-)
-
-cc_library(
-    name = "xlir_opdefs",
-    srcs = ["xlir_ops.cc"],
-    hdrs = ["xlir_ops.h"],
-    tags = ["manual"],
-    deps = [
-        ":gpu_executable_run_options",
-        ":io_feed_manager",
-        ":xlir_opdefs_inc_gen",
-        "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:InferTypeOpInterface",
-        "@llvm-project//mlir:SideEffectInterfaces",
-        "@tf_runtime//:basic_kernels_opdefs",
-        "@tf_runtime//:tensor_opdefs",
-        "@tf_runtime//backends/gpu:gpu_opdefs",
-        "@tf_runtime//backends/gpu:gpu_wrapper",
-    ],
-)
-
-cc_library(
-    name = "jitrt_custom_calls",
-    srcs = ["jitrt_custom_calls.cc"],
-    hdrs = ["jitrt_custom_calls.h"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
-    tags = ["manual"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":fft_thunk",
-        ":gpu_asm_opts_util",
-        ":io_feed_manager",
-        ":matmul_utils",
-        ":nccl_collective_thunks",
-        ":stream_executor_util",
-        "@llvm-project//llvm:OrcJIT",
-        "@llvm-project//mlir:Support",
-        "//tensorflow/compiler/xla:tfrt_utils",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/service:custom_call_status_internal",
-        "//tensorflow/compiler/xla/service:custom_call_target_registry",
-        "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
-        "//tensorflow/core/platform:human_readable_json",
-        "//tensorflow/stream_executor/gpu:gpu_stream",
-        "//tensorflow/stream_executor/gpu:gpu_types_header",
-        "@tf_runtime//:dtype",
-        "@tf_runtime//:support",
-        "@tf_runtime//backends/jitrt",
-        "@tf_runtime//backends/jitrt:custom_call",
-        "@tf_runtime//backends/jitrt:custom_call_to_llvm",
-    ] + if_gpu_is_configured([
-        ":cholesky_thunk",
-        ":triangular_solve_thunk",
-    ]),
-)
+# copybara:uncomment_begin
+#
+# cc_library(
+#     name = "jitrt_custom_calls",
+#     srcs = ["jitrt_custom_calls.cc"],
+#     hdrs = ["jitrt_custom_calls.h"],
+#     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+#     tags = ["manual"],
+#     visibility = ["//visibility:private"],
+#     deps = [
+#         ":fft_thunk",
+#         ":gpu_asm_opts_util",
+#         ":io_feed_manager",
+#         ":matmul_utils",
+#         ":nccl_collective_thunks",
+#         ":stream_executor_util",
+#         "@llvm-project//llvm:OrcJIT",
+#         "@llvm-project//mlir:Support",
+#         "//tensorflow/compiler/xla:tfrt_utils",
+#         "//tensorflow/compiler/xla:shape_util",
+#         "//tensorflow/compiler/xla/service:custom_call_status_internal",
+#         "//tensorflow/compiler/xla/service:custom_call_target_registry",
+#         "//tensorflow/compiler/xla/service:executable",
+#         "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
+#         "//tensorflow/core/platform:human_readable_json",
+#         "//tensorflow/stream_executor/gpu:gpu_stream",
+#         "//tensorflow/stream_executor/gpu:gpu_types_header",
+#         "@tf_runtime//:dtype",
+#         "@tf_runtime//:support",
+#         "@tf_runtime//backends/jitrt",
+#         "@tf_runtime//backends/jitrt:custom_call",
+#         "@tf_runtime//backends/jitrt:custom_call_to_llvm",
+#     ] + if_gpu_is_configured([
+#         ":cholesky_thunk",
+#         ":triangular_solve_thunk",
+#     ]),
+# )
+#
+# copybara:uncomment_end
 
 cc_library(
     name = "gpu_executable",
@@ -783,9 +741,9 @@ cc_library(
     ]) + select({
         ":is_xlir_enabled": [
             ":jitrt_custom_calls",
-            "@tf_runtime//backends/jitrt",
-            "@tf_runtime//backends/jitrt:diagnostics",
-            "@tf_runtime//backends/jitrt:jitrt_compiler",
+            # copybara:uncomment "@tf_runtime//backends/jitrt",
+            # copybara:uncomment "@tf_runtime//backends/jitrt:diagnostics",
+            # copybara:uncomment "@tf_runtime//backends/jitrt:jitrt_compiler",
         ],
         "//conditions:default": [],
     }),
@@ -1078,7 +1036,7 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor:dnn_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
     ] + if_cuda_is_configured([
         ":buffer_comparator",
         "@local_config_cuda//cuda:cudnn_header",
@@ -2269,10 +2227,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:dnn_proto_cc",
     ],
 )
 
@@ -2635,6 +2593,7 @@ cc_library(
 test_suite(
     name = "jitrt_executable_tests",
     tests = [
+        # copybara:uncomment "//platforms/xla/tests/internal:xfeed_test_gpu",
         "//tensorflow/compiler/tests:fft_test_gpu",
         "//tensorflow/compiler/xla/service/gpu:cudnn_fused_conv_rewriter_test",
         "//tensorflow/compiler/xla/service/gpu:custom_call_test",
@@ -2749,6 +2708,7 @@ test_suite(
         "//tensorflow/compiler/xla/tests:local_client_execute_test_gpu",
         "//tensorflow/compiler/xla/tests:log_test_gpu",
         "//tensorflow/compiler/xla/tests:map_test_gpu",
+        "//tensorflow/compiler/xla/tests:matmul_test_gpu",
         "//tensorflow/compiler/xla/tests:matrix_ops_simple_test_gpu",
         "//tensorflow/compiler/xla/tests:multidimensional_slice_test_gpu",
         "//tensorflow/compiler/xla/tests:multioutput_fusion_test_gpu",

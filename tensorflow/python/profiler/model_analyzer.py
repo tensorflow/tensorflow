@@ -323,7 +323,7 @@ def profile(graph=None,
   Args:
     graph: tf.Graph. If None and eager execution is not enabled, use default
       graph.
-    run_meta: optional tensorflow.RunMetadata proto. It is necessary to to
+    run_meta: optional tensorflow.RunMetadata proto. It is necessary to
       support run time information profiling, such as time and memory.
     op_log: tensorflow.tfprof.OpLogProto proto. User can assign "types" to graph
       nodes with op_log. "types" allow user to flexibly group and account
@@ -395,7 +395,7 @@ def advise(graph=None, run_meta=None, options=_DEFAULT_ADVISE_OPTIONS):
   Args:
     graph: tf.Graph. If None and eager execution is not enabled, use default
       graph.
-    run_meta: optional tensorflow.RunMetadata proto. It is necessary to to
+    run_meta: optional tensorflow.RunMetadata proto. It is necessary to
       support run time information profiling, such as time and memory.
     options: see ALL_ADVICE example above. Default checks everything.
 

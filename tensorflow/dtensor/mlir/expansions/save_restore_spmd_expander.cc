@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/save_restore_util.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
@@ -56,6 +57,61 @@ namespace tensorflow {
 namespace dtensor {
 
 namespace {
+
+// Given a string tensor `prefix` of shape [k], produces a new string tensor
+// of shape [k*n] where n = number of devices in `mesh` by appending
+// device_id from [0, n) to `prefix`.
+//
+// For example:
+//   before:
+//     prefix = tf.Constant(["alice", "bob"])
+//     mesh.num_devices() = 2
+//   after =
+//     result = tf.Constant(["alice_device_0", "bob_device_0", "alice_device_1",
+//     "bob_device_1"])
+//
+// This is needed for DTensorCheckpointV2 tf.MergeV2Checkpoint SPMD expansion
+// to generate all candidate checkpoint prefix string that we generated
+// during tf.SaveV2 SPMD Expansion.
+mlir::Value GetAllCandidateCheckpointPrefixes(mlir::OpBuilder& builder,
+                                              mlir::Value prefix,
+                                              const Mesh& mesh) {
+  if (mesh.num_devices() == 0) return prefix;
+
+  mlir::Value new_prefix =
+      builder
+          .create<mlir::TF::AddOp>(
+              prefix.getLoc(),
+              prefix.getType().dyn_cast<mlir::RankedTensorType>(), prefix,
+              StringConst(builder, prefix.getLoc(),
+                          llvm::SmallVector<llvm::StringRef>(
+                              {absl::StrCat("_device_", 0)})))
+          .z();
+
+  for (int64_t device_id = 1; device_id < mesh.num_devices(); ++device_id) {
+    mlir::Value prefix_plus_dtensor_suffix =
+        builder
+            .create<mlir::TF::AddOp>(
+                prefix.getLoc(),
+                prefix.getType().dyn_cast<mlir::RankedTensorType>(), prefix,
+                StringConst(builder, prefix.getLoc(),
+                            llvm::SmallVector<llvm::StringRef>(
+                                {absl::StrCat("_device_", device_id)})))
+            .z();
+
+    new_prefix = builder
+                     .create<mlir::TF::ConcatOp>(
+                         prefix.getLoc(),
+                         /*output=*/prefix.getType(),
+                         /*concat_dim=*/
+                         IntConst(builder, prefix.getLoc(), /*values=*/{0}),
+                         llvm::SmallVector<mlir::Value, 4>{
+                             new_prefix, prefix_plus_dtensor_suffix})
+                     .getResult();
+  }
+  return new_prefix;
+}
+
 // Maps a device_id to a 0 based switch-case branch index.
 //
 // For Save/Restore ops, constructing a switch-case on all global devices is not
@@ -432,11 +488,27 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
   mlir::OpBuilder else_fn_builder =
       mlir::OpBuilder::atBlockBegin(else_fn_block);
   mlir::Value checkpoint_prefixes = else_fn_block->getArgument(0);
+
+  bool allow_missing_files = false;
+
+  // If DTensorCheckpointV2 is enabled, then each string in
+  // `checkpoint_prefixes` tensor is missing a "device_id_" suffix that we
+  // generated from SaveV2 SPMD Expansion. So, generate all the possible
+  // suffixes and use that as the `checkpoint_prefixes` argument.
+  if (DTensorCheckpointV2Enabled()) {
+    allow_missing_files = true;
+    TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
+    checkpoint_prefixes = GetAllCandidateCheckpointPrefixes(
+        else_fn_builder, checkpoint_prefixes, mesh);
+  }
+
   mlir::Value destination_prefixes = else_fn_block->getArgument(1);
 
   else_fn_builder.create<mlir::TF::MergeV2CheckpointsOp>(
       location, checkpoint_prefixes, destination_prefixes,
-      merge_v2.delete_old_dirs());
+      /*delete_old_dirs=*/
+      else_fn_builder.getBoolAttr(merge_v2.delete_old_dirs()),
+      /*allow_missing_files=*/else_fn_builder.getBoolAttr(allow_missing_files));
 
   else_fn_builder.create<mlir::func::ReturnOp>(location);
 
@@ -647,6 +719,24 @@ StatusOr<mlir::Operation*> ExpandRestoreV2Op(mlir::Operation* op) {
   // Fetch the shape of each output.
   std::vector<std::vector<int64_t>> global_shapes;
   global_shapes.reserve(op->getNumResults());
+
+  // This is subtle. For tf.train.Checkpoint.save_counter scalar variable,
+  // this variable may not yet be created by the time we call
+  // Checkpoint.restore.
+  //
+  // In this case, the tf.RestoreV2 is called eagerly, and thus there is no
+  // tf.AssignVariable op. This means that we cannot infer the shapes and layout
+  // from previous pass CreateDTensorInferShapesForRestoreV2Op.
+  //
+  // But for save_counter, we know this is always replicated, and we can just
+  // return the op itself. For now, we will do this hacky way, but eventually
+  // we need to generalize restoring variables that are not yet created.
+  //
+  // TODO(b/235373719) Generalize support for checkpoint restoration for
+  // variables that are not yet created.
+  if (op->getNumResults() == 1 && !GetShapeOfValue(op->getResult(0)).ok()) {
+    return op;
+  }
 
   for (auto result : op->getResults()) {
     global_shapes.push_back(GetShapeOfValue(result).ValueOrDie());

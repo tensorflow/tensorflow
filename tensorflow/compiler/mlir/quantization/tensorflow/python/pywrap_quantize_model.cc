@@ -31,7 +31,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
     )pbdoc");
   m.def(
       "clear_data_from_calibrator",
-      [](absl::string_view id) {
+      [](const absl::string_view id) {
         tensorflow::quantization::ClearDataFromCalibrator(id);
       },
       R"pbdoc(
@@ -39,7 +39,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
     )pbdoc");
   m.def(
       "get_max_from_calibrator",
-      [](absl::string_view id) {
+      [](const absl::string_view id) {
         return tensorflow::quantization::GetMaxFromCalibrator(id);
       },
       R"pbdoc(
@@ -47,7 +47,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
     )pbdoc");
   m.def(
       "get_min_from_calibrator",
-      [](absl::string_view id) {
+      [](const absl::string_view id) {
         return tensorflow::quantization::GetMinFromCalibrator(id);
       },
       R"pbdoc(
@@ -58,9 +58,9 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       [](const absl::string_view saved_model_path,
          const absl::string_view exported_names_str,
          const absl::string_view tags,
-         const std::string& quant_opts_serialized) {
+         const absl::string_view quant_opts_serialized) {
         return tensorflow::PyoOrThrow(
-            tensorflow::quantization::QuantizeQATModel(saved_model_path,
+            tensorflow::quantization::QuantizeQatModel(saved_model_path,
                                                        exported_names_str, tags,
                                                        quant_opts_serialized));
       },
@@ -72,9 +72,9 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       [](const absl::string_view saved_model_path,
          const absl::string_view exported_names_str,
          const absl::string_view tags,
-         const std::string& quant_opts_serialized) {
+         const absl::string_view quant_opts_serialized) {
         return tensorflow::PyoOrThrow(
-            tensorflow::quantization::QuantizePTQDynamicRange(
+            tensorflow::quantization::QuantizePtqDynamicRange(
                 saved_model_path, exported_names_str, tags,
                 quant_opts_serialized));
       },
@@ -87,7 +87,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::string_view exported_names_str,
          const absl::string_view tags) {
         return tensorflow::PyoOrThrow(
-            tensorflow::quantization::QuantizePTQModelPreCalibration(
+            tensorflow::quantization::QuantizePtqModelPreCalibration(
                 saved_model_path, exported_names_str, tags));
       },
       R"pbdoc(
@@ -98,9 +98,9 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       [](const absl::string_view saved_model_path,
          const absl::string_view exported_names_str,
          const absl::string_view tags,
-         const std::string& quant_opts_serialized) {
+         const absl::string_view quant_opts_serialized) {
         return tensorflow::PyoOrThrow(
-            tensorflow::quantization::QuantizePTQModelPostCalibration(
+            tensorflow::quantization::QuantizePtqModelPostCalibration(
                 saved_model_path, exported_names_str, tags,
                 quant_opts_serialized));
       },

@@ -105,7 +105,7 @@ class ApproximateTanhLowering
     Value inputSquared = rewriter.create<arith::MulFOp>(loc, input, input);
     Value numerator = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getF32FloatAttr(numeratorCoeffs[0]));
-    for (int i = 1; i < numeratorCoeffs.size(); i++) {
+    for (int64_t i = 1; i < static_cast<int64_t>(numeratorCoeffs.size()); i++) {
       numerator = rewriter.create<arith::AddFOp>(
           loc, rewriter.create<arith::MulFOp>(loc, inputSquared, numerator),
           rewriter.create<arith::ConstantOp>(
@@ -114,7 +114,8 @@ class ApproximateTanhLowering
     numerator = rewriter.create<arith::MulFOp>(loc, input, numerator);
     Value denominator = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getF32FloatAttr(denominatorCoeffs[0]));
-    for (int i = 1; i < denominatorCoeffs.size(); i++) {
+    for (int64_t i = 1; i < static_cast<int64_t>(denominatorCoeffs.size());
+         i++) {
       denominator = rewriter.create<arith::AddFOp>(
           loc, rewriter.create<arith::MulFOp>(loc, inputSquared, denominator),
           rewriter.create<arith::ConstantOp>(

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
+#include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -341,7 +342,7 @@ void TF_GetOutputPropertiesList(TF_GraphProperties* graph_properties,
 }
 
 TF_FunctionLibraryDefinition* TF_NewFunctionLibraryDefinition(
-    TF_Buffer* graph_buf, TF_Status* status) {
+    const TF_Buffer* graph_buf, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   tensorflow::GraphDef graph_def;
   tensorflow::Status s = tensorflow::BufferToMessage(graph_buf, &graph_def);

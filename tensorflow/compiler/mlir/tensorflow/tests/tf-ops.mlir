@@ -5,23 +5,23 @@
 // TODO(hinsu): Remove tests for ops without custom verifiers. These tests were
 // added along with manual op definition and are obsolete now that the op
 // definitions are auto-generated.
+
 // TODO(hinsu): Move attribute and type tests to types.mlir file.
-
 //===--------------------------------------------------------------------===//
-//  Test TF opaque attributes
+//  Test TF TensorProto attributes
 //===--------------------------------------------------------------------===//
 
-// CHECK-LABEL: func @opaquetensorattr
-func.func @opaquetensorattr() -> () {
+// CHECK-LABEL: func @tensorProtoAttr
+func.func @tensorProtoAttr() -> () {
 ^bb0:
-// CHECK: "tf.opaqueIntTensor"() {bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4xi32>} : () -> ()
-  "tf.opaqueIntTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4xi32>} : () -> ()
-// CHECK: "tf.opaqueFloatTensor"() {bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4xf32>} : () -> ()
-  "tf.opaqueFloatTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4xf32>} : () -> ()
-// CHECK: "tf.opaqueStringTensor"() {bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf_type.string>} : () -> ()
-  "tf.opaqueStringTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf_type.string>} : () -> ()
-// CHECK: "tf.opaqueResourceTensor"() {bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf_type.resource>} : () -> ()
-  "tf.opaqueResourceTensor"(){bar = opaque<"tf", "0x68656C6C6F"> : tensor<2x1x4x!tf_type.resource>} : () -> ()
+// CHECK: "tf.TensorProtoIntTensor"() {bar = #tf_type<tensor_proto : "0x68656C6C6F"> : tensor<2x1x4xi32>} : () -> ()
+  "tf.TensorProtoIntTensor"(){bar = #tf_type<tensor_proto : "0x68656C6C6F"> : tensor<2x1x4xi32>} : () -> ()
+// CHECK: "tf.TensorProtoFloatTensor"() {bar = #tf_type<tensor_proto : "0x68656C6C6F"> : tensor<2x1x4xf32>} : () -> ()
+  "tf.TensorProtoFloatTensor"(){bar = #tf_type<tensor_proto : "0x68656C6C6F"> : tensor<2x1x4xf32>} : () -> ()
+// CHECK: "tf.TensorProtoStringTensor"() {bar = #tf_type<tensor_proto : "0x68656C6C6F"> : tensor<2x1x4x!tf_type.string>} : () -> ()
+  "tf.TensorProtoStringTensor"(){bar = #tf_type<tensor_proto : "0x68656C6C6F"> : tensor<2x1x4x!tf_type.string>} : () -> ()
+// CHECK: "tf.TensorProtoResourceTensor"() {bar = #tf_type<tensor_proto : "0x68656C6C6F"> : tensor<2x1x4x!tf_type.resource>} : () -> ()
+  "tf.TensorProtoResourceTensor"(){bar = #tf_type<tensor_proto : "0x68656C6C6F"> : tensor<2x1x4x!tf_type.resource>} : () -> ()
   func.return
 }
 
@@ -3624,7 +3624,7 @@ func.func @tensor_scatter_update(%tensor: tensor<4xf32>, %indices: tensor<4x2xi3
 
 // CHECK-LABEL: func @testParseExampleV2DenseOnlyValid
 func.func @testParseExampleV2DenseOnlyValid(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %dense_keys : tensor<2x!tf_type.string>, %dense_default_0 : tensor<?xf32>, %dense_default_1 : tensor<?xf32>) -> (tensor<32xf32>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   %result:2 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %dense_keys, %empty_str_vector, %dense_default_0, %dense_default_1) {dense_shapes = [#tf_type.shape<>, #tf_type.shape<>], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 2, 0, 0]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<?xf32>, tensor<?xf32>) -> (tensor<32xf32>, tensor<32xf32>)
   func.return %result#0 : tensor<32xf32>
 }
@@ -3632,7 +3632,7 @@ func.func @testParseExampleV2DenseOnlyValid(%serialized: tensor<32x!tf_type.stri
 // -----
 
 func.func @testParseExampleV2DenseMismatchedInputOutput(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %dense_keys : tensor<2x!tf_type.string>, %dense_default_0 : tensor<?xf32>, %dense_default_1 : tensor<?xf32>) -> (tensor<32xf32>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   // expected-error @+1 {{output 'dense_values' should have same length as attribute 'Tdense'}}
   %result:3 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %dense_keys, %empty_str_vector, %dense_default_0, %dense_default_1) {dense_shapes = [#tf_type.shape<>, #tf_type.shape<>], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 3, 0, 0]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<?xf32>, tensor<?xf32>) -> (tensor<32xf32>, tensor<32xf32>, tensor<32xi64>)
   func.return %result#0 : tensor<32xf32>
@@ -3642,7 +3642,7 @@ func.func @testParseExampleV2DenseMismatchedInputOutput(%serialized: tensor<32x!
 
 // CHECK-LABEL: func @testParseExampleV2SparseOnlyValid
 func.func @testParseExampleV2SparseOnlyValid(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %sparse_keys : tensor<2x!tf_type.string>) -> (tensor<?x2xi64>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   %result:6 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %empty_str_vector, %empty_str_vector) {dense_shapes = [], num_sparse = 2 : i64, result_segment_sizes = dense<[2, 2, 2, 0, 0, 0]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>) -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf_type.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>)
   func.return %result#0 : tensor<?x2xi64>
 }
@@ -3650,7 +3650,7 @@ func.func @testParseExampleV2SparseOnlyValid(%serialized: tensor<32x!tf_type.str
 // -----
 
 func.func @testParseExampleV2SparseInvalidNumSparse(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %sparse_keys : tensor<2x!tf_type.string>) -> (tensor<?x2xi64>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   // expected-error @+1 {{attribute 'num_sparse' should be the same as the length of attribute 'sparse_types'}}
   %result:6 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %empty_str_vector, %empty_str_vector) {dense_shapes = [], num_sparse = 3 : i64, result_segment_sizes = dense<[2, 2, 2, 0, 0, 0]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>) -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf_type.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>)
   func.return %result#0 : tensor<?x2xi64>
@@ -3659,7 +3659,7 @@ func.func @testParseExampleV2SparseInvalidNumSparse(%serialized: tensor<32x!tf_t
 // -----
 
 func.func @testParseExampleV2SparseInvalidSparseIndicesOutput(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %sparse_keys : tensor<2x!tf_type.string>) -> (tensor<?x2xi64>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   // expected-error @+1 {{output 'sparse_indices' should have same length as attribute 'sparse_types'}}
   %result:5 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %empty_str_vector, %empty_str_vector) {dense_shapes = [], num_sparse = 2 : i64, result_segment_sizes = dense<[1, 2, 2, 0, 0, 0]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>) -> (tensor<?x2xi64>, tensor<?x!tf_type.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>)
   func.return %result#0 : tensor<?x2xi64>
@@ -3668,7 +3668,7 @@ func.func @testParseExampleV2SparseInvalidSparseIndicesOutput(%serialized: tenso
 // -----
 
 func.func @testParseExampleV2SparseOnlyValid(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %sparse_keys : tensor<2x!tf_type.string>) -> (tensor<?x2xi64>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   // expected-error @+1 {{output 'sparse_shapes' should have same length as attribute 'sparse_types'}}
   %result:5 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %empty_str_vector, %empty_str_vector) {dense_shapes = [], num_sparse = 2 : i64, result_segment_sizes = dense<[2, 2, 1, 0, 0, 0]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>) -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf_type.string>, tensor<?xi64>, tensor<2xi64>)
   func.return %result#0 : tensor<?x2xi64>
@@ -3678,7 +3678,7 @@ func.func @testParseExampleV2SparseOnlyValid(%serialized: tensor<32x!tf_type.str
 
 // CHECK-LABEL: func @testParseExampleV2RaggedOnlyValid
 func.func @testParseExampleV2RaggedOnlyValid(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %ragged_keys : tensor<2x!tf_type.string>) -> (tensor<?xf32>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   %result:4 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %empty_str_vector, %ragged_keys) {dense_shapes = [], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 0, 2, 2]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>) -> (tensor<?xf32>, tensor<?x!tf_type.string>, tensor<?xi32>, tensor<?xi64>)
   func.return %result#0 : tensor<?xf32>
 }
@@ -3686,7 +3686,7 @@ func.func @testParseExampleV2RaggedOnlyValid(%serialized: tensor<32x!tf_type.str
 // -----
 
 func.func @testParseExampleV2RaggedMismatchedOutputLengths(%serialized: tensor<32x!tf_type.string>, %names : tensor<32x!tf_type.string>, %ragged_keys : tensor<2x!tf_type.string>) -> (tensor<?xf32>) {
-  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = opaque<"tf", "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
+  %empty_str_vector = "tf.Const"() {dtype = !tf_type.string, value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F535452494E472074656E736F725F7368617065207B2064696D207B207D207D"> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   // expected-error @+1 {{attribute 'ragged_value_types' should have same length as attribute 'ragged_split_types'}}
   %result:3 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %empty_str_vector, %ragged_keys) {dense_shapes = [], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 0, 2, 1]> : vector<6xi32>} : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>) -> (tensor<?xf32>, tensor<?x!tf_type.string>, tensor<?xi32>)
   func.return %result#0 : tensor<?xf32>

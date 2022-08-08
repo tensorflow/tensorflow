@@ -23,6 +23,7 @@ include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
@@ -56,20 +57,6 @@ def TFL_Control: Type<CPred<"$_self.isa<ControlType>()">, "control">,
 //===----------------------------------------------------------------------===//
 // A type attribute containing the TensorType.
 def TensorTypeAttr : TypeAttrBase<"TensorType", "Tensor type attribute">;
-
-// A type attribute containing OpaqueElementsAttr and bytes.
-def OpaqueBytesAttr : ElementsAttrBase<
-  And<[
-    CPred<"$_self.isa<OpaqueElementsAttr>() ">,
-    CPred<"$_self.cast<OpaqueElementsAttr>().getType()"
-          ".getElementType().isInteger(8)">,
-  ]>,
-  "opaque bytes attribute"
- > {
-  let storageType = [{ OpaqueElementsAttr }];
-  let returnType = [{ OpaqueElementsAttr }];
-  let convertFromStorage = "$_self";
-}
 
 //===----------------------------------------------------------------------===//
 // Derived shape attribute class.
@@ -4923,7 +4910,7 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield",
     [{
       build($_builder, $_state, {});
     }]>
-  ];	
+  ];
 }
 
 def TFL_IfOp : Op<TFL_Dialect, "if", [
@@ -5068,7 +5055,7 @@ def TFL_CustomOp : Op<TFL_Dialect, "custom", [
   let arguments = (ins
     Variadic<TFL_TensorOfOrNone<[AnyType]>>:$input,
     StrAttr:$custom_code,
-    OpaqueBytesAttr:$custom_option
+    TFL_ConstBytesAttr:$custom_option
   );
   let results = (outs Variadic<AnyTensor>:$output);
 

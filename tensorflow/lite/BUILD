@@ -251,9 +251,10 @@ cc_library(
     srcs = ["simple_memory_arena.cc"],
     hdrs = ["simple_memory_arena.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts_warnings(),
+    copts = tflite_copts() + tflite_copts_warnings(),
     deps = [
         ":macros",
+        ":tensorflow_profiler_logger_shim",
         "//tensorflow/lite/c:common",
     ],
 )

@@ -579,18 +579,6 @@ StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
   }
 }
 
-StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
-    mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue) {
-  switch (epilogue) {
-    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Default:
-      return se::cuda::BlasLt::Epilogue::kDefault;
-    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
-      return se::cuda::BlasLt::Epilogue::kBias;
-    default:
-      return InternalError("unknown epilogue");
-  }
-}
-
 StatusOr<se::cuda::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
     const MatrixLayout& layout) {
   TF_ASSIGN_OR_RETURN(se::blas::DataType dtype, AsBlasDataType(layout.dtype));
@@ -607,6 +595,18 @@ StatusOr<se::cuda::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
 }  // namespace
 
 namespace cublas_lt {
+
+StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+    mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue) {
+  switch (epilogue) {
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Default:
+      return se::cuda::BlasLt::Epilogue::kDefault;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
+      return se::cuda::BlasLt::Epilogue::kBias;
+    default:
+      return InternalError("unknown epilogue");
+  }
+}
 
 /*static*/ StatusOr<MatmulPlan> MatmulPlan::For(
     mlir::lmhlo_gpu::CublasLtMatmulOp op) {

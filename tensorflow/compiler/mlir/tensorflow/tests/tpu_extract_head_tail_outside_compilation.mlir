@@ -601,3 +601,38 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     func.return
   }
 }
+
+// -----
+
+// Tests that a an error is reported when the pass results in a cluster output
+// with a non-XLA type. The simplest way this can happen is if the inputting op
+// is not marked for outside compilation. In general control, data, and side
+// effect dependencies that are not marked for outside compilation can cause
+// this.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  // expected-error @+2 {{result with a non-XLA type}}
+  func.func @non_XLA_result() {
+    %cluster = "tf_device.cluster"() ({
+      %a = "tf.A"() : () -> tensor<!tf_type.string>
+      tf_device.return %a : tensor<!tf_type.string>
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> tensor<!tf_type.string>
+    func.return
+  }
+}
+
+// -----
+
+// Tests that a an error is reported when the pass results in a cluster output
+// with a non-XLA type, specifically a resource type.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  // expected-error @+2 {{result with a non-XLA type}}
+  func.func @resource_result() {
+    %cluster = "tf_device.cluster"() ({
+      %a = "tf.A"() : () -> tensor<!tf_type.resource<tensor<f32>>>
+      tf_device.return %a : tensor<!tf_type.resource<tensor<f32>>>
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> tensor<!tf_type.resource<tensor<f32>>>
+    func.return
+  }
+}

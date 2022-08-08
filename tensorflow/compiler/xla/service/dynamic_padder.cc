@@ -1499,16 +1499,38 @@ StatusOr<bool> RewriteDynamicBinaryOp(
                 static_shape, HloOpcode::kSelect, pred, broadcast, operand));
         return select;
       };
+
+      HloInstruction* one = binary->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::One(S32)));
+
       auto operand_0_needs_broadcast = binary->parent()->AddInstruction(
           HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_0,
                                         dim_1, ComparisonDirection::kLt),
+          "lhs_less_than_rhs");
+      auto is_one = binary->parent()->AddInstruction(
+          HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_0,
+                                        one, ComparisonDirection::kEq),
+          "lhs_is_one");
+      operand_0_needs_broadcast = binary->parent()->AddInstruction(
+          HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
+                                       HloOpcode::kAnd, is_one,
+                                       operand_0_needs_broadcast),
           "lhs_needs_implicit_broadcast");
       operand_0 = rewrite_operand(operand_0_needs_broadcast, operand_0);
 
       auto operand_1_needs_broadcast = binary->parent()->AddInstruction(
           HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_1,
                                         dim_0, ComparisonDirection::kLt),
-          "rhs_needs_implicit_broadcast");
+          "rhs_less_than_lhs");
+      is_one = binary->parent()->AddInstruction(
+          HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_1,
+                                        one, ComparisonDirection::kEq),
+          "rhs_is_one");
+      operand_1_needs_broadcast = binary->parent()->AddInstruction(
+          HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
+                                       HloOpcode::kAnd, is_one,
+                                       operand_1_needs_broadcast),
+          "lhs_needs_implicit_broadcast");
       operand_1 = rewrite_operand(operand_1_needs_broadcast, operand_1);
     }
   }

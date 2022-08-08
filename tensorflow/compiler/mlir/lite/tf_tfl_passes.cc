@@ -69,6 +69,10 @@ void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateOptimizeOpOrderPass());
+  // Add optimization pass after quantization for additional fusing
+  // opportunities.
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
 }
 
 void AddDynamicRangeQuantizationPasses(
@@ -85,6 +89,10 @@ void AddDynamicRangeQuantizationPasses(
                                         quant_specs.custom_map));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateOptimizeOpOrderPass());
+  // Add optimization pass after quantization for additional fusing
+  // opportunities.
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
 }
 
 void AddConvertHloToTfPass(std::string entry_function_name,

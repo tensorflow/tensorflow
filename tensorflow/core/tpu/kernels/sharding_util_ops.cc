@@ -46,13 +46,12 @@ namespace {
 constexpr absl::string_view kNumSplitsAttrName = "num_splits";
 constexpr absl::string_view kNumConcatsAttrName = "num_concats";
 
-template <bool Split>
-Status GetAndValidateAttributes(OpKernelConstruction* ctx,
+Status GetAndValidateAttributes(bool split, OpKernelConstruction* ctx,
                                 std::vector<int32>& num_partitions,
                                 int& num_slices, std::vector<int32>& paddings,
                                 bool& has_paddings) {
   absl::string_view num_partitions_attr_name =
-      Split ? kNumSplitsAttrName : kNumConcatsAttrName;
+      split ? kNumSplitsAttrName : kNumConcatsAttrName;
   TF_RETURN_IF_ERROR(ctx->GetAttr(num_partitions_attr_name, &num_partitions));
 
   int num_dims_to_split = 0;
@@ -120,6 +119,51 @@ Status CreateResourceInvalidDTypeError(const ResourceHandle& handle,
 
 // Converts flatten index to start indices (subscript scaled with slice shape)
 // for determining where to start a slice in the input tensor.
+template <int Rank>
+Eigen::DSizes<Eigen::DenseIndex, Rank> GetSliceIndices(
+    absl::Span<const int32> num_partitions,
+    const Eigen::DSizes<Eigen::DenseIndex, Rank>& slice_shape, const int index);
+template <>
+Eigen::DSizes<Eigen::DenseIndex, 1> GetSliceIndices(
+    absl::Span<const int32> num_partitions,
+    const Eigen::DSizes<Eigen::DenseIndex, 1>& slice_shape,
+    const int index) TF_ATTRIBUTE_NOINLINE;
+template <>
+Eigen::DSizes<Eigen::DenseIndex, 2> GetSliceIndices(
+    absl::Span<const int32> num_partitions,
+    const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_shape,
+    const int index) TF_ATTRIBUTE_NOINLINE;
+template <>
+Eigen::DSizes<Eigen::DenseIndex, 3> GetSliceIndices(
+    absl::Span<const int32> num_partitions,
+    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_shape,
+    const int index) TF_ATTRIBUTE_NOINLINE;
+template <>
+Eigen::DSizes<Eigen::DenseIndex, 4> GetSliceIndices(
+    absl::Span<const int32> num_partitions,
+    const Eigen::DSizes<Eigen::DenseIndex, 4>& slice_shape,
+    const int index) TF_ATTRIBUTE_NOINLINE;
+template <>
+Eigen::DSizes<Eigen::DenseIndex, 5> GetSliceIndices(
+    absl::Span<const int32> num_partitions,
+    const Eigen::DSizes<Eigen::DenseIndex, 5>& slice_shape,
+    const int index) TF_ATTRIBUTE_NOINLINE;
+template <>
+Eigen::DSizes<Eigen::DenseIndex, 6> GetSliceIndices(
+    absl::Span<const int32> num_partitions,
+    const Eigen::DSizes<Eigen::DenseIndex, 6>& slice_shape,
+    const int index) TF_ATTRIBUTE_NOINLINE;
+template <>
+Eigen::DSizes<Eigen::DenseIndex, 7> GetSliceIndices(
+    absl::Span<const int32> num_partitions,
+    const Eigen::DSizes<Eigen::DenseIndex, 7>& slice_shape,
+    const int index) TF_ATTRIBUTE_NOINLINE;
+template <>
+Eigen::DSizes<Eigen::DenseIndex, 8> GetSliceIndices(
+    absl::Span<const int32> num_partitions,
+    const Eigen::DSizes<Eigen::DenseIndex, 8>& slice_shape,
+    const int index) TF_ATTRIBUTE_NOINLINE;
+
 template <int Rank>
 Eigen::DSizes<Eigen::DenseIndex, Rank> GetSliceIndices(
     absl::Span<const int32> num_partitions,
@@ -295,21 +339,21 @@ Eigen::DSizes<Eigen::DenseIndex, 8> GetSliceIndices(
 constexpr absl::string_view kTensorName = "'input' tensor";
 constexpr absl::string_view kResourceName = "'resource' variable tensor";
 
-template <typename Device, typename T, bool Resource>
+template <typename Device, typename T>
 class XlaSplitNDBaseOp : public OpKernel {
  public:
   explicit XlaSplitNDBaseOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx,
-                   GetAndValidateAttributes<true>(ctx, num_splits_, num_slices_,
-                                                  paddings_, has_paddings_));
+    OP_REQUIRES_OK(
+        ctx, GetAndValidateAttributes(/*split=*/true, ctx, num_splits_,
+                                      num_slices_, paddings_, has_paddings_));
   }
 
  protected:
   void ComputeInternal(
-      OpKernelContext* ctx,
+      bool resource, OpKernelContext* ctx,
       const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
       const Tensor* input) {
-    absl::string_view input_name = Resource ? kResourceName : kTensorName;
+    absl::string_view input_name = resource ? kResourceName : kTensorName;
     const int rank = input->shape().dims();
 
     OP_REQUIRES(ctx, rank > 0 && rank <= 8,
@@ -497,10 +541,10 @@ class XlaSplitNDBaseOp : public OpKernel {
 };
 
 template <typename Device, typename T>
-class XlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, false> {
+class XlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
  public:
   explicit XlaSplitNDOp(OpKernelConstruction* ctx)
-      : XlaSplitNDBaseOp<Device, T, false>(ctx) {}
+      : XlaSplitNDBaseOp<Device, T>(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
@@ -510,15 +554,16 @@ class XlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, false> {
       return OkStatus();
     };
 
-    this->ComputeInternal(ctx, assign_or_copy_value_fn, &input);
+    this->ComputeInternal(/*resource=*/false, ctx, assign_or_copy_value_fn,
+                          &input);
   }
 };
 
 template <typename Device, typename T>
-class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, true> {
+class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
  public:
   explicit ReadVariableXlaSplitNDOp(OpKernelConstruction* ctx)
-      : XlaSplitNDBaseOp<Device, T, true>(ctx) {
+      : XlaSplitNDBaseOp<Device, T>(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
   }
 
@@ -551,7 +596,8 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, true> {
       return OkStatus();
     };
 
-    this->ComputeInternal(ctx, assign_or_copy_value_fn, input);
+    this->ComputeInternal(/*resource=*/true, ctx, assign_or_copy_value_fn,
+                          input);
   }
 
  private:
@@ -578,13 +624,13 @@ TF_CALL_POD_TYPES(REGISTER_READ_VARIABLE_XLA_SPLIT_ND);
 TF_CALL_QUANTIZED_TYPES(REGISTER_READ_VARIABLE_XLA_SPLIT_ND);
 #undef REGISTER_READ_VARIABLE_XLA_SPLIT_ND
 
-template <typename Device, typename T, bool Resource>
+template <typename Device, typename T>
 class XlaConcatNDBaseOp : public OpKernel {
  public:
   explicit XlaConcatNDBaseOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(
-        ctx, GetAndValidateAttributes<false>(ctx, num_concats_, num_slices_,
-                                             paddings_, has_paddings_));
+        ctx, GetAndValidateAttributes(/*split=*/false, ctx, num_concats_,
+                                      num_slices_, paddings_, has_paddings_));
   }
 
  protected:
@@ -622,7 +668,7 @@ class XlaConcatNDBaseOp : public OpKernel {
   }
 
   void ComputeInternal(
-      OpKernelContext* ctx, const OpInputList& inputs,
+      bool resource, OpKernelContext* ctx, const OpInputList& inputs,
       const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
       const std::function<StatusOr<Tensor*>()>& get_output_fn) {
     const int rank = inputs[0].shape().dims();
@@ -766,10 +812,10 @@ class XlaConcatNDBaseOp : public OpKernel {
 };
 
 template <typename Device, typename T>
-class XlaConcatNDOp : public XlaConcatNDBaseOp<Device, T, false> {
+class XlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
  public:
   explicit XlaConcatNDOp(OpKernelConstruction* ctx)
-      : XlaConcatNDBaseOp<Device, T, false>(ctx) {}
+      : XlaConcatNDBaseOp<Device, T>(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     OpInputList inputs;
@@ -788,15 +834,16 @@ class XlaConcatNDOp : public XlaConcatNDBaseOp<Device, T, false> {
           ctx->allocate_output(/*index=*/0, output_shape, &output));
       return output;
     };
-    this->ComputeInternal(ctx, inputs, assign_or_copy_value_fn, get_output_fn);
+    this->ComputeInternal(/*resource=*/false, ctx, inputs,
+                          assign_or_copy_value_fn, get_output_fn);
   }
 };
 
 template <typename Device, typename T>
-class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T, true> {
+class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
  public:
   explicit AssignVariableXlaConcatNDOp(OpKernelConstruction* ctx)
-      : XlaConcatNDBaseOp<Device, T, true>(ctx) {
+      : XlaConcatNDBaseOp<Device, T>(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
   }
 
@@ -856,7 +903,8 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T, true> {
       return variable->tensor();
     };
 
-    this->ComputeInternal(ctx, inputs, assign_or_copy_value_fn, get_output_fn);
+    this->ComputeInternal(/*resource=*/true, ctx, inputs,
+                          assign_or_copy_value_fn, get_output_fn);
     variable->is_initialized = true;
   }
 

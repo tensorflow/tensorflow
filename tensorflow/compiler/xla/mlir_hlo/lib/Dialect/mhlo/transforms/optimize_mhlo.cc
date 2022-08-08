@@ -82,12 +82,13 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
     if (!resultTy) {
       return rewriter.notifyMatchFailure(gather, "unranked result");
     }
-    if (dimensionNumbers.getOffsetDims().size() != resultTy.getRank()) {
+    if (static_cast<int64_t>(dimensionNumbers.getOffsetDims().size()) !=
+        resultTy.getRank()) {
       return rewriter.notifyMatchFailure(gather,
                                          "offset_dims.size != operand.rank");
     }
     for (const auto& it : llvm::enumerate(dimensionNumbers.getOffsetDims())) {
-      if (it.index() != it.value()) {
+      if (static_cast<int64_t>(it.index()) != it.value()) {
         return rewriter.notifyMatchFailure(gather,
                                            "offset_dims != [0, result.rank)");
       }
@@ -138,7 +139,8 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
     auto zero = rewriter.create<ConstantOp>(
         gather.getLoc(), rewriter.getZeroAttr(RankedTensorType::get(
                              {}, gatherStartIndicesTy.getElementType())));
-    while (sliceStartIndices.size() < sliceSizesTy.getDimSize(0)) {
+    while (static_cast<int64_t>(sliceStartIndices.size()) <
+           sliceSizesTy.getDimSize(0)) {
       sliceStartIndices.push_back(zero);
     }
 

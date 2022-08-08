@@ -45,6 +45,12 @@ absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
 
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
 
+using PJRT_EventDeleter = std::function<void(PJRT_Event*)>;
+
+// Pass in an API pointer; receive a custom deleter for smart pointers.
+// The lifetime of the Api pointed to must be longer than the event.
+PJRT_EventDeleter MakeEventDeleter(const PJRT_Api* api);
+
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_HELPERS_H_

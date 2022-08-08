@@ -384,26 +384,22 @@ TEST(TF_CTStringTest, ResizeReserve) {
 
 TEST(TF_CTStringTest, OffsetType) {
   {
-    TF_TString s71;
+    uint8_t str[] = "test";
+    constexpr size_t str_size = sizeof(str) / sizeof(str[0]);
 
-    TF_TString_Init(&s71);
-    size_t header_length = 24;
-    size_t size = 8;
-    TF_TString_ResizeUninitialized(&s71, header_length + size);
-    uint32_t save_size = s71.u.offset.size;
-    uint32_t save_offset = s71.u.offset.offset;
-    uint32_t save_count = s71.u.offset.count;
+    uint8_t buf[sizeof(TF_TString) + str_size];
 
-    s71.u.offset.size = TF_TString_ToInternalSizeT(size, TF_TSTR_OFFSET);
-    s71.u.offset.offset = header_length;
-    s71.u.offset.count = 0;
-    EXPECT_EQ(size, TF_TString_GetSize(&s71));
-    EXPECT_EQ(TF_TSTR_OFFSET, TF_TString_GetType(&s71));
+    memcpy(buf + sizeof(TF_TString), str, str_size);
 
-    // restore state so string can be deallocated
-    s71.u.offset.size = save_size;
-    s71.u.offset.offset = save_offset;
-    s71.u.offset.count = save_count;
-    TF_TString_Dealloc(&s71);
+    TF_TString *offsets = (TF_TString *)buf;
+    TF_TString_Init(offsets);
+    // using existing TF_le32toh to achieve htole32
+    offsets[0].u.offset.size = TF_le32toh(str_size << 2 | TF_TSTR_OFFSET);
+    offsets[0].u.offset.offset = TF_le32toh(sizeof(TF_TString));
+    offsets[0].u.offset.count = TF_le32toh(1);
+
+    EXPECT_EQ(str_size, TF_TString_GetSize(offsets));
+    EXPECT_EQ(TF_TSTR_OFFSET, TF_TString_GetType(offsets));
+    EXPECT_EQ(0, ::memcmp(str, TF_TString_GetDataPointer(offsets), str_size));
   }
 }

@@ -169,3 +169,26 @@ def fulltype_list_to_product(fulltype_list):
   """Convert a list of FullType Def into a single FullType Def."""
   return full_type_pb2.FullTypeDef(
       type_id=full_type_pb2.TFT_PRODUCT, args=fulltype_list)
+
+
+def iterator_full_type_from_spec(element_spec):
+  """Returns a FullTypeDef for an iterator for the elements.
+
+  Args:
+     element_spec: A nested structure of `tf.TypeSpec` objects representing the
+       element type specification.
+
+  Returns:
+    A FullTypeDef for an iterator for the element tensor representation.
+  """
+  args = fulltypes_for_flat_tensors(element_spec)
+  return full_type_pb2.FullTypeDef(
+      type_id=full_type_pb2.TFT_PRODUCT,
+      args=[
+          full_type_pb2.FullTypeDef(
+              type_id=full_type_pb2.TFT_ITERATOR,
+              args=[
+                  full_type_pb2.FullTypeDef(
+                      type_id=full_type_pb2.TFT_PRODUCT, args=args)
+              ])
+      ])

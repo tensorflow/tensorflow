@@ -15,6 +15,7 @@ limitations under the License.
 
 package org.tensorflow.lite.gpu;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import org.tensorflow.lite.Delegate;
@@ -49,6 +50,7 @@ public class GpuDelegateFactory implements DelegateFactory {
      *     values, process in FP16. When `false`, computations are carried out in 32-bit floating
      *     point.
      */
+    @CanIgnoreReturnValue
     public Options setPrecisionLossAllowed(boolean precisionLossAllowed) {
       this.precisionLossAllowed = precisionLossAllowed;
       return this;
@@ -61,6 +63,7 @@ public class GpuDelegateFactory implements DelegateFactory {
      *
      * @param quantizedModelsAllowed When {@code true} (default), the GPU may run quantized models.
      */
+    @CanIgnoreReturnValue
     public Options setQuantizedModelsAllowed(boolean quantizedModelsAllowed) {
       this.quantizedModelsAllowed = quantizedModelsAllowed;
       return this;
@@ -72,6 +75,7 @@ public class GpuDelegateFactory implements DelegateFactory {
      * @param preference One of `INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER` (default),
      *     `INFERENCE_PREFERENCE_SUSTAINED_SPEED`.
      */
+    @CanIgnoreReturnValue
     public Options setInferencePreference(int preference) {
       this.inferencePreference = preference;
       return this;
@@ -90,6 +94,7 @@ public class GpuDelegateFactory implements DelegateFactory {
      * @param modelToken The token to be used to identify the model. Caller is responsible to ensure
      *     the token is unique to the model graph and data.
      */
+    @CanIgnoreReturnValue
     public Options setSerializationParams(String serializationDir, String modelToken) {
       this.serializationDir = serializationDir;
       this.modelToken = modelToken;

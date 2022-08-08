@@ -886,10 +886,51 @@ TEST(TestKernel, TestHostMemory) {
       .Input("input1: double")
       .Input("input2: uint8")
       .Output("output1: uint8")
+      .Output("output2: uint8")
       .Attr("T: type");
 
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    MyComputeFunc(kernel, ctx);
+
+    TF_Status* status = TF_NewStatus();
+
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(false, TF_IsHostMemoryInput(ctx, 0, status));
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(true, TF_IsHostMemoryInput(ctx, 1, status));
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(true, TF_IsHostMemoryOutput(ctx, 0, status));
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(false, TF_IsHostMemoryOutput(ctx, 1, status));
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    TF_IsHostMemoryInput(ctx, -1, status);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    TF_IsHostMemoryInput(ctx, 2, status);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    TF_IsHostMemoryOutput(ctx, -1, status);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    TF_IsHostMemoryOutput(ctx, 2, status);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(status));
+
+    TF_DeleteStatus(status);
+  };
+
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
-      op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc);
+      op_name, device_name, &MyCreateFunc, my_compute_func, &MyDeleteFunc);
   TF_KernelBuilder_HostMemory(builder, "input2");
   TF_KernelBuilder_HostMemory(builder, "output1");
   TF_Status* status = TF_NewStatus();

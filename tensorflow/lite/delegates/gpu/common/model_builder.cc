@@ -1212,7 +1212,34 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
       node->operation.type = ToString(OperationType::CONVOLUTION_2D);
       RETURN_IF_ERROR(reader->AddInput(node, 0));
       RETURN_IF_ERROR(reader->AddInput(node, 1));
-      RETURN_IF_ERROR(reader->AddOutputs(node));
+
+      const TfLiteTensor* input_tensor = reader->GetInputTensor(0);
+      BHWC input_shape;
+      RETURN_IF_ERROR(ExtractTensorShape(*input_tensor, &input_shape));
+      const TfLiteTensor* input2_tensor = reader->GetInputTensor(1);
+      BHWC input2_shape;
+      RETURN_IF_ERROR(ExtractTensorShape(*input2_tensor, &input2_shape));
+      const TfLiteTensor* output_tensor = reader->GetOutputTensor(0);
+      BHWC output_shape;
+      RETURN_IF_ERROR(ExtractTensorShape(*output_tensor, &output_shape));
+      BHWC output_ref_shape = input_shape;
+      output_ref_shape.c = input2_shape.b;
+      if (output_ref_shape != output_shape) {
+        Value* copy_value = graph->NewValue();
+        auto input_value = graph->FindInputs(node->id)[0];
+        copy_value->tensor.type = input_value->tensor.type;
+        copy_value->tensor.shape = output_ref_shape;
+        Node* node_reshape = graph->NewNode();
+        node_reshape->operation.type = ToString(OperationType::RESHAPE);
+        ReshapeAttributes reshape_attr;
+        reshape_attr.new_shape = output_shape;
+        node_reshape->operation.attributes = reshape_attr;
+        RETURN_IF_ERROR(graph->SetProducer(node->id, copy_value->id));
+        RETURN_IF_ERROR(graph->AddConsumer(node_reshape->id, copy_value->id));
+        RETURN_IF_ERROR(reader->AddOutputs(node_reshape));
+      } else {
+        RETURN_IF_ERROR(reader->AddOutputs(node));
+      }
 
       Convolution2DAttributes attr;
       reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional

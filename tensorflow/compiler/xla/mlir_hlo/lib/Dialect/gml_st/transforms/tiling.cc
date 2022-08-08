@@ -68,7 +68,7 @@ Value createTileSet(OpBuilder &b, Location loc, Value space, ValueRange ivs,
   SmallVector<int64_t> staticSizes;
   SmallVector<Value> dynamicSizes;
   staticSizes.reserve(rank);
-  for (int i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < static_cast<int64_t>(rank); ++i) {
     // Check if this dimension can be perfectly tiled.
     if (tileSizes[i] == 1 || (spaceShape[i] != ShapedType::kDynamicSize &&
                               spaceShape[i] % tileSizes[i] == 0)) {
@@ -110,7 +110,7 @@ Value createSet(OpBuilder &b, Location loc, Value space, ValueRange ivs,
 Value createParallelLoopTiling(OpBuilder &b, Location loc, Value target,
                                ArrayRef<int64_t> tileSizes) {
   auto ty = target.getType().cast<RankedTensorType>();
-  assert(ty.getRank() == tileSizes.size() &&
+  assert(ty.getRank() == static_cast<int64_t>(tileSizes.size()) &&
          "expect tile sizes to match rank of target value");
 
   // Create space.

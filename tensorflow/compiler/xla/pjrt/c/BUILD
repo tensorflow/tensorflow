@@ -29,6 +29,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "//tensorflow/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
     ],
 )

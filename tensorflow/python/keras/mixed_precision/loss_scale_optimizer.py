@@ -896,7 +896,7 @@ class LossScaleOptimizerV1(LossScaleOptimizer):
   examples of converting the use of the experimental class to the equivalent
   non-experimental class.
 
-  >>> # In all of the the examples below, `opt1` and `opt2` are identical
+  >>> # In all of the examples below, `opt1` and `opt2` are identical
   >>> opt1 = tf.keras.mixed_precision.experimental.LossScaleOptimizer(
   ...     tf.keras.optimizers.SGD(), loss_scale='dynamic')
   >>> opt2 = tf.keras.mixed_precision.LossScaleOptimizer(

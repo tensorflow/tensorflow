@@ -27,6 +27,7 @@ pytype_strict_library(
         ":d_checkpoint",
         ":d_variable",
         ":gen_dtensor_ops",
+        ":input_util",
         ":layout",
         ":mesh_util",
         ":save_restore",
@@ -248,5 +249,26 @@ pytype_strict_library(
         "//tensorflow/python:platform",
         "//tensorflow/python/eager:context",
         "@absl_py//absl/logging",
+    ],
+)
+
+pytype_strict_library(
+    name = "input_util",
+    srcs = ["input_util.py"],
+    deps = [
+        ":api",
+        ":layout",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
     ],
 )

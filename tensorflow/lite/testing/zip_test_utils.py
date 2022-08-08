@@ -14,6 +14,7 @@
 # ==============================================================================
 """Utils for make_zip tests."""
 import functools
+import io
 import itertools
 import operator
 import os
@@ -24,7 +25,6 @@ import traceback
 import zipfile
 
 import numpy as np
-from six import StringIO
 import tensorflow.compat.v1 as tf
 
 from google.protobuf import text_format
@@ -87,7 +87,7 @@ MAP_TF_TO_NUMPY_TYPE = {
 }
 
 
-class ExtraConvertOptions(object):
+class ExtraConvertOptions:
   """Additional options for conversion, besides input, output, shape."""
 
   def __init__(self):
@@ -203,7 +203,7 @@ def write_examples(fp, examples):
       write_tensor(fp, name, value)
 
 
-class TextFormatWriter(object):
+class TextFormatWriter:
   """Utility class for writing ProtoBuf like messages."""
 
   def __init__(self, fp, name=None, parent=None):
@@ -627,12 +627,12 @@ def make_zip_of_tests(options,
               "outputs": baseline_output_map
           }
 
-          example_fp = StringIO()
+          example_fp = io.StringIO()
           write_examples(example_fp, [example])
           zipinfo = zipfile.ZipInfo(zip_path_label + ".inputs")
           archive.writestr(zipinfo, example_fp.getvalue(), zipfile.ZIP_DEFLATED)
 
-          example_fp2 = StringIO()
+          example_fp2 = io.StringIO()
           write_test_cases(example_fp2, zip_path_label + ".bin", [example])
           zipinfo = zipfile.ZipInfo(zip_path_label + "_tests.txt")
           archive.writestr(zipinfo, example_fp2.getvalue(),
@@ -663,7 +663,7 @@ def make_zip_of_tests(options,
       convert_report.append((param_dict, report))
 
   if not options.no_conversion_report:
-    report_io = StringIO()
+    report_io = io.StringIO()
     report_lib.make_report_table(report_io, zip_path, convert_report)
     if options.multi_gen_state:
       zipinfo = zipfile.ZipInfo("report_" + options.multi_gen_state.test_name +

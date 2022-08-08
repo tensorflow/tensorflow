@@ -112,6 +112,7 @@ tf_python_pybind_extension(
     srcs = ["profiler_wrapper.cc"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow/core/profiler:internal",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/profiler:__pkg__",
     ],

@@ -1121,6 +1121,18 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   // addressable_device_logical_ids()[i] is assigned.
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
+  // Donation Semantics:
+  //
+  // The following Execute*() methods will donate the input buffer to the
+  // execution if it is specified in the executable. Donation is usually
+  // implemented as a transaction: it is acquired in the begining and committed
+  // when the device execution is successully launched. Concurrent donations
+  // might either block or return failures.
+  //
+  // TODO(chky): It is generally desired that concurrent donations do not block,
+  // as it otherwise results in deadlock easily. Consider always returning
+  // failure on concurrent donations.
+
   // Executes on devices addressable by the client. Requires executable has a
   // device_assignment and all devices in the device_assignment are addressable
   // by the client.

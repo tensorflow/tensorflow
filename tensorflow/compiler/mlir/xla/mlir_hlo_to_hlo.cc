@@ -1769,17 +1769,17 @@ namespace {
 
 StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
                                                   xla::Layout layout) {
-  if (attr.isa<OpaqueElementsAttr>())
+  auto dense_attr = attr.dyn_cast<DenseElementsAttr>();
+  if (!dense_attr)
     return tensorflow::errors::Unimplemented(
-        "Opaque elements attr not supported");
+        "Only dense elements attr are supported");
 
-  xla::Shape shape = xla::TypeToShape(attr.getType());
+  xla::Shape shape = xla::TypeToShape(dense_attr.getType());
 
 #define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)                         \
   case xla_type: {                                                           \
     xla::Array<cpp_type> source_data(shape.dimensions());                    \
-    source_data.SetValues(                                                   \
-        attr.cast<DenseElementsAttr>().getValues<cpp_type>());               \
+    source_data.SetValues(dense_attr.getValues<cpp_type>());                 \
     return xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout); \
   }
 

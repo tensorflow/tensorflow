@@ -193,6 +193,7 @@ py_library(
         ":string_ops",
         ":tensor_array_ops",
         ":training",
+        ":uniform_quant_ops_gen",
         ":weights_broadcast_ops",
         ":while_v2",
         "//tensorflow/core:protos_all_py",
@@ -963,6 +964,16 @@ tf_gen_op_wrapper_private_py(
     ],
     deps = [
         "//tensorflow/core/tpu/ops:tpu_partitioned_ops",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "uniform_quant_ops_gen",
+    visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/core:uniform_quant_ops_op_lib",
     ],
 )
 

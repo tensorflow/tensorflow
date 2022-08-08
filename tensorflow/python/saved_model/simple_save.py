@@ -26,8 +26,8 @@ from tensorflow.python.util.tf_export import tf_export
 @tf_export(v1=['saved_model.simple_save'])
 @deprecation.deprecated(
     None,
-    'This function will only be available through the v1 compatibility '
-    'library as tf.compat.v1.saved_model.simple_save.')
+    'This API was designed for TensorFlow v1. See https://www.tensorflow.org/guide/migrate '
+    'for instructions on how to migrate your code to TensorFlow v2.')
 def simple_save(session, export_dir, inputs, outputs, legacy_init_op=None):
   """Convenience function to build a SavedModel suitable for serving.
 

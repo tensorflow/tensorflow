@@ -152,6 +152,7 @@ package_group(
     name = "dependency_whitelist",
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
+        "//learning/infra/mira/...",
         "//perftools/accelerators/xprof/api/...",
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
         "//smartass/brain/server/...",
@@ -1058,6 +1059,7 @@ filegroup(
         "tpu_replication_ops_op_lib",
         "tpu_sharding_util_ops_op_lib",
         "training_ops_op_lib",
+        "uniform_quant_ops_op_lib",
         "word2vec_ops",
     ]
 ]

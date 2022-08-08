@@ -68,6 +68,8 @@ int main(int argc, char **argv) {
   mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<mlir::shape::ShapeDialect>();
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
+  registry.insert<mlir::quant::QuantizationDialect>();
+  registry.insert<mlir::quantfork::QuantizationForkDialect>();
   registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
   return failed(
       mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n", registry));

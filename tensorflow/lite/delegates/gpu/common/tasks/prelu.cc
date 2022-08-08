@@ -34,12 +34,10 @@ ElementwiseDescriptor CreatePReLU(const PReLUAttributes& attr,
   auto alpha_linear =
       absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
   if (alpha_linear) {
-    TensorLinearDescriptor desc;
-    desc.storage_type = DeduceLinearStorageType(tensor_desc.GetStorageType());
-    desc.element_type = tensor_desc.GetDataType();
-    desc.UploadLinearData(*alpha_linear);
-    op_desc.args.AddObject(
-        "alpha", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+    TensorDescriptor alpha_tensor_desc = CreateConstantLinearTensorDescriptor(
+        tensor_desc.GetDataType(), tensor_desc.GetStorageType(), *alpha_linear);
+    op_desc.args.AddObject("alpha", std::make_unique<TensorDescriptor>(
+                                        std::move(alpha_tensor_desc)));
     alpha_read = "FLT4 alpha_val = args.alpha.Read(S_COORD);\n";
   }
 

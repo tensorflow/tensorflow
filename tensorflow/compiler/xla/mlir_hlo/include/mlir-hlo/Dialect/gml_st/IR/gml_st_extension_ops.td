@@ -35,7 +35,8 @@ class GMLST_DstStyleOp<string mnemonic, list<Trait> traits> : GMLST_Op<mnemonic,
 }
 
 def GMLST_ConcatenateOp : GMLST_DstStyleOp<"concatenate", [
-    SameOperandsAndResultElementType]> {
+    SameOperandsAndResultElementType,
+    DeclareOpInterfaceMethods<FusionInterface>]> {
   let summary = "Destination-style twin for `mhlo.concatenate`";
   let arguments = (ins
     Variadic<AnyTensor>:$operands,
@@ -47,8 +48,9 @@ def GMLST_ConcatenateOp : GMLST_DstStyleOp<"concatenate", [
   let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
-def GMLST_DynamicBroadcastInDimOp : GMLST_DstStyleOp<"dynamic_broadcast_in_dim",
-    [DeclareOpInterfaceMethods<FusionInterface>]> {
+def GMLST_DynamicBroadcastInDimOp : GMLST_DstStyleOp<"dynamic_broadcast_in_dim", [
+    DeclareOpInterfaceMethods<FusionInterface>,
+    SameOperandsAndResultElementType]> {
   let summary = "Destination-style twin for `mhlo.dynamic_broadcast_in_dim`";
 
   let arguments = (ins

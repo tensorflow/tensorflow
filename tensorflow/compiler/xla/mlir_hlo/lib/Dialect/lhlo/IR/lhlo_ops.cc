@@ -224,7 +224,7 @@ LogicalResult CustomCallOp::verify() {
     auto verifyMapping = [&](int64_t targetNum, size_t opNum,
                              ArrayRef<int64_t> mapping,
                              StringRef kind) -> LogicalResult {
-      if (targetNum < opNum)
+      if (targetNum < static_cast<int64_t>(opNum))
         return op.emitOpError("number of target " + kind + " (")
                << targetNum << ") cannot be less than the number of " << kind
                << "(" << opNum << ") for the operation";

@@ -15,6 +15,7 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -111,6 +112,7 @@ public interface InterpreterApi extends AutoCloseable {
      * unspecified, or set to the value -1, the number of threads used will be
      * implementation-defined and platform-dependent.
      */
+    @CanIgnoreReturnValue
     public Options setNumThreads(int numThreads) {
       this.numThreads = numThreads;
       return this;
@@ -128,6 +130,7 @@ public interface InterpreterApi extends AutoCloseable {
     }
 
     /** Sets whether to use NN API (if available) for op execution. Defaults to false (disabled). */
+    @CanIgnoreReturnValue
     public Options setUseNNAPI(boolean useNNAPI) {
       this.useNNAPI = useNNAPI;
       return this;
@@ -151,6 +154,7 @@ public interface InterpreterApi extends AutoCloseable {
      * true}, the interpreter will stop execution. The interpreter will remain a cancelled state
      * until explicitly "uncancelled" by {@code setCancelled(false)}.
      */
+    @CanIgnoreReturnValue
     public Options setCancellable(boolean allow) {
       this.allowCancellation = allow;
       return this;
@@ -180,6 +184,7 @@ public interface InterpreterApi extends AutoCloseable {
      * external (developer-provided) delegates, and adding a {@link Delegate} other than {@link
      * NnApiDelegate} here is not allowed when using TF Lite in Google Play Services.
      */
+    @CanIgnoreReturnValue
     public Options addDelegate(Delegate delegate) {
       delegates.add(delegate);
       return this;
@@ -200,6 +205,7 @@ public interface InterpreterApi extends AutoCloseable {
      * <p>Delegates from a delegated factory that was added here are applied after any delegates
      * added with {@link #addDelegate}.
      */
+    @CanIgnoreReturnValue
     public Options addDelegateFactory(DelegateFactory delegateFactory) {
       delegateFactories.add(delegateFactory);
       return this;
@@ -261,6 +267,7 @@ public interface InterpreterApi extends AutoCloseable {
     }
 
     /** Specify where to get the TF Lite runtime implementation from. */
+    @CanIgnoreReturnValue
     public Options setRuntime(TfLiteRuntime runtime) {
       this.runtime = runtime;
       return this;
@@ -433,7 +440,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code idx} is negative or is not smaller than the number
    *     of model inputs; or if error occurs when resizing the idx-th input.
    */
-  void resizeInput(int idx, @NonNull int[] dims);
+  void resizeInput(int idx, int @NonNull [] dims);
 
   /**
    * Resizes idx-th input of the native model to the given dims.
@@ -445,7 +452,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     of model inputs; or if error occurs when resizing the idx-th input. Additionally, the error
    *     occurs when attempting to resize a tensor with fixed dimensions when `strict` is True.
    */
-  void resizeInput(int idx, @NonNull int[] dims, boolean strict);
+  void resizeInput(int idx, int @NonNull [] dims, boolean strict);
 
   /** Gets the number of input tensors. */
   int getInputTensorCount();

@@ -68,6 +68,8 @@ TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
 namespace xla {
 namespace gpu {
 
+using Eigen::half;
+
 using llvm::ArrayRef;
 using llvm::Error;
 using llvm::Optional;
@@ -101,6 +103,8 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 
 // -------------------------------------------------------------------------- //
 
+// Add custom call arguments and attributes encoding for custom HLO enums and
+// structs, so that we can pass them to custom calls.
 void PopulateLmhloToXlaAttrEncoding(
     jitrt::CustomCallAttrEncodingSet& encoding) {
   encoding.Add<
@@ -108,6 +112,14 @@ void PopulateLmhloToXlaAttrEncoding(
                               se::dnn::ActivationMode>>(
       [](lmhlo_gpu::Activation value) -> se::dnn::ActivationMode {
         return ConvertConvActivationMode(value).value();
+      });
+
+  encoding.Add<jitrt::EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
+                                       lmhlo_gpu::CublasLtMatmulEpilogue,
+                                       se::cuda::BlasLt::Epilogue>>(
+      [](lmhlo_gpu::CublasLtMatmulEpilogue value)
+          -> se::cuda::BlasLt::Epilogue {
+        return cublas_lt::AsBlasLtEpilogue(value).value();
       });
 
   encoding.Add<
@@ -526,6 +538,118 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
 
 // -------------------------------------------------------------------------- //
 
+// TODO(ezhulenev): Cache matmul plans similar to GemmConfig for Gemm.
+
+namespace {
+struct CublasLtMatmul {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   const DebugOptions* debug_options,
+                   jitrt::StridedMemrefView a, jitrt::StridedMemrefView b,
+                   jitrt::StridedMemrefView c, jitrt::StridedMemrefView d,
+                   Optional<jitrt::StridedMemrefView> bias, int64_t algorithm,
+                   double alpha_real, double alpha_imag, double beta,
+                   DotDimensionNumbers dot_dims,
+                   se::cuda::BlasLt::Epilogue epilogue,
+                   ArrayRef<int32_t> precision, int64_t uid) const;
+
+  static CublasLtMatmul Handler() { return CublasLtMatmul(); }
+};
+}  // namespace
+
+Error CublasLtMatmul::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, jitrt::StridedMemrefView a,
+    jitrt::StridedMemrefView b, jitrt::StridedMemrefView c,
+    jitrt::StridedMemrefView d, Optional<jitrt::StridedMemrefView> bias,
+    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
+    DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
+    ArrayRef<int32_t> precision, int64_t uid) const {
+  VLOG(3) << "Running CublasLtMatmul";
+  se::Stream* stream = run_options->stream();
+
+  // Construct a plan from a gemm config and an epilogue.
+  auto cfg = GetGemmConfig(a, b, c, algorithm, alpha_real, alpha_imag, beta,
+                           dot_dims.lhs_batch, dot_dims.lhs_contract,
+                           dot_dims.rhs_batch, dot_dims.rhs_contract);
+  if (!cfg.ok()) return AsError(cfg);
+
+  auto plan = cublas_lt::MatmulPlan::From(*cfg, epilogue);
+  if (!plan.ok()) return AsError(plan);
+
+  auto algos = plan->GetAlgorithms(stream);
+  if (!algos.ok()) return AsError(algos);
+
+  se::DeviceMemoryBase a_data = GetDeviceAddress(a);
+  se::DeviceMemoryBase b_data = GetDeviceAddress(b);
+  se::DeviceMemoryBase c_data = GetDeviceAddress(c);
+  se::DeviceMemoryBase d_data = GetDeviceAddress(d);
+  se::DeviceMemoryBase bias_data;
+  if (bias.has_value()) bias_data = GetDeviceAddress(*bias);
+
+  se::OwningScratchAllocator<> scratch_allocator(
+      stream->parent()->device_ordinal(), stream->parent()->GetAllocator());
+
+  auto st =
+      plan->ExecuteOnStream(stream, a_data, b_data, c_data, d_data, bias_data,
+                            (*algos)[algorithm], scratch_allocator);
+  if (!st.ok()) return AsError(st);
+
+  return Error::success();
+}
+
+// Adds custom call bindings for matmul operations.
+template <typename... Ts>
+static auto BindMatmulAttributes(jitrt::CustomCallBinding<Ts...> binding) {
+  return std::move(binding)
+      .template Attr<int64_t>("algorithm")
+      .template Attr<double>("alpha_real")
+      .template Attr<double>("alpha_imag")
+      .template Attr<double>("beta")
+      .template Attr<DotDimensionNumbers>("dot_dims")
+      .template Attr<se::cuda::BlasLt::Epilogue>("epilogue")
+      .template Attr<ArrayRef<int32_t>>("precision")
+      .template Attr<int64_t>("uid");
+}
+
+static bool CublasLtMatmul(runtime::KernelContext* ctx, void** args,
+                           void** attrs) {
+  static auto* handler =
+      BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul")
+                               .UserData<const ServiceExecutableRunOptions*>()
+                               .UserData<const DebugOptions*>()
+                               .Arg<jitrt::StridedMemrefView>()  // a
+                               .Arg<jitrt::StridedMemrefView>()  // b
+                               .Arg<jitrt::StridedMemrefView>()  // c
+                               .Arg<jitrt::StridedMemrefView>()  // d
+                               .Value(CustomCall::None)          // bias
+                           )
+          .To<RuntimeChecks()>(CublasLtMatmul::Handler())
+          .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+}
+
+static bool CublasLtMatmulBias(runtime::KernelContext* ctx, void** args,
+                               void** attrs) {
+  static auto* handler =
+      BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul.bias")
+                               .UserData<const ServiceExecutableRunOptions*>()
+                               .UserData<const DebugOptions*>()
+                               .Arg<jitrt::StridedMemrefView>()  // a
+                               .Arg<jitrt::StridedMemrefView>()  // b
+                               .Arg<jitrt::StridedMemrefView>()  // c
+                               .Arg<jitrt::StridedMemrefView>()  // d
+                               .Arg<jitrt::StridedMemrefView>()  // bias
+                           )
+          .To<RuntimeChecks()>(CublasLtMatmul::Handler())
+          .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+}
+
+// -------------------------------------------------------------------------- //
+
 // TODO(ezhulenev): We need to find a better way to pass structured attributes
 // to JitRt custom calls.
 
@@ -834,7 +958,7 @@ Error Infeed::operator()(const ServiceExecutableRunOptions* run_options,
 
     // Check that destination shape matches the source shape.
     Shape dest_shape = ToShape(*dest);
-    if (!ShapeUtil::Equal(dest_shape, source_shape)) {
+    if (!ShapeUtil::ReshapeIsBitcast(dest_shape, source_shape)) {
       return MakeStringError(
           "The destination shape does not match the source shape");
     }
@@ -886,6 +1010,11 @@ Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
   ShapeTree<std::unique_ptr<OutfeedBuffer>>* dest_buffers =
       outfeed_manager->BlockingGetNextDestination();
 
+  // Nothing to be done for an outfeed with no inputs.
+  // Note: Must do this after `BlockingGetNextDestination` above to dequeue an
+  // entry from the outfeed manager.
+  if (args.empty()) return Error::success();
+
   // Check that we have correct number of arguments.
   if (args.size() != dest_buffers->leaf_count())
     return MakeStringError("Incorrect number of arguments");
@@ -903,7 +1032,7 @@ Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
 
     // Check that destination shape matches the source shape.
     Shape source_shape = ToShape(*source);
-    if (!ShapeUtil::Equal(dest_shape, source_shape)) {
+    if (!ShapeUtil::ReshapeIsBitcast(dest_shape, source_shape)) {
       return MakeStringError(
           "The destination shape does not match the source shape");
     }
@@ -1018,20 +1147,40 @@ struct Memset {
 Error Memset::operator()(const ServiceExecutableRunOptions* run_options,
                          jitrt::FlatMemrefView dst,
                          CustomCall::VariantArg constant) const {
-  uint32_t pattern;
-  if (constant.isa<int32_t>())
-    pattern = *constant.get<int32_t>();
-  else if (constant.isa<float>())
-    pattern = reinterpret_cast<uint32_t&>(*constant.get<float>());
-  else
-    return MakeStringError("Unsupported memset value type");
-
   se::Stream* stream = run_options->stream();
+  se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
+
+  // If the constant is zero we can use memzero directly.
+  bool set_zero = false;
+
+  // Check all supported data types to see if we have a zero value.
+  if (auto i1 = constant.get<bool>(); succeeded(i1) && *i1 == false)
+    set_zero = true;
+  else if (auto i32 = constant.get<int32_t>(); succeeded(i32) && *i32 == 0)
+    set_zero = true;
+  else if (auto f16 = constant.get<half>(); succeeded(f16) && *f16 == half(0.0))
+    set_zero = true;
+  else if (auto f32 = constant.get<float>(); succeeded(f32) && *f32 == 0.0)
+    set_zero = true;
+
+  if (set_zero) {
+    stream->ThenMemZero(&dst_data, dst.size_in_bytes);
+    return Error::success();
+  }
+
+  // If the constant is not zero, use the given pattern to `memset`.
+  // TODO(ezhulenev): Support 16 and 8 bit patterns.
+  uint32_t pattern;
+  if (auto i32 = constant.get<int32_t>(); succeeded(i32))
+    pattern = *i32;
+  else if (auto f32 = constant.get<float>(); succeeded(f32))
+    pattern = reinterpret_cast<uint32_t&>(*f32);
+  else
+    return MakeStringError("Unsupported memset bit pattern type");
 
   if (dst.size_in_bytes % 4 != 0)
     return MakeStringError("Memref size is not divisible by 4");
 
-  se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
   stream->ThenMemset32(&dst_data, pattern, dst.size_in_bytes);
 
   return Error::success();
@@ -1343,13 +1492,20 @@ Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
   // Prepare pointers to buffers to pass to the Xla custom call handler.
   llvm::SmallVector<void*> buffers;
   for (unsigned i = 0; i < args.size(); ++i) {
-    auto memref = args.get<jitrt::FlatMemrefView>(i);
-    if (failed(memref))
-      return MakeStringError("Failed to get arguments as memref view");
-
     // We use zero-sized memrefs to represent holes in custom calls with target
     // arguments mapping (see `CustomCallTargetArgMapping`).
-    buffers.push_back(memref->size_in_bytes == 0 ? nullptr : memref->data);
+    if (auto memref = args.get<jitrt::FlatMemrefView>(i); succeeded(memref)) {
+      buffers.push_back(memref->size_in_bytes == 0 ? nullptr : memref->data);
+      continue;
+    }
+    if (auto strided = args.get<jitrt::StridedMemrefView>(i);
+        succeeded(strided)) {
+      int64_t size_in_bytes = GetHostSize(strided->dtype);
+      for (int64_t size : strided->sizes) size_in_bytes *= size;
+      buffers.push_back(size_in_bytes == 0 ? nullptr : strided->data);
+      continue;
+    }
+    return MakeStringError("Failed to get arguments as (strided) memref view");
   }
 
   // Original custom call API version that doesn't support returning status.
@@ -1987,6 +2143,8 @@ DirectCustomCallLibrary JitRtGpuCustomCalls() {
   lib.Insert("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
   lib.Insert("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   lib.Insert("xla.gpu.gemm", &xla::gpu::Gemm);
+  lib.Insert("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
+  lib.Insert("xla.gpu.cublas.lt.matmul.bias", &xla::gpu::CublasLtMatmulBias);
 
   auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
   lib.Insert(conv("forward"), &ConvFn<CudnnConvKind::kForward>);

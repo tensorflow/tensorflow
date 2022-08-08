@@ -45,7 +45,9 @@ TEST(CostRecorderTest, WriteToFileTest) {
 
   std::string measured_cost_path;
   tensorflow::Env::Default()->LocalTempFilename(&measured_cost_path);
-  TF_CHECK_OK(recorder.WriteToFile(measured_cost_path));
+  ASSERT_EQ(setenv("TF_TFRT_MEASURED_COST_PATH", measured_cost_path.c_str(), 1),
+            0);
+  TF_CHECK_OK(recorder.WriteToFile());
 
   OpCostMapProto op_cost_map_proto;
   TF_CHECK_OK(tensorflow::ReadTextProto(
@@ -65,7 +67,9 @@ TEST(CostRecorderTest, ProtoRecordsTest) {
   // Writes op's cost to the disk.
   std::string measured_cost_path;
   tensorflow::Env::Default()->LocalTempFilename(&measured_cost_path);
-  TF_CHECK_OK(recorder.WriteToFile(measured_cost_path));
+  ASSERT_EQ(setenv("TF_TFRT_MEASURED_COST_PATH", measured_cost_path.c_str(), 1),
+            0);
+  TF_CHECK_OK(recorder.WriteToFile());
 
   // Reads op's cost from the disk.
   OpCostMapProto op_cost_map_proto;

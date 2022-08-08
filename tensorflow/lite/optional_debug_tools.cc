@@ -556,19 +556,29 @@ void PrintInterpreterState(const Interpreter* interpreter) {
     printf("--------------Subgraph-%d dump has completed--------------\n\n", i);
   }
   printf("--------------Memory Arena Status Start--------------\n");
-  size_t total_memory_bytes = 0;
+  size_t total_arena_memory_bytes = 0;
+  size_t total_dynamic_memory_bytes = 0;
+
   for (int i = 0; i < num_subgraphs; ++i) {
     const Subgraph& subgraph = *(interpreter->subgraph(i));
     size_t arena = 0;
     size_t arena_persist = 0;
     size_t dynamic = 0;
     subgraph.GetMemoryAllocInfo(&arena, &arena_persist, &dynamic);
-    total_memory_bytes += arena;
-    total_memory_bytes += arena_persist;
-    total_memory_bytes += dynamic;
+    total_arena_memory_bytes += arena;
+    total_arena_memory_bytes += arena_persist;
+    total_dynamic_memory_bytes += dynamic;
   }
-  printf("Total memory usage: %zu bytes (%.3f MB)\n\n", total_memory_bytes,
+  size_t total_memory_bytes =
+      total_arena_memory_bytes + total_dynamic_memory_bytes;
+  printf("Total memory usage: %zu bytes (%.3f MB)\n", total_memory_bytes,
          static_cast<float>(total_memory_bytes) / (1 << 20));
+  printf("- Total arena memory usage: %zu bytes (%.3f MB)\n",
+         total_arena_memory_bytes,
+         static_cast<float>(total_arena_memory_bytes) / (1 << 20));
+  printf("- Total dynamic memory usage: %zu bytes (%.3f MB)\n\n",
+         total_dynamic_memory_bytes,
+         static_cast<float>(total_dynamic_memory_bytes) / (1 << 20));
   for (int i = 0; i < num_subgraphs; ++i) {
     const Subgraph& subgraph = *(interpreter->subgraph(i));
     size_t arena = 0;

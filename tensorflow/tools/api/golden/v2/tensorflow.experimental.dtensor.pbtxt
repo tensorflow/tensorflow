@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DTensorDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DVariable"
     mtype: "<class \'tensorflow.python.ops.variables.VariableMetaclass\'>"
   }

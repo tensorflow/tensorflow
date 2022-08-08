@@ -22,7 +22,7 @@ limitations under the License.
 
 // Choose which platform we are on.
 #if defined(ANDROID) || defined(__ANDROID__)
-#define PLATFORM_GOOGLE_ANDROID
+#define PLATFORM_POSIX_ANDROID
 
 #elif defined(__APPLE__)
 #define PLATFORM_POSIX
@@ -30,7 +30,7 @@ limitations under the License.
 #elif defined(_WIN32)
 #define PLATFORM_WINDOWS
 
-#elif defined(GOOGLE_UNSUPPORTED_OS_LOONIX)
+#elif defined(__TF_CHROMIUMOS__)
 #define PLATFORM_CHROMIUMOS
 
 #else

@@ -180,7 +180,7 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
       return arg.getType().isa<IntegerType>();
     };
     // Bail out if the next num_args are not the expected type.
-    if (arguments.size() < numArgs) break;
+    if (static_cast<int64_t>(arguments.size()) < numArgs) break;
     ArrayRef<BlockArgument> memrefArgs = arguments.take_front(numArgs);
     if (!llvm::all_of(memrefArgs.take_front(2), isPtr)) break;
     if (!llvm::all_of(memrefArgs.drop_front(2), isInt)) break;

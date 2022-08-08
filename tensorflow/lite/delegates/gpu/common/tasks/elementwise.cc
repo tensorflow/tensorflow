@@ -250,19 +250,16 @@ GPUOperation CreateElementwiseTwoInput(
     const OperationType& op_type,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
     bool swap_inputs) {
-  const BHWC shape = BHWC(1, 1, 1, constant_tensor.shape.v);
-  TensorDescriptor const_tensor_desc = definition.src_tensors[0];
-  auto status = const_tensor_desc.UpdateToSupportedStorageType(gpu_info, shape);
-  const_tensor_desc.UploadData(constant_tensor);
-
+  TensorDescriptor const_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), constant_tensor);
   ElementwiseDescriptor op_desc;
   op_desc.args.AddObject("second_tensor", std::make_unique<TensorDescriptor>(
                                               std::move(const_tensor_desc)));
-  const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
+  const std::string s_coord = constant_tensor.shape.v == 1 ? "0" : "S_COORD";
   op_desc.code = absl::StrCat(
-      "args.second_tensor::type second_val = args.second_tensor.Read(0, 0, ",
-      s_coord, ");\n");
-  if (shape.c == 1) {
+      "args.second_tensor::type second_val = args.second_tensor.Read(", s_coord,
+      ");\n");
+  if (constant_tensor.shape.v == 1) {
     op_desc.code += "  second_val.y = second_val.x;\n";
     op_desc.code += "  second_val.z = second_val.x;\n";
     op_desc.code += "  second_val.w = second_val.x;\n";
@@ -345,20 +342,9 @@ GPUOperation CreateElementwiseTwoInput(const OperationDef& definition,
                                        const OperationType& op_type,
                                        const BHWC& shape) {
   ElementwiseDescriptor op_desc;
-  const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
-  const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
-  const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
-  op_desc.code = absl::StrCat(
-      "args.src_tensor_1::type second_val = args.src_tensor_1.Read(", x_coord,
-      ", ", y_coord, ", ", s_coord, ");\n");
-  if (shape.c == 1) {
-    op_desc.code += "  second_val.y = second_val.x;\n";
-    op_desc.code += "  second_val.z = second_val.x;\n";
-    op_desc.code += "  second_val.w = second_val.x;\n";
-  }
-  op_desc.code +=
-      GetTwoInputCode(op_type, "out_value", "in_value", "second_val", false);
-  return CreateGpuOperation(definition, std::move(op_desc));
+  op_desc.code =
+      GetTwoInputCode(op_type, "out_value", "in_value", "in2_value", false);
+  return CreateGpuOperation(definition, std::move(op_desc), shape);
 }
 
 }  // namespace gpu
