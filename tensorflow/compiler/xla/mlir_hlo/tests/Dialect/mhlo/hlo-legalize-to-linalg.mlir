@@ -5069,6 +5069,47 @@ func.func @scatter_update_slice(%arg0: tensor<6x3xi32>, %arg1: tensor<2x1xi32>,
 
 // -----
 
+func.func @scatter_update_nontrivial_computation(%arg0: tensor<3xi32>,
+  %arg1: tensor<6x1xi32>, %arg2: tensor<6xi32>) -> tensor<3xi32> {
+  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
+  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
+    %1 = mhlo.add %arg3, %arg4 : tensor<i32>
+    "mhlo.return"(%1) : (tensor<i32>) -> ()
+  }) {
+    indices_are_sorted = false,
+    scatter_dimension_numbers = #mhlo.scatter<
+      inserted_window_dims = [0],
+      scatter_dims_to_operand_dims = [0],
+      index_vector_dim = 1
+    >,
+    unique_indices = false
+  } : (tensor<3xi32>, tensor<6x1xi32>, tensor<6xi32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// CHECK-DAG:   #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-DAG:   #[[MAP1:.*]] = affine_map<(d0, d1) -> (d1, 0)>
+// CHECK-DAG:   #[[MAP2:.*]] = affine_map<(d0, d1) -> (d1)>
+// CHECK:       func @scatter_update_nontrivial_computation
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
+// CHECK:         %[[RES:.*]] = linalg.generic
+// CHECK-SAME:      indexing_maps = [#[[MAP0]], #[[MAP1]], #[[MAP2]], #[[MAP0]]]
+// CHECK-SAME:      iterator_types = ["parallel", "parallel"]
+// CHECK-SAME:      ins(%[[ARG0]], %[[ARG1]], %[[ARG2]] : tensor<3xi32>, tensor<6x1xi32>, tensor<6xi32>)
+// CHECK-SAME:     outs(%[[ARG0]] : tensor<3xi32>) {
+// CHECK:         ^bb0(%{{.*}}: i32, %[[IDX_I32:.*]]: i32, %{{.*}}: i32, %{{.*}}: i32):
+// CHECK:           %[[CMP_IDX:.*]] = linalg.index 0 : index
+// CHECK:           %[[IDX:.*]] = arith.index_cast %[[IDX_I32]] : i32 to index
+// CHECK:           %[[PRED:.*]] = arith.cmpi eq, %[[CMP_IDX]], %[[IDX]] : index
+// CHECK:           %[[SELECT:.*]] =  arith.select %[[PRED]], %{{.*}}, %{{.*}}: i32
+// CHECK:           linalg.yield %[[SELECT]] : i32
+// CHECK:         } -> tensor<3xi32>
+// CHECK:         return %[[RES]] : tensor<3xi32>
+
+// -----
+
 func.func @const() -> tensor<3xi32> {
   // CHECK: = arith.constant dense<[1, 2, 3]> : tensor<3xi32>
   %cst = mhlo.constant dense<[1, 2, 3]> : tensor<3xi32>

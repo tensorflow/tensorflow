@@ -3173,10 +3173,7 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
     if (op.operands().size() != 1 || op.updates().size() != 1) return failure();
 
     // Check if it is a tensor_scatter_nd_update-like op.
-    auto& bodyOps = op.getRegion().front().getOperations();
-    if (bodyOps.size() != 1) return failure();
-    auto retArg = bodyOps.front().getOperand(0).dyn_cast<BlockArgument>();
-    if (!retArg || retArg.getArgNumber() != 1) return failure();
+    if (op.getRegion().front().getNumArguments() != 2) return failure();
 
     auto operandTy =
         adaptor.operands()[0].getType().dyn_cast<RankedTensorType>();
@@ -3236,28 +3233,69 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
     assert(scatterDimsToOperandDims.size() == 1);
     // Do not need init_tensor because we'd like to initialize the output as
     // operand.
+    auto loc = op.getLoc();
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        op.getLoc(), /*resultTensors=*/ArrayRef<Type>{resultTy},
+        loc, /*resultTensors=*/ArrayRef<Type>{resultTy},
         /*inputs=*/
         ValueRange{adaptor.operands()[0], adaptor.scatter_indices(),
                    adaptor.updates()[0]},
         /*outputs=*/adaptor.operands()[0], indexingMaps,
         getNParallelLoopsAttrs(nloops),
-        [scatterDimsToOperandDims](OpBuilder& b, Location loc,
-                                   ValueRange args) {
-          Value cmpIdx =
-              b.create<linalg::IndexOp>(loc, scatterDimsToOperandDims[0]);
-          Value idx =
-              b.create<arith::IndexCastOp>(loc, b.getIndexType(), args[1]);
-          Value pred = b.create<arith::CmpIOp>(
-              loc, b.getI1Type(), arith::CmpIPredicate::eq, cmpIdx, idx);
-          // Use the output arg, so some update values won't be init value
-          // again.
-          Value res = b.create<arith::SelectOp>(loc, args[2].getType(), pred,
-                                                args[2], args[3]);
-          b.create<linalg::YieldOp>(loc, res);
-        },
+        [](OpBuilder& b, Location loc, ValueRange args) {},
         pruneAttributeList(op));
+
+    // Transform the scatter update computation region
+    //   update = a bunch of computation
+    //   return update
+    // to linalg.generic region:
+    //   update = a bunch of computation
+    //   result = idx == cmpIdx ? update : old_value
+    //   linalg.yield result
+    bool updateIsTrivial = (op.getRegion().front().getOperations().size() == 1);
+    Block* block = &linalgOp->getRegion(0).front();
+    auto args = block->getArguments();
+
+    BlockAndValueMapping mapping;
+    // The scatter update computation block arguments are tensors of scalars
+    // while the linalg.generic block arguments are scalars.
+    if (updateIsTrivial) {
+      // If there is no actual update computation, directly use the
+      // linalg.generic block arguments.
+      for (auto pair : llvm::zip_first(op.getRegion().front().getArguments(),
+                                       args.drop_front(2)))
+        mapping.map(std::get<0>(pair), std::get<1>(pair));
+    } else {
+      // Otherwise, convert the linalg.generic block scalar arguments to
+      // tensors, to avoid producing illegal mhlo instructions.
+      rewriter.setInsertionPointToStart(block);
+      for (auto pair : llvm::zip_first(op.getRegion().front().getArguments(),
+                                       args.drop_front(2)))
+        mapping.map(std::get<0>(pair),
+                    rewriter.create<tensor::FromElementsOp>(
+                        loc, std::get<0>(pair).getType(), std::get<1>(pair)));
+    }
+
+    // Transform the computation block over to the linalg.generic op.
+    rewriter.cloneRegionBefore(op.getRegion(), linalgOp->getRegion(0),
+                               linalgOp->getRegion(0).end(), mapping);
+    rewriter.mergeBlocks(&linalgOp->getRegion(0).back(), block, llvm::None);
+
+    // Generate: result = idx == cmpIdx ? update : old_value.
+    Operation* terminator = block->getTerminator();
+    rewriter.setInsertionPoint(terminator);
+    Value cmpIdx =
+        rewriter.create<linalg::IndexOp>(loc, scatterDimsToOperandDims[0]);
+    Value idx = rewriter.create<arith::IndexCastOp>(
+        loc, rewriter.getIndexType(), args[1]);
+    Value pred = rewriter.create<arith::CmpIOp>(
+        loc, rewriter.getI1Type(), arith::CmpIPredicate::eq, cmpIdx, idx);
+    Value result = terminator->getOperand(0);
+    if (!updateIsTrivial)
+      result = rewriter.create<tensor::ExtractOp>(loc, result, ValueRange({}));
+    result = rewriter.create<arith::SelectOp>(loc, args[2].getType(), pred,
+                                              args[2], result);
+
+    rewriter.replaceOpWithNewOp<linalg::YieldOp>(terminator, result);
     rewriter.replaceOp(op, linalgOp.getResults());
     return success();
   }
