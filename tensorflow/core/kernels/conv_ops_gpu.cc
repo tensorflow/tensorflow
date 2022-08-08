@@ -97,7 +97,6 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
 }
 }  // namespace
 #endif  // GOOGLE_CUDA
-}
 
 // Finds the best convolution algorithm for the given ConvLaunch (cuda
 // convolution on the stream) and parameters, by running all possible
