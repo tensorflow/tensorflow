@@ -94,16 +94,6 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
       self.evaluate(l)
 
-  def testTensorListReserveWithNonScalarNumElements(self):
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        r"The num_elements to reserve must be a tensor size 1, but got \[2\]"):
-      l = list_ops.tensor_list_reserve(
-          element_dtype=dtypes.float32,
-          element_shape=[2, 3],
-          num_elements=constant_op.constant([1, 1]))
-      self.evaluate(l)
-
   def testPopUninitializedTensorUseListElementShape(self):
     l = list_ops.tensor_list_reserve(
         element_dtype=dtypes.float32, element_shape=[2, 3], num_elements=3)
