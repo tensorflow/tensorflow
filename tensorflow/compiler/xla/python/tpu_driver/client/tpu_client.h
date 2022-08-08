@@ -313,6 +313,14 @@ class PyTpuBuffer {
   std::shared_ptr<HostValue> host_value_ ABSL_GUARDED_BY(mu_);
 };
 
+// A dummy token that is always ready. PyTpuExecutable::Execute() is blocking
+// until the computation finishes.
+class PyTpuToken {
+ public:
+  PyTpuToken() {}
+  Status Await() { return Status::OK(); }
+};
+
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. Wraps an XLA LocalExecutable.
 class PyTpuExecutable {
@@ -371,6 +379,13 @@ class PyTpuExecutable {
   StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> Execute(
       absl::Span<PyTpuBuffer* const> argument_handles);
 
+  StatusOr<std::pair<std::vector<std::unique_ptr<PyTpuBuffer>>, PyTpuToken>>
+  ExecuteWithToken(absl::Span<PyTpuBuffer* const> argument_handles) {
+    TF_ASSIGN_OR_RETURN(auto results, Execute(argument_handles));
+    return std::pair<std::vector<std::unique_ptr<PyTpuBuffer>>, PyTpuToken>(
+        std::move(results), PyTpuToken());
+  }
+
   // Execute on local devices. Takes a sequence of argument lists (one argument
   // list per local device) and returns a tuple of results (one result per local
   // device). The number of argument lists must be equal to the local device
@@ -382,6 +397,21 @@ class PyTpuExecutable {
   StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
   ExecuteShardedOnLocalDevices(
       absl::Span<const std::vector<PyTpuBuffer*>> args);
+
+  StatusOr<std::pair<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>,
+                     std::vector<PyTpuToken>>>
+  ExecuteShardedOnLocalDevicesWithTokens(
+      absl::Span<const std::vector<PyTpuBuffer*>> args) {
+    TF_ASSIGN_OR_RETURN(auto results, ExecuteShardedOnLocalDevices(args));
+
+    TF_RET_CHECK(!args.empty());
+    int num_computations = args.front().size();
+    std::vector<PyTpuToken> tokens(num_computations);
+
+    return std::pair<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>,
+                     std::vector<PyTpuToken>>(std::move(results),
+                                              std::move(tokens));
+  }
 
   void Delete() { executables_.clear(); }
 
