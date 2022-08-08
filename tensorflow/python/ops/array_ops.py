@@ -4630,10 +4630,10 @@ def squeeze_v2(input, axis=None, name=None):
   time, where `N` is the number of elements in the squeezed dimensions.
   
   Note: If squeeze is performed on dimensions of unknown sizes, then the
-  returned   Tensor will be of unknown shape. In Keras the first (batch)
-  dimension is often  of size `None`, causing `tf.squeeze` to return 
+  returned Tensor will be of unknown shape. A common situation is when the
+  first (batch) dimension is of size `None`, `tf.squeeze` returns
   `<unknown>` shape which may be a surprise. Specify the `axis=` argument
-  to get a more expected result, as illustrated in the following example:
+  to get the expected result, as illustrated in the following example:
   
   ```python
   @tf.function
