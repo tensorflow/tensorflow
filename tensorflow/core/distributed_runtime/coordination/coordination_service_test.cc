@@ -195,7 +195,8 @@ class CoordinateTwoTasksTest : public ::testing::Test {
 
   // Set up coordination service.
   void EnableCoordinationService(bool has_service_to_client_connection = true,
-                                 bool enable_shutdown_barrier = false) {
+                                 bool enable_shutdown_barrier = false,
+                                 bool set_worker_job_recoverable = false) {
     ServerDef server_def = GetMultiClientServerDef("worker", /*num_tasks=*/2);
     auto client_cache = std::make_unique<TestCoordinationClientCache>();
     if (has_service_to_client_connection) {
@@ -210,6 +211,9 @@ class CoordinateTwoTasksTest : public ::testing::Test {
     coord_config->set_service_type(kCoordinationServiceType);
     coord_config->set_heartbeat_timeout_in_ms(kHeartbeatTimeout /
                                               absl::Milliseconds(1));
+    if (set_worker_job_recoverable) {
+      coord_config->mutable_recoverable_jobs()->Add("worker");
+    }
     if (enable_shutdown_barrier) {
       coord_config->set_shutdown_barrier_timeout_in_ms(kShutdownBarrierTimeout /
                                                        absl::Milliseconds(1));
@@ -1335,5 +1339,58 @@ TEST_F(CoordinateTwoTasksTest,
   Status s = coord_service_->RecordHeartbeat(task_1_, incarnation_1_);
 
   EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
+}
+
+TEST_F(CoordinateTwoTasksTest, RecoverableTaskWillNotPropagateError) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/false,
+                            /*set_worker_job_recoverable=*/true);
+
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+
+  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
+  // Heartbeat should be allowed for a short grace period after reset.
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_));
+
+  // Heartbeat failure should be triggered for disconnected task after grace
+  // period, but if the task is recoverable, error should not be propagated.
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(kHeartbeatTimeout));
+  EXPECT_TRUE(errors::IsInvalidArgument(
+      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
+  // Since no error propagation for recoverable tasks, other tasks should work
+  // as normal.
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_));
+}
+
+TEST_F(CoordinateTwoTasksTest, RecoverableTaskResetAndRegisterAgain) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/false,
+                            /*set_worker_job_recoverable=*/true);
+
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+
+  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
+  // Heartbeat should be allowed for a short grace period after reset.
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_));
+
+  // Heartbeat failure should be triggered for disconnected task after grace
+  // period, but if the task is recoverable, error should not be propagated.
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(kHeartbeatTimeout));
+  EXPECT_TRUE(errors::IsInvalidArgument(
+      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
+  // Since no error propagation for recoverable tasks, other tasks should work
+  // as normal.
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_));
+
+  // Register the reset task again, both tasks should be healthy.
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_));
 }
 }  // namespace tensorflow

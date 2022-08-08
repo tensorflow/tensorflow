@@ -150,7 +150,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   // Report service error to a specified task.
   void ReportServiceErrorToTaskAsync(const CoordinatedTask& destination_task,
                                      Status error);
-  // Report error from a task to all other connected tasks.
+  // Report error from a task to all other connected tasks if the task is not
+  // recoverable.
   // Note: SetTaskError() must be called before propagating its error.
   void PropagateError(const CoordinatedTask& source_task,
                       bool is_reported_by_task = false)
@@ -182,6 +183,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       const absl::flat_hash_map<CoordinatedTask, bool, CoordinatedTaskHash,
                                 CoordinatedTaskEqual>& tasks_at_barrier,
       int64_t cluster_size);
+  bool isRecoverableJob(const absl::string_view task_name) const;
 
   class TaskState {
    public:
@@ -271,6 +273,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   // use a set.
   absl::flat_hash_set<std::string> ongoing_barriers_ TF_GUARDED_BY(state_mu_);
 
+  absl::flat_hash_set<absl::string_view> recoverable_jobs_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(CoordinationServiceStandaloneImpl);
 };
 
@@ -358,6 +362,8 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
       server_def.default_session_config().experimental().coordination_config();
   const std::unordered_set<std::string> coordinated_jobs(
       configs.coordinated_jobs().cbegin(), configs.coordinated_jobs().cend());
+  recoverable_jobs_ = absl::flat_hash_set<absl::string_view>(
+      configs.recoverable_jobs().cbegin(), configs.recoverable_jobs().cend());
   const auto& cluster_def = server_def.cluster();
   for (const auto& job : cluster_def.job()) {
     // If `coordinated_jobs` is specified, skip jobs that are not included there
@@ -713,6 +719,9 @@ void CoordinationServiceStandaloneImpl::ReportServiceErrorToTaskAsync(
 
 void CoordinationServiceStandaloneImpl::PropagateError(
     const CoordinatedTask& source_task, bool is_reported_by_task) {
+  // If the error task is recoverable, do not propagate the error to other
+  // connected tasks.
+  if (isRecoverableJob(source_task.job_name())) return;
   Status error;
   {
     mutex_lock l(state_mu_);
@@ -1157,6 +1166,11 @@ std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService(
         std::move(cache), env, server_def);
   }
   return coord_service;
+}
+
+bool CoordinationServiceStandaloneImpl::isRecoverableJob(
+    const absl::string_view task_name) const {
+  return recoverable_jobs_.find(task_name) != recoverable_jobs_.end();
 }
 
 // Register standalone coordination service implementation.
