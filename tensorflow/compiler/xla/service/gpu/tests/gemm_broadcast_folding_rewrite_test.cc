@@ -74,6 +74,58 @@ ENTRY AddDotsFunc {
       )");
 }
 
+TEST_F(GemmBroadcastFoldingRewriteTest,
+       BroadcastedStridedRewriteRhsPassChanged) {
+  const char* hlo_text = R"(
+HloModule BroadcastedInput
+
+ENTRY AddDotsFunc {
+  x = f32[3,2,2]{2,1,0} parameter(0)
+  y = f32[2,2]{1,0} parameter(1)
+  y_broadcast = f32[3,2,2]{2,1,0} broadcast(y), dimensions={1,2}
+  ROOT dot_a = f32[3,2,2]{2,1,0} dot(x, y_broadcast), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  // Use GemmRewriter to generate cublasGemm call.
+  GemmRewriter gemm_rewriter;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          this->RunHloPass(&gemm_rewriter, module.get()));
+  EXPECT_TRUE(changed);
+  GemmBroadcastFoldingRewriter pass;
+  TF_ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(GemmBroadcastFoldingRewriteTest,
+       BroadcastedStridedRewriteLhsPassChanged) {
+  const char* hlo_text = R"(
+HloModule BroadcastedInput
+
+ENTRY AddDotsFunc {
+  x = f32[2,2]{1,0} parameter(0)
+  y = f32[3,2,2]{2,1,0} parameter(1)
+  x_broadcast = f32[3,2,2]{2,1,0} broadcast(x), dimensions={1,2}
+  ROOT dot_a = f32[3,2,2]{2,1,0} dot(x_broadcast, y), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  // Use GemmRewriter to generate cublasGemm call.
+  GemmRewriter gemm_rewriter;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          this->RunHloPass(&gemm_rewriter, module.get()));
+  EXPECT_TRUE(changed);
+  GemmBroadcastFoldingRewriter pass;
+  TF_ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+}
+
 TEST_F(GemmBroadcastFoldingRewriteTest, LHSBatchDimNonZero) {
   const char* hlo_text = R"(
 HloModule LHSBatchDimNonZero

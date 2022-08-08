@@ -167,7 +167,11 @@ StatusOr<bool> HloTestBase::RunHloPass(HloPassInterface* hlo_pass,
   if (status_or.status().ok()) {
     const std::string module_str_after_run =
         module->ToProto().ShortDebugString();
-    if (!status_or.ValueOrDie()) {
+    const bool passChangedHlo = status_or.ValueOrDie();
+    if (passChangedHlo) {
+      // Check that the proto actually changed.
+      EXPECT_NE(module_str_after_run, module_str_before_run);
+    } else {
       // Check that the proto remains same.
       EXPECT_EQ(module_str_after_run, module_str_before_run);
     }
