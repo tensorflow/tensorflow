@@ -188,8 +188,7 @@ StatusOr<SignatureMap> GetFunctionSignaturesFromTFSavedModelMLIR(
             // Insert a random tensor in case of errors.
             signature.captures.push_back(tensorflow::Tensor());
           } else {
-            signature.captures.push_back(
-                std::move(statusor_capture).ValueOrDie());
+            signature.captures.push_back(*std::move(statusor_capture));
           }
         }
       }));
@@ -454,7 +453,7 @@ StatusOr<std::string> GetSavedModelDirFromMlaDir(absl::string_view mla_dir) {
   if (!statusor_dir.ok()) {
     return tfrt::TfStatusFromAbslStatus(statusor_dir.status());
   }
-  return statusor_dir.ValueOrDie();
+  return *statusor_dir;
 }
 
 StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
@@ -489,7 +488,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
       *status = statusor_saved_model_dir.status();
       return nullptr;
     }
-    saved_model_dir_str = statusor_saved_model_dir.ValueOrDie();
+    saved_model_dir_str = *statusor_saved_model_dir;
     saved_model_dir = saved_model_dir_str;
   }
 
@@ -498,7 +497,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     *status = statusor_meta_graph_def.status();
     return nullptr;
   }
-  auto meta_graph_def = statusor_meta_graph_def.ValueOrDie();
+  auto meta_graph_def = *statusor_meta_graph_def;
 
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
   tfrt::metrics::AddTFRTVersionMetric();
@@ -609,7 +608,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     return nullptr;
   }
   *status = OkStatus();
-  return std::move(statusor_saved_model).ValueOrDie();
+  return *std::move(statusor_saved_model);
 }
 
 SavedModelImpl::SavedModelImpl(
