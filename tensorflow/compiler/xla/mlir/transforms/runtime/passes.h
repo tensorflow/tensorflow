@@ -31,7 +31,7 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateConvertToEntrypoint();
 
 #define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/rt_gen_passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
 
 }  // namespace runtime
 }  // namespace xla

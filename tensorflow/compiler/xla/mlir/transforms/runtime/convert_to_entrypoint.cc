@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/rt_passes.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
 
 namespace xla {
 namespace runtime {
@@ -31,7 +31,7 @@ namespace runtime {
 using namespace mlir;  // NOLINT
 
 #define GEN_PASS_CLASSES
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/rt_gen_passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
 
 class ConvertToEntrypointPass
     : public ConvertToEntrypointBase<ConvertToEntrypointPass> {

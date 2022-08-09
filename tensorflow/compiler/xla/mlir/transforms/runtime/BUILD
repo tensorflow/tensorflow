@@ -11,7 +11,7 @@ package(
 )
 
 gentbl_cc_library(
-    name = "rt_transforms_passes_inc_gen",
+    name = "passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
@@ -19,21 +19,21 @@ gentbl_cc_library(
                 "-gen-pass-decls",
                 "-name=RuntimeTransforms",
             ],
-            "rt_gen_passes.h.inc",
+            "passes.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "rt_passes.td",
+    td_file = "passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
 )
 
 cc_library(
-    name = "rt_transforms",
-    srcs = ["rt_convert_to_entrypoint.cc"],
-    hdrs = ["rt_passes.h"],
+    name = "passes",
+    srcs = ["convert_to_entrypoint.cc"],
+    hdrs = ["passes.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":rt_transforms_passes_inc_gen",
+        ":passes_inc_gen",
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowDialect",

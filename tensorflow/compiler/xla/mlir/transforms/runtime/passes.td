@@ -13,12 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef RT_PASSES
-#define RT_PASSES
+#ifndef XLA_RUNTIME_PASSES
+#define XLA_RUNTIME_PASSES
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertToEntrypoint : Pass<"rt-convert-to-entrypoint", "mlir::ModuleOp"> {
+//===-----------------------------------------------------------------------===/
+// Transformations targeting `rt` dialect.
+//===-----------------------------------------------------------------------===/
+
+def ConvertToEntrypoint
+    : Pass<"xla-rt-convert-to-entrypoint", "mlir::ModuleOp"> {
 
   let summary = "Converts function(s) to Xla runtime entrypoint(s)";
 
@@ -82,4 +87,4 @@ def ConvertToEntrypoint : Pass<"rt-convert-to-entrypoint", "mlir::ModuleOp"> {
   let dependentDialects = ["xla::runtime::RuntimeDialect"];
 }
 
-#endif  // RT_PASSES
+#endif  // XLA_RUNTIME_PASSES

@@ -17,7 +17,7 @@ limitations under the License.
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/transforms/math/passes.h"
 #include "tensorflow/compiler/xla/mlir/transforms/memref/passes.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/rt_passes.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
 
 int main(int argc, char **argv) {
   mlir::DialectRegistry registry;

@@ -1,4 +1,4 @@
-// RUN: xla-runtime-opt %s --rt-convert-to-entrypoint | FileCheck %s
+// RUN: xla-runtime-opt %s --xla-rt-convert-to-entrypoint | FileCheck %s
 
 // CHECK: func @single_result(
 // CHECK:   %[[CTX:.*]]: !rt.kernel_context,

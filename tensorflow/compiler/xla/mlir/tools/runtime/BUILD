@@ -16,7 +16,7 @@ tf_native_cc_binary(
     deps = [
         "//tensorflow/compiler/xla/mlir/transforms/math:passes",
         "//tensorflow/compiler/xla/mlir/transforms/memref:passes",
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:rt_transforms",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
     ],
