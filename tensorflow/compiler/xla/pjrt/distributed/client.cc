@@ -355,7 +355,10 @@ xla::Status DistributedRuntimeClientImpl::WaitAtBarrier(
   }
   ::grpc::ClientContext ctx;
   ctx.set_fail_fast(false);
-  ctx.set_deadline(absl::ToChronoTime(absl::Now() + timeout));
+  // Set timeout to be at least 5 seconds so that there is time for service-side
+  // timeout logic to execute.
+  ctx.set_deadline(
+      absl::ToChronoTime(absl::Now() + std::max(timeout, absl::Seconds(5))));
   WaitAtBarrierRequest request;
   request.set_session_id(session_id_);
   request.set_barrier_id(std::move(barrier_id));

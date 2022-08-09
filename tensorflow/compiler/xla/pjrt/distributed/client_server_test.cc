@@ -16,6 +16,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/barrier.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/server.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
-#include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -35,6 +35,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+constexpr absl::Duration kHeartbeatInterval = absl::Milliseconds(500);
+constexpr int kMaxMissingHeartbeats = 3;
 
 struct ServiceParams {
   std::string test_name;
@@ -44,10 +46,29 @@ struct ServiceParams {
 
 class ClientServerTest : public testing::TestWithParam<ServiceParams> {
  public:
-  void StartService(DistributedRuntimeServiceImpl::Options service_options,
-                    bool use_coordination_service,
+  std::unique_ptr<DistributedRuntimeClient> GetClient(
+      int node_id, bool use_coordination_service,
+      DistributedRuntimeClient::Options client_options = {},
+      std::shared_ptr<::grpc::Channel> channel = nullptr) {
+    client_options.node_id = node_id;
+    // Set a small heartbeat interval for quicker tests.
+    client_options.heartbeat_interval = kHeartbeatInterval;
+    client_options.max_missing_heartbeats = kMaxMissingHeartbeats;
+    if (channel == nullptr) {
+      channel = server_->InProcessChannel(::grpc::ChannelArguments());
+    }
+    return GetDistributedRuntimeClient(channel, client_options,
+                                       use_coordination_service);
+  }
+
+  void StartService(int num_nodes, bool use_coordination_service,
+                    DistributedRuntimeServiceImpl::Options service_options = {},
                     absl::string_view service_address = "") {
     ::grpc::ServerBuilder builder;
+    service_options.num_nodes = num_nodes;
+    // Set a small heartbeat interval for quicker tests.
+    service_options.heartbeat_interval = kHeartbeatInterval;
+    service_options.max_missing_heartbeats = kMaxMissingHeartbeats;
 
     // Add a listening port if address is specified.
     if (!service_address.empty()) {
@@ -93,10 +114,7 @@ class ClientServerTest : public testing::TestWithParam<ServiceParams> {
 
 TEST_P(ClientServerTest, ConnectAndShutdownAreBarriers) {
   int num_nodes = 3;
-  DistributedRuntimeServiceImpl::Options service_options;
-  service_options.num_nodes = num_nodes;
-  DistributedRuntimeServiceImpl service(service_options);
-  StartService(service_options, GetParam().use_coordination_service);
+  StartService(num_nodes, GetParam().use_coordination_service);
 
   absl::Mutex mu;
   int connect_count = 0;
@@ -105,11 +123,7 @@ TEST_P(ClientServerTest, ConnectAndShutdownAreBarriers) {
   absl::Barrier barrier(num_nodes);
 
   auto thread_fn = [&](int node_id) -> xla::Status {
-    DistributedRuntimeClient::Options client_options;
-    client_options.node_id = node_id;
-    auto client = GetDistributedRuntimeClient(
-        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
-        GetParam().use_coordination_service);
+    auto client = GetClient(node_id, GetParam().use_coordination_service);
 
     // Allow the threads to call Connect one-by-one in order.
     auto my_connect_turn = [&]() {
@@ -162,9 +176,7 @@ TEST_P(ClientServerTest, ConnectAndShutdownAreBarriers) {
 }
 
 TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
-  DistributedRuntimeServiceImpl::Options service_options;
-  service_options.num_nodes = 2;
-  StartService(service_options, GetParam().use_coordination_service);
+  StartService(/*num_nodes=*/2, GetParam().use_coordination_service);
 
   std::vector<LocalTopologyProto> locals(2);
   locals[0].set_node_id(0);
@@ -192,11 +204,7 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
   // set the global device ids deterministically.
   absl::Notification n;
   auto thread0_fn = [&]() -> xla::Status {
-    DistributedRuntimeClient::Options client_options;
-    client_options.node_id = 0;
-    auto client = GetDistributedRuntimeClient(
-        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
-        GetParam().use_coordination_service);
+    auto client = GetClient(/*node_id=*/0, GetParam().use_coordination_service);
     GlobalTopologyProto topology;
     // Unblock the second thread.
     // Note: For distributed runtime service, client->Connect() blocks
@@ -219,11 +227,7 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
     // Wait for thread0 client to be ready for connection, to ensure global ids
     // are set in order (thread0 client, then thread1 client).
     n.WaitForNotification();
-    DistributedRuntimeClient::Options client_options;
-    client_options.node_id = 1;
-    auto client = GetDistributedRuntimeClient(
-        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
-        GetParam().use_coordination_service);
+    auto client = GetClient(/*node_id=*/1, GetParam().use_coordination_service);
     GlobalTopologyProto topology;
     TF_RETURN_IF_ERROR(client->Connect());
     absl::SleepFor(absl::Seconds(1));
@@ -255,23 +259,15 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
 
 TEST_P(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
   int num_nodes = 3;
-  DistributedRuntimeServiceImpl::Options service_options;
-  service_options.num_nodes = num_nodes;
-  service_options.heartbeat_interval = absl::Milliseconds(500);
-  service_options.max_missing_heartbeats = 2;
-  StartService(service_options, GetParam().use_coordination_service);
+  StartService(num_nodes, GetParam().use_coordination_service);
 
   auto thread_fn = [&](int node_id) -> xla::Status {
     DistributedRuntimeClient::Options client_options;
-    client_options.node_id = node_id;
-    client_options.heartbeat_interval = service_options.heartbeat_interval;
-    client_options.max_missing_heartbeats = 2;
     client_options.shutdown_on_destruction = node_id != 0;
     client_options.missed_heartbeat_callback =
         [&](xla::Status status, bool coordinator_initiated) {};
-    auto client = GetDistributedRuntimeClient(
-        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
-        GetParam().use_coordination_service);
+    auto client =
+        GetClient(node_id, GetParam().use_coordination_service, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
 
@@ -313,26 +309,18 @@ TEST_P(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
 
 TEST_P(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
   int num_nodes = 3;
-  DistributedRuntimeServiceImpl::Options service_options;
-  service_options.num_nodes = num_nodes;
-  service_options.heartbeat_interval = absl::Milliseconds(500);
-  service_options.max_missing_heartbeats = 2;
-  StartService(service_options, GetParam().use_coordination_service);
+  StartService(num_nodes, GetParam().use_coordination_service);
 
   auto thread_fn = [&](int node_id) -> xla::Status {
     DistributedRuntimeClient::Options client_options;
-    client_options.node_id = node_id;
-    client_options.heartbeat_interval = service_options.heartbeat_interval;
-    client_options.max_missing_heartbeats = 2;
     client_options.shutdown_on_destruction = (node_id != 0);
     absl::Notification shutdown;
     client_options.missed_heartbeat_callback = [&](xla::Status status,
                                                    bool coordinator_initiated) {
       shutdown.Notify();
     };
-    auto client = GetDistributedRuntimeClient(
-        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
-        GetParam().use_coordination_service);
+    auto client =
+        GetClient(node_id, GetParam().use_coordination_service, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
 
@@ -358,24 +346,17 @@ TEST_P(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
 
 TEST_P(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
   int num_nodes = 3;
-  DistributedRuntimeServiceImpl::Options service_options;
-  service_options.num_nodes = num_nodes;
-  service_options.heartbeat_interval = absl::Milliseconds(500);
-  service_options.max_missing_heartbeats = 2;
   // We use a socket connection for this test case because the in-process API
   // does not react well to the server being told to shutdown while there are
   // active clients.
   int port = tensorflow::testing::PickUnusedPortOrDie();
-  StartService(service_options, GetParam().use_coordination_service,
-               absl::StrCat("[::]:", port));
+  StartService(num_nodes, GetParam().use_coordination_service,
+               /*service_options=*/{}, absl::StrCat("[::]:", port));
 
   absl::Barrier barrier(num_nodes + 1);
 
   auto thread_fn = [&](int node_id) -> xla::Status {
     DistributedRuntimeClient::Options client_options;
-    client_options.node_id = node_id;
-    client_options.heartbeat_interval = service_options.heartbeat_interval;
-    client_options.max_missing_heartbeats = 2;
     client_options.rpc_timeout = absl::Seconds(1);
     client_options.shutdown_timeout = absl::Seconds(10);
     absl::Notification shutdown;
@@ -387,8 +368,8 @@ TEST_P(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
         ::grpc::InsecureChannelCredentials();
     std::shared_ptr<::grpc::Channel> channel =
         ::grpc::CreateChannel(absl::StrCat("dns:///localhost:", port), creds);
-    auto client = GetDistributedRuntimeClient(
-        channel, client_options, GetParam().use_coordination_service);
+    auto client = GetClient(node_id, GetParam().use_coordination_service,
+                            client_options, channel);
 
     TF_RETURN_IF_ERROR(client->Connect());
 
@@ -422,20 +403,16 @@ TEST_P(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
 // We should eventually connect, even if some clients are late to show up.
 TEST_P(ClientServerTest, LateClientsAreOk) {
   int num_nodes = 3;
-  DistributedRuntimeServiceImpl::Options service_options;
-  service_options.num_nodes = num_nodes;
-  StartService(service_options, GetParam().use_coordination_service);
+  StartService(num_nodes, GetParam().use_coordination_service);
 
   absl::Barrier barrier(num_nodes);
 
   auto thread_fn = [&](int node_id) -> xla::Status {
     DistributedRuntimeClient::Options client_options;
-    client_options.node_id = node_id;
     client_options.init_timeout = absl::Milliseconds(20000);
     client_options.rpc_timeout = absl::Milliseconds(200);
-    auto client = GetDistributedRuntimeClient(
-        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
-        GetParam().use_coordination_service);
+    auto client =
+        GetClient(node_id, GetParam().use_coordination_service, client_options);
 
     barrier.Block();
     absl::SleepFor(absl::Milliseconds(200) * node_id);
@@ -460,21 +437,18 @@ TEST_P(ClientServerTest, LateClientsAreOk) {
 // We should eventually time out if a client does not show up.
 TEST_P(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
   int num_nodes = 3;
-  absl::Duration timeout = absl::Milliseconds(500);
+  absl::Duration timeout = absl::Milliseconds(100);
   DistributedRuntimeServiceImpl::Options service_options;
-  service_options.num_nodes = num_nodes;
   service_options.enumerate_devices_timeout = timeout;
   service_options.shutdown_timeout = timeout;
-  StartService(service_options, GetParam().use_coordination_service);
+  StartService(num_nodes, GetParam().use_coordination_service, service_options);
 
   auto thread_fn = [&](int node_id) -> xla::Status {
     DistributedRuntimeClient::Options client_options;
-    client_options.node_id = node_id;
     client_options.init_timeout = timeout;
-    client_options.rpc_timeout = absl::Milliseconds(200);
-    auto client = GetDistributedRuntimeClient(
-        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
-        GetParam().use_coordination_service);
+    client_options.rpc_timeout = absl::Milliseconds(100);
+    auto client =
+        GetClient(node_id, GetParam().use_coordination_service, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
     TF_RETURN_IF_ERROR(client->Shutdown());
@@ -497,16 +471,10 @@ TEST_P(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
 
 TEST_P(ClientServerTest, WaitAtBarrier_Succeed) {
   int num_nodes = 2;
-  DistributedRuntimeServiceImpl::Options service_options;
-  service_options.num_nodes = num_nodes;
-  StartService(service_options, GetParam().use_coordination_service);
+  StartService(num_nodes, GetParam().use_coordination_service);
 
   auto thread_fn = [&](int node_id) -> xla::Status {
-    DistributedRuntimeClient::Options client_options;
-    client_options.node_id = node_id;
-    auto client = GetDistributedRuntimeClient(
-        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
-        GetParam().use_coordination_service);
+    auto client = GetClient(node_id, GetParam().use_coordination_service);
     TF_RETURN_IF_ERROR(client->Connect());
 
     TF_RETURN_IF_ERROR(
@@ -533,24 +501,20 @@ TEST_P(ClientServerTest, WaitAtBarrier_Succeed) {
 
 TEST_P(ClientServerTest, WaitAtBarrier_Timeout) {
   int num_nodes = 2;
-  DistributedRuntimeServiceImpl::Options service_options;
-  service_options.num_nodes = num_nodes;
-  StartService(service_options, GetParam().use_coordination_service);
+  StartService(num_nodes, GetParam().use_coordination_service);
   absl::Notification n;
 
   auto thread_fn = [&](int node_id) -> xla::Status {
-    DistributedRuntimeClient::Options client_options;
-    client_options.node_id = node_id;
-    auto client = GetDistributedRuntimeClient(
-        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
-        GetParam().use_coordination_service);
+    auto client = GetClient(node_id, GetParam().use_coordination_service);
     TF_RETURN_IF_ERROR(client->Connect());
 
+    // Node 1 waits for barrier to time out before proceeding.
     if (node_id == 1) {
       n.WaitForNotification();
     }
     Status barrier_status =
         client->WaitAtBarrier("barrier_1", absl::Milliseconds(100));
+    // Node 0 notifies that barrier has already timed out.
     if (node_id == 0) {
       n.Notify();
     }
@@ -589,16 +553,10 @@ TEST_P(ClientServerTest, WaitAtBarrier_Timeout) {
 
 TEST_P(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
   int num_nodes = 2;
-  DistributedRuntimeServiceImpl::Options service_options;
-  service_options.num_nodes = num_nodes;
-  StartService(service_options, GetParam().use_coordination_service);
+  StartService(num_nodes, GetParam().use_coordination_service);
 
   auto thread_fn = [&](int node_id) -> xla::Status {
-    DistributedRuntimeClient::Options client_options;
-    client_options.node_id = node_id;
-    auto client = GetDistributedRuntimeClient(
-        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
-        GetParam().use_coordination_service);
+    auto client = GetClient(node_id, GetParam().use_coordination_service);
     TF_RETURN_IF_ERROR(client->Connect());
 
     std::string barrier_id;
@@ -630,16 +588,10 @@ TEST_P(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
 
 TEST_P(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
   int num_nodes = 2;
-  DistributedRuntimeServiceImpl::Options service_options;
-  service_options.num_nodes = num_nodes;
-  StartService(service_options, GetParam().use_coordination_service);
+  StartService(num_nodes, GetParam().use_coordination_service);
 
   auto thread_fn = [&](int node_id) -> xla::Status {
-    DistributedRuntimeClient::Options client_options;
-    client_options.node_id = node_id;
-    auto client = GetDistributedRuntimeClient(
-        server_->InProcessChannel(::grpc::ChannelArguments()), client_options,
-        GetParam().use_coordination_service);
+    auto client = GetClient(node_id, GetParam().use_coordination_service);
     TF_RETURN_IF_ERROR(client->Connect());
 
     TF_RETURN_IF_ERROR(
