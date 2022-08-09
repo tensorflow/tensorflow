@@ -141,24 +141,6 @@ class GpuExecutable : public Executable {
       absl::flat_hash_map<ShapeIndex, OutputInfo>* output_info,
       Shape* output_shape, int buffer_param_offset = 0);
 
-  // Returns an Executable that is loaded from an object file (XLA program
-  // compiled to a native function using the JitRt stack).
-  static StatusOr<std::unique_ptr<Executable>> LoadFromObjFile(
-      std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
-      absl::string_view mlir_module,
-      xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
-      GpuVersion gpu_version, stream_executor::StreamExecutor* executor);
-
-  // Constructor to use when loading a GpuExecutable from an object file (native
-  // function compiled for JitRt). Omits setting class members that aren't used
-  // in JitRt execution mode.
-  GpuExecutable(std::shared_ptr<HloModule> hlo_module, GpuVersion gpu_version,
-                xla::EntryFunctionAttributes entry_func_attrs,
-                absl::string_view module_name, Shape xla_output_shape,
-                std::vector<BufferAllocation> allocations,
-                absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
-                JitRtExecutable* jitrt_executable);
-
   static StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
   ~GpuExecutable() override;
 

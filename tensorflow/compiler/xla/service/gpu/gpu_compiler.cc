@@ -185,13 +185,9 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
-#include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 
 #if XLA_ENABLE_XLIR
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
-namespace jitrt = ::tfrt::jitrt;
 #endif  // XLA_ENABLE_XLIR
 
 namespace xla {
@@ -291,24 +287,6 @@ bool ConvIsLowerable(HloInstruction* conv) {
 
 using OwnedThunkSchedule = GpuExecutable::OwnedThunkSchedule;
 using OwnedJitRtProgram = GpuExecutable::OwnedJitRtProgram;
-
-StatusOr<std::unique_ptr<Executable>> JitRtAotCompilationResult::LoadExecutable(
-    Compiler* compiler, se::StreamExecutor* executor) const {
-  TF_ASSIGN_OR_RETURN(
-      HloModuleConfig hlo_module_config,
-      HloModule::CreateModuleConfigFromProto(
-          jitrt_executable_.hlo_module_proto(), GetDebugOptionsFromFlags()));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(jitrt_executable_.hlo_module_proto(),
-                                 hlo_module_config));
-  auto gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
-  return GpuExecutable::LoadFromObjFile(
-      std::move(hlo_module), jitrt_executable_.obj_file(),
-      jitrt_executable_.mlir_module(), jitrt_executable_.entry_func_attrs(),
-      GetDebugOptionsFromFlags(), gpu_compiler->GetGpuVersion(executor),
-      executor);
-}
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                          const char* target_triple, const char* data_layout)
@@ -1400,73 +1378,7 @@ GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec) {
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& options) {
-  CHECK(options.PlatformId() == se::cuda::kCudaPlatformId);
-  CHECK(options.executor() != nullptr);
-  auto stream_exec = options.executor();
-
-  std::vector<std::unique_ptr<HloModule>> modules =
-      module_group->ConsumeModules();
-  std::vector<std::unique_ptr<AotCompilationResult>> results;
-
-  for (const auto& module : modules) {
-    llvm::LLVMContext llvm_context;
-    GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
-
-    // Compile the module
-    CompileModuleResults compile_module_results;
-    TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
-        module.get(), &llvm_context, target_triple_, data_layout_,
-        stream_exec->platform()->Name(), stream_exec->platform()->id(),
-        gpu_device_info,
-        stream_exec->GetDeviceDescription().cuda_compute_capability(),
-        stream_exec->GetDeviceDescription().rocm_compute_capability(),
-        GetCanShareBuffer(), pointer_size_, &compile_module_results));
-    auto& compiled_executable = compile_module_results.executable;
-
-    if (!std::holds_alternative<OwnedJitRtProgram>(compiled_executable)) {
-      return InternalError("JitRtProgram not provided");
-    }
-
-    const auto& program = std::get<OwnedJitRtProgram>(compiled_executable);
-
-    // Options for the default JitRt compilation pipeline.
-    jitrt::CompilationPipelineOptions copts;
-    copts.num_worker_threads = 1;
-
-    // Options for constructing JitRt JitExecutable.
-    jitrt::CompilationOptions opts;
-    opts.specialization = jitrt::CompilationOptions::Specialization::kDisabled;
-    opts.register_dialects = jitrt::RegisterDefaultJitRtDialects;
-
-    // Register JitRt Gpu runtime custom calls with the linker.
-    opts.runtime_symbol_map = GetSymbolsBinding(JitRtGpuCustomCalls());
-
-    opts.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
-      jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
-    };
-
-    // Instantiate new JitExecutable from the MLIR source.
-    auto jit_executable = jitrt::JitExecutable::Instantiate(
-        program->module, program->entry_point, opts);
-    if (auto err = jit_executable.takeError())
-      return InternalError("Failed to compile JitRt program: %s",
-                           tfrt::StrCat(err));
-
-    // For static shapes we can always serialize only the default executable.
-    jitrt::Executable& executable = jit_executable->DefaultExecutable().get();
-
-    // Check if JitRt executable saved the compilation result.
-    std::unique_ptr<llvm::MemoryBuffer> obj_file = executable.obj_file();
-    if (!obj_file)
-      return InternalError("JitRt executable didn't save the obj file");
-
-    absl::string_view data(obj_file->getBuffer().data(),
-                           obj_file->getBuffer().size());
-    results.emplace_back(std::make_unique<xla::gpu::JitRtAotCompilationResult>(
-        module->ToProto(), data, program->module,
-        compile_module_results.entry_func_attrs));
-  }
-  return std::move(results);
+  return Unimplemented("");
 }
 
 HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {

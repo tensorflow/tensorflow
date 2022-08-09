@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
@@ -57,7 +56,6 @@ limitations under the License.
 #include "tfrt/jitrt/diagnostics.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
-#include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 #endif  // XLA_ENABLE_XLIR
 
 namespace xla {
@@ -137,23 +135,12 @@ class GpuExecutable::JitRtExecutable {
                            tfrt::StrCat(err));
 
     // Pass ownership to the GpuExecutable.
-    return new JitRtExecutable(
-        std::move(program->buffer_sizes),
-        std::make_unique<jitrt::JitExecutable>(std::move(*jit_executable)),
-        std::move(program->debug_options));
+    return new JitRtExecutable(std::move(program->buffer_sizes),
+                               std::move(*jit_executable),
+                               std::move(program->debug_options));
   }
 
-  // Create JitRtExecutable from the AOT compiled binary.
-  static StatusOr<JitRtExecutable*> Create(
-      absl::Span<const int64_t> buffer_sizes, jitrt::Executable executable,
-      DebugOptions debug_options) {
-    // Pass ownership to the GpuExecutable.
-    return new JitRtExecutable(
-        std::vector<int64_t>(buffer_sizes.begin(), buffer_sizes.end()),
-        std::make_unique<jitrt::Executable>(std::move(executable)),
-        std::move(debug_options));
-  }
-
+  jitrt::JitExecutable& jit_executable() { return jit_executable_; }
   jitrt::Executable& default_executable() { return *default_executable_; }
   JitRtKernelsCache& kernels_cache() { return kernels_cache_; }
   JitRtGemmConfigCache& gemm_configs_cache() { return gemm_configs_cache_; }
@@ -168,30 +155,17 @@ class GpuExecutable::JitRtExecutable {
   const DebugOptions& debug_options() const { return debug_options_; }
 
  private:
-  JitRtExecutable(std::vector<int64_t> buffer_sizes,
-                  std::unique_ptr<jitrt::JitExecutable> jit_executable,
-                  DebugOptions debug_options)
+  explicit JitRtExecutable(std::vector<int64_t> buffer_sizes,
+                           jitrt::JitExecutable jit_executable,
+                           DebugOptions debug_options)
       : buffer_sizes_(std::move(buffer_sizes)),
         jit_executable_(std::move(jit_executable)),
-        default_executable_(&jit_executable_->DefaultExecutable().get()),
-        debug_options_(std::move(debug_options)) {}
-
-  JitRtExecutable(std::vector<int64_t> buffer_sizes,
-                  std::unique_ptr<jitrt::Executable> aot_executable,
-                  DebugOptions debug_options)
-      : buffer_sizes_(std::move(buffer_sizes)),
-        aot_executable_(std::move(aot_executable)),
-        executable_(aot_executable.get()),
+        default_executable_(&jit_executable_.DefaultExecutable().get()),
         debug_options_(std::move(debug_options)) {}
 
   std::vector<int64_t> buffer_sizes_;
-
-  std::unique_ptr<jitrt::JitExecutable> jit_executable_;
+  jitrt::JitExecutable jit_executable_;
   jitrt::Executable* default_executable_;  // owned by `jit_executable`
-
-  std::unique_ptr<jitrt::Executable> aot_executable_;
-  jitrt::Executable* executable_;
-
   DebugOptions debug_options_;
 
   // Keep a cache of kernels instantiated by this executable.
@@ -1028,113 +1002,5 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
   return output;
 }
 
-GpuExecutable::GpuExecutable(
-    std::shared_ptr<HloModule> hlo_module, GpuVersion gpu_version,
-    xla::EntryFunctionAttributes entry_func_attrs,
-    absl::string_view module_name, Shape xla_output_shape,
-    std::vector<BufferAllocation> allocations,
-    absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
-    JitRtExecutable* jitrt_executable)
-    : Executable(std::move(hlo_module)),
-      gpu_version_(gpu_version),
-      entry_func_attrs_(entry_func_attrs),
-      module_name_(module_name),
-      output_shape_(xla_output_shape),
-      allocations_(std::move(allocations)),
-      output_info_(std::move(output_info)),
-      jitrt_executable_(jitrt_executable) {
-  XlaDebugInfoManager::Get()->RegisterModule(
-      module().unique_id(), shared_module(), debug_buffer_assignment_);
-}
-
-StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
-    std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
-    absl::string_view mlir_module,
-    xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
-    GpuVersion gpu_version, se::StreamExecutor* executor) {
-#if XLA_ENABLE_XLIR
-  // Load MLIR module behind the compiled object file to recover XLA allocations
-  // and output info details. Also recover buffer sizes from the entrypoint
-  // function signature.
-  mlir::MLIRContext context;
-
-  mlir::DialectRegistry registry;
-  tfrt::RegisterTFRTDialects(registry);
-  tfrt::RegisterTFRTCompiledDialects(registry);
-  context.appendDialectRegistry(registry);
-
-  auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_module, &context);
-  if (!module) return InternalError("Failed to parse AOT compiled module");
-
-  // Get the XLA module entrypoint function.
-  auto func = mlir::cast<mlir::func::FuncOp>(
-      module->lookupSymbol(hlo_module->entry_computation()->name()));
-
-  // Get the buffer sizes from the entrypoint function signature.
-  std::vector<int64_t> buffer_sizes;
-  buffer_sizes.reserve(func.getNumArguments());
-  for (auto type : func.getArgumentTypes()) {
-    auto memref = type.dyn_cast<mlir::MemRefType>();
-    if (!memref || !memref.hasStaticShape() || memref.getRank() != 1)
-      return InternalError("Illegal entrypoint argument type: %s",
-                           tfrt::StrCat(type));
-    buffer_sizes.push_back(memref.getDimSize(0));
-  }
-
-  // Infer XLA allocations and output info from the MLIR module.
-  std::vector<BufferAllocation> allocations;
-  absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
-  Shape result_xla_shape;
-  TF_RETURN_IF_ERROR(SetUpMlirAllocation(func, buffer_sizes, &allocations,
-                                         &output_info, &result_xla_shape,
-                                         /*buffer_param_offset=*/0));
-
-  // Create a named buffer from compiled object file.
-  llvm::StringRef data(obj_file.data(), obj_file.size());
-  auto buffer = llvm::MemoryBuffer::getMemBuffer(data, hlo_module->name());
-
-  // Create a JitRt function signature (all arguments passed as 1d memrefs).
-  llvm::SmallVector<std::unique_ptr<jitrt::Type>> args;
-  llvm::SmallVector<std::unique_ptr<jitrt::Type>> rt_args;
-  rt_args.push_back(std::make_unique<jitrt::KernelContextOperandType>());
-
-  for (int64_t size : buffer_sizes) {
-    auto i8 = tfrt::DType::I8;
-    args.push_back(std::make_unique<jitrt::MemrefType>(size, i8));
-    rt_args.push_back(std::make_unique<jitrt::MemrefType>(size, i8));
-  }
-
-  jitrt::FunctionType signature(std::move(args), /*results=*/{});
-  jitrt::FunctionType rt_signature(std::move(rt_args), /*results=*/{});
-
-  auto symbol_map = GetSymbolsBinding(JitRtGpuCustomCalls());
-
-  // Load JitRt executable from an object file, and link it with Gpu runtime
-  // intrinsics implementing Gpu custom calls.
-  auto executable = jitrt::Executable::LoadFromObjFile(
-      hlo_module->name(), std::move(buffer),
-      hlo_module->entry_computation()->name(), std::move(signature),
-      std::move(rt_signature), symbol_map);
-  if (auto err = executable.takeError())
-    return InternalError("Failed to load JitRt executable: %s",
-                         tfrt::StrCat(err));
-
-  // Move jitrt::Executable ownership to the JitRtExecutable.
-  TF_ASSIGN_OR_RETURN(
-      JitRtExecutable * jitrt_executable,
-      JitRtExecutable::Create(buffer_sizes, std::move(*executable),
-                              std::move(debug_options)));
-
-  // Construct GpuExecutable for the loaded JitRt executable.
-  std::string name = hlo_module->name();
-  return std::unique_ptr<Executable>(
-      new GpuExecutable(std::move(hlo_module), gpu_version, entry_func_attrs,
-                        name, result_xla_shape, std::move(allocations),
-                        std::move(output_info), jitrt_executable));
-
-#else   // XLA_ENABLE_XLIR
-  return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
-#endif  // XLA_ENABLE_XLIR
-}
 }  // namespace gpu
 }  // namespace xla

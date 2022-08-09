@@ -675,7 +675,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla:array2d",
@@ -744,7 +743,6 @@ cc_library(
             # copybara:uncomment "@tf_runtime//backends/jitrt",
             # copybara:uncomment "@tf_runtime//backends/jitrt:diagnostics",
             # copybara:uncomment "@tf_runtime//backends/jitrt:jitrt_compiler",
-            # copybara:uncomment "@tf_runtime//:init_tfrt_dialects",
         ],
         "//conditions:default": [],
     }),
@@ -1727,12 +1725,9 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:stream_executor_headers",
         ":runtime_intrinsics",
-        "@tf_runtime//backends/jitrt:jitrt_compiler",
     ] + select({
         ":is_xlir_enabled": [
-            ":jitrt_custom_calls",
             "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:pass_utils",
-            "@tf_runtime//backends/jitrt",
         ],
         "//conditions:default": [],
     }),
@@ -1854,10 +1849,12 @@ tf_cc_test(
         "XLA_FLAGS": "--xla_gpu_jitrt_executable",
     },
     tags = [
+        "broken",  # b/239679478: Switching AOT support from BEF to JitRt.
         "gpu",
         "no_oss",
         "no_rocm",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "notap",  # b/239679478: Switching AOT support from BEF to JitRt.
         "requires-gpu-nvidia",
     ],
     deps = [
@@ -2598,7 +2595,6 @@ test_suite(
         "//tensorflow/compiler/xla/python:xla_client_test_gpu",
         "//tensorflow/compiler/xla/service/gpu:cudnn_fused_conv_rewriter_test",
         "//tensorflow/compiler/xla/service/gpu:custom_call_test",
-        "//tensorflow/compiler/xla/service/gpu:gpu_aot_compilation_test",
         "//tensorflow/compiler/xla/service/gpu/tests:add_preds.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:all_reduce.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:concat.hlo.test",
