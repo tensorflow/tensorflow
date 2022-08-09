@@ -379,8 +379,11 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/cuda:cuda_dnn_headers",
-        # TODO(rdzhabarov): dnn dependency only needed until stream_executor/cuda is not mirgated to xla/compiler.
+        # TODO(rdzhabarov): dependencies below only needed until stream_executor/cuda is not mirgated to xla/compiler.
         "//tensorflow/stream_executor:dnn",
+        "//tensorflow/stream_executor:plugin_registry",
+        "//tensorflow/stream_executor:temporary_device_memory",
+        "//tensorflow/stream_executor/lib",
     ],
 )
 
