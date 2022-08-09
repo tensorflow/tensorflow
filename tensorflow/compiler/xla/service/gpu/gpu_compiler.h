@@ -31,11 +31,48 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 namespace xla {
 namespace gpu {
+
+// TODO(b/232263665): It should be shared between GPU and CPU.
+class JitRtAotCompilationResult : public AotCompilationResult {
+ public:
+  static StatusOr<std::unique_ptr<JitRtAotCompilationResult>> FromString(
+      absl::string_view serialized) {
+    JitRtExecutableProto jitrt_executable;
+    if (!jitrt_executable.ParseFromString(serialized)) {
+      return InternalError("Failed to parse serialized JitRtExecutableProto.");
+    }
+    return std::unique_ptr<JitRtAotCompilationResult>(
+        new JitRtAotCompilationResult(std::move(jitrt_executable)));
+  }
+
+  JitRtAotCompilationResult(HloModuleProto hlo, absl::string_view obj_file,
+                            absl::string_view mlir_module,
+                            EntryFunctionAttributes entry_func_attrs) {
+    *jitrt_executable_.mutable_hlo_module_proto() = hlo;
+    *jitrt_executable_.mutable_entry_func_attrs() = entry_func_attrs;
+    jitrt_executable_.set_obj_file(obj_file);
+    jitrt_executable_.set_mlir_module(mlir_module);
+  }
+
+  StatusOr<std::string> SerializeAsString() const override {
+    return jitrt_executable_.SerializeAsString();
+  }
+
+  StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      Compiler* compiler, se::StreamExecutor* executor) const override;
+
+ private:
+  explicit JitRtAotCompilationResult(JitRtExecutableProto jitrt_executable)
+      : jitrt_executable_(std::move(jitrt_executable)) {}
+
+  JitRtExecutableProto jitrt_executable_;
+};
 
 // The GPU compiler generates efficient GPU executables.
 class GpuCompiler : public LLVMCompiler {
@@ -72,6 +109,13 @@ class GpuCompiler : public LLVMCompiler {
   se::Platform::Id PlatformId() const override { return platform_id_; }
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
+
+  // Returns a (deserialized) AotCompilationResult from a serialized
+  // AotCompilationResult.
+  StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
+      const std::string& serialized_aot_result) override {
+    return JitRtAotCompilationResult::FromString(serialized_aot_result);
+  }
 
  protected:
   virtual Status OptimizeHloPostLayoutAssignment(
