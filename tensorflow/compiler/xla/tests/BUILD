@@ -1382,6 +1382,10 @@ xla_test(
 xla_test(
     name = "bfloat16_test",
     srcs = ["bfloat16_test.cc"],
+    backend_tags = {
+        # TODO(b/241813928) std::optional used when empty.
+        "ghostlite_iss": ["broken"],
+    },
     shard_count = 40,
     deps = [
         ":test_macros_header",
