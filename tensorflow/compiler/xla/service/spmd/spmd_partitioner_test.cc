@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -10917,6 +10918,45 @@ ENTRY entry {
       op::Copy(op::DynamicSlice(
           AllOf(op::DynamicUpdateSlice(), op::Shape("bf16[8,224, 224,384]")), _,
           _, _, _)));
+}
+
+TEST_F(SpmdPartitioningTest, CustomCallManualSharding) {
+  const char* const hlo_string = R"(
+HloModule pjit_xmap_dummy.5
+
+ENTRY %main.21 (Arg_0.1: f32[4,4,8], Arg_1.2: f32[4,8]) -> (f32[4,4,8], f32[4]) {
+  %Arg_0.1 = f32[4,4,8]{2,1,0} parameter(0), sharding={devices=[4,1,1]0,1,2,3}
+  %copy.3 = f32[4,4,8]{2,1,0} copy(f32[4,4,8]{2,1,0} %Arg_0.1), sharding={devices=[4,1,1]0,1,2,3}
+  %custom-call.4 = f32[1,4,8]{2,1,0} custom-call(f32[4,4,8]{2,1,0} %copy.3), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  %reshape.7 = f32[4,8]{1,0} reshape(f32[1,4,8]{2,1,0} %custom-call.4), sharding={manual}
+  %Arg_1.2 = f32[4,8]{1,0} parameter(1), sharding={replicated}
+  %copy.2 = f32[4,8]{1,0} copy(f32[4,8]{1,0} %Arg_1.2), sharding={replicated}
+  %custom-call.6 = f32[4,8]{1,0} custom-call(f32[4,8]{1,0} %copy.2), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  %custom-call.8 = (f32[4,8]{1,0}, f32[1]{0}) custom-call(f32[4,8]{1,0} %reshape.7, f32[4,8]{1,0} %custom-call.6), custom_call_target="dummy", operand_layout_constraints={f32[4,8]{1,0}, f32[4,8]{1,0}}, api_version=API_VERSION_STATUS_RETURNING, sharding={{manual}, {manual}}
+  %get-tuple-element.9 = f32[4,8]{1,0} get-tuple-element((f32[4,8]{1,0}, f32[1]{0}) %custom-call.8), index=0, sharding={manual}
+  %reshape.11 = f32[1,4,8]{2,1,0} reshape(f32[4,8]{1,0} %get-tuple-element.9), sharding={manual}
+  %copy.1 = f32[1,4,8]{2,1,0} copy(f32[1,4,8]{2,1,0} %reshape.11), sharding={manual}
+  %custom-call.14 = f32[4,4,8]{2,1,0} custom-call(f32[1,4,8]{2,1,0} %copy.1), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1,1]0,1,2,3}
+  %reshape.18 = f32[4,4,8]{2,1,0} reshape(f32[4,4,8]{2,1,0} %custom-call.14), sharding={devices=[4,1,1]0,1,2,3}
+  %get-tuple-element.10 = f32[1]{0} get-tuple-element((f32[4,8]{1,0}, f32[1]{0}) %custom-call.8), index=1, sharding={manual}
+  %reshape.12 = f32[1,1]{1,0} reshape(f32[1]{0} %get-tuple-element.10), sharding={manual}
+  %copy = f32[1,1]{1,0} copy(f32[1,1]{1,0} %reshape.12), sharding={manual}
+  %custom-call.16 = f32[4,1]{1,0} custom-call(f32[1,1]{1,0} %copy), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1]0,1,2,3}
+  %reshape.17 = f32[4]{0} reshape(f32[4,1]{1,0} %custom-call.16), sharding={devices=[4]0,1,2,3}
+  %reshape.19 = f32[4]{0} reshape(f32[4]{0} %reshape.17), sharding={devices=[4]0,1,2,3}
+  ROOT %tuple.20 = (f32[4,4,8]{2,1,0}, f32[4]{0}) tuple(f32[4,4,8]{2,1,0} %reshape.18, f32[4]{0} %reshape.19), sharding={{replicated}, {replicated}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::AllReduce(op::DynamicUpdateSlice(
+                            _, op::Shape("f32[1,4,8]"), _, _, _)),
+                        op::AllReduce(op::DynamicUpdateSlice(
+                            _, op::Shape("f32[1]"), _))));
 }
 
 }  // namespace
