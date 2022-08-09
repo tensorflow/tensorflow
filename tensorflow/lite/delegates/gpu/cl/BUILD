@@ -102,7 +102,6 @@ cc_library(
         ":buffer",
         ":cl_context",
         ":gpu_object",
-        ":linear_storage",
         ":tensor",
         ":texture2d",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
@@ -418,26 +417,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-cc_library(
-    name = "linear_storage",
-    srcs = ["linear_storage.cc"],
-    hdrs = ["linear_storage.h"],
-    deps = [
-        ":cl_context",
-        ":cl_image_format",
-        ":gpu_object",
-        ":opencl_wrapper",
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
