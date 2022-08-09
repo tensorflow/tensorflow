@@ -3593,7 +3593,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                              &invalidated_nodes, &nodes_to_delete));
       continue;
     }
-#endif
+#endif  // !DNNL_AARCH64_USE_ACL
 
     // Remap FusedBatchNorm+<SideInput>+<Activation> into the _FusedBatchNormEx.
     FusedBatchNormEx fused_batch_norm_ex;
