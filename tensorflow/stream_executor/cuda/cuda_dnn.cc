@@ -729,6 +729,7 @@ class CudnnFilterDescriptor {
 // We skip a non-existing eng999 in the static filter as a placeholder.
 // Additionally, users can specify an additional errata JSON file via
 // CUDNN_ERRATA_JSON_FILE at runtime.
+// We are also excluding two flavors of ConvFwd_eng42 due to b/234183340.
 const json* CudnnExecutionPlanEngineFilterStatic() {
   static absl::string_view filter_str = R"({
       "version" : 1,
@@ -737,6 +738,34 @@ const json* CudnnExecutionPlanEngineFilterStatic() {
             "operation"           : "ConvFwd",
             "engine"              : 999,
             "knob"                : [],
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvFwd_eng42_k2=2_k4=3_k5=0_k6=0_k7=0",
+            "operation"           : "ConvFwd",
+            "engine"              : 42,
+            "knob"                :
+            {
+                                    "k2" : "2",
+                                    "k4" : "3",
+                                    "k5" : "0",
+                                    "k6" : "0",
+                                    "k7" : "0"
+            },
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvFwd_eng42_k2=1_k4=3_k5=1_k6=0_k7=0",
+            "operation"           : "ConvFwd",
+            "engine"              : 42,
+            "knob"                :
+            {
+                                    "k2" : "1",
+                                    "k4" : "3",
+                                    "k5" : "1",
+                                    "k6" : "0",
+                                    "k7" : "0"
+            },
             "cudnn_version_start" : 8000,
             "cudnn_version_end"   : -1
           }
