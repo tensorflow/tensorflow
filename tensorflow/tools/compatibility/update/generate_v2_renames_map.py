@@ -24,7 +24,6 @@ To update renames_v2.py, run:
 import sys
 
 from absl import app
-import six
 import tensorflow as tf
 
 from tensorflow import python as tf_python  # pylint: disable=unused-import
@@ -176,7 +175,7 @@ def update_renames_v2(output_file_path):
   rename_lines = [
       get_rename_line(name, canonical_name)
       for name, canonical_name in all_renames
-      if 'tf.' + six.ensure_str(name) not in manual_renames
+      if 'tf.' + name not in manual_renames
   ]
   renames_file_text = '%srenames = {\n%s\n}\n' % (
       _FILE_HEADER, ',\n'.join(sorted(rename_lines)))
