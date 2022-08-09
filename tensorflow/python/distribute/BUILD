@@ -678,6 +678,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # b/213388775
         "no_oss",  # b/241013307
+	"no_rocm"
     ],
     tpu_tags = [
         "no_oss",
@@ -1118,6 +1119,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+	"no_rocm"
     ],
     deps = [
         ":combinations",
@@ -1705,6 +1707,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/227211015)
+	"no_rocm"
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
@@ -1864,6 +1867,7 @@ distribute_py_test(
     main = "metrics_v1_test.py",
     tags = [
         "multi_and_single_gpu",
+	"no_rocm"
     ],
     deps = [
         ":combinations",
@@ -1902,6 +1906,7 @@ cuda_py_test(
         "multi_and_single_gpu",
         "nomsan",  # b/154224457: Re-enable when fixed.
         "notsan",  # TODO(b/220133218)
+	"no_rocm"
     ],
     # b/155301154 broken with XLA:GPU
     xla_enable_strict_auto_jit = True,
@@ -1989,6 +1994,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "notsan",  # TODO(b/220133218)
+	"no_rocm"
     ],
     # b/141096229: Non-atomic AssignAdd
     xla_enable_strict_auto_jit = False,
@@ -2185,6 +2191,7 @@ distribute_py_test(
     main = "tf_function_test.py",
     tags = [
         "multi_and_single_gpu",
+	"no_rocm"
     ],
     deps = [
         ":combinations",
