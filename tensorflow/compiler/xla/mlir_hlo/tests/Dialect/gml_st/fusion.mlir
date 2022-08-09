@@ -29,7 +29,7 @@ func.func @dynamic_broadcast_in_dim_at_tile(%arg : tensor<?x?xf32>,
   // CHECK-DAG:  %[[ARG_TILE:.*]] = gml_st.tile %[[ISPACE]] [%[[ARG_TILE_OFFSET0]], %[[ARG_TILE_OFFSET1]]] [%[[ARG_TILE_SIZE0]], %[[ARG_TILE_SIZE1]]] [1, 1]
   // CHECK-DAG:  %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
   // CHECK-DAG:  %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE]]]
-  // CHECK:      %[[BCAST_SUB:.*]] = gml_st.dynamic_broadcast_in_dim
+  // CHECK:      %[[BCAST_SUB:.*]] = thlo.dynamic_broadcast_in_dim
   // CHECK-SAME:   ins(%[[ARG_SUB]] : tensor<?x?xf32>)
   // CHECK-SAME:   outs(%[[INIT_SUB]] : tensor<3x4x?xf32>)
   // CHECK-SAME:   {broadcast_dimensions = [:i64 0, 2]}
@@ -41,7 +41,7 @@ func.func @dynamic_broadcast_in_dim_at_tile(%arg : tensor<?x?xf32>,
   %d1 = tensor.extract %shape[%c1] : tensor<3xindex>
   %d2 = tensor.extract %shape[%c2] : tensor<3xindex>
   %dst = linalg.init_tensor [%d0, %d1, %d2] : tensor<?x?x?xf32>
-  %bcast = gml_st.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
+  %bcast = thlo.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
       outs(%dst: tensor<?x?x?xf32>)
       { broadcast_dimensions = [:i64 0, 2] }
   %bcast_sub = gml_st.materialize %bcast[%tile]
@@ -80,7 +80,7 @@ func.func @dynamic_broadcast_in_dim_at_point(%arg : tensor<?x?xf32>,
   %d1 = tensor.extract %shape[%c1] : tensor<3xindex>
   %d2 = tensor.extract %shape[%c2] : tensor<3xindex>
   %dst = linalg.init_tensor [%d0, %d1, %d2] : tensor<?x?x?xf32>
-  %bcast = gml_st.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
+  %bcast = thlo.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
       outs(%dst: tensor<?x?x?xf32>)
       { broadcast_dimensions = [:i64 0, 2] }
   %bcast_sub = gml_st.materialize %bcast[%point]
@@ -132,12 +132,12 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
   // CHECK-DAG:  %[[ARG_B_SUB:.*]] = gml_st.materialize %[[ARG_B]][%[[ARG_B_TILE]]]
   // CHECK-DAG:  %[[ARG_C_SUB:.*]] = gml_st.materialize %[[ARG_C]][%[[ARG_C_TILE]]]
   // CHECK-DAG:  %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
-  // CHECK:      %[[CONCAT_SUB:.*]] = gml_st.concatenate
+  // CHECK:      %[[CONCAT_SUB:.*]] = thlo.concatenate
   // CHECK-SAME:     ins(%[[ARG_A_SUB]] : tensor<?x?xi32>, %[[ARG_B_SUB]] : tensor<?x?xi32>, %[[ARG_C_SUB]] : tensor<?x?xi32>)
   // CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<?x?xi32>)
   // CHECK-SAME:     {dimension = 1 : i64}
   // CHECK:      return %[[CONCAT_SUB]]
-  %concat = gml_st.concatenate
+  %concat = thlo.concatenate
       ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
       outs(%init : tensor<?x?xi32>)
       {dimension = 1 : i64}
@@ -194,7 +194,7 @@ func.func @concatenate_at_point(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: te
   %concat_dim_ab = arith.addi %concat_dim_a, %concat_dim_b : index
   %concat_dim_abc = arith.addi %concat_dim_ab, %concat_dim_c : index
   %init = linalg.init_tensor [%dim_0, %concat_dim_abc] : tensor<?x?xi32>
-  %concat = gml_st.concatenate
+  %concat = thlo.concatenate
       ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
       outs(%init : tensor<?x?xi32>)
       {dimension = 1 : i64}
@@ -619,7 +619,7 @@ func.func @dim_reification_dynamic_broadcast_in_dim(%arg: tensor<?xf32>,
   // CHECK-DAG: %[[RES:.*]] = tensor.dim %[[INIT]], %[[C1]]
   // CHECK:     return %[[RES]] : index
   %c1 = arith.constant 1 : index
-  %0 = gml_st.dynamic_broadcast_in_dim
+  %0 = thlo.dynamic_broadcast_in_dim
       ins(%arg : tensor<?xf32>) outs(%init : tensor<?x?xf32>)
       {broadcast_dimensions = [:i64 1]}
   %1 = tensor.dim %0, %c1 : tensor<?x?xf32>

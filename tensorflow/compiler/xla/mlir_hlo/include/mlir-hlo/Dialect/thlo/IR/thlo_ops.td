@@ -13,16 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef GML_ST_EXTENSION_OPS
-#define GML_ST_EXTENSION_OPS
+#ifndef THLO_OPS
+#define THLO_OPS
 
-include "mlir/Interfaces/SideEffectInterfaces.td"
-include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
+include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def TensorOrMemref : AnyTypeOf<[AnyMemRef, AnyRankedTensor]>;
 
-class GMLST_DstStyleOp<string mnemonic, list<Trait> traits> : GMLST_Op<mnemonic, [
+def THLO_Dialect : Dialect {
+  let name = "thlo";
+  let cppNamespace = "::mlir::thlo";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+}
+
+class THLO_Op<string mnemonic, list<Trait> traits> :
+    Op<THLO_Dialect, mnemonic, traits> {
+  let hasVerifier = 1;
+}
+
+class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
     NoSideEffect,
     TypesMatchWith<"result and init types match", "init", "result", "$_self">] # traits> {
   let hasCustomAssemblyFormat = 1;
@@ -34,7 +46,7 @@ class GMLST_DstStyleOp<string mnemonic, list<Trait> traits> : GMLST_Op<mnemonic,
   }];
 }
 
-def GMLST_ConcatenateOp : GMLST_DstStyleOp<"concatenate", [
+def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
     SameOperandsAndResultElementType,
     DeclareOpInterfaceMethods<FusionInterface>]> {
   let summary = "Destination-style twin for `mhlo.concatenate`";
@@ -48,7 +60,7 @@ def GMLST_ConcatenateOp : GMLST_DstStyleOp<"concatenate", [
   let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
-def GMLST_DynamicBroadcastInDimOp : GMLST_DstStyleOp<"dynamic_broadcast_in_dim", [
+def THLO_DynamicBroadcastInDimOp : THLO_DstStyleOp<"dynamic_broadcast_in_dim", [
     DeclareOpInterfaceMethods<FusionInterface>,
     SameOperandsAndResultElementType]> {
   let summary = "Destination-style twin for `mhlo.dynamic_broadcast_in_dim`";
@@ -68,7 +80,7 @@ def GMLST_DynamicBroadcastInDimOp : GMLST_DstStyleOp<"dynamic_broadcast_in_dim",
   let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
-def GMLST_GatherOp : GMLST_DstStyleOp<"gather", []> {
+def THLO_GatherOp : THLO_DstStyleOp<"gather", []> {
   let summary = "Destination-style twin for `mhlo.gather`";
   let description = [{
     Does not currently support the full interface of mhlo.gather. In particular:
@@ -90,7 +102,7 @@ def GMLST_GatherOp : GMLST_DstStyleOp<"gather", []> {
   let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
-def GMLST_ScatterOp : GMLST_DstStyleOp<"scatter", []> {
+def THLO_ScatterOp : THLO_DstStyleOp<"scatter", []> {
   let summary = "Destination-style twin for `mhlo.scatter`";
   let description = [{
     Caveats:
@@ -114,4 +126,4 @@ def GMLST_ScatterOp : GMLST_DstStyleOp<"scatter", []> {
   let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
-#endif // GML_ST_EXTENSION_OPS
+#endif // THLO_OPS

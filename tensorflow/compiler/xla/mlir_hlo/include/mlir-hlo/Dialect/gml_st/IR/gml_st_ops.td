@@ -21,7 +21,6 @@ limitations under the License.
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td"
-include "mlir-hlo/Dialect/gml_st/IR/gml_st_extension_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
 def GMLST_MaterializeOp : GMLST_Op<"materialize", [

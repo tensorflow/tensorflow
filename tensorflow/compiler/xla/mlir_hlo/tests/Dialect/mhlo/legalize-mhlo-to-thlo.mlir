@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --legalize-mhlo-to-gml | FileCheck %s
+// RUN: mlir-hlo-opt %s --legalize-mhlo-to-thlo | FileCheck %s
 
 // CHECK-LABEL: @dynamic_broadcast_in_dim
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?xf32>, %[[SHAPE:.*]]: tensor<3xindex>
@@ -10,7 +10,7 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>, %shape : tensor<3xin
   // CHECK-DAG: %[[SHAPE_D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
   // CHECK-DAG: %[[SHAPE_D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
   // CHECK-DAG: %[[INIT:.*]] = linalg.init_tensor [%[[SHAPE_D0]], %[[SHAPE_D1]], %[[SHAPE_D2]]] : tensor<?x?x?xf32>
-  // CHECK-NEXT: %[[BCAST:.*]] = gml_st.dynamic_broadcast_in_dim
+  // CHECK-NEXT: %[[BCAST:.*]] = thlo.dynamic_broadcast_in_dim
   // CHECK-SAME: ins(%[[ARG]] : tensor<?x?xf32>)
   // CHECK-SAME: outs(%[[INIT]] : tensor<?x?x?xf32>)
   // CHECK-SAME: {broadcast_dimensions = [:i64 0, 2]}
@@ -47,7 +47,7 @@ func.func @dynamic_broadcast_in_dim_with_known_expanding(%arg : tensor<?x?x?xf32
   // CHECK-DAG: %[[SHAPE_D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
   // CHECK-DAG: %[[SHAPE_D3:.*]] = tensor.extract %[[SHAPE]][%[[C3]]]
   // CHECK-DAG: %[[INIT:.*]] = linalg.init_tensor [%[[SHAPE_D0]], %[[SHAPE_D1]], %[[SHAPE_D2]], %[[SHAPE_D3]]] : tensor<?x?x?x?xf32>
-  // CHECK-NEXT: %[[BCAST:.*]] = gml_st.dynamic_broadcast_in_dim
+  // CHECK-NEXT: %[[BCAST:.*]] = thlo.dynamic_broadcast_in_dim
   // CHECK-SAME: ins(%[[ARG]] : tensor<?x?x?xf32>)
   // CHECK-SAME: outs(%[[INIT]] : tensor<?x?x?x?xf32>)
   // CHECK-SAME: {broadcast_dimensions = [:i64 0, 2, 3], known_expanding_dimensions = [:i64 0], known_nonexpanding_dimensions = [:i64 2]}
@@ -72,7 +72,7 @@ func.func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?x
   // CHECK-DAG:  %[[CONCAT_DIM_AB:.*]] = arith.addi %[[CONCAT_DIM_A]], %[[CONCAT_DIM_B]]
   // CHECK-DAG:  %[[CONCAT_DIM_ABC:.*]] = arith.addi %[[CONCAT_DIM_AB]], %[[CONCAT_DIM_C]]
   // CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[CONCAT_DIM_ABC]]]
-  // CHECK:      %[[CONCATENATE:.*]] = gml_st.concatenate
+  // CHECK:      %[[CONCATENATE:.*]] = thlo.concatenate
   // CHECK-SAME:     ins(%[[A]] : tensor<?x?xi32>, %[[B]] : tensor<?x?xi32>, %[[C]] : tensor<?x?xi32>)
   // CHECK-SAME:     outs(%[[INIT]] : tensor<?x?xi32>)
   // CHECK-SAME:     {dimension = 1 : i64}
@@ -89,7 +89,7 @@ func.func @concatenate_with_static_info(%a: tensor<?x32xi32>, %b: tensor<64x16xi
   // CHECK-DAG:  %[[CONCAT_DIM_C:.*]] = tensor.dim %[[C]], %[[C1]]
   // CHECK-DAG:  %[[CONCAT_DIM_SUM:.*]] = arith.addi %[[CONCAT_DIM_C]], %[[C48]]
   // CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [64, %[[CONCAT_DIM_SUM]]]
-  // CHECK:      %[[CONCAT:.*]] = gml_st.concatenate
+  // CHECK:      %[[CONCAT:.*]] = thlo.concatenate
   // CHECK-SAME:     ins(%[[A]] : tensor<?x32xi32>, %[[B]] : tensor<64x16xi32>, %[[C]] : tensor<?x?xi32>)
   // CHECK-SAME:     outs(%[[INIT]] : tensor<64x?xi32>)
   // CHECK-SAME:     {dimension = 1 : i64}
@@ -115,7 +115,7 @@ func.func @simple_gather(%operand : tensor<3x3xf32>,
 
 // CHECK-LABEL: @simple_gather
 //       CHECK: %[[INIT:.*]] = linalg.init_tensor [3] : tensor<3xf32>
-//       CHECK: %[[GATHER:.*]] = gml_st.gather
+//       CHECK: %[[GATHER:.*]] = thlo.gather
 //  CHECK-SAME:   ins(%arg0 : tensor<3x3xf32>, %arg1 : tensor<3x2xi64>)
 //  CHECK-SAME:   outs(%[[INIT]] : tensor<3xf32>)
 //       CHECK: return %[[GATHER]]
@@ -160,7 +160,7 @@ func.func @simple_scatter(%dst: tensor<3xi32>, %indices: tensor<1x1xi32>,
 // CHECK-LABEL: @simple_scatter
 // CHECK-SAME: (%[[DST:.*]]: tensor<3xi32>, %[[INDICES:.*]]: tensor<1x1xi32>,
 // CHECK-SAME:  %[[UPDATE:.*]]: tensor<1xi32>)
-//       CHECK: gml_st.scatter ins(%[[INDICES]] : tensor<1x1xi32>,
+//       CHECK: thlo.scatter ins(%[[INDICES]] : tensor<1x1xi32>,
 //  CHECK-SAME:                    %[[UPDATE]] : tensor<1xi32>)
 //  CHECK-SAME:                outs(%[[DST]] : tensor<3xi32>)
 

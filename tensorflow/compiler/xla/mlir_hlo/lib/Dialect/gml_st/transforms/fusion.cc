@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -102,7 +103,7 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
     }
 
     // Case DynamicBroadcastInDimOp.
-    if (auto bcast = llvm::dyn_cast<DynamicBroadcastInDimOp>(def)) {
+    if (auto bcast = llvm::dyn_cast<thlo::DynamicBroadcastInDimOp>(def)) {
       rewriter.replaceOpWithNewOp<tensor::DimOp>(op, bcast.init(),
                                                  op.getIndex());
       return success();

@@ -78,7 +78,6 @@ add_mlir_library(GmlStPasses
   compose_set_ops.cc
   fusion.cc
   gml_st_to_scf.cc
-  legalize_mhlo_to_gml.cc
   tiling.cc
   vectorization.cc
 

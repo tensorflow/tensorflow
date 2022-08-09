@@ -13,15 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -30,7 +32,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
-namespace gml_st {
+namespace mhlo {
 namespace {
 
 bool isIotaArray(llvm::ArrayRef<int64_t> array, int expectedSize = -1) {
@@ -104,8 +106,8 @@ struct ConcatenateOpPattern : public OpRewritePattern<mhlo::ConcatenateOp> {
     // Create init tensor and the new concat op.
     auto init = rewriter.create<linalg::InitTensorOp>(
         loc, dynamicInitSizes, staticInitSizes, resultTy.getElementType());
-    rewriter.replaceOpWithNewOp<gml_st::ConcatenateOp>(op, resultTy, op.val(),
-                                                       init, concatDim);
+    rewriter.replaceOpWithNewOp<thlo::ConcatenateOp>(op, resultTy, op.val(),
+                                                     init, concatDim);
     return success();
   }
 };
@@ -170,7 +172,7 @@ struct DynamicBroadcastInDimOpPattern
               })));
     }
 
-    rewriter.replaceOpWithNewOp<gml_st::DynamicBroadcastInDimOp>(
+    rewriter.replaceOpWithNewOp<thlo::DynamicBroadcastInDimOp>(
         op, resultTy, op.operand(), initTensor, broadcastDims,
         knownExpandingDims, knownNonexpandingDims);
     return success();
@@ -218,8 +220,8 @@ struct GatherPattern : public OpRewritePattern<mhlo::GatherOp> {
     auto initTensor = rewriter.create<linalg::InitTensorOp>(
         loc, mlir::ValueRange{}, op.getType().getShape(),
         op.getType().getElementType());
-    rewriter.replaceOpWithNewOp<gml_st::GatherOp>(
-        op, op.getType(), op.operand(), op.start_indices(), initTensor);
+    rewriter.replaceOpWithNewOp<thlo::GatherOp>(op, op.getType(), op.operand(),
+                                                op.start_indices(), initTensor);
     return success();
   }
 };
@@ -257,7 +259,7 @@ struct ScatterPattern : public OpRewritePattern<mhlo::ScatterOp> {
     if (!opType)
       return failure();  // Type is a tensor in the non-variadic case.
 
-    rewriter.replaceOpWithNewOp<gml_st::ScatterOp>(
+    rewriter.replaceOpWithNewOp<thlo::ScatterOp>(
         op, opType, op.scatter_indices(), op.updates().front(),
         op.operands().front());
     return success();
@@ -284,10 +286,10 @@ struct ScatterPattern : public OpRewritePattern<mhlo::ScatterOp> {
   }
 };
 
-class LegalizeMHLOToGMLPass
-    : public LegalizeMHLOToGMLPassBase<LegalizeMHLOToGMLPass> {
+class LegalizeMHLOToTHLOPass
+    : public LegalizeMHLOToTHLOPassBase<LegalizeMHLOToTHLOPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
-    registry.insert<GmlStDialect, linalg::LinalgDialect>();
+    registry.insert<thlo::THLODialect, linalg::LinalgDialect>();
   }
 
   void runOnOperation() final {
@@ -312,9 +314,9 @@ class LegalizeMHLOToGMLPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToGMLPass() {
-  return std::make_unique<LegalizeMHLOToGMLPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass() {
+  return std::make_unique<LegalizeMHLOToTHLOPass>();
 }
 
-}  // namespace gml_st
+}  // namespace mhlo
 }  // namespace mlir

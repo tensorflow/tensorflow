@@ -7,7 +7,7 @@
 // RUN: FileCheck %s --check-prefix=POINT-CHECK
 
 // TODO(akuegel): Also run with the option lower-to-loops. This fails currently
-// due to not having a bufferization for gml_st.dynamic_broadcast_in_dim.
+// due to not having a bufferization for thlo.dynamic_broadcast_in_dim.
 
 func.func @log(%arg0: tensor<512x4xf32>) -> tensor<512x4xf32> {
   %0 = mhlo.log %arg0 : tensor<512x4xf32>
@@ -145,7 +145,7 @@ func.func @broadcast_in_dim(%arg0: tensor<?xf32>, %shape: tensor<2xindex>)
 // TILE-CHECK-DAG:     %[[ARG_TILE:.*]] = gml_st.tile %[[ARG_SPACE]] [%[[ARG_TILE_OFFSET0]]] [%[[ARG_TILE_SIZE0]]] [1]
 // TILE-CHECK-DAG:     %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
 // TILE-CHECK-DAG:     %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE]]]
-// TILE-CHECK-DAG:     %[[BCAST_SUB:.*]] = gml_st.dynamic_broadcast_in_dim ins(%[[ARG_SUB]] : tensor<?xf32>) outs(%[[INIT_SUB]] : tensor<?x?xf32>) {broadcast_dimensions = [:i64 1]}
+// TILE-CHECK-DAG:     %[[BCAST_SUB:.*]] = thlo.dynamic_broadcast_in_dim ins(%[[ARG_SUB]] : tensor<?xf32>) outs(%[[INIT_SUB]] : tensor<?x?xf32>) {broadcast_dimensions = [:i64 1]}
 // TILE-CHECK:         gml_st.set_yield %[[BCAST_SUB]] into %[[INIT]][%[[TILE]]]
 // TILE-CHECK:       return %[[RES]]
 
@@ -222,7 +222,7 @@ func.func @log_log_bcast(%arg0: tensor<?x?xf32>, %arg1: tensor<2xindex>)
 // TILE-CHECK:         %[[GENERIC_SUB0:.*]] = linalg.generic
 // TILE-CHECK-SAME:        ins(%[[ARG_SUB]] : tensor<?x?xf32>)
 // TILE-CHECK-SAME:        outs(%[[ARG_INIT_SUB]] : tensor<?x?xf32>)
-// TILE-CHECK:         %[[BCAST_SUB:.*]] = gml_st.dynamic_broadcast_in_dim
+// TILE-CHECK:         %[[BCAST_SUB:.*]] = thlo.dynamic_broadcast_in_dim
 // TILE-CHECK-SAME:        ins(%[[GENERIC_SUB0]] : tensor<?x?xf32>)
 // TILE-CHECK-SAME:        outs(%[[INIT_SUB]] : tensor<?x?xf32>)
 // TILE-CHECK-SAME:        {broadcast_dimensions = [:i64 0, 1]}
