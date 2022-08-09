@@ -322,6 +322,14 @@ func.func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   func.return %0#0 : tensor<? x i32>
 }
 
+// CHECK-LABEL: testMulComplex
+func.func @testMulComplex(tensor<? x complex<f32>>, tensor<? x complex<f32>>) -> tensor<? x complex<f32>> {
+^bb0(%arg0: tensor<? x complex<f32>>, %arg1: tensor<? x complex<f32>>):
+  // CHECK: tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"}
+  %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"}: tensor<? x complex<f32>>
+  func.return %0#0 : tensor<? x complex<f32>>
+}
+
 // CHECK-LABEL: testAddWithI64Broadcasting
 func.func @testAddWithI64Broadcasting(tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64> {
 ^bb0(%arg0: tensor<2x3xi64>, %arg1: tensor<3xi64>):

@@ -15,8 +15,10 @@
 
 # Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+*   `tf.lite`:
+
+    *   Updates to existing operations:
+          * tfl.mul now supports complex32 inputs.
 
 # Bug Fixes and Other Changes
 
