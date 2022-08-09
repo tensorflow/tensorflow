@@ -651,7 +651,8 @@ def _static_range_quantize(
           for node in node_def:
             if node.op == "Const":
               tensor = node.attr["value"].tensor
-              saved_model_utils.byte_swap_tensor_content(tensor, "little", "big")
+              saved_model_utils.byte_swap_tensor_content(
+                  tensor, "little", "big")
       importer.import_graph_def(graph_def, name='')
       working_graph = ops.get_default_graph()
       graph_def = working_graph.as_graph_def()
