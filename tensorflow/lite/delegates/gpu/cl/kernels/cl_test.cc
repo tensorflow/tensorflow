@@ -47,37 +47,26 @@ const GpuInfo& ClExecutionEnvironment::GetGpuInfo() const {
   return env_.GetDevicePtr()->GetInfo();
 }
 
-absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
+absl::Status ClExecutionEnvironment::ExecuteGpuOperationInternal(
     const std::vector<TensorDescriptor*>& src_cpu,
     const std::vector<TensorDescriptor*>& dst_cpu,
     std::unique_ptr<GPUOperation>&& operation) {
   const OperationDef& op_def = operation->GetDefinition();
   std::vector<Tensor> src(src_cpu.size());
   for (int i = 0; i < src_cpu.size(); ++i) {
-    auto src_shape = src_cpu[i]->GetBHWDCShape();
-    if (src_shape.b != 1 && !op_def.IsBatchSupported()) {
-      return absl::InvalidArgumentError(
-          "Layout doesn't have Batch dimension, but shape.b != 1");
-    }
     RETURN_IF_ERROR(src[i].CreateFromDescriptor(*src_cpu[i], &env_.context()));
     operation->SetSrc(&src[i], i);
   }
 
   std::vector<Tensor> dst(dst_cpu.size());
   for (int i = 0; i < dst_cpu.size(); ++i) {
-    auto dst_shape = dst_cpu[i]->GetBHWDCShape();
-    if (dst_shape.b != 1 && !op_def.IsBatchSupported()) {
-      return absl::InvalidArgumentError(
-          "Layout doesn't have Batch dimension, but shape.b != 1");
-    }
     TensorDescriptor descriptor_with_shape = op_def.dst_tensors[i];
-    descriptor_with_shape.SetBHWDCShape(dst_shape);
+    descriptor_with_shape.SetBHWDCShape(dst_cpu[i]->GetBHWDCShape());
     RETURN_IF_ERROR(
         CreateTensor(env_.context(), descriptor_with_shape, &dst[i]));
 
     operation->SetDst(&dst[i], i);
   }
-  RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));
 
   ClOperation cl_op;
   cl_op.Init(std::move(operation));

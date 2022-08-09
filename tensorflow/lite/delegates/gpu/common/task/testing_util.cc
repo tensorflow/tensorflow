@@ -16,12 +16,37 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
 
 namespace tflite {
 namespace gpu {
+
+absl::Status TestExecutionEnvironment::ExecuteGPUOperation(
+    const std::vector<TensorDescriptor*>& src_cpu,
+    const std::vector<TensorDescriptor*>& dst_cpu,
+    std::unique_ptr<GPUOperation>&& operation) {
+  const OperationDef& op_def = operation->GetDefinition();
+  for (int i = 0; i < src_cpu.size(); ++i) {
+    auto src_shape = src_cpu[i]->GetBHWDCShape();
+    if (src_shape.b != 1 && !op_def.IsBatchSupported()) {
+      return absl::InvalidArgumentError(
+          "Layout doesn't have Batch dimension, but shape.b != 1");
+    }
+  }
+
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    auto dst_shape = dst_cpu[i]->GetBHWDCShape();
+    if (dst_shape.b != 1 && !op_def.IsBatchSupported()) {
+      return absl::InvalidArgumentError(
+          "Layout doesn't have Batch dimension, but shape.b != 1");
+    }
+  }
+  RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));
+  return ExecuteGpuOperationInternal(src_cpu, dst_cpu, std::move(operation));
+}
 
 absl::Status TestExecutionEnvironment::ExecuteGPUOperation(
     const std::vector<TensorFloat32>& src_cpu,

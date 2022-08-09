@@ -42,10 +42,10 @@ class TestExecutionEnvironment {
 
   virtual const GpuInfo& GetGpuInfo() const = 0;
 
-  virtual absl::Status ExecuteGPUOperation(
+  absl::Status ExecuteGPUOperation(
       const std::vector<TensorDescriptor*>& src_cpu,
       const std::vector<TensorDescriptor*>& dst_cpu,
-      std::unique_ptr<GPUOperation>&& operation) = 0;
+      std::unique_ptr<GPUOperation>&& operation);
 
   absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
                                    std::unique_ptr<GPUOperation>&& operation,
@@ -91,6 +91,12 @@ class TestExecutionEnvironment {
         std::vector<Tensor5DFloat32>{src_cpu}, std::move(operation),
         std::vector<BHWDC>{dst_size}, std::vector<Tensor5DFloat32*>{result});
   }
+
+ protected:
+  virtual absl::Status ExecuteGpuOperationInternal(
+      const std::vector<TensorDescriptor*>& src_cpu,
+      const std::vector<TensorDescriptor*>& dst_cpu,
+      std::unique_ptr<GPUOperation>&& operation) = 0;
 };
 
 absl::Status PointWiseNear(const std::vector<float>& ref,
