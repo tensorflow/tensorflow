@@ -1981,14 +1981,8 @@ Optional<std::string> Translator::TranslateInternal() {
       mac_str = absl::StrFormat("%.3f G ",
                                 static_cast<double>(ops_count / 2) / billion);
     }
-    std::string mac_out_str;
-    llvm::raw_string_ostream os(mac_out_str);
-    os << "Estimated count of arithmetic ops: " << flops_str
-       << " ops, equivalently " << mac_str << " MACs"
-       << "\n";
-    os.flush();
-    LOG(INFO) << mac_out_str;
-    std::cout << mac_out_str;
+    LOG(INFO) << "Estimated count of arithmetic ops: " << flops_str
+              << " ops, equivalently " << mac_str << " MACs";
   }
 
   std::string model_description;
