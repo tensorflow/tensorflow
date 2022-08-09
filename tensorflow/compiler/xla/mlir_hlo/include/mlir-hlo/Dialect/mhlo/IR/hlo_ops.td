@@ -1753,7 +1753,6 @@ def HLO_DotOp: HLO_Op<"dot",
     HLO_PrecisionConfigAttr:$precision_config
   );
   let results = (outs HLO_Tensor);
-  let hasCanonicalizer = 1;
   // Dot op required custom exporter to pass the preferred element type
   // to Xla builder.
   let hasCustomHLOConverter = 1;
