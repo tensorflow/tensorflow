@@ -950,6 +950,48 @@ LogicalResult CholeskyOp::inferReturnTypeComponents(
 //===----------------------------------------------------------------------===//
 // DotOp
 //===----------------------------------------------------------------------===//
+
+template <class Op>
+struct FuseWidenOperands : public OpRewritePattern<Op> {
+  using OpRewritePattern<Op>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(Op op,
+                                PatternRewriter& rewriter) const override {
+    llvm::SmallVector<Value> operands;
+    for (Value operand : op->getOperands()) {
+      auto convertOp =
+          dyn_cast_or_null<mhlo::ConvertOp>(operand.getDefiningOp());
+      if (convertOp) {
+        auto inputType = getElementTypeOrSelf(convertOp.operand().getType());
+        auto castedType = getElementTypeOrSelf(convertOp.getResult().getType());
+        bool isSameCast =
+            (inputType.isa<IntegerType>() && castedType.isa<IntegerType>()) ||
+            (inputType.isa<FloatType>() && castedType.isa<FloatType>());
+        if (isSameCast && inputType.getIntOrFloatBitWidth() <
+                              castedType.getIntOrFloatBitWidth()) {
+          operands.push_back(convertOp.getOperand());
+          continue;
+        }
+      }
+      operands.push_back(operand);
+    }
+
+    if (llvm::all_of(llvm::zip(operands, op->getOperands()), [](auto pair) {
+          return std::get<0>(pair) == std::get<1>(pair);
+        }))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<Op>(op, op->getResultTypes(), operands,
+                                    op->getAttrs());
+    return success();
+  }
+};
+
+void DotOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                        MLIRContext* context) {
+  results.add<FuseWidenOperands<DotOp>>(context);
+}
+
 namespace {
 bool dimCompatible(int64_t a, int64_t b) {
   return isDynamicDimSize(a) || isDynamicDimSize(b) || a == b;
@@ -1158,7 +1200,7 @@ struct DotGeneralToDot : public OpRewritePattern<DotGeneralOp> {
 
 void DotGeneralOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                MLIRContext* context) {
-  results.add<DotGeneralToDot>(context);
+  results.add<FuseWidenOperands<DotGeneralOp>, DotGeneralToDot>(context);
 }
 
 LogicalResult DotGeneralOp::reifyReturnTypeShapes(
@@ -2459,7 +2501,7 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
 
 void ConvolutionOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                 MLIRContext* context) {
-  results.add<ConvolutionIsDot>(context);
+  results.add<ConvolutionIsDot, FuseWidenOperands<ConvolutionOp>>(context);
 }
 
 /*
