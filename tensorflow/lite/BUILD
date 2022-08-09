@@ -160,6 +160,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "arena_planner_with_profiler",
+    testonly = True,
+    srcs = ["arena_planner.cc"],
+    hdrs = ["arena_planner.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings() + ["-DTF_LITE_TENSORFLOW_PROFILER"],
+    deps = [
+        ":graph_info",
+        ":memory_planner",
+        ":simple_memory_arena_with_profiler",
+        ":util",
+        "//tensorflow/lite/c:common",
+    ],
+)
+
 cc_test(
     name = "arena_planner_test",
     size = "small",
@@ -168,7 +184,7 @@ cc_test(
         "tflite_not_portable_android",
     ],
     deps = [
-        ":arena_planner",
+        ":arena_planner_with_profiler",
         ":graph_info",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/c:common",
@@ -252,6 +268,20 @@ cc_library(
     hdrs = ["simple_memory_arena.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
+    deps = [
+        ":macros",
+        ":tensorflow_profiler_logger_shim",
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_library(
+    name = "simple_memory_arena_with_profiler",
+    testonly = True,
+    srcs = ["simple_memory_arena.cc"],
+    hdrs = ["simple_memory_arena.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + tflite_copts_warnings() + ["-DTF_LITE_TENSORFLOW_PROFILER"],
     deps = [
         ":macros",
         ":tensorflow_profiler_logger_shim",
