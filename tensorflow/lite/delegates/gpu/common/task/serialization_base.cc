@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 
 namespace tflite {
@@ -89,15 +88,6 @@ data::MemoryType ToFB(MemoryType type) {
       return data::MemoryType::GLOBAL;
     case MemoryType::LOCAL:
       return data::MemoryType::LOCAL;
-  }
-}
-
-data::LinearStorageType ToFB(LinearStorageType type) {
-  switch (type) {
-    case LinearStorageType::BUFFER:
-      return data::LinearStorageType::BUFFER;
-    case LinearStorageType::TEXTURE_2D:
-      return data::LinearStorageType::TEXTURE_2D;
   }
 }
 
@@ -187,15 +177,6 @@ MemoryType ToEnum(data::MemoryType type) {
       return MemoryType::GLOBAL;
     case data::MemoryType::LOCAL:
       return MemoryType::LOCAL;
-  }
-}
-
-LinearStorageType ToEnum(data::LinearStorageType type) {
-  switch (type) {
-    case data::LinearStorageType::BUFFER:
-      return LinearStorageType::BUFFER;
-    case data::LinearStorageType::TEXTURE_2D:
-      return LinearStorageType::TEXTURE_2D;
   }
 }
 
@@ -435,35 +416,6 @@ void Decode(const data::Texture2DDescriptor* fb_desc,
                            fb_desc->data()->data() + fb_desc->data()->size());
 }
 
-flatbuffers::Offset<data::TensorLinearDescriptor> Encode(
-    const TensorLinearDescriptor& desc,
-    flatbuffers::FlatBufferBuilder* builder) {
-  auto obj_fb =
-      Encode(*static_cast<const GPUObjectDescriptor*>(&desc), builder);
-
-  auto data_fb = builder->CreateVector(desc.data);
-  data::TensorLinearDescriptorBuilder tensor_builder(*builder);
-  tensor_builder.add_base_obj(obj_fb);
-  tensor_builder.add_element_type(ToFB(desc.element_type));
-  tensor_builder.add_storage_type(ToFB(desc.storage_type));
-  tensor_builder.add_memory_type(ToFB(desc.memory_type));
-  tensor_builder.add_size(desc.size);
-  tensor_builder.add_data(data_fb);
-  return tensor_builder.Finish();
-}
-
-void Decode(const data::TensorLinearDescriptor* fb_desc,
-            TensorLinearDescriptor* desc) {
-  Decode(fb_desc->base_obj(), desc);
-  desc->element_type = ToEnum(fb_desc->element_type());
-  desc->storage_type = ToEnum(fb_desc->storage_type());
-  desc->memory_type = ToEnum(fb_desc->memory_type());
-  desc->size = fb_desc->size();
-  desc->data =
-      std::vector<uint8_t>(fb_desc->data()->data(),
-                           fb_desc->data()->data() + fb_desc->data()->size());
-}
-
 flatbuffers::Offset<data::TensorDescriptor> Encode(
     const TensorDescriptor& desc, flatbuffers::FlatBufferBuilder* builder) {
   auto obj_fb =
@@ -557,15 +509,6 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
                     std::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 
-  for (auto tensor_pair_fb : *fb_args->tensor_linear_objects()) {
-    std::string key(tensor_pair_fb->key()->c_str(),
-                    tensor_pair_fb->key()->size());
-    TensorLinearDescriptor desc;
-    Decode(tensor_pair_fb->value(), &desc);
-    args->AddObject(key,
-                    std::make_unique<TensorLinearDescriptor>(std::move(desc)));
-  }
-
   for (auto tensor_pair_fb : *fb_args->tensor_objects()) {
     std::string key(tensor_pair_fb->key()->c_str(),
                     tensor_pair_fb->key()->size());
@@ -592,17 +535,6 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     auto access_type = desc.GetAccess();
     args->AddObjectRef(key, access_type,
                        std::make_unique<Texture2DDescriptor>(std::move(desc)));
-  }
-
-  for (auto tensor_pair_fb : *fb_args->tensor_linear_refs()) {
-    std::string key(tensor_pair_fb->key()->c_str(),
-                    tensor_pair_fb->key()->size());
-    TensorLinearDescriptor desc;
-    Decode(tensor_pair_fb->value(), &desc);
-    auto access_type = desc.GetAccess();
-    args->AddObjectRef(
-        key, access_type,
-        std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   }
 
   for (auto tensor_pair_fb : *fb_args->tensor_refs()) {
@@ -675,19 +607,6 @@ flatbuffers::Offset<data::Arguments> Encode(
     tex_map_builder.add_value(desc_fb);
     texture2d_objs_fb.push_back(tex_map_builder.Finish());
   }
-  std::vector<flatbuffers::Offset<data::TensorLinearDescriptorMapValue>>
-      tensor_linear_objs_fb;
-  for (auto& value : args.objects_) {
-    const auto* tensor_desc =
-        dynamic_cast<const TensorLinearDescriptor*>(value.second.get());
-    if (!tensor_desc) continue;
-    auto desc_fb = Encode(*tensor_desc, builder);
-    auto key_fb = builder->CreateString(value.first);
-    data::TensorLinearDescriptorMapValueBuilder ten_map_builder(*builder);
-    ten_map_builder.add_key(key_fb);
-    ten_map_builder.add_value(desc_fb);
-    tensor_linear_objs_fb.push_back(ten_map_builder.Finish());
-  }
   std::vector<flatbuffers::Offset<data::TensorDescriptorMapValue>>
       tensor_objs_fb;
   for (auto& value : args.objects_) {
@@ -728,19 +647,6 @@ flatbuffers::Offset<data::Arguments> Encode(
     tex_map_builder.add_value(desc_fb);
     texture2d_refs_fb.push_back(tex_map_builder.Finish());
   }
-  std::vector<flatbuffers::Offset<data::TensorLinearDescriptorMapValue>>
-      tensor_linear_refs_fb;
-  for (auto& value : args.object_refs_) {
-    const auto* tensor_desc =
-        dynamic_cast<const TensorLinearDescriptor*>(value.second.get());
-    if (!tensor_desc) continue;
-    auto desc_fb = Encode(*tensor_desc, builder);
-    auto key_fb = builder->CreateString(value.first);
-    data::TensorLinearDescriptorMapValueBuilder ten_map_builder(*builder);
-    ten_map_builder.add_key(key_fb);
-    ten_map_builder.add_value(desc_fb);
-    tensor_linear_refs_fb.push_back(ten_map_builder.Finish());
-  }
   std::vector<flatbuffers::Offset<data::TensorDescriptorMapValue>>
       tensor_refs_fb;
   for (auto& value : args.object_refs_) {
@@ -760,11 +666,9 @@ flatbuffers::Offset<data::Arguments> Encode(
   auto half_values_fb_vec = builder->CreateVector(half_values_fb);
   auto buffer_objs_fb_vec = builder->CreateVector(buffer_objs_fb);
   auto texture2d_objs_fb_vec = builder->CreateVector(texture2d_objs_fb);
-  auto tensor_linear_objs_fb_vec = builder->CreateVector(tensor_linear_objs_fb);
   auto tensor_objs_fb_vec = builder->CreateVector(tensor_objs_fb);
   auto buffer_refs_fb_vec = builder->CreateVector(buffer_refs_fb);
   auto texture2d_refs_fb_vec = builder->CreateVector(texture2d_refs_fb);
-  auto tensor_linear_refs_fb_vec = builder->CreateVector(tensor_linear_refs_fb);
   auto tensor_refs_fb_vec = builder->CreateVector(tensor_refs_fb);
   data::ArgumentsBuilder arguments_builder(*builder);
   arguments_builder.add_int_values(int_values_fb_vec);
@@ -772,11 +676,9 @@ flatbuffers::Offset<data::Arguments> Encode(
   arguments_builder.add_half_values(half_values_fb_vec);
   arguments_builder.add_buffer_objects(buffer_objs_fb_vec);
   arguments_builder.add_texture2d_objects(texture2d_objs_fb_vec);
-  arguments_builder.add_tensor_linear_objects(tensor_linear_objs_fb_vec);
   arguments_builder.add_tensor_objects(tensor_objs_fb_vec);
   arguments_builder.add_buffer_refs(buffer_refs_fb_vec);
   arguments_builder.add_texture2d_refs(texture2d_refs_fb_vec);
-  arguments_builder.add_tensor_linear_refs(tensor_linear_refs_fb_vec);
   arguments_builder.add_tensor_refs(tensor_refs_fb_vec);
   return arguments_builder.Finish();
 }

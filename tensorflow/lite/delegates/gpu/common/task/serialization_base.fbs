@@ -107,20 +107,6 @@ table Texture2DDescriptor {
   data:[uint8];
 }
 
-enum LinearStorageType : byte {
-  BUFFER = 0,
-  TEXTURE_2D = 1,
-}
-
-table TensorLinearDescriptor {
-  base_obj:GPUObjectDescriptor;
-  storage_type:LinearStorageType;
-  element_type:DataType;
-  memory_type:MemoryType;
-  size:int32;
-  data:[uint8];
-}
-
 enum TensorStorageType : byte {
   UNKNOWN = 0,
   BUFFER = 1,
@@ -169,11 +155,6 @@ table Texture2DDescriptorMapValue {
   value:Texture2DDescriptor;
 }
 
-table TensorLinearDescriptorMapValue {
-  key:string;
-  value:TensorLinearDescriptor;
-}
-
 table TensorDescriptorMapValue {
   key:string;
   value:TensorDescriptor;
@@ -186,12 +167,10 @@ table Arguments {
 
   buffer_refs:[BufferDescriptorMapValue];
   texture2d_refs:[Texture2DDescriptorMapValue];
-  tensor_linear_refs:[TensorLinearDescriptorMapValue];
   tensor_refs:[TensorDescriptorMapValue];
 
   buffer_objects:[BufferDescriptorMapValue];
   texture2d_objects:[Texture2DDescriptorMapValue];
-  tensor_linear_objects:[TensorLinearDescriptorMapValue];
   tensor_objects:[TensorDescriptorMapValue];
 }
 
