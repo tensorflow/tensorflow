@@ -2516,6 +2516,7 @@ cc_library(
         ":tensorflow_types",
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
     ],
 )
