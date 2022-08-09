@@ -14,7 +14,6 @@
 # ==============================================================================
 """Utilities for working with and creating SaveableObjects."""
 import functools
-import six
 
 from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.eager import context
@@ -159,7 +158,7 @@ def saveable_objects_for_op(op, name):
     TypeError: If `name` is not a string.
     ValueError: For operations with no known conversion to SaveableObject.
   """
-  if not isinstance(name, six.string_types):
+  if not isinstance(name, str):
     raise TypeError(
         "names_to_saveables must be a dict mapping string names to "
         f"trackable operations. Name is not a string: {name}")
