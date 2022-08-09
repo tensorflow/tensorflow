@@ -422,7 +422,7 @@ build:rbe --bes_timeout=600s
 build:rbe --define=EXECUTOR=remote
 build:rbe --distinct_host_configuration=false
 build:rbe --flaky_test_attempts=3
-build:rbe --jobs=200
+build:rbe --jobs=800
 build:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com
 build:rbe --remote_timeout=3600
 build:rbe --spawn_strategy=remote,worker,standalone,local
@@ -544,7 +544,6 @@ build:rbe_win --experimental_strict_action_env=true
 
 # TODO(gunan): Remove once we use MSVC 2019 with latest patches.
 build:rbe_win --define=override_eigen_strong_inline=true
-build:rbe_win --jobs=100
 
 # Don't build the python zip archive in the RBE build.
 build:rbe_win --remote_download_minimal
