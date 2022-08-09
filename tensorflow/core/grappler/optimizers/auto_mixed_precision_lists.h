@@ -375,7 +375,8 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "DepthwiseConv2dNativeBackpropInput",
                                      "MatMul",
                                      "BatchMatMul",
-                                     "BatchMatMulV2"};
+                                     "BatchMatMulV2",
+                                     "Einsum"};
 
     UpdateList("ALLOWLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
