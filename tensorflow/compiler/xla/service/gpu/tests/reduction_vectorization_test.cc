@@ -113,7 +113,18 @@ ENTRY %fused_computation.371 (param_0: f32[6400,4,8,32]) -> f32[6400,4,8] {
 }
 )";
 
-  const char* expected_optimized_llvm_ir = R"(
+  const char* expected_optimized_llvm_ir = is_built_with_rocm_ ? R"(
+CHECK:  %[[thread_id:.*]] = tail call i32 @llvm.amdgcn.workitem.id.x()
+CHECK:  %[[masked_thread_id:.*]] = and i32 %[[thread_id]], 31
+// Verify that there is no comparison masking half the warp.
+CHECK-NOT: icmp ult i32 %[[masked_thread_id]], 16
+// Verify that we only do one warp reducton by checking that there are 6
+// ds.bpermute corresponding to 1 declaration and 5 permute instructions.  The
+// second warp reduction was originally produced for inter-warp reduction
+// which we have now optimized away.
+CHECK-COUNT-6: llvm.amdgcn.ds.bpermute
+CHECK-NOT: llvm.amdgcn.ds.bpermute
+)" : R"(
 CHECK:  %[[thread_id:.*]] = tail call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
 CHECK:  %[[masked_thread_id:.*]] = and i32 %[[thread_id]], 31
 // Verify that there is no comparison masking half the warp.
