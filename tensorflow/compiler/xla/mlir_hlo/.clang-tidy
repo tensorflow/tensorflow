@@ -1,6 +1,7 @@
 Checks: >
         # LINT.IfChange(checks)
         -*,clang-diagnostic-*,llvm-*,misc-*,
+        -misc-const-correctness,
         -misc-unused-parameters,
         -misc-non-private-member-variables-in-classes,
         -misc-no-recursion,
@@ -73,4 +74,6 @@ CheckOptions:
     value:           camelBack
   - key:             readability-identifier-naming.IgnoreMainLikeFunctions
     value:           1
+  - key:             google-readability-braces-around-statements.ShortStatementLines
+    value:           2
   # LINT.ThenChange(METADATA:check-options)

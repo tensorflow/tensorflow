@@ -121,6 +121,9 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
 
 namespace cublas_lt {
 
+StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+    mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue);
+
 class MatmulPlan {
  public:
   static StatusOr<MatmulPlan> For(mlir::lmhlo_gpu::CublasLtMatmulOp op);

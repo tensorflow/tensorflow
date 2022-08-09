@@ -152,8 +152,8 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     default:
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.
-      return ElementsAttr(OpaqueElementsAttr::get(tfgDialect, type,
-                                                  MangleTensor(input_tensor)));
+      return ElementsAttr(
+          tf_type::TensorProtoAttr::get(type, MangleTensor(input_tensor)));
   }
 
 #undef CONVERT_FLAT
@@ -305,15 +305,12 @@ void ConvertComplexElementsAttr(const DenseElementsAttr attr,
   }
 }
 
-// Converts an MLIR opaque elements attribute to a TensorFlow tensor proto.
-Status ConvertOpaqueElementsAttr(const ElementsAttr attr,
-                                 TensorProto* output_tensor) {
-  if (attr.isa<OpaqueElementsAttr>()) {
-    auto mangled_tensor = attr.cast<OpaqueElementsAttr>().getValue();
-    absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
-    return mangling_util::DemangleTensor(tensor_view, output_tensor);
-  }
-  return InvalidArgument("Unexpected elements attribute type from MLIR.");
+// Converts an Tensor proto attribute to a TensorFlow tensor proto.
+Status ConvertTensorProtoAttr(const mlir::tf_type::TensorProtoAttr attr,
+                              TensorProto* output_tensor) {
+  auto mangled_tensor = attr.getValue();
+  absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
+  return mangling_util::DemangleTensor(tensor_view, output_tensor);
 }
 
 template <typename T>
@@ -403,8 +400,8 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
   output->set_dtype(output_dtype);
   ConvertToTensorShapeProto(shape, output->mutable_tensor_shape());
 
-  if (attr.isa<OpaqueElementsAttr>())
-    return ConvertOpaqueElementsAttr(attr.cast<OpaqueElementsAttr>(), output);
+  if (auto tensor_attr = attr.dyn_cast<mlir::tf_type::TensorProtoAttr>())
+    return ConvertTensorProtoAttr(tensor_attr, output);
 
   auto dense_attr = attr.dyn_cast<DenseElementsAttr>();
   if (!dense_attr) return InvalidArgument("Unsupported elements attr");

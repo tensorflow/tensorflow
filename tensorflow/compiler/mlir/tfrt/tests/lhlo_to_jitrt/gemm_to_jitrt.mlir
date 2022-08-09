@@ -22,7 +22,7 @@
 func.func @compute(%lhs: memref<4x4xf32>, %rhs: memref<4x4xf32>,
                    %out: memref<4x4xf32>) {
 
-  // CHECK: call @gemm(%[[LHS]], %[[RHS]], %[[OUT]])
+  // CHECK: call @[[GEMM:[_a-z.]+]](%[[LHS]], %[[RHS]], %[[OUT]])
   // CHECK-SAME:   algorithm = 13 : i64
   // CHECK-SAME:   alpha_imag = 0.000000e+00 : f64
   // CHECK-SAME:   alpha_real = 1.000000e+00 : f64
@@ -49,6 +49,6 @@ func.func @compute(%lhs: memref<4x4xf32>, %rhs: memref<4x4xf32>,
   func.return
 }
 
-// CHECK: func private @gemm(memref<4x4xf32>, memref<4x4xf32>,
+// CHECK: func private @[[GEMM:[_a-z.]+]](memref<4x4xf32>, memref<4x4xf32>,
 // CHECK-SAME: memref<4x4xf32>)
 // CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.gemm"}

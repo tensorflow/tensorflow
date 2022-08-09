@@ -388,17 +388,21 @@ class MultiDeviceSaver(object):
         restore_fn(file_prefix)
       return restore_ops
 
+    restore_device = options.experimental_io_device or "cpu:0"
+
     # Since this will causes a function re-trace on each restore, limit this to
     # cases where it is needed: eager and when there are multiple tasks/single
     # device savers. Note that the retrace is needed to ensure we pickup the
     # latest values of options like experimental_io_device.
-    if context.executing_eagerly() and len(self._single_device_savers) > 1:
+    if context.executing_eagerly() and (len(self._single_device_savers) > 1 or
+                                        options.experimental_io_device):
       @def_function.function(jit_compile=False)
       def tf_function_restore():
         restore_fn()
         return {}
 
-      restore_ops = tf_function_restore()
+      with ops.device(restore_device):
+        restore_ops = tf_function_restore()
     else:
       restore_ops = restore_fn()
 

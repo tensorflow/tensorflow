@@ -16,14 +16,17 @@ limitations under the License.
 // This file implements logic for lowering HLO/LHLO dialect to Linalg dialect.
 
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/iterator_range.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h"
@@ -42,6 +45,7 @@ limitations under the License.
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -508,7 +512,8 @@ SmallVector<std::string> EinsumToLinalgConverter::getEinsumConfigAsVector(
   bool hasElip = preElip != std::string::npos;
   if (!hasElip) preElip = loop.size();
   // Add the dimension until the end or up to ellipsis if it exist.
-  for (int preElipInd = 0; preElipInd < preElip; preElipInd++) {
+  for (int64_t preElipInd = 0; preElipInd < static_cast<int64_t>(preElip);
+       preElipInd++) {
     loopDim.push_back(loop.substr(preElipInd, 1).str());
   }
   if (!hasElip) return loopDim;
@@ -517,12 +522,14 @@ SmallVector<std::string> EinsumToLinalgConverter::getEinsumConfigAsVector(
   size_t batchRank = operandRank - nonBatchRank;
   // Add the batch dimension ("0",...,"N") where N is rank of batch into the
   // loop.
-  for (int batchInd = 0; batchInd < batchRank; batchInd++) {
+  for (int64_t batchInd = 0; batchInd < static_cast<int64_t>(batchRank);
+       batchInd++) {
     loopDim.push_back(std::to_string(batchInd));
   }
   // Add the dimension after ellipsis into the loop.
   int postElip = preElip + kEllipsis.size();
-  for (int postElipInd = postElip; postElipInd < loop.size(); postElipInd++) {
+  for (int64_t postElipInd = postElip;
+       postElipInd < static_cast<int64_t>(loop.size()); postElipInd++) {
     loopDim.push_back(loop.substr(postElipInd, 1).str());
   }
   return loopDim;
@@ -1409,9 +1416,7 @@ SmallVector<Value, 2> getDotOpInitTensorDynSizes(OpBuilder& b, Location loc,
     }
     case DotOperationType::kVectorDot:
     case DotOperationType::kUnsupported:
-    default: {
       break;
-    }
   }
   return dynShape;
 }
@@ -1840,6 +1845,7 @@ struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
 Value applyConvolutionPadding(Location loc, Value input,
                               DenseIntElementsAttr padding,
                               DenseIntElementsAttr lhsDilation,
+                              llvm::ArrayRef<int64_t> dimMappings,
                               OpBuilder& rewriter) {
   if ((!padding || isSplatValue(padding, 0)) &&
       (!lhsDilation || isSplatValue(lhsDilation, 1)))
@@ -1857,8 +1863,9 @@ Value applyConvolutionPadding(Location loc, Value input,
     assert(rank * 2 == padding.size() + 4 &&
            "There should be 2 padding values per dimension, i.e low and high.");
     for (auto i : llvm::seq<int64_t>(0, padding.size() / 2)) {
-      padLow[i + 1] = padding.getValues<int64_t>()[i * 2];
-      padHigh[i + 1] = padding.getValues<int64_t>()[i * 2 + 1];
+      auto dim = dimMappings[i];
+      padLow[dim] = padding.getValues<int64_t>()[i * 2];
+      padHigh[dim] = padding.getValues<int64_t>()[i * 2 + 1];
     }
   }
 
@@ -1867,11 +1874,12 @@ Value applyConvolutionPadding(Location loc, Value input,
   if (lhsDilation) {
     assert(rank == lhsDilation.size() + 2);
     for (auto i : llvm::seq<int64_t>(0, lhsDilation.size())) {
-      padInterior[i + 1] = lhsDilation.getValues<int64_t>()[i] - 1;
+      auto dim = dimMappings[i];
+      padInterior[dim] = lhsDilation.getValues<int64_t>()[i] - 1;
     }
   }
 
-  auto indexType = rewriter.getIndexType();
+  auto indexType = rewriter.getIntegerType(64);
   auto attrType = RankedTensorType::get({rank}, indexType);
   Value zero = rewriter.create<arith::ConstantOp>(
       loc, rewriter.getZeroAttr(
@@ -1894,6 +1902,7 @@ struct NormalConvolutionOpConversion
       ConversionPatternRewriter& rewriter) const override {
     if (!hasCanonicalDimensionNumbers(op.dimension_numbers())) return failure();
     if (op.feature_group_count() != 1u) return failure();
+    if (op.batch_group_count() != 1u) return failure();
 
     Location loc = op.getLoc();
     Value input = adaptor.lhs();
@@ -1924,8 +1933,11 @@ struct NormalConvolutionOpConversion
     Attribute dilations = op.rhs_dilationAttr();
 
     // Apply padding and input dilation.
+    llvm::SmallVector<int64_t> spatialDimMapping(rank - 2);
+    std::iota(spatialDimMapping.begin(), spatialDimMapping.end(), 1);
     input = applyConvolutionPadding(loc, input, op.paddingAttr(),
-                                    op.lhs_dilationAttr(), rewriter);
+                                    op.lhs_dilationAttr(), spatialDimMapping,
+                                    rewriter);
 
     switch (rank) {
       case 2: {
@@ -1956,6 +1968,308 @@ struct NormalConvolutionOpConversion
         return rewriter.notifyMatchFailure(op, "expected 1/2/3D conv op");
     }
     rewriter.replaceOp(op, res.getOperation()->getResults());
+    return success();
+  }
+};
+
+/// Handles all possible inputs for the mhlo::ConvolutionOp
+struct ConvolutionOpGeneralConversion
+    : public OpConversionPattern<mhlo::ConvolutionOp> {
+  using OpConversionPattern<mhlo::ConvolutionOp>::OpConversionPattern;
+
+  /// This lowering proceeds with the following steps:
+  /// 1. Handle padding and dilation of the input
+  /// 2. Handle padding and dilation of the window
+  /// 3. Handle reversal of the window
+  /// 4. If feature_group_count != 1:
+  ///    - Reshape the input feature dimension, kernel output feature dimension,
+  ///      and output feature dimension.
+  ///    - Create the AffineExpr for the new dimension
+  ///    - Conceptually, this splits the input feature and both output feature
+  ///      dimensions and computes sets of convolutions with these partial views
+  ///      of the values as if they were multiple convolutions combined in a
+  ///      batch.
+  /// 5: If batch_group_count != 1:
+  ///    - Reshape the input batch dimension, kernel output feature dimension,
+  ///      and output feature dimension.
+  ///    - Create the AffineExpr for the new dimension
+  ///    - Conceptually, this splits the input batch and both output feature
+  ///      dimensions and computes sets of convolutions with these partial views
+  ///      of the values as if they were multiple convolutions combined in a
+  ///      batch.
+  /// 6. For all dimensions not newly created by a reshape, create the
+  ///    appropriate parallel and reduction dimensions to create a convolution.
+  /// 7. Create the linalg.generic that computes the multiply-add
+  /// 8. Reshape the output to the original shape if it was reshaped by the
+  ///    feature or group count attributes.
+  LogicalResult matchAndRewrite(
+      mhlo::ConvolutionOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    auto loc = op.getLoc();
+    auto* ctx = op.getContext();
+
+    auto resultType =
+        typeConverter->convertType(op.getResult().getType()).cast<ShapedType>();
+    auto reshapedResultShape = resultType.getShape().vec();
+    if (!resultType.hasStaticShape()) return failure();
+
+    auto dimensionNumbers = op.dimension_numbers();
+    auto inputBatchDimension = dimensionNumbers.getInputBatchDimension();
+    auto inputFeatureDimension = dimensionNumbers.getInputFeatureDimension();
+    auto inputSpatialDimensions = dimensionNumbers.getInputSpatialDimensions();
+
+    auto kernelInputFeatureDimension =
+        dimensionNumbers.getKernelInputFeatureDimension();
+    auto kernelOutputFeatureDimension =
+        dimensionNumbers.getKernelOutputFeatureDimension();
+    auto kernelSpatialDimensions =
+        dimensionNumbers.getKernelSpatialDimensions();
+
+    auto outputFeatureDimension = dimensionNumbers.getOutputFeatureDimension();
+    auto outputSpatialDimensions =
+        dimensionNumbers.getOutputSpatialDimensions();
+
+    auto featureGroupCount = op.feature_group_count();
+    auto batchGroupCount = op.batch_group_count();
+
+    if (op.feature_group_count() != 1 && op.batch_group_count() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "only one of feature and batch group counts can be non-one");
+    }
+
+    // Decompose the convolution into an initial padding
+    Value modifiedLhs = applyConvolutionPadding(
+        op.getLoc(), adaptor.lhs(), adaptor.paddingAttr(),
+        adaptor.lhs_dilationAttr(),
+        op.dimension_numbers().getInputSpatialDimensions(), rewriter);
+    Value modifiedRhs = applyConvolutionPadding(
+        op.getLoc(), adaptor.rhs(), nullptr, adaptor.rhs_dilationAttr(),
+        op.dimension_numbers().getKernelSpatialDimensions(), rewriter);
+
+    // Decompose the reversal dims into its own step
+    auto reversals = op.window_reversal();
+    if (reversals.hasValue()) {
+      llvm::SmallVector<int64_t> reversedDims;
+      for (auto& idxAndBool :
+           llvm::enumerate(reversals.getValue().getValues<bool>()))
+        if (idxAndBool.value())
+          reversedDims.push_back(
+              op.dimension_numbers()
+                  .getKernelSpatialDimensions()[idxAndBool.index()]);
+
+      modifiedRhs = rewriter.create<mhlo::ReverseOp>(
+          loc, modifiedRhs,
+          mlir::DenseIntElementsAttr::get(
+              RankedTensorType::get(reversedDims.size(),
+                                    rewriter.getIntegerType(64)),
+              reversedDims));
+    }
+
+    // Non-one values for feature or batch group counts will result in reshaped
+    // inputs and outputs. These mappings are used to keep track of the the new
+    // index after reshaping has possibly inserted new dimensions.
+    auto paddedLhsType = modifiedLhs.getType().cast<ShapedType>();
+    auto paddedRhsType = modifiedRhs.getType().cast<ShapedType>();
+    SmallVector<int64_t> lhsIndexMapping(paddedLhsType.getRank());
+    std::iota(lhsIndexMapping.begin(), lhsIndexMapping.end(), 0);
+    SmallVector<int64_t> rhsIndexMapping(paddedRhsType.getRank());
+    std::iota(rhsIndexMapping.begin(), rhsIndexMapping.end(), 0);
+    SmallVector<int64_t> resultIndexMapping(resultType.getRank());
+    std::iota(resultIndexMapping.begin(), resultIndexMapping.end(), 0);
+    auto updateDimMappingFromOffset =
+        [](llvm::SmallVectorImpl<int64_t>& mapping, int64_t offset) {
+          for (auto i = offset; i < mapping.size(); ++i) {
+            mapping[i] += 1;
+          }
+        };
+
+    // The rest of this code prepares the inputs and a single linalg::GenericOp
+    // to execute the convolution. The final linalg::GenericOp will be iterated
+    // through based on the following eventual maps.
+    SmallVector<AffineExpr, 2> srcExprs(paddedLhsType.getRank());
+    SmallVector<AffineExpr, 2> windowExprs(paddedRhsType.getRank());
+    SmallVector<AffineExpr, 2> dstExprs(reshapedResultShape.size());
+    int64_t nextDim = 0;
+    int64_t rank = resultType.getRank();
+
+    auto reshapeShapeVector = [](llvm::ArrayRef<int64_t> oldShape,
+                                 llvm::SmallVectorImpl<int64_t>& newShape,
+                                 int64_t reshapedDim, int64_t factor) {
+      newShape.reserve(oldShape.size() + 1);
+      for (int i = 0; i < oldShape.size(); ++i) {
+        if (i == reshapedDim) {
+          newShape.push_back(factor);
+          newShape.push_back(oldShape[reshapedDim] / factor);
+        } else {
+          newShape.push_back(oldShape[i]);
+        }
+      }
+    };
+
+    // If batch or feature count groupings exist, represent this through
+    // reshaping the input to have an additional dimension that these groupings
+    // exist along, and reduce in that dimension
+    SmallVector<StringRef, 3> iterationLoops;
+    if (featureGroupCount != 1) {
+      auto parallelDim = mlir::getAffineDimExpr(nextDim++, ctx);
+      iterationLoops.push_back(getParallelIteratorTypeName());
+      // Reshape LHS
+      {
+        srcExprs.insert(srcExprs.begin() + inputFeatureDimension, parallelDim);
+        auto prevDimsRef = paddedLhsType.getShape();
+        llvm::SmallVector<int64_t> newShape;
+        reshapeShapeVector(prevDimsRef, newShape, inputFeatureDimension,
+                           featureGroupCount);
+        updateDimMappingFromOffset(lhsIndexMapping, inputFeatureDimension);
+        modifiedLhs = rewriter.create<mhlo::ReshapeOp>(
+            op.getLoc(),
+            RankedTensorType::get(newShape, paddedLhsType.getElementType()),
+            modifiedLhs);
+      }
+
+      // Reshape RHS
+      {
+        windowExprs.insert(windowExprs.begin() + kernelOutputFeatureDimension,
+                           parallelDim);
+        auto prevDimsRef = paddedRhsType.getShape();
+        llvm::SmallVector<int64_t> newShape;
+        reshapeShapeVector(prevDimsRef, newShape, kernelOutputFeatureDimension,
+                           featureGroupCount);
+        updateDimMappingFromOffset(rhsIndexMapping,
+                                   kernelOutputFeatureDimension);
+        modifiedRhs = rewriter.create<mhlo::ReshapeOp>(
+            op.getLoc(),
+            RankedTensorType::get(newShape, paddedRhsType.getElementType()),
+            modifiedRhs);
+      }
+      // Prepare reshaped output shape
+      {
+        dstExprs.insert(dstExprs.begin() + outputFeatureDimension, parallelDim);
+        updateDimMappingFromOffset(resultIndexMapping, outputFeatureDimension);
+        reshapedResultShape.insert(
+            reshapedResultShape.begin() + outputFeatureDimension,
+            featureGroupCount);
+        reshapedResultShape[outputFeatureDimension + 1] /= featureGroupCount;
+      }
+    }
+
+    if (batchGroupCount != 1) {
+      iterationLoops.push_back(getParallelIteratorTypeName());
+      auto parallelDim = mlir::getAffineDimExpr(nextDim++, ctx);
+      // Reshape LHS
+      {
+        srcExprs.insert(srcExprs.begin() + inputBatchDimension, parallelDim);
+        auto prevDimsRef = paddedLhsType.getShape();
+        llvm::SmallVector<int64_t> newShape;
+        reshapeShapeVector(prevDimsRef, newShape, inputBatchDimension,
+                           batchGroupCount);
+        updateDimMappingFromOffset(lhsIndexMapping, inputBatchDimension);
+        modifiedLhs = rewriter.create<mhlo::ReshapeOp>(
+            op.getLoc(),
+            RankedTensorType::get(newShape, paddedLhsType.getElementType()),
+            modifiedLhs);
+      }
+
+      // Reshape RHS
+      {
+        windowExprs.insert(windowExprs.begin() + kernelOutputFeatureDimension,
+                           parallelDim);
+        auto prevDimsRef = paddedRhsType.getShape();
+        llvm::SmallVector<int64_t> newShape;
+        reshapeShapeVector(prevDimsRef, newShape, kernelOutputFeatureDimension,
+                           batchGroupCount);
+        updateDimMappingFromOffset(rhsIndexMapping,
+                                   kernelOutputFeatureDimension);
+        modifiedRhs = rewriter.create<mhlo::ReshapeOp>(
+            op.getLoc(),
+            RankedTensorType::get(newShape, paddedRhsType.getElementType()),
+            modifiedRhs);
+      }
+      // Prepare reshaped output shape
+      {
+        auto outputFeatureDim = resultIndexMapping[outputFeatureDimension];
+        dstExprs.insert(dstExprs.begin() + outputFeatureDim, parallelDim);
+        updateDimMappingFromOffset(resultIndexMapping, outputFeatureDimension);
+        reshapedResultShape.insert(
+            reshapedResultShape.begin() + outputFeatureDim, batchGroupCount);
+        reshapedResultShape[outputFeatureDim + 1] /= batchGroupCount;
+      }
+    }
+
+    // Handle input feature dimension
+    {
+      iterationLoops.push_back(getReductionIteratorTypeName());
+      auto inputFeatureDim = mlir::getAffineDimExpr(nextDim++, ctx);
+      srcExprs[lhsIndexMapping[inputFeatureDimension]] = inputFeatureDim;
+      windowExprs[rhsIndexMapping[kernelInputFeatureDimension]] =
+          inputFeatureDim;
+    }
+
+    // Handle output feature dimension
+    {
+      iterationLoops.push_back(getParallelIteratorTypeName());
+      auto outputFeatureDim = mlir::getAffineDimExpr(nextDim++, ctx);
+      dstExprs[resultIndexMapping[outputFeatureDimension]] = outputFeatureDim;
+      windowExprs[rhsIndexMapping[kernelOutputFeatureDimension]] =
+          outputFeatureDim;
+    }
+
+    // Handle spatial Dimensions
+    int64_t numSpatialDims = rank - 2;
+    for (int64_t i = 0; i < numSpatialDims; i++) {
+      iterationLoops.push_back(getParallelIteratorTypeName());
+      iterationLoops.push_back(getReductionIteratorTypeName());
+      auto dim0 = mlir::getAffineDimExpr(nextDim++, ctx);
+      auto dim1 = mlir::getAffineDimExpr(nextDim++, ctx);
+
+      auto stride = dim0;
+      if (op.window_strides().hasValue())
+        stride =
+            stride * op.window_strides().getValue().getValues<int64_t>()[i];
+      AffineExpr srcExpr = stride + dim1;
+
+      srcExprs[lhsIndexMapping[inputSpatialDimensions[i]]] = srcExpr;
+      dstExprs[resultIndexMapping[outputSpatialDimensions[i]]] = dim0;
+      windowExprs[rhsIndexMapping[kernelSpatialDimensions[i]]] = dim1;
+    }
+
+    // Handle batch dimension
+    {
+      iterationLoops.push_back(getParallelIteratorTypeName());
+      auto batchDim = mlir::getAffineDimExpr(nextDim++, ctx);
+
+      srcExprs[lhsIndexMapping[inputBatchDimension]] = batchDim;
+      dstExprs[resultIndexMapping[inputBatchDimension]] = batchDim;
+    }
+
+    // Finally, create the computation
+    auto inferredMaps =
+        AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs});
+
+    Value initTensor = rewriter.create<linalg::InitTensorOp>(
+        loc, reshapedResultShape, resultType.getElementType());
+    Value zeroTensor = fillTensorWithZeros(rewriter, loc, initTensor);
+
+    Value convolved =
+        rewriter
+            .create<linalg::GenericOp>(
+                loc,
+                /*resultTensors=*/
+                llvm::makeArrayRef<Type>(zeroTensor.getType()),
+                /*inputs=*/
+                llvm::makeArrayRef<Value>({modifiedLhs, modifiedRhs}),
+                /*outputs=*/llvm::makeArrayRef<Value>(zeroTensor), inferredMaps,
+                iterationLoops,
+                /*bodyBuild=*/
+                [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange) {
+                  ImplicitLocOpBuilder builder(nestedLoc, nestedBuilder);
+                  linalg::Conv2DOp::regionBuilder(
+                      builder, *builder.getInsertionBlock(), {});
+                },
+                pruneAttributeList(op))
+            .getResult(0);
+    rewriter.replaceOpWithNewOp<mhlo::ReshapeOp>(op, resultType, convolved);
+
     return success();
   }
 };
@@ -2024,8 +2338,11 @@ struct DepthwiseConvolutionOpConversion
     }
 
     // Apply padding and input dilation.
+    llvm::SmallVector<int64_t> spatialDimMapping(spatialRank);
+    std::iota(spatialDimMapping.begin(), spatialDimMapping.end(), 1);
     input = applyConvolutionPadding(loc, input, op.paddingAttr(),
-                                    op.lhs_dilationAttr(), rewriter);
+                                    op.lhs_dilationAttr(), spatialDimMapping,
+                                    rewriter);
 
     auto filterDims =
         llvm::to_vector<4>(op.rhs().getType().cast<ShapedType>().getShape());
@@ -2270,7 +2587,8 @@ struct ReduceWindowOpOnTensorsGenericConversion
         staticInteriors[dilation.index()] = dilation.value() - 1;
       }
 
-      auto padAttrType = RankedTensorType::get({rank}, rewriter.getIndexType());
+      auto padAttrType =
+          RankedTensorType::get({rank}, rewriter.getIntegerType(64));
       auto padLows = DenseIntElementsAttr::get(padAttrType, staticLows);
       auto padHighs = DenseIntElementsAttr::get(padAttrType, staticHighs);
       auto padInteriors =
@@ -2440,7 +2758,7 @@ struct ReduceWindowOpConversion
       for (auto& en : llvm::enumerate(resultType.getShape())) {
         if (en.value() != ShapedType::kDynamicSize) continue;
         Value dimSize = rewriter.create<tensor::DimOp>(loc, input, en.index());
-        if (en.index() == 0 || en.index() == rank - 1) {
+        if (en.index() == 0 || static_cast<int64_t>(en.index()) == rank - 1) {
           // batch dims and channel dims can be derived from input dims
           // directly.
           resultDynamicDims.push_back(dimSize);
@@ -2695,7 +3013,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     // We'll need these later and creating them on demand we end up with
     // duplicates, which also makes lit tests really hard to write.
     SmallVector<Value> constants;
-    for (unsigned i = 0; i < std::max({resultRank, operandRank, 2}); ++i) {
+    for (int i = 0; i < std::max({resultRank, operandRank, 2}); ++i) {
       constants.push_back(
           rewriter.create<arith::ConstantOp>(loc, rewriter.getIndexAttr(i)));
     }
@@ -2744,7 +3062,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     // Same as with the constants. Creating these all up front is easier than
     // potentially getting duplicates later.
     SmallVector<Value> linalgIndices;
-    for (unsigned i = 0; i < resultRank; ++i)
+    for (int i = 0; i < resultRank; ++i)
       linalgIndices.push_back(rewriter.create<linalg::IndexOp>(loc, i));
 
     // Now the complicated part. For a given output dimension we build up an
@@ -2771,7 +3089,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
       // just use the gather index directly
       SmallVector<Value> gCombine(gatherIndex);
       if (indexVectorDim != startIndicesType.getRank()) {
-        assert(indexVectorDim <= gCombine.size());
+        assert(indexVectorDim <= static_cast<int64_t>(gCombine.size()));
         gCombine.insert(gCombine.begin() + indexVectorDim, constants[i]);
       }
 
@@ -2787,14 +3105,14 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     // Now we construct the index based on the offset. First we need to remap
     // the offset dimensions by dropping the collapsed indices.
     SmallVector<unsigned> remappedOffsetDims;
-    for (unsigned i = 0; i < operandRank; ++i)
+    for (int i = 0; i < operandRank; ++i)
       if (!llvm::is_contained(collapsedSliceDims, i))
         remappedOffsetDims.push_back(i);
 
     assert(remappedOffsetDims.size() == offsetDims.size());
 
     // Clamp out of bounds indices.
-    for (unsigned i = 0, operandIndexDim = 0; i < operandRank; ++i) {
+    for (int i = 0, operandIndexDim = 0; i < operandRank; ++i) {
       // Compute the size of the output shape dimension corresponding to this
       // index dimension. If it's collapsed set it to 1.
       Value outputDimSize = constants[1];
@@ -2830,7 +3148,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     // Now we add together our two indices to get the final index into the
     // operand.
     SmallVector<Value> combinedIndex;
-    for (unsigned i = 0; i < operandRank; ++i)
+    for (int i = 0; i < operandRank; ++i)
       combinedIndex.push_back(rewriter.createOrFold<arith::AddIOp>(
           loc, rewriter.getIndexType(), remappedIndexFromIndices[i],
           indexFromOffset[i]));
@@ -2855,10 +3173,7 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
     if (op.operands().size() != 1 || op.updates().size() != 1) return failure();
 
     // Check if it is a tensor_scatter_nd_update-like op.
-    auto& bodyOps = op.getRegion().front().getOperations();
-    if (bodyOps.size() != 1) return failure();
-    auto retArg = bodyOps.front().getOperand(0).dyn_cast<BlockArgument>();
-    if (!retArg || retArg.getArgNumber() != 1) return failure();
+    if (op.getRegion().front().getNumArguments() != 2) return failure();
 
     auto operandTy =
         adaptor.operands()[0].getType().dyn_cast<RankedTensorType>();
@@ -2918,28 +3233,69 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
     assert(scatterDimsToOperandDims.size() == 1);
     // Do not need init_tensor because we'd like to initialize the output as
     // operand.
+    auto loc = op.getLoc();
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        op.getLoc(), /*resultTensors=*/ArrayRef<Type>{resultTy},
+        loc, /*resultTensors=*/ArrayRef<Type>{resultTy},
         /*inputs=*/
         ValueRange{adaptor.operands()[0], adaptor.scatter_indices(),
                    adaptor.updates()[0]},
         /*outputs=*/adaptor.operands()[0], indexingMaps,
         getNParallelLoopsAttrs(nloops),
-        [scatterDimsToOperandDims](OpBuilder& b, Location loc,
-                                   ValueRange args) {
-          Value cmpIdx =
-              b.create<linalg::IndexOp>(loc, scatterDimsToOperandDims[0]);
-          Value idx =
-              b.create<arith::IndexCastOp>(loc, b.getIndexType(), args[1]);
-          Value pred = b.create<arith::CmpIOp>(
-              loc, b.getI1Type(), arith::CmpIPredicate::eq, cmpIdx, idx);
-          // Use the output arg, so some update values won't be init value
-          // again.
-          Value res = b.create<arith::SelectOp>(loc, args[2].getType(), pred,
-                                                args[2], args[3]);
-          b.create<linalg::YieldOp>(loc, res);
-        },
+        [](OpBuilder& b, Location loc, ValueRange args) {},
         pruneAttributeList(op));
+
+    // Transform the scatter update computation region
+    //   update = a bunch of computation
+    //   return update
+    // to linalg.generic region:
+    //   update = a bunch of computation
+    //   result = idx == cmpIdx ? update : old_value
+    //   linalg.yield result
+    bool updateIsTrivial = (op.getRegion().front().getOperations().size() == 1);
+    Block* block = &linalgOp->getRegion(0).front();
+    auto args = block->getArguments();
+
+    BlockAndValueMapping mapping;
+    // The scatter update computation block arguments are tensors of scalars
+    // while the linalg.generic block arguments are scalars.
+    if (updateIsTrivial) {
+      // If there is no actual update computation, directly use the
+      // linalg.generic block arguments.
+      for (auto pair : llvm::zip_first(op.getRegion().front().getArguments(),
+                                       args.drop_front(2)))
+        mapping.map(std::get<0>(pair), std::get<1>(pair));
+    } else {
+      // Otherwise, convert the linalg.generic block scalar arguments to
+      // tensors, to avoid producing illegal mhlo instructions.
+      rewriter.setInsertionPointToStart(block);
+      for (auto pair : llvm::zip_first(op.getRegion().front().getArguments(),
+                                       args.drop_front(2)))
+        mapping.map(std::get<0>(pair),
+                    rewriter.create<tensor::FromElementsOp>(
+                        loc, std::get<0>(pair).getType(), std::get<1>(pair)));
+    }
+
+    // Transform the computation block over to the linalg.generic op.
+    rewriter.cloneRegionBefore(op.getRegion(), linalgOp->getRegion(0),
+                               linalgOp->getRegion(0).end(), mapping);
+    rewriter.mergeBlocks(&linalgOp->getRegion(0).back(), block, llvm::None);
+
+    // Generate: result = idx == cmpIdx ? update : old_value.
+    Operation* terminator = block->getTerminator();
+    rewriter.setInsertionPoint(terminator);
+    Value cmpIdx =
+        rewriter.create<linalg::IndexOp>(loc, scatterDimsToOperandDims[0]);
+    Value idx = rewriter.create<arith::IndexCastOp>(
+        loc, rewriter.getIndexType(), args[1]);
+    Value pred = rewriter.create<arith::CmpIOp>(
+        loc, rewriter.getI1Type(), arith::CmpIPredicate::eq, cmpIdx, idx);
+    Value result = terminator->getOperand(0);
+    if (!updateIsTrivial)
+      result = rewriter.create<tensor::ExtractOp>(loc, result, ValueRange({}));
+    result = rewriter.create<arith::SelectOp>(loc, args[2].getType(), pred,
+                                              args[2], result);
+
+    rewriter.replaceOpWithNewOp<linalg::YieldOp>(terminator, result);
     rewriter.replaceOp(op, linalgOp.getResults());
     return success();
   }
@@ -3066,7 +3422,6 @@ struct HloLegalizeToLinalgPass
 
 }  // namespace
 
-
 void populateHloToLinalgConversionPattern(MLIRContext* context,
                                           TypeConverter& typeConverter,
                                           RewritePatternSet* patterns) {
@@ -3131,8 +3486,6 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,
       TransposeConverter<mhlo::TransposeOp>,
-      NormalConvolutionOpConversion,
-      DepthwiseConvolutionOpConversion,
       GatherConversion,
       PadOpConversion,
       PadOpNegativePaddingConversion,
@@ -3142,16 +3495,21 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       RngUniformConversion,
       ScatterUpdateConversion,
       TorchIndexSelectOpConversion>(typeConverter, context);
-    patterns->add<
+  // Ensure specialized patterns are higher priority than their generic
+  // versions.
+  patterns->add<
+      NormalConvolutionOpConversion,
+      DepthwiseConvolutionOpConversion,
       DotOpConversion<DotOperationType::kMatrixMatrix, linalg::MatmulOp>,
       DotOpConversion<DotOperationType::kMatrixVector, linalg::MatvecOp>,
       DotOpConversion<DotOperationType::kVectorMatrix, linalg::VecmatOp>,
       DotOpConversion<DotOperationType::kVectorDot, linalg::DotOp>,
       DotGeneralBatchMatMulOpConversion>(typeConverter, context,
                                          PatternBenefit(2));
+  patterns->add<
+      ConvolutionOpGeneralConversion,
+      DotGeneralOpConversion>(typeConverter, context, PatternBenefit(1));
   // clang-format on
-  patterns->add<DotGeneralOpConversion>(typeConverter, context,
-                                        PatternBenefit(1));
   patterns->add<ReduceRegionXLAOpConversion<mhlo::AddOp>,
                 ReduceRegionXLAOpConversion<mhlo::AndOp>,
                 ReduceRegionXLAOpConversion<mhlo::CompareOp>,

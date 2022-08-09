@@ -36,11 +36,12 @@ constexpr int32_t kNodeNotAssigned = std::numeric_limits<int32_t>::max();
 
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
                            std::unique_ptr<GraphInfo> graph_info,
-                           bool preserve_all_tensors, int tensor_alignment)
+                           bool preserve_all_tensors, int tensor_alignment,
+                           int subgraph_index)
     : context_(context),
       graph_info_(std::move(graph_info)),
-      arena_(kDefaultArenaAlignment),
-      persistent_arena_(kDefaultArenaAlignment),
+      arena_(kDefaultArenaAlignment, subgraph_index),
+      persistent_arena_(kDefaultArenaAlignment, subgraph_index),
       preserve_all_tensors_(preserve_all_tensors),
       tensor_alignment_(tensor_alignment) {}
 

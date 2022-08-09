@@ -229,6 +229,23 @@ pytype_strict_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/types",
+    ],
+)
+
+tf_py_test(
+    name = "representative_dataset_test",
+    srcs = ["representative_dataset_test.py"],
+    tags = ["no_pip"],  # b/241528672
+    deps = [
+        ":representative_dataset",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/types",
+        "//third_party/py/numpy",
     ],
 )

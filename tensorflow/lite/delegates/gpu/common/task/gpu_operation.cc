@@ -137,8 +137,8 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       grid_size_(operation.grid_size_),
       src_tensors_names_(std::move(operation.src_tensors_names_)),
       dst_tensors_names_(std::move(operation.dst_tensors_names_)),
-      elementwise_(operation.elementwise_),
       work_groups_count_(operation.work_groups_count_),
+      elementwise_(operation.elementwise_),
       linkable_count_(operation.linkable_count_),
       elementwise_code_(std::move(operation.elementwise_code_)) {}
 
@@ -159,8 +159,8 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     std::swap(grid_size_, operation.grid_size_);
     src_tensors_names_ = std::move(operation.src_tensors_names_);
     dst_tensors_names_ = std::move(operation.dst_tensors_names_);
-    elementwise_ = operation.elementwise_;
     std::swap(work_groups_count_, operation.work_groups_count_);
+    elementwise_ = operation.elementwise_;
     std::swap(linkable_count_, operation.linkable_count_);
     elementwise_code_ = std::move(operation.elementwise_code_);
   }
@@ -314,16 +314,41 @@ int3 GPUOperation::GetGridSize() const {
 
 GPUOperation CreateGpuOperation(const OperationDef& definition,
                                 ElementwiseDescriptor&& descriptor) {
+  const BHWC second_shape(2, 2, 2, 2);  // dummy non-broadcasted shape
+  return CreateGpuOperation(definition, std::move(descriptor), second_shape);
+}
+
+GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                ElementwiseDescriptor&& descriptor,
+                                const BHWC& second_shape) {
   GPUOperation op(definition);
   op.elementwise_code_ = std::move(descriptor.code);
   op.elementwise_ = true;
+  if (definition.src_tensors.size() > 1 &&
+      op.elementwise_code_.find("in2_value")) {
+    const auto second_tensor_def = definition.src_tensors[1];
+    const std::string x_coord = second_shape.w == 1 ? "0" : "X_COORD";
+    const std::string y_coord = second_shape.h == 1 ? "0" : "Y_COORD";
+    const std::string s_coord = second_shape.c == 1 ? "0" : "S_COORD";
+    std::string coords = absl::StrCat(x_coord, ", ", y_coord, ", ", s_coord);
+    if (second_tensor_def.HasAxis(Axis::BATCH)) {
+      const std::string b_coord = second_shape.b == 1 ? "0" : "B_COORD";
+      coords += ", " + b_coord;
+    }
+    std::string read_value_code = absl::StrCat(
+        "args.src_tensor_1::type in2_value = args.src_tensor_1.Read(", coords,
+        ");\n");
+    if (second_shape.c == 1) {
+      read_value_code += "  in2_value.y = in2_value.x;\n";
+      read_value_code += "  in2_value.z = in2_value.x;\n";
+      read_value_code += "  in2_value.w = in2_value.x;\n";
+    }
+    op.elementwise_code_ = read_value_code + op.elementwise_code_;
+  }
   op.args_ = std::move(descriptor.args);
   for (int i = 1; i < definition.src_tensors.size(); ++i) {
     const std::string tensor_name = "src_tensor_" + std::to_string(i);
     auto src_desc = definition.src_tensors[i];
-    if (definition.IsBatchSupported()) {
-      src_desc.SetStateVar("BatchedWidth", "true");
-    }
     op.AddSrcTensor(tensor_name, src_desc);
   }
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;

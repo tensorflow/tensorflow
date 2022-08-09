@@ -129,6 +129,12 @@ bool AreSplatValuesEqual(Value x, Value y) {
   return splat_x == splat_y;
 }
 
+// TODO(b/241488936): Remove this function after adding a new constant folding
+// pass to TensorFlow.
+// Applies constant folding to the operation if possible and return the folded
+// results.
+llvm::SmallVector<Value> ConstantFoldOpIfPossible(Operation *op);
+
 }  // namespace quant
 }  // namespace mlir
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_

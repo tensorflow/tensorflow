@@ -174,93 +174,6 @@ SideEffects GetSideEffectsFromEffectInstance(
   return side_effects;
 }
 
-// Collects all op-based and value-based side effects for `op` per resource ID.
-SideEffectsByResourceId CollectSideEffectsByResourceId(
-    Operation* op,
-    const SideEffectsByResourceId& op_side_effects,
-    const TF::ResourceAliasAnalysis::Info& alias_analysis) {
-  SideEffectsByResourceId side_effects_by_resource_id;
-  if (!MayHaveSideEffect(op)) return side_effects_by_resource_id;
-
-  // Copy op-based side effects.
-  bool found_any_effect = !op_side_effects.empty();
-  side_effects_by_resource_id = op_side_effects;
-
-  // Collect value-based side effects from op interface.
-  llvm::SmallVector<MemoryEffects::EffectInstance, 4> effects;
-  auto interface = dyn_cast<MemoryEffectOpInterface>(op);
-  if (interface) interface.getEffects(effects);
-
-  llvm::SmallDenseSet<Value, 8> processed_values;
-  for (const auto& effect : effects) {
-    Value value = effect.getValue();
-    found_any_effect = true;
-    if (value) processed_values.insert(value);
-
-    // We only collect value-based side effects here for which we can use
-    // resource alias analysis. Other side effects are treated as op-based
-    // side effects.
-    if (!ShouldUseResourceAliasAnalysis(effect)) continue;
-
-    TypeID type_id = effect.getResource()->getResourceID();
-    if (ResourceEffects::IsOnlySelfDependent(type_id)) {
-      // For value-based side effects we currently treat resource types that are
-      // only self-dependent conservatively, i.e., we do add dependencies
-      // to/from unknown resource types. Currently, we don't have such cases and
-      // there is no indication that we will need to support them in the future.
-      LOG(WARNING) << "Self-dependent-only resource types are treated "
-                      "conservatively for value-based side effects.";
-    }
-
-    // Add side effects for every potentially accessed resource ID.
-    SideEffects side_effects(GetSideEffectsFromEffectInstance(effect, op));
-    const auto& ids = GetResourceUniqueIdsOrUnknown(value, alias_analysis);
-    for (ResourceId id : ids) {
-      side_effects.SetResourceId(id);
-      UpdateSideEffectsByResourceId(side_effects, side_effects_by_resource_id);
-    }
-  }
-
-  auto add_remaining_effects = [&](auto resource_values) {
-    for (Value resource_value : resource_values) {
-      // If we already processed this value before, skip it.
-      if (processed_values.count(resource_value) > 0) continue;
-      found_any_effect = true;
-
-      // Conservatively set unknown effect.
-      SideEffects unknown_effect;
-      unknown_effect.SetUnknownEffect();
-
-      // Add side effects for every potentially accessed resource ID.
-      const auto& ids =
-          GetResourceUniqueIdsOrUnknown(resource_value, alias_analysis);
-      for (ResourceId id : ids) {
-        unknown_effect.SetResourceId(id);
-        UpdateSideEffectsByResourceId(unknown_effect,
-                                      side_effects_by_resource_id);
-      }
-    }
-  };
-  // Add value-based side effects for resource values which are not covered by
-  // any side effect so far, for example, resource values being passed to
-  // `tf.While` or `tf.If` ops which are not part of the op definition but
-  // appear in a variadic input list.
-  add_remaining_effects(filter_resources(op->getOperands()));
-  add_remaining_effects(filter_resources(op->getResults()));
-
-  if (!found_any_effect) {
-    // We haven't collected any side effect but the op is potentially
-    // side-effecting (otherwise we would have returned), therefore we have an
-    // unknown side effect for an unknown resource.
-    SideEffects unknown_effect;
-    unknown_effect.SetUnknownEffect();
-    unknown_effect.SetResourceId(kUnknownResourceId);
-    UpdateSideEffectsByResourceId(unknown_effect,
-                                  side_effects_by_resource_id);
-  }
-  return side_effects_by_resource_id;
-}
-
 }  // namespace
 
 namespace detail {
@@ -430,6 +343,116 @@ class OpSideEffectCollector {
   llvm::SmallDenseSet<ResourceId, 8> self_dependent_only_ids_;
 };
 
+// Collects all op-based and value-based side effects for `op` per resource ID.
+SideEffectsByResourceId CollectSideEffectsByResourceId(
+    Operation* op,
+    const OpSideEffectCollector& op_side_effect_collector,
+    const TF::ResourceAliasAnalysis::Info& alias_analysis) {
+  SideEffectsByResourceId side_effects_by_resource_id;
+  if (!MayHaveSideEffect(op)) return side_effects_by_resource_id;
+
+  if (isa<tf_device::LaunchOp, tf_device::ClusterOp, tf_executor::IslandOp,
+          tf_executor::GraphOp, IfRegionOp, CaseRegionOp, WhileRegionOp>(op)) {
+    // For ops that are side-effecting only if their attached regions are,
+    // collect effects for all ops in the regions instead of collecting effects
+    // for the op itself. This is important to avoid conservatism and to find
+    // resource variable accesses in regions which are not exposed to the op
+    // interface.
+    for (Region& region : op->getRegions()) {
+      for (Operation& region_op : region.front().without_terminator()) {
+        SideEffectsByResourceId region_op_effects =
+            CollectSideEffectsByResourceId(
+                &region_op,
+                op_side_effect_collector,
+                alias_analysis);
+        for (const auto& [resource_id, side_effect] : region_op_effects) {
+          UpdateSideEffectsByResourceId(side_effect,
+                                        side_effects_by_resource_id);
+        }
+      }
+    }
+    return side_effects_by_resource_id;
+  }
+
+  // Copy op-based side effects.
+  side_effects_by_resource_id =
+      op_side_effect_collector.GetSideEffectsForOp(op);
+  bool found_any_effect = !side_effects_by_resource_id.empty();
+
+  // Collect value-based side effects from op interface.
+  llvm::SmallVector<MemoryEffects::EffectInstance, 4> effects;
+  auto interface = dyn_cast<MemoryEffectOpInterface>(op);
+  if (interface) interface.getEffects(effects);
+
+  llvm::SmallDenseSet<Value, 8> processed_values;
+  for (const auto& effect : effects) {
+    Value value = effect.getValue();
+    found_any_effect = true;
+
+    // We only collect value-based side effects here for which we can use
+    // resource alias analysis. Other side effects are treated as op-based
+    // side effects.
+    if (!ShouldUseResourceAliasAnalysis(effect)) continue;
+    if (value) processed_values.insert(value);
+
+    TypeID type_id = effect.getResource()->getResourceID();
+    if (ResourceEffects::IsOnlySelfDependent(type_id)) {
+      // For value-based side effects we currently treat resource types that are
+      // only self-dependent conservatively, i.e., we do add dependencies
+      // to/from unknown resource types. Currently, we don't have such cases and
+      // there is no indication that we will need to support them in the future.
+      LOG(WARNING) << "Self-dependent-only resource types are treated "
+                      "conservatively for value-based side effects.";
+    }
+
+    // Add side effects for every potentially accessed resource ID.
+    SideEffects side_effects(GetSideEffectsFromEffectInstance(effect, op));
+    const auto& ids = GetResourceUniqueIdsOrUnknown(value, alias_analysis);
+    for (ResourceId id : ids) {
+      side_effects.SetResourceId(id);
+      UpdateSideEffectsByResourceId(side_effects, side_effects_by_resource_id);
+    }
+  }
+
+  auto add_remaining_effects = [&](auto resource_values) {
+    for (Value resource_value : resource_values) {
+      // If we already processed this value before, skip it.
+      if (processed_values.count(resource_value) > 0) continue;
+      found_any_effect = true;
+
+      // Conservatively set unknown effect.
+      SideEffects unknown_effect;
+      unknown_effect.SetUnknownEffect();
+
+      // Add side effects for every potentially accessed resource ID.
+      const auto& ids =
+          GetResourceUniqueIdsOrUnknown(resource_value, alias_analysis);
+      for (ResourceId id : ids) {
+        unknown_effect.SetResourceId(id);
+        UpdateSideEffectsByResourceId(unknown_effect,
+                                      side_effects_by_resource_id);
+      }
+    }
+  };
+  // Add value-based side effects for resource values which are not covered by
+  // any side effect so far, for example, resource values being passed to
+  // `tf.While` or `tf.If` ops which are not part of the op definition but
+  // appear in a variadic input list.
+  add_remaining_effects(filter_resources(op->getOperands()));
+  add_remaining_effects(filter_resources(op->getResults()));
+
+  if (!found_any_effect) {
+    // We haven't collected any side effect but the op is potentially
+    // side-effecting (otherwise we would have returned), therefore we have an
+    // unknown side effect for an unknown resource.
+    SideEffects unknown_effect;
+    unknown_effect.SetUnknownEffect();
+    unknown_effect.SetResourceId(kUnknownResourceId);
+    UpdateSideEffectsByResourceId(unknown_effect,
+                                  side_effects_by_resource_id);
+  }
+  return side_effects_by_resource_id;
+}
 
 //===----------------------------------------------------------------------===//
 // SideEffectAnalysisInfo
@@ -580,32 +603,11 @@ SideEffectAnalysisInfo::GetConflictingIds(ResourceId resource_id,
 
 void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
   VLOG(2) << "Processing op " << mlir::debugString(*op);
-  SideEffectsByResourceId side_effects_by_resource_id;
-  if (auto island_op = dyn_cast<tf_executor::IslandOp>(op)) {
-    // For islands, collect effects for all ops that are wrapped by the island.
-    // This is important for two reasons:
-    // 1) Islands are only side-effecting if some wrapped op is side-effecting.
-    // 2) Resource variables that are used in the island are not exposed in the
-    // island's interface.
-    // Without this special handling, we would not handle such situations
-    // correctly.
-    for (Operation& wrapped_op : island_op.GetBody().without_terminator()) {
-      SideEffectsByResourceId wrapped_side_effects =
-        CollectSideEffectsByResourceId(
-            &wrapped_op,
-            op_side_effect_collector_.GetSideEffectsForOp(&wrapped_op),
-            alias_analysis_);
-      for (const auto& [resource_id, side_effect] : wrapped_side_effects) {
-        UpdateSideEffectsByResourceId(side_effect, side_effects_by_resource_id);
-      }
-    }
-  } else {
-    side_effects_by_resource_id =
+  SideEffectsByResourceId side_effects_by_resource_id =
         CollectSideEffectsByResourceId(
             op,
-            op_side_effect_collector_.GetSideEffectsForOp(op),
+            op_side_effect_collector_,
             alias_analysis_);
-  }
 
   // If the side-effecting op is a control source (i.e. it has no control
   // predecessors), then `control_predecessors_` won't be updated below.

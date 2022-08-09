@@ -224,9 +224,11 @@ TfLiteStatus PopulateInputValueFiles(
   std::vector<std::string> value_files = Split(value_files_string, ',');
   for (const auto& val : value_files) {
     std::pair<std::string, std::string> name_file_pair;
-    if (SplitInputLayerNameAndValueFile(val, name_file_pair) == kTfLiteError) {
+    TfLiteStatus status = SplitInputLayerNameAndValueFile(val, name_file_pair);
+    if (status != kTfLiteOk) {
       TFLITE_LOG(ERROR) << "Wrong input value file item specified: " << val;
-      return kTfLiteError;
+      TFLITE_LOG(ERROR) << status;
+      return status;
     }
 
     // Ensure the specific input layer name exists.

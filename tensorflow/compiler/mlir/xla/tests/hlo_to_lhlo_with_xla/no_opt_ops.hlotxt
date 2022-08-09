@@ -58,7 +58,7 @@ HloModule WhileWithScalarS32Result_module
 
 // CHECK: "lmhlo.while"(%{{.*}}) ({
 // CHECK:   %{{.*}} = memref.view
-// CHECK:   "mhlo.compare"
+// CHECK:   mhlo.compare
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
 // CHECK:   mhlo.add

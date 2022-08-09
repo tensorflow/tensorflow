@@ -192,11 +192,11 @@ LogicalResult tryLowerTo1DOr2DReduction(
                                         ? DimensionKind::kParallel
                                         : DimensionKind::kReduction;
     SmallVector<int64_t> perm;
-    for (int i = 0; i < dimGroups.size(); i++) {
+    for (int64_t i = 0; i < static_cast<int64_t>(dimGroups.size()); i++) {
       if (dimGroups[i].kind == leadingDimKind) perm.push_back(i);
     }
     int64_t numLeadingDims = perm.size();
-    for (int i = 0; i < dimGroups.size(); i++) {
+    for (int64_t i = 0; i < static_cast<int64_t>(dimGroups.size()); i++) {
       if (dimGroups[i].kind == trailingDimKind) perm.push_back(i);
     }
     auto permAttr = rewriter.getI64TensorAttr(perm);

@@ -157,14 +157,15 @@ StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
   return std::move(outputs_and_token.first);
 }
 
-StatusOr<std::vector<std::vector<PyBuffer::object>>>
-PyExecutable::ExecuteShardedOnLocalDevices(
-    absl::Span<const std::vector<PyBuffer::object>> args) {
+StatusOr<
+    std::pair<std::vector<std::vector<PyBuffer::object>>, std::vector<PyToken>>>
+PyExecutable::ExecuteShardedOnLocalDevicesInternal(
+    absl::Span<const std::vector<PyBuffer::object>> args,
+    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   int num_computations = executable_->addressable_devices().size();
   {
     auto options = options_;
-    std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
     std::shared_ptr<HostCallbackStates> host_callback_states;
     if (!host_callbacks_.empty()) {
       returned_futures.emplace();
@@ -216,6 +217,7 @@ PyExecutable::ExecuteShardedOnLocalDevices(
         executable_->Execute(arg_buffers, options, returned_futures));
 
     if (!host_callbacks_.empty()) {
+      // For host callbacks to work, `returned_futures` must not be nullopt.
       for (int i = 0; i < num_computations; ++i) {
         returned_futures.value().at(i).OnReady(
             [host_callback_states](Status) mutable {
@@ -236,7 +238,43 @@ PyExecutable::ExecuteShardedOnLocalDevices(
           traceback));
     }
   }
-  return outputs;
+
+  // TODO(b/240696624): Although the PjRt interface require `returned_futures`
+  // to be resized correctly if it is not nullopt, some implementation does not
+  // implement this. So we have to check whether returned_futures is empty.
+  // Remove this check once the implementation is fixed.
+  if (!returned_futures.has_value()) {
+    return std::pair<std::vector<std::vector<PyBuffer::object>>,
+                     std::vector<PyToken>>(std::move(outputs), {});
+  }
+
+  std::vector<PyToken> tokens;
+  tokens.reserve(returned_futures->size());
+  for (auto& future : *returned_futures) {
+    tokens.emplace_back(std::move(future));
+  }
+
+  return std::pair<std::vector<std::vector<PyBuffer::object>>,
+                   std::vector<PyToken>>(std::move(outputs), std::move(tokens));
+}
+
+StatusOr<std::vector<std::vector<PyBuffer::object>>>
+PyExecutable::ExecuteShardedOnLocalDevices(
+    absl::Span<const std::vector<PyBuffer::object>> args) {
+  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+  TF_ASSIGN_OR_RETURN(
+      auto outputs_and_tokens,
+      ExecuteShardedOnLocalDevicesInternal(args, returned_futures));
+  return std::move(outputs_and_tokens.first);
+}
+
+StatusOr<
+    std::pair<std::vector<std::vector<PyBuffer::object>>, std::vector<PyToken>>>
+PyExecutable::ExecuteShardedOnLocalDevicesWithTokens(
+    absl::Span<const std::vector<PyBuffer::object>> args) {
+  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+  returned_futures.emplace();
+  return ExecuteShardedOnLocalDevicesInternal(args, returned_futures);
 }
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>> PyExecutable::HloModules()

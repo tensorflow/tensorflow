@@ -13,8 +13,9 @@ load(
 
 package(
     default_visibility = [
-        "//tensorflow/compiler/tf2xla:internal",
+        # copybara:uncomment "//learning/infra/mira:__subpackages__",
         "//third_party/cloud_tpu/inference_converter:__subpackages__",
+        "//tensorflow/compiler/tf2xla:internal",
     ],
     licenses = ["notice"],
 )

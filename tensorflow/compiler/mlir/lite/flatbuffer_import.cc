@@ -66,8 +66,10 @@ limitations under the License.
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -285,8 +287,8 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
     // TODO(fengliuai): this quantization dimension isn't correct.
     axis = b.getI64IntegerAttr(tensor.quantization->quantized_dimension);
   }
-  return b.create<mlir::quant::StatisticsOp>(b.getUnknownLoc(), res,
-                                             layer_stats, axis_stats, axis);
+  return b.create<mlir::quantfork::StatisticsOp>(b.getUnknownLoc(), res,
+                                                 layer_stats, axis_stats, axis);
 }
 
 // Returns true if this is a basic LSTM op.
@@ -661,11 +663,10 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
 
     value = mlir::DenseStringElementsAttr::get(shaped_type, refs);
   } else if (elem_type.isa<mlir::ComplexType, mlir::TF::TensorFlowType>()) {
-    auto dialect = elem_type.getContext()->getLoadedDialect("tf");
     tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
     std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
 
-    value = mlir::OpaqueElementsAttr::get(dialect, shaped_type, mangled);
+    value = mlir::TF::TensorProtoAttr::get(shaped_type, mangled);
   } else {
     return errors::Unimplemented("Constant of unsupported type");
   }
@@ -1424,6 +1425,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     bool experimental_prune_unreachable_nodes_unconditionally) {
   context->loadDialect<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
                        mlir::quant::QuantizationDialect,
+                       mlir::quantfork::QuantizationForkDialect,
                        mlir::TFL::TensorFlowLiteDialect,
                        mlir::TF::TensorFlowDialect>();
 

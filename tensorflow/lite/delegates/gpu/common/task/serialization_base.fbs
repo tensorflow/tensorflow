@@ -137,6 +137,7 @@ enum Layout : byte {
   BHWC = 2,
   HWDC = 3,
   BHWDC = 4,
+  LINEAR = 5,
 }
 
 table BHWDC {
@@ -233,7 +234,6 @@ table GPUOperation {
   work_group_size:Int3;
   compiler_options:[CompilerOption];
   tensor_to_grid:TensorToGrid;
-  elementwise:bool;
   flops:uint64;
   definition:OperationDef;
   grid_dimension:int32;
@@ -242,6 +242,4 @@ table GPUOperation {
   src_tensors_names:[string];
   dst_tensors_names:[string];
   work_groups_count:Int3;
-  linkable_count:int32;
-  elementwise_code:string;
 }

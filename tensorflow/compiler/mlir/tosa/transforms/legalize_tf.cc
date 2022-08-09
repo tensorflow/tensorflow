@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"

@@ -136,6 +136,15 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "c_api_test_builtin_op_models",
+    testonly = 1,
+    srcs = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+    ],
+)
+
 cc_test(
     name = "c_api_test",
     size = "small",
@@ -159,6 +168,7 @@ cc_test(
 tflite_custom_c_library(
     name = "selectively_built_c_api_test_lib",
     testonly = 1,
+    models = [":c_api_test_builtin_op_models"],
     visibility = ["//visibility:private"],
 )
 

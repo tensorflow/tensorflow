@@ -32,7 +32,7 @@ gentbl_cc_library(
         ),
         (
             ["-gen-op-defs"],
-            "QuantOps.cpp.inc",
+            "QuantOps.cc.inc",
         ),
         (
             [
@@ -46,7 +46,7 @@ gentbl_cc_library(
                 "-gen-dialect-defs",
                 "-dialect=quantfork",
             ],
-            "QuantOpsDialect.cpp.inc",
+            "QuantOpsDialect.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
@@ -74,13 +74,13 @@ gentbl_cc_library(
 cc_library(
     name = "QuantOps",
     srcs = [
-        "ConvertConst.cpp",
-        "ConvertSimQuant.cpp",
-        "FakeQuantSupport.cpp",
+        "ConvertConst.cc",
+        "ConvertSimQuant.cc",
+        "FakeQuantSupport.cc",
         "PassDetail.h",
-        "QuantOps.cpp",
-        "QuantizeUtils.cpp",
-        "UniformSupport.cpp",
+        "QuantOps.cc",
+        "QuantizeUtils.cc",
+        "UniformSupport.cc",
     ],
     hdrs = [
         "FakeQuantSupport.h",

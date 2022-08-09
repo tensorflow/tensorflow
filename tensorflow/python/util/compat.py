@@ -121,7 +121,7 @@ tf_export('compat.as_str')(as_str)
 
 
 @tf_export('compat.as_str_any')
-def as_str_any(value):
+def as_str_any(value, encoding='utf-8'):
   """Converts input to `str` type.
 
      Uses `str(value)`, except for `bytes` typed inputs, which are converted
@@ -129,12 +129,13 @@ def as_str_any(value):
 
   Args:
     value: A object that can be converted to `str`.
+    encoding: Encoding for `bytes` typed inputs.
 
   Returns:
     A `str` object.
   """
   if isinstance(value, bytes):
-    return as_str(value)
+    return as_str(value, encoding=encoding)
   else:
     return str(value)
 
@@ -154,7 +155,7 @@ def path_to_str(path):
 
   Usage:
     In case a simplified `str` version of the path is needed from an
-    `os.PathLike` object
+    `os.PathLike` object.
 
   Examples:
   ```python
@@ -192,7 +193,7 @@ def path_to_bytes(path):
 
   Usage:
     In case a simplified `bytes` version of the path is needed from an
-    `os.PathLike` object
+    `os.PathLike` object.
   """
   if hasattr(path, '__fspath__'):
     path = path.__fspath__()

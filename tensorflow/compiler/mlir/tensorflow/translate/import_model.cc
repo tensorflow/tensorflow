@@ -909,7 +909,7 @@ Status ImporterBase::AddNodesToShapeRefiner(
         return OkStatus();
       }
 
-      for (auto shape : llvm::enumerate(list.shape())) {
+      for (const auto& shape : llvm::enumerate(list.shape())) {
         auto* node_context = shape_refiner_->GetContext(node);
         shape_inference::ShapeHandle handle;
         Status status =

@@ -18,8 +18,8 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/stream_executor/lib/human_readable.h"
-#include "tensorflow/stream_executor/lib/mathutil.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/human_readable.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/mathutil.h"
 
 namespace stream_executor {
 

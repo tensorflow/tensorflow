@@ -17,11 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_WRAPPER_IMPL_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 
 struct PJRT_Error {
   xla::Status status;
@@ -62,6 +64,16 @@ struct PJRT_Executable {
 
 struct PJRT_Buffer {
   std::unique_ptr<xla::PjRtBuffer> buffer;
+  PJRT_Client* client;
+};
+
+struct PJRT_Event {
+  xla::PjRtFuture<xla::Status> future;
+  // Set and stored upon future.Await(), as PjRtFuture only allows its result to
+  // be queried through Await() and Await() can only safely be called once. This
+  // variable allows C API users to check for error status any time after
+  // Await() has been called.
+  std::optional<xla::Status> status;
 };
 
 namespace pjrt {
@@ -70,6 +82,10 @@ namespace pjrt {
 
 void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
 void PJRT_Error_Message(PJRT_Error_Message_Args* args);
+
+PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args);
+PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args);
+PJRT_Error* PJRT_Event_Await(PJRT_Event_Await_Args* args);
 
 PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args);
 PJRT_Error* PJRT_Client_PlatformName(PJRT_Client_PlatformName_Args* args);
@@ -88,6 +104,7 @@ PJRT_Error* PJRT_Device_Attributes(PJRT_Device_Attributes_Args* args);
 PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args);
 PJRT_Error* PJRT_Device_LocalHardwareId(PJRT_Device_LocalHardwareId_Args* args);
 PJRT_Error* PJRT_Device_DebugString(PJRT_Device_DebugString_Args* args);
+PJRT_Error* PJRT_Device_ToString(PJRT_Device_ToString_Args* args);
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
@@ -101,6 +118,7 @@ PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
     PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
     PJRT_Buffer_OnDeviceSizeInBytes_Args* args);
+PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args);
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args);

@@ -38,6 +38,15 @@ TFLITE_ATTRIBUTE_WEAK void OnTfLiteTensorAlloc(TfLiteTensor* tensor,
 
 // Records an event of memory deallocated for `tensor`.
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteTensorDealloc(TfLiteTensor* tensor);
+
+// Records an event of `num_bytes` of memory allocated for arena.
+TFLITE_ATTRIBUTE_WEAK void OnTfLiteArenaAlloc(int subgraph_index, int arena_id,
+                                              size_t num_bytes);
+
+// Records an event of `num_bytes` of memory deallocated for arena.
+TFLITE_ATTRIBUTE_WEAK void OnTfLiteArenaDealloc(int subgraph_index,
+                                                int arena_id, size_t num_bytes);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_TENSORFLOW_PROFILER_LOGGER_H_

@@ -84,6 +84,18 @@ Status DotHybridShape(shape_inference::InferenceContext* context) {
 
 }  // namespace
 
+REGISTER_OP("UniformQuantize")
+    .Input("input: Tin")
+    .Input("scales: float")
+    .Input("zero_points: int32")
+    .Output("output: Tout")
+    .Attr("Tin: {float}")
+    .Attr("Tout: {qint8, qint32}")
+    .Attr("quantization_axis: int = -1")
+    .Attr("quantization_min_val: int")
+    .Attr("quantization_max_val: int")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("UniformDequantize")
     .Input("input: Tin")
     .Input("scales: float")

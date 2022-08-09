@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SHARDING_PROPAGATION_H_
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -38,6 +39,10 @@ StatusOr<bool> ProcessShardingInstruction(
     bool replace_sharding_with_copy,
     absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
         unspecified_dims);
+
+// Infers broadcast ops' operand sharding, based on its output sharding.
+std::optional<HloSharding> InferBroadcastOperandSharding(
+    const HloInstruction& instruction, bool is_spmd = true);
 
 // Propagates sharding information around the graph. HLOs that have shardings
 // are kept as-is, those that do not have shardings are given shardings based on

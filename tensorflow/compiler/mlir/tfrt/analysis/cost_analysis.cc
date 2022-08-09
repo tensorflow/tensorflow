@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/analysis/cost_analysis.h"
 
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -159,12 +161,23 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
 
   // Try to use its cost function if it is registered.
   const auto& registry = GetCostFunctionRegistry();
-  auto iter = registry.find(op->getName().getStringRef().str());
+  absl::string_view op_name = op->getName().getStringRef();
+  auto iter = registry.find(op_name);
   if (iter != registry.end()) {
     CostContext context;
     context.default_unranked_tensor_size = max_arg_size_;
     cost_map_[op] = iter->second(context, op);
     return;
+  }
+
+  // Try to use its measured cost.
+  if (is_cost_measured_) {
+    const auto& measured_cost_map = op_cost_map_proto_.op_cost_map();
+    if (const auto op_cost = measured_cost_map.find(op_name);
+        op_cost != measured_cost_map.end()) {
+      cost_map_[op] = op_cost->second;
+      return;
+    }
   }
 
   // For other ops, use the sum of input sizes as its cost.
@@ -183,6 +196,18 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
   }
 
   cost_map_[op] = cost;
+}
+
+Status CostAnalysis::ReadMeasuredCosts() {
+  const char* env_var = getenv("TF_TFRT_MEASURED_COST_PATH");
+  // No need to read because the cost measurement is disabled.
+  if (env_var == nullptr) return Status::OK();
+
+  tensorflow::Env* env = Env::Default();
+  const std::string measured_cost_path(env_var);
+  TF_RETURN_IF_ERROR(env->FileExists(measured_cost_path));
+  is_cost_measured_ = true;
+  return ReadTextProto(env, measured_cost_path, &op_cost_map_proto_);
 }
 
 }  // namespace tfrt_compiler

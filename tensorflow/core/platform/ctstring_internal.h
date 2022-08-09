@@ -215,7 +215,7 @@ static inline const char *TF_TString_GetDataPointer(const TF_TString *str) {
     case TF_TSTR_LARGE:
       return str->u.large.ptr;
     case TF_TSTR_OFFSET:
-      return (const char *)str + str->u.offset.offset;  // NOLINT
+      return (const char *)str + TF_le32toh(str->u.offset.offset);  // NOLINT
     case TF_TSTR_VIEW:
       return str->u.view.ptr;
     default:

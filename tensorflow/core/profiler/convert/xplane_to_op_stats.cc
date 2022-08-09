@@ -168,9 +168,17 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
       }
-      OpMetricsDb device_op_metrics_db =
-          ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
-      op_metrics_db_combiner.Combine(device_op_metrics_db);
+      if (is_gpu) {
+        OpMetricsDb device_op_metrics_db =
+            ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
+        op_metrics_db_combiner.Combine(device_op_metrics_db);
+      } else {
+        XPlane aggregated_xplane;
+        AggregateXPlane(*device_trace, aggregated_xplane);
+        OpMetricsDb device_op_metrics_db =
+            ConvertTpuDeviceTraceXPlaneToOpMetricsDb(aggregated_xplane);
+        op_metrics_db_combiner.Combine(device_op_metrics_db);
+      }
     }
     if (options.generate_step_db) {
       StepEvents device_step_events =

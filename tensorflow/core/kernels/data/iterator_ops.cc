@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/activity_watcher/activity.h"
+#include "tensorflow/core/activity_watcher/activity_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
@@ -894,12 +895,9 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
     VLOG(3) << "IteratorGetNextOp exit. iter_id=" << ctx->frame_iter().iter_id;
   });
   activity_watcher::ActivityScope activity_scope([ctx = ctx]() {
-    return std::make_unique<activity_watcher::Activity>(
-        "IteratorGetNextOp::DoCompute",
-        activity_watcher::ActivityCategory::kDatasetOp,
-        activity_watcher::Activity::Attributes{
-            {"step_id", std::to_string(ctx->step_id())},
-            {"iter_num", std::to_string(ctx->frame_iter().iter_id)}});
+    return activity_watcher::ActivityFromContext(
+        ctx, "IteratorGetNextOp::DoCompute",
+        activity_watcher::ActivityCategory::kDatasetOp);
   });
   profiler::TraceMe traceme(
       [&] {
@@ -937,12 +935,9 @@ Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
             << ctx->frame_iter().iter_id;
   });
   activity_watcher::ActivityScope activity_scope([ctx = ctx]() {
-    return std::make_unique<activity_watcher::Activity>(
-        "IteratorGetNextAsOptionalOp::DoCompute",
-        activity_watcher::ActivityCategory::kDatasetOp,
-        activity_watcher::Activity::Attributes{
-            {"step_id", std::to_string(ctx->step_id())},
-            {"iter_num", std::to_string(ctx->frame_iter().iter_id)}});
+    return activity_watcher::ActivityFromContext(
+        ctx, "IteratorGetNextAsOptionalOp::DoCompute",
+        activity_watcher::ActivityCategory::kDatasetOp);
   });
   profiler::TraceMe traceme(
       [&] {

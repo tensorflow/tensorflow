@@ -1330,9 +1330,11 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     return false;
   }
 
-  CHECK_EQ(ElementsIn(input_shape), ElementsIn(output_shape))
-      << "input_shape=" << input_shape.ShortDebugString()
-      << ", output_shape=" << output_shape.ShortDebugString();
+  if (ElementsIn(input_shape) != ElementsIn(output_shape)) {
+    VLOG(3) << "input_shape=" << input_shape.ShortDebugString()
+            << ", output_shape=" << output_shape.ShortDebugString();
+    return false;
+  }
   if (ElementsIn(input_shape) == 0) {
     return true;
   }

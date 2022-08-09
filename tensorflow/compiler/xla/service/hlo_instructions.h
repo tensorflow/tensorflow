@@ -957,8 +957,15 @@ class HloCallableInstruction : public HloInstruction {
   HloCallableInstruction(HloOpcode opcode, const Shape& shape);
 
   HloCallableInstruction(HloOpcode opcode, const Shape& shape,
+                         absl::Span<HloInstruction* const> operands);
+
+  HloCallableInstruction(HloOpcode opcode, const Shape& shape,
                          absl::Span<HloInstruction* const> operands,
                          HloComputation* called_computation);
+
+  HloCallableInstruction(HloOpcode opcode, const Shape& shape,
+                         absl::Span<HloInstruction* const> operands,
+                         absl::Span<HloComputation* const> called_computations);
 
   ~HloCallableInstruction() override;
 
@@ -979,6 +986,12 @@ class HloCallableInstruction : public HloInstruction {
   // instruction (part of the tuple of the callable root).
   HloInstruction* CloneAndAppendInstructionIntoCalledComputation(
       HloInstruction* instruction_to_append, bool add_output = false);
+
+  // Retrieves the called computations of an HloCallableInstruction that is
+  // being cloned. If the called computations have not yet been cloned, then
+  // they are first cloned and added to the context.
+  absl::InlinedVector<HloComputation*, 1> GetOrCloneCalledComputations(
+      HloCloneContext* context) const;
 
   HloComputation* called_computation() const;
 
@@ -1537,7 +1550,7 @@ class HloSelectAndScatterInstruction : public HloInstruction {
   Window window_;
 };
 
-class HloCustomCallInstruction : public HloInstruction {
+class HloCustomCallInstruction : public HloCallableInstruction {
  public:
   HloCustomCallInstruction(const Shape& shape,
                            absl::Span<HloInstruction* const> operands,
@@ -1663,6 +1676,11 @@ class HloCustomCallInstruction : public HloInstruction {
     api_version_ = api_version;
   }
   CustomCallApiVersion api_version() const { return api_version_; }
+
+ protected:
+  std::string default_called_computation_name() const override {
+    return "custom_call_computation";
+  }
 
  private:
   std::vector<std::string> ExtraAttributesToStringImpl(

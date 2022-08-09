@@ -17,7 +17,7 @@ ENTRY %foo (arg0.1: s64[]) -> s64[] {
   %arg0.1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
 
   // CHECK: mhlo.while([[ITER_ARG:.*]] = %arg0)
-  // CHECK:     "mhlo.compare"
+  // CHECK:     mhlo.compare
   // CHECK:     "mhlo.return"
 
   // CHECK:     mhlo.add
@@ -58,7 +58,7 @@ ENTRY %foo (arg0.1: s64[]) -> s64[] {
 // CHECK-NEXT:   %[[CST:.*]] = mhlo.constant
 // CHECK-NEXT:   %[[GTE_0:.*]] = "mhlo.get_tuple_element"(%[[ARG_0]]) {index = 0
 // CHECK-NEXT:   %[[GTE_1:.*]] = "mhlo.get_tuple_element"(%[[ARG_0]]) {index = 1
-// CHECK-NEXT:   %[[CMP:.*]] = "mhlo.compare"(%[[GTE_0]], %[[GTE_1]])
+// CHECK-NEXT:   %[[CMP:.*]] = mhlo.compare LT, %[[GTE_0]], %[[GTE_1]]
 // CHECK-NEXT"   return %[[CMP]] : tensor<i1>
 
 %region_cond1 (Arg_0.15: (s32[], s32[], f32[], f32[])) -> pred[] {
@@ -77,7 +77,7 @@ ENTRY %foo (arg0.1: s64[]) -> s64[] {
 // CHECK-NEXT:   %[[WHILE:.*]]:4 = mhlo.while(%[[ARG_1:.*]] = %[[CST_0]], %[[ARG_2:.*]] = %[[CST_1]], %[[ARG_3:.*]] = %[[CST_2]], %[[ARG_4:.*]] = %[[ARG_0]])
 // CHECK-NEXT:   cond {
 // CHECK-NEXT:     %[[CST_3:.*]] = mhlo.constant
-// CHECK-NEXT:     %[[CMP:.*]] = "mhlo.compare"(%[[ARG_1]], %[[ARG_2]])
+// CHECK-NEXT:     %[[CMP:.*]] = mhlo.compare LT, %[[ARG_1]], %[[ARG_2]]
 // CHECK-NEXT:     "mhlo.return"(%[[CMP]]) : (tensor<i1>) -> ()
 // CHECK-NEXT:   } do {
 // CHECK-NEXT:     %[[ADD:.*]] = mhlo.add %[[ARG_3]], %[[ARG_4]] : tensor<f32>
@@ -140,7 +140,7 @@ ENTRY %foo (arg0.1: s64[]) -> s64[] {
 // CHECK:           %[[CST_4:.*]] = mhlo.constant dense<0> : tensor<i32>
 // CHECK-NEXT:      %[[RED_5:.*]] = mhlo.reduce(%[[ARG_1]] init: %[[CST_4]])
 // CHECK:           %[[RED_6:.*]] = mhlo.reduce(%[[ARG_2]] init: %[[CST_4]])
-// CHECK:           %[[CMP_7:.*]] = "mhlo.compare"(%[[RED_5]], %[[RED_6]]) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK:           %[[CMP_7:.*]] = mhlo.compare LT, %[[RED_5]], %[[RED_6]] : (tensor<i32>, tensor<i32>) -> tensor<i1>
 // CHECK:           "mhlo.return"(%[[CMP_7]]) : (tensor<i1>) -> ()
 
 // CHECK:           %[[BDCAST_4:.*]] = "mhlo.broadcast_in_dim"(%[[ARG_3]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
@@ -211,7 +211,7 @@ ENTRY %foo (arg0.1: s64[]) -> s64[] {
 // CHECK:           %[[CST_4:.*]] = mhlo.constant dense<0> : tensor<i32>
 // CHECK-NEXT:      %[[RED_5:.*]] = mhlo.reduce(%[[ARG_1]] init: %[[CST_4]])
 // CHECK:           %[[RED_6:.*]] = mhlo.reduce(%[[ARG_2]] init: %[[CST_4]])
-// CHECK:           %[[CMP_7:.*]] = "mhlo.compare"(%[[RED_5]], %[[RED_6]]) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK:           %[[CMP_7:.*]] = mhlo.compare LT, %[[RED_5]], %[[RED_6]] : (tensor<i32>, tensor<i32>) -> tensor<i1>
 // CHECK:           "mhlo.return"(%[[CMP_7]]) : (tensor<i1>) -> ()
 
 // CHECK:           %[[BDCAST_4:.*]] = "mhlo.broadcast_in_dim"(%[[ARG_3]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
@@ -274,7 +274,7 @@ ENTRY %foo (arg0.1: s64[]) -> s64[] {
 // CHECK-NEXT:    %[[GTE_3:.*]] = "mhlo.get_tuple_element"(%1) {index = 1 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>>>) -> tuple<tensor<i32>>
 // CHECK-NEXT:    %[[GTE_4:.*]] = "mhlo.get_tuple_element"(%3) {index = 0 : i32} : (tuple<tensor<i32>>) -> tensor<i32>
 // CHECK-NEXT:    %[[WHILE:.*]]:3 = mhlo.while(%[[ITER_ARG1:.*]] = %[[GTE_0]], %[[ITER_ARG2:.*]] = %[[GTE_2]], %[[ITER_ARG3:.*]] = %[[GTE_4]])
-// CHECK:           %[[CMP:.*]] = "mhlo.compare"(%[[ITER_ARG1]], %[[ITER_ARG3]]) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK:           %[[CMP:.*]] = mhlo.compare LT, %[[ITER_ARG1]], %[[ITER_ARG3]] : (tensor<i32>, tensor<i32>) -> tensor<i1>
 // CHECK-NEXT:      "mhlo.return"(%[[CMP]])
 // CHECK-NEXT:    } do {
 // CHECK-NEXT:      %[[ADD:.*]] = mhlo.add %[[ITER_ARG1]], %[[ITER_ARG2]] : tensor<i32>
@@ -329,7 +329,7 @@ region_cond5 {
 // CHECK-NEXT:      %[[REDUCE:.*]] = mhlo.reduce(%[[ITER_ARG]] init: %[[CST_3]])
 // CHECK-NEXT:      reducer(%[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>)
 // CHECK:           %[[CST_4:.*]] = mhlo.constant dense<1.000000e+02> : tensor<f32>
-// CHECK:           %[[CMP:.*]] = "mhlo.compare"(%[[REDUCE]], %[[CST_4]]) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+// CHECK:           %[[CMP:.*]] = mhlo.compare LT, %[[REDUCE]], %[[CST_4]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
 // CHECK:           "mhlo.return"(%[[CMP]]) : (tensor<i1>) -> ()
 // CHECK-NEXT:    } do {
 // CHECK-NEXT:      %[[CST_2:.*]] = mhlo.constant dense<false> : tensor<i1>
@@ -369,7 +369,7 @@ region_cond5 {
 // CHECK-NEXT:    %[[CST_0:.*]] = mhlo.constant dense<0> : tensor<i32>
 // CHECK-NEXT:    %[[WHILE:.*]]:2 = mhlo.while(%[[ITER_ARG_1:.*]] = %[[CST_0]], %[[ITER_ARG_2:.*]] = %[[ARG_0]])  : tensor<i32>, tensor<i32>
 // CHECK-NEXT:      cond {
-// CHECK-NEXT:        %[[CMP:.*]] = "mhlo.compare"(%[[ITER_ARG_1]], %[[ITER_ARG_2]]) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK-NEXT:        %[[CMP:.*]] = mhlo.compare LT, %[[ITER_ARG_1]], %[[ITER_ARG_2]] : (tensor<i32>, tensor<i32>) -> tensor<i1>
 // CHECK-NEXT:        "mhlo.return"(%[[CMP]]) : (tensor<i1>) -> ()
 // CHECK-NEXT:    } do {
 // CHECK-NEXT:        %[[TUPLE:.*]] = "mhlo.tuple"(%[[ITER_ARG_1]], %[[ITER_ARG_2]]) : (tensor<i32>, tensor<i32>) -> tuple<tensor<i32>, tensor<i32>>

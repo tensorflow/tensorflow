@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace mlir {
 
-struct Value;
+class Value;
 
 namespace mhlo {
 

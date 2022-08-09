@@ -154,7 +154,7 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
                                   scfIf.getThenRegion());
     int nextIdx = currentIdx + 1;
     // Don't recurse for the final default block.
-    if (currentIdx == finalIdx) {
+    if (currentIdx == static_cast<int64_t>(finalIdx)) {
       inlineMhloRegionIntoSCFRegion(outerBuilder, op.branches()[nextIdx],
                                     scfIf.getElseRegion());
     } else {

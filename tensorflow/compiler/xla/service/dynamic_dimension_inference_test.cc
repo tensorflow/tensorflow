@@ -1380,9 +1380,9 @@ ENTRY computation {
   StatusOr<bool> filecheck_result = RunFileCheck(module_->ToString({}),
                                                  R"(
 // CHECK: compare = pred[] compare(s32[] %a_size_1, s32[] %b_size_1), direction=EQ
-// CHECK: compare.1 = pred[] compare(s32[] %a_size_2, s32[] %b_size_2), direction=EQ
-// CHECK: and = pred[] and(pred[] %compare, pred[] %compare.1)
-// CHECK: custom-call(pred[] %and), custom_call_target="__xla__assert"
+// CHECK: compare.5 = pred[] compare(s32[] %a_size_2, s32[] %b_size_2), direction=EQ
+// CHECK: and.2 = pred[] and(pred[] %compare, pred[] %compare.5)
+// CHECK: custom-call(pred[] %and.2), custom_call_target="__xla__assert"
                    )");
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(*filecheck_result);

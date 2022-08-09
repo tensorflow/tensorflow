@@ -32,6 +32,7 @@ from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import graph_view
+from tensorflow.python.checkpoint import save_util_v1
 from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -296,7 +297,7 @@ class _SaveableView(object):
     the `saveable_objects` map in the `SavedObject` proto.
     """
     checkpoint_factory_map, registered_savers = (
-        checkpoint_util.get_checkpoint_factories_and_keys(self.object_names))
+        save_util_v1.get_checkpoint_factories_and_keys(self.object_names))
     self._obj_to_registered_saver = object_identity.ObjectIdentityDictionary()
     for saver_name, trackables in registered_savers.items():
       for trackable in trackables.values():
@@ -434,7 +435,7 @@ def _gen_save_and_restore_functions(checkpoint_factory_map):
   for resources.
 
   This function is intended to run on the output of
-  `checkpoint_util.get_checkpoint_factories_and_keys(object_names)`,
+  `save_util_v1.get_checkpoint_factories_and_keys(object_names)`,
   which returns the generated a map of `_CheckpointFactoryData`.
 
   Args:
@@ -832,7 +833,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   for obj in object_map.values():
     obj._maybe_initialize_trackable()  # pylint: disable=protected-access
   named_saveable_objects, registered_savers = (
-      checkpoint_util.frozen_saveables_and_savers(
+      save_util_v1.frozen_saveables_and_savers(
           graph_view=saveable_view.augmented_graph_view,
           object_map=object_map,
           to_graph=exported_graph,

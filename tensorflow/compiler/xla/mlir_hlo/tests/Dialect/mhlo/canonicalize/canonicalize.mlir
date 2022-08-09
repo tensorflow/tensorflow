@@ -1102,7 +1102,7 @@ func.func @fold_compare_same_gt(%arg0: tensor<i64>) -> tensor<i1> {
 // Address NaN != NaN.
 // CHECK-LABEL: dont_fold_compare_same_eq_float
 func.func @dont_fold_compare_same_eq_float(%arg0: tensor<f16>) -> tensor<i1> {
-  // CHECK: %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<f16>, tensor<f16>) -> tensor<i1>
+  // CHECK: %0 = mhlo.compare EQ, %arg0, %arg0 : (tensor<f16>, tensor<f16>) -> tensor<i1>
   %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<f16>, tensor<f16>) -> tensor<i1>
   func.return %0 : tensor<i1>
 }
@@ -1110,7 +1110,7 @@ func.func @dont_fold_compare_same_eq_float(%arg0: tensor<f16>) -> tensor<i1> {
 // Address NaN != NaN for complex types.
 // CHECK-LABEL: dont_fold_compare_same_eq_complex
 func.func @dont_fold_compare_same_eq_complex(%arg0: tensor<complex<f32>>) -> tensor<i1> {
-  // CHECK: %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<complex<f32>>, tensor<complex<f32>>) -> tensor<i1>
+  // CHECK: %0 = mhlo.compare EQ, %arg0, %arg0 : (tensor<complex<f32>>, tensor<complex<f32>>) -> tensor<i1>
   %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<complex<f32>>, tensor<complex<f32>>) -> tensor<i1>
   func.return %0 : tensor<i1>
 }
@@ -2429,8 +2429,7 @@ func.func @sort_drop_second_arg(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> t
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]+]]
 // CHECK:         %[[RES:.+]] = "mhlo.sort"(%[[ARG0]])
 // CHECK:         ^bb0(%[[ARG2:.+]]: tensor<i32>, %[[ARG3:.+]]: tensor<i32>)
-// CHECK:           %[[CMP:.+]] = "mhlo.compare"(%[[ARG2]], %[[ARG3]])
-// CHECK-SAME:        {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK:           %[[CMP:.+]] = mhlo.compare GT, %[[ARG2]], %[[ARG3]] : (tensor<i32>, tensor<i32>) -> tensor<i1>
 // CHECK:           "mhlo.return"(%[[CMP]]) : (tensor<i1>) -> ()
 // CHECK:         {dimension = 0 : i64, is_stable = false} : (tensor<3xi32>) -> tensor<3xi32>
 // CHECK:         return %[[RES]] : tensor<3xi32>

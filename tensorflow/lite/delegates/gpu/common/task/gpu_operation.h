@@ -164,6 +164,9 @@ class GPUOperation {
                              GPUOperation* op);
   friend GPUOperation CreateGpuOperation(const OperationDef& definition,
                                          ElementwiseDescriptor&& descriptor);
+  friend GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                         ElementwiseDescriptor&& descriptor,
+                                         const BHWC& second_shape);
 
   virtual int3 GetGridSize() const;
   virtual void GetPossibleKernelWorkGroups(
@@ -181,15 +184,19 @@ class GPUOperation {
   std::vector<std::string> dst_tensors_names_;
 
  private:
-  bool elementwise_ = false;
   int3 work_groups_count_ = int3(0, 0, 0);
-  int linkable_count_ = 0;
+  bool elementwise_ = false;      // temporary, used during op construction
+  int linkable_count_ = 0;        // temporary, used during op construction
   std::string elementwise_code_;  // temporary, used during op construction
 };
 
 GPUOperation CreateGpuOperation(const OperationDef& definition,
                                 ElementwiseDescriptor&& descriptor);
 
+// For creating elementwise operations with 2 runtime inputs
+GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                ElementwiseDescriptor&& descriptor,
+                                const BHWC& second_shape);
 }  // namespace gpu
 }  // namespace tflite
 

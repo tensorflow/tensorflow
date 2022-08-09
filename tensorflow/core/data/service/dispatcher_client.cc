@@ -26,7 +26,6 @@ limitations under the License.
 #include "grpcpp/support/channel_arguments.h"
 #include "grpcpp/support/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
@@ -139,8 +138,8 @@ Status DataServiceDispatcherClient::RegisterDataset(
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
     const std::string& dataset_id, const ProcessingModeDef& processing_mode,
-    const absl::optional<std::string>& job_name,
-    absl::optional<int64_t> num_consumers, bool use_cross_trainer_cache,
+    const std::optional<std::string>& job_name,
+    std::optional<int64_t> num_consumers, bool use_cross_trainer_cache,
     TargetWorkers target_workers, int64_t& job_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;

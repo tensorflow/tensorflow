@@ -115,7 +115,7 @@ using ::tfrt::jitrt::ReturnErrors;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConversion;
 using ::tfrt::jitrt::SpecializationListener;
-using ::tfrt::jitrt::StaticReturnValueConverter;
+using ::tfrt::jitrt::StaticRemainingResultsConverter;
 
 using ::tensorflow::profiler::TraceMe;
 using ::tensorflow::profiler::TraceMeEncode;
@@ -574,9 +574,9 @@ using ReturnTensorflowTensor =
     ReturnValueConversion<TensorflowConversionContext,
                           ReturnStridedMemref<ConvertTensor>>;
 
-using TensorflowReturnValueConverter =
-    StaticReturnValueConverter<TensorflowConversionContext,
-                               ReturnTensorflowTensor>;
+using TensorflowResultConverter =
+    StaticRemainingResultsConverter<TensorflowConversionContext,
+                                    ReturnTensorflowTensor>;
 
 static MemrefDesc ConvertTensorToMemrefDesc(const tensorflow::Tensor& tensor) {
   // Fills memref sizes and strides with a tensor shape;
@@ -667,7 +667,7 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
   for (auto& t : operands)
     ctx.runtime_tensors.insert({t.tensor().data(), &t.tensor()});
 
-  TensorflowReturnValueConverter converter(results, ctx);
+  TensorflowResultConverter converter(results, ctx);
 
   // Get the worker threads from the execution context.
   Expected<Eigen::ThreadPoolInterface*> worker_threads =

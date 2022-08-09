@@ -114,7 +114,10 @@ def LegalizeJaxRandomPass : Pass<"tfl-legalize-random", "mlir::func::FuncOp"> {
 def LegalizeTFPass : Pass<"tfl-legalize-tf", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow to TensorFlow Lite dialect.";
   let constructor = "CreateLegalizeTFPass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect" , "quant::QuantizationDialect"];
+  let dependentDialects = ["TFL::TensorFlowLiteDialect" ,
+    "quant::QuantizationDialect",
+    "quantfork::QuantizationForkDialect"
+  ];
   let options = [
       Option<"run_tfl_runtime_verification_", "run-tfl-runtime-verification",
              "bool", "true", "Allow tfl runtime verification.">,
@@ -144,7 +147,10 @@ def LiftTfliteFlexOpsPass : Pass<"tfl-lift-tflite-flex-ops", "mlir::func::FuncOp
 def LowerStaticTensorListPass : Pass<"tfl-lower-static-tensor-list", "mlir::ModuleOp"> {
   let summary = "Lower TensorList ops within TensorFlow Lite dialect.";
   let constructor = "CreateLowerStaticTensorListPass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect" , "quant::QuantizationDialect"];
+  let dependentDialects = ["TFL::TensorFlowLiteDialect",
+    "quant::QuantizationDialect",
+    "quantfork::QuantizationForkDialect"
+  ];
   let options = [
       Option<"allow_tensorlist_pass_through_", "allow-tensorlist-pass-through",
              "bool", "false",
@@ -241,7 +247,10 @@ def PrepareCompositeFunctionsPass : Pass<"tfl-prepare-composite-funcs-tf", "mlir
 def PrepareQuantizePass : Pass<"tfl-prepare-quantize", "mlir::func::FuncOp"> {
   let summary = "Remove qdq from input and output nodes after quantization.";
   let constructor = "CreatePrepareQuantizePass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect", "mlir::quant::QuantizationDialect"];
+  let dependentDialects = ["TFL::TensorFlowLiteDialect",
+    "quant::QuantizationDialect",
+    "quantfork::QuantizationForkDialect"
+  ];
   let options = [
       ListOption<"quantize_allowlist_", "quantize-allowlist", "std::string",
                  "comma separated list of allowlisted functions to be quantized. Only used in tests">,
@@ -263,7 +272,10 @@ def PrepareQuantizePass : Pass<"tfl-prepare-quantize", "mlir::func::FuncOp"> {
 def PrepareDynamicRangeQuantizePass : Pass<"tfl-prepare-quantize-dynamic-range", "mlir::func::FuncOp"> {
   let summary = "Prepare TFL dialect for dynamic range quantization.";
   let constructor = "CreatePrepareDynamicRangeQuantizePass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect", "mlir::quant::QuantizationDialect"];
+  let dependentDialects = ["TFL::TensorFlowLiteDialect",
+    "mlir::quant::QuantizationDialect",
+    "mlir::quantfork::QuantizationForkDialect"
+  ];
   let options = [
       Option<"enable_dynamic_range_per_channel_quantization_",
               "enable-dynamic-range-per-channel-quantization", "bool",
@@ -283,7 +295,11 @@ def PrepareDynamicRangeQuantizePass : Pass<"tfl-prepare-quantize-dynamic-range",
 def PrepareTFPass : Pass<"tfl-prepare-tf", "mlir::func::FuncOp"> {
   let summary = "Prepare TF for legalization to TensorFlow Lite dialect.";
   let constructor = "CreatePrepareTFPass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect", "mlir::quant::QuantizationDialect", "mhlo::MhloDialect"];
+  let dependentDialects = ["TFL::TensorFlowLiteDialect",
+    "mlir::quant::QuantizationDialect",
+    "mlir::quantfork::QuantizationForkDialect",
+    "mhlo::MhloDialect"
+  ];
   let options = [
       Option<"unfold_batch_matmul_", "emit-quant-adaptor-ops",
              "bool", "true",
@@ -300,7 +316,10 @@ def PrepareTFPass : Pass<"tfl-prepare-tf", "mlir::func::FuncOp"> {
 def QuantizePass : Pass<"tfl-quantize", "mlir::func::FuncOp"> {
   let summary = "Apply quantization on models in TensorFlow Lite dialect.";
   let constructor = "CreateDefaultQuantizePass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect", "mlir::quant::QuantizationDialect"];
+  let dependentDialects = ["TFL::TensorFlowLiteDialect",
+    "mlir::quant::QuantizationDialect",
+    "mlir::quantfork::QuantizationForkDialect"
+  ];
 
   let options = [
       Option<"enable_numeric_verify_", "numeric-verify",

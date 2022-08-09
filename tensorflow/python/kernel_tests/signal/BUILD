@@ -24,6 +24,9 @@ cuda_py_test(
     srcs = ["dct_ops_test.py"],
     python_version = "PY3",
     shard_count = 16,
+    tags = [
+	"no_rocm"
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",

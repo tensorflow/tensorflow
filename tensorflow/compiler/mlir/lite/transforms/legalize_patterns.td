@@ -24,8 +24,8 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def CreateEmptyBoolAttr : NativeCodeCall<"::mlir::BoolAttr()">;
 
-def NonOpaqueElementsAttr : ElementsAttrBase<
-  CPred<"!$_self.isa<OpaqueElementsAttr>()">,
+def DenseElementsAttr : ElementsAttrBase<
+  CPred<"$_self.isa<DenseElementsAttr>()">,
   "non-opaque constant tensor">;
 
 def F32ElementsAttr : ElementsAttrBase<
@@ -85,7 +85,7 @@ def LegalizeTFConstToTFLConst: Pat<(TF_ConstOp:$res ElementsAttr:$value),
 
 // Convert to std constant for statically shaped, non-opaque constants.
 def ConvertTfConstToStdConst : Pat<
-  (TF_ConstOp:$res NonOpaqueElementsAttr:$value),
+  (TF_ConstOp:$res DenseElementsAttr:$value),
   (Arith_ConstantOp $value),
   [(AnyStaticShapeTensor $res)], (addBenefit 10)>;
 

@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
+from tensorflow.python.util import variable_utils
 
 autograph = lazy_loader.LazyLoader(
     "autograph", globals(),
@@ -175,6 +176,7 @@ class StructuredFunctionWrapper():
       if not _should_unpack(nested_args):
         nested_args = (nested_args,)
       ret = autograph.tf_convert(self._func, ag_ctx)(*nested_args)
+      ret = variable_utils.convert_variables_to_tensors(ret)
       if _should_pack(ret):
         ret = tuple(ret)
 

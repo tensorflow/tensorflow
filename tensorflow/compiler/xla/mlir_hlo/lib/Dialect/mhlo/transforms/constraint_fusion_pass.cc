@@ -118,7 +118,8 @@ void canonicalizeBroadcastabilityCstrs(
 
   // Remove broadcastability constraints if they are implied by stronger
   // constraints.
-  for (int i = 0; i < broadcastabilityCstrs.size(); i++) {
+  for (int64_t i = 0; i < static_cast<int64_t>(broadcastabilityCstrs.size());
+       i++) {
     CstrBroadcastableIntent &strongCstr = broadcastabilityCstrs[i];
     auto *newEnd = std::remove_if(
         broadcastabilityCstrs.begin() + i + 1, broadcastabilityCstrs.end(),

@@ -27,7 +27,7 @@ ENTRY %tfcompile.0 {
   // CHECK: [[C0:%.+]] = mhlo.constant
   %constant.3 = f32[] constant(10), metadata={op_type="Less" op_name="Less"}
 
-  // CHECK: [[R1:%.+]] = "mhlo.compare"([[A0]], [[C0]])
+  // CHECK: [[R1:%.+]] = mhlo.compare LT, [[A0]], [[C0]]
   %compare.4 = pred[] compare(%arg0.1, %constant.3), direction=LT, metadata={op_type="Less" op_name="Less"}
 
   %tuple.5 = (f32[]) tuple(%arg0.1), metadata={op_type="If" op_name="cond/Merge_if"}
@@ -81,7 +81,7 @@ ENTRY %tfcompile.0 {
 // CHECK-LABEL: func private @tfcompile.1
 // CHECK-SAME: (%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>)
 //CHECK-NEXT:    %[[CST:.*]] = mhlo.constant
-//CHECK-NEXT:    %[[CMP:.*]] = "mhlo.compare"(%[[A0]], %[[CST]]) {comparison_direction = #mhlo<comparison_direction LT>}
+//CHECK-NEXT:    %[[CMP:.*]] = mhlo.compare LT, %[[A0]], %[[CST]]
 //CHECK-NEXT:    %[[IF:.*]]:3 = "mhlo.if"(%[[CMP]]) ({
 //CHECK-NEXT:      %[[LOG0:.*]] = mhlo.log %[[A0]] : tensor<f32>
 //CHECK-NEXT:      %[[LOG1:.*]] = mhlo.log %[[A1]] : tensor<f32>
@@ -128,7 +128,7 @@ ENTRY %tfcompile.0 {
 // CHECK-LABEL: func private @tfcompile.2
 // CHECK-SAME: (%[[A0:.*]]: tensor<f32>)
 // CHECK-NEXT:    %[[CST:.*]] = mhlo.constant
-// CHECK-NEXT:    %[[CMP:.*]] = "mhlo.compare"(%[[A0]], %[[CST]]) {comparison_direction = #mhlo<comparison_direction LT>}
+// CHECK-NEXT:    %[[CMP:.*]] = mhlo.compare LT, %[[A0]], %[[CST]]
 // CHECK-NEXT:    %[[IF:.*]] = "mhlo.if"(%[[CMP]]) ({
 // CHECK-NEXT:      %[[LOG0:.*]] = mhlo.log %[[A0]] : tensor<f32>
 // CHECK-NEXT:      "mhlo.return"(%[[LOG0]]) : (tensor<f32>) -> ()
