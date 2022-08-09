@@ -84,6 +84,21 @@ flatbuffer_cc_library(
 )
 
 cc_library(
+    name = "gpu_model_test_util",
+    testonly = True,
+    srcs = ["gpu_model_test_util.cc"],
+    hdrs = ["gpu_model_test_util.h"],
+    deps = [
+        ":gpu_model",
+        ":operations",
+        ":status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic",
+        "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
+    ],
+)
+
+cc_library(
     name = "kernel_info",
     hdrs = ["kernel_info.h"],
 )

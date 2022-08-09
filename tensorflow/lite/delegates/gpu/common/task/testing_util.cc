@@ -126,5 +126,44 @@ absl::Status PointWiseNear(const std::vector<float>& ref,
   return absl::OkStatus();
 }
 
+absl::Status TestExecutionEnvironment::ExecuteGpuModel(
+    const std::vector<TensorFloat32>& src_cpu,
+    const std::vector<TensorFloat32*>& dst_cpu, GpuModel* gpu_model) {
+  std::vector<TensorFloat32> inputs = src_cpu;
+  for (int k = 0; k < gpu_model->nodes.size(); ++k) {
+    auto& gpu_node = gpu_model->nodes[k];
+    std::vector<TensorDescriptor> src_cpu_descs(gpu_node.inputs.size());
+    std::vector<TensorDescriptor*> src_cpu_desc_ptrs(gpu_node.inputs.size());
+    for (int i = 0; i < gpu_node.inputs.size(); ++i) {
+      src_cpu_descs[i] = gpu_model->tensors[gpu_node.inputs[i]];
+      src_cpu_descs[i].UploadData(inputs[i]);
+      src_cpu_desc_ptrs[i] = &src_cpu_descs[i];
+    }
+
+    std::vector<TensorDescriptor> dst_cpu_descs(gpu_node.outputs.size());
+    std::vector<TensorDescriptor*> dst_cpu_desc_ptrs(gpu_node.outputs.size());
+    for (int i = 0; i < gpu_node.outputs.size(); ++i) {
+      dst_cpu_descs[i] = gpu_model->tensors[gpu_node.outputs[i]];
+      dst_cpu_desc_ptrs[i] = &dst_cpu_descs[i];
+    }
+
+    RETURN_IF_ERROR(ExecuteGpuOperationInternal(
+        src_cpu_desc_ptrs, dst_cpu_desc_ptrs,
+        std::move(gpu_model->nodes[k].gpu_operation)));
+
+    inputs.resize(gpu_node.outputs.size());
+    for (int i = 0; i < gpu_node.outputs.size(); ++i) {
+      dst_cpu_descs[i].DownloadData(&inputs[i]);
+    }
+  }
+  if (dst_cpu.size() != inputs.size()) {
+    return absl::InternalError("Size mismatch.");
+  }
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    *dst_cpu[i] = inputs[i];
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace tflite

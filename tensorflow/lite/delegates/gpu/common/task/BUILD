@@ -182,6 +182,7 @@ cc_library(
         ":tensor_desc",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
+        "//tensorflow/lite/delegates/gpu/common:gpu_model",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:tensor",
