@@ -134,6 +134,8 @@ class RankedTensorType : public llvm::RTTIExtends<RankedTensorType, Type> {
   static constexpr char ID = 0;  // NOLINT
   static constexpr int64_t kDynamicSize = -1;
 
+  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamicSize; }
+
   RankedTensorType(llvm::ArrayRef<int64_t> sizes, tfrt::DType element_type)
       : sizes_(sizes.begin(), sizes.end()), element_type_(element_type) {}
 
@@ -175,6 +177,8 @@ class MemrefType : public llvm::RTTIExtends<MemrefType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
   static constexpr int64_t kDynamicSize = -1;
+
+  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamicSize; }
 
   MemrefType(llvm::ArrayRef<int64_t> sizes, tfrt::DType element_type)
       : sizes_(sizes.begin(), sizes.end()), element_type_(element_type) {}
