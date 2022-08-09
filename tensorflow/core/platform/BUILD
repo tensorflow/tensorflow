@@ -696,6 +696,8 @@ cc_library(
 cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["//tensorflow/tsl/platform:stack_frame"],
 )
 
 cc_library(
