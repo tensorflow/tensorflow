@@ -43,3 +43,19 @@ cc_library(
         "@llvm-project//mlir:Support",
     ],
 )
+
+cc_library(
+    name = "type_converter",
+    srcs = ["type_converter.cc"],
+    hdrs = ["type_converter.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
+        "//tensorflow/compiler/xla/runtime:types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsyncDialect",
+        "@llvm-project//mlir:IR",
+        "@tf_runtime//:dtype",
+        "@tf_runtime//:support",
+    ],
+)
