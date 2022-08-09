@@ -1422,6 +1422,7 @@ tf_xla_py_test(
     srcs = ["ternary_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "noasan",
