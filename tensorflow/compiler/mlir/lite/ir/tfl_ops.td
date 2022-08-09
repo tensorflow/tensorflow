@@ -4865,6 +4865,31 @@ def TFL_UnsortedSegmentMaxOp: TFL_Op<"unsorted_segment_max", [
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 }
 
+def TFL_UnsortedSegmentMinOp: TFL_Op<"unsorted_segment_min", [
+    NoSideEffect, PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+
+  let summary = "UnsortedSegmentMin operator";
+
+  let description = [{
+    Computes the minimum value along segments of a tensor such that
+    output[i] = min(data[j....]) where segment_ids[j...] = i
+    if the minimum is empty for a given segment ID i,
+    it outputs the largest possible value for the specific numeric type,
+    output[i] = numeric_limits::max().
+    Note the values of segment_ids are always validated to be less than
+    num_segments and an error is thrown for out-of-bound indices.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, I32]>:$input,
+    TFL_I32Tensor:$segment_ids,
+    TFL_I32Tensor:$num_segments
+  );
+
+  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+}
+
 def TFL_UnsortedSegmentSumOp: TFL_Op<"unsorted_segment_sum", [
     NoSideEffect, PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {

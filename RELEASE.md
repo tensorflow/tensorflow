@@ -17,6 +17,8 @@
 
 *   `tf.lite`:
 
+    *   New operations supported:
+          * tf.unsortedsegmentmin op is supported.
     *   Updates to existing operations:
           * tfl.mul now supports complex32 inputs.
 

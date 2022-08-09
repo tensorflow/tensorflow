@@ -175,5 +175,10 @@ def make_unsorted_segment_max_tests(options):
 
 
 @register_make_test_function()
+def make_unsorted_segment_min_tests(options):
+  make_unsorted_segment_tests(options, tf.math.unsorted_segment_min)
+
+
+@register_make_test_function()
 def make_unsorted_segment_sum_tests(options):
   make_unsorted_segment_tests(options, tf.math.unsorted_segment_sum)

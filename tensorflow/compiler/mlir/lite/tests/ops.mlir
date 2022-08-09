@@ -3043,3 +3043,13 @@ func.func @testControlNodeShortForm(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>)-
   func.return %0 : tensor<8xf32>
 }
 
+
+// -----
+
+// CHECK-LABEL: testUnsortedSegmentMin
+func.func @testUnsortedSegmentMin(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>,  %arg2: tensor<i32>) -> tensor<8xf32> {
+  // CHECK: "tfl.unsorted_segment_min"(%arg0, %arg1, %arg2)
+  %0 = "tfl.unsorted_segment_min"(%arg0, %arg1, %arg2) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+  // CHECK: return %0 : tensor<8xf32>
+}
