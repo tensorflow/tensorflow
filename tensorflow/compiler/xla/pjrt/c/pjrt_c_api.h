@@ -102,6 +102,25 @@ typedef struct {
   size_t struct_size;
   void* priv;
   PJRT_Event* event;
+} PJRT_Event_Error_Args;
+const size_t PJRT_Event_Error_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Event_Error_Args, event);
+
+// Should only be called if PJRT_Event_IsReady returns true.
+// Returns `nullptr` if there is no error.
+// The returned error should be freed with `PJRT_Error_Destroy`.
+//
+// If `PJRT_Event_Await` has been called, this will return a pointer to an
+// identical error status as that call, as will subsequent calls to
+// `PJRT_Event_Error`. However, each of these `PJRT_Error *` pointers are
+// independent of `PJRT_Error *`s returned by other function calls, so they must
+// each be freed separately using `PJRT_Error_Destroy`.
+typedef PJRT_Error* PJRT_Event_Error(PJRT_Event_Error_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Event* event;
 } PJRT_Event_Await_Args;
 
 const size_t PJRT_Event_Await_Args_STRUCT_SIZE =
@@ -659,6 +678,7 @@ typedef struct {
 
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_IsReady);
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_Error);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Await);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Create);
