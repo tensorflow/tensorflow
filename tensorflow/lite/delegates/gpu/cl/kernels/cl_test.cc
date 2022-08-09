@@ -36,6 +36,10 @@ ClExecutionEnvironment::GetSupportedPrecisions() const {
 
 std::vector<TensorStorageType> ClExecutionEnvironment::GetSupportedStorages(
     DataType data_type) const {
+  if (data_type == DataType::FLOAT16 &&
+      !env_.GetDevicePtr()->GetInfo().SupportsFP16()) {
+    return {};
+  }
   return env_.GetSupportedStorages();
 }
 
