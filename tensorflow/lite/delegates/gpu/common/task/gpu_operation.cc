@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_replace.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
@@ -172,7 +173,7 @@ absl::Status GPUOperation::AddOperation(const GpuInfo& gpu_info,
   const auto prev_type = definition_.dst_tensors[0].GetDataType();
   definition_.dst_tensors[0] = operation->definition_.dst_tensors[0];
   linkable_count_ += (operation->linkable_count_ + 1);
-  std::string code = "{\n" + operation->elementwise_code_ + "\n}";
+  std::string code = operation->elementwise_code_;
   std::string unique_postfix = absl::StrCat("_link", linkable_count_);
   operation->args_.RenameArgs(unique_postfix, &code);
   if (elementwise_code_.empty()) {
@@ -182,9 +183,12 @@ absl::Status GPUOperation::AddOperation(const GpuInfo& gpu_info,
     code = absl::StrReplaceAll(code, {{"in_value", new_value_name}});
     elementwise_code_ =
         absl::StrReplaceAll(elementwise_code_, {{"out_value", new_value_name}});
-    elementwise_code_ = "{\n" + GetTypeDeclaration(gpu_info, prev_type, 4) +
-                        " " + new_value_name + ";\n" + elementwise_code_ +
-                        "\n" + code + "\n}\n";
+    const std::string out_var_declaration =
+        "\n" + GetTypeDeclaration(gpu_info, prev_type, 4) + " " +
+        new_value_name + ";\n";
+    elementwise_code_ =
+        absl::Substitute(elementwise_code_, out_var_declaration);
+    elementwise_code_ = elementwise_code_ + "\n" + code;
   }
   RETURN_IF_ERROR(args_.Merge(std::move(operation->args_), unique_postfix));
   for (int i = 0; i < operation->src_tensors_names_.size(); ++i) {
@@ -343,7 +347,9 @@ GPUOperation CreateGpuOperation(const OperationDef& definition,
       read_value_code += "  in2_value.z = in2_value.x;\n";
       read_value_code += "  in2_value.w = in2_value.x;\n";
     }
-    op.elementwise_code_ = read_value_code + op.elementwise_code_;
+    op.elementwise_code_ = "$0{" + read_value_code + op.elementwise_code_ + "}";
+  } else {
+    op.elementwise_code_ = "$0{" + op.elementwise_code_ + "}";
   }
   op.args_ = std::move(descriptor.args);
   for (int i = 1; i < definition.src_tensors.size(); ++i) {

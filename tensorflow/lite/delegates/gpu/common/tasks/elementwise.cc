@@ -38,17 +38,17 @@ std::string GetOneInputCode(const GpuInfo& gpu_info,
   std::string result;
   switch (op_type) {
     case OperationType::ABS:
-      result = "$0 = fabs($1);\n";
+      result = "$0 = fabs($1);";
       break;
     case OperationType::COS:
       if (use_native_opencl_functions) {
-        result = "$0 = convert_half4(native_cos(convert_float4($1)));\n";
+        result = "$0 = convert_half4(native_cos(convert_float4($1)));";
       } else {
-        result = "$0 = cos($1);\n";
+        result = "$0 = cos($1);";
       }
       break;
     case OperationType::COPY:
-      result = "$0 = $1;\n";
+      result = "$0 = $1;";
       break;
     case OperationType::ELU:
       if (gpu_info.IsApiOpenCl()) {
@@ -67,77 +67,77 @@ $0.w = $1.w < INIT_FLT(0.0f) ? exp($1.w) - INIT_FLT(1.0f) : $1.w;)";
       break;
     case OperationType::EXP:
       if (use_native_opencl_functions) {
-        result = "$0 = convert_half4(native_exp(convert_float4($1)));\n";
+        result = "$0 = convert_half4(native_exp(convert_float4($1)));";
       } else {
-        result = "$0 = exp($1);\n";
+        result = "$0 = exp($1);";
       }
       break;
     case OperationType::FLOOR:
-      result = "$0 = floor($1);\n";
+      result = "$0 = floor($1);";
       break;
     case OperationType::HARD_SWISH:
       result =
           "$0 = $1 * clamp($1 * INIT_FLT(0.16666667f) + INIT_FLT(0.5f), "
           "INIT_FLT4(0.0f), "
-          "INIT_FLT4(1.0f));\n";
+          "INIT_FLT4(1.0f));";
       break;
     case OperationType::LOG:
       if (use_native_opencl_functions) {
-        result = "$0 = convert_half4(native_log(convert_float4($1)));\n";
+        result = "$0 = convert_half4(native_log(convert_float4($1)));";
       } else {
-        result = "$0 = log($1);\n";
+        result = "$0 = log($1);";
       }
       break;
     case OperationType::NEG:
-      result = "$0 = -($1);\n";
+      result = "$0 = -($1);";
       break;
     case OperationType::RSQRT:
       if (use_native_opencl_functions) {
-        result = "$0 = convert_half4(native_rsqrt(convert_float4($1)));\n";
+        result = "$0 = convert_half4(native_rsqrt(convert_float4($1)));";
       } else {
-        result = "$0 = rsqrt($1);\n";
+        result = "$0 = rsqrt($1);";
       }
       break;
     case OperationType::SIGMOID:
       if (use_native_opencl_functions) {
         result =
             "$0 = convert_half4(native_recip(1.0f + "
-            "native_exp(convert_float4(-$1))));\n";
+            "native_exp(convert_float4(-$1))));";
       } else {
-        result = "$0 = INIT_FLT4(1.0f) / (INIT_FLT4(1.0f) + exp(-($1)));\n";
+        result = "$0 = INIT_FLT4(1.0f) / (INIT_FLT4(1.0f) + exp(-($1)));";
       }
       break;
     case OperationType::SIN:
       if (use_native_opencl_functions) {
-        result = "$0 = convert_half4(native_sin(convert_float4($1)));\n";
+        result = "$0 = convert_half4(native_sin(convert_float4($1)));";
       } else {
-        result = "$0 = sin($1);\n";
+        result = "$0 = sin($1);";
       }
       break;
     case OperationType::SQRT:
       if (use_native_opencl_functions) {
-        result = "$0 = convert_half4(native_sqrt(convert_float4($1)));\n";
+        result = "$0 = convert_half4(native_sqrt(convert_float4($1)));";
       } else {
-        result = "$0 = sqrt($1);\n";
+        result = "$0 = sqrt($1);";
       }
       break;
     case OperationType::SQUARE:
-      result = "$0 = $1 * $1;\n";
+      result = "$0 = $1 * $1;";
       break;
     case OperationType::TANH:
       if (use_native_opencl_functions) {
         result =
             "  FLT4 exp_val = convert_half4(native_exp(2.0f * "
-            "convert_float4($1)));\n";
+            "convert_float4($1)));";
         result +=
             "$0 = ((exp_val - INIT_FLT4(1.0f)) / (exp_val + "
-            "INIT_FLT4(1.0f)));\n";
+            "INIT_FLT4(1.0f)));";
       } else {
-        result = "$0 = tanh($1);\n";
+        result = "$0 = tanh($1);";
       }
       break;
     default:
-      return "Unknown operation type;\n";
+      return "Unknown operation type;";
   }
   return absl::Substitute(result, output_value, input_value);
 }
@@ -150,74 +150,74 @@ std::string GetTwoInputCode(const OperationType& op_type,
   std::string result;
   switch (op_type) {
     case OperationType::ADD:
-      result += "$0 = $1 + $2;\n";
+      result += "$0 = $1 + $2;";
       break;
     case OperationType::DIV:
-      result += "$0 = $1 / $2;\n";
+      result += "$0 = $1 / $2;";
       break;
     case OperationType::FLOOR_DIV:
-      result = "$0 = floor($1 / $2);\n";
+      result = "$0 = floor($1 / $2);";
       break;
     case OperationType::FLOOR_MOD:
-      result = "$0 = $1 - floor($1 / $2) * $2;\n";
+      result = "$0 = $1 - floor($1 / $2) * $2;";
       break;
     case OperationType::MAXIMUM:
-      result += "$0 = max($1, $2);\n";
+      result += "$0 = max($1, $2);";
       break;
     case OperationType::MINIMUM:
-      result += "$0 = min($1, $2);\n";
+      result += "$0 = min($1, $2);";
       break;
     case OperationType::MUL:
-      result += "$0 = $1 * $2;\n";
+      result += "$0 = $1 * $2;";
       break;
     case OperationType::POW:
-      result += "$0 = pow($1, $2);\n";
+      result += "$0 = pow($1, $2);";
       break;
     case OperationType::SQUARED_DIFF:
-      result += "$0 = ($1 - $2) * ($1 - $2);\n";
+      result += "$0 = ($1 - $2) * ($1 - $2);";
       break;
     case OperationType::SUB:
-      result += "$0 = $1 - $2;\n";
+      result += "$0 = $1 - $2;";
       break;
     // Comparison operators
     case OperationType::LESS:
       result = "$0.x = $1.x < $2.x;\n";
       result += "$0.y = $1.y < $2.y;\n";
       result += "$0.z = $1.z < $2.z;\n";
-      result += "$0.w = $1.w < $2.w;\n";
+      result += "$0.w = $1.w < $2.w;";
       break;
     case OperationType::LESS_EQUAL:
       result = "$0.x = $1.x <= $2.x;\n";
       result += "$0.y = $1.y <= $2.y;\n";
       result += "$0.z = $1.z <= $2.z;\n";
-      result += "$0.w = $1.w <= $2.w;\n";
+      result += "$0.w = $1.w <= $2.w;";
       break;
     case OperationType::GREATER:
       result = "$0.x = $1.x > $2.x;\n";
       result += "$0.y = $1.y > $2.y;\n";
       result += "$0.z = $1.z > $2.z;\n";
-      result += "$0.w = $1.w > $2.w;\n";
+      result += "$0.w = $1.w > $2.w;";
       break;
     case OperationType::GREATER_EQUAL:
       result = "$0.x = $1.x >= $2.x;\n";
       result += "$0.y = $1.y >= $2.y;\n";
       result += "$0.z = $1.z >= $2.z;\n";
-      result += "$0.w = $1.w >= $2.w;\n";
+      result += "$0.w = $1.w >= $2.w;";
       break;
     case OperationType::EQUAL:
       result = "$0.x = $1.x == $2.x;\n";
       result += "$0.y = $1.y == $2.y;\n";
       result += "$0.z = $1.z == $2.z;\n";
-      result += "$0.w = $1.w == $2.w;\n";
+      result += "$0.w = $1.w == $2.w;";
       break;
     case OperationType::NOT_EQUAL:
       result = "$0.x = $1.x != $2.x;\n";
       result += "$0.y = $1.y != $2.y;\n";
       result += "$0.z = $1.z != $2.z;\n";
-      result += "$0.w = $1.w != $2.w;\n";
+      result += "$0.w = $1.w != $2.w;";
       break;
     default:
-      return "Unknown operation type;\n";
+      return "Unknown operation type;";
   }
   if (swap_inputs) {
     return absl::Substitute(result, result_var, input1, input0);
