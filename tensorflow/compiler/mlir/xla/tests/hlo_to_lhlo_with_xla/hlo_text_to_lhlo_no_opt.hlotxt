@@ -27,7 +27,7 @@ update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
 // CHECK-LABEL: func @main
 // CHECK: "lmhlo.scatter"
 // CHECK: ^bb0(%[[ARG5:.*]]: tensor<i32>, %[[ARG6:.*]]: tensor<i32>):
-// CHECK:  "mhlo.return"(%[[ARG6]])
+// CHECK:  mhlo.return %[[ARG6]]
 // CHECK: indices_are_sorted = false
 // CHECK: update_window_dims = [1]
 // CHECK: inserted_window_dims = [0]
@@ -70,10 +70,10 @@ HloModule SelectAndScatter
 // CHECK: "lmhlo.select_and_scatter"(%{{.*}}, %{{.*}}, %[[GLOBAL_MEMREF]], %{{.*}})
 // CHECK: ^bb0(%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>):
 // CHECK: %[[COMPARE:.*]] = mhlo.compare GE, %[[ARG0]], %[[ARG1]]
-// CHECK: "mhlo.return"(%[[COMPARE]]) : (tensor<i1>) -> ()
+// CHECK: mhlo.return %[[COMPARE]] : tensor<i1>
 // CHECK: ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
 // CHECK: %[[ADD:.*]] = mhlo.add %[[ARG2]], %[[ARG3]]
-// CHECK: "mhlo.return"(%[[ADD]]) : (tensor<f32>) -> ()
+// CHECK: mhlo.return %[[ADD]] : tensor<f32>
 // CHECK: padding = dense<0> : tensor<1xi64>
 // CHECK: window_dimensions = dense<3> : tensor<1xi64>
 // CHECK: window_strides = dense<3> : tensor<1xi64>
@@ -165,7 +165,7 @@ add {
   // CHECK:  "lmhlo.all_reduce"([[VIEW0]], {{.*}})
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
-  // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+  // CHECK:    mhlo.return [[ADD]] : tensor<f32>
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
@@ -186,7 +186,7 @@ add {
 // CHECK:  "lmhlo.all_reduce"
 // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
 // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
-// CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+// CHECK:    mhlo.return [[ADD]] : tensor<f32>
 // CHECK:  }) {
 // CHECK-NOT:  channel_id
 // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 4]]> : tensor<2x4xi64>
@@ -216,7 +216,7 @@ add {
   // CHECK:  "lmhlo.all_reduce"([[VIEW0]], {{.*}})
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
-  // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+  // CHECK:    mhlo.return [[ADD]] : tensor<f32>
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, -1], [3, 4, 5, 6]]> : tensor<2x4xi64>
@@ -243,7 +243,7 @@ add {
   // CHECK:  [[TOKEN:%.*]] = "lmhlo_gpu.all_reduce_start"([[INPUT]], [[OUTPUT]])
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
-  // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+  // CHECK:    mhlo.return [[ADD]] : tensor<f32>
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
@@ -277,7 +277,7 @@ add {
   // CHECK:  [[TOKEN:%.*]] = "lmhlo_gpu.all_reduce_start"([[INPUT0]], [[INPUT1]], [[OUTPUT0]], [[OUTPUT1]])
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
-  // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+  // CHECK:    mhlo.return [[ADD]] : tensor<f32>
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
@@ -458,7 +458,7 @@ max {
 // CHECK: "mhlo.reduce_window"(%{{.*}}, %{{.*}}) ({
 // CHECK:   ^bb0(%[[ARG6:.*]]: tensor<f32>, %[[ARG7:.*]]: tensor<f32>):
 // CHECK:   %[[RET:.*]] = mhlo.maximum %[[ARG6]], %[[ARG7]] : tensor<f32>
-// CHECK:   "mhlo.return"(%[[RET]]) : (tensor<f32>) -> ()
+// CHECK:   mhlo.return %[[RET]] : tensor<f32>
 // CHECK: }) {
 // CHECK-SAME: padding = dense<{{\[}}[0, 0], [2, 0], [0, 2], [0, 0]{{\]}}> : tensor<4x2xi64>,
 // CHECK-SAME: window_dilations = dense<[1, 2, 2, 1]> : tensor<4xi64>,

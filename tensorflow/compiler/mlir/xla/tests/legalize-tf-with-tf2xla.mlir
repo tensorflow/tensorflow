@@ -189,7 +189,7 @@ func.func @sparse_to_dense(%arg0: tensor<3x2xi32>, %arg1: tensor<3xf32>, %arg2: 
 
 // CHECK:      %[[RESULT:.*]] = "mhlo.scatter"(%[[DEFAULT]], %[[ARG0]], %[[ARG1]]) ({
 // CHECK:      ^bb0(%[[ARG3:.*]]: tensor<f32>, %[[ARG4:.*]]: tensor<f32>):
-// CHECK:        "mhlo.return"(%[[ARG4]]) : (tensor<f32>) -> ()
+// CHECK:        mhlo.return %[[ARG4]] : tensor<f32>
 // CHECK:      })
 // CHECK-SAME: indices_are_sorted = false
 // CHECK-SAME: scatter_dimension_numbers

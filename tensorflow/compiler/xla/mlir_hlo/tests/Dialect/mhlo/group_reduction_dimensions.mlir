@@ -233,7 +233,7 @@ func.func @ignore_if_multiple_operands(%arg0: tensor<?x?x3x3xf32>,
   // CHECK-SAME:       (%[[E1:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>)
   // CHECK-DAG:    %[[A0_:.*]] = mhlo.add %[[E0]], %[[A0]]
   // CHECK-DAG:    %[[A1_:.*]] = mhlo.add %[[E1]], %[[A1]]
-  // CHECK:        "mhlo.return"(%[[A0_]], %[[A1_]])
+  // CHECK:        mhlo.return %[[A0_]], %[[A1_]]
   // CHECK:      return %[[RESULTS]]#0, %[[RESULTS]]#1
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %1:2 = mhlo.reduce(%arg0 init: %0), (%arg1 init: %0)

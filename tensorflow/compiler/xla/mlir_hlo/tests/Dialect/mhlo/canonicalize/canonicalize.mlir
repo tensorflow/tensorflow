@@ -2430,7 +2430,7 @@ func.func @sort_drop_second_arg(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> t
 // CHECK:         %[[RES:.+]] = "mhlo.sort"(%[[ARG0]])
 // CHECK:         ^bb0(%[[ARG2:.+]]: tensor<i32>, %[[ARG3:.+]]: tensor<i32>)
 // CHECK:           %[[CMP:.+]] = mhlo.compare GT, %[[ARG2]], %[[ARG3]] : (tensor<i32>, tensor<i32>) -> tensor<i1>
-// CHECK:           "mhlo.return"(%[[CMP]]) : (tensor<i1>) -> ()
+// CHECK:           mhlo.return %[[CMP]] : tensor<i1>
 // CHECK:         {dimension = 0 : i64, is_stable = false} : (tensor<3xi32>) -> tensor<3xi32>
 // CHECK:         return %[[RES]] : tensor<3xi32>
 

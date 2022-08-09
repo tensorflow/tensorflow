@@ -32,13 +32,13 @@ ENTRY %indexed_conditional () -> f32[] {
 // CHECK-DAG: %[[OPERAND_3:.*]] = mhlo.constant dense<1.300000e+01> : tensor<f32>
 // CHECK: %[[RESULT:.*]] = "mhlo.case"(%[[INDEX]]) ({
 // CHECK:     %[[RES_1:.*]] = mhlo.negate %[[OPERAND_1]] : tensor<f32>
-// CHECK:     "mhlo.return"(%[[RES_1]]) : (tensor<f32>) -> ()
+// CHECK:     mhlo.return %[[RES_1]] : tensor<f32>
 // CHECK:   },  {
 // CHECK:     %[[RES_2:.*]] = "mhlo.copy"(%[[OPERAND_2]]) : (tensor<f32>) -> tensor<f32>
-// CHECK:     "mhlo.return"(%[[RES_2]]) : (tensor<f32>) -> ()
+// CHECK:     mhlo.return %[[RES_2]] : tensor<f32>
 // CHECK:   },  {
 // CHECK:     %[[RES_3:.*]] = mhlo.floor %[[OPERAND_3]] : tensor<f32>
-// CHECK:     "mhlo.return"(%[[RES_3]]) : (tensor<f32>) -> ()
+// CHECK:     mhlo.return %[[RES_3]] : tensor<f32>
 // CHECK:   }) : (tensor<i32>) -> tensor<f32>
 // CHECK: return %[[RESULT]] : tensor<f32>
 
@@ -97,18 +97,18 @@ ENTRY %indexed_conditional () -> f32[] {
 // CHECK-DAG:    %[[OPERAND_3:.*]] = mhlo.constant dense<1.300000e+01> : tensor<f32>
 // CHECK-NEXT:    %[[CASE:.*]]:2 = "mhlo.case"(%[[OPERAND_0]]) ({
 // CHECK-NEXT:      %[[RES_1:.*]] = mhlo.negate %[[OPERAND_1]] : tensor<f32>
-// CHECK-NEXT:      "mhlo.return"(%[[RES_1]], %[[RES_1]]) : (tensor<f32>, tensor<f32>) -> ()
+// CHECK-NEXT:      mhlo.return %[[RES_1]], %[[RES_1]] : tensor<f32>, tensor<f32>
 // CHECK-NEXT:    },  {
 // CHECK-NEXT:      %[[RES_2:.*]] = "mhlo.copy"(%[[OPERAND_1]]) : (tensor<f32>) -> tensor<f32>
-// CHECK-NEXT:      "mhlo.return"(%[[RES_2]], %[[RES_2]]) : (tensor<f32>, tensor<f32>) -> ()
+// CHECK-NEXT:      mhlo.return %[[RES_2]], %[[RES_2]] : tensor<f32>, tensor<f32>
 // CHECK-NEXT:    },  {
 // CHECK-NEXT:      %[[FLOOR_1:.*]] = mhlo.floor %[[OPERAND_2]] : tensor<f32>
 // CHECK-NEXT:      %[[FLOOR_2:.*]] = mhlo.floor %[[OPERAND_3]] : tensor<f32>
 // CHECK-NEXT:      %[[RES_3:.*]] = mhlo.add %[[FLOOR_1]], %[[FLOOR_2]] : tensor<f32>
-// CHECK-NEXT:      "mhlo.return"(%[[RES_3]], %[[RES_3]]) : (tensor<f32>, tensor<f32>) -> ()
+// CHECK-NEXT:      mhlo.return %[[RES_3]], %[[RES_3]] : tensor<f32>, tensor<f32>
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      %[[CST:.*]] = mhlo.constant
-// CHECK-NEXT:      "mhlo.return"(%[[CST]], %[[CST]]) : (tensor<f32>, tensor<f32>) -> ()
+// CHECK-NEXT:      mhlo.return %[[CST]], %[[CST]] : tensor<f32>, tensor<f32>
 // CHECK-NEXT:    }) : (tensor<i32>) -> (tensor<f32>, tensor<f32>)
 // CHECK-NEXT:    %[[TUPLE:.*]] = "mhlo.tuple"(%[[CASE]]#0, %[[CASE]]#1)
 // CHECK-NEXT:    return %[[TUPLE]] : tuple<tensor<f32>, tensor<f32>>
