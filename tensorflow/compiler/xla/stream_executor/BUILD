@@ -62,7 +62,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/stream_executor/cuda:cuda_dnn_headers",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -378,8 +377,7 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/stream_executor/cuda:cuda_dnn_headers",
-        # TODO(rdzhabarov): dependencies below only needed until stream_executor/cuda is not mirgated to xla/compiler.
+        # TODO(rdzhabarov): dependencies below only needed until stream_executor/cuda is migrated to xla/compiler.
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:temporary_device_memory",

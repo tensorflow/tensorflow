@@ -40,10 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_memory_manager.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_dnn.h"
-#endif  // GOOGLE_CUDA
-
 namespace stream_executor {
 
 namespace host {

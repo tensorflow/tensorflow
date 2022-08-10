@@ -410,6 +410,9 @@ cc_library(
     textual_hdrs = ["cuda_dnn.h"],
     deps = if_cuda_is_configured([
         ":cuda_activation_header",
+        "//tensorflow/stream_executor:dnn",
+        "//tensorflow/stream_executor:plugin_registry",
+        "//tensorflow/stream_executor/lib",
     ]),
 )
 

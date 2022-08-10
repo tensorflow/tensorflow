@@ -39,9 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
-#if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_dnn.h"
-#endif  // GOOGLE_CUDA
 
 namespace stream_executor {
 
