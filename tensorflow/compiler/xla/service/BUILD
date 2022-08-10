@@ -5564,6 +5564,7 @@ cc_library(
     hdrs = ["tuple_util.h"],
     deps = [
         ":hlo",
+        ":hlo_value",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -5578,6 +5579,7 @@ tf_cc_test(
         ":tuple_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/memory",

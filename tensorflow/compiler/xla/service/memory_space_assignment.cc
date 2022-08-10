@@ -3567,9 +3567,10 @@ Status MemorySpaceAssignment::Allocation::Process() {
     if (operand_shape.IsTuple()) {
       TF_ASSIGN_OR_RETURN(
           replacement_instruction,
-          ReplaceTupleWith(producing_instruction,
-                           use.instruction->mutable_operand(use.operand_number),
-                           use.operand_index));
+          TupleUtil::ReplaceTupleWith(
+              producing_instruction,
+              use.instruction->mutable_operand(use.operand_number),
+              use.operand_index));
     } else if (operand_shape != producing_instruction->shape()) {
       VLOG(4) << "Old shape = " << operand_shape.ToString()
               << ", new shape = " << producing_instruction->shape().ToString()
@@ -3583,122 +3584,14 @@ Status MemorySpaceAssignment::Allocation::Process() {
   return OkStatus();
 }
 
-StatusOr<HloInstruction*> MemorySpaceAssignment::Allocation::ReplaceTupleWith(
-    HloInstruction* new_instruction, HloInstruction* tuple,
-    ShapeIndex shape_index) {
-  const Shape& tuple_shape = tuple->shape();
-  CHECK(tuple->shape().IsTuple())
-      << "ReplaceTupleWith was called for a non-tuple. Tuple = "
-      << tuple->ToString()
-      << ", new_instruction = " << new_instruction->ToString()
-      << ", shape_index = " << shape_index.ToString();
-  // Check if the new instruction is a get-tuple-element of the correct index of
-  // the tuple, and if so, simply return tuple.
-  const HloInstruction* instruction = new_instruction;
-  bool equivalent = true;
-  for (int i = shape_index.size() - 1; i >= 0; --i) {
-    int index = shape_index[i];
-    if (instruction->opcode() != HloOpcode::kGetTupleElement ||
-        instruction->tuple_index() != index) {
-      equivalent = false;
-      break;
-    }
-    instruction = instruction->operand(0);
-  }
-  if (equivalent && instruction == tuple) {
-    VLOG(4) << "Instruction " << new_instruction->ToShortString()
-            << " already exists at index " << shape_index.ToString() << " of "
-            << tuple->ToShortString();
-    return tuple;
-  }
-
-  HloComputation* computation = new_instruction->parent();
-  std::vector<HloInstruction*> tuple_args(tuple_shape.tuple_shapes_size());
-  CHECK_GE(tuple_shape.tuple_shapes_size(), shape_index[0]);
-  for (int i = 0; i < tuple_shape.tuple_shapes_size(); ++i) {
-    const Shape& subshape = tuple_shape.tuple_shapes(i);
-    // If tuple is a tuple instruction, we can get the tuple instruction's
-    // operand to construct the new tuple to improve compilation time
-    // performance.
-    auto get_operand = [&]() {
-      if (tuple->opcode() == HloOpcode::kTuple) {
-        return tuple->mutable_operand(i);
-      } else {
-        return computation->AddInstruction(
-            HloInstruction::CreateGetTupleElement(subshape, tuple, i));
-      }
-    };
-    if (i == shape_index[0]) {
-      // If the subshape is still a tuple, recurse and pass a new shape index
-      // for the one level deeper.
-      if (subshape.IsTuple()) {
-        TF_ASSIGN_OR_RETURN(tuple_args[i],
-                            ReplaceTupleWith(new_instruction, get_operand(),
-                                             ShapeIndex(shape_index.begin() + 1,
-                                                        shape_index.end())));
-      } else {
-        if (subshape != new_instruction->shape()) {
-          VLOG(4) << "Old shape = " << subshape.ToString()
-                  << ", new shape = " << new_instruction->shape().ToString()
-                  << "; inserting a bitcast.";
-          new_instruction = computation->AddInstruction(
-              HloInstruction::CreateBitcast(subshape, new_instruction));
-        } else if (tuple->opcode() == HloOpcode::kTuple &&
-                   tuple->operand(i) == new_instruction) {
-          // If the tuple element is the same as the new instruction, we
-          // actually don't have to create a new tuple, just return the original
-          // tuple.
-          VLOG(4) << "Tuple already contains the new instruction = "
-                  << new_instruction->ToShortString()
-                  << " tuple = " << tuple->ToShortString();
-          return tuple;
-        }
-        tuple_args[i] = new_instruction;
-      }
-    } else {
-      tuple_args[i] = get_operand();
-    }
-  }
-  if (shape_index[0] == tuple_shape.tuple_shapes_size()) {
-    // If shape_index[0] is equal to the tuple shape size, add the new
-    // instruction as an additional argument.
-    tuple_args.push_back(new_instruction);
-  }
-  return computation->AddInstruction(HloInstruction::CreateTuple(tuple_args));
-}
-
 HloInstruction* MemorySpaceAssignment::Allocation::AddGetTupleElements() const {
-  HloInstruction* producing_instruction = defining_position().instruction;
-  CHECK_NE(producing_instruction, nullptr);
+  CHECK_NE(defining_position().instruction, nullptr);
 
   Shape shape = defining_position().shape();
   CHECK(shape.IsArray()) << "Allocation shape is not an array. Shape = "
                          << shape.ToString()
                          << " position = " << defining_position().shape();
-  HloComputation* computation = producing_instruction->parent();
-
-  // If the instruction we're processing is a tuple, we (recursively) search or
-  // create kGetTupleElement instructions and copy that value. Asynchronous
-  // copies only support array types.
-  for (int64_t index : defining_position().index) {
-    // We first search if there already is a get-tuple-element with the correct
-    // index. If there is no such get-tuple-element, we create one.
-    auto gte_it = absl::c_find_if(
-        producing_instruction->users(), [index](const HloInstruction* use) {
-          return use != use->parent()->root_instruction() &&
-                 use->opcode() == HloOpcode::kGetTupleElement &&
-                 use->tuple_index() == index;
-        });
-    if (gte_it != producing_instruction->users().end()) {
-      producing_instruction = *gte_it;
-    } else {
-      producing_instruction =
-          computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-              producing_instruction->shape().tuple_shapes(index),
-              producing_instruction, index));
-    }
-  }
-  return producing_instruction;
+  return TupleUtil::AddGetTupleElements(defining_position());
 }
 
 std::string MemorySpaceAssignment::Allocation::ToString() const {
@@ -3762,9 +3655,9 @@ Status MemorySpaceAssignment::CopyAllocation::Process() {
     if (operand_shape.IsTuple()) {
       TF_ASSIGN_OR_RETURN(
           replacement_instruction,
-          ReplaceTupleWith(copy_done_,
-                           use.instruction->mutable_operand(use.operand_number),
-                           use.operand_index));
+          TupleUtil::ReplaceTupleWith(
+              copy_done_, use.instruction->mutable_operand(use.operand_number),
+              use.operand_index));
     } else if (operand_shape != copy_done_->shape()) {
       VLOG(4) << "Old shape = " << operand_shape.ToString()
               << ", new shape = " << copy_done_->shape().ToString()
@@ -3793,10 +3686,11 @@ Status MemorySpaceAssignment::ParentAllocation::Process() {
       original_allocation_.AddGetTupleElements();
   int new_tuple_index = calling_instruction_->shape().tuple_shapes_size();
 
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_while_operand,
-                      ReplaceTupleWith(producing_instruction,
-                                       calling_instruction_->mutable_operand(0),
-                                       {new_tuple_index}));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * new_while_operand,
+      TupleUtil::ReplaceTupleWith(producing_instruction,
+                                  calling_instruction_->mutable_operand(0),
+                                  {new_tuple_index}));
   TF_RETURN_IF_ERROR(calling_instruction_->ReplaceOperandWithDifferentShape(
       0, new_while_operand));
   *calling_instruction_->mutable_shape() = new_while_operand->shape();
@@ -3825,10 +3719,10 @@ Status MemorySpaceAssignment::ParentAllocation::PostProcess() {
   // new root. Doing the post-process step later ensures the root has been
   // updated with other changes, and we can safely add the additional parameter.
   HloComputation* while_body = calling_instruction_->while_body();
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * new_while_body_root,
-      ReplaceTupleWith(AddGetTupleElements(), while_body->root_instruction(),
-                       defining_position_.index));
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_while_body_root,
+                      TupleUtil::ReplaceTupleWith(
+                          AddGetTupleElements(), while_body->root_instruction(),
+                          defining_position_.index));
   while_body->set_root_instruction(new_while_body_root,
                                    /*accept_different_shape=*/true);
   return OkStatus();

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_TUPLE_UTIL_H_
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 
 namespace xla {
 class TupleUtil {
@@ -46,6 +47,16 @@ class TupleUtil {
   static HloInstruction* Duplicate(HloInstruction* input_tuple) {
     return ExtractPrefix(input_tuple, input_tuple->shape().tuple_shapes_size());
   }
+
+  // Descend to the shape_index element of the tuple and replace that with
+  // new_instruction.
+  static StatusOr<HloInstruction*> ReplaceTupleWith(
+      HloInstruction* new_instruction, HloInstruction* tuple,
+      ShapeIndex shape_index);
+
+  // Recursively create kGetTupleElement instructions if the defining position
+  // shape is not an array. Returns the new instruction that has array shape.
+  static HloInstruction* AddGetTupleElements(const HloPosition& position);
 };
 }  // namespace xla
 
