@@ -308,7 +308,7 @@ class PartitionedHlo {
   // A cache for resharding each partitioned HLO.
   struct ReshardCache {
     struct PerHloCache {
-      std::vector<std::pair<HloSharding, PartitionedHlo>> reshard_cache;
+      absl::flat_hash_map<HloSharding, PartitionedHlo> reshard_cache;
       std::vector<
           std::tuple<HloSharding, Window, WindowedInputShardReturnValue>>
           window_reshard_cache;

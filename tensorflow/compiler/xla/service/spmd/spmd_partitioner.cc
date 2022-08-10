@@ -386,20 +386,19 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target) {
   const bool use_cache =
       !is_to_replicate || state_.partitioner->options().cache_all_gather;
   if (use_cache) {
-    for (auto& entry : cache) {
-      if (entry.first == target) {
-        return entry.second;
-      }
+    auto it = cache.find(target);
+    if (it != cache.end()) {
+      return it->second;
     }
   }
   auto resharded = ReshardNoCache(target);
   state_.reshard_cache->per_hlo_cache[resharded.hlo()]
-      .reshard_cache.emplace_back(sharding(), *this);
+      .reshard_cache.insert_or_assign(sharding(), *this);
   if (use_cache) {
     // Get the cache again as it might be invalidated by the insertion above.
     auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
-    cache.emplace_back(target, std::move(resharded));
-    return cache.back().second;
+    auto [it, _] = cache.insert_or_assign(target, std::move(resharded));
+    return it->second;
   }
   return resharded;
 }
@@ -1142,12 +1141,13 @@ PartitionedHlo PartitionedHlo::Replicate() {
   }
   auto update_cache = [&](PartitionedHlo resharded) {
     state_.reshard_cache->per_hlo_cache[resharded.hlo()]
-        .reshard_cache.emplace_back(sharding, *this);
+        .reshard_cache.insert_or_assign(sharding, *this);
     // Get the cache again as it might be invalidated by the insertion above.
     auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
     if (state_.partitioner->options().cache_all_gather) {
-      cache.emplace_back(HloSharding::Replicate(), std::move(resharded));
-      return cache.back().second;
+      auto [it, _] = cache.insert_or_assign(HloSharding::Replicate(),
+                                            std::move(resharded));
+      return it->second;
     }
     return resharded;
   };
