@@ -68,7 +68,7 @@ class DelegateCompatibilityCheckerBase {
 
   // Sets the parameters needed in the specific DCC. Also checks if the
   // value types are correct.
-  virtual void setDccConfigurations(
+  virtual absl::Status setDccConfigurations(
       const std::unordered_map<std::string, std::string>& dcc_configs) = 0;
 
  private:
