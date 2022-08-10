@@ -49,3 +49,10 @@ cc_library(
         "@tf_runtime//:support",
     ],
 )
+
+cc_library(
+    name = "type_id",
+    hdrs = ["type_id.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@llvm-project//mlir:Support"],
+)
