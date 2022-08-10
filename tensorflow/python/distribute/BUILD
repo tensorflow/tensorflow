@@ -2340,6 +2340,7 @@ tpu_py_test(
     name = "tpu_strategy_model_parallelism_test",
     srcs = ["tpu_strategy_model_parallelism_test.py"],
     disable_experimental = True,  # b/202779350
+    disable_mlir_bridge = False,
     disable_v3_4chips = False,
     python_version = "PY3",
     tags = [
