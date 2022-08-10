@@ -7,7 +7,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts", "tf_xla_acl_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_openmp_copts")
 load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
@@ -350,7 +350,7 @@ cc_library(
         "windows_compatibility.h",
     ],
     hdrs = ["simple_orc_jit.h"],
-    copts = tf_xla_acl_copts(),
+    copts = tf_copts(),
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
@@ -602,7 +602,7 @@ cc_library(
     hdrs = [
         "dot_op_emitter.h",
     ],
-    copts = tf_xla_acl_copts(),
+    copts = tf_copts(),
     deps = [
         ":cpu_options",
         ":cpu_runtime",
@@ -864,7 +864,7 @@ cc_library(
     name = "runtime_matmul_acl",
     srcs = ["runtime_matmul_acl.cc"],
     hdrs = ["runtime_matmul_acl.h"],
-    copts = tf_xla_acl_copts(),
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_lightweight_check",
@@ -883,7 +883,7 @@ cc_library(
         "runtime_conv2d_acl.cc",
     ],
     hdrs = ["runtime_conv2d_acl.h"],
-    copts = tf_xla_acl_copts(),
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_conv2d",
@@ -1045,6 +1045,7 @@ tf_cc_test(
         ":cpu_runtime",
         ":runtime_custom_call_status",
         ":runtime_matmul",
+        ":runtime_matmul_acl",
         ":runtime_matmul_mkl",
         ":runtime_single_threaded_matmul",
         "//tensorflow/compiler/xla:array2d",

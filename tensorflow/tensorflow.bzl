@@ -407,6 +407,7 @@ def tf_copts(
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
         if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
+        if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
@@ -425,14 +426,6 @@ def tf_copts(
             "//conditions:default": ["-pthread"],
         })
     )
-
-def tf_xla_acl_opts_defines():
-    return [
-        "-DXLA_CPU_USE_ACL=1",
-    ]
-
-def tf_xla_acl_copts():
-    return if_enable_acl(tf_xla_acl_opts_defines())
 
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
@@ -1373,6 +1366,7 @@ def tf_cc_test(
                 "-lpthread",
                 "-lm",
             ],
+            "//third_party/compute_library:build_with_acl": ["-fopenmp"],
         }) + linkopts + _rpath_linkopts(name),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
