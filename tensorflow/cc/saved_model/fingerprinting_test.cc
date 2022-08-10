@@ -70,6 +70,7 @@ TEST(FingerprintingTest, TestCreateFingerprint) {
       CreateFingerprintDef(saved_model_pb.meta_graphs(0));
 
   EXPECT_GT(fingerprint_def.graph_def_checksum(), 0);
+  EXPECT_EQ(fingerprint_def.graph_def_program_hash(), 10127142238652115842U);
   EXPECT_EQ(fingerprint_def.signature_def_hash(), 5693392539583495303);
   EXPECT_EQ(fingerprint_def.saved_object_graph_hash(), 3678101440349108924);
 }

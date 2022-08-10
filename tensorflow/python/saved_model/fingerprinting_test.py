@@ -41,12 +41,12 @@ class FingerprintingTest(test.TestCase):
     self.addCleanup(shutil.rmtree, save_dir)
     return save_dir
 
-  def _create_saved_model_with_function(self):
+  def _create_model_with_function(self):
     root = autotrackable.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
     return root
 
-  def _create_saved_model_with_input_signature(self):
+  def _create_model_with_input_signature(self):
     root = autotrackable.AutoTrackable()
     root.f = def_function.function(
         lambda x: 2. * x,
@@ -75,12 +75,12 @@ class FingerprintingTest(test.TestCase):
     # We cannot check this value due to non-determinism in serialization.
     self.assertGreater(fingerprint_def.graph_def_checksum, 0)
     self.assertEqual(fingerprint_def.graph_def_program_hash,
-                     16358308617800096964)
+                     14830488309055091319)
     self.assertEqual(fingerprint_def.signature_def_hash, 1050878586713189074)
 
   def test_model_saved_with_different_signature_options(self):
-    model = self._create_saved_model_with_function()
-    # Save the model with signatures specified in SaveOptions,.
+    model = self._create_model_with_function()
+    # Save the model with signatures specified in SaveOptions.
     sig_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(
         model,
@@ -92,7 +92,7 @@ class FingerprintingTest(test.TestCase):
     save.save(model, no_sig_dir)
     # Save the model with an input signature specified.
     input_sig_dir = os.path.join(self.get_temp_dir(), "saved_model3")
-    save.save(self._create_saved_model_with_input_signature(), input_sig_dir)
+    save.save(self._create_model_with_input_signature(), input_sig_dir)
 
     fingerprint_sig = self._read_fingerprint(
         file_io.join(sig_dir, constants.FINGERPRINT_FILENAME))

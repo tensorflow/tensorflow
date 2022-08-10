@@ -43,18 +43,34 @@ namespace tensorflow::fingerprinting {
 
 namespace {
 
-// This function mutates the GraphDef, changing the names and config_proto's
+// Returns the suffix UID of `function_name`.
+StatusOr<int> GetSuffixUID(absl::string_view function_name) {
+  std::vector<std::string> v = absl::StrSplit(function_name, '_');
+  int uid;
+  if (!strings::safe_strto32(v.back(), &uid)) {
+    return errors::InvalidArgument(absl::StrCat(
+        "Function name: `", function_name, "` does not end in an integer."));
+  }
+  return uid;
+}
+
+// This function mutates `graph_def`, changing the names and config_proto's
 // of the Function nodes.
-void CanonicalizeNodes(GraphDef* orig_graph_def) {
-  for (NodeDef& node : *orig_graph_def->mutable_node()) {
+void CanonicalizeNodes(GraphDef* graph_def) {
+  for (NodeDef& node : *graph_def->mutable_node()) {
     // Check if this is a function call.
     if (grappler::IsPartitionedCall(node) ||
         grappler::IsStatefulPartitionedCall(node)) {
-      // TODO(b/240174577): Strip UID from the end of function names.
       // Regularize "f" attribute, the function name for PartitionedCall and
-      // and StatefulPartitionedCall ops.
-      node.mutable_attr()->find("f")->second.mutable_func()->set_name(
-          "FINGERPRINT_PASS");
+      // and StatefulPartitionedCall ops, by stripping the suffix UID if it
+      // has one.
+      std::string function_name = node.attr().find("f")->second.func().name();
+      StatusOr<int> uid = GetSuffixUID(function_name);
+      if (uid.ok()) {
+        node.mutable_attr()->find("f")->second.mutable_func()->set_name(
+            std::string(
+                absl::StripSuffix(function_name, std::to_string(*uid))));
+      }
       // Erase the "config_proto" attribute which contains device-specific
       // information.
       node.mutable_attr()->find("config_proto")->second.mutable_s()->erase();
@@ -66,17 +82,6 @@ void CanonicalizeNodes(GraphDef* orig_graph_def) {
       }
     }
   }
-}
-
-// Returns the suffix UID of `function_name`.
-StatusOr<int> GetSuffixUID(absl::string_view function_name) {
-  std::vector<std::string> v = absl::StrSplit(function_name, '_');
-  int uid;
-  if (!strings::safe_strto32(v.back(), &uid)) {
-    return errors::InvalidArgument(absl::StrCat(
-        "Function name: `", function_name, "` does not end in an integer."));
-  }
-  return uid;
 }
 
 }  // namespace

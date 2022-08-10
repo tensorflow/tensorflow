@@ -35,7 +35,7 @@ class FingerprintingTest(test.TestCase):
     # in serialization.
     self.assertGreater(fingerprint_def.graph_def_checksum, 0)
     self.assertEqual(fingerprint_def.graph_def_program_hash,
-                     13188891313422428336)
+                     10127142238652115842)
     self.assertEqual(fingerprint_def.signature_def_hash, 5693392539583495303)
     self.assertEqual(fingerprint_def.saved_object_graph_hash,
                      3678101440349108924)
