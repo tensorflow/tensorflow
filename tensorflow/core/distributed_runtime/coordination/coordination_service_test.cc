@@ -1341,6 +1341,23 @@ TEST_F(CoordinateTwoTasksTest,
   EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
 }
 
+TEST_F(CoordinateTwoTasksTest, UnrecoverableTaskPropagatesError) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/false,
+                            /*set_worker_job_recoverable=*/false);
+
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+
+  TF_ASSERT_OK(
+      coord_service_->ReportTaskError(task_0_, errors::Internal("test_error")));
+
+  EXPECT_TRUE(errors::IsInternal(
+      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
+  // For unrecoverable task, error propagates to all connected tasks.
+  EXPECT_TRUE(errors::IsInternal(client_1_.GetStatus()));
+}
+
 TEST_F(CoordinateTwoTasksTest, RecoverableTaskWillNotPropagateError) {
   EnableCoordinationService(/*has_service_to_client_connection=*/true,
                             /*enable_shutdown_barrier=*/false,
@@ -1349,23 +1366,18 @@ TEST_F(CoordinateTwoTasksTest, RecoverableTaskWillNotPropagateError) {
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 
-  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
-  // Heartbeat should be allowed for a short grace period after reset.
-  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
-  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_));
+  TF_ASSERT_OK(
+      coord_service_->ReportTaskError(task_0_, errors::Internal("test_error")));
 
-  // Heartbeat failure should be triggered for disconnected task after grace
-  // period, but if the task is recoverable, error should not be propagated.
-  Env::Default()->SleepForMicroseconds(
-      absl::ToInt64Microseconds(kHeartbeatTimeout));
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(errors::IsInternal(
       coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
   // Since no error propagation for recoverable tasks, other tasks should work
   // as normal.
-  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_));
+  TF_EXPECT_OK(client_1_.GetStatus());
 }
 
-TEST_F(CoordinateTwoTasksTest, RecoverableTaskResetAndRegisterAgain) {
+TEST_F(CoordinateTwoTasksTest,
+       RecoverableTaskReportErrorResetAndRegisterAgain) {
   EnableCoordinationService(/*has_service_to_client_connection=*/true,
                             /*enable_shutdown_barrier=*/false,
                             /*set_worker_job_recoverable=*/true);
@@ -1373,24 +1385,19 @@ TEST_F(CoordinateTwoTasksTest, RecoverableTaskResetAndRegisterAgain) {
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 
-  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
-  // Heartbeat should be allowed for a short grace period after reset.
-  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
-  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_));
+  TF_ASSERT_OK(
+      coord_service_->ReportTaskError(task_0_, errors::Internal("test_error")));
 
-  // Heartbeat failure should be triggered for disconnected task after grace
-  // period, but if the task is recoverable, error should not be propagated.
-  Env::Default()->SleepForMicroseconds(
-      absl::ToInt64Microseconds(kHeartbeatTimeout));
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(errors::IsInternal(
       coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
   // Since no error propagation for recoverable tasks, other tasks should work
   // as normal.
-  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_));
+  TF_EXPECT_OK(client_1_.GetStatus());
 
-  // Register the reset task again, both tasks should be healthy.
+  // Reset and register the error task again, both tasks should be healthy.
+  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
-  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_));
+  TF_EXPECT_OK(client_1_.GetStatus());
 }
 }  // namespace tensorflow

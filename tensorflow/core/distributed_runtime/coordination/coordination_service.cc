@@ -273,7 +273,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   // use a set.
   absl::flat_hash_set<std::string> ongoing_barriers_ TF_GUARDED_BY(state_mu_);
 
-  absl::flat_hash_set<absl::string_view> recoverable_jobs_;
+  absl::flat_hash_set<std::string> recoverable_jobs_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CoordinationServiceStandaloneImpl);
 };
@@ -362,7 +362,7 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
       server_def.default_session_config().experimental().coordination_config();
   const std::unordered_set<std::string> coordinated_jobs(
       configs.coordinated_jobs().cbegin(), configs.coordinated_jobs().cend());
-  recoverable_jobs_ = absl::flat_hash_set<absl::string_view>(
+  recoverable_jobs_ = absl::flat_hash_set<std::string>(
       configs.recoverable_jobs().cbegin(), configs.recoverable_jobs().cend());
   const auto& cluster_def = server_def.cluster();
   for (const auto& job : cluster_def.job()) {
