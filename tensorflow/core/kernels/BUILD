@@ -3620,7 +3620,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
         ":matmul_util",
-        "//tensorflow/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
     ]),
@@ -3636,8 +3636,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/util:env_var",
-        "//tensorflow/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/stream_executor/cuda:cublas_lt_header",
     ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
