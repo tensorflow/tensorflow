@@ -39,6 +39,8 @@ PROJECT=/tmp/project
 TF_THIRD_PARTY=/tmp/tf_third_party
 # LINT.ThenChange(//tensorflow/tools/pip_package/xla_build/pip_test/CMakeLists.txt)
 
+export PATH=$PATH:${HOME}/.local/bin
+
 rm -rf "${GEN_ROOT}" "${PROJECT}" "${TF_THIRD_PARTY}"
 
 # We don't want to -Itensorflow, to avoid unwanted dependencies.
