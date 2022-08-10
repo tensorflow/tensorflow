@@ -443,9 +443,6 @@ def ConstantFoldingPass : Pass<"tfg-constant-folding", "GraphFuncOp"> {
 
   let constructor = "CreateConstantFoldingPass()";
   let options = [
-   ListOption<"nodes_to_preserve_", "nodes-to-preserve", "std::string",
-              "Comma separated list of ops that won't be optimized.",
-              "llvm::cl::ZeroOrMore">,
    ListOption<"feeds_", "feeds", "std::string",
               "Comma separated list of feed ops.", "llvm::cl::ZeroOrMore">,
    ListOption<"fetches_", "fetches", "std::string",
