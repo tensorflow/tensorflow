@@ -544,6 +544,8 @@ message ConfigProto {
   // (for example during a PartitionedCallOp).
   bool share_cluster_devices_in_session = 17;
 
+  uint64 device_finder_timeout_in_micros = 18;
+
   // Everything inside Experimental is subject to change and is not subject
   // to API stability guarantees in
   // https://www.tensorflow.org/guide/version_compat.
@@ -720,7 +722,7 @@ message ConfigProto {
 
   Experimental experimental = 16;
 
-  // Next: 18
+  // Next: 19
 }
 
 // Options for a single Run() call.

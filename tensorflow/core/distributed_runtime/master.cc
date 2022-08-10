@@ -34,6 +34,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/remote_device.h"
@@ -60,8 +61,6 @@ namespace tensorflow {
 
 namespace {
 constexpr char kGrpcPrefixRegex[] = "^grpc.*://";
-constexpr char kDeviceFinderWaitForWorkerTimeoutMicros[] =
-    "DEVICE_FINDER_WAIT_FOR_WORKER_TIMEOUT_MICROS";
 }  // namespace
 
 Master::Master(MasterEnv* env, double session_gc_seconds)
@@ -139,8 +138,10 @@ class DeviceFinder {
   static Status GetRemoteDevices(
       const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env,
       WorkerCacheInterface* worker_cache,
-      std::vector<std::unique_ptr<Device>>* out_remote) {
-    DeviceFinder finder(device_filters, env, worker_cache);
+      std::vector<std::unique_ptr<Device>>* out_remote,
+      uint64 device_finder_timeout_in_micros) {
+    DeviceFinder finder(device_filters, env, worker_cache,
+                        device_finder_timeout_in_micros);
     finder.Start();
     TF_RETURN_IF_ERROR(finder.Wait());
     finder.GetRemoteDevices(env->local_devices, out_remote);
@@ -149,25 +150,22 @@ class DeviceFinder {
 
   static void GetRemoteWorkers(
       const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env,
-      WorkerCacheInterface* worker_cache, std::vector<string>* workers) {
-    DeviceFinder finder(device_filters, env, worker_cache);
+      WorkerCacheInterface* worker_cache, std::vector<string>* workers,
+      uint64 device_finder_timeout_in_micros) {
+    DeviceFinder finder(device_filters, env, worker_cache,
+                        device_finder_timeout_in_micros);
     *workers = finder.targets_;
   }
 
  private:
   explicit DeviceFinder(
       const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env,
-      WorkerCacheInterface* worker_cache)
+      WorkerCacheInterface* worker_cache, uint64 timeout_in_micros)
       : env_(env), worker_cache_(worker_cache) {
-    CHECK(worker_cache) << "Worker cache was null!";
-
-    const char* wait_for_worker_timeout_micros_str =
-        std::getenv(kDeviceFinderWaitForWorkerTimeoutMicros);
-    if (wait_for_worker_timeout_micros_str != nullptr) {
-      strings::safe_strtou64(wait_for_worker_timeout_micros_str,
-                             &wait_for_worker_timeout_micros_);
+    if (timeout_in_micros > 0) {
+      DeviceFinder::timeout_in_micros_ = timeout_in_micros;
     }
-
+    CHECK(worker_cache) << "Worker cache was null!";
     auto process_filter = [this](const string& filter) {
       DeviceNameUtils::ParsedName parsed;
       if (DeviceNameUtils::ParseFullName(filter, &parsed)) {
@@ -270,7 +268,7 @@ class DeviceFinder {
 
   Status Wait() {
     mutex_lock l(mu_);
-    auto start_time = env_->env->NowMicros();
+    const auto start_time = env_->env->NowMicros();
     while (num_pending_ != 0) {
       pending_zero_.wait_for(l, std::chrono::milliseconds(kLoggingPeriodMs));
       if (num_pending_ != 0) {
@@ -282,16 +280,16 @@ class DeviceFinder {
           }
         }
       }
-      if (env_->env->NowMicros() - start_time >
-          wait_for_worker_timeout_micros_) {
-        std::string unseen_workers;
+      if (env_->env->NowMicros() - start_time > timeout_in_micros_) {
+        std::vector<absl::string_view> unseen_workers;
         for (size_t i = 0; i < targets_.size(); ++i) {
           if (!seen_targets_[i]) {
-            unseen_workers += " " + targets_[i];
+            unseen_workers.push_back(targets_[i]);
           }
         }
         return errors::DeadlineExceeded(
-            "Unable to get responses from workers: ", unseen_workers);
+            "Unable to get responses from workers: ",
+            absl::StrJoin(unseen_workers, ", "));
       }
     }
     return status_;
@@ -318,7 +316,7 @@ class DeviceFinder {
   const MasterEnv* env_;
   WorkerCacheInterface* worker_cache_;
   std::vector<DeviceNameUtils::ParsedName> filters_;
-  uint64 wait_for_worker_timeout_micros_ = 1000000;  // Default to 1 sec.
+  uint64 timeout_in_micros_ = 1000000;  // Default to 1 sec.
 
   mutex mu_;
   int num_pending_ TF_GUARDED_BY(mu_);
@@ -377,6 +375,8 @@ class DeviceFinder {
 
 void Master::CreateSession(const CreateSessionRequest* req,
                            CreateSessionResponse* resp, MyClosure done) {
+  device_finder_timeout_in_micros_ =
+      req->config().device_finder_timeout_in_micros();
   SchedClosure([this, req, resp, done]() {
     Status status;
     WorkerCacheFactoryOptions worker_cache_factory_options;
@@ -440,9 +440,10 @@ void Master::CreateSession(const CreateSessionRequest* req,
       worker_cache_ptr = std::unique_ptr<WorkerCacheInterface>(worker_cache);
       // Ping all the workers and build the list of devices that the
       // session will use.
-      status =
-          DeviceFinder::GetRemoteDevices(req->config().device_filters(), env_,
-                                         worker_cache, remote_devices.get());
+      status = DeviceFinder::GetRemoteDevices(
+          req->config().device_filters(), env_, worker_cache,
+          remote_devices.get(),
+          req->config().device_finder_timeout_in_micros());
       if (!status.ok()) return;
       device_set.reset(new DeviceSet);
       for (auto&& d : *remote_devices) {
@@ -458,9 +459,10 @@ void Master::CreateSession(const CreateSessionRequest* req,
       worker_cache = env_->worker_cache;
       // Ping all the workers and build the list of devices that the
       // session will use.
-      status =
-          DeviceFinder::GetRemoteDevices(req->config().device_filters(), env_,
-                                         worker_cache, remote_devices.get());
+      status = DeviceFinder::GetRemoteDevices(
+          req->config().device_filters(), env_, worker_cache,
+          remote_devices.get(),
+          req->config().device_finder_timeout_in_micros());
       if (!status.ok()) return;
       device_set.reset(new DeviceSet);
       for (auto&& d : *remote_devices) {
@@ -485,8 +487,9 @@ void Master::CreateSession(const CreateSessionRequest* req,
     options.config = req->config();
 
     std::vector<string> filtered_worker_list;
-    DeviceFinder::GetRemoteWorkers(req->config().device_filters(), env_,
-                                   worker_cache, &filtered_worker_list);
+    DeviceFinder::GetRemoteWorkers(
+        req->config().device_filters(), env_, worker_cache,
+        &filtered_worker_list, req->config().device_finder_timeout_in_micros());
 
     MasterSession* session = env_->master_session_factory(
         options, env_, std::move(remote_devices), std::move(worker_cache_ptr),
@@ -622,7 +625,8 @@ void Master::ListDevices(const ListDevicesRequest* req,
     }
     std::vector<std::unique_ptr<Device>> remote_devices;
     Status s = DeviceFinder::GetRemoteDevices({}, env_, env_->worker_cache,
-                                              &remote_devices);
+                                              &remote_devices,
+                                              device_finder_timeout_in_micros_);
     if (s.ok()) {
       for (Device* dev : env_->local_devices) {
         *(resp->add_local_device()) = dev->attributes();
@@ -638,7 +642,8 @@ void Master::ListDevices(const ListDevicesRequest* req,
 void Master::CleanupWorkers(const ResetRequest& reset) {
   std::vector<string> worker_names;
   DeviceFinder::GetRemoteWorkers(reset.device_filters(), env_,
-                                 env_->worker_cache, &worker_names);
+                                 env_->worker_cache, &worker_names,
+                                 device_finder_timeout_in_micros_);
   if (!worker_names.empty()) {
     const int num_workers = worker_names.size();
     std::vector<Notification> n(num_workers);

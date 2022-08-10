@@ -351,6 +351,8 @@ cc_library(
         ":remote_device",
         ":worker_cache",
         ":worker_interface",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",

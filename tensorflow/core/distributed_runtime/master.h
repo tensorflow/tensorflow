@@ -96,6 +96,8 @@ class Master {
   // closed automatically.
   const double session_gc_seconds_;
 
+  uint64 device_finder_timeout_in_micros_ = 1000000;
+
   // Used to track ids for incoming requests so we can detect duplicates.
   RecentRequestIds recent_request_ids_;
 
