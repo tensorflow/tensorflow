@@ -35,6 +35,7 @@ add_mlir_library(MLIRBufferTransforms
   Core
 
   LINK_LIBS PUBLIC
+  ChloDialect
   MLIRGPUOps
   MLIRHLOAnalysis
   MLIRIR

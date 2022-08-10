@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir-hlo/utils/hlo_utils.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -58,8 +59,11 @@ struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
 
     // Lower to MHLO constant if statically shaped.
     if (resultTy.hasStaticShape()) {
-      rewriter.replaceOpWithNewOp<mhlo::ConstantOp>(
-          op, DenseElementsAttr::get(resultTy, op.value()));
+      auto complexAttr = op.value().dyn_cast<complex::NumberAttr>();
+      auto attr = complexAttr
+                      ? DenseElementsAttr::get(resultTy, complexAttr.getValue())
+                      : DenseElementsAttr::get(resultTy, op.value());
+      rewriter.replaceOpWithNewOp<mhlo::ConstantOp>(op, attr);
       return success();
     }
 

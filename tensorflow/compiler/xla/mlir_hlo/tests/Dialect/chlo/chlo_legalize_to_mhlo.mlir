@@ -95,6 +95,31 @@ func.func @asin_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>>
 
 // -----
 
+// CHECK-LABEL:  func.func @asin_complex_f64_dynamic(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<?xcomplex<f64>>) -> tensor<?xcomplex<f64>>
+// CHECK:  %[[TWO:.*]] = mhlo.constant dense<(2.000000e+00,0.000000e+00)>
+// CHECK:  %[[SHAPE:.*]] = shape.shape_of %[[ARG0]]
+// CHECK:  %[[TWO_BROADCASTED:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[TWO]], %[[SHAPE]])
+// CHECK:  %[[ONE:.*]] = mhlo.constant dense<(1.000000e+00,0.000000e+00)>
+// CHECK:  %[[SHAPE2:.*]] = shape.shape_of %[[ARG0]]
+// CHECK:  %[[ONE_BROADCASTED:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ONE]], %[[SHAPE2]])
+// CHECK:  %[[ONE2:.*]] = mhlo.constant dense<(1.000000e+00,0.000000e+00)>
+// CHECK:  %[[SHAPE3:.*]] = shape.shape_of %[[ARG0]]
+// CHECK:  %[[ONE_BROADCASTED2:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ONE2]], %[[SHAPE3]])
+// CHECK:  %[[SQUARE:.*]] = mhlo.multiply %[[ARG0]], %[[ARG0]]
+// CHECK:  %[[SUB:.*]] = mhlo.subtract %[[ONE_BROADCASTED2]], %[[SQUARE]]
+// CHECK:  %[[SQRT:.*]] = mhlo.sqrt %[[SUB]]
+// CHECK:  %[[ADD:.*]] = mhlo.add %[[ONE_BROADCASTED]], %[[SQRT]]
+// CHECK:  %[[ATAN2:.*]] = mhlo.atan2 %[[ARG0]], %[[ADD]]
+// CHECK:  %[[MUL:.*]] = mhlo.multiply %[[TWO_BROADCASTED]], %[[ATAN2]]
+// CHECK:  return %[[MUL]]
+func.func @asin_complex_f64_dynamic(%arg : tensor<?xcomplex<f64>>) -> tensor<?xcomplex<f64>> {
+  %result = "chlo.asin"(%arg) : (tensor<?xcomplex<f64>>) -> tensor<?xcomplex<f64>>
+  func.return %result : tensor<?xcomplex<f64>>
+}
+
+// -----
+
 // CHECK-LABEL: @asinh_bf16
 // CHECK-SAME: %[[ARG:.*]]: tensor<bf16>
 func.func @asinh_bf16(%arg : tensor<bf16>) -> tensor<bf16> {

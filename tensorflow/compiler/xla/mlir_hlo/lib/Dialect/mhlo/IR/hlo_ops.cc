@@ -48,6 +48,7 @@ limitations under the License.
 #include "mlir-hlo/utils/convert_op_folder.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -717,14 +718,18 @@ void ConstantOp::build(OpBuilder& /*builder*/, OperationState& result,
   Type type;
   if (auto elemAttr = value.dyn_cast<ElementsAttr>()) {
     type = elemAttr.getType();
-  } else if (value.isa<BoolAttr>() || value.isa<FloatAttr>() ||
-             value.isa<IntegerAttr>()) {
+  } else if (value.isa<BoolAttr, FloatAttr, IntegerAttr>()) {
     // All XLA types must be tensor types. In the build() method, we want to
     // provide more flexibility by allowing attributes of scalar types. But we
     // need to wrap it up with ElementsAttr to construct valid XLA constants.
     type =
         RankedTensorType::get(/*shape=*/{}, value.cast<TypedAttr>().getType());
     value = DenseElementsAttr::get(type.cast<TensorType>(), value);
+  } else if (auto complexAttr = value.dyn_cast<complex::NumberAttr>()) {
+    type = RankedTensorType::get(/*shape=*/{},
+                                 complexAttr.cast<TypedAttr>().getType());
+    value =
+        DenseElementsAttr::get(type.cast<TensorType>(), complexAttr.getValue());
   }
 
   // TODO: support other XLA specific types.

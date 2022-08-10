@@ -217,6 +217,7 @@ add_mlir_library(ChloPasses
   LINK_LIBS PUBLIC
   ChloDialect
   HloToLinalgUtils
+  MLIRComplexDialect
   MLIRIR
   MLIRPass
   MLIRRewrite
