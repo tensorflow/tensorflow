@@ -39,7 +39,7 @@ public interface InterpreterFactoryApi {
    * @throws IllegalArgumentException if {@code modelFile} does not encode a valid TensorFlow Lite
    *     model.
    */
-  InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options);
+  public InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options);
 
   /**
    * Constructs an {@link InterpreterApi} instance, using the specified model and options. The model
@@ -53,20 +53,20 @@ public interface InterpreterFactoryApi {
    * @throws IllegalArgumentException if {@code byteBuffer} is not a {@code MappedByteBuffer} nor a
    *     direct {@code ByteBuffer} of nativeOrder.
    */
-  InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options);
+  public InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options);
 
   /** Returns the version of the underlying TensorFlowLite runtime. */
-  String runtimeVersion();
+  public String runtimeVersion();
 
   /**
    * Returns the version of the TensorFlowLite model schema that is supported by the underlying
    * TensorFlowLite runtime.
    */
-  String schemaVersion();
+  public String schemaVersion();
 
   /**
    * Instance method for constructing an NNAPI delegate implementation, using the TF Lite runtime
    * from the InterpreterFactoryApi.
    */
-  NnApiDelegate.PrivateInterface createNnApiDelegateImpl(NnApiDelegate.Options options);
+  public NnApiDelegate.PrivateInterface createNnApiDelegateImpl(NnApiDelegate.Options options);
 }

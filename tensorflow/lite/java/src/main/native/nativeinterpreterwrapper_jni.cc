@@ -545,6 +545,25 @@ JNIEXPORT void JNICALL Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
   }
 }
 
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx) {
+  if (!tflite::jni::CheckJniInitializedOrThrow(env)) return -1;
+
+  Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return -1;
+  const int idx = static_cast<int>(output_idx);
+  if (output_idx < 0 || output_idx >= interpreter->outputs().size()) {
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
+                   "Failed to get %d-th output out of %d outputs", output_idx,
+                   interpreter->outputs().size());
+    return -1;
+  }
+  TfLiteTensor* target = interpreter->tensor(interpreter->outputs()[idx]);
+  int type = getDataType(target->type);
+  return static_cast<jint>(type);
+}
+
 JNIEXPORT jboolean JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,

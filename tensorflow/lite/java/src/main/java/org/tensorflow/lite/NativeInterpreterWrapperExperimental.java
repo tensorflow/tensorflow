@@ -28,6 +28,14 @@ import java.nio.ByteBuffer;
  */
 final class NativeInterpreterWrapperExperimental extends NativeInterpreterWrapper {
 
+  NativeInterpreterWrapperExperimental(String modelPath) {
+    super(modelPath);
+  }
+
+  NativeInterpreterWrapperExperimental(ByteBuffer byteBuffer) {
+    super(byteBuffer);
+  }
+
   NativeInterpreterWrapperExperimental(String modelPath, InterpreterImpl.Options options) {
     super(modelPath, options);
   }
