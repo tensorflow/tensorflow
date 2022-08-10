@@ -81,13 +81,15 @@ func.func @avgpool_test(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   func.return %4 : tensor<*xf32>
 }
 
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>} : () -> tensor<f32>
 // CHECK: %[[q:.*]] = "quantfork.qcast"(%arg0)
 // CHECK: %[[sc1:.*]] = "quantfork.scast"(%[[q]]) : (tensor<*x!quant.uniform<i8:f32, 5.000000e-02:-10>>)
 // CHECK: %[[fcast:.*]] = "tf.Cast"(%[[sc1]]) {Truncate = false} : (tensor<*xi8>) -> tensor<*xf32>
 // CHECK: %[[avgpool_f32:.*]] = "tf.AvgPool"(%[[fcast]])
 // CHECK-SAME: (tensor<*xf32>) -> tensor<*xf32>
-// CHECK: %[[round:.*]] = "tf.Round"(%[[avgpool_f32]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK: %[[icast:.*]] = "tf.Cast"(%[[round]]) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
+// CHECK: %[[add:.*]] = "tf.AddV2"(%[[avgpool_f32]], %[[cst]]) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+// CHECK: %[[floor:.*]] = "tf.Floor"(%[[add]]) : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK: %[[icast:.*]] = "tf.Cast"(%[[floor]]) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
 // CHECK: %[[sc2:.*]] = "quantfork.scast"(%[[icast]])
 // CHECK: %[[dq:.*]] = "quantfork.dcast"(%[[sc2]]) : (tensor<*x!quant.uniform<i8:f32, 5.000000e-02:-10>>)
 // CHECK: return %[[dq]]
