@@ -551,7 +551,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
     converter = self._CreateConverter(run_params, saved_model_dir,
                                       conversion_params)
-    converter.convert()
+    graph_fn = converter.convert()
 
     if run_params.is_v2:
       try:
@@ -559,6 +559,20 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       except OSError:
         line_length = 160
       converter.summary(line_length=line_length, detailed=True)
+
+    logging.info("==========================================================")
+    logging.info("Converted layers per TRTEngineOp:")
+    converted_graphdef = graph_fn.graph.as_graph_def()
+    for node in converted_graphdef.node:
+      if node.op != "TRTEngineOp":
+        continue
+      logging.info(f"* `{node.name}`:")
+      for func in converted_graphdef.library.function:
+        if f"{node.name}_native_segment" == func.signature.name:
+          for converted_node in func.node_def:
+            logging.info(f"\t- `{converted_node.name}`")
+          break
+    logging.info("==========================================================\n")
 
     if run_params.dynamic_shape and self._ShouldConverterBuild(run_params):
       logging.info("Using build mode")

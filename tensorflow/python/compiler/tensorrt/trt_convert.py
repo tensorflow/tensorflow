@@ -324,14 +324,43 @@ def _get_tensorrt_rewriter_config(conversion_params,
       trt_utils.is_linked_tensorrt_version_greater_equal(8, 0, 0) or
       trt_utils.is_loaded_tensorrt_version_greater_equal(8, 0, 0))
 
+  optimizers = list()
   if not disable_non_trt_optimizers:
-    rewriter_config_with_trt.optimizers.extend([
-        "pruning", "debug_stripper", "layout", "dependency", "constfold",
-        "common_subgraph_elimination"
+    optimizers.extend([
+        "constfold", "pruning", "dependency", "pruning", "debug_stripper",
+        "common_subgraph_elimination", "function", "shape", "remap",
+        "auto_mixed_precision", "layout", "loop", "constfold"
     ])
 
+    if (
+      trt_utils.is_experimental_feature_activated("deactivate_mixed_precision")
+      or conversion_params.precision_mode == TrtPrecisionMode.FP32
+      or not trt_utils.is_linked_tensorrt_version_greater_equal(8, 0, 0)
+      or not trt_utils.is_loaded_tensorrt_version_greater_equal(8, 0, 0)
+    ):
+      optimizers.remove("auto_mixed_precision")
+      logging.info("Automatic mixed precision has been deactivated.")
+
+    else:
+      logging.info(
+          "Automatic mixed precision will be used on the whole TensorFlow "
+          "Graph. This behavior can be deactivated using the environment "
+          "variable: TF_TRT_EXPERIMENTAL_FEATURES=deactivate_mixed_precision.\n"
+          "More information can be found on: "
+          "https://www.tensorflow.org/guide/mixed_precision.")
+
+  # We need to force Grappler to only execute one optimization pass,
+  # otherwise it would execute TF-TRT segmentation twice.
+  # Consequently, all other optimizers should be duplicated to restore grappler
+  # default behavior running each optimizer twice: `RewriterConfig.TWO`
   rewriter_config_with_trt.meta_optimizer_iterations = (
       rewriter_config_pb2.RewriterConfig.ONE)
+  optimizers = optimizers * 2  # Restore `RewriterConfig.TWO` behavior
+
+  # Assign our list of optimizers to the Grappler configuration.
+  rewriter_config_with_trt.optimizers.extend(optimizers)
+
+  # Let's define the custom TF-TRT Grappler Optimizer
   optimizer = rewriter_config_with_trt.custom_optimizers.add()
 
   if not disable_non_trt_optimizers:

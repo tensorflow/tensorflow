@@ -237,6 +237,9 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "SoftmaxCrossEntropyWithLogits",
         "SparseSoftmaxCrossEntropyWithLogits",
         "Sum",
+        // `TRTEngineOp` needs to be added here to protect the OP in case the
+        // user executes another pass of mixed_precision after TF-TRT conversion
+        "TRTEngineOp"
     };
     UpdateList("DENYLIST", &list);
     // For backwards compatibility, keeping the original env variable here.

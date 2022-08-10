@@ -66,6 +66,7 @@ filegroup(
 
 oss_tests = [
     "annotate_max_batch_sizes_test",
+    "auto_mixed_precision_test",
     "base_test",
     "batch_matmul_test",
     "biasadd_matmul_test",
