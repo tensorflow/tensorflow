@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
-#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 
 namespace tflite {
 namespace gpu {
