@@ -299,7 +299,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::AbsOp>(Location loc,
                                                  OpBuilder* b) {
   Type elementType = getElementTypeOrSelf(argTypes.front());
   if (elementType.isa<FloatType>()) {
-    return MapMhloOpToScalarOpImpl<IsFloatType, ::mlir::math::AbsOp>{}(
+    return MapMhloOpToScalarOpImpl<IsFloatType, ::mlir::math::AbsFOp>{}(
         loc, resultTypes, argTypes, args, b);
   }
   if (elementType.isa<ComplexType>()) {
@@ -340,7 +340,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CbrtOp>(Location loc,
     // Convert cbrt(x) to copysign(cbrt(abs(x), 1.0 / 3.0), x).
     // This is to allow cbrt using pow while still handling negative numbers. It
     // should match most cbrt intrinsics.
-    Value abs = b->create<mlir::math::AbsOp>(loc, adaptor.operand());
+    Value abs = b->create<mlir::math::AbsFOp>(loc, adaptor.operand());
     Value third = b->create<arith::ConstantOp>(
         loc, b->getFloatAttr(floatType, 1.0 / 3.0));
     Value pow = b->create<mlir::math::PowFOp>(loc, resultTypes[0], abs, third);
@@ -761,7 +761,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::IsFiniteOp>(
         args[0].getType().cast<FloatType>().getFloatSemantics());
     auto constPosInf = b->create<arith::ConstantOp>(
         loc, b->getFloatAttr(args[0].getType(), posInf));
-    Value absX = b->create<::mlir::math::AbsOp>(loc, args[0]);
+    Value absX = b->create<::mlir::math::AbsFOp>(loc, args[0]);
     return b->create<::mlir::arith::CmpFOp>(loc, arith::CmpFPredicate::ONE,
                                             absX, constPosInf);
   }

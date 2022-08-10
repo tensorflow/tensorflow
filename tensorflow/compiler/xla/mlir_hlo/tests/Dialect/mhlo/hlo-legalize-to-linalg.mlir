@@ -166,7 +166,7 @@ func.func @float_cbrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %tensor_result = "mhlo.cbrt"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: %[[THIRD:.+]] = arith.constant 0.333333343
-  // CHECK: %[[ABS:.+]] = math.abs %arg1
+  // CHECK: %[[ABS:.+]] = math.absf %arg1
   // CHECK: %[[POW:.+]] = math.powf %[[ABS]], %[[THIRD]]
   // CHECK: %[[RESULT:.+]] = math.copysign %[[POW]], %arg1
   // CHECK: linalg.yield %[[RESULT]]
@@ -216,7 +216,7 @@ func.func @complex_sub(%lhs: tensor<2x2xcomplex<f32>>,
 func.func @float_abs(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK-SAME: {someattr}
-  // CHECK: math.abs
+  // CHECK: math.absf
   %0 = "mhlo.abs"(%arg0) {someattr} : (tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
 }
@@ -578,7 +578,7 @@ func.func @is_finte(%input: tensor<2x2xf32>) -> tensor<2x2xi1> {
 // CHECK: %[[POS_INF:.+]] = arith.constant 0x7F800000 : f32
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32
-// CHECK-NEXT:   %[[ABS_X:.+]] = math.abs %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[ABS_X:.+]] = math.absf %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   %[[RESULT:.+]] = arith.cmpf one, %[[ABS_X]], %[[POS_INF]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
