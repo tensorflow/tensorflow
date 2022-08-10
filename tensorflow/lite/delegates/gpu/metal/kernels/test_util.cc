@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -71,7 +72,6 @@ absl::Status MetalExecutionEnvironment::ExecuteGpuOperationInternal(
         CreateTensor(device_.device(), descriptor_with_shape, &dst[i]));
     operation->SetDst(&dst[i], i);
   }
-  RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));
 
   ComputeTask gpu_task;
   gpu_task.Init(std::move(operation));
