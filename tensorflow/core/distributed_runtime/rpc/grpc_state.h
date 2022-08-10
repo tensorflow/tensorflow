@@ -36,6 +36,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+constexpr char kRPCStateDefaultOperationTimeout[] =
+    "RPC_STATE_DEFAULT_OPERATION_TIMEOUT_IN_MS";
+}  // namespace
+
 // Object allocated per active RPC.
 // Manage the state of a single asynchronous RPC request.  If `max_retries`
 // is greater than 0, the request will be retried for any transient failures.
@@ -79,8 +84,9 @@ class RPCState : public GrpcClientCQTag {
                 return false;
               }
             }(),
-            (call_opts != nullptr ? call_opts->GetTimeout() : 0), max_retries,
-            target) {}
+            (call_opts != nullptr ? call_opts->GetTimeout()
+                                  : GetDefaultOperationTimeout()),
+            max_retries, target) {}
 
   template <typename Request>
   RPCState(::grpc::GenericStub* stub, ::grpc::CompletionQueue* cq,
@@ -211,6 +217,13 @@ class RPCState : public GrpcClientCQTag {
         retry_backoff_ms_ = max_backoff_ms;
       }
     }
+  }
+
+  static int GetDefaultOperationTimeout() {
+    string default_operation_timeout_str;
+    TF_CHECK_OK(ReadStringFromEnvVar(kRPCStateDefaultOperationTimeout, "0",
+                                     &default_operation_timeout_str));
+    return std::stoi(default_operation_timeout_str);
   }
 
   CallOptions* call_opts_;
