@@ -545,8 +545,11 @@ def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex", [NoSideEffect,
   }];
   let arguments = (ins HLO_Fp32Or64Tensor:$lhs, HLO_Fp32Or64Tensor:$rhs);
   let results = (outs HLO_ComplexTensor:$result);
-  let assemblyFormat = "`(`operands`)` attr-dict `:` `(`type(operands)`)` `->` type($result)";
+
   let hasFolder = 1;
+
+  // TODO(b/241767457): Remove parens when cleaning up BinaryOps.
+  let assemblyFormat = "`(`operands`)` attr-dict `:` `(`type(operands)`)` `->` type($result)";
 }
 
 def HLO_DivOp : HLO_BinaryElementwiseOp<"divide",
@@ -859,11 +862,19 @@ def HLO_AddDependencyOp : HLO_Op<"add_dependency", [NoSideEffect,
     the operation is the data operand. When used with AfterAll this operation
     enables ordering non-side-effecting operations (those that do not produce
     token values).
+
+    Example:
+
+    ```mlir
+    %1 = mhlo.add_dependency %arg0, %0 : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
+    ```
   }];
 
   let arguments = (ins HLO_TensorOrToken:$operand, HLO_Token:$token);
   let results = (outs HLO_TensorOrToken:$output);
   let hasCustomHLOConverter = 1;
+
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 
@@ -878,10 +889,18 @@ def HLO_AfterAllOp : HLO_Op<"after_all", [NoSideEffect]> {
     for ordering a operation after a set operations.
 
     See https://www.tensorflow.org/xla/operation_semantics#afterall.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.after_all %arg0, %arg1 : (!mhlo.token, !mhlo.token) -> !mhlo.token
+    ```
   }];
 
   let arguments = (ins Variadic<HLO_Token>:$operands);
   let results = (outs HLO_Token);
+
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 // Xla Client API has two separate calls for indexed and predicated conditional,
@@ -1244,6 +1263,13 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic_update_slice",
     operand, with a slice update overwritten at start_indices.
 
     See https://www.tensorflow.org/xla/operation_semantics#dynamicupdateslice.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.dynamic_update_slice %arg0, %arg1, %arg2
+           : (tensor<4xf32>, tensor<2xf32>, tensor<i32>) -> tensor<4xf32>
+    ```
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -1253,6 +1279,8 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic_update_slice",
   let results = (outs HLO_Tensor:$result);
   let hasFolder = 1;
   let hasVerifier = 1;
+
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 
@@ -1382,12 +1410,20 @@ def HLO_BitcastConvertOp : HLO_ShapedInterfaceOp<"bitcast_convert",
     will give different results.
 
     See https://www.tensorflow.org/xla/operation_semantics#bitcastconverttype.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.bitcast_convert %arg0 : (tensor<2xi32>) -> tensor<2xf32>
+    ```
   }];
 
   let arguments = (ins HLO_Tensor:$operand);
   let results = (outs HLO_Tensor);
   let hasVerifier = 1;
   let hasCustomHLOConverter = 1;
+
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 def HLO_BroadcastOp : HLO_ShapedInterfaceOp<"broadcast",
@@ -1537,6 +1573,12 @@ def HLO_ClampOp : HLO_ShapedInterfaceOp<"clamp", [NoSideEffect,
           tensor) of the element type of the tensor operand.
 
     See https://www.tensorflow.org/xla/operation_semantics#clamp.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.clamp %arg0, %arg1, %arg2 : (tensor<f32>, tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+    ```
   }];
 
   let arguments = (ins
@@ -1558,6 +1600,8 @@ def HLO_ClampOp : HLO_ShapedInterfaceOp<"clamp", [NoSideEffect,
       return true;
     }
   }];
+
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 def HLO_ConcatenateOp : HLO_ShapedInterfaceOp<"concatenate",
@@ -1652,10 +1696,19 @@ def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, HLO_CompatibleOperandsAndResultTyp
   let summary = "Copy operator";
   let description = [{
     Returns a copy of `operand`.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.copy %arg0 : (tensor<f32>) -> tensor<f32>
+    ```
   }];
   let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
   let hasFolder = 1;
+
+  // TODO (b/241767462): Condense type printing if input/output type match.
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
@@ -1927,7 +1980,14 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
     Reshapes the dimensions of `operand` into a new configuration.
 
     See https://www.tensorflow.org/xla/operation_semantics#reshape.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.reshape %arg0 : (tensor<2xf32>) -> tensor<1x2xf32>
+    ```
   }];
+
   let arguments = (ins HLO_Tensor:$operand);
 
   let results = (outs HLO_StaticShapeTensor);
@@ -1936,6 +1996,8 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
   let hasVerifier = 1;
 
   let hasCustomHLOConverter = 1;
+
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 def HLO_DynamicReshapeOp: HLO_ShapedInterfaceOp<"dynamic_reshape", [NoSideEffect]> {
@@ -1948,6 +2010,12 @@ def HLO_DynamicReshapeOp: HLO_ShapedInterfaceOp<"dynamic_reshape", [NoSideEffect
     - The number of elements in `operand` (that is, the product of extents of
       its shape) is equal to the number of elements in `output_shape` (that is,
       the product of values in `output_shape`).
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.dynamic_reshape %arg0, %shape : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+    ```
   }];
 
   let arguments = (ins HLO_Tensor:$operand, HLO_DimensionTensor:$output_shape);
@@ -1957,6 +2025,8 @@ def HLO_DynamicReshapeOp: HLO_ShapedInterfaceOp<"dynamic_reshape", [NoSideEffect
   // Cannot be exported to legacy formats.
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
+
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 def HLO_ScatterOp: HLO_Op<"scatter", [SameVariadicOperandSize, RecursiveSideEffects]> {
@@ -2379,8 +2449,15 @@ def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
 def HLO_OptimizationBarrierOp : HLO_Op<"optimization_barrier",
       [NoSideEffect, HLO_PairwiseSameOperandAndResultType]> {
   let summary = [{
-    The `hlo.optimization_barrier` op blocks optimizations.
+    The `mhlo.optimization_barrier` op blocks optimizations.
+
+    Example:
+
+    ```mlir
+    %0:2 = mhlo.optimization_barrier %arg0, %arg1 : (tensor<4x4xf32>, tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>)
+    ```
   }];
+
   let description = [{
     Blocks any optimization pass from moving computations across the barrier.
 
@@ -2394,6 +2471,9 @@ def HLO_OptimizationBarrierOp : HLO_Op<"optimization_barrier",
   let results = (outs Variadic<HLO_TensorOrToken>);
 
   let hasCustomHLOConverter = 1;
+
+  // TODO(b/241767462): Enhance type printing to condense pairwise ops.
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 //===----------------------------------------------------------------------===//
@@ -2445,8 +2525,7 @@ def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]> {
     the specified algorithm (or backend default) and returns an updated state
     (with the same shape as initial state) and the generated random data.
 
-    See
-    https://www.tensorflow.org/xla/operation_semantics#rngbitgenerator.
+    See https://www.tensorflow.org/xla/operation_semantics#rngbitgenerator.
   }];
   let arguments = (ins
     HLO_RngAlgorithmAttr:$rng_algorithm,
@@ -2497,6 +2576,12 @@ def HLO_UniformQuantizeOp : HLO_UnaryElementwiseOp<"uniform_quantize",
     Converts floating point tensors or uniform quantized integer tensors to
     uniform quantized integer tensors according to the quantization parameters
     defined by the output type.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.uniform_quantize %arg0 : (tensor<16x16xf32>) -> tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>>
+    ```
   }];
 
   // Currently, it doesn't have an XLA builder equivalent.
@@ -2510,6 +2595,12 @@ def HLO_UniformDequantizeOp : HLO_UnaryElementwiseOp<"uniform_dequantize",
   let description = [{
     Converts quantized array of integers to floating-points according to the
     quantization parameters defined by the input type.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.uniform_dequantize %arg0 : (tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32>
+    ```
   }];
 
   // Currently, it doesn't have an XLA builder equivalent.
@@ -2551,10 +2642,19 @@ def HLO_BitcastOp : HLO_Op<"bitcast", [NoSideEffect]> {
     However, the op needs layout information to make sense of "physical
     arrangement of elements". Layout support in MHLO is currently under
     exploration.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.bitcast %arg0 : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
+    ```
   }];
+
   let arguments = (ins HLO_Tensor:$operand);
   let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
+
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 def HLO_ReducePrecisionOp :
@@ -2589,6 +2689,13 @@ def HLO_RealDynamicSliceOp: HLO_ShapedInterfaceOp<
     array according to start_indices, limit_indices and strides. Expect
     start_indices/limit_indices/strides to be statically shaped and matching
     the rank of the input.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.real_dynamic_slice %input, %start, %limit, %strides
+           : (tensor<256x?xf32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<256x?xf32>
+    ```
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -2600,6 +2707,8 @@ def HLO_RealDynamicSliceOp: HLO_ShapedInterfaceOp<
   let hasCanonicalizer = 1;
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
+
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 def HLO_DynamicPadOp: HLO_ShapedInterfaceOp<"dynamic_pad",
@@ -2611,8 +2720,15 @@ def HLO_DynamicPadOp: HLO_ShapedInterfaceOp<"dynamic_pad",
     `padding_value` and according to the passed configuration. Expect
     edge_padding_low/edge_padding_high/interior_padding to be statically shaped
     and matching the rank of the input.
-    See
-    https://www.tensorflow.org/xla/operation_semantics#pad
+
+    See https://www.tensorflow.org/xla/operation_semantics#pad.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.dynamic_pad %arg0, %arg1, %arg2, %arg3, %arg4 
+           : (tensor<?x?xf32>, tensor<f32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<?x?xf32>
+    ```
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -2629,6 +2745,8 @@ def HLO_DynamicPadOp: HLO_ShapedInterfaceOp<"dynamic_pad",
   let hasCanonicalizer = 1;
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
+
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather",
@@ -2695,6 +2813,7 @@ def HLO_ComputeReshapeShapeOp :
   let arguments = (ins Index:$num_elements, 1DTensorOf<[AnyInteger, Index]>:$dynamic_shape);
   let results = (outs 1DTensorOf<[AnyInteger, Index]>:$result);
 
+  // TODO (b/241767462): Use functional-type for type printing for consistency.
   let assemblyFormat = "$num_elements `,` $dynamic_shape attr-dict `:` type($num_elements) `,` type($dynamic_shape) `->` type($result)";
   let hasCustomHLOConverter = 1;
 }
@@ -2716,6 +2835,7 @@ def HLO_CstrReshapableOp :
   let arguments = (ins Index:$num_elements, 1DTensorOf<[AnyInteger, Index]>:$dynamic_shape);
   let results = (outs Shape_WitnessType:$result);
 
+  // TODO (b/241767462): Use functional-type for type printing for consistency.
   let assemblyFormat = "$num_elements `,` $dynamic_shape attr-dict `:` type($num_elements) `,` type($dynamic_shape)";
 
   let hasCustomHLOConverter = 1;

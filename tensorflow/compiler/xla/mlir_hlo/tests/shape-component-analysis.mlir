@@ -190,7 +190,7 @@ func.func @dynamic_reshape(%arg0: tensor<?x8x?x64xf32>, %arg1: tensor<4xi32>)
   %1 = shape.num_elements %0 : tensor<4xindex> -> index
   %2 = mhlo.compute_reshape_shape %1, %arg1 : index, tensor<4xi32>
       -> tensor<4xi32>
-  // CHECK:      Shape info for %3 = "mhlo.dynamic_reshape"(%arg0, %2) : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
+  // CHECK:      Shape info for %3 = mhlo.dynamic_reshape %arg0, %2 : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
   // CHECK-NEXT:   s0 with
   // CHECK-NEXT:     s0 = %2 = mhlo.compute_reshape_shape %1, %arg1 : index, tensor<4xi32> -> tensor<4xi32>[0]
   // CHECK-NEXT:   8

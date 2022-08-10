@@ -193,7 +193,7 @@ func.func @multiple_reductions_and_reshape(%arg0: tensor<?x?x?x?xi64>) -> tensor
   // CHECK: %[[RED1_:.*]] = tensor.expand_shape %[[RED1]] {{\[}}[0, 1, 2], [3]{{\]}} : tensor<?x1xi64> into tensor<1x1x?x1xi64>
   // CHECK: %[[RED2:.*]] = mhlo.reduce(%[[RED1_]]
   // TODO(b/225204462): This should also become a shape expansion.
-  // CHECK: %[[RED2_:.*]] = "mhlo.reshape"(%[[RED2]]) : (tensor<1xi64>) -> tensor<1x1x1x1xi64>
+  // CHECK: %[[RED2_:.*]] = mhlo.reshape %[[RED2]] : (tensor<1xi64>) -> tensor<1x1x1x1xi64>
   // CHECK: return %[[RED2_]]
   %0 = mhlo.constant dense<9223372036854775807> : tensor<i64>
   %c1 = arith.constant 1 : index
@@ -390,7 +390,7 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>,
     // CHECK: %[[SHAPE:.*]] = mhlo.compute_reshape_shape %{{.*}}, %[[DYN_SHAPE]]
     %20 = mhlo.compute_reshape_shape %2, %arg2
         : index, tensor<4xi32> -> tensor<4xi32>
-    // CHECK: "mhlo.dynamic_reshape"(%arg1, %[[SHAPE]])
+    // CHECK: mhlo.dynamic_reshape %arg1, %[[SHAPE]]
     %21 = "mhlo.dynamic_reshape"(%arg1, %20)
         : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
     // CHECK: shape.assuming_yield

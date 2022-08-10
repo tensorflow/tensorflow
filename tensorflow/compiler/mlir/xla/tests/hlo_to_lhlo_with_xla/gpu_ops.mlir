@@ -1,4 +1,4 @@
-// RUN: xla-opt-gpu -split-input-file "-xla-hlo-to-lhlo-with-xla=platform=CUDA" %s | FileCheck %s
+// RUN: xla-opt-gpu -split-input-file -xla-hlo-to-lhlo-with-xla=platform=CUDA %s | FileCheck %s
 
 // CHECK-LABEL: func @main
 // CHECK-SAME: %[[ARG0:.*]]: memref<36xi8> {lmhlo.params = 0
@@ -7,7 +7,7 @@
 // CHECK-SAME: %[[ARG3:.*]]: memref<36xi8>
 // CHECK-DAG: %[[VIEW0:.*]] = memref.view %[[ARG0]]{{.*}} : memref<36xi8> to memref<3x3xi32>
 // CHECK-DAG: %[[VIEW3:.*]] = memref.view %[[ARG3]]{{.*}} : memref<36xi8> to memref<3x3xi32>
-// CHECK: %{{.*}} = "mhlo.copy"(%{{.*}})
+// CHECK: %{{.*}} = mhlo.copy %{{.*}}
 // CHECK-DAG: %[[VIEW1:.*]] = memref.view %[[ARG1]]{{.*}} : memref<8xi8> to memref<2x1xi32>
 // CHECK-DAG: %[[VIEW2:.*]] = memref.view %[[ARG2]]{{.*}} : memref<24xi8> to memref<2x1x3xi32>
 // CHECK-DAG: %[[VIEW31:.*]] = memref.view %[[ARG3]]{{.*}} : memref<36xi8> to memref<3x3xi32>

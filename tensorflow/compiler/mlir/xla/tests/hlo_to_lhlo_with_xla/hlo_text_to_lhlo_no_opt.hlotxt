@@ -437,7 +437,7 @@ HloModule Test
 
 // CHECK: func @main
 // CHECK: "lmhlo.fusion"()
-// CHECK: "mhlo.reshape"(%{{.*}}) : (tensor<2xf32>) -> tensor<1x2xf32>
+// CHECK: mhlo.reshape %{{.*}} : (tensor<2xf32>) -> tensor<1x2xf32>
 ENTRY main {
   %arg0 = f32[2]{0} parameter(0)
   ROOT %out = f32[1,2]{1,0} reshape(%arg0)
@@ -722,7 +722,7 @@ ENTRY %main (parameter.1: f32[5]) -> (f32[5]) {
 // -----
 
 // CHECK: func @main
-// CHECK: "mhlo.copy"
+// CHECK: mhlo.copy
 // CHECK-SAME: (tensor<2xi32>) -> tensor<2xi32>
 HloModule CopyTest
 

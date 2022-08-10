@@ -30,7 +30,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 %test_after_all (token0: token[], token1: token[] ) -> token[] {
   token0 = token[] parameter(0)
   token1 = token[] parameter(1)
-  // CHECK-NEXT:  "mhlo.after_all"([[VAL_0]], [[VAL_1]]) {xla_shape = {{.*}}} : (!mhlo.token, !mhlo.token) -> !mhlo.token
+  // CHECK-NEXT:  mhlo.after_all [[VAL_0]], [[VAL_1]] {xla_shape = {{.*}}} : (!mhlo.token, !mhlo.token) -> !mhlo.token
   ROOT after-all = token[] after-all(token0, token1)
 }
 
@@ -177,7 +177,7 @@ add {
   %Arg_1.2 = f32[4] parameter(1)
   %Arg_2.3 = f32[] parameter(2)
 
-  // CHECK-NEXT:  "mhlo.clamp"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+  // CHECK-NEXT:  mhlo.clamp %arg0, %arg1, %arg2 : (tensor<f32>, tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
   ROOT %clamp.3 = f32[4] clamp(f32[] %Arg_0.1, f32[4] %Arg_1.2, f32[] %Arg_2.3)
 }
 
@@ -260,10 +260,10 @@ add {
 %test_conv {
   %arg0.1 = f32[256,32,32,1]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
-  // CHECK-NEXT: %[[VAL_1:.*]] = "mhlo.copy"(%[[VAL_0]]) {xla_shape = "f32[256,32,32,1]{2,1,3,0}"} : (tensor<256x32x32x1xf32>) -> tensor<256x32x32x1xf32>
+  // CHECK-NEXT: %[[VAL_1:.*]] = mhlo.copy %[[VAL_0]] {xla_shape = "f32[256,32,32,1]{2,1,3,0}"} : (tensor<256x32x32x1xf32>) -> tensor<256x32x32x1xf32>
   %copy.1 = f32[256,32,32,1]{2,1,3,0} copy(%arg0.1), metadata={op_name="HLO_Args"}
 
-  // CHECK-NEXT: %[[VAL_2:.*]] = "mhlo.reshape"(%[[VAL_1]]) {xla_shape = "f32[256,32,32,1]{2,1,3,0}"} : (tensor<256x32x32x1xf32>) -> tensor<256x32x32x1xf32>
+  // CHECK-NEXT: %[[VAL_2:.*]] = mhlo.reshape %[[VAL_1]] {xla_shape = "f32[256,32,32,1]{2,1,3,0}"} : (tensor<256x32x32x1xf32>) -> tensor<256x32x32x1xf32>
   %reshape.2 = f32[256,32,32,1]{2,1,3,0} reshape(%copy.1)
 
   // Note that double brackets "[[" have to be escaped as they denote variables
@@ -280,7 +280,7 @@ add {
 
   %convolution.4 = f32[1,30,30,256]{2,1,3,0} convolution(%reshape.2, %constant.3), window={size=3x3 stride=4x5 pad=44_45x60_60 rhs_dilate=2x3}, dim_labels=b01f_01io->f01b, metadata={op_type="Conv2D" op_name="embedded_inference/conv_model/conv_0/Conv2D"}
 
-  // CHECK-NEXT: %[[VAL_5:.*]] = "mhlo.reshape"(%[[VAL_4]]) : (tensor<1x30x30x256xf32>) -> tensor<256x30x30x1xf32>
+  // CHECK-NEXT: %[[VAL_5:.*]] = mhlo.reshape %[[VAL_4]] : (tensor<1x30x30x256xf32>) -> tensor<256x30x30x1xf32>
   %reshape.5 = f32[256,30,30,1]{3,2,1,0} reshape(%convolution.4), metadata={op_name="HLO_Retvals"}
 
   // CHECK-NEXT: %[[VAL_6:.*]] = "mhlo.tuple"(%[[VAL_5]]) {xla_shape = {{.*}}} : (tensor<256x30x30x1xf32>) -> tuple<tensor<256x30x30x1xf32>>
@@ -459,7 +459,7 @@ add {
   // CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
   %dot.6 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
 
-  // CHECK: [[rehape:%[a-zA-Z0-9]+]] = "mhlo.reshape"
+  // CHECK: [[rehape:%[a-zA-Z0-9]+]] = mhlo.reshape
   // CHECK-NEXT:  "mhlo.dot_general"([[rehape]], [[ARG1]])
   // CHECK-SAME: lhs_contracting_dimensions = [0]
   // CHECK-SAME: rhs_contracting_dimensions = [1]
@@ -487,7 +487,7 @@ add {
   %Arg_2.3 = s32[] parameter(2)
   %Arg_3.4 = s32[] parameter(3)
 
-  // CHECK-NEXT:  "mhlo.dynamic_update_slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
+  // CHECK-NEXT:  mhlo.dynamic_update_slice %arg0, %arg1, %arg2, %arg3 : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
   ROOT %dynamic-update-slice.5 = f32[4, 4] dynamic-update-slice(%Arg_0.1, %Arg_1.2, %Arg_2.3, %Arg_3.4)
 }
 
@@ -497,7 +497,7 @@ add {
   %Arg_1.2 = f32[2] parameter(1)
   %Arg_2.3 = s32[] parameter(2)
 
-  // CHECK-NEXT:  "mhlo.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4xf32>, tensor<2xf32>, tensor<i32>) -> tensor<4xf32>
+  // CHECK-NEXT:  mhlo.dynamic_update_slice %arg0, %arg1, %arg2 : (tensor<4xf32>, tensor<2xf32>, tensor<i32>) -> tensor<4xf32>
   ROOT %dynamic-update-slice.5 = f32[4] dynamic-update-slice(%Arg_0.1, %Arg_1.2, %Arg_2.3)
 }
 
@@ -1442,7 +1442,7 @@ add {
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>) -> tensor<3x4x1xf32>
 %bitcast (Arg_0.1: f32[3,4]) -> f32[3,4,1]{2,0,1} {
   %Arg_0.1 = f32[3,4] parameter(0)
-  // CHECK: "mhlo.bitcast"(%[[ARG0]]) {result_layout = dense<[2, 0, 1]> : tensor<3xindex>, source_layout = dense<[1, 0]> : tensor<2xindex>, xla_shape = "f32[3,4,1]{2,0,1}"} : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
+  // CHECK: mhlo.bitcast %[[ARG0]] {result_layout = dense<[2, 0, 1]> : tensor<3xindex>, source_layout = dense<[1, 0]> : tensor<2xindex>, xla_shape = "f32[3,4,1]{2,0,1}"} : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
   ROOT %bitcast = f32[3,4,1]{2,0,1} bitcast(f32[3,4] %Arg_0.1)
 }
 
@@ -1461,7 +1461,7 @@ add {
   %Arg_0.1 = f32[4,4] parameter(0)
   %Arg_1.2 = f32[3,4] parameter(1)
   %args = (f32[4,4], f32[3,4]) tuple(f32[4,4] %Arg_0.1, f32[3,4] %Arg_1.2)
-  // CHECK: "mhlo.optimization_barrier"(%[[ARG0]], %[[ARG1]]) : (tensor<4x4xf32>, tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>)
+  // CHECK: mhlo.optimization_barrier %[[ARG0]], %[[ARG1]] : (tensor<4x4xf32>, tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>)
   ROOT %opt-barrier = (f32[4,4], f32[3,4]) opt-barrier((f32[4,4], f32[3,4]) %args)
 }
 
@@ -1493,7 +1493,7 @@ add {
   %Arg_0.1 = f32[4,4] parameter(0)
   %after-all = token[] after-all()
   // CHECK: %[[TOK:.*]] = mhlo.create_token
-  // CHECK: "mhlo.add_dependency"(%[[ARG0]], %[[TOK]]) : (tensor<4x4xf32>, !mhlo.token) -> tensor<4x4xf32>
+  // CHECK: mhlo.add_dependency %[[ARG0]], %[[TOK]] : (tensor<4x4xf32>, !mhlo.token) -> tensor<4x4xf32>
   ROOT %add-dep = f32[4,4] add-dependency(f32[4,4] %Arg_0.1, token[] %after-all)
 }
 

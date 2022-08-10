@@ -33,7 +33,7 @@ func.func @host_compute(%arg0: tensor<i32>, %arg1: tensor<i64>) -> (tensor<f32>,
   // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\00"
   // CHECK-SAME: (tensor<i64>, !mhlo.token) -> !mhlo.token
 
-  // CHECK:      [[SEND_SINK_TOKEN:%.*]] = "mhlo.after_all"([[SEND_ARG0_TOKEN]], [[SEND_ARG1_TOKEN]])
+  // CHECK:      [[SEND_SINK_TOKEN:%.*]] = mhlo.after_all [[SEND_ARG0_TOKEN]], [[SEND_ARG1_TOKEN]]
 
   // CHECK:      [[RECV_RETVAL0_TUPLE:%.*]]:2 = "mhlo.recv"([[SEND_SINK_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 3, type = 3>
@@ -49,7 +49,7 @@ func.func @host_compute(%arg0: tensor<i32>, %arg1: tensor<i64>) -> (tensor<f32>,
   // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\00"
   // CHECK-SAME: (!mhlo.token) -> (tensor<f64>, !mhlo.token)
 
-  // CHECK:      [[RECV_SINK_TOKEN:%.*]] = "mhlo.after_all"([[RECV_RETVAL0_TUPLE]]#1, [[RECV_RETVAL1_TUPLE]]#1)
+  // CHECK:      [[RECV_SINK_TOKEN:%.*]] = mhlo.after_all [[RECV_RETVAL0_TUPLE]]#1, [[RECV_RETVAL1_TUPLE]]#1
   %0:2 = "tf._XlaHostComputeMlir"(%arg0, %arg1) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", host_mlir_module = ""} : (tensor<i32>, tensor<i64>) -> (tensor<f32>, tensor<f64>)
 
   // CHECK:      return [[RECV_RETVAL0_TUPLE]]#0, [[RECV_RETVAL1_TUPLE]]#0 : tensor<f32>, tensor<f64>
