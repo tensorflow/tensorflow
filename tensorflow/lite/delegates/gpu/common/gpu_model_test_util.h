@@ -22,7 +22,72 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
+//    input
+//      |
+// convolution
+//      |
+//   cosinus
+//      |
+//   output
 absl::Status TestLinkingConvolutionAndCosOp(TestExecutionEnvironment* env);
+
+//      input0
+//        |
+//   convolution   input1
+//          \        /
+//        multiplication0    input2
+//                 \         /
+//               multiplication1
+//                      |
+//                    output
+absl::Status TestLinkingConvolution2InputMul2InputMul(
+    TestExecutionEnvironment* env);
+
+//      input0(32x32x128)
+//        |
+//   convolution       input1(32x32x1)
+//        |                /
+//   conv_out(32x32x16)   /
+//          \            /
+//          broadcast_mul   input2(32x32x16)
+//                |            /
+//       mul_out(32x32x16)    /
+//                 \         /
+//               multiplication
+//                      |
+//                    output(32x32x16)
+absl::Status TestLinkingConvolution2InputBroadcastMul2InputMul(
+    TestExecutionEnvironment* env);
+
+//      input0(32x32x128)
+//        |
+//   convolution       input1(32x32x16)
+//        |                /
+//   conv_out(32x32x16)   /
+//          \            /
+//          multiplication   input2(1x1x16)
+//                |            /
+//       mul_out(32x32x16)    /
+//                 \         /
+//               broadcast_mul
+//                      |
+//                    output(32x32x16)
+absl::Status TestLinkingConvolution2InputMul2InputBroadcastMul(
+    TestExecutionEnvironment* env);
+
+//      input0
+//        |
+//   convolution   input1
+//          \        /
+//        multiplication0    input2
+//                 \         /
+//               multiplication1
+//                      |
+//                   cosinus
+//                      |
+//                   output
+absl::Status TestLinkingConvolution2InputMul2InputMulCos(
+    TestExecutionEnvironment* env);
 
 }  // namespace gpu
 }  // namespace tflite

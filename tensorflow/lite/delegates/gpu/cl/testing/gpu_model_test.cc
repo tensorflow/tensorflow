@@ -28,6 +28,26 @@ TEST_F(OpenCLOperationTest, LinkingConvolutionAndCosOp) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, LinkingConvolution2InputMul2InputMul) {
+  auto status = TestLinkingConvolution2InputMul2InputMul(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, LinkingConvolution2InputBroadcastMul2InputMul) {
+  auto status = TestLinkingConvolution2InputBroadcastMul2InputMul(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, LinkingConvolution2InputMul2InputBroadcastMul) {
+  auto status = TestLinkingConvolution2InputMul2InputBroadcastMul(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, LinkingConvolution2InputMul2InputMulCos) {
+  auto status = TestLinkingConvolution2InputMul2InputMulCos(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 }  // namespace
 }  // namespace cl
 }  // namespace gpu
