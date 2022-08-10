@@ -1507,6 +1507,26 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "chlo_legalize_to_hlo_pass",
+    srcs = ["lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo_pass.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":chlo_legalize_to_hlo",
+        ":mhlo_pass_details",
+        ":mlir_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "expand_hlo_tuples",
     srcs = [
         "lib/Dialect/mhlo/transforms/expand_hlo_tuples.cc",
@@ -1559,7 +1579,6 @@ cc_library(
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
         "lib/Analysis/test_shape_component_analysis.cc",
         "lib/Analysis/test_userange_analysis.cc",
-        "lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo_pass.cc",
         "lib/Dialect/mhlo/transforms/materialize_broadcasts_pass.cc",
         "lib/Dialect/mhlo/transforms/optimize_mhlo_pass.cc",
         "lib/Dialect/mhlo/transforms/restrict_max_rank.cc",
@@ -1616,6 +1635,7 @@ cc_library(
         ":bufferize_pass",
         ":bufferize_tiled_loop",
         ":chlo_legalize_to_hlo",
+        ":chlo_legalize_to_hlo_pass",
         ":collapse_elementwise_map",
         ":collapse_parallel_loops_to_1d_pass",
         ":constraint_fusion_pass",
