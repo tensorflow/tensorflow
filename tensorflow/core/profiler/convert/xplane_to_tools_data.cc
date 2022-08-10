@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/str_format.h"
@@ -211,7 +212,9 @@ std::pair<std::string, bool> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
 std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
     const std::vector<XSpace>& xspaces,
     const std::vector<std::string>& filenames,
-    const absl::string_view tool_name) {
+    const absl::string_view tool_name,
+    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
+        options) {
   if (tool_name == "trace_viewer") {
     return ConvertXSpaceToTraceEvents(xspaces);
   } else if (tool_name == "overview_page") {
