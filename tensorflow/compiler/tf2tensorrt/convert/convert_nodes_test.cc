@@ -1569,8 +1569,9 @@ class OpConverterTest : public ::testing::Test {
  public:
   std::unique_ptr<Converter> converter_;
 
- private:
+ protected:
   Logger& logger_ = *Logger::GetLogger();
+ private:
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
   std::unique_ptr<Allocator> tensor_buffer_allocator_;
@@ -2624,8 +2625,6 @@ TEST_P(OpConverter_FP32_Test, ConvertTile) {
     int test_ID;
     // Expected status of conversion (with concrete error message).
     Status status;
-    // Expected status of BuildAndRun.
-    Status runtime_status;
   };
 
   std::vector<TileParam> test_params = {
@@ -2689,7 +2688,7 @@ TEST_P(OpConverter_FP32_Test, ConvertTile) {
     for (bool input_is_tensor : {true, false}) {
       for (auto p : test_params) {
         std::vector<int> num_mults = {static_cast<int>(p.multiplier.size())};
-        std::vector<std::vector<int>> partial_input_dims_options = {{}};
+        std::vector<int> partial_input_dims = {};
         if (multiplier_is_tensor) {
           if (trt_mode_ == TrtTestMode::kImplicitBatch) {
             p.status =
@@ -2699,74 +2698,48 @@ TEST_P(OpConverter_FP32_Test, ConvertTile) {
             num_mults = {1, static_cast<int>(p.multiplier.size())};
           } else {
             if (p.test_ID == 1) {
-              // Replacement of statuses, since when multiplier is a tensor AND
-              // trt_mode_ != TrtTestMode::kImplicitBatch we cannot define these
-              // statuses in ConvertTile::Validate() for the first two tests
-              // from test_params.
+              // Skip this test because in that situation it is impossible
+              // to do a valid check for negative multipliers.
+              continue;
+            }
+
+            if (trt_mode_ == TrtTestMode::kDynamicShape) {
+              partial_input_dims = num_mults;
               p.status = Status::OK();
-              p.runtime_status =
-                  Status(error::INTERNAL,
-                         "Incorrect number of profile config parameters");
             }
 
-            if (trt_mode_ == TrtTestMode::kDynamicShape) {
-              if (p.test_ID == 1)
-                partial_input_dims_options = {num_mults};
-              else
-                partial_input_dims_options = {{}, num_mults};
-            }
-          }
-        }
-
-        for (auto partial_input_dims : partial_input_dims_options) {
-          if (multiplier_is_tensor &&
-              trt_mode_ != TrtTestMode::kImplicitBatch) {
-            if (trt_mode_ == TrtTestMode::kDynamicShape) {
-              if (p.test_ID != 1) {
-                p.runtime_status =
-                    partial_input_dims.empty()
-                        ? Status(error::INTERNAL,
-                                 "Failed to build TensorRT engine")
-                        : Status::OK();
-                p.status = Status::OK();
-              }
-            }
-
-            if (p.test_ID == 2 && (trt_mode_ == TrtTestMode::kExplicitBatch ||
-                                   !partial_input_dims.empty())) {
+            if (p.test_ID == 2) {
               p.status = Status(error::INVALID_ARGUMENT,
                                 "When replications are defined as a tensor, "
                                 "the number of its elements (4) must be equal "
                                 "to the rank of the input tensor (3).");
             }
           }
-
-          if (!multiplier_is_tensor &&
-              trt_mode_ == TrtTestMode::kImplicitBatch && p.multiplier[0] > 1) {
+        } else {
+          if (trt_mode_ == TrtTestMode::kImplicitBatch && p.multiplier[0] > 1) {
             p.status =
                 Status(error::UNIMPLEMENTED,
                        "The Tile operation along "
                        "the batch dimension in 'my_tile' is not implemented.");
           }
-
-          Reset();
-          if (input_is_tensor) {
-            AddTestTensor("input", p.input_dims, p.tensor);
-          } else {
-            AddTestWeights("input", p.input_dims, p.tensor, tf_type_);
-          }
-
-          if (multiplier_is_tensor) {
-            AddTestTensor<int>("weights", num_mults, DT_INT32, p.multiplier,
-                               partial_input_dims);
-          } else {
-            AddTestWeights<int32>("weights", num_mults, p.multiplier);
-          }
-
-          TestOpConverter("my_tile", node_def, p.expected_output_dims, p.status,
-                          p.runtime_status,
-                          ElementsAreArray(p.expected_results));
         }
+
+        Reset();
+        if (input_is_tensor) {
+          AddTestTensor("input", p.input_dims, p.tensor);
+        } else {
+          AddTestWeights("input", p.input_dims, p.tensor, tf_type_);
+        }
+
+        if (multiplier_is_tensor) {
+          AddTestTensor<int>("weights", num_mults, DT_INT32, p.multiplier,
+                             partial_input_dims);
+        } else {
+          AddTestWeights<int32>("weights", num_mults, p.multiplier);
+        }
+
+        TestOpConverter("my_tile", node_def, p.expected_output_dims, p.status,
+                        Status::OK(), ElementsAreArray(p.expected_results));
       }
     }
   }
@@ -5868,6 +5841,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
           errors::Internal("Internal: Failed to build TensorRT engine")},
   };
 
+  logger_.unsuppressAllLoggerMsgs();
   int i = 0;
   for (auto p : params) {
     Reset();
@@ -5904,9 +5878,15 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
     AddTestWeights<int32>("begin", {static_cast<int>(p.begin.size())}, p.begin);
     AddTestWeights<int32>("size", {static_cast<int>(p.size.size())}, p.size);
 
+    const bool flag = trt_mode_ == TrtTestMode::kDynamicShape && (i == 9 || i == 11);
+    if (flag)
+      logger_.suppressLoggerMsgs(nvinfer1::ILogger::Severity::kERROR);
+
     TestOpConverter("my_slice", node_def, p.expected_output_dims,
                     p.conversion_status, p.runtime_status,
                     ElementsAreArray(p.expected_output));
+    if (flag)
+      logger_.unsuppressLoggerMsgs(nvinfer1::ILogger::Severity::kERROR);
   }
 }
 
