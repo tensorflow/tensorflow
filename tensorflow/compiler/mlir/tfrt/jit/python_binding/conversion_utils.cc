@@ -24,7 +24,7 @@ namespace tensorflow {
 
 using ::tfrt::DType;
 
-using ::tfrt::jitrt::MemrefDesc;
+using ::xla::runtime::MemrefDesc;
 
 // Returns Python buffer protocol's type string from TFRT's dtype.
 const char* ToPythonStructFormat(DType dtype_kind) {
