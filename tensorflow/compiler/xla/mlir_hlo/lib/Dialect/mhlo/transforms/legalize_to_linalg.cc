@@ -190,6 +190,26 @@ static bool hasCanonicalDimensionNumbers(
   return true;
 }
 
+llvm::Optional<Value> scalarToTensor(OpBuilder& builder, Type /*type*/,
+                                     ValueRange inputs, Location loc) {
+  assert(inputs.size() == 1);
+  if (inputs.front().getType().isa<ShapedType>()) {
+    return llvm::None;
+  }
+  return builder
+      .create<tensor::FromElementsOp>(
+          loc, RankedTensorType::get({}, inputs.front().getType()),
+          inputs.front())
+      .getResult();
+}
+
+class HloTypeConverter : public mhlo::RemoveSignTypeConverter {
+ public:
+  HloTypeConverter() : mhlo::RemoveSignTypeConverter() {
+    addArgumentMaterialization(scalarToTensor);
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // mhlo.RngOp conversion patterns.
 //===----------------------------------------------------------------------===//
@@ -1543,7 +1563,8 @@ class MapOpConverter : public OpConversionPattern<mhlo::MapOp> {
     }
     signatureConverter.addInputs(resultType.getElementType());
 
-    rewriter.applySignatureConversion(&region, signatureConverter);
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
     rewriter.replaceOp(op, linalgOp.getResults());
     return success();
   }
@@ -1554,40 +1575,6 @@ bool isInBodyOfLinalgOps(Operation* op) {
   return parentOp->getDialect() ==
          parentOp->getContext()->getLoadedDialect<linalg::LinalgDialect>();
 }
-
-template <typename OpTy>
-struct ReduceRegionXLAOpConversion : public OpConversionPattern<OpTy> {
-  using OpConversionPattern<OpTy>::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      OpTy op, typename OpTy::Adaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    if (!isInBodyOfLinalgOps(op)) {
-      return failure();
-    }
-    if (!op.getResult().getType().template isa<TensorType>()) return failure();
-    if (llvm::all_of(adaptor.getOperands(), [](Value arg) {
-          return arg.getType().template isa<TensorType>();
-        })) {
-      return failure();
-    }
-    // RemoveSignTypeConverter would give us a tensor. We also have to scalarize
-    // so do it manually.
-    Type resultType = getElementTypeOrSelf(op.getType());
-    if (resultType.isUnsignedInteger()) {
-      resultType = IntegerType::get(resultType.getContext(),
-                                    resultType.getIntOrFloatBitWidth());
-    }
-    // The scalar mapper has to know the original type. At this point the
-    // operands have been converted from `tensor<ui32>` to `i32` so recreate
-    // `ui32` from the original operands.
-    auto operandTypes = llvm::to_vector(llvm::map_range(
-        op->getOperandTypes(), [](Type t) { return getElementTypeOrSelf(t); }));
-    Value result = mhlo::MhloOpToStdScalarOp::mapOpWithArgTypes(
-        op, resultType, operandTypes, adaptor.getOperands(), &rewriter);
-    rewriter.replaceOp(op, result);
-    return success();
-  }
-};
 
 SmallVector<Value, 8> getReduceOpInitTensorDynSizes(
     OpBuilder& b, Location loc, Value arg, ShapedType resultType,
@@ -1713,7 +1700,8 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
               it.value().getType().cast<ShapedType>().getElementType()));
     }
 
-    rewriter.applySignatureConversion(&region, signatureConverter);
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
     rewriter.replaceOp(op, linalgOp.getResults());
     return success();
   }
@@ -2606,7 +2594,6 @@ struct ReduceWindowOpOnTensorsGenericConversion
     inputs.push_back(rewriter.create<linalg::InitTensorOp>(
         loc, filteredWindowDims, rewriter.getF32Type()));
 
-    rewriter.setInsertionPoint(op);
     auto linalgOp = rewriter.create<linalg::GenericOp>(
         loc, /*resultTensors=*/resultTypes,
         /*inputs=*/inputs,
@@ -2638,7 +2625,8 @@ struct ReduceWindowOpOnTensorsGenericConversion
           idx, resultTypes[i].cast<ShapedType>().getElementType());
     }
 
-    rewriter.applySignatureConversion(&region, signatureConverter);
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
     rewriter.replaceOp(op, linalgOp.getResults());
     return success();
   }
@@ -3411,7 +3399,7 @@ struct HloLegalizeToLinalgPass
 
     target.addLegalOp<UnrealizedConversionCastOp>();
 
-    mhlo::RemoveSignTypeConverter typeConverter;
+    HloTypeConverter typeConverter;
     auto func = getOperation();
     mhlo::populateHloToLinalgConversionPattern(&ctx, typeConverter, &patterns);
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
@@ -3494,7 +3482,8 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       ReduceWindowOpConversion,
       RngUniformConversion,
       ScatterUpdateConversion,
-      TorchIndexSelectOpConversion>(typeConverter, context);
+      TorchIndexSelectOpConversion,
+      ReduceRegionReturnOpConversion>(typeConverter, context);
   // Ensure specialized patterns are higher priority than their generic
   // versions.
   patterns->add<
@@ -3510,19 +3499,6 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       ConvolutionOpGeneralConversion,
       DotGeneralOpConversion>(typeConverter, context, PatternBenefit(1));
   // clang-format on
-  patterns->add<ReduceRegionXLAOpConversion<mhlo::AddOp>,
-                ReduceRegionXLAOpConversion<mhlo::AndOp>,
-                ReduceRegionXLAOpConversion<mhlo::CompareOp>,
-                ReduceRegionXLAOpConversion<mhlo::ConvertOp>,
-                ReduceRegionXLAOpConversion<mhlo::ImagOp>,
-                ReduceRegionXLAOpConversion<mhlo::MaxOp>,
-                ReduceRegionXLAOpConversion<mhlo::MinOp>,
-                ReduceRegionXLAOpConversion<mhlo::MulOp>,
-                ReduceRegionXLAOpConversion<mhlo::OrOp>,
-                ReduceRegionXLAOpConversion<mhlo::RealOp>,
-                ReduceRegionXLAOpConversion<mhlo::SelectOp>,
-                ReduceRegionXLAOpConversion<mhlo::XorOp>,
-                ReduceRegionReturnOpConversion>(context, PatternBenefit(1000));
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass() {

@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -138,8 +139,25 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
           op, "mismatched operand/result types or iterator count");
     }
 
-    // Find input/output values and types.
     auto loc = op.getLoc();
+    // TODO(jreiffers): Enable this optimization outside of linalg ops. This
+    // currently breaks KernelGen.
+    if (nloops == 0 && isInBodyOfLinalgOps(op)) {
+      // No need to create a linalg.generic if all inputs are scalars.
+      SmallVector<Value> inputs;
+      for (auto input : adaptor.getOperands()) {
+        inputs.push_back(
+            rewriter.create<tensor::ExtractOp>(loc, input, ValueRange()));
+      }
+      Value scalarResult = mhlo::MhloOpToStdScalarOp::mapOp(
+          op, resultTy->getElementType(), inputs, &rewriter);
+      if (!scalarResult) return failure();
+      rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, *resultTy,
+                                                          scalarResult);
+      return success();
+    }
+
+    // Find input/output values and types.
     ValueRange inputs = adaptor.getOperands();
     Value output =
         getInitTensorFor(rewriter, loc, *resultTy, op, adaptor.getOperands());
@@ -175,6 +193,13 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
 
     rewriter.replaceOp(op, linalgOp->getResults());
     return success();
+  }
+
+ private:
+  static bool isInBodyOfLinalgOps(Operation* op) {
+    auto* parentOp = op->getParentRegion()->getParentOp();
+    return parentOp->getDialect() ==
+           parentOp->getContext()->getLoadedDialect<linalg::LinalgDialect>();
   }
 };
 
