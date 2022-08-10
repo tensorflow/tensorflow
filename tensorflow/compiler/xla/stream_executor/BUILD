@@ -12,10 +12,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
     default_visibility = [
-        "//tensorflow/compiler/xla:__subpackages__",
-        "//tensorflow/core/protobuf:__subpackages__",
-        "//tensorflow/core/util:__subpackages__",
-        "//tensorflow/stream_executor:__subpackages__",
+        "//tensorflow:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -678,6 +675,7 @@ cc_library(
         ":stream_executor_headers",
         ":stream_executor_pimpl",
         ":timer",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
     ],
 )
 

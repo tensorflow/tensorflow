@@ -3431,7 +3431,7 @@ filegroup(
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
         "//tensorflow/python/client:tf_session_helper",  # tf_session
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
-        "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",  # quantization
         "//tensorflow/dtensor/cc:dtensor_device_cc",  # DTensor
