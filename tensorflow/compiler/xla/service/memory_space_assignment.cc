@@ -1275,27 +1275,33 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
   return true;
 }
 
+namespace {
+// Columns in buffer information:
+// buffer_id: int. This value can be used to match the allocation in
+// allocation information.
+// buffer_name: string.
+// alt_mem_benefit: float. Roughly corresponds to how much the cost analysis
+// thought it would be beneficial to put this in the alternate memory. The
+// higher the value, the more it is memory bound.
+// size: int. In bytes.
+// definition_time: int. Logical time this value was defined in the schedule.
+// use_times: string. This is a semicolon-separated list of integers for all
+// the use times.
+// use_names: string. This is a semicolon-separated list of string
+// representation of uses.
+// is_scoped: int. A value of 1 indicates that the buffer is a scoped
+// allocation.
+constexpr absl::string_view kBufferInfoColumnNames =
+    "buffer_id,buffer_name,alt_mem_benefit,size,definition_time,use_times,use_"
+    "names,is_scoped";
+}  // namespace
+
 void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
     const AlternateMemoryBestFitHeap::BufferInterval& interval,
     std::string* debug_str) const {
-  // Columns in buffer information:
-  // buffer_id: int. This value can be used to match the allocation in
-  // allocation information.
-  // buffer_name: string.
-  // alt_mem_benefit: float. Roughly corresponds to how much the cost analysis
-  // thought it would be beneficial to put this in the alternate memory. The
-  // higher the value, the more it is memory bound.
-  // size: int. In bytes.
-  // definition_time: int. Logical time this value was defined in the schedule.
-  // use_times: string. This is a semicolon-separated list of integers for all
-  // the use times.
-  // use_names: string. This is a semicolon-separated list of string
-  // representation of uses.
   if (debug_str->empty()) {
     // Append the column names.
-    absl::StrAppend(debug_str,
-                    "buffer_id,buffer_name,alt_mem_benefit,size,"
-                    "definition_time,use_times,use_names\n");
+    absl::StrAppend(debug_str, kBufferInfoColumnNames, "\n");
   }
   const HloBuffer& buffer =
       alias_analysis_.GetBufferContainingValue(*interval.buffer);
@@ -1329,12 +1335,34 @@ void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
   absl::StrAppend(debug_str, interval.size, ",");
   absl::StrAppend(debug_str, definition_time, ",");
   absl::StrAppend(debug_str, "\"", absl::StrJoin(use_times, ";"), "\",");
-  absl::StrAppend(debug_str, "\"", absl::StrJoin(use_names, ";"), "\"");
+  absl::StrAppend(debug_str, "\"", absl::StrJoin(use_names, ";"), "\",");
+  absl::StrAppend(debug_str, "0");  // is_scoped
   absl::StrAppend(debug_str, "\n");
 }
 
+void AlternateMemoryBestFitHeap::AppendScopedAllocationBufferInfoDebugString(
+    const HloInstruction* instruction, int64_t time, int64_t size,
+    std::string& debug_str) const {
+  if (debug_str.empty()) {
+    // Append the column names.
+    absl::StrAppend(&debug_str, kBufferInfoColumnNames, "\n");
+  }
+  const HloBuffer& buffer = alias_analysis_.GetUniqueBufferAt(instruction);
+
+  // As a convention, we use negative values for scoped allocations.
+  absl::StrAppend(&debug_str, -buffer.id(), ",");
+  absl::StrAppend(&debug_str, "\"scoped allocation for ", instruction->name(),
+                  "\",");
+  absl::StrAppend(&debug_str, 0, ",");  // alt_mem_benefit
+  absl::StrAppend(&debug_str, size, ",");
+  absl::StrAppend(&debug_str, time, ",");
+  absl::StrAppend(&debug_str, "\"\",");  // use_times
+  absl::StrAppend(&debug_str, "\"\",");  // use_names
+  absl::StrAppend(&debug_str, "1");      // is_scoped
+  absl::StrAppend(&debug_str, "\n");
+}
+
 void AlternateMemoryBestFitHeap::AppendAllocationInfoDebugString(
-    const AllocationValue& value,
     const MemorySpaceAssignment::Allocation& allocation,
     std::string& debug_str) const {
   // Columns in allocation information:
@@ -1348,10 +1376,14 @@ void AlternateMemoryBestFitHeap::AppendAllocationInfoDebugString(
     absl::StrAppend(&debug_str, "buffer_id,size,offset,start_time,end_time\n");
   }
   if (allocation.memory_space() == MemorySpace::kAlternate) {
+    const HloPosition& position = allocation.defining_position();
     const HloBuffer& buffer =
-        alias_analysis_.GetBufferContainingValue(*value.value());
-    absl::StrAppend(&debug_str, buffer.id(), ",");
-    absl::StrAppend(&debug_str, value.size(), ",");
+        alias_analysis_.GetUniqueBufferAt(position.instruction, position.index);
+    // As a convention, we use negative values for scoped allocations.
+    absl::StrAppend(
+        &debug_str,
+        allocation.is_scoped_allocation() ? -buffer.id() : buffer.id(), ",");
+    absl::StrAppend(&debug_str, allocation.chunk().size, ",");
     absl::StrAppend(&debug_str, allocation.chunk().offset, ",");
     absl::StrAppend(&debug_str, allocation.start_time(), ",");
     absl::StrAppend(&debug_str, allocation.end_time(), "\n");
@@ -1539,6 +1571,13 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
         FinalizeAllocations(absl::MakeSpan(allocation_values));
         break;
       }
+    }
+  }
+
+  if (options_.dump_fn != nullptr || VLOG_IS_ON(3)) {
+    for (auto& allocation : *allocations_) {
+      // Only fill allocation_info_str_ if needed.
+      AppendAllocationInfoDebugString(*allocation, allocation_info_str_);
     }
   }
 
@@ -2215,12 +2254,12 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
       hlo_live_range_.flattened_instruction_sequence().instructions();
   std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*> colocations;
   for (int i = 0; i < instruction_sequence.size(); ++i) {
+    const HloInstruction* instruction = instruction_sequence[i];
     int64_t reserved_scoped_memory =
-        options_.reserved_scoped_memory_fn(instruction_sequence[i]);
+        options_.reserved_scoped_memory_fn(instruction);
     if (reserved_scoped_memory != 0) {
       VLOG(1) << "Allocate reserved scoped memory at " << i << " ("
-              << instruction_sequence[i]->name()
-              << "): " << reserved_scoped_memory;
+              << instruction->name() << "): " << reserved_scoped_memory;
       MemorySpaceAssignment::BufferInterval interval;
       interval.buffer = nullptr;
       interval.size = reserved_scoped_memory;
@@ -2232,6 +2271,11 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
           FindChunkCandidate(interval, /*preferred_offset=*/0);
       CHECK_EQ(chunk_candidate.offset, 0);
       AddToPendingChunks(interval, chunk_candidate);
+
+      if (options_.dump_fn != nullptr || VLOG_IS_ON(3)) {
+        AppendScopedAllocationBufferInfoDebugString(
+            instruction, i, reserved_scoped_memory, buffer_info_str_);
+      }
 
       allocations_->push_back(
           std::make_unique<MemorySpaceAssignment::Allocation>(
@@ -2582,11 +2626,6 @@ void AlternateMemoryBestFitHeap::FinalizeAllocations(
       colocation_map;
   for (AllocationValue& allocation_value : allocation_values) {
     for (auto& allocation : *allocation_value.allocation_sequence()) {
-      if (options_.dump_fn != nullptr || VLOG_IS_ON(3)) {
-        // Only fill buffer_info_str_ if needed.
-        AppendAllocationInfoDebugString(allocation_value, *allocation,
-                                        allocation_info_str_);
-      }
       allocations_->push_back(std::move(allocation));
       MemorySpaceAssignment::Allocation* inserted_allocation =
           allocations_->back().get();

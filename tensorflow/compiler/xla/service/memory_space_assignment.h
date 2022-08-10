@@ -1554,8 +1554,10 @@ class AlternateMemoryBestFitHeap
   // if enabled.
   void AppendBufferInfoDebugString(const BufferInterval& interval,
                                    std::string* debug_str) const;
+  void AppendScopedAllocationBufferInfoDebugString(
+      const HloInstruction* instruction, int64_t time, int64_t size,
+      std::string& debug_str) const;
   void AppendAllocationInfoDebugString(
-      const AllocationValue& value,
       const MemorySpaceAssignment::Allocation& allocation,
       std::string& debug_str) const;
   void DumpDebugStringsIfEnabled() const;
