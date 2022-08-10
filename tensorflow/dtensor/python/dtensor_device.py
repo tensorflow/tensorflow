@@ -79,6 +79,7 @@ class DTensorDevice(object):
     for mesh in meshes:
       self._register_mesh(mesh)
 
+# FIXME(b/241819185): Reuse the logic in api.py.
 # LINT.IfChange
   def _num_clients(self):
     """Returns number of clients in current DTensor cluster."""
@@ -95,7 +96,8 @@ class DTensorDevice(object):
   def _job_name(self):
     """Returns the DTensor Borg job name."""
     # If missing, the program is likely running locally or on Forge.
-    return os.environ.get(_DT_JOB_NAME, "localhost")
+    return os.environ.get(_DT_JOB_NAME,
+                          "localhost" if self._num_clients() == 1 else "worker")
 
   def _full_job_name(self):
     """Returns the fully qualified TF job name for this task."""

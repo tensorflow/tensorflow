@@ -43,6 +43,30 @@ def _print_context(num_global_devices: int, num_clients: int, client_id: int,
   # pylint: enable=protected-access
 
 
+def _make_device_specs(
+    devices: Optional[List[str]] = None,
+    device_type: Optional[str] = None
+) -> Tuple[List[tf_device.DeviceSpec], str]:
+  """Makes device specs from local devices names or number of global devices."""
+  if devices is None:
+    if device_type is None:
+      device_type = 'CPU'
+    devices = [
+        tf_device.DeviceSpec.from_string(d.name)
+        for d in tf_config.list_logical_devices(device_type)
+    ]
+  else:
+    devices = [tf_device.DeviceSpec.from_string(d) for d in devices]
+    if device_type is None:
+      device_type = devices[0].device_type
+
+    if device_type.upper() != devices[0].device_type.upper():
+      raise ValueError(
+          f'Conflicting devices {str(devices)} and device_type {device_type}')
+
+  return devices, device_type
+
+
 @tf_export('experimental.dtensor.create_mesh', v1=[])
 def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
                 mesh_name: str = '',
@@ -67,45 +91,37 @@ def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
   Returns:
     A single-client mesh created from specified or default arguments.
   """
-  if devices is None:
-    if device_type is None:
-      device_type = 'CPU'
-    devices = [
-        tf_device.DeviceSpec.from_string(d.name)
-        for d in tf_config.list_logical_devices(device_type)
-    ]
-  else:
-    devices = [tf_device.DeviceSpec.from_string(d) for d in devices]
-    if device_type is None:
-      device_type = devices[0].device_type
-    if device_type.upper() != devices[0].device_type.upper():
-      raise ValueError(
-          f'Conflicting devices {str(devices)} and device_type {device_type}')
+  device_specs, device_type = _make_device_specs(devices, device_type)
 
-  local_spec = tf_device.DeviceSpec(job='localhost', replica=0, task=0)
-  devices = [local_spec.make_merged_spec(d) for d in devices]
+  local_spec = tf_device.DeviceSpec(job=api.job_name(), replica=0, task=0)
+  device_specs = [local_spec.make_merged_spec(d) for d in device_specs]
 
   if mesh_dims is None:
-    mesh_dims = [('x', len(devices))]
+    mesh_dims = [('x', len(device_specs))]
   elif len(mesh_dims) == 1 and mesh_dims[0][1] == -1:
     # Replace -1 dim_size in a 1D mesh will the number of all devices.
-    mesh_dims[0] = (mesh_dims[0][0], len(devices))
+    mesh_dims[0] = (mesh_dims[0][0], len(device_specs))
 
   dim_names = [d[0] for d in mesh_dims]
   shape = [d[1] for d in mesh_dims]
-  global_device_ids = np.arange(len(devices)).reshape(shape)
+
+  if np.prod(shape) != len(device_specs):
+    raise ValueError(f'length of devices ({len(device_specs)}) must be '
+                     f'equal to total size of the mesh of shape {shape}')
+
+  global_device_ids = np.arange(len(device_specs)).reshape(shape)
   local_device_ids = np.ravel(global_device_ids).tolist()
   mesh = layout.Mesh(
       dim_names=dim_names,
       global_device_ids=global_device_ids,
       local_device_ids=local_device_ids,
-      local_devices=devices,
+      local_devices=device_specs,
       mesh_name=mesh_name)
   _print_context(
-      num_global_devices=len(devices),
+      num_global_devices=len(device_specs),
       num_clients=1,
       client_id=0,
-      device_type=devices[0].device_type,
+      device_type=device_type,
       mesh=mesh)
   return mesh
 
@@ -113,113 +129,84 @@ def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
 @tf_export('experimental.dtensor.create_distributed_mesh', v1=[])
 def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
                             mesh_name: str = '',
-                            num_global_devices: Optional[int] = None,
-                            num_clients: Optional[int] = None,
-                            client_id: Optional[int] = None,
-                            device_type: str = 'CPU') -> layout.Mesh:
-  """Creates a single- or multi-client mesh.
+                            local_devices: Optional[List[str]] = None,
+                            device_type: Optional[str] = None) -> layout.Mesh:
+  """Creates a distributed mesh.
+
+  This is similar to `create_mesh`, but with a different set of arguments to
+  create a mesh that spans evenly across a multi-client DTensor cluster.
 
   For CPU and GPU meshes, users can choose to use fewer local devices than what
-  is available. If any argument is missing, it will be extracted from
-  environment variables. The default values for these environment variables
-  create a mesh using all devices (common for unit tests).
+  is available `local_devices`.
 
-  For TPU meshes, users should not specify any of the nullable arguments. The
-  DTensor runtime will set these arguments automatically, using all TPU cores
-  available in the entire cluster.
+  For TPU, only meshes that uses all TPU cores is supported by the DTensor
+  runtime.
 
   Args:
     mesh_dims: A list of (dim_name, dim_size) tuples.
     mesh_name: Name of the created mesh. Defaults to ''.
-    num_global_devices: Number of devices in the DTensor cluster. Defaults to
-      the corresponding environment variable.
-    num_clients: Number of clients in the DTensor cluster. Defaults to the
-      corresponding environment variable, DTENSOR_NUM_CLIENTS.
-    client_id: This client's ID. Defaults to the corresponding environment
-      variable, DTENSOR_CLIENT_ID.
+    local_devices: String representations of devices to use. This is the device
+      part of tf.DeviceSpec, e.g. 'CPU:0'. Defaults to all available local
+      logical devices.
     device_type: Type of device to build the mesh for. Defaults to 'CPU'.
+      Supported values are 'CPU', 'GPU', 'TPU'.
 
   Returns:
-    A mesh created from specified or default arguments.
+    A mesh that spans evenly across all DTensor clients in the cluster.
   """
   dim_names, shape = zip(*mesh_dims)
+
+  if device_type and device_type.upper() == 'TPU':
+    # TODO(b/185940495): Allow multi-mesh and partial on TPU.
+    # TPU meshes can only be configured through environment variables that
+    # reflect the actual TPU topology. Do not let users specify custom args.
+    if local_devices is not None:
+      raise ValueError(
+          f'Do not specify devices for {device_type.upper()} meshes. '
+          f'Using a partial list of devices for {device_type.upper()} '
+          f'is not supported.')
+
+  device_specs, device_type = _make_device_specs(local_devices, device_type)
 
   if device_type.upper() in ['CPU', 'GPU']:
     # For CPU and GPU meshes, user-specified args take precedence over env vars.
     # This is particularly useful on single clients when users want to create
     # meshes that use fewer logical devices than what's available.
 
-    if num_global_devices is None:
-      num_global_devices = api.num_global_devices(device_type)
-    if num_global_devices <= 0:
-      raise ValueError(f'num_global_devices ({num_global_devices}) must be > 0')
-    if num_global_devices != np.prod(shape):
-      raise ValueError(f'num_global_devices ({num_global_devices}) must be '
-                       f'equal to total size of the mesh of shape {shape}')
-
-    if num_clients is None:
-      num_clients = api.num_clients()
-    if num_clients <= 0:
-      raise ValueError(f'num_clients ({num_clients}) must be > 0')
-
     if api.num_clients() > 1 and not multi_client_util.is_initialized():
       raise ValueError('Invalid multi-client topology, please run '
                        'dtensor.initialize_multi_client() first.')
 
-    if client_id is None:
-      client_id = api.client_id()
-    if client_id < 0:
-      raise ValueError(f'client_id ({client_id}) must be >= 0')
-    if client_id >= num_clients:
-      raise ValueError(f'client_id ({client_id}) must be < {num_clients}')
+    local_spec = tf_device.DeviceSpec(
+        job=api.job_name(), replica=0, task=api.client_id())
+    device_specs = [local_spec.make_merged_spec(d) for d in device_specs]
 
-    if num_global_devices % num_clients != 0:
-      raise ValueError(f'num_global_devices ({num_global_devices}) must be '
-                       f'divisible by num_clients ({num_clients})')
-    num_local_devices = num_global_devices // num_clients
+    # Assumes identical number of local devices per client.
+    num_global_devices = len(device_specs) * api.num_clients()
 
-    # It's allowed to create a CPU or GPU mesh using fewer logical devices than
-    # what's available. If so, just use the first N logical devices.
-    num_available_devices = api.num_local_devices(device_type)
-    if num_local_devices > num_available_devices:
-      raise ValueError(f'Not enough devices; {num_local_devices} needed, '
-                       f'only {num_available_devices} available')
-    local_devices = api.local_devices(device_type,
-                                      client_id)[:num_local_devices]
+    if np.prod(shape) != num_global_devices:
+      raise ValueError(
+          f'Global number of devices '
+          f'({len(device_specs)} per client * {api.num_clients()} clients '
+          f'= {num_global_devices}) must be '
+          f'equal to total size of the mesh of shape {shape}')
 
     global_device_ids = np.arange(num_global_devices).reshape(shape)
     flattened = np.ravel(global_device_ids).tolist()
-    start_idx = num_local_devices * client_id
-    local_device_ids = flattened[start_idx:start_idx + num_local_devices]
+    start_idx = len(device_specs) * api.client_id()
+    local_device_ids = flattened[start_idx:start_idx + len(device_specs)]
 
     mesh = layout.Mesh(
         dim_names=dim_names,
         global_device_ids=global_device_ids,
         local_device_ids=local_device_ids,
-        local_devices=local_devices,
+        local_devices=device_specs,
         mesh_name=mesh_name)
-    _print_context(num_global_devices, num_clients, client_id, device_type,
-                   mesh)
+    _print_context(num_global_devices, api.num_clients(), api.client_id(),
+                   device_type, mesh)
     return mesh
 
   if device_type.upper() == 'TPU':
-    # TPU meshes can only be configured through environment variables that
-    # reflect the actual TPU topology. Do not let users specify custom args.
-    if num_global_devices is not None:
-      raise ValueError(
-          f'Do not specify num_global_devices for {device_type.upper()} meshes. '
-          'It will be filled in automatically from environmental variables.'
-          'See api.py for the list of environmental variables for DTensor.')
-    if num_clients is not None:
-      raise ValueError(
-          f'Do not specify num_clients for {device_type.upper()} meshes. '
-          'It will be filled in automatically from environmental variables.'
-          'See api.py for the list of environmental variables for DTensor.')
-    if client_id is not None:
-      raise ValueError(
-          f'Do not specify client_id for {device_type.upper()} meshes. '
-          'It will be filled in automatically from environmental variables.'
-          'See api.py for the list of environmental variables for DTensor.')
     mesh = tpu_util.create_tpu_mesh(dim_names, shape, mesh_name)
     _print_context(
         api.num_global_devices(device_type), api.num_clients(), api.client_id(),
@@ -239,11 +226,14 @@ def dtensor_initialize_multi_client(
   mode.
 
   - DTENSOR_CLIENT_ID: integer, between 0 to num_clients - 1, to identify the
-      client id of the current process.
-  - DTENSOR_NUM_CLIENTS: integer, the number of clients.
+      client id of the current process. The default value is 0.
+  - DTENSOR_NUM_CLIENTS: integer, the number of clients. The default value is 1.
   - DTENSOR_JOB_NAME: string, a hostname like string for the name of the dtensor
-      job. The job name is used by TensorFlow in the job name section of
-      the DeviceSpec.
+      job. The default is `localhost` when number of clients is 1, and `worker`
+      when the number of clients is greater than 1.
+      The job name controls the job name section of the TensorFlow DeviceSpecs,
+      e.g., `job:worker` in `/job:worker/replica:0/task:0/device:TPU:0` when
+      the job name is `worker`.
   - DTENSOR_JOBS: string, a comma separated list. Each item in the list is
       of format `{hostname}:{port}` and the items must be sorted in alphabet
       order. The implication is the RPC port numbers of the clients from
