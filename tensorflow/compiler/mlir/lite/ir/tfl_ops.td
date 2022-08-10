@@ -855,7 +855,7 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
   let hasCanonicalizer = 1;
 
   let builders = [
-    OpBuilder<(ins "Attribute":$value),
+    OpBuilder<(ins "TypedAttr":$value),
     [{
       $_state.addAttribute("value", value);
       $_state.addTypes(value.getType());
@@ -886,7 +886,7 @@ def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [
   let results = (outs AnyTensor:$output);
 
   let builders = [
-    OpBuilder<(ins "Attribute":$value, "SparsityParameterAttr":$s_param,
+    OpBuilder<(ins "TypedAttr":$value, "SparsityParameterAttr":$s_param,
       "Attribute":$compressed_data),
     [{
       $_state.addTypes(value.getType());

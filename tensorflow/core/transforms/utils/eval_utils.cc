@@ -78,7 +78,7 @@ tensorflow::Status SimpleDevice::MakeTensorFromProto(
 LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
                                 tensorflow::ResourceMgr *resource_mgr, TFOp op,
                                 ArrayRef<ElementsAttr> operands,
-                                SmallVectorImpl<Attribute> &results) {
+                                SmallVectorImpl<TypedAttr> &results) {
   assert(cpu_device && "cpu device can't be null");
   assert(resource_mgr && "ResourceMgr can't be null");
 

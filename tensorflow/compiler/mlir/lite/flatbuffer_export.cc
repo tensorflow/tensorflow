@@ -846,7 +846,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     // Const op can have a result of dynamic shaped type (e.g. due to constant
     // folding), but we can still derive the shape of a constant tensor for
     // its attribute type.
-    mlir::Attribute tensor_attr = inst->getAttr("value");
+    auto tensor_attr = inst->getAttr("value").cast<mlir::TypedAttr>();
     llvm::ArrayRef<int64_t> shape_ref =
         tensor_attr.getType().cast<TensorType>().getShape();
     if (mlir::failed(check_shape(shape_ref))) return llvm::None;

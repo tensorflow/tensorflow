@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -110,7 +111,7 @@ static Type GetDataTypeFromOp(OpBuilder &builder, Operation *op) {
 
 static FailureOr<TFOp> CreateConstantTensorOp(
     OpBuilder &builder, Location loc, StringRef name_prefix, Type type,
-    ValueRange control_operands, Attribute tensor_value,
+    ValueRange control_operands, TypedAttr tensor_value,
     ArrayRef<NamedAttribute> other_attrs = llvm::None) {
   if (type.isa<VariantType>()) return failure();
   // TODO(chiahungduan): Reuse ConstOp Like
@@ -641,7 +642,7 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
       }
     }
 
-    SmallVector<Attribute> result;
+    SmallVector<TypedAttr> result;
     if (failed(util::EvaluateOperation(cpu_device_.get(), resource_mgr_.get(),
                                        op, const_operands, result))) {
       return failure();
@@ -655,7 +656,7 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
     StringAttr device_attr = TFOp(op).deviceAttr();
     SmallVector<TFOp> const_ops;
     for (auto &it : llvm::enumerate(result)) {
-      Attribute attr = it.value();
+      TypedAttr attr = it.value();
       FailureOr<TFOp> const_op = CreateConstantTensorOp(
           rewriter, op->getLoc(),
           (Twine(TFOp(op).name(), "/eval_") + Twine(it.index())).str(),
