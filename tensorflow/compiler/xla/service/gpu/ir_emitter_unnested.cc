@@ -157,7 +157,6 @@ using absl::InlinedVector;
 using absl::StrCat;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
-using std::nullopt;
 using std::optional;
 
 const auto kDimX = TilingScheme::DimX;
@@ -167,7 +166,6 @@ const auto kDimTot = TilingScheme::DimTot;
 
 const auto kLinearIndexingX = TilingScheme::LinearIndexingX;
 const auto kStridedIndexingX = TilingScheme::StridedIndexingX;
-
 
 void AnnotateWithInt32Value(std::string name, int64_t value,
                             const std::string& kernel_name,
@@ -481,6 +479,16 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 // Returns a sanitized (doesn't need quoting) identifier name from a location.
 std::string GetIrNameFromLoc(mlir::Location loc) {
   return llvm_ir::SanitizeConstantName(mlir::GetNameFromLoc(loc));
+}
+
+// For a row reduction, returns the number of rows we can process in parallel
+// per warp.
+int RowReductionGetRowsPerWarp(int reduced_dimension_size) {
+  if (WarpSize() % reduced_dimension_size != 0 ||
+      reduced_dimension_size >= WarpSize()) {
+    return 1;
+  }
+  return WarpSize() / reduced_dimension_size;
 }
 
 }  // namespace
@@ -3774,8 +3782,13 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
       const TilingScheme& tiling_scheme =
           reduction_codegen_state.GetTilingScheme();
       int64_t num_threads_x = tiling_scheme.GetNumThreadsFor(kDimX);
-      llvm::GlobalVariable* shared_cache = [&] {
+      llvm::GlobalVariable* shared_cache = [&]() -> llvm::GlobalVariable* {
         if (reduction_codegen_state.IsRowReduction()) {
+          // Multi-row reductions do not use shared memory.
+          if (RowReductionGetRowsPerWarp(tiling_scheme.GetDimsInElems()[2]) >
+              1) {
+            return nullptr;
+          }
           // Allocate __shared__
           // cache[num_partial_results][num_warps][scaling_factor].
           CHECK_EQ(tiling_scheme.GetNumThreadsPerBlock() % WarpSize(), 0);
@@ -3812,14 +3825,15 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
     const HloComputation* reducer,
     absl::Span<std::pair<llvm::Value* const, llvm::Type* const>>
         partial_result_addresses,
-    int threads_per_block) {
+    int threads_per_block, int num_results_per_warp) {
   // This only works when the block size is a multiple of 32 threads.
 
   // We check this here as a mistake in the number of threads per
   // block is very hard to detect.
   CHECK_EQ(threads_per_block % 32, 0);
+  CHECK_EQ(WarpSize() % num_results_per_warp, 0);
 
-  for (int distance = 16; distance >= 1; distance /= 2) {
+  for (int distance = 16 / num_results_per_warp; distance >= 1; distance /= 2) {
     absl::InlinedVector<llvm::Value*, 2> reduction_params;
 
     for (auto acc : partial_result_addresses) {
@@ -4007,12 +4021,45 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
          state.partial_result_address->getAllocatedType()});
   }
 
-  EmitFullWarpShuffleDownLoopForReduce(reducer, absl::MakeSpan(current_outputs),
-                                       tiling_scheme.GetNumThreadsPerBlock());
+  int reduced_dimension_size = tiling_scheme.GetDimsInElems()[2];
+  int num_rows_per_warp = RowReductionGetRowsPerWarp(reduced_dimension_size);
+  EmitFullWarpShuffleDownLoopForReduce(
+      reducer, absl::MakeSpan(current_outputs),
+      tiling_scheme.GetNumThreadsPerBlockPhysical(), num_rows_per_warp);
 
   KernelSupportLibrary ksl(&b_);
   llvm::Value* warp_id =
       b_.CreateUDiv(thread_id_info.thread_id_x, constant(WarpSize()));
+
+  auto emit_write_output =
+      [&](llvm::Value* write_condition,
+          const absl::InlinedVector<
+              std::pair<llvm::Value* const, llvm::Type* const>, 2>& values) {
+        ksl.If("reduction_write_output", write_condition, [&] {
+          for (int oidx = 0; oidx < num_outputs; oidx++) {
+            llvm::Value* output_address = GetOutputAddressForReduction(
+                partial_result_idx, index_ty, reduction_codegen_state,
+                tiling_kernel_info, output_arrays, reduction, oidx);
+
+            if (reduction_codegen_state.IsRaceFree()) {
+              Store(Load(values[oidx].second, values[oidx].first, "output"),
+                    output_address);
+            } else {
+              CHECK_EQ(num_outputs, 1);
+              TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+                  *reducer, output_address, values[oidx].first,
+                  values[oidx].second));
+            }
+          }
+        });
+      };
+
+  if (num_rows_per_warp > 1) {
+    llvm::Value* is_writing_thread = is_zero(b_.CreateAnd(
+        thread_id_info.thread_id_x, constant(reduced_dimension_size - 1)));
+    emit_write_output(is_writing_thread, current_outputs);
+    return;
+  }
 
   ksl.If("intra_warp_reduce_write", is_zero(thread_id_info.lane_id), [&] {
     for (int oidx = 0; oidx < num_outputs; oidx++) {
@@ -4069,24 +4116,7 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
           tiling_scheme.GetNumThreadsPerBlock());
     }
 
-    ksl.If("reduction_write_output", is_zero(thread_id_info.thread_id_x), [&] {
-      for (int oidx = 0; oidx < num_outputs; oidx++) {
-        llvm::Value* output_address = GetOutputAddressForReduction(
-            partial_result_idx, index_ty, reduction_codegen_state,
-            tiling_kernel_info, output_arrays, reduction, oidx);
-
-        if (reduction_codegen_state.IsRaceFree()) {
-          Store(Load(selected_values[oidx].second, selected_values[oidx].first,
-                     "output"),
-                output_address);
-        } else {
-          CHECK_EQ(num_outputs, 1);
-          TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-              *reducer, output_address, selected_values[oidx].first,
-              selected_values[oidx].second));
-        }
-      }
-    });
+    emit_write_output(is_zero(thread_id_info.thread_id_x), selected_values);
   });
 }
 
@@ -4609,12 +4639,13 @@ static int GetPrimitiveBitwidth(mlir::Value i) {
 static int CalculateVirtualThreadScalingFactorForReduction(
     const ReductionDimensions& reduction_dimensions,
     const se::CudaComputeCapability& cc) {
-  if (reduction_dimensions.is_row_reduction &&
-      reduction_dimensions.dimensions[kDimX] <= 128) {
+  int dimx = reduction_dimensions.dimensions[kDimX];
+  if (reduction_dimensions.is_row_reduction && dimx <= 128) {
+    int rows_per_warp = RowReductionGetRowsPerWarp(dimx);
     if (cc.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-      return 3;
+      return rows_per_warp * 3;
     }
-    return 5;
+    return rows_per_warp * 5;
   }
   return 1;
 }
@@ -4728,6 +4759,9 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
       reduction_dimensions.is_row_reduction ? 1 : WarpSize();
   int64_t num_threads_x = [&] {
     if (reduction_dimensions.is_row_reduction) {
+      if (RowReductionGetRowsPerWarp(reduction_dimensions.dimensions[2]) > 1) {
+        return reduction_dimensions.dimensions[2];
+      }
       // Use 512 as default block size (threads per block) for row reductions.
       // For multi-output fusions, reduce the block size further to decrease
       // register pressure when multiple outputs are computed by each thread.
@@ -4848,7 +4882,7 @@ Status IrEmitterUnnested::EmitIRForReduction(
 
   CHECK(!reductions.empty()) << " expect at least one reduce instructions.";
   const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
-  CHECK_EQ(tiling_scheme.GetNumThreadsPerBlock() % WarpSize(), 0);
+  CHECK_EQ(tiling_scheme.GetNumThreadsPerBlockPhysical() % WarpSize(), 0);
   llvm::Type* index_ty =
       GetIndexTypeForKernel(fusion,
                             tiling_scheme.GetNumThreadsPerBlockPhysical() *

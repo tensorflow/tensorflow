@@ -651,7 +651,7 @@ class IrEmitterUnnested : public IrEmitter {
       const HloComputation* reducer,
       absl::Span<std::pair<llvm::Value* const, llvm::Type* const>>
           partial_result_addresses,
-      int threads_per_block);
+      int threads_per_block, int num_results_per_warp = 1);
 
   // Allocates a shared tile of given dimensions, applying scaling specified in
   // tilng_scheme as a major-most dimension to avoid collisions.

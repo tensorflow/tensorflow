@@ -558,6 +558,94 @@ TEST_F(GpuKernelTilingTest, RowReductionWithLayoutChangeTiled) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
 }
 
+TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {
+  const char *const kHloString = R"(
+    HloModule reduce_with_layout_change
+    reduction0 {
+      x0 = f32[] parameter(0)
+      y0 = f32[] parameter(1)
+      ROOT add0 = f32[] add(x0, y0)
+    }
+
+    ENTRY kernel_entry {
+      arg0 = f32[10000,16]{1,0}  parameter(0)
+      constant0 = f32[] constant(0)
+      ROOT reduce0 = f32[10000]{0} reduce(arg0, constant0), dimensions={1},
+        to_apply=reduction0
+    })";
+
+  // Check that the kernel is tiled by looking for llvm.nvvm.shfl.sync.down and
+  // a write condition based on the logical thread ID (two writes per warp).
+  auto hlo_module =
+      ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
+          .ValueOrDie();
+  auto expected_ir = is_built_with_rocm_ ? R"(
+; CHECK-LABEL: define amdgpu_kernel void @reduce
+; CHECK: %[[TID_X:.*]] = tail call i32 llvm.amdgcn.workitem.id.x()
+; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 15
+; CHECK: call i32 @llvm.amdgcn.ds.bpermute
+; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
+; CHECK: br i1 %[[LOGICAL_T0]],
+)"
+                                         : R"(
+; CHECK-LABEL: define void @reduce
+; CHECK: %[[TID_X:.*]] = tail call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
+; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 15
+; CHECK: call float @llvm.nvvm.shfl.sync.down.f32
+; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
+; CHECK: br i1 %[[LOGICAL_T0]],
+)";
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+                     /*match_optimized_ir=*/true);
+
+  // Check that the kernel runs correctly.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
+}
+
+TEST_F(GpuKernelTilingTest, RowReductionFourRowsPerWarp) {
+  const char *const kHloString = R"(
+    HloModule reduce_with_layout_change
+    reduction0 {
+      x0 = f32[] parameter(0)
+      y0 = f32[] parameter(1)
+      ROOT add0 = f32[] add(x0, y0)
+    }
+
+    ENTRY kernel_entry {
+      arg0 = f32[10000,8]{1,0}  parameter(0)
+      constant0 = f32[] constant(0)
+      ROOT reduce0 = f32[10000]{0} reduce(arg0, constant0), dimensions={1},
+        to_apply=reduction0
+    })";
+
+  // Check that the kernel is tiled by looking for llvm.nvvm.shfl.sync.down and
+  // a write condition based on the logical thread ID (four writes per warp).
+  auto hlo_module =
+      ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
+          .ValueOrDie();
+  auto expected_ir = is_built_with_rocm_ ? R"(
+; CHECK-LABEL: define amdgpu_kernel void @reduce
+; CHECK: %[[TID_X:.*]] = tail call i32 llvm.amdgcn.workitem.id.x()
+; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 7
+; CHECK: call i32 @llvm.amdgcn.ds.bpermute
+; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
+; CHECK: br i1 %[[LOGICAL_T0]],
+)"
+                                         : R"(
+; CHECK-LABEL: define void @reduce
+; CHECK: %[[TID_X:.*]] = tail call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
+; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 7
+; CHECK: call float @llvm.nvvm.shfl.sync.down.f32
+; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
+; CHECK: br i1 %[[LOGICAL_T0]],
+)";
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+                     /*match_optimized_ir=*/true);
+
+  // Check that the kernel runs correctly.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
+}
+
 TEST_F(GpuKernelTilingTest,
        ColumnReductionResultTwoPartsWithLayoutChangeTiled) {
   const char *const kHloString = R"(
@@ -640,7 +728,8 @@ TEST_F(GpuKernelTilingTest, ColumnReductionSmallTileSizeX) {
   EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
 }
 
-TEST_F(GpuKernelTilingTest, RowReductionWithSmallDimensionNotTiled) {
+TEST_F(GpuKernelTilingTest,
+       RowReductionWithSmallNonPowerOfTwoDimensionNotTiled) {
   const char *const kHloString = R"(
     HloModule reduction
     reduction0 {
@@ -650,7 +739,7 @@ TEST_F(GpuKernelTilingTest, RowReductionWithSmallDimensionNotTiled) {
     }
 
     ENTRY kernel_entry {
-      arg0 = f32[8,6,16]{2,1,0}  parameter(0)
+      arg0 = f32[8,6,15]{2,1,0}  parameter(0)
       constant0 = f32[] constant(0)
       ROOT reduce0 = f32[8,6]{1,0} reduce(arg0, constant0), dimensions={2},
         to_apply=reduction0
