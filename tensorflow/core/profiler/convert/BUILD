@@ -875,3 +875,17 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+cc_library(
+    name = "hlo_proto_to_graph_view",
+    srcs = ["hlo_proto_to_graph_view.cc"],
+    hdrs = ["hlo_proto_to_graph_view.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/profiler/utils:hlo_proto_to_module",
+    ],
+)
