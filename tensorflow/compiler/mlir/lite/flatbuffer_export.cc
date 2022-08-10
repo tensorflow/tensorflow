@@ -542,6 +542,12 @@ class Translator {
   Optional<BufferOffset<tflite::Tensor>> BuildTensorFromType(
       mlir::Type type, const std::string& name);
 
+  // Builds TF::VariantType from the given element type. Returns llvm::None if
+  // failure. Returns empty vector if the element type is not TF::VariantType or
+  // there is empty TensorType in the TF::VariantType.
+  Optional<std::vector<BufferOffset<tflite::VariantSubType>>>
+  BuildTFVariantType(mlir::Type element_type);
+
   // Builds TFLite tensor from the given value. `buffer_idx` is index of the
   // corresponding buffer. Emits error and returns llvm::None on failure.
   Optional<BufferOffset<tflite::Tensor>> BuildTensor(
@@ -770,6 +776,36 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   return tflite::CreateBuffer(builder_, buffer_data);
 }
 
+Optional<std::vector<BufferOffset<tflite::VariantSubType>>>
+Translator::BuildTFVariantType(mlir::Type element_type) {
+  std::vector<BufferOffset<tflite::VariantSubType>> variant_params;
+  auto variant_type = element_type.dyn_cast<mlir::TF::VariantType>();
+  if (!variant_type) {
+    return variant_params;
+  }
+
+  // We only support up to one nested type in tf_type.variant_type.
+  if (variant_type.getSubtypes().size() > 1) {
+    return llvm::None;
+  }
+  if (variant_type.getSubtypes().empty()) {
+    return variant_params;
+  }
+  mlir::TensorType tensor_type = variant_type.getSubtypes().front();
+  tflite::TensorType tflite_element_type =
+      GetTFLiteType(tensor_type.getElementType()).ValueOrDie();
+  std::vector<int32_t> shape;
+  if (tensor_type.hasRank()) {
+    llvm::ArrayRef<int64_t> shape_ref = tensor_type.getShape();
+    shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
+  }
+
+  variant_params.push_back(
+      tflite::CreateVariantSubType(builder_, builder_.CreateVector(shape),
+                                   tflite_element_type, tensor_type.hasRank()));
+  return variant_params;
+}
+
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
     mlir::Type type, const std::string& name) {
   auto tensor_type = type.cast<TensorType>();
@@ -789,6 +825,11 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
   auto element_type = tensor_type.getElementType();
   tflite::TensorType tflite_element_type =
       GetTFLiteType(tensor_type.getElementType()).ValueOrDie();
+  Optional<std::vector<BufferOffset<tflite::VariantSubType>>> variant_params =
+      BuildTFVariantType(element_type);
+  if (!variant_params.hasValue()) {
+    return llvm::None;
+  }
   BufferOffset<tflite::QuantizationParameters> q_params = 0;
   if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
     std::vector<float> scales = {static_cast<float>(qtype.getScale())};
@@ -809,7 +850,8 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
       builder_, builder_.CreateVector(shape), tflite_element_type,
       /*buffer=*/0, builder_.CreateString(name), q_params,
       /*is_variable=*/false, /*sparsity=*/0, /*shape_signature=*/0,
-      /*has_rank=*/tensor_type.hasRank());
+      /*has_rank=*/tensor_type.hasRank(),
+      variant_params->empty() ? 0 : builder_.CreateVector(*variant_params));
 }
 
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
@@ -876,6 +918,12 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   tflite::TensorType tflite_element_type =
       GetTFLiteType(type.getElementType()).ValueOrDie();
 
+  Optional<std::vector<BufferOffset<tflite::VariantSubType>>> variant_params =
+      BuildTFVariantType(element_type);
+  if (!variant_params.hasValue()) {
+    return llvm::None;
+  }
+
   BufferOffset<tflite::QuantizationParameters> q_params;
   if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
     std::vector<float> scales = {static_cast<float>(qtype.getScale())};
@@ -920,14 +968,16 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
         /*is_variable=*/is_variable, s_params, /*shape_signature=*/0,
-        /*has_rank=*/has_rank);
+        /*has_rank=*/has_rank,
+        variant_params->empty() ? 0 : builder_.CreateVector(*variant_params));
   } else {
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
         /*is_variable=*/is_variable, s_params,
         /*shape_signature=*/builder_.CreateVector(shape_signature),
-        /*has_rank=*/has_rank);
+        /*has_rank=*/has_rank,
+        variant_params->empty() ? 0 : builder_.CreateVector(*variant_params));
   }
 }
 
