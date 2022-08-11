@@ -13,11 +13,6 @@
 // CHECK-EMPTY:
 // CHECK-NEXT:       },
 // CHECK-NEXT:       has_rank: true
-// CHECK-NEXT:       variant_tensors: [ {
-// CHECK-NEXT:         shape: [ 2 ],
-// CHECK-NEXT:         type: INT32,
-// CHECK-NEXT:         has_rank: true
-// CHECK-NEXT:       } ]
 // CHECK-NEXT:     } ],
 // CHECK-NEXT:     inputs: [  ],
 // CHECK-NEXT:     outputs: [ 0 ],
