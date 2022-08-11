@@ -89,6 +89,13 @@ PyExecutable::ExecuteInternal(
     std::shared_ptr<HostCallbackStates> host_callback_states;
 
     if (!host_callbacks_.empty()) {
+      auto* host_memory_for_device_manager =
+          client()->pjrt_client()->GetPjRtHostMemoryForDeviceManager();
+      if (host_memory_for_device_manager == nullptr) {
+        return InternalError("Host callback not supported for runtime type: %s",
+                             client()->runtime_type());
+      }
+
       returned_futures.emplace();
 
       host_callback_states = std::make_shared<HostCallbackStates>();
@@ -100,8 +107,8 @@ PyExecutable::ExecuteInternal(
 
       for (const py::capsule& host_callback : host_callbacks_) {
         contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
-            host_callback.get_pointer<HostCallback>(), client()->pjrt_client(),
-            send_callbacks, recv_callbacks));
+            host_callback.get_pointer<HostCallback>(),
+            host_memory_for_device_manager, send_callbacks, recv_callbacks));
       }
       options.send_callbacks = host_callback_states->send_callbacks;
       options.recv_callbacks = host_callback_states->recv_callbacks;
@@ -168,6 +175,12 @@ PyExecutable::ExecuteShardedOnLocalDevicesInternal(
     auto options = options_;
     std::shared_ptr<HostCallbackStates> host_callback_states;
     if (!host_callbacks_.empty()) {
+      auto* host_memory_for_device_manager =
+          client()->pjrt_client()->GetPjRtHostMemoryForDeviceManager();
+      if (host_memory_for_device_manager == nullptr) {
+        return InternalError("Host callback not supported for runtime type: %s",
+                             client()->runtime_type());
+      }
       returned_futures.emplace();
 
       host_callback_states = std::make_shared<HostCallbackStates>();
@@ -182,7 +195,7 @@ PyExecutable::ExecuteShardedOnLocalDevicesInternal(
         for (const py::capsule& host_callback : host_callbacks_) {
           contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
               host_callback.get_pointer<HostCallback>(),
-              client()->pjrt_client(), send_callbacks, recv_callbacks));
+              host_memory_for_device_manager, send_callbacks, recv_callbacks));
         }
       }
       options.send_callbacks = host_callback_states->send_callbacks;
