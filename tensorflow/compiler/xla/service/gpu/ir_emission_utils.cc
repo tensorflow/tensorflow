@@ -786,7 +786,7 @@ std::optional<TransposeDimsAndParams> FindTranspose021DimsAndParameters(
   std::optional<Vector3> reduced_dims_021;
   for (int64_t operand_idx = 0; operand_idx < operand_shapes.size();
        ++operand_idx) {
-    auto find_transpose_result =
+    std::optional<Vector3> find_transpose_result =
         ShapeUtil::FindTranspose021(operand_shapes[operand_idx], output_shape);
     if (!find_transpose_result.has_value()) {
       continue;
