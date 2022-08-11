@@ -512,6 +512,19 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_device_array",
+    hdrs = [
+        "gpu_device_array.h",
+        "gpu_device_array_gpu.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_headers_lib",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "gpu_prim_hdrs",
     hdrs = ["gpu_prim.h"],
     deps = if_cuda([
@@ -789,20 +802,6 @@ cc_library(
 )
 
 # Private support libraries ---------------------------------------------------
-
-cc_library(
-    name = "gpu_device_array",
-    hdrs = [
-        "gpu_device_array.h",
-        "gpu_device_array_gpu.h",
-    ],
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_headers_lib",
-        "//tensorflow/core:lib",
-    ],
-)
 
 # Depending on a build configuration this target provides custom kernel for Eigen
 # tensor contractions (small matrix multiplication kernel used to multiple together
