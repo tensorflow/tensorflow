@@ -3236,8 +3236,10 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
                opcode() == HloOpcode::kSort) {
-      extra.push_back(
-          StrCat("to_apply=", PrintNameInternal(to_apply()->name(), options)));
+      if (!called_computations().empty()) {
+        extra.push_back(StrCat("to_apply=",
+                               PrintNameInternal(to_apply()->name(), options)));
+      }
     } else if (opcode() == HloOpcode::kCustomCall) {
       if (!called_computations().empty()) {
         extra.push_back(StrCat(
@@ -3305,8 +3307,10 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
-        extra.push_back(
-            StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+        if (!called_computations().empty()) {
+          extra.push_back(
+              StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+        }
         break;
       default:
         if (!called_computations().empty()) {
