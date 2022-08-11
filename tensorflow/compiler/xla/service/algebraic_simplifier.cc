@@ -3601,24 +3601,7 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
       }
     }
   }
-  HloInstruction *a, *b;
-  // Gt(Max(a,b),_) or Gt(Max(b,a),_)
-  if (Match(compare, m::Gt(m::Maximum(m::Op(&a), m::Op(&b)), m::Op(&rhs)))) {
-    // Gt(Max(a,b),b) -> Gt(a,b)
-    if (rhs == b) {
-      HloInstruction* new_compare =
-          compare->AddInstruction(HloInstruction::CreateCompare(
-              compare->shape(), a, b, compare->comparison_direction()));
-      return ReplaceInstruction(compare, new_compare);
-    } else if (rhs == a) {  // Gt(Max(a,b),a) -> Gt(b,a)
-      HloInstruction* new_compare =
-          compare->AddInstruction(HloInstruction::CreateCompare(
-              compare->shape(), b, a, compare->comparison_direction()));
-      return ReplaceInstruction(compare, new_compare);
-    } else {
-      return OkStatus();
-    }
-  }
+
   if (Cast<HloCompareInstruction>(compare)->type() ==
       Comparison::Type::kUnsigned) {
     // X u<  0 -> false
