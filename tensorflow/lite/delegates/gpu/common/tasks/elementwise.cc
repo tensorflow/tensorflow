@@ -126,8 +126,8 @@ $0.w = $1.w < INIT_FLT(0.0f) ? exp($1.w) - INIT_FLT(1.0f) : $1.w;)";
     case OperationType::TANH:
       if (use_native_opencl_functions) {
         result =
-            "  FLT4 exp_val = convert_half4(native_exp(2.0f * "
-            "convert_float4($1)));";
+            "FLT4 exp_val = convert_half4(native_exp(2.0f * "
+            "convert_float4($1)));\n";
         result +=
             "$0 = ((exp_val - INIT_FLT4(1.0f)) / (exp_val + "
             "INIT_FLT4(1.0f)));";
