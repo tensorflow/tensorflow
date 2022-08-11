@@ -1592,6 +1592,95 @@ class PaddingFIFOQueueTest(test.TestCase):
                                      [tensor_shape.TensorShape(None)])
 
 
+@test_util.run_v1_only("GPUCompatiblePaddingFIFOQueue removed from v2")
+class GPUCompatiblePaddingFIFOQueueTests(test.TestCase):
+
+  def testEnqueueAndDequeue(self):
+    with test_util.use_gpu():
+      q = data_flow_ops.GPUCompatiblePaddingFIFOQueue(10, dtypes_lib.float32,
+                                                      ((),))
+      elems_numpy = [10.0, 20.0, 30.0]
+      _a = constant_op.constant(2.0)
+      elems = [constant_op.constant(x) / _a for x in elems_numpy]
+      # MemcpyH2D * 3: [10.0, 20.0, 30.0]
+      # MemcpyH2D * 3: _a
+      # GPU RealDiv * 3
+      for x in elems:
+        self.evaluate(q.enqueue((x,)))
+
+      _b = constant_op.constant(3.0)
+      _c = constant_op.constant(1.0)
+      dequeued_tensor = q.dequeue()
+      for i in range(len(elems)):
+        # Ensure same device
+        self.assertEqual(elems[0].device, dequeued_tensor.device)
+        # MemcpyH2D * 3: _b
+        # MemcpyH2D * 3: _c
+        # GPU Mul * 3
+        # GPU Add * 3
+        # MemcpyD2H * 3: return
+        vals = self.evaluate(dequeued_tensor * _b + _c)
+        self.assertEqual([elems_numpy[i] / 2 * 3 + 1], vals)
+
+  def testGPUQueueCPUTensor(self):
+    with ops.device("CPU:0"):
+      elems_numpy = [7, 8, 9]
+      _a = constant_op.constant(5)
+      elems = [constant_op.constant(x) * _a for x in elems_numpy]
+
+    with test_util.use_gpu():
+      # MemcpyH2D * 3
+      q = data_flow_ops.GPUCompatiblePaddingFIFOQueue(10, dtypes_lib.int32,
+                                                      ((),))
+      # MemcpyD2H * 3
+      # Note that even though the below enqueue/dequeue are declared on CPU,
+      # it still copys-to and holds the enqueued resources on GPU.
+      # So to pin the tensors on CPU, we need to declare the queue itself on CPU.
+
+    for x in elems:
+      with ops.device("CPU:0"):
+        self.evaluate(q.enqueue((x,)))
+
+    with ops.device("CPU:0"):
+      dequeued_tensor = q.dequeue()
+
+    for i in range(len(elems)):
+      self.assertEqual(elems[0].device, dequeued_tensor.device)
+      with ops.device("CPU:0"):
+        vals = self.evaluate(dequeued_tensor + 2)
+      self.assertEqual([elems_numpy[i] * 5 + 2], vals)
+
+  def testMultiEnqueueAndDequeue(self):
+    with test_util.use_gpu():
+      q = data_flow_ops.GPUCompatiblePaddingFIFOQueue(
+          10, (dtypes_lib.int32, dtypes_lib.float32), ((), ()))
+      elems_numpy = [(5, 10.0), (10, 20.0), (15, 30.0)]
+      elems = [(constant_op.constant(x), constant_op.constant(y))
+               for x, y in elems_numpy]
+
+      for x, y in elems:
+        self.evaluate(q.enqueue((x, y)))
+
+      dequeued_tensor = q.dequeue()
+      print(dequeued_tensor[0].device)
+      for i in range(len(elems)):
+        self.assertEqual(elems[i][0].device, dequeued_tensor[0].device)
+        x_val, y_val = self.evaluate(dequeued_tensor)
+        x, y = elems_numpy[i]
+        self.assertEqual(x, x_val)
+        self.assertEqual(y, y_val)
+
+  def testIdentityHelper(self):
+    with ops.device("CPU:0"):
+      a = constant_op.constant(1)
+      b = a + 1
+    with test_util.use_gpu():
+      c = array_ops.identity(b)
+      q = data_flow_ops.GPUCompatiblePaddingFIFOQueue(1, tf.int32, ((),))
+      self.evaluate(q.enqueue(c))  # MemcpyH2D: CPU b to GPU c pinned in queue
+      self.assertAllEqual(self.evaluate(q.dequeue()), 2)  # MemcpyD2H: return
+
+
 class QueueFromListTest(test.TestCase):
 
   def testQueueFromListShapes(self):

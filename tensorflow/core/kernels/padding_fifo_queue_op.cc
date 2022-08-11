@@ -69,5 +69,8 @@ REGISTER_KERNEL_BUILDER(Name("PaddingFIFOQueue").Device(DEVICE_CPU),
                         PaddingFIFOQueueOp);
 REGISTER_KERNEL_BUILDER(Name("PaddingFIFOQueueV2").Device(DEVICE_CPU),
                         PaddingFIFOQueueOp);
+REGISTER_KERNEL_BUILDER(
+    Name("PaddingFIFOQueueV2").Device(DEVICE_DEFAULT).HostMemory("handle"),
+    PaddingFIFOQueueOp);
 
 }  // namespace tensorflow

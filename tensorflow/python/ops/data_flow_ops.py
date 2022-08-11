@@ -920,6 +920,74 @@ class PaddingFIFOQueue(QueueBase):
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
+class GPUCompatiblePaddingFIFOQueue(QueueBase):
+  """A queue implementation that dequeues elements in first-in first-out order.
+  GPUCompatiblePaddingFIFOQueue is like PaddingFIFOQueue, 
+  but the queue resource may be placed either on a CPU or on a GPU. 
+  It is not cross-device: enqueues and dequeues
+  will be colocated with the queue resource.
+  """
+
+  def __init__(self,
+               capacity,
+               dtypes,
+               shapes,
+               names=None,
+               shared_name=None,
+               name="padding_fifo_queue"):
+    """A `PaddingFIFOQueue` may contain components with dynamic shape, while also
+    supporting `dequeue_many`.
+    
+    The `shapes` argument must be specified; each component of a queue
+    element must have the respective shape.  Shapes of fixed
+    rank but variable size are allowed by setting any shape dimension to None.
+    
+    Args:
+      capacity: An integer. The upper bound on the number of elements
+        that may be stored in this queue.
+      dtypes:  A list of `DType` objects. The length of `dtypes` must equal
+        the number of tensors in each queue element.
+      shapes: A list of `TensorShape` objects, with the same length as
+        `dtypes`.  Any dimension in the `TensorShape` containing value
+        `None` is dynamic and allows values to be enqueued with
+         variable size in that dimension.
+      names: (Optional.) A list of string naming the components in the queue
+        with the same length as `dtypes`, or `None`.  If specified the dequeue
+        methods return a dictionary with the names as keys.
+      shared_name: (Optional.) If non-empty, this queue will be shared under
+        the given name across multiple sessions.
+      name: Optional name for the queue operation.
+    """
+    dtypes = _as_type_list(dtypes)
+    shapes = _as_shape_list(shapes, dtypes, unknown_dim_allowed=True)
+    names = _as_name_list(names, dtypes)
+    if len(dtypes) != len(shapes):
+      raise ValueError("Shapes must be provided for all components, "
+                       f"but received {len(dtypes)} dtypes and "
+                       f"{len(shapes)} shapes.")
+    # init_scope() context required
+    queue_ref = gen_data_flow_ops.padding_fifo_queue_v2(
+        component_types=dtypes,
+        shapes=shapes,
+        capacity=capacity,
+        shared_name=_shared_name(shared_name),
+        name=name)
+
+    super().__init__(dtypes, shapes, names, queue_ref)
+
+  def enqueue_many(self, vals, name=None):
+    """enqueue_many is not supported on GPUCompatiblePaddingFIFOQueue."""
+    raise NotImplementedError(
+        "GPUCompatiblePaddingFIFOQueue does not support enqueue_many or dequeue_many, "
+        "only enqueue and dequeue.")
+
+  def dequeue_many(self, n, name=None):
+    """dequeue_many is not supported on GPUCompatiblePaddingFIFOQueue."""
+    raise NotImplementedError(
+        "GPUCompatiblePaddingFIFOQueue does not support enqueue_many or dequeue_many, "
+        "only enqueue and dequeue.")
+
+
 @tf_export("queue.PriorityQueue",
            v1=["queue.PriorityQueue", "io.PriorityQueue", "PriorityQueue"])
 @deprecation.deprecated_endpoints(["io.PriorityQueue", "PriorityQueue"])
