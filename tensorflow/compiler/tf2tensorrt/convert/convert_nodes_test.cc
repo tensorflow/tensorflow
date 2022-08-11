@@ -1569,8 +1569,10 @@ class OpConverterTest : public ::testing::Test {
  public:
   std::unique_ptr<Converter> converter_;
 
- private:
+ protected:
   Logger& logger_ = *Logger::GetLogger();
+
+ private:
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
   std::unique_ptr<Allocator> tensor_buffer_allocator_;
@@ -5840,6 +5842,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
           errors::Internal("Internal: Failed to build TensorRT engine")},
   };
 
+  logger_.unsuppressAllLoggerMsgs();
   int i = 0;
   for (auto p : params) {
     Reset();
@@ -5876,9 +5879,14 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
     AddTestWeights<int32>("begin", {static_cast<int>(p.begin.size())}, p.begin);
     AddTestWeights<int32>("size", {static_cast<int>(p.size.size())}, p.size);
 
+    const bool flag =
+        trt_mode_ == TrtTestMode::kDynamicShape && (i == 9 || i == 11);
+    if (flag) logger_.suppressLoggerMsgs(nvinfer1::ILogger::Severity::kERROR);
+
     TestOpConverter("my_slice", node_def, p.expected_output_dims,
                     p.conversion_status, p.runtime_status,
                     ElementsAreArray(p.expected_output));
+    if (flag) logger_.unsuppressLoggerMsgs(nvinfer1::ILogger::Severity::kERROR);
   }
 }
 

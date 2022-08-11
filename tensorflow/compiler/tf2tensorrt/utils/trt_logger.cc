@@ -25,6 +25,9 @@ namespace tensorrt {
 
 // Use TF logging for TensorRT informations
 void Logger::log(Severity severity, const char* msg) noexcept {
+  if (!isValidSeverity(severity, msg) || suppressedMsg_ & (1 << (int)severity))
+    return;
+
   // Suppress info-level messages
   switch (severity) {
     case Severity::kVERBOSE:
@@ -44,14 +47,31 @@ void Logger::log(Severity severity, const char* msg) noexcept {
       LOG(FATAL) << name_ << " " << msg;
       break;
     }
-    // This is useless for now. But would catch it in future if enum changes. It
-    // is always good to have default case!
-    default: {
-      LOG(FATAL) << name_ << "Got unknown severity level " << int(severity)
-                 << " from TensorRT: " << msg;
-      break;
-    }
   }
+}
+
+void Logger::suppressLoggerMsgs(Severity severity) {
+  if (isValidSeverity(severity)) {
+    suppressedMsg_ |= 1 << (int)severity;
+  }
+}
+
+void Logger::unsuppressLoggerMsgs(Severity severity) {
+  if (isValidSeverity(severity)) {
+    suppressedMsg_ &= (-1) ^ (1 << (int)severity);
+  }
+}
+
+bool Logger::isValidSeverity(Severity severity, const char* msg) noexcept {
+  switch (severity) {
+    case Severity::kVERBOSE:
+    case Severity::kINFO:
+    case Severity::kWARNING:
+    case Severity::kERROR:
+    case Severity::kINTERNAL_ERROR:
+      return true;
+  }
+  return false;
 }
 
 // static
