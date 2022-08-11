@@ -177,25 +177,34 @@ cc_library(
     ],
 )
 
-tf_cc_test(
-    name = "pjrt_client_test_cpu",
+cc_library(
+    name = "pjrt_client_test_common",
+    testonly = 1,
     srcs = ["pjrt_client_test.cc"],
-    defines = ["PJRT_CLIENT_TEST_CPU"],
+    hdrs = ["pjrt_client_test.h"],
     deps = [
         ":pjrt_client",
-        ":tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:test_main",
         "@com_google_absl//absl/synchronization",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "pjrt_client_test_cpu",
+    srcs = ["pjrt_client_test_cpu.cc"],
+    deps = [
+        ":pjrt_client_test_common",
+        ":tfrt_cpu_pjrt_client",
+        "//tensorflow/core:test_main",
     ],
 )
 
 tf_cc_test(
     name = "pjrt_client_test_gpu",
-    srcs = ["pjrt_client_test.cc"],
-    defines = ["PJRT_CLIENT_TEST_GPU"],
+    srcs = ["pjrt_client_test_gpu.cc"],
     tags = [
         "no_oss",
         "notap",
@@ -203,13 +212,9 @@ tf_cc_test(
     ],
     deps = [
         ":gpu_device",
-        ":pjrt_client",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/client:xla_builder",
+        ":pjrt_client_test_common",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:test_main",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
