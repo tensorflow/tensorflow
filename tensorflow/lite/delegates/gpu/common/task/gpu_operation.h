@@ -95,6 +95,16 @@ class GPUOperation {
 
   absl::Status AddOperation(const GpuInfo& gpu_info, GPUOperation* operation);
 
+  //    input       input
+  //      |           |
+  //    elem0         |
+  //      |    -->  elem
+  //    elem1         |
+  //      |           |
+  //    output      output
+  absl::Status FuseSimpleElemWithSimpleElem(const GpuInfo& gpu_info,
+                                            GPUOperation* operation);
+
   void SetSrc(GpuSpatialTensor* ptr, int index = 0);
   void SetDst(GpuSpatialTensor* ptr, int index = 0);
 
