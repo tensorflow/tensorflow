@@ -956,9 +956,12 @@ def _apply_inlining(func):
 
 
 def _save_calibration_table(node):
-  calibration_table = gen_trt_ops.get_calibration_data_op(
-      _get_canonical_engine_name(node.name))
-  node.attr["calibration_data"].s = calibration_table.numpy()
+  try:
+    calibration_table = gen_trt_ops.get_calibration_data_op(
+        _get_canonical_engine_name(node.name))
+    node.attr["calibration_data"].s = calibration_table.numpy()
+  except errors.UnknownError:
+    logging.warning("Warning calibration error for %s", node.name)
 
 
 def _convert_to_tensor(inp):
