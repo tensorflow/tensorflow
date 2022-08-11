@@ -552,6 +552,66 @@ LogicalResult GatherOp::verify() {
   return verifyDestinationStyleOp(getOperation(), getNumOutputs());
 }
 
+//===----------------------------------------------------------------------===//
+// TransposeOp
+//===----------------------------------------------------------------------===//
+
+ParseResult TransposeOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseDstStyleOp(parser, result);
+}
+
+void TransposeOp::print(OpAsmPrinter &p) {
+  printDstStyleOp(cast<TransposeOp>(getOperation()), p);
+}
+
+bool isValidPermutation(ArrayRef<int64_t> permutation) {
+  SmallVector<bool> seen(permutation.size(), false);
+  for (auto p : permutation) {
+    // Verify that each element is in [0..n-1] range and is present only once.
+    if (p < 0 || p >= permutation.size() || seen[p]) return false;
+
+    seen[p] = true;
+  }
+  return true;
+}
+
+LogicalResult TransposeOp::verify() {
+  ArrayRef<int64_t> permutationRef = permutation();
+
+  if (!isValidPermutation(permutationRef))
+    return emitOpError("permutation is not valid");
+
+  auto inputType = input().getType().cast<ShapedType>();
+  auto initType = init().getType().cast<ShapedType>();
+
+  int64_t rank = inputType.getRank();
+
+  if (rank != initType.getRank())
+    return emitOpError() << "input rank " << rank
+                         << " does not match init rank " << initType.getRank();
+
+  if (rank != permutationRef.size())
+    return emitOpError() << "size of permutation " << permutationRef.size()
+                         << " does not match the argument rank " << rank;
+
+  auto inputDims = inputType.getShape();
+  auto initDims = initType.getShape();
+
+  for (size_t i = 0; i < rank; ++i) {
+    int64_t inputDim = inputDims[permutationRef[i]];
+    int64_t initDim = initDims[i];
+
+    if (inputDim != ShapedType::kDynamicSize &&
+        initDim != ShapedType::kDynamicSize && inputDim != initDim) {
+      return emitOpError() << "dim(result, " << i << ") = " << initDim
+                           << " doesn't match dim(input, permutation[" << i
+                           << "]) = " << inputDim;
+    }
+  }
+
+  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+}
+
 }  // namespace thlo
 }  // namespace mlir
 

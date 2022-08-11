@@ -126,4 +126,32 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", []> {
   let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
+def THLO_TransposeOp : THLO_DstStyleOp<"transpose", []> {
+  let summary = "Destination-style twin for `mhlo.transpose`";
+  let description = [{
+    Permutes the dimensions of `operand` according to the given `permutation`.
+      `dim(result, i) = dim(operand, permutation[i])`
+
+    Example:
+    ```
+      %transpose = thlo.transpose
+          ins(%input:tensor<16x64xf32>)
+          outs(%init:tensor<64x16xf32>)
+          { permutation =  [:i64 1, 0] }
+    ```
+  }];
+
+  let arguments = (ins
+    // Input arg
+    TensorOrMemref:$input,
+    // Output arg
+    TensorOrMemref:$init,
+
+    DenseI64ArrayAttr:$permutation
+  );
+  let results = (outs TensorOrMemref:$result);
+
+  let extraClassDeclaration = extraBaseClassDeclaration;
+}
+
 #endif // THLO_OPS

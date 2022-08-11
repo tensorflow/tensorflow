@@ -37,3 +37,27 @@ func.func @scatter(%indices: tensor<2x2xi64>,
   func.return %scatter : tensor<3x3xf32>
 }
 // CHECK-LABEL: func @scatter
+
+// -----
+
+func.func @transpose(%input: tensor<16x32x64xf32>,
+                     %init: tensor<32x64x16xf32>) -> tensor<32x64x16xf32> {
+  %transpose = thlo.transpose
+      ins(%input:tensor<16x32x64xf32>)
+      outs(%init:tensor<32x64x16xf32>)
+      { permutation = [:i64 1, 2, 0] }
+  func.return %transpose : tensor<32x64x16xf32>
+}
+// CHECK-LABEL: func @transpose
+
+// -----
+
+func.func @transpose_unknown_dimentions(%input: tensor<16x?xf32>,
+                                         %init: tensor<64x?xf32>) -> tensor<64x?xf32> {
+  %transpose = thlo.transpose
+      ins(%input:tensor<16x?xf32>)
+      outs(%init:tensor<64x?xf32>)
+      { permutation = [:i64 1, 0] }
+  func.return %transpose : tensor<64x?xf32>
+}
+// CHECK-LABEL: func @transpose_unknown_dimentions
