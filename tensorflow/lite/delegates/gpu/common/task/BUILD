@@ -142,21 +142,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tensor_linear_desc",
-    srcs = ["tensor_linear_desc.cc"],
-    hdrs = ["tensor_linear_desc.h"],
-    deps = [
-        ":gpu_object_desc",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "testing_util",
     testonly = 1,
     srcs = ["testing_util.cc"],
