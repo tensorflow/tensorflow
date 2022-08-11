@@ -418,6 +418,34 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_NumOutputs_Args",
+      PJRT_Executable_NumOutputs_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::vector<std::shared_ptr<xla::HloModule>> hlo_modules,
+      args->executable->executable->GetHloModules());
+  if (hlo_modules.empty()) {
+    return new PJRT_Error{
+        xla::InvalidArgument("Can't get number of executable outputs, Hlo "
+                             "modules is empty for executable %s.",
+                             args->executable->executable->name())};
+  }
+  if (hlo_modules.size() != 1) {
+    return new PJRT_Error{
+        xla::Unimplemented("MPMD execution not supported by PJRT C API (in "
+                           "function PJRT_Executable_NumOutputs).")};
+  }
+  xla::Shape shape = hlo_modules[0].get()->result_shape();
+  if (shape.IsTuple()) {
+    args->num_outputs = shape.tuple_shapes_size();
+  } else {
+    // The output size is 1 is it is not a tuple.
+    args->num_outputs = 1;
+  }
+  return nullptr;
+}
+
 // ---------------------------------- Buffers ----------------------------------
 // TODO(b/238999986): Replace this with decomposed shape methods.
 PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(

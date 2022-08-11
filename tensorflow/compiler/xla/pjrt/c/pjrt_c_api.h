@@ -549,6 +549,19 @@ const size_t PJRT_Executable_Execute_Args_STRUCT_SIZE =
 // Executes on devices addressable by the client.
 typedef PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  size_t num_outputs;  // out
+} PJRT_Executable_NumOutputs_Args;
+const size_t PJRT_Executable_NumOutputs_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_NumOutputs_Args, num_outputs);
+
+// Gets the number of outputs per device produced by `executable`.
+typedef PJRT_Error* PJRT_Executable_NumOutputs(
+    PJRT_Executable_NumOutputs_Args* args);
+
 // ---------------------------------- Buffers ----------------------------------
 
 typedef struct {
@@ -703,6 +716,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_AddressableDevices);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumOutputs);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Execute);
