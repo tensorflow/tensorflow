@@ -245,11 +245,67 @@ LogicalResult EigenExpApproximation::matchAndRewrite(
   return mlir::success();
 }
 
+struct EigenExpM1Approximation : public OpRewritePattern<math::ExpM1Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(math::ExpM1Op op,
+                                PatternRewriter &rewriter) const final;
+};
+
+LogicalResult EigenExpM1Approximation::matchAndRewrite(
+    math::ExpM1Op op, PatternRewriter &rewriter) const {
+  auto shape = vectorShape(op.getOperand().getType(), isF32);
+  if (!shape.hasValue())
+    return rewriter.notifyMatchFailure(op, "unsupported operand type");
+
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+  auto bcast = [&](Value value) -> Value {
+    return broadcast(builder, value, *shape);
+  };
+
+  // expm1(x) = exp(x) - 1 = u - 1.
+  // We have to handle it carefully when x is near 0, i.e. u ~= 1,
+  // and when the input is ~= -inf, i.e. u - 1 ~= -1.
+  Value cstOne = bcast(f32Cst(builder, 1.0f));
+  Value cstNegOne = bcast(f32Cst(builder, -1.0f));
+  Value x = op.getOperand();
+  Value u = builder.create<math::ExpOp>(x);
+  Value uEqOneOrNaN =
+      builder.create<arith::CmpFOp>(arith::CmpFPredicate::UEQ, u, cstOne);
+  Value uMinusOne = builder.create<arith::SubFOp>(u, cstOne);
+  Value uMinusOneEqNegOne = builder.create<arith::CmpFOp>(
+      arith::CmpFPredicate::OEQ, uMinusOne, cstNegOne);
+  // logU = log(u) ~= x
+  Value logU = builder.create<math::LogOp>(u);
+
+  // Detect exp(x) = +inf; written this way to avoid having to form +inf.
+  Value isInf =
+      builder.create<arith::CmpFOp>(arith::CmpFPredicate::OEQ, logU, u);
+
+  // (u - 1) * (x / ~x)
+  Value expm1 = builder.create<arith::MulFOp>(
+      uMinusOne, builder.create<arith::DivFOp>(x, logU));
+  expm1 = builder.create<arith::SelectOp>(isInf, u, expm1);
+  Value approximation = builder.create<arith::SelectOp>(
+      uEqOneOrNaN, x,
+      builder.create<arith::SelectOp>(uMinusOneEqNegOne, cstNegOne, expm1));
+  rewriter.replaceOp(op, approximation);
+
+  return mlir::success();
+}
+
 static void populateMathApproximationPatterns(RewritePatternSet &patterns,
                                               ArrayRef<std::string> oplist) {
   for (const std::string &op : oplist) {
-    if (op == "exp" || op == "all")
+    if (op == "all") {
+      patterns.add<EigenExpApproximation, EigenExpM1Approximation>(
+          patterns.getContext());
+    } else if (op == "exp") {
       patterns.add<EigenExpApproximation>(patterns.getContext());
+    } else if (op == "expm1") {
+      patterns.add<EigenExpM1Approximation>(patterns.getContext());
+    }
   }
 }
 
