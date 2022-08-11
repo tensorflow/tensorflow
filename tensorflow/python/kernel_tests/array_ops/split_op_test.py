@@ -325,8 +325,9 @@ class SplitOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testGradientsAll(self):
     for dtype in _TEST_DTYPES:
-      self._testGradientsSimple(dtype)
-      self._testGradientsSimpleVariable(dtype)
+      if not dtype.is_integer:
+        self._testGradientsSimple(dtype)
+        self._testGradientsSimpleVariable(dtype)
 
   @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
