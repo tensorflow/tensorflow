@@ -48,6 +48,7 @@ limitations under the License.
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -1692,12 +1693,20 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
     rewriter.inlineRegionBefore(op.body(), region, region.end());
     TypeConverter::SignatureConversion signatureConverter(numOperands * 2);
 
-    // map operand and init values's types
-    for (const auto& it : llvm::enumerate(op.getOperation()->getOperands())) {
+    // Reduce requires that the seed be used as a LHS operand inside the
+    // region, and the seed is encoded in linalg in the intial out value, so
+    // modify the signature of the block and the value mappings, so the output
+    // args will correlate with the LHS and the inputs correlate with the RHS.
+    for (const auto& [idx, val] : llvm::enumerate(op.init_values())) {
       signatureConverter.addInputs(
-          it.index(),
+          idx + numOperands,
           typeConverter->convertType(
-              it.value().getType().cast<ShapedType>().getElementType()));
+              val.getType().cast<ShapedType>().getElementType()));
+    }
+    for (const auto& [idx, val] : llvm::enumerate(op.operands())) {
+      signatureConverter.addInputs(
+          idx, typeConverter->convertType(
+                   val.getType().cast<ShapedType>().getElementType()));
     }
 
     rewriter.applySignatureConversion(&region, signatureConverter,
@@ -2611,18 +2620,23 @@ struct ReduceWindowOpOnTensorsGenericConversion
     TypeConverter::SignatureConversion signatureConverter(
         inputs.size() + op->getNumResults() - 1);
 
-    for (uint64_t i = 0, s = inputs.size(); i < s - 1; i++) {
-      signatureConverter.addInputs(
-          i, inputs[i].getType().cast<ShapedType>().getElementType());
+    // ReduceWindow requires that the seed be used as a LHS operand inside the
+    // region, and the seed is encoded in linalg in the intial out value, so
+    // modify the signature of the block and the value mappings, so the output
+    // args will correlate with the LHS and the inputs correlate with the RHS.
+    for (const auto& [i, type] : llvm::enumerate(resultTypes)) {
+      auto idx = inputs.size() + i - 1;
+      signatureConverter.addInputs(idx,
+                                   type.cast<ShapedType>().getElementType());
     }
 
     signatureConverter.addInputs(
         inputs.back().getType().cast<ShapedType>().getElementType());
 
-    for (uint64_t i = 0, s = resultTypes.size(); i < s; i++) {
-      auto idx = inputs.size() + i - 1;
+    for (const auto& [i, input] :
+         llvm::enumerate(ArrayRef<Value>(inputs).drop_back())) {
       signatureConverter.addInputs(
-          idx, resultTypes[i].cast<ShapedType>().getElementType());
+          i, input.getType().cast<ShapedType>().getElementType());
     }
 
     rewriter.applySignatureConversion(&region, signatureConverter,
