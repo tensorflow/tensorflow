@@ -1,5 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # TF to TFRT kernels conversion.
 package(
@@ -11,6 +12,7 @@ tfrt_cc_library(
     name = "tf_jitrt_clustering",
     srcs = ["tf_jitrt_clustering.cc"],
     hdrs = ["tf_jitrt_clustering.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
@@ -24,6 +26,7 @@ tfrt_cc_library(
 
 gentbl_cc_library(
     name = "tf_jitrt_passes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             [
@@ -61,6 +64,7 @@ cc_library(
         "tf_jitrt_vectorize_tiled_ops.cc",
     ],
     hdrs = ["tf_jitrt_passes.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":tf_jitrt_clustering",
         ":tf_jitrt_passes_inc_gen",

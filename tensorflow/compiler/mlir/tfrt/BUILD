@@ -6,7 +6,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library", "tfrt_cc_test")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.google.bzl", "get_compatible_with_cloud", "get_compatible_with_portable")
 
 # TF to TFRT kernels conversion.
 package(
@@ -104,6 +104,7 @@ cc_library(
     name = "tf_jitrt_pipeline",
     srcs = ["jit/tf_jitrt_pipeline.cc"],
     hdrs = ["jit/tf_jitrt_pipeline.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
