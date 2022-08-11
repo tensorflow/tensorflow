@@ -1042,16 +1042,23 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
+  const Shape& output_shape = bitcast->shape();
+  const Shape& operand_shape = bitcast->operand(0)->shape();
   if (opts_.layout_sensitive &&
-      opts_.shape_size(bitcast->shape()) !=
-          opts_.shape_size(bitcast->operand(0)->shape())) {
-    return InternalError(
-        "Bitcast cannot have different shape sizes of output (%d) and operand "
-        "(%d) (%s) (%s)",
-        opts_.shape_size(bitcast->shape()),
-        opts_.shape_size(bitcast->operand(0)->shape()),
-        bitcast->shape().ToString(true),
-        bitcast->operand(0)->shape().ToString(true));
+      opts_.shape_size(output_shape) != opts_.shape_size(operand_shape)) {
+    // Allow bitcast that has the same data size but different trailing
+    // paddings.
+    if (!opts_.allow_bitcast_to_have_different_size ||
+        !(output_shape.is_static() && operand_shape.is_static() &&
+          (ShapeUtil::ArrayDataSize(output_shape) ==
+           ShapeUtil::ArrayDataSize(operand_shape)))) {
+      return InternalError(
+          "Bitcast cannot have different shape sizes of output (%d) and "
+          "operand "
+          "(%d) (%s) (%s)",
+          opts_.shape_size(output_shape), opts_.shape_size(operand_shape),
+          output_shape.ToString(true), operand_shape.ToString(true));
+    }
   }
   return OkStatus();
 }
