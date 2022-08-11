@@ -7,7 +7,6 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
-    "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
     "tf_custom_op_library_additional_deps",
@@ -509,7 +508,7 @@ tf_cuda_library(
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "trt_allocator_test",
     size = "small",
     srcs = ["utils/trt_allocator_test.cc"],
@@ -524,7 +523,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "trt_lru_cache_test",
     size = "small",
     srcs = ["utils/trt_lru_cache_test.cc"],
