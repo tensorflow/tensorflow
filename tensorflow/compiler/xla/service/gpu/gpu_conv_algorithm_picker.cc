@@ -138,10 +138,11 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
           se::dnn::ConvolutionKind::FORWARD, input_type,
           BiasTypeForInputType(input_type), output_type,
           /* conv_input_scale = */ config.conv_result_scale,
-          /* side_input_scale = */ config.fusion->side_input_scale, stream,
-          config.input_descriptor, config.filter_descriptor,
-          GetBiasDescriptor(config), config.output_descriptor, config.conv_desc,
-          use_fallback, config.fusion->mode, &runners));
+          /* side_input_scale = */ config.fusion->side_input_scale,
+          /* leakyrelu_alpha = */ 0.0, stream, config.input_descriptor,
+          config.filter_descriptor, GetBiasDescriptor(config),
+          config.output_descriptor, config.conv_desc, use_fallback,
+          config.fusion->mode, &runners));
       for (auto& runner : runners) {
         TF_ASSIGN_OR_RETURN(
             auto runner_cache,
