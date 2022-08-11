@@ -1062,9 +1062,9 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:dnn",
-        "//tensorflow/stream_executor:lazy_op_runner",
         "@com_google_absl//absl/strings",
     ],
 )

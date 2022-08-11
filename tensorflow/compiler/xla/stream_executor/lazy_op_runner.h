@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ------------------------------------------------------------------------------*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_LAZY_OP_RUNNER_H_
-#define TENSORFLOW_STREAM_EXECUTOR_LAZY_OP_RUNNER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LAZY_OP_RUNNER_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LAZY_OP_RUNNER_H_
 
-#include "tensorflow/stream_executor/dnn.h"
-#include "tensorflow/stream_executor/stream.h"
-// #include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 
 namespace stream_executor {
 namespace dnn {
@@ -168,4 +167,4 @@ struct FusedConvOp {
 }  // namespace dnn
 }  // namespace stream_executor
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_LAZY_OP_RUNNER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LAZY_OP_RUNNER_H_

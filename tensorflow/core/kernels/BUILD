@@ -562,7 +562,7 @@ cc_library(
         #
         # TODO(b/202546057) get rid of this once fused_conv is moved out of
         # contrib.
-        "//tensorflow/stream_executor:lazy_op_runner.h",
+        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner.h",
     ],
 )
 
@@ -578,7 +578,7 @@ tf_cuda_library(
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util/proto:proto_utils",
-        "//tensorflow/stream_executor:lazy_op_runner",
+        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
         "@com_google_absl//absl/algorithm:container",

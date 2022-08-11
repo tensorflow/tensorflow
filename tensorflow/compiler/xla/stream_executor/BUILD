@@ -6,7 +6,7 @@
 
 # TODO(rdzhabarov): XLA should have its own tensorflow independent rule.
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
@@ -696,7 +696,54 @@ cc_library(
     ],
 )
 
-alias(
-    name = "stream",
-    actual = ":stream_executor",
+cc_library(
+    name = "scratch_allocator",
+    srcs = ["scratch_allocator.cc"],
+    hdrs = ["scratch_allocator.h"],
+    deps = [
+        ":device_memory",
+        ":stream_executor_headers",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/platform",
+        "@com_google_absl//absl/container:inlined_vector",
+    ],
 )
+
+tf_cc_test(
+    name = "stream_test",
+    size = "small",
+    srcs = ["stream_test.cc"],
+    deps = [
+        ":stream_executor",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "tf_allocator_adapter",
+    srcs = ["tf_allocator_adapter.cc"],
+    hdrs = ["tf_allocator_adapter.h"],
+    deps = [
+        ":device_memory",
+        ":device_memory_allocator",
+        ":platform",
+        ":stream_executor_headers",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "lazy_op_runner",
+    hdrs = ["lazy_op_runner.h"],
+    deps = [
+        ":dnn",
+        ":stream_executor_headers",
+    ],
+)
+
+exports_files(["lazy_op_runner.h"])
