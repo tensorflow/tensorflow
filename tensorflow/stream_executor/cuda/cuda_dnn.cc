@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -234,10 +236,10 @@ class CudnnAccess {
 
   // If set, indicates the stream currently active on handle_, to avoid the
   // overhead of re-setting the same stream unnecessarily.
-  std::optional<CUstream> current_stream_ TF_GUARDED_BY(mutex_);
+  std::optional<CUstream> current_stream_ ABSL_GUARDED_BY(mutex_);
 
   // cuDNN library handle.
-  cudnnHandle_t handle_ TF_GUARDED_BY(mutex_);  // Owned.
+  cudnnHandle_t handle_ ABSL_GUARDED_BY(mutex_);  // Owned.
 };
 
 namespace {
