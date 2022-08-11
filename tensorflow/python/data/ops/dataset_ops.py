@@ -16,13 +16,11 @@
 import abc
 import functools
 import multiprocessing
-import sys
+import queue
 import threading
 import warnings
 
 import numpy as np
-import six
-from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
@@ -135,9 +133,11 @@ def _get_type(value):
 
 
 @tf_export("data.Dataset", v1=[])
-@six.add_metaclass(abc.ABCMeta)
-class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
-                composite_tensor.CompositeTensor):
+class DatasetV2(
+    collections_abc.Iterable,
+    tracking_base.Trackable,
+    composite_tensor.CompositeTensor,
+    metaclass=abc.ABCMeta):
   """Represents a potentially large set of elements.
 
   The `tf.data.Dataset` API supports writing descriptive and efficient input
@@ -813,7 +813,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
     return TensorSliceDataset(tensors, name=name)
 
-  class _GeneratorState(object):
+  class _GeneratorState:
     """Stores outstanding iterators created from a Python generator.
 
     This class keeps track of potentially multiple iterators that may have
@@ -1039,14 +1039,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
           # their values.
           try:
             flattened_values = nest.flatten_up_to(output_types, values)
-          except (TypeError, ValueError):
-            six.reraise(
-                TypeError,
-                TypeError(
-                    f"`generator` yielded an element that did not match the "
-                    f"expected structure. The expected structure was "
-                    f"{output_types}, but the yielded element was {values}."),
-                sys.exc_info()[2])
+          except (TypeError, ValueError) as e:
+            raise TypeError(
+                f"`generator` yielded an element that did not match the "
+                f"expected structure. The expected structure was "
+                f"{output_types}, but the yielded element was {values}.") from e
           ret_arrays = []
           for ret, dtype in zip(flattened_values, flattened_types):
             try:
@@ -1054,14 +1051,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
                   script_ops.FuncRegistry._convert(  # pylint: disable=protected-access
                       ret,
                       dtype=dtype.as_numpy_dtype))
-            except (TypeError, ValueError):
-              six.reraise(
-                  TypeError,
-                  TypeError(
-                      f"`generator` yielded an element that could not be "
-                      f"converted to the expected type. The expected type was "
-                      f"{dtype.name}, but the yielded element was {ret}."),
-                  sys.exc_info()[2])
+            except (TypeError, ValueError) as e:
+              raise TypeError(
+                  f"`generator` yielded an element that could not be "
+                  f"converted to the expected type. The expected type was "
+                  f"{dtype.name}, but the yielded element was {ret}.") from e
 
           # Additional type and shape checking to ensure that the components of
           # the generated element match the `output_types` and `output_shapes`
@@ -1108,15 +1102,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
           try:
             values = structure.normalize_element(values, output_signature)
-          except (TypeError, ValueError):
-            six.reraise(
-                TypeError,
-                TypeError(
-                    f"`generator` yielded an element that did not match the "
-                    f"expected structure. The expected structure was "
-                    f"{output_signature}, but the yielded element was "
-                    f"{values}."),
-                sys.exc_info()[2])
+          except (TypeError, ValueError) as e:
+            raise TypeError(
+                f"`generator` yielded an element that did not match the "
+                f"expected structure. The expected structure was "
+                f"{output_signature}, but the yielded element was "
+                f"{values}.") from e
 
           values_spec = structure.type_spec_from_value(values)
 
@@ -3743,9 +3734,9 @@ class DatasetV1(DatasetV2):
             "you are calling `make_one_shot_iterator()` captures a stateful "
             "object, such as a `tf.Variable` or `tf.lookup.StaticHashTable`, "
             "which is not supported. Use `make_initializable_iterator()` "
-            "instead.".format(err))
+            "instead.".format(err)) from None
       else:
-        six.reraise(ValueError, err)
+        raise
 
     with ops.colocate_with(self._variant_tensor):
       # pylint: disable=protected-access
@@ -4178,7 +4169,7 @@ def _ensure_same_dataset_graph(dataset):
   """Walks the dataset graph to ensure all datasets come from the same graph."""
   # pylint: disable=protected-access
   current_graph = ops.get_default_graph()
-  bfs_q = Queue.Queue()
+  bfs_q = queue.Queue()
   bfs_q.put(dataset)
   visited = []
   while not bfs_q.empty():
@@ -4628,7 +4619,7 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
             self._dataset_shape == other._dataset_shape)
 
 
-class _NumpyIterator(object):
+class _NumpyIterator:
   """Iterator over a dataset with elements converted to numpy."""
 
   __slots__ = ["_iterator"]
@@ -5241,21 +5232,19 @@ def _padded_shape_to_tensor(padded_shape, input_component_shape):
     ret = ops.convert_to_tensor(
         [dim if dim is not None else -1
          for dim in padded_shape_as_shape.as_list()], dtype=dtypes.int64)
-  except (TypeError, ValueError):
+  except (TypeError, ValueError) as e:
     # The argument was not trivially convertible to a
     # `tf.TensorShape`, so fall back on the conversion to tensor
     # machinery.
     ret = ops.convert_to_tensor(padded_shape, preferred_dtype=dtypes.int64)
     if ret.shape.dims is not None and len(ret.shape.dims) != 1:
-      six.reraise(ValueError, ValueError(
+      raise ValueError(
           f"Padded shape {padded_shape} must be a `tf.int64` vector tensor, "
-          f"but its shape was {ret.shape}."), sys.exc_info()[2])
+          f"but its shape was {ret.shape}.") from e
     if ret.dtype != dtypes.int64:
-      six.reraise(
-          TypeError,
-          TypeError(f"Padded shape {padded_shape} must be a `tf.int64` vector "
-                    f"tensor, but its element type was {ret.dtype.name}."),
-          sys.exc_info()[2])
+      raise TypeError(
+          f"Padded shape {padded_shape} must be a `tf.int64` vector "
+          f"tensor, but its element type was {ret.dtype.name}.") from e
     padded_shape_as_shape = tensor_util.constant_value_as_shape(ret)
 
   if not _is_padded_shape_compatible_with(padded_shape_as_shape,

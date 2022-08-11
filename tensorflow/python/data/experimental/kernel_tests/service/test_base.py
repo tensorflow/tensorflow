@@ -67,7 +67,7 @@ def _make_worker(dispatcher_address,
 
 
 # pylint: disable=protected-access
-class TestWorker(object):
+class TestWorker:
   """A tf.data service worker."""
 
   def __init__(self,
@@ -122,7 +122,7 @@ class TestWorker(object):
     return self._server._address
 
 
-class TestCluster(object):
+class TestCluster:
   """Test tf.data service cluster."""
 
   def __init__(self,

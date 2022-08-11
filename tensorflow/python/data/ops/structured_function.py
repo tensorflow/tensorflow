@@ -14,14 +14,7 @@
 # ==============================================================================
 """Utilities for managing tf.data user-defined functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import sys
 import warnings
-
-import six
 
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -182,12 +175,9 @@ class StructuredFunctionWrapper():
 
       try:
         self._output_structure = structure.type_spec_from_value(ret)
-      except (ValueError, TypeError):
-        six.reraise(
-            TypeError,
-            TypeError(f"Unsupported return value from function passed to "
-                      f"{transformation_name}: {ret}."),
-            sys.exc_info()[2])
+      except (ValueError, TypeError) as e:
+        raise TypeError(f"Unsupported return value from function passed to "
+                        f"{transformation_name}: {ret}.") from e
       return ret
 
     def trace_legacy_function(defun_kwargs):

@@ -13,13 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.parallel_interleave()`."""
+import itertools
 import math
 import threading
 import time
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import zip_longest
 
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import testing
@@ -152,8 +152,9 @@ class ParallelInterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testPythonImplementation(self, input_lists, expected_elements,
                                cycle_length, block_length):
     for index, (expected, produced) in enumerate(
-        zip_longest(expected_elements,
-                    self._interleave(input_lists, cycle_length, block_length))):
+        itertools.zip_longest(
+            expected_elements,
+            self._interleave(input_lists, cycle_length, block_length))):
       self.assertEqual(expected, produced, "Values differ at %s. %s != %s" %
                        (index, expected, produced))
 
