@@ -16,6 +16,7 @@ def generated_test_models():
         "add",
         "add_n",
         "arg_min_max",
+        "atan2",
         "avg_pool",
         "avg_pool3d",
         "batch_to_space_nd",
