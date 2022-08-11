@@ -38,6 +38,21 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "async_runtime",
+    srcs = ["async_runtime.cc"],
+    hdrs = ["async_runtime.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = ["types.h"],

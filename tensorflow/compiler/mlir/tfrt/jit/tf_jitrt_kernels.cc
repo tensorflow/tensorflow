@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_query_of_death.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
+#include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -38,8 +40,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tfrt/jitrt/async_runtime.h"  // from @tf_runtime
-#include "tfrt/jitrt/async_runtime_api.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime

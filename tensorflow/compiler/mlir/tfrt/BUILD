@@ -199,6 +199,8 @@ tfrt_cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
+        "//tensorflow/compiler/xla/mlir/utils/runtime:async_runtime_api",
+        "//tensorflow/compiler/xla/runtime:async_runtime",
         "//tensorflow/core:framework",
         "//tensorflow/core:platform_base",
         "//tensorflow/core/platform:dynamic_annotations",
@@ -217,8 +219,6 @@ tfrt_cc_library(
         "@tf_runtime//:tensor",
         "@tf_runtime//:tracing",
         "@tf_runtime//backends/jitrt",
-        "@tf_runtime//backends/jitrt:async_runtime",
-        "@tf_runtime//backends/jitrt:async_runtime_api",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
     ],
 )
