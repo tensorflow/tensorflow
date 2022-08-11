@@ -3335,6 +3335,7 @@ pywrap_tensorflow_macro(
         "@mkl_dnn_v1//:__subpackages__",
         "@nccl_archive//:__subpackages__",
         "@nsync//:__subpackages__",
+        "@nvtx_archive//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",

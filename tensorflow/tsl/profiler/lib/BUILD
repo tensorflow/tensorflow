@@ -259,6 +259,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings",
         "//tensorflow/tsl/platform:types",
+	"//tensorflow/compiler/xla/backends/profiler/gpu:nvtx_utils",
     ] + if_not_android([
         "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
     ]),

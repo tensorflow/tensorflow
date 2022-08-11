@@ -228,8 +228,10 @@ tsl_gpu_library(
     copts = tf_profiler_copts() + tsl_copts(),
     deps = [
         "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
+        "@nvtx_archive//:nvtx",
     ],
 )
 
