@@ -51,6 +51,13 @@ cc_library(
 )
 
 cc_library(
+    name = "logical_result",
+    hdrs = ["logical_result.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@llvm-project//mlir:Support"],
+)
+
+cc_library(
     name = "type_id",
     hdrs = ["type_id.h"],
     compatible_with = get_compatible_with_portable(),
