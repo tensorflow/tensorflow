@@ -84,9 +84,10 @@ int64_t GetUniqueInt();
 #define RETURN_IF_ERROR_IN_IMPORT(...) \
   RETURN_IF_ERROR_WITH_STAGE_INFO("GraphDef proto -> MLIR", __VA_ARGS__)
 
-#define RETURN_IF_ERROR_IN_COMPILE(...)                                       \
-  RETURN_IF_ERROR_WITH_STAGE_INFO(                                            \
-      "TF dialect -> TFRT dialect, compiler issue, please contact MLIR team", \
+#define RETURN_IF_ERROR_IN_COMPILE(...)                                      \
+  RETURN_IF_ERROR_WITH_STAGE_INFO(                                           \
+      "TF dialect -> TFRT dialect, compiler issue, please contact the TFRT " \
+      "team",                                                                \
       __VA_ARGS__)
 
 #define RETURN_IF_ERROR_IN_INIT(...) \
@@ -107,9 +108,10 @@ int64_t GetUniqueInt();
 #define ASSIGN_OR_RETURN_IN_IMPORT(lhs, rexpr) \
   ASSIGN_OR_RETURN_WITH_STAGE_INFO("GraphDef proto -> MLIR", lhs, rexpr)
 
-#define ASSIGN_OR_RETURN_IN_COMPILE(lhs, rexpr)                               \
-  ASSIGN_OR_RETURN_WITH_STAGE_INFO(                                           \
-      "TF dialect -> TFRT dialect, compiler issue, please contact MLIR team", \
+#define ASSIGN_OR_RETURN_IN_COMPILE(lhs, rexpr)                              \
+  ASSIGN_OR_RETURN_WITH_STAGE_INFO(                                          \
+      "TF dialect -> TFRT dialect, compiler issue, please contact the TFRT " \
+      "team",                                                                \
       lhs, rexpr)
 
 #define ASSIGN_OR_RETURN_IN_INIT(lhs, rexpr) \
