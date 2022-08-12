@@ -190,6 +190,12 @@ class SessionTest(test_util.TensorFlowTestCase):
                 device_finder_timeout_in_micros=1)) as sess:
           sess.run(add_op)
 
+  def testErrorsReported(self):
+    with session.Session() as s:
+      constant_op.constant(10.0, name='W1')
+      with self.assertRaises(ValueError):
+        s.run('foo:0')
+
   def testErrorPayload(self):
     with session.Session():
       a = array_ops.placeholder(dtypes.float32)
