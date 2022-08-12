@@ -93,6 +93,10 @@ ParseResult parseAssignmentListWithTypes(
 namespace mlir {
 namespace gml_st {
 
+//===----------------------------------------------------------------------===//
+// GmlStDialect
+//===----------------------------------------------------------------------===//
+
 void GmlStDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
@@ -102,6 +106,27 @@ void GmlStDialect::initialize() {
 #define GET_TYPEDEF_LIST
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.cc.inc"
       >();
+}
+
+// Helper function to ensure index types for some attrbutes when folding.
+static OpFoldResult ensureIndexTypeForAttribute(OpFoldResult foldResult) {
+  if (foldResult.is<Attribute>()) {
+    auto attr = foldResult.get<Attribute>().dyn_cast<IntegerAttr>();
+    if (!attr.getType().isa<IndexType>()) {
+      Builder b(attr.getContext());
+      return b.getIndexAttr(attr.getInt());
+    }
+  }
+  return foldResult;
+}
+
+Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
+                                             Type type, Location loc) {
+  if (type.isa<IndexType>()) {
+    int64_t intValue = attr.cast<IntegerAttr>().getInt();
+    return builder.create<arith::ConstantIndexOp>(loc, intValue);
+  }
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1936,15 +1961,39 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
 OpFoldResult OffsetOp::fold(ArrayRef<Attribute> operands) {
   auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
   if (!idxAttr) return {};
+  int64_t idx = idxAttr.getInt();
 
-  if (auto tileOp = tile().getDefiningOp<TileOp>()) {
-    auto idx = idxAttr.getInt();
-    if (tileOp.isDynamicOffset(idx)) return tileOp.getDynamicOffset(idx);
+  // Case: offset(point(space))
+  Operation *subsetDef = subset().getDefiningOp();
+  if (auto pointOp = llvm::dyn_cast_or_null<PointOp>(subsetDef)) {
+    Operation *supersetDef = pointOp.superset().getDefiningOp();
 
-    Builder b(idxAttr.getContext());
-    return b.getIndexAttr(tileOp.getStaticOffset(idx));
+    // Can only fold locally if the superset is the root space. Otherwise, rely
+    // on subset composition.
+    if (!llvm::isa_and_nonnull<SpaceOp>(supersetDef)) return {};
+
+    return ensureIndexTypeForAttribute(mlir::getMixedStridesOrOffsets(
+        pointOp.static_indices(), pointOp.dynamic_indices())[idx]);
   }
-  // TODO(unknown): Handle space op, as well.
+
+  // Case: offset(tile(space))
+  if (auto tileOp = llvm::dyn_cast_or_null<TileOp>(subsetDef)) {
+    Operation *supersetDef = tileOp.superset().getDefiningOp();
+
+    // Can only fold locally if the superset is the root space. Otherwise, rely
+    // on subset composition.
+    if (!llvm::isa_and_nonnull<SpaceOp>(supersetDef)) return {};
+
+    return ensureIndexTypeForAttribute(mlir::getMixedStridesOrOffsets(
+        tileOp.static_offsets(), tileOp.offsets())[idx]);
+  }
+
+  // Case: offset(space)
+  if (llvm::isa_and_nonnull<SpaceOp>(subsetDef)) {
+    Builder b(getContext());
+    return b.getIndexAttr(0);
+  }
+
   return {};
 }
 
@@ -1955,15 +2004,22 @@ OpFoldResult OffsetOp::fold(ArrayRef<Attribute> operands) {
 OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
   auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
   if (!idxAttr) return {};
+  int64_t idx = idxAttr.getInt();
 
-  if (auto tileOp = tile().getDefiningOp<TileOp>()) {
-    auto idx = idxAttr.getInt();
-    if (tileOp.isDynamicSize(idx)) return tileOp.getDynamicSize(idx);
-
-    Builder b(idxAttr.getContext());
-    return b.getIndexAttr(tileOp.getStaticSize(idx));
+  // Case: size(tile(...))
+  // Note that sizes can also be folded in the presence of nested tiling. There
+  // is no need to check for an immediate root space here.
+  Operation *tileDef = tile().getDefiningOp();
+  if (auto tileOp = llvm::dyn_cast_or_null<TileOp>(tileDef)) {
+    return ensureIndexTypeForAttribute(tileOp.getMixedSizes()[idx]);
   }
-  // TODO(unknown): Handle space op, as well.
+
+  // Case: size(space)
+  if (auto spaceOp = llvm::dyn_cast_or_null<SpaceOp>(tileDef)) {
+    return ensureIndexTypeForAttribute(mlir::getMixedSizes(
+        spaceOp.static_sizes(), spaceOp.dynamic_sizes())[idx]);
+  }
+
   return {};
 }
 
@@ -1974,15 +2030,27 @@ OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
 OpFoldResult StrideOp::fold(ArrayRef<Attribute> operands) {
   auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
   if (!idxAttr) return {};
+  int64_t idx = idxAttr.getInt();
 
-  if (auto tileOp = tile().getDefiningOp<TileOp>()) {
-    auto idx = idxAttr.getInt();
-    if (tileOp.isDynamicStride(idx)) return tileOp.getDynamicStride(idx);
+  // Case: offset(tile(space))
+  Operation *subsetDef = tile().getDefiningOp();
+  if (auto tileOp = llvm::dyn_cast_or_null<TileOp>(subsetDef)) {
+    Operation *supersetDef = tileOp.superset().getDefiningOp();
 
-    Builder b(idxAttr.getContext());
-    return b.getIndexAttr(tileOp.getStaticStride(idx));
+    // Can only fold locally if the superset is the root space. Otherwise, rely
+    // on subset composition.
+    if (!llvm::isa_and_nonnull<SpaceOp>(supersetDef)) return {};
+
+    return ensureIndexTypeForAttribute(mlir::getMixedStridesOrOffsets(
+        tileOp.static_strides(), tileOp.strides())[idx]);
   }
-  // TODO(unknown): Handle space op, as well.
+
+  // Case: offset(space)
+  if (llvm::isa_and_nonnull<SpaceOp>(subsetDef)) {
+    Builder b(getContext());
+    return b.getIndexAttr(1);
+  }
+
   return {};
 }
 
