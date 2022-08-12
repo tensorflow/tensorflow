@@ -261,7 +261,8 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
     // be relatively cheap for the host.
     cost = rewriter.getI64IntegerAttr(kDefaultCheapCost);
   } else {
-    cost = rewriter.getI64IntegerAttr(cost_analysis_.GetCost(op));
+    cost = rewriter.getI64IntegerAttr(
+        cost_analysis_.GetCost(op, fallback_key.getInt()));
   }
 
   if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) {

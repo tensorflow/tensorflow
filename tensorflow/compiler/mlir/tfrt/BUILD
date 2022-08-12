@@ -579,6 +579,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/fallback:op_cost_map_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
