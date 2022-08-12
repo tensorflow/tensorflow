@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/core/platform:build_config.bzl", "tf_platform_deps")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -50,6 +51,18 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],
+)
+
+cc_library(
+    name = "async_values_cache",
+    hdrs = ["async_values_cache.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/core/platform:platform",
+    ] + tf_platform_deps(
+        "async_values_cache",
+        platform_dir = "//tensorflow/compiler/xla/runtime/",
+    ),
 )
 
 cc_library(
