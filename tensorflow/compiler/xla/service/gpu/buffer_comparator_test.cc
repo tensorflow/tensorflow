@@ -24,6 +24,11 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/stream_executor/device_memory.h"
 
+#if GOOGLE_CUDA
+#define PLATFORM "CUDA"
+#else
+#define PLATFORM "ROCM"
+#endif
 namespace xla {
 namespace gpu {
 namespace {
@@ -32,7 +37,7 @@ class BufferComparatorTest : public testing::Test {
  protected:
   BufferComparatorTest()
       : platform_(
-            se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie()),
+            se::MultiPlatformManager::PlatformWithName(PLATFORM).ValueOrDie()),
         stream_exec_(platform_->ExecutorForDevice(0).ValueOrDie()) {}
 
   // Take floats only for convenience. Still uses ElementType internally.
