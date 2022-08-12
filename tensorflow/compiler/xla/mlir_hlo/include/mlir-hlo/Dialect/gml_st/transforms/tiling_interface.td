@@ -89,7 +89,7 @@ def TilingInterface : OpInterface<"TilingInterface"> {
           The method returns the operation that is the tiled
           implementation.
         }],
-        /*retType=*/"SmallVector<Operation *>",
+        /*retType=*/"TilingInterface",
         /*methodName=*/"getTiledImplementation",
         /*args=*/(ins
             "OpBuilder &":$b,
@@ -100,28 +100,6 @@ def TilingInterface : OpInterface<"TilingInterface"> {
         /*methodBody=*/"",
         /*defaultImplementation=*/[{
           return {};
-        }]
-      >,
-      InterfaceMethod<
-        /*desc=*/[{
-          Method to return the position of the result tile computed by the tiled operation.
-
-          Specifies what tile of the result of the original tensor is computed
-          by the tiled implementation. Expects the same `offsets` and `sizes` as
-          used to obtain the tiled implementation of the operation.
-        }],
-        /*retType=*/"LogicalResult",
-        /*methodName=*/"getResultTilePosition",
-        /*args=*/(ins
-          "OpBuilder &":$b,
-          "unsigned":$resultNumber,
-          "ArrayRef<OpFoldResult> ":$offsets,
-          "ArrayRef<OpFoldResult> ":$sizes,
-          "SmallVector<OpFoldResult> &":$resultOffsets,
-          "SmallVector<OpFoldResult> &":$resultSizes),
-        /*methodBody=*/"",
-        /*defaultImplementation=*/[{
-          return failure();
         }]
       >,
       InterfaceMethod<
@@ -167,29 +145,7 @@ def TilingInterface : OpInterface<"TilingInterface"> {
         /*defaultImplementation=*/[{
           return failure();
         }]
-      >,
-      InterfaceMethod<
-        /*desc=*/[{
-          Generates the scalar implementation of the operation. 
-
-          Given the list `ivs` that represent points in the iteration space
-          (as specified by `getIterationDomain()`) returns the scalar operations
-          that represent the computation at that point in the iteration space.
-          This method is typically used as the "exit path", i.e. once all
-          transformations are done, this method can be used to lower to scalar 
-          code that can then be lowered to LLVM or SPIR-V dialects.
-        }],
-        /*retType=*/"LogicalResult",
-        /*methodName=*/"generateScalarImplementation",
-        /*args=*/(ins
-            "OpBuilder &":$b,
-            "Location ":$loc,
-            "ValueRange ":$ivs),
-        /*methodBody=*/"",
-        /*defaultImplementation=*/[{
-          return failure();
-        }]
       >
-  ];  
+  ];
 }
 #endif // GML_ST_TILING_INTERFACE
