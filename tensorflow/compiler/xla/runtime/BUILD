@@ -77,9 +77,34 @@ cc_library(
 )
 
 cc_library(
-    name = "runtime",
-    hdrs = ["runtime.h"],
+    name = "diagnostics",
+    srcs = ["diagnostics.cc"],
+    hdrs = ["diagnostics.h"],
     compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":logical_result",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "diagnostics_test",
+    srcs = ["diagnostics_test.cc"],
+    deps = [
+        ":diagnostics",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:dtype",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
+    name = "logical_result",
+    hdrs = ["logical_result.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@llvm-project//mlir:Support"],
 )
 
 cc_library(
@@ -95,6 +120,12 @@ cc_library(
         "memory_mapper",
         platform_dir = "//tensorflow/compiler/xla/runtime/",
     ),
+)
+
+cc_library(
+    name = "runtime",
+    hdrs = ["runtime.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -136,13 +167,6 @@ cc_library(
         "@tf_runtime//:dtype",
         "@tf_runtime//:support",
     ],
-)
-
-cc_library(
-    name = "logical_result",
-    hdrs = ["logical_result.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = ["@llvm-project//mlir:Support"],
 )
 
 cc_library(

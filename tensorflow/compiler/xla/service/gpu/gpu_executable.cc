@@ -53,8 +53,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform.h"
 
 #if XLA_ENABLE_XLIR
+#include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
-#include "tfrt/jitrt/diagnostics.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime

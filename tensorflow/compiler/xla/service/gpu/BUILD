@@ -742,7 +742,7 @@ cc_library(
         ":is_xlir_enabled": [
             ":jitrt_custom_calls",
             # copybara:uncomment "@tf_runtime//backends/jitrt",
-            # copybara:uncomment "@tf_runtime//backends/jitrt:diagnostics",
+            "//tensorflow/compiler/xla/runtime:diagnostics",
             # copybara:uncomment "@tf_runtime//backends/jitrt:jitrt_compiler",
             # copybara:uncomment "@tf_runtime//:init_tfrt_dialects",
         ],
