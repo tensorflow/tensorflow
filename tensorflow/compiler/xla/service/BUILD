@@ -1774,7 +1774,6 @@ tf_cc_test(
     name = "hlo_schedule_test",
     srcs = ["hlo_schedule_test.cc"],
     deps = [
-        ":heap_simulator",
         ":hlo",
         ":hlo_dce",
         ":hlo_memory_scheduler",
@@ -1891,7 +1890,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -4671,7 +4669,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -4686,8 +4683,6 @@ tf_cc_test(
         ":hlo_verifier",
         ":layout_assignment",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -4977,7 +4972,6 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/memory",
     ],
 )
 
