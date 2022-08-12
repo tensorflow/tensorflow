@@ -8,9 +8,9 @@
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: tensor<?xf32>
 func.func @optimize_1dx1d_bcast(
   %arg0: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
   %arg1: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
 ) -> tensor<?xf32> {
   %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
@@ -43,7 +43,7 @@ func.func @optimize_1dx1d_bcast(
 func.func @optimize_1dx2d_bcast_const_shape(
   %arg0: tensor<512xf32>,
   %arg1: tensor<?x512xf32>
-    {jitrt.symbolic_shape = dense<[-2, 512]> : tensor<2xi64>}
+    {rt.symbolic_shape = dense<[-2, 512]> : tensor<2xi64>}
 ) -> tensor<?x512xf32> {
   %0 = shape.const_shape [512] : tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?x512xf32> -> tensor<2xindex>
@@ -75,11 +75,11 @@ func.func @optimize_1dx2d_bcast_const_shape(
 // CHECK-SAME:    %[[ARG2:[a-z0-9]+]]: tensor<?xf32>
 func.func @optimize_1dx1dx1d_bcast(
   %arg0: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
   %arg1: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
   %arg2: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
 ) -> tensor<?xf32> {
   %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
@@ -114,9 +114,9 @@ func.func @optimize_1dx1dx1d_bcast(
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: tensor<?xf32>
 func.func @optimize_2dx1d_bcast(
   %arg0: tensor<10x?xf32>
-    {jitrt.symbolic_shape = dense<[10, -2]> : tensor<2xi64>},
+    {rt.symbolic_shape = dense<[10, -2]> : tensor<2xi64>},
   %arg1: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
 ) -> (tensor<10x?xf32>, tensor<10x?xf32>) {
   %0 = shape.shape_of %arg0 : tensor<10x?xf32> -> tensor<2xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
@@ -162,9 +162,9 @@ func.func @optimize_2dx1d_bcast(
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: tensor<1x?x1xf32>
 func.func @optimize_3dx3d_bcast(
   %arg0: tensor<?x1x?xf32>
-    {jitrt.symbolic_shape = dense<[-2, 1, -3]> : tensor<3xi64>},
+    {rt.symbolic_shape = dense<[-2, 1, -3]> : tensor<3xi64>},
   %arg1: tensor<1x?x1xf32>
-    {jitrt.symbolic_shape = dense<[1, -4, 1]> : tensor<3xi64>}
+    {rt.symbolic_shape = dense<[1, -4, 1]> : tensor<3xi64>}
 ) -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>) {
   %0 = shape.shape_of %arg0 : tensor<?x1x?xf32> -> tensor<3xindex>
   %1 = shape.shape_of %arg1 : tensor<1x?x1xf32> -> tensor<3xindex>
