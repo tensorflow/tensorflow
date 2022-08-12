@@ -152,6 +152,17 @@ cc_library(
 )
 
 cc_library(
+    name = "results",
+    hdrs = ["results.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":logical_result",
+        ":types",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "runtime",
     hdrs = ["runtime.h"],
     compatible_with = get_compatible_with_portable(),
