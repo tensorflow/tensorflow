@@ -78,7 +78,7 @@ _top_level_modules = [
     "tensorflow.summary",  # tensorboard
     "tensorflow.examples",
 ]
-# Estimator needs to be handled separatedly so we can still allow both
+# Estimator needs to be handled separately so we can still allow both
 # import tensorflow_estimator and import tensorflow.estimator work
 # Only in the second case do we actually need to do forwarding, the first case
 # already defines most of the hierarchy and eagerly forwarding would result in

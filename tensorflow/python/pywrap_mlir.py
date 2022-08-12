@@ -14,7 +14,7 @@
 # ==============================================================================
 """Python module for MLIR functions exported by pybind11."""
 
-# pylint: disable=invalid-import-order, g-bad-import-order, wildcard-import, unused-import, undefined-variable
+# Pylint: disable=invalid-import-order, g-bad-import-order, wildcard-import, unused-import, undefined-variable
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python._pywrap_mlir import *

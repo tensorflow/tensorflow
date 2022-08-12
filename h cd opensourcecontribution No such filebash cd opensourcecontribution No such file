@@ -1,0 +1,39 @@
+[1mdiff --git a/tensorflow/python/pywrap_mlir.py b/tensorflow/python/pywrap_mlir.py[m
+[1mindex f02a1c161e8..0d5df64ecad 100644[m
+[1m--- a/tensorflow/python/pywrap_mlir.py[m
+[1m+++ b/tensorflow/python/pywrap_mlir.py[m
+[36m@@ -14,7 +14,7 @@[m
+ # ==============================================================================[m
+ """Python module for MLIR functions exported by pybind11."""[m
+ [m
+[31m-# pylint: disable=invalid-import-order, g-bad-import-order, wildcard-import, unused-import, undefined-variable[m
+[32m+[m[32m# Pylint: disable=invalid-import-order, g-bad-import-order, wildcard-import, unused-import, undefined-variable[m
+ from tensorflow.python import pywrap_tensorflow[m
+ from tensorflow.python.eager import context[m
+ from tensorflow.python._pywrap_mlir import *[m
+[1mdiff --git a/tensorflow/python/training/basic_loops_test.py b/tensorflow/python/training/basic_loops_test.py[m
+[1mindex 5469ea413cf..71112bcb191 100644[m
+[1m--- a/tensorflow/python/training/basic_loops_test.py[m
+[1m+++ b/tensorflow/python/training/basic_loops_test.py[m
+[36m@@ -25,7 +25,7 @@[m [mfrom tensorflow.python.training import supervisor[m
+ [m
+ [m
+ def _test_dir(test_name):[m
+[31m-  test_dir = os.path.join(test.get_temp_dir(), test_name)[m
+[32m+[m[32m  _test_dir = os.path.join(test.get_temp_dir(), test_name)[m
+   if os.path.exists(test_dir):[m
+     shutil.rmtree(test_dir)[m
+   return test_dir[m
+[1mdiff --git a/tensorflow/virtual_root_template_v1.__init__.py b/tensorflow/virtual_root_template_v1.__init__.py[m
+[1mindex cfebee3f835..282d816c6b0 100644[m
+[1m--- a/tensorflow/virtual_root_template_v1.__init__.py[m
+[1m+++ b/tensorflow/virtual_root_template_v1.__init__.py[m
+[36m@@ -78,7 +78,7 @@[m [m_top_level_modules = [[m
+     "tensorflow.summary",  # tensorboard[m
+     "tensorflow.examples",[m
+ ][m
+[31m-# Estimator needs to be handled separatedly so we can still allow both[m
+[32m+[m[32m# Estimator needs to be handled separately so we can still allow both[m
+ # import tensorflow_estimator and import tensorflow.estimator work[m
+ # Only in the second case do we actually need to do forwarding, the first case[m
+ # already defines most of the hierarchy and eagerly forwarding would result in[m

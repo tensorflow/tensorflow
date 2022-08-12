@@ -25,7 +25,7 @@ from tensorflow.python.training import supervisor
 
 
 def _test_dir(test_name):
-  test_dir = os.path.join(test.get_temp_dir(), test_name)
+  _test_dir = os.path.join(test.get_temp_dir(), test_name)
   if os.path.exists(test_dir):
     shutil.rmtree(test_dir)
   return test_dir
