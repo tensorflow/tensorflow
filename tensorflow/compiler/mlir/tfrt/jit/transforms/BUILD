@@ -17,10 +17,10 @@ tfrt_cc_library(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@tf_runtime//backends/jitrt:support",
     ],
 )
 

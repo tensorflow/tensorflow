@@ -53,6 +53,17 @@ cc_library(
 )
 
 cc_library(
+    name = "constraints",
+    srcs = ["constraints.cc"],
+    hdrs = ["constraints.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = ["types.h"],

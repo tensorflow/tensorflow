@@ -2118,7 +2118,7 @@ LogicalResult OutlineJitRtClustersPass::SetEntrypointConstraints(
     if (auto constraint = constraints.GetConstraint(func.getArgument(i))) {
       auto constraint_name = mlir::StringAttr::get(
           &getContext(), llvm::formatv("{0}", *constraint).str());
-      func.setArgAttr(i, "jitrt.constraint", constraint_name);
+      func.setArgAttr(i, "rt.constraint", constraint_name);
     }
   }
 

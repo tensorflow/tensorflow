@@ -23,3 +23,17 @@ cc_library(
         "@tf_runtime//:support",
     ],
 )
+
+cc_library(
+    name = "constraints",
+    srcs = ["constraints.cc"],
+    hdrs = ["constraints.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/xla/runtime:constraints",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@tf_runtime//:support",
+    ],
+)

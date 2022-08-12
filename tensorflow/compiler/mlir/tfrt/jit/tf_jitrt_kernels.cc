@@ -100,6 +100,7 @@ using ::tfrt::StrCat;
 using ::tfrt::StringAttribute;
 using ::tfrt::TaskFunction;
 
+using ::tfrt::jitrt::ArgumentConstraint;
 using ::tfrt::jitrt::ArgumentsRef;
 using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
@@ -109,7 +110,6 @@ using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::JitExecutableCache;
 using ::tfrt::jitrt::MemrefDesc;
-using ::tfrt::jitrt::OperandConstraint;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnErrors;
 using ::tfrt::jitrt::ReturnStridedMemref;
@@ -334,7 +334,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // Custom runner for compiling specializations that schedules compilation task
   // into the dedicated thread pool and adds tracing.
   auto runner = [kernel_info](size_t specialization,
-                              ArrayRef<OperandConstraint> constraints,
+                              ArrayRef<ArgumentConstraint> constraints,
                               ArgumentsRef arguments, TaskFunction compile,
                               JitExecutable::UserData user_data) {
     assert(arguments.size() == constraints.size());
@@ -356,7 +356,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Trace content of all operands that require value specializations.
     for (size_t i = 0; i < constraints.size(); ++i) {
-      if (constraints[i] != OperandConstraint::kValue) continue;
+      if (constraints[i] != ArgumentConstraint::kValue) continue;
       args.emplace_back(StrCat("%arg", i, " value"),
                         AsTensorContent(cast<MemrefDesc>(arguments[i])));
     }
