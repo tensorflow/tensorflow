@@ -214,6 +214,7 @@ class CompileOptions:
   num_partitions: int
   profile_version: int
   device_assignment: Optional[DeviceAssignment]
+  compile_portable_executable: bool
 
 def register_custom_call_target(fn_name: str, capsule: Any, platform: str) -> _Status: ...
 

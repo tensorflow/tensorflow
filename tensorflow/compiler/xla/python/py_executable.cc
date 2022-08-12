@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/pjrt/host_callback.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/fingerprint.h"
 
 namespace xla {
@@ -81,7 +82,7 @@ std::vector<ClientAndPtr<PjRtDevice>> PyExecutable::AddressableDevices() const {
 
 StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
 PyExecutable::ExecuteInternal(
-    absl::Span<PyBuffer::object const> args,
+    absl::Span<PyBuffer::object const> args, PjRtDevice* device,
     std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   {
@@ -119,9 +120,21 @@ PyExecutable::ExecuteInternal(
     absl::c_transform(
         args, arg_buffers.begin(),
         [](const PyBuffer::object& buf) { return buf.buf()->buffer(); });
-    TF_ASSIGN_OR_RETURN(
-        output_buffers,
-        executable_->Execute({arg_buffers}, options, returned_futures));
+    if (device) {
+      std::optional<PjRtFuture<Status>> future;
+      output_buffers.resize(1);
+      TF_ASSIGN_OR_RETURN(
+          output_buffers[0],
+          executable_->ExecutePortable(arg_buffers, device, options, future,
+                                       returned_futures.has_value()));
+      if (future) {
+        returned_futures->emplace_back(std::move(*future));
+      }
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          output_buffers,
+          executable_->Execute({arg_buffers}, options, returned_futures));
+    }
 
     if (!host_callbacks_.empty()) {
       // For host callbacks to work, `returned_futures` must not be nullopt.
@@ -150,17 +163,18 @@ PyExecutable::ExecuteInternal(
 }
 
 StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
-PyExecutable::ExecuteWithToken(absl::Span<PyBuffer::object const> args) {
+PyExecutable::ExecuteWithToken(absl::Span<PyBuffer::object const> args,
+                               PjRtDevice* device) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   if (executable_->IsReturnedFutureSupported()) returned_futures.emplace();
-  return ExecuteInternal(args, returned_futures);
+  return ExecuteInternal(args, device, returned_futures);
 }
 
 StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
-    absl::Span<PyBuffer::object const> args) {
+    absl::Span<PyBuffer::object const> args, PjRtDevice* device) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   TF_ASSIGN_OR_RETURN(auto outputs_and_token,
-                      ExecuteInternal(args, returned_futures));
+                      ExecuteInternal(args, device, returned_futures));
   return std::move(outputs_and_token.first);
 }
 
