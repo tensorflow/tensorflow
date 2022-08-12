@@ -54,20 +54,12 @@ Windows)*:
 $ pip install tensorflow
 ```
 
+Other devices (DirectX and MacOS-metal) are supported using [Device plugins](https://www.tensorflow.org/install/gpu_plugins#available_devices).
+
 A smaller CPU-only package is also available:
 
 ```
 $ pip install tensorflow-cpu
-```
-To install TensorFlow on macos :
-
-```
-$ pip install tensorflow-macos
-```
-To install TensorFlow on macos with Metal support :
-
-```
-$ pip install tensorflow-metal
 ```
 
 To update TensorFlow to the latest version, add `--upgrade` flag to the above
