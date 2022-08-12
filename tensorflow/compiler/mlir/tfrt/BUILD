@@ -621,27 +621,6 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "compatibility_analysis",
-    srcs = [
-        "analysis/compatibility_analysis.cc",
-    ],
-    hdrs = [
-        "analysis/compatibility_analysis.h",
-    ],
-    deps = [
-        ":analysis/analysis_proto_cc",
-        ":tf_to_tfrt",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/core:lib_proto_parsing",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:TranslateLib",
-    ],
-    alwayslink = 1,
-)
-
 tf_proto_library(
     name = "analysis/analysis_proto",
     srcs = ["analysis/analysis.proto"],
