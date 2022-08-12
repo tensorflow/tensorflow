@@ -54,52 +54,6 @@ bool HasReplicatedSharding(const HloSharding& sharding) {
   return sharding.IsReplicated();
 }
 
-static HloInstruction* CreateConstantBase(
-    const Shape& shape, Literal value, SpmdBuilder* b,
-    Literal (*literal_creator)(Literal, PrimitiveType)) {
-  if (shape.IsTuple()) {
-    std::vector<HloInstruction*> elements;
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-      elements.push_back(
-          CreateConstantBase(ShapeUtil::GetTupleElementShape(shape, i),
-                             value.Clone(), b, literal_creator));
-    }
-    return b->AddInstruction(HloInstruction::CreateTuple(elements));
-  }
-
-  if (shape.IsToken()) {
-    return b->AddInstruction(HloInstruction::CreateToken());
-  }
-  auto c = b->AddInstruction(HloInstruction::CreateConstant(
-      literal_creator(std::move(value), shape.element_type())));
-  if (shape.rank() == 0) {
-    return c;
-  }
-  return b->AddInstruction(HloInstruction::CreateBroadcast(shape, c, {}));
-}
-
-HloInstruction* CreateConstant(const Shape& shape, Literal value,
-                               SpmdBuilder* b) {
-  auto identity = [](Literal value, PrimitiveType primitive_type) {
-    CHECK(ShapeUtil::IsScalarWithElementType(value.shape(), primitive_type));
-    return value;
-  };
-  return CreateConstantBase(shape, std::move(value), b, identity);
-}
-
-HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b) {
-  auto zero = [](Literal /*unused*/, PrimitiveType primitive_type) {
-    return LiteralUtil::Zero(primitive_type);
-  };
-  return CreateConstantBase(shape, /*unused*/ Literal(), b, zero);
-}
-HloInstruction* CreateOne(const Shape& shape, SpmdBuilder* b) {
-  auto one = [](Literal /*unused*/, PrimitiveType primitive_type) {
-    return LiteralUtil::One(primitive_type);
-  };
-  return CreateConstantBase(shape, /*unused*/ Literal(), b, one);
-}
-
 HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module) {
   HloComputation::Builder sum_b("add");
   auto x = sum_b.AddInstruction(HloInstruction::CreateParameter(
@@ -244,32 +198,6 @@ std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
   return MakePartitionOffsets(table_shape, sharding, partition_id, b);
 }
 
-HloInstruction* PadToShape(HloInstruction* hlo, const Shape& padded_shape,
-                           SpmdBuilder* b, HloComputation* computation) {
-  CHECK(b == nullptr || computation == nullptr);
-  if (ShapeUtil::Compatible(hlo->shape(), padded_shape)) {
-    return hlo;
-  }
-  PaddingConfig padding_config;
-  for (int64_t i = 0; i < padded_shape.rank(); ++i) {
-    auto padding_config_dim = padding_config.add_dimensions();
-    padding_config_dim->set_edge_padding_low(0);
-    padding_config_dim->set_interior_padding(0);
-    padding_config_dim->set_edge_padding_high(padded_shape.dimensions(i) -
-                                              hlo->shape().dimensions(i));
-  }
-  auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
-    if (b == nullptr) {
-      return computation->AddInstruction(std::move(to_add));
-    }
-    return b->AddInstruction(std::move(to_add));
-  };
-  auto zero = add_hlo(HloInstruction::CreateConstant(
-      LiteralUtil::Zero(hlo->shape().element_type())));
-  return add_hlo(
-      HloInstruction::CreatePad(padded_shape, hlo, zero, padding_config));
-}
-
 Shape GetPaddedShapeForUnevenPartitioning(const Shape& base_shape,
                                           const HloSharding& sharding) {
   if (sharding.IsTileMaximal()) {
@@ -285,16 +213,6 @@ Shape GetPaddedShapeForUnevenPartitioning(const Shape& base_shape,
         i, shard_shape.dimensions(i) * sharding.tile_assignment().dim(i));
   }
   return padded_base_shape;
-}
-
-HloInstruction* PadBaseShapeBeforeUnevenTiledSharding(
-    HloInstruction* hlo, const HloSharding& sharding, SpmdBuilder* b) {
-  auto padded_base_shape =
-      GetPaddedShapeForUnevenPartitioning(hlo->shape(), sharding);
-  if (ShapeUtil::Compatible(padded_base_shape, hlo->shape())) {
-    return hlo;
-  }
-  return PadToShape(hlo, padded_base_shape, b);
 }
 
 std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
