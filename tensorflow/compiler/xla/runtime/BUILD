@@ -64,12 +64,40 @@ cc_library(
 )
 
 cc_library(
+    name = "symbolic_shape",
+    srcs = ["symbolic_shape.cc"],
+    hdrs = ["symbolic_shape.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":arguments",
+        ":constraints",
+        ":types",
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:support",
+    ],
+)
+
+tf_cc_test(
+    name = "symbolic_shape_test",
+    srcs = ["symbolic_shape_test.cc"],
+    deps = [
+        ":arguments",
+        ":constraints",
+        ":symbolic_shape",
+        ":types",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:dtype",
+    ],
+)
+
+cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:dtype",
         "@tf_runtime//:support",
