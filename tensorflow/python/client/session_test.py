@@ -180,7 +180,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with session.Session(
           target=worker[2].target,
           config=config_pb2.ConfigProto(
-              device_finder_timeout_in_micros=300000)) as sess:
+              device_finder_timeout_in_micros=10000000)) as sess:
         res = sess.run(add_op)
         self.assertEqual(res, 3.0)
       with self.assertRaises(errors.DeadlineExceededError):

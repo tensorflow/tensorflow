@@ -280,7 +280,8 @@ class DeviceFinder {
           }
         }
       }
-      if (env_->env->NowMicros() - start_time > timeout_in_micros_) {
+      if (timeout_in_micros_ > 0 &&
+          env_->env->NowMicros() - start_time > timeout_in_micros_) {
         std::vector<absl::string_view> unseen_workers;
         for (size_t i = 0; i < targets_.size(); ++i) {
           if (!seen_targets_[i]) {
