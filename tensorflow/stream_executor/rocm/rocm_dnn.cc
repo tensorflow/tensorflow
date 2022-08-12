@@ -4063,8 +4063,7 @@ port::Status MIOpenSupport::DoPoolForward(
         workspace = reinterpret_cast<uint8*>(
             pdesc->workspace->mutable_device_memory()->opaque());
       } else {
-        wsp_mem = stream->AllocateTemporaryArray<uint8>(workspace_size)
-                      .ConsumeValueOrDie();
+        wsp_mem = stream->AllocateTemporaryArray<uint8>(workspace_size).value();
         workspace = reinterpret_cast<uint8*>(
             wsp_mem->mutable_device_memory()->opaque());
         m_pooling_cache.insert(input_data.opaque(), input_dimensions,
