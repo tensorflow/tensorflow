@@ -40,6 +40,7 @@ filegroup(
         "tensor_utils.cc",
         "uniform_quantize_op.cc",
         "uniform_dequantize_op.cc",
+        "uniform_requantize_op.cc",
         "uniform_quantized_dot_ops.cc",
     ],
     visibility = ["//tensorflow:__subpackages__"],
@@ -51,6 +52,7 @@ tf_kernel_library(
         "uniform_dequantize_op.cc",
         "uniform_quantize_op.cc",
         "uniform_quantized_dot_ops.cc",
+        "uniform_requantize_op.cc",
     ],
     deps = [
         ":math_utils",
@@ -85,6 +87,20 @@ tf_cc_test(
     name = "uniform_quantize_op_test",
     size = "small",
     srcs = ["uniform_quantize_op_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "uniform_requantize_op_test",
+    size = "small",
+    srcs = ["uniform_requantize_op_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":kernels",

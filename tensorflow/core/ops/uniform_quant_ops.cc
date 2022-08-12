@@ -96,6 +96,23 @@ REGISTER_OP("UniformQuantize")
     .Attr("quantization_max_val: int")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("UniformRequantize")
+    .Input("input: Tin")
+    .Input("input_scales: float")
+    .Input("input_zero_points: int32")
+    .Input("output_scales: float")
+    .Input("output_zero_points: int32")
+    .Output("output: Tout")
+    .Attr("Tin: {qint8, qint32}")
+    .Attr("Tout: {qint8, qint32}")
+    .Attr("input_quantization_axis: int = -1")
+    .Attr("input_quantization_min_val: int")
+    .Attr("input_quantization_max_val: int")
+    .Attr("output_quantization_axis: int = -1")
+    .Attr("output_quantization_min_val: int")
+    .Attr("output_quantization_max_val: int")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("UniformDequantize")
     .Input("input: Tin")
     .Input("scales: float")
