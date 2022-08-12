@@ -1190,6 +1190,7 @@ TfLiteStatus Subgraph::RemoveUnusedInputs() {
   for (auto iter = inputs_.begin(); iter != inputs_.end(); iter++) {
     if (*iter == kTfLiteOptionalTensor) continue;
     if (refcounts[*iter] == 0) {
+      tensor(*iter)->bytes = 0;  // To make it clearer for memory analysis.
       *iter = kTfLiteOptionalTensor;
     }
   }
