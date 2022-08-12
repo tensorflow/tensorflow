@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -98,7 +99,7 @@ port::StatusOr<std::shared_ptr<TypedKernel<Args...>>> LoadKernelOrGetPtr(
 
   static tensorflow::mutex kernel_ptr_cache_mutex(
       tensorflow::LINKER_INITIALIZED);
-  static auto& kernel_ptr_cache TF_GUARDED_BY(kernel_ptr_cache_mutex) =
+  static auto& kernel_ptr_cache ABSL_GUARDED_BY(kernel_ptr_cache_mutex) =
       *new absl::flat_hash_map<KernelPtrCacheKey,
                                std::shared_ptr<TypedKernel<Args...>>>();
   CUcontext current_context = cuda::CurrentContextOrDie();

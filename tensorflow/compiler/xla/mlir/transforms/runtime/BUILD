@@ -45,6 +45,28 @@ cc_library(
 )
 
 cc_library(
+    name = "specialization",
+    srcs = ["specialization.cc"],
+    hdrs = ["specialization.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:type_converter",
+        "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
+        "//tensorflow/compiler/xla/runtime:arguments",
+        "//tensorflow/compiler/xla/runtime:constraints",
+        "//tensorflow/compiler/xla/runtime:symbolic_shape",
+        "//tensorflow/compiler/xla/runtime:types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TensorDialect",
+        "@tf_runtime//:dtype",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
     name = "type_converter",
     srcs = ["type_converter.cc"],
     hdrs = ["type_converter.h"],

@@ -196,7 +196,7 @@ struct TransposeDimsAndParams {
   // Permutation of the dimensions relative to output.
   Vector3 dims;
 
-  // Permuted inputs.
+  // Indices of parameters which are permuted.
   std::vector<int64_t> params;
 
   std::string ToString() const {

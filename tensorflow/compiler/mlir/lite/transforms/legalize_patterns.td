@@ -571,3 +571,5 @@ def LegalizeMultinomial : Pat<
 def LegalizeXlaDynamicUpdateSlice : Pat<
   (TF_XlaDynamicUpdateSliceOp $operand, $update, $start_indices),
   (TFL_DynamicUpdateSliceOp $operand, $update, $start_indices)>;
+
+def LegalizeAtan2 : Pat<(TF_Atan2Op $y, $x), (TFL_Atan2Op $y, $x)>;

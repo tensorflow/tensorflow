@@ -4245,7 +4245,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     }
     auto* padded_operand =
         PadToShape(base_motion_cluster.outside_to_inside[broadcast->operand(0)],
-                   padded_operand_shape, nullptr, body);
+                   padded_operand_shape, body);
     auto* inside_broadcast =
         body->AddInstruction(broadcast->CloneWithNewOperands(
             ShapeUtil::ChangeElementType(padded_shape,
@@ -4272,7 +4272,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
         PadToShape(constant_clone,
                    ShapeUtil::ChangeElementType(
                        padded_shape, constant->shape().element_type()),
-                   nullptr, body);
+                   body);
     for (MotionCluster& motion_cluster : motion_clusters) {
       motion_cluster.outside_to_inside[constant] = get_slice(
           inside_constant, motion_cluster.slice_offsets, motion_cluster.dus);

@@ -585,4 +585,19 @@ PJRT_Error* PJRT_Event_Error(PJRT_Event_Error_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Event_OnReady", PJRT_Event_OnReady_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  PJRT_Event_OnReadyCallback callback = args->callback;
+  void* user_arg = args->user_arg;
+  auto impl_callback = [callback, user_arg](xla::Status status) -> void {
+    PJRT_Error* error = new PJRT_Error{status};
+    callback(error, user_arg);
+  };
+  args->event->future.OnReady(impl_callback);
+  return nullptr;
+}
+
 }  // namespace pjrt

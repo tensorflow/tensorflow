@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_query_of_death.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
+#include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -38,8 +40,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tfrt/jitrt/async_runtime.h"  // from @tf_runtime
-#include "tfrt/jitrt/async_runtime_api.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
@@ -100,6 +100,7 @@ using ::tfrt::StrCat;
 using ::tfrt::StringAttribute;
 using ::tfrt::TaskFunction;
 
+using ::tfrt::jitrt::ArgumentConstraint;
 using ::tfrt::jitrt::ArgumentsRef;
 using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
@@ -109,7 +110,6 @@ using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::JitExecutableCache;
 using ::tfrt::jitrt::MemrefDesc;
-using ::tfrt::jitrt::OperandConstraint;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnErrors;
 using ::tfrt::jitrt::ReturnStridedMemref;
@@ -334,7 +334,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // Custom runner for compiling specializations that schedules compilation task
   // into the dedicated thread pool and adds tracing.
   auto runner = [kernel_info](size_t specialization,
-                              ArrayRef<OperandConstraint> constraints,
+                              ArrayRef<ArgumentConstraint> constraints,
                               ArgumentsRef arguments, TaskFunction compile,
                               JitExecutable::UserData user_data) {
     assert(arguments.size() == constraints.size());
@@ -356,7 +356,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Trace content of all operands that require value specializations.
     for (size_t i = 0; i < constraints.size(); ++i) {
-      if (constraints[i] != OperandConstraint::kValue) continue;
+      if (constraints[i] != ArgumentConstraint::kValue) continue;
       args.emplace_back(StrCat("%arg", i, " value"),
                         AsTensorContent(cast<MemrefDesc>(arguments[i])));
     }

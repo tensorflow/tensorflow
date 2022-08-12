@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "tensorflow/core/framework/versions.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "FingerprintProtos";
 option java_multiple_files = true;
@@ -21,4 +23,6 @@ message FingerprintDef {
   uint64 signature_def_hash = 3;
   // Hash of the regularized SavedObjectGraph.
   uint64 saved_object_graph_hash = 4;
+  // Version specification of the fingerprint.
+  VersionDef version = 5;
 }

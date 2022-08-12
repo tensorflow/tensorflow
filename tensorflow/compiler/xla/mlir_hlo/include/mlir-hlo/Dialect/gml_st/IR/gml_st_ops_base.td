@@ -24,6 +24,7 @@ def GmlSt_Dialect : Dialect {
 
   let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
   let useDefaultTypePrinterParser = 1;
+  let hasConstantMaterializer = 1;
 }
 
 class GMLST_Op<string mnemonic, list<Trait> traits> :

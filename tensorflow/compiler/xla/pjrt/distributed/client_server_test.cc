@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/server.h"
@@ -257,6 +258,43 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
   TF_EXPECT_OK(statuses[1]);
 }
 
+// Setting `init_timeout` to 0 means that the client should attempt connection
+// only once, but the client should still wait a short while for other tasks.
+TEST_P(ClientServerTest, ZeroInitTimeoutShouldStillWaitForOtherTasks) {
+  int num_nodes = 2;
+  StartService(num_nodes, GetParam().use_coordination_service);
+
+  absl::Barrier barrier(num_nodes);
+
+  auto thread_fn = [&](int node_id) -> xla::Status {
+    DistributedRuntimeClient::Options client_options;
+    client_options.init_timeout = absl::ZeroDuration();
+    auto client =
+        GetClient(node_id, GetParam().use_coordination_service, client_options);
+
+    // Node 0 will connect to the service immediately, but still wait for the
+    // straggling node 1.
+    if (node_id == 1) {
+      absl::SleepFor(absl::Seconds(5));
+    }
+    TF_RETURN_IF_ERROR(client->Connect());
+
+    return OkStatus();
+  };
+
+  std::vector<xla::Status> statuses(num_nodes);
+  {
+    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
+                                               "test_threads", num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    TF_EXPECT_OK(statuses[i]);
+  }
+}
+
 TEST_P(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
   int num_nodes = 3;
   StartService(num_nodes, GetParam().use_coordination_service);
@@ -446,7 +484,7 @@ TEST_P(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
   auto thread_fn = [&](int node_id) -> xla::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.init_timeout = timeout;
-    client_options.rpc_timeout = absl::Milliseconds(100);
+    client_options.rpc_timeout = timeout;
     auto client =
         GetClient(node_id, GetParam().use_coordination_service, client_options);
 

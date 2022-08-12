@@ -60,6 +60,16 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& VerifyCustomCallNestedComputationThreadName() {
+    verify_custom_call_nested_computation_thread_name = true;
+    return std::move(*this);
+  }
+
+  HloVerifierOpts&& WithAllowBitcastToHaveDifferentSize(bool allow) {
+    allow_bitcast_to_have_different_size = allow;
+    return std::move(*this);
+  }
+
   HloVerifierOpts&& WithInstructionCanChangeLayout(
       const HloPredicate& instruction_can_change_layout_p) {
     instruction_can_change_layout = instruction_can_change_layout_p;
@@ -100,6 +110,13 @@ struct HloVerifierOpts {
 
   // Check that reshape is a physical bitcast.
   bool verify_reshape_is_bitcast = false;
+
+  // Check that custom call's called computations have same thread name as
+  // parent computation.
+  bool verify_custom_call_nested_computation_thread_name = true;
+
+  // Whether bitcast should have the same size, including all paddings.
+  bool allow_bitcast_to_have_different_size = false;
 
   HloPredicate instruction_can_change_layout;
 

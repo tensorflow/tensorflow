@@ -41,6 +41,8 @@ limitations under the License.
 
 namespace tensorflow::fingerprinting {
 
+// Version of the code that produced the fingerprint.
+const int kFingerprintProducer = 0;
 namespace {
 
 // Returns the suffix UID of `function_name`.
@@ -112,6 +114,10 @@ FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph) {
       RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def());
   fingerprint_def.set_saved_object_graph_hash(
       RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def()));
+  // Set version of the fingerprint.
+  VersionDef* version = fingerprint_def.mutable_version();
+  version->set_producer(kFingerprintProducer);
+
   return fingerprint_def;
 }
 

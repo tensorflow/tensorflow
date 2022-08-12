@@ -905,12 +905,13 @@ absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
 namespace {
 
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations", 0);
+REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization", 0);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt, 0);
 REGISTER_DATASET_EXPERIMENT("inject_prefetch", 100);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
 REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch", 0);
+REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length", 0);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune", 0);
-REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization", 0);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

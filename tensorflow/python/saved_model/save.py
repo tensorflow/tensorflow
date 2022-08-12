@@ -711,7 +711,8 @@ def _trace_gradient_functions(graph, saveable_view):
             "Check the error log to see the error that was raised when "
             "converting a gradient function to a concrete function. You may "
             "need to update the custom gradient, or disable saving gradients "
-            "with the option tf.saved_model.SaveOptions(custom_gradients=False)"
+            "with the option "
+            "tf.saved_model.SaveOptions(experimental_custom_gradients=False)"
             f".\n\tProblematic op name: {op.name}\n\tGradient inputs: "
             f"{op.inputs}") from exc
 

@@ -246,6 +246,7 @@ cc_library(
         ":gpu_driver_header",
         ":gpu_helpers_header",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/base:core_headers",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:errors",

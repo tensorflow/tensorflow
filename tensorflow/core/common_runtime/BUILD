@@ -2750,6 +2750,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:functional_ops",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:random_ops",
+        "//tensorflow/core/kernels:relu_op",
         "//tensorflow/core/kernels:state",
     ],
 )

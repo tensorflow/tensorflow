@@ -95,14 +95,13 @@ func.func @transposed_log(%arg0: tensor<20x64xf32>) -> tensor<64x20xf32> {
 // POINT-CHECK-DAG:  %[[C1:.*]] = arith.constant 1
 // POINT-CHECK-DAG:  %[[C20:.*]] = arith.constant 20
 // POINT-CHECK-DAG:  %[[C64:.*]] = arith.constant 64
-// POINT-CHECK-DAG:  %[[SPACE:.*]] = gml_st.space [64, 20]
 // POINT-CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [64, 20]
 // POINT-CHECK:      %[[PARALLEL:.*]] = gml_st.parallel
-// POINT-CHECK-SAME:     (%[[ARG1:.*]], %[[ARG2:.*]]) = (%[[C0]], %[[C0]])
+// POINT-CHECK-SAME:     (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
 // POINT-CHECK-SAME:     to (%[[C64]], %[[C20]]) step (%[[C1]], %[[C1]])
-// POINT-CHECK-DAG:    %[[POINT:.*]] = gml_st.point %[[SPACE]] [%[[ARG1]], %[[ARG2]]]
-// POINT-CHECK-DAG:    %[[TRANSPOSED_POINT:.*]] = gml_st.transpose_dims %[[POINT]], [1, 0]
-// POINT-CHECK-DAG:    %[[SUB_ARG:.*]] = gml_st.materialize %[[ARG]][%[[TRANSPOSED_POINT]]]
+// POINT-CHECK-DAG:    %[[ARG_SPACE:.*]] = gml_st.space [20, 64]
+// POINT-CHECK-DAG:    %[[ARG_POINT:.*]] = gml_st.point %[[ARG_SPACE]] [%[[J]], %[[I]]]
+// POINT-CHECK-DAG:    %[[SUB_ARG:.*]] = gml_st.materialize %[[ARG]][%[[ARG_POINT]]]
 // POINT-CHECK-DAG:    %[[SUB_LOG:.*]] = math.log %[[SUB_ARG]]
 // POINT-CHECK:        gml_st.set_yield %[[SUB_LOG]] into %[[INIT]][%[[POINT]]]
 // POINT-CHECK:      return %[[PARALLEL]]
@@ -145,7 +144,7 @@ func.func @broadcast_in_dim(%arg0: tensor<?xf32>, %shape: tensor<2xindex>)
 // TILE-CHECK-DAG:     %[[ARG_TILE:.*]] = gml_st.tile %[[ARG_SPACE]] [%[[ARG_TILE_OFFSET0]]] [%[[ARG_TILE_SIZE0]]] [1]
 // TILE-CHECK-DAG:     %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
 // TILE-CHECK-DAG:     %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE]]]
-// TILE-CHECK-DAG:     %[[BCAST_SUB:.*]] = thlo.dynamic_broadcast_in_dim ins(%[[ARG_SUB]] : tensor<?xf32>) outs(%[[INIT_SUB]] : tensor<?x?xf32>) {broadcast_dimensions = [:i64 1]}
+// TILE-CHECK-DAG:     %[[BCAST_SUB:.*]] = thlo.dynamic_broadcast_in_dim ins(%[[ARG_SUB]] : tensor<?xf32>) outs(%[[INIT_SUB]] : tensor<?x?xf32>) {broadcast_dimensions = array<i64: 1>}
 // TILE-CHECK:         gml_st.set_yield %[[BCAST_SUB]] into %[[INIT]][%[[TILE]]]
 // TILE-CHECK:       return %[[RES]]
 
@@ -161,12 +160,10 @@ func.func @broadcast_in_dim(%arg0: tensor<?xf32>, %shape: tensor<2xindex>)
 // POINT-CHECK-DAG:     %[[RES_POINT:.*]] = gml_st.point %[[RES_SPACE]] [%[[I]], %[[J]]]
 // POINT-CHECK-DAG:     %[[ARG_D0:.*]] = tensor.dim %[[ARG]], %[[C0]]
 // POINT-CHECK-DAG:     %[[ARG_SPACE:.*]] = gml_st.space [%[[ARG_D0]]]
-// POINT-CHECK-DAG:     %[[DD_RES_POINT:.*]] = gml_st.drop_dims %[[RES_POINT]], [1]
-// POINT-CHECK-DAG:     %[[EXPANDING_D0:.*]] = arith.cmpi ne, %[[ARG_D0]], %[[D1]]
-// POINT-CHECK-DAG:     %[[DD_RES_POINT_OFFSET_D0_D0:.*]] = gml_st.offset %[[DD_RES_POINT]][%[[C0]]]
-// POINT-CHECK-DAG:     %[[OFFSET_D0:.*]] = arith.select %[[EXPANDING_D0]], %[[C0]], %[[DD_RES_POINT_OFFSET_D0_D0]]
-// POINT-CHECK-DAG:     %[[ARG_RES_POINT:.*]] = gml_st.point %[[ARG_SPACE]] [%[[OFFSET_D0]]]
-// POINT-CHECK-DAG:     %[[BCAST_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_RES_POINT]]]
+// POINT-CHECK-DAG:     %[[ARG_EXPANDING_D0:.*]] = arith.cmpi ne, %[[ARG_D0]], %[[D1]]
+// POINT-CHECK-DAG:     %[[ARG_OFFSET_D0:.*]] = arith.select %[[ARG_EXPANDING_D0]], %[[C0]], %[[J]]
+// POINT-CHECK-DAG:     %[[ARG_POINT:.*]] = gml_st.point %[[ARG_SPACE]] [%[[ARG_OFFSET_D0]]]
+// POINT-CHECK-DAG:     %[[BCAST_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_POINT]]]
 // POINT-CHECK:         gml_st.set_yield %[[BCAST_SUB]] into %[[RES_INIT]][%[[RES_POINT]]]
 // POINT-CHECK:       return %[[PARALLEL]]
 
@@ -225,7 +222,7 @@ func.func @log_log_bcast(%arg0: tensor<?x?xf32>, %arg1: tensor<2xindex>)
 // TILE-CHECK:         %[[BCAST_SUB:.*]] = thlo.dynamic_broadcast_in_dim
 // TILE-CHECK-SAME:        ins(%[[GENERIC_SUB0]] : tensor<?x?xf32>)
 // TILE-CHECK-SAME:        outs(%[[INIT_SUB]] : tensor<?x?xf32>)
-// TILE-CHECK-SAME:        {broadcast_dimensions = [:i64 0, 1]}
+// TILE-CHECK-SAME:        {broadcast_dimensions = array<i64: 0, 1>}
 // TILE-CHECK:         %[[GENERIC_SUB1:.*]] = linalg.generic
 // TILE-CHECK-SAME:        ins(%[[BCAST_SUB]] : tensor<?x?xf32>)
 // TILE-CHECK-SAME:        outs(%[[INIT_SUB]] : tensor<?x?xf32>)

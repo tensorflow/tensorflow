@@ -83,10 +83,10 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   bool is_deleted() { return executable_->IsDeleted(); }
 
   StatusOr<std::vector<PyBuffer::object>> Execute(
-      absl::Span<PyBuffer::object const> args);
+      absl::Span<PyBuffer::object const> args, PjRtDevice* device);
 
   StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteWithToken(
-      absl::Span<PyBuffer::object const> args);
+      absl::Span<PyBuffer::object const> args, PjRtDevice* device);
 
   // Takes args indexed by argid then deviceid, transposes them, and passes to
   // PjRtExecutable::Execute. The result is similarly transposed back into the
@@ -118,7 +118,7 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
 
  private:
   StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteInternal(
-      absl::Span<PyBuffer::object const> args,
+      absl::Span<PyBuffer::object const> args, PjRtDevice* device,
       std::optional<std::vector<PjRtFuture<Status>>>& returned_futures);
   StatusOr<std::pair<std::vector<std::vector<PyBuffer::object>>,
                      std::vector<PyToken>>>

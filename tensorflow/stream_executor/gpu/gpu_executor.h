@@ -367,13 +367,13 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // GPUModuleHandle so we attempt to hit in this mapping first, before
   // retrieving it.
   std::map<std::string, GpuModuleHandle> disk_modules_
-      TF_GUARDED_BY(disk_modules_mu_);
+      ABSL_GUARDED_BY(disk_modules_mu_);
 
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;
 
   std::map<const char*, GpuModuleHandle> in_memory_modules_
-      TF_GUARDED_BY(in_memory_modules_mu_);
+      ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   absl::Mutex shared_constants_mu_;
   // On-device constants that can be shared between multiple executables. A
@@ -384,10 +384,10 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   // Kernel -> loaded GPU binary. Many kernels may load the same binary.
   std::unordered_map<const KernelBase*, const void*> kernel_to_gpu_binary_
-      TF_GUARDED_BY(in_memory_modules_mu_);
+      ABSL_GUARDED_BY(in_memory_modules_mu_);
   // GPU binary (PTX or CUBIN or HSACO) -> {CUDA module, reference count}.
   std::unordered_map<const void*, std::pair<GpuModuleHandle, uint64_t>>
-      gpu_binary_to_module_ TF_GUARDED_BY(in_memory_modules_mu_);
+      gpu_binary_to_module_ ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   // Guards the launched kernel set.
   absl::Mutex launched_kernels_mu_;
@@ -395,7 +395,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // Keeps track of the set of launched kernels. Currently used to suppress the
   // occupancy check on subsequent launches.
   std::set<GpuFunctionHandle> launched_kernels_
-      TF_GUARDED_BY(launched_kernels_mu_);
+      ABSL_GUARDED_BY(launched_kernels_mu_);
 
   // Handle for the CUDA device being operated on. Immutable
   // post-initialization.
@@ -427,7 +427,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   // Lookup map for alive streams, from raw stream pointers.
   absl::flat_hash_map<void*, Stream*> alive_gpu_streams_
-      TF_GUARDED_BY(alive_gpu_streams_mu_);
+      ABSL_GUARDED_BY(alive_gpu_streams_mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(GpuExecutor);
 };

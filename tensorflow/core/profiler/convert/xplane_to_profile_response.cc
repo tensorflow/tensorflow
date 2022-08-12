@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
+#include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 #include "tensorflow/core/profiler/convert/trace_events_to_json.h"
@@ -30,14 +32,17 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
+#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
+#include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -53,6 +58,7 @@ const absl::string_view kInputPipeline = "input_pipeline";
 const absl::string_view kOverviewPage = "overview_page";
 const absl::string_view kKernelStats = "kernel_stats";
 const absl::string_view kMemoryProfile = "memory_profile";
+const absl::string_view kOpProfile = "op_profile";
 const absl::string_view kXPlanePb = "xplane.pb";
 
 template <typename Proto>
@@ -126,6 +132,13 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
     TF_RETURN_IF_ERROR(SaveGzippedToolData(
         req.repository_root(), req.session_id(), req.host_name(),
         ToolName(kMemoryProfile), json_output));
+  }
+  if (tools.contains(kOpProfile)) {
+    tensorflow::profiler::op_profile::Profile op_profile;
+    ConvertOpStatsToOpProfile(
+        op_stats, ParseHardwareType(op_stats.run_environment().device_type()),
+        op_profile);
+    AddToolData(ToolName(kOpProfile), op_profile, response);
   }
   return OkStatus();
 }

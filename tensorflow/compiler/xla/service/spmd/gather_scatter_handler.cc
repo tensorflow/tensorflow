@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
@@ -1054,6 +1055,19 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       scatter->scatter_updates(), std::back_inserter(updates),
       [this](HloInstruction* hlo) { return GetPartitionedHlo(hlo); });
   auto indices = GetPartitionedHlo(scatter->scatter_indices());
+  auto indices_sharding = indices.sharding();
+  // Reshard indices with -1 padding, which will have no effect on the result as
+  // guaranteed by the scatter semantics.
+  for (auto i = 0; i != indices.base_shape().rank(); ++i) {
+    if (indices.base_shape().dimensions(i) !=
+        indices_sharding.tile_assignment().dim(i) *
+            indices.hlo()->shape().dimensions(i)) {
+      // Reshard only when we know that some dimension is padded.
+      indices = indices.Replicate().Reshard(
+          indices_sharding, /*pad_value=*/LiteralUtil::CreateR0<int32_t>(-1));
+      break;
+    }
+  }
   std::vector<int64_t> slice_sizes = hlo_sharding_util::GetScatterSliceSize(
       operands[0].base_shape(), updates[0].base_shape(), dnums);
 

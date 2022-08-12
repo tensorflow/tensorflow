@@ -19,6 +19,7 @@
 
     *   New operations supported:
           * tf.unsortedsegmentmin op is supported.
+          * tf.atan2 op is supported.
     *   Updates to existing operations:
           * tfl.mul now supports complex32 inputs.
 

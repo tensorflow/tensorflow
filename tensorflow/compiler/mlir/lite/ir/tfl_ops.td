@@ -4915,6 +4915,27 @@ def TFL_UnsortedSegmentSumOp: TFL_Op<"unsorted_segment_sum", [
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 }
 
+def TFL_Atan2Op: TFL_Op<"atan2", [
+  NoSideEffect,
+  SameOperandsAndResultShape,
+  SameOperandsAndResultElementType]> {
+
+  let summary = "Atan2 operation";
+  let description = [{
+    The "atan2" operation computes the arctangent of y/x element-wise, 
+    respecting signs of the arguments.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, F64]>:$y,
+    TFL_TensorOf<[F32, F64]>:$x
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, F64]>:$output
+  );
+}
+
 def TFL_YieldOp : Op<TFL_Dialect, "yield",
   [NoSideEffect,
    Terminator,

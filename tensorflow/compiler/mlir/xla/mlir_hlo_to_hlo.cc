@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/DenseMap.h"
@@ -176,6 +177,12 @@ static xla::FftType Convert_fft_type(mlir::mhlo::FftType fft_type) {
 static std::vector<std::pair<int64_t, int64_t>> Convert_padding(
     llvm::Optional<mlir::DenseIntElementsAttr> padding) {
   return xla::ConvertNx2Attribute(padding).ValueOrDie();
+}
+
+static std::optional<bool> Convert_use_global_device_ids(
+    llvm::Optional<bool> use_global_device_ids) {
+  if (!use_global_device_ids) return {};
+  return *use_global_device_ids;
 }
 
 static std::vector<std::pair<int64_t, int64_t>> Convert_source_target_pairs(
@@ -757,9 +764,10 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
 
-  value_map[op] = xla::AllReduce(operand, computation,
-                                 Convert_replica_groups(op.replica_groups()),
-                                 Convert_channel_handle(op.channel_handle()));
+  value_map[op] = xla::AllReduce(
+      operand, computation, Convert_replica_groups(op.replica_groups()),
+      Convert_channel_handle(op.channel_handle()), std::nullopt,
+      Convert_use_global_device_ids(op.use_global_device_ids()));
   return success();
 }
 
