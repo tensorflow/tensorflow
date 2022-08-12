@@ -1062,7 +1062,8 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
 #ifdef TF_LITE_TENSORFLOW_PROFILER
-    tflite::OnTfLiteOpPrepare(GetTFLiteOpName(registration), node_index);
+    tflite::OnTfLiteOpPrepare(GetTFLiteOpName(registration), subgraph_index_,
+                              node_index);
 #endif  // TF_LITE_TENSORFLOW_PROFILER
     const TfLiteStatus op_prepare_status = OpPrepare(registration, &node);
     if (op_prepare_status != kTfLiteOk) {
@@ -1210,6 +1211,10 @@ TfLiteStatus Subgraph::Invoke() {
     return kTfLiteError;
   }
   TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(), "Invoke");
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  tensorflow::profiler::TraceMe* trace_subgraph =
+      tflite::OnTfLiteSubgraphInvoke(name_.c_str(), subgraph_index_);
+#endif  // TF_LITE_TENSORFLOW_PROFILER
 
   // Invocations are always done in node order.
   // Note that calling Invoke repeatedly will cause the original memory plan to
@@ -1233,7 +1238,8 @@ TfLiteStatus Subgraph::Invoke() {
     if (!op_name) {
       op_name = GetTFLiteOpName(registration);
     }
-    tflite::OnTfLiteOpInvoke(op_name, node_index);
+    tensorflow::profiler::TraceMe* trace_op =
+        tflite::OnTfLiteOpInvoke(op_name, subgraph_index_, node_index);
 #endif  // TF_LITE_TENSORFLOW_PROFILER
     TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(profiler_.get(), op_name, node_index);
 
@@ -1306,8 +1312,14 @@ TfLiteStatus Subgraph::Invoke() {
     }
     // Release dynamic tensor memory if configured by the user.
     MaybeReleaseDynamicTensors(node, node_index);
-  }
 
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    tflite::OnTfLiteOpInvokeEnd(trace_op);
+#endif  // TF_LITE_TENSORFLOW_PROFILER
+  }
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  tflite::OnTfLiteSubgraphInvokeEnd(trace_subgraph);
+#endif  // TF_LITE_TENSORFLOW_PROFILER
   return status;
 }
 
