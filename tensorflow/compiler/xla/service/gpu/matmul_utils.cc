@@ -605,6 +605,10 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
       return se::cuda::BlasLt::Epilogue::kDefault;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
       return se::cuda::BlasLt::Epilogue::kBias;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Relu:
+      return se::cuda::BlasLt::Epilogue::kReLU;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu:
+      return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
     default:
       return InternalError("unknown epilogue");
   }

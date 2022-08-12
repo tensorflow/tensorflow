@@ -47,6 +47,34 @@ using tensorflow::AutotuneResult;
 
 namespace {
 
+StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+    GemmBackendConfig_Epilogue epilogue) {
+  switch (epilogue) {
+    case GemmBackendConfig::DEFAULT:
+      return se::cuda::BlasLt::Epilogue::kDefault;
+    case GemmBackendConfig::RELU:
+      return se::cuda::BlasLt::Epilogue::kReLU;
+    case GemmBackendConfig::BIAS:
+      return se::cuda::BlasLt::Epilogue::kBias;
+    case GemmBackendConfig::BIASRELU:
+      return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
+    case GemmBackendConfig::GELU:
+#if CUDA_VERSION >= 11040
+      return se::cuda::BlasLt::Epilogue::kGeLU;
+#else
+      return InternalError(absl::StrCat(
+          "CUBLASLT_EPILOGUE_GELU epilogue requires cublasLt >= 11.4"));
+#endif
+    case GemmBackendConfig::BIASGELU:
+#if CUDA_VERSION >= 11040
+      return se::cuda::BlasLt::Epilogue::kBiasThenGeLUApproximate;
+#else
+      return InternalError(absl::StrCat(
+          "CUBLASLT_EPILOGUE_GELU_BIAS epilogue requires cublasLt >= 11.4"));
+#endif
+  }
+}
+
 struct AutotuneConfig {
   bool should_init_buffers() const { return autotune_level >= 2; }
   bool should_reinit_output_buffer() const { return autotune_level >= 3; }
@@ -267,10 +295,13 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   std::optional<se::blas::AlgorithmType> best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
     bool has_matrix_bias = config.beta != 0.;
-    bool has_vector_bias = gemm_config.epilogue() == GemmBackendConfig::BIAS;
+    absl::flat_hash_set<GemmBackendConfig_Epilogue> bias_epilogues{
+        GemmBackendConfig::BIAS, GemmBackendConfig::BIASRELU,
+        GemmBackendConfig::BIASGELU};
+    bool has_vector_bias = bias_epilogues.contains(gemm_config.epilogue());
 
-    auto epilogue = has_vector_bias ? se::cuda::BlasLt::Epilogue::kBias
-                                    : se::cuda::BlasLt::Epilogue::kDefault;
+    TF_ASSIGN_OR_RETURN(auto epilogue,
+                        AsBlasLtEpilogue(gemm_config.epilogue()));
 
     se::DeviceMemoryBase bias_buffer;
     if (has_vector_bias) {

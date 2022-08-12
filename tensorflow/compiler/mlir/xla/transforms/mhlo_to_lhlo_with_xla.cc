@@ -821,6 +821,12 @@ StatusOr<lmhlo_gpu::CublasLtMatmulEpilogue> AsLhloEpilogue(
     case xla::gpu::GemmBackendConfig::BIAS:
       return lmhlo_gpu::CublasLtMatmulEpilogue::Bias;
       break;
+    case xla::gpu::GemmBackendConfig::RELU:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::Relu;
+      break;
+    case xla::gpu::GemmBackendConfig::BIASRELU:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu;
+      break;
     default:
       return xla::InternalError("unknown epilogue");
   }
@@ -858,7 +864,11 @@ StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
   bool has_matrix_bias = config.beta() != 0.;
-  bool has_vector_bias = config.epilogue() == xla::gpu::GemmBackendConfig::BIAS;
+  absl::flat_hash_set<xla::gpu::GemmBackendConfig_Epilogue> bias_epilogues{
+      xla::gpu::GemmBackendConfig::BIAS, xla::gpu::GemmBackendConfig::BIASRELU,
+      xla::gpu::GemmBackendConfig::BIASGELU};
+  bool has_vector_bias = bias_epilogues.contains(config.epilogue());
+
   TF_RET_CHECK(custom_call->operand_count() ==
                2 + int{has_matrix_bias} + int{has_vector_bias});
 

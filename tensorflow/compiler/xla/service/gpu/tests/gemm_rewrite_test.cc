@@ -42,13 +42,32 @@ namespace {
 
 namespace m = ::xla::match;
 
-class GemmRewriteTest : public GpuCodegenTest {
+class GemmRewriteTestBase : public GpuCodegenTest {
  public:
   se::CudaComputeCapability GetCudaComputeCapability() {
     return backend()
         .default_stream_executor()
         ->GetDeviceDescription()
         .cuda_compute_capability();
+  }
+};
+
+class GemmRewriteTest : public GemmRewriteTestBase {
+ public:
+  void CheckNumberOfAllocations(const std::string& hlo,
+                                int expected_number_of_allocations) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                            GetOptimizedModule(hlo));
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Executable> executable,
+        backend().compiler()->RunBackend(
+            std::move(optimized_module), backend().default_stream_executor(),
+            backend().default_stream_executor()->GetAllocator()));
+    GpuExecutable* gpu_executable =
+        static_cast<GpuExecutable*>(executable.get());
+    absl::Span<const BufferAllocation> allocations =
+        gpu_executable->GetAllocations();
+    CHECK_EQ(allocations.size(), expected_number_of_allocations);
   }
 };
 
@@ -1448,7 +1467,18 @@ ENTRY AddDotsFunc {
 )");
 }
 
-TEST_F(CublasLtGemmRewriteTest, LargerBiasMultipleUsersNoRewrite) {
+#if GOOGLE_CUDA
+
+class CublasLtMatmulRewriteTest : public GemmRewriteTestBase {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_cublaslt(true);
+    return debug_options;
+  }
+};
+
+TEST_F(CublasLtMatmulRewriteTest, Simple) {
   const char* hlo_text = R"(
 HloModule LargerBiasMultipleUsersNoRewrite
 
@@ -1493,7 +1523,67 @@ ENTRY AddDotsFunc {
 
 TEST_F(CublasLtGemmRewriteTest, BF16GemmWithBias) {
   const char* hlo_text = R"(
-HloModule BF16GemmWithBias
+HloModule SimpleGemm
+ENTRY AddDotsFunc {
+  x = f32[128,128] parameter(0)
+  y = f32[128,128] parameter(1)
+  ROOT dot_a = f32[128,128] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  auto get_module = [&]() -> StatusOr<std::unique_ptr<HloModule>> {
+    HloModuleConfig config;
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_deterministic_ops(true);
+    config.set_debug_options(debug_options);
+    return ParseAndReturnVerifiedModule(hlo_text, config);
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      backend().compiler()->RunHloPasses(
+          *get_module(), backend().default_stream_executor(),
+          backend().default_stream_executor()->GetAllocator()));
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  StatusOr<bool> filecheck_result_cublas =
+      RunFileCheck(optimized_module->ToString(),
+                   R"(
+; CHECK:    custom_call_target="__cublas$lt$matmul"
+    )");
+  TF_ASSERT_OK(filecheck_result_cublas.status());
+  EXPECT_TRUE(filecheck_result_cublas.ValueOrDie());
+  EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-3, 1e-5}));
+}
+
+TEST_F(CublasLtMatmulRewriteTest, Batched) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3,4] parameter(0)
+  y = f32[4,5,6] parameter(1)
+  ROOT dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3,4], y: f32[4,5,6]) -> f32[2,3,5,6] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3,4]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[6,4]{1,0} bitcast([[P0]])
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,5,6]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[4,30]{1,0} bitcast([[P1]])
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"
+; CHECK-NEXT:    ROOT [[OUT_BITCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[OUT]])
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, SimpleRewriteDeterministic) {
+  const char* hlo_text = R"(
+HloModule SimpleGemm
 
 ENTRY BF16GemmWithBias {
   x = bf16[8,8]{1,0} parameter(0)
@@ -1676,7 +1766,87 @@ ENTRY test {
 )");
 }
 
-TEST_F(CublasLtGemmRewriteTest, VectorBiasTransposed) {
+TEST_F(CublasLtMatmulRewriteTest, BatchedVectorBias) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3,4] parameter(0)
+  y = f32[4,5,6] parameter(1)
+  z = f32[3,5,6] parameter(2)
+  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  z_bcast = f32[2,3,5,6] broadcast(z), dimensions={1,2,3}
+  ROOT out = f32[2,3,5,6] add(dot_a, z_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK:        [[FUSED_COMPUTATION:%[^ ]+]] ([[DUMMY0:[^ ]+]]: f32[3,5,6]) -> f32[6,30] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,5,6]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P0_BCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} broadcast([[P0]]), dimensions={1,2,3}
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[6,30]{1,0} bitcast([[P0_BCAST]])
+}
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3,4], y: f32[4,5,6], z: f32[3,5,6]) -> f32[2,3,5,6] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3,4]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[6,4]{1,0} bitcast([[P0]])
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,5,6]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[4,30]{1,0}
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[3,5,6]{2,1,0} parameter(2)
+; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[6,30]{1,0} fusion([[P2]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]), custom_call_target="__cublas$lt$matmul", backend_config="{
+; CHECK-DAG:       \"alpha_real\":1
+; CHECK-DAG:       \"alpha_imag\":0
+; CHECK-DAG:       \"beta\":1
+; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[]\"rhs_batch_dimensions\":[]}
+; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
+; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
+; CHECK-NEXT:    ROOT [[OUT_BITCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[OUT]])
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, BatchedSharedVectorBias) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3,4] parameter(0)
+  y = f32[4,5,6] parameter(1)
+  z = f32[6] parameter(2)
+  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  z_bcast = f32[2,3,5,6] broadcast(z), dimensions={3}
+  ROOT out = f32[2,3,5,6] add(dot_a, z_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK:        [[FUSED_COMPUTATION:%[^ ]+]] ([[DUMMY0:[^ ]+]]: f32[6]) -> f32[6,30] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[6]{0} parameter(0)
+; CHECK-NEXT:    [[P0_BCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} broadcast([[P0]]), dimensions={3}
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[6,30]{1,0} bitcast([[P0_BCAST]])
+}
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3,4], y: f32[4,5,6], z: f32[6]) -> f32[2,3,5,6] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3,4]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[6,4]{1,0} bitcast([[P0]])
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,5,6]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[4,30]{1,0}
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[6]{0} parameter(2)
+; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[6,30]{1,0} fusion([[P2]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"
+; CHECK-NEXT:    ROOT [[OUT_BITCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[OUT]])
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, VectorBiasIncorrectAxisFusedAsMatrix) {
   const char* hlo_text = R"(
 HloModule test
 
@@ -1808,7 +1978,506 @@ ENTRY test {
 )");
 }
 
-TEST_F(CublasLtGemmRewriteTest, MergeBitcastAndAdd) {
+TEST_F(CublasLtMatmulRewriteTest, ReluActivation) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c = f32[] constant(0)
+  c_bcast = f32[2,4] broadcast(c), dimensions={}
+  ROOT out = f32[2,4] maximum(dot_a, c_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4]) -> f32[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"RELU\"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, MatrixBiasReluActivation) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  z = f32[2,4] parameter(2)
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  add = f32[2,4] add(dot_a, z)
+  c = f32[] constant(0)
+  c_bcast = f32[2,4] broadcast(c), dimensions={}
+  ROOT out = f32[2,4] maximum(add, c_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2,4]) -> f32[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2,4]{1,0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"RELU\"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, VectorBiasReluActivation) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  z = f32[4] parameter(2)
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = f32[2,4] broadcast(z), dimensions={1}
+  add = f32[2,4] add(dot_a, z_bcast)
+  c = f32[] constant(0)
+  c_bcast = f32[2,4] broadcast(c), dimensions={}
+  ROOT out = f32[2,4] maximum(add, c_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[4]) -> f32[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"BIASRELU\"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, BatchedVectorBiasReluActivation) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3,4] parameter(0)
+  y = f32[4,5,6] parameter(1)
+  z = f32[3,5,6] parameter(2)
+  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  z_bcast = f32[2,3,5,6] broadcast(z), dimensions={1,2,3}
+  add = f32[2,3,5,6] add(dot_a, z_bcast)
+  c = f32[] constant(0)
+  c_bcast = f32[2,3,5,6] broadcast(c), dimensions={}
+  ROOT out = f32[2,3,5,6] maximum(add, c_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK:        [[FUSED_COMPUTATION:%[^ ]+]] ([[DUMMY0:[^ ]+]]: f32[3,5,6]) -> f32[6,30] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,5,6]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P0_BCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} broadcast([[P0]]), dimensions={1,2,3}
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[6,30]{1,0} bitcast([[P0_BCAST]])
+}
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3,4], y: f32[4,5,6], z: f32[3,5,6]) -> f32[2,3,5,6] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3,4]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[6,4]{1,0} bitcast([[P0]])
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,5,6]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[4,30]{1,0}
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[3,5,6]{2,1,0} parameter(2)
+; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[6,30]{1,0} fusion([[P2]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"RELU\"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, VectorBiasTransposedReluActivation) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  z = f32[2] parameter(2)
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = f32[2,4] broadcast(z), dimensions={0}
+  add = f32[2,4] add(dot_a, z_bcast)
+  c = f32[] constant(0)
+  c_bcast = f32[2,4] broadcast(c), dimensions={}
+  maximum = f32[2,4] maximum(add, c_bcast)
+  ROOT out = f32[4,2] transpose(maximum), dimensions={1,0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2]) -> f32[4,2] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2]{0} parameter(2)
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[2,4]{0,1} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"BIASRELU\"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,2]{1,0} bitcast([[MATMUL]])
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, VectorBiasThenMatrixBiasReluActivation) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  z_vec = f32[4] parameter(2)
+  z_matrix = f32[2,4] parameter(3)
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = f32[2,4] broadcast(z_vec), dimensions={1}
+  add0 = f32[2,4] add(dot_a, z_bcast)
+  add1 = f32[2,4] add(add0, z_matrix)
+  c = f32[] constant(0)
+  c_bcast = f32[2,4] broadcast(c), dimensions={}
+  ROOT out = f32[2,4] maximum(add1, c_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z_vec: f32[4], z_matrix: f32[2,4]) -> f32[2,4] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-DAG:     [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
+; CHECK-DAG:     [[P3:%[^ ]+]] = f32[2,4]{1,0} parameter(3)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P3]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"BIASRELU\"
+      )");
+}
+
+// For F16, the sizes of all dimensions of the operands are required to be
+// multiples of 8 to allow matrix bias fusion.
+TEST_F(CublasLtMatmulRewriteTest, MatrixBiasF16) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f16[8,16] parameter(0)
+  y = f16[16,8] parameter(1)
+  z = f16[8,8] parameter(2)
+  dot_a = f16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT out = f16[8,8] add(dot_a, z)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f16[8,16], y: f16[16,8], z: f16[8,8]) -> f16[8,8] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8,8]{1,0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"
+      )");
+}
+
+// For F16, the operands are padded so that the sizes of all dimensions are
+// multiples of 8.
+TEST_F(CublasLtMatmulRewriteTest, VectorBiasF16Unpadded) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f16[8,16] parameter(0)
+  y = f16[16,8] parameter(1)
+  z = f16[8] parameter(2)
+  dot_a = f16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = f16[8,8] broadcast(z), dimensions={1}
+  ROOT add = f16[8,8] add(dot_a, z_bcast)
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{8e-3, 2e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f16[8,16], y: f16[16,8], z: f16[8]) -> f16[8,8] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8]{0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"BIAS\"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, VectorBiasF16Padded) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f16[6,12] parameter(0)
+  y = f16[12,6] parameter(1)
+  z = f16[6] parameter(2)
+  dot_a = f16[6,6] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = f16[6,6] broadcast(z), dimensions={1}
+  ROOT add = f16[6,6] add(dot_a, z_bcast)
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f16[6,12], y: f16[12,6], z: f16[6]) -> f16[6,6] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[6,12]{1,0} parameter(0)
+; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[] constant(0)
+; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[12,6]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_PADDED:%[^ ]+]] = f16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[6]{0} parameter(2)
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"BIAS\"
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = f16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
+      )");
+}
+
+// For F16, the operands are padded so that the sizes of all dimensions are
+// multiples of 8.
+TEST_F(CublasLtMatmulRewriteTest, ReluActivationF16Unpadded) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f16[8,16] parameter(0)
+  y = f16[16,8] parameter(1)
+  dot_a = f16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c = f16[] constant(0)
+  c_bcast = f16[8,8] broadcast(c), dimensions={}
+  ROOT out = f16[8,8] maximum(dot_a, c_bcast)
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f16[8,16], y: f16[16,8]) -> f16[8,8] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"RELU\"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, ReluActivationF16Padded) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f16[6,12] parameter(0)
+  y = f16[12,6] parameter(1)
+  dot_a = f16[6,6] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c = f16[] constant(0)
+  c_bcast = f16[6,6] broadcast(c), dimensions={}
+  ROOT out = f16[6,6] maximum(dot_a, c_bcast)
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f16[6,12], y: f16[12,6]) -> f16[6,6] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[6,12]{1,0} parameter(0)
+; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[] constant(0)
+; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[12,6]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_PADDED:%[^ ]+]] = f16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"RELU\"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, MatrixBiasReluActivationF16) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f16[8,16] parameter(0)
+  y = f16[16,8] parameter(1)
+  z = f16[8,8] parameter(2)
+  dot_a = f16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  add = f16[8,8] add(dot_a, z)
+  c = f16[] constant(0)
+  c_bcast = f16[8,8] broadcast(c), dimensions={}
+  ROOT out = f16[8,8] maximum(add, c_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f16[8,16], y: f16[16,8], z: f16[8,8]) -> f16[8,8] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8,8]{1,0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"RELU\"
+      )");
+}
+
+// For F16, the operands are padded so that the sizes of all dimensions are
+// multiples of 8.
+TEST_F(CublasLtMatmulRewriteTest, VectorBiasReluActivationF16Unpadded) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f16[8,16] parameter(0)
+  y = f16[16,8] parameter(1)
+  z = f16[8] parameter(2)
+  dot_a = f16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = f16[8,8] broadcast(z), dimensions={1}
+  add = f16[8,8] add(dot_a, z_bcast)
+  c = f16[] constant(0)
+  c_bcast = f16[8,8] broadcast(c), dimensions={}
+  ROOT out = f16[8,8] maximum(add, c_bcast)
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f16[8,16], y: f16[16,8], z: f16[8]) -> f16[8,8] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8]{0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"BIASRELU\"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, VectorBiasReluActivationF16Padded) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f16[6,12] parameter(0)
+  y = f16[12,6] parameter(1)
+  z = f16[6] parameter(2)
+  dot_a = f16[6,6] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = f16[6,6] broadcast(z), dimensions={1}
+  add = f16[6,6] add(dot_a, z_bcast)
+  c = f16[] constant(0)
+  c_bcast = f16[6,6] broadcast(c), dimensions={}
+  ROOT out = f16[6,6] maximum(add, c_bcast)
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f16[6,12], y: f16[12,6], z: f16[6]) -> f16[6,6] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[6,12]{1,0} parameter(0)
+; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[] constant(0)
+; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[12,6]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_PADDED:%[^ ]+]] = f16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[6]{0} parameter(2)
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"BIASRELU\"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, VectorBiasReluActivationF64) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f64[2,3] parameter(0)
+  y = f64[3,4] parameter(1)
+  z = f64[4] parameter(2)
+  dot_a = f64[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  z_bcast = f64[2,4] broadcast(z), dimensions={1}
+  add = f64[2,4] add(dot_a, z_bcast)
+  c = f64[] constant(0)
+  c_bcast = f64[2,4] broadcast(c), dimensions={}
+  ROOT out = f64[2,4] maximum(add, c_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-10, 1e-10}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f64[2,3], y: f64[3,4], z: f64[4]) -> f64[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f64[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f64[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f64[4]{0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f64[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"BIASRELU\"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, AlphaSimpleRewriteBiasAddActivation) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  z = f32[4] parameter(2)
+  k = f32[] constant(3.0)
+  k_bcast = f32[2,4] broadcast(k), dimensions={}
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a_multiplied = f32[2, 4] multiply(dot_a, k_bcast)
+  z_bcast = f32[2,4] broadcast(z), dimensions={1}
+  add = f32[2,4] add(dot_a_multiplied, z_bcast)
+  c = f32[] constant(0)
+  c_bcast = f32[2,4] broadcast(c), dimensions={}
+  ROOT out = f32[2,4] maximum(add, c_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[4]) -> f32[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":3,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"BIASRELU\"
+      )");
+}
+
+#endif  // GOOGLE_CUDA
+
+class GemmRewriteHloTest : public HloTestBase {
+ protected:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+};
+
+TEST_F(GemmRewriteHloTest, MergeBitcastAndAdd) {
   const char* hlo_text = R"(
 HloModule test
 ENTRY test {

@@ -84,10 +84,14 @@ def ConvolutionBackendConfigAttr : AttrDef<
 
 def CublasLtMatmulEpilogueDefault : I32EnumAttrCase<"Default", 0>;
 def CublasLtMatmulEpilogueBias : I32EnumAttrCase<"Bias", 1>;
+def CublasLtMatmulEpilogueRelu : I32EnumAttrCase<"Relu", 2>;
+def CublasLtMatmulEpilogueBiasRelu : I32EnumAttrCase<"BiasRelu", 3>;
+
 
 def CublasLtMatmulEpilogue: I32EnumAttr<"CublasLtMatmulEpilogue",
     "Epilogue for cublasLt matmul",
-    [CublasLtMatmulEpilogueDefault, CublasLtMatmulEpilogueBias]> {
+    [CublasLtMatmulEpilogueDefault, CublasLtMatmulEpilogueBias,
+     CublasLtMatmulEpilogueRelu, CublasLtMatmulEpilogueBiasRelu]> {
   let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::lmhlo_gpu";
 }
