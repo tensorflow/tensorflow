@@ -16,3 +16,10 @@ cc_library(
         "@tf_runtime//:support",
     ],
 )
+
+cc_library(
+    name = "memory_mapper",
+    hdrs = ["memory_mapper.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [],
+)

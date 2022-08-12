@@ -77,6 +77,21 @@ cc_library(
 )
 
 cc_library(
+    name = "memory_mapper",
+    srcs = ["memory_mapper.cc"],
+    hdrs = ["memory_mapper.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/core/platform:platform",
+        "@llvm-project//llvm:ExecutionEngine",
+        "@llvm-project//llvm:Support",
+    ] + tf_platform_deps(
+        "memory_mapper",
+        platform_dir = "//tensorflow/compiler/xla/runtime/",
+    ),
+)
+
+cc_library(
     name = "symbolic_shape",
     srcs = ["symbolic_shape.cc"],
     hdrs = ["symbolic_shape.h"],
