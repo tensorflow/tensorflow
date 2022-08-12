@@ -226,6 +226,9 @@ class HloFunctionImporter {
   // Converts channel id to attribute
   mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id);
 
+  // Convert use global device ids flag to attribute
+  mlir::NamedAttribute ConvertUseGlobalDeviceIds();
+
   // Converts channel handle to attribute
   mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);
 
