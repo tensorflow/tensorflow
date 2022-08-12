@@ -131,6 +131,28 @@ const size_t PJRT_Event_Await_Args_STRUCT_SIZE =
 // freed with `PJRT_Error_Destroy`.
 typedef PJRT_Error* PJRT_Event_Await(PJRT_Event_Await_Args* args);
 
+// A callback to be performed once an event is ready. It will be called on the
+// event's error state and a pointer to an object of the caller's choice.
+// Ownership of `error` is passed to the callback. The callback must destroy
+// `error` via `PJRT_Error_Destroy`. The caller retains ownership of `user_arg`.
+typedef void (*PJRT_Event_OnReadyCallback)(PJRT_Error* error, void* user_arg);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Event* event;
+  PJRT_Event_OnReadyCallback callback;
+  // `user_arg` allows `callback` to be called with arbitrary arguments (e.g.
+  // via pointers in a struct cast to void*).
+  void* user_arg;
+} PJRT_Event_OnReady_Args;
+const size_t PJRT_Event_OnReady_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Event_OnReady_Args, user_arg);
+
+// Registers `callback` to be called once `event` is ready, with `event`'s
+// error status and a pointer to an object of the caller's choice as arguments.
+typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
+
 // ---------------------------------- Client -----------------------------------
 
 typedef struct PJRT_Client PJRT_Client;
@@ -693,6 +715,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Event_IsReady);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Error);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Await);
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_OnReady);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Create);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Destroy);
