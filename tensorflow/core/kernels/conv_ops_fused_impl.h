@@ -339,16 +339,10 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         errors::Unimplemented("FusedConv2D for GPU is not currently supported "
                               "without cudnn"));
 
-    bool is_supported_activation =
-        fusion == FusedComputationType::kBiasAddWithRelu ||
-        fusion == FusedComputationType::kBiasAddWithRelu6 ||
-        fusion == FusedComputationType::kBiasAddWithElu ||
-        fusion == FusedComputationType::kBiasAddWithLeakyRelu;
     OP_REQUIRES(
-        context, is_supported_activation,
+        context, fusion == FusedComputationType::kBiasAddWithRelu,
         errors::Unimplemented("FusedConv2D implementation only supports "
-                              "fusing with `BiasAdd + Relu|Relu6|Elu|LeakyRlue`"
-                              " for now."));
+                              "fusing with `BiasAdd + Relu` for now."));
 
     Tensor input = input_param;
 
@@ -463,15 +457,6 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       case FusedComputationType::kBiasAddWithRelu:
         dnn_activation_mode = se::dnn::ActivationMode::kRelu;
         break;
-      case FusedComputationType::kBiasAddWithRelu6:
-        dnn_activation_mode = se::dnn::ActivationMode::kRelu6;
-        break;
-      case FusedComputationType::kBiasAddWithElu:
-        dnn_activation_mode = se::dnn::ActivationMode::kElu;
-        break;
-      case FusedComputationType::kBiasAddWithLeakyRelu:
-        dnn_activation_mode = se::dnn::ActivationMode::kLeakyRelu;
-        break;
       default:
         LOG(FATAL) << "Unsupported fusion type";  // Crash OK
     }
@@ -579,7 +564,6 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 
     constexpr double kConvScale = 1.0;
     constexpr double kSideInputScale = 0.0;
-    double leakyrelu_alpha = fusion_args.leakyrelu_alpha;
 
     int device_id = stream->parent()->device_ordinal();
     DataType dtype = input.dtype();
@@ -602,7 +586,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         dtype,                         // tensor datatype
         device_id,                     // device_id
         conv_desc.group_count(),
-        ConvParameters::FusionInfo{kConvScale, kSideInputScale, leakyrelu_alpha,
+        ConvParameters::FusionInfo{kConvScale, kSideInputScale,
                                    dnn_activation_mode,  // activation_mode
                                    /*is_contrib=*/false}};
 
@@ -612,8 +596,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         cudnn_use_autotune, FusedConvAutotuneMap::GetInstance(),
         conv_parameters, context, input_desc, filter_desc, bias_desc,
         output_desc, conv_desc, dnn_activation_mode, kConvScale,
-        kSideInputScale, leakyrelu_alpha, input_ptr, filter_ptr, output_ptr,
-        bias_ptr, side_input_ptr, ConvolveScratchSize());
+        kSideInputScale, input_ptr, filter_ptr, output_ptr, bias_ptr,
+        side_input_ptr, ConvolveScratchSize());
     OP_REQUIRES_OK(context, entry_or.status());
     auto autotune_entry = std::move(entry_or).value();
 
@@ -627,7 +611,6 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                                           element_type,
                                           kConvScale,
                                           kSideInputScale,
-                                          leakyrelu_alpha,
                                           input_desc,
                                           filter_desc,
                                           bias_desc,
@@ -715,12 +698,7 @@ class FusedConv2DOp : public OpKernel {
     // convolution with BiasAdd, but in practice it doesn't work, cuDNN ignores
     // this parameter and always does Relu activation.
     if (std::is_same<Device, GPUDevice>::value) {
-      patterns = {
-          {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
-          {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
-          {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
-          {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
-      };
+      patterns = {{FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}}};
     }
 
     OP_REQUIRES_OK(context, InitializeFusedComputation(

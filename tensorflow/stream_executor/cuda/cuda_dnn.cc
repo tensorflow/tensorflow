@@ -3610,26 +3610,11 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
       new cudnn_frontend::OperationGraph(std::move(opGraph)));
 }
 
-bool SideInputNeeded(dnn::ActivationMode activation_mode, double conv_scale,
-                     double side_input_scale) {
-  // Cudnn uses precompiled kernels to perform the Conv-Add-BiasAdd-Act when the
-  // activation is Relu or Identity and this requires the "side_input" for the
-  // Add. For other activations, cudnn uses the runtime-compiled kernels.
-  // However, for this case, we need to drop the Add node and use
-  // Conv-BiasAdd-Act pattern to trigger the correct cudnn path.
-  // TODO(kaixih@nvidia): We should remove this WAR when the cudnn fixes it.
-  bool check_activation = activation_mode == dnn::ActivationMode::kNone ||
-                          activation_mode == dnn::ActivationMode::kRelu;
-  bool check_scale = conv_scale != 1.0 || side_input_scale != 0.0;
-  return check_activation || check_scale;
-}
-
 port::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
 GetCudnnFusedOperationGraph(
     dnn::ConvolutionKind kind, dnn::DataType input_type,
     dnn::DataType bias_type, dnn::DataType output_type, double alpha,
-    double alpha2, double leakyrelu_alpha,
-    const dnn::BatchDescriptor& input_descriptor,
+    double alpha2, const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     dnn::BatchDescriptor bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
@@ -3764,31 +3749,20 @@ GetCudnnFusedOperationGraph(
                      .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_op);
 
-  // CUDNN OperationGraph
-  absl::InlinedVector<cudnn_frontend::Operation const*, 4> ops = {&conv_op};
-
-  bool need_add_op = SideInputNeeded(activation_mode, alpha, alpha2);
-
-  std::optional<cudnn_frontend::PointWiseDesc_v8> add_desc;
-  std::optional<cudnn_frontend::Operation_v8> add_op;
-  if (need_add_op) {
-    add_desc.emplace(cudnn_frontend::PointWiseDescBuilder()
-                         .setMode(CUDNN_POINTWISE_ADD)
-                         .setMathPrecision(cudnn_activation_type)
-                         .build());
-    RETURN_MSG_IF_CUDNN_ERROR(*add_desc);
-    add_op.emplace(cudnn_frontend::OperationBuilder(
-                       CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
-                       .setxDesc(conv_op.getOutputTensor())
-                       .setbDesc(tensor_z)
-                       .setyDesc(tensor_add)
-                       .setpwDesc(*add_desc)
-                       .setAlpha(alpha)
-                       .setAlpha2(alpha2)
-                       .build());
-    RETURN_MSG_IF_CUDNN_ERROR(*add_op);
-    ops.push_back(&*add_op);
-  }
+  auto add_desc = cudnn_frontend::PointWiseDescBuilder()
+                      .setMode(CUDNN_POINTWISE_ADD)
+                      .setMathPrecision(cudnn_activation_type)
+                      .build();
+  auto add_op = cudnn_frontend::OperationBuilder(
+                    CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
+                    .setxDesc(conv_op.getOutputTensor())
+                    .setbDesc(tensor_z)
+                    .setyDesc(tensor_add)
+                    .setpwDesc(add_desc)
+                    .setAlpha(alpha)
+                    .setAlpha2(alpha2)
+                    .build();
+  RETURN_MSG_IF_CUDNN_ERROR(add_op);
 
   auto bias_add_desc = cudnn_frontend::PointWiseDescBuilder()
                            .setMode(CUDNN_POINTWISE_ADD)
@@ -3801,18 +3775,21 @@ GetCudnnFusedOperationGraph(
   // activation.
   auto& bias_out_desc =
       activation_mode == dnn::ActivationMode::kNone ? tensor_y : tensor_bias;
-  auto& bias_in_desc = need_add_op ? tensor_add : tensor_conv;
   auto bias_add_op = cudnn_frontend::OperationBuilder(
                          CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
-                         .setxDesc(bias_in_desc)
+                         .setxDesc(add_op.getOutputTensor())
                          .setbDesc(tensor_b)
                          .setyDesc(bias_out_desc)
                          .setpwDesc(bias_add_desc)
                          .build();
   RETURN_MSG_IF_CUDNN_ERROR(bias_add_op);
-  ops.push_back(&bias_add_op);
+
+  // CUDNN OperationGraph
+  absl::InlinedVector<cudnn_frontend::Operation const*, 4> ops = {
+      &conv_op, &add_op, &bias_add_op};
 
   std::optional<cudnn_frontend::PointWiseDesc_v8> act_desc;
+  std::optional<cudnn_frontend::Operation_v8> act_op;
   switch (activation_mode) {
     case dnn::ActivationMode::kNone:
       break;
@@ -3822,47 +3799,19 @@ GetCudnnFusedOperationGraph(
                            .setMathPrecision(cudnn_activation_type)
                            .build());
       RETURN_MSG_IF_CUDNN_ERROR(*act_desc);
-
-      break;
-    case dnn::ActivationMode::kRelu6:
-      act_desc.emplace(cudnn_frontend::PointWiseDescBuilder()
-                           .setMode(CUDNN_POINTWISE_RELU_FWD)
-                           .setReluUpperClip(6.0)
-                           .setMathPrecision(cudnn_activation_type)
-                           .build());
-      RETURN_MSG_IF_CUDNN_ERROR(*act_desc);
-      break;
-    case dnn::ActivationMode::kElu:
-      act_desc.emplace(cudnn_frontend::PointWiseDescBuilder()
-                           .setMode(CUDNN_POINTWISE_ELU_FWD)
-                           .setMathPrecision(cudnn_activation_type)
-                           .build());
-      RETURN_MSG_IF_CUDNN_ERROR(*act_desc);
-      break;
-    case dnn::ActivationMode::kLeakyRelu:
-      act_desc.emplace(cudnn_frontend::PointWiseDescBuilder()
-                           .setMode(CUDNN_POINTWISE_RELU_FWD)
-                           .setReluLowerClipSlope(leakyrelu_alpha)
-                           .setMathPrecision(cudnn_activation_type)
-                           .build());
-      RETURN_MSG_IF_CUDNN_ERROR(*act_desc);
+      act_op.emplace(cudnn_frontend::OperationBuilder(
+                         CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
+                         .setxDesc(bias_add_op.getOutputTensor())
+                         .setyDesc(tensor_y)
+                         .setpwDesc(*act_desc)
+                         .build());
+      RETURN_MSG_IF_CUDNN_ERROR(*act_op);
+      ops.push_back(&*act_op);
       break;
     default:
       return port::InternalError(
           absl::StrCat("Unimplemented activation mode ",
                        dnn::ActivationModeString(activation_mode)));
-  }
-
-  std::optional<cudnn_frontend::Operation_v8> act_op;
-  if (activation_mode != dnn::ActivationMode::kNone) {
-    act_op.emplace(cudnn_frontend::OperationBuilder(
-                       CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
-                       .setxDesc(bias_add_op.getOutputTensor())
-                       .setyDesc(tensor_y)
-                       .setpwDesc(*act_desc)
-                       .build());
-    RETURN_MSG_IF_CUDNN_ERROR(*act_op);
-    ops.push_back(&*act_op);
   }
 
   auto op_graph = cudnn_frontend::OperationGraphBuilder()
@@ -3879,13 +3828,13 @@ GetCudnnFusedOperationGraph(
           << "\nTensor_conv: " << tensor_conv.describe()
           << "\nTensor_add: " << tensor_add.describe()
           << "\nTensor_bias: " << tensor_bias.describe()
-          << "\nConv: " << conv_desc.describe() << "\nAdd: "
-          << (add_desc.has_value() ? add_desc->describe() : "(skipped)")
+          << "\nConv: " << conv_desc.describe()
+          << "\nAdd: " << add_desc.describe()
           << "\nBiasAdd: " << bias_add_desc.describe()  //
           << "\nAct: "
           << (act_desc.has_value() ? act_desc->describe() : "(identity)")
-          << "\nConvOp: " << conv_op.describe() << "\nAddOp: "
-          << (add_op.has_value() ? add_op->describe() : "(skipped)")
+          << "\nConvOp: " << conv_op.describe()
+          << "\nAddOp: " << add_op.describe()
           << "\nBiasAddOp: " << bias_add_op.describe()  //
           << "\nActOp: "
           << (act_op.has_value() ? act_op->describe() : "(identity)")
@@ -4463,22 +4412,13 @@ class CudnnExecutionPlanRunner<void(Args...)>
 
     std::array<void*, sizeof...(Args)> data_ptrs = {inputs.opaque()...};
 
-    absl::InlinedVector<int64_t, sizeof...(Args)> data_uids_vec(
-        data_uids_.cbegin(), data_uids_.cend());
-    absl::InlinedVector<void*, sizeof...(Args)> data_ptrs_vec(
-        data_ptrs.cbegin(), data_ptrs.cend());
-    // We use need_side_input to determine if the side input 'z' from
-    // {'x', 'w', 'z', 'b', 'y'} is needed for the conv-<add>-bias-act patterns.
-    if (sizeof...(Args) == 5 && !need_side_input_) {
-      data_uids_vec.erase(data_uids_vec.begin() + 2);
-      data_ptrs_vec.erase(data_ptrs_vec.begin() + 2);
-    }
-
+    // TODO(kaixih@nvidia): Remove the const_cast after cudnn frontend can take
+    // in const int64 pointer.
     auto variantPack =
         cudnn_frontend::VariantPackBuilder()
             .setWorkspacePointer(scratch_memory.opaque())
-            .setDataPointers(data_ptrs_vec.size(), data_ptrs_vec.data())
-            .setUids(data_uids_vec.size(), data_uids_vec.data())
+            .setDataPointers(data_ptrs.size(), data_ptrs.data())
+            .setUids(data_uids_.size(), const_cast<int64_t*>(data_uids_.data()))
             .build();
     RETURN_MSG_IF_CUDNN_ERROR(variantPack);
 
@@ -4523,31 +4463,27 @@ class CudnnExecutionPlanRunner<void(Args...)>
 
   static port::StatusOr<CudnnExecutionPlanRunner> Create(
       GpuExecutor* parent, CudnnAccess* cudnn,
-      cudnn_frontend::ExecutionPlan plan, absl::Span<const int64_t> uids,
-      bool need_side_input) {
+      cudnn_frontend::ExecutionPlan plan, absl::Span<const int64_t> uids) {
     auto workspace_size = static_cast<uint64_t>(plan.getWorkspaceSize());
     RETURN_MSG_IF_CUDNN_ERROR(plan);
-    return {{parent, cudnn, std::move(plan), workspace_size, uids,
-             need_side_input}};
+    return {{parent, cudnn, std::move(plan), workspace_size, uids}};
   }
 
  private:
   CudnnExecutionPlanRunner(GpuExecutor* parent, CudnnAccess* cudnn,
                            cudnn_frontend::ExecutionPlan plan,
                            size_t workspace_size,
-                           absl::Span<const int64_t> uids, bool need_side_input)
+                           absl::Span<const int64_t> uids)
       : parent_(parent),
         cudnn_(cudnn),
         plan_(std::move(plan)),
         workspace_size_(workspace_size),
-        data_uids_(uids.begin(), uids.end()),
-        need_side_input_(need_side_input) {}
+        data_uids_(uids.begin(), uids.end()) {}
   GpuExecutor* parent_;
   CudnnAccess* cudnn_;
   cudnn_frontend::ExecutionPlan plan_;
   size_t workspace_size_;
   absl::InlinedVector<int64_t, sizeof...(Args)> data_uids_;
-  bool need_side_input_;
 };
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
@@ -4592,8 +4528,7 @@ port::Status CreateOpRunners(
     std::unique_ptr<cudnn_frontend::OperationGraph> op_graph,
     dnn::ConvolutionKind kind, dnn::DataType input_type,
     absl::Span<const int64_t> input_uids, bool use_fallback,
-    std::vector<std::unique_ptr<const dnn::OpRunner<Sig>>>* out_runners,
-    bool need_side_input) {
+    std::vector<std::unique_ptr<const dnn::OpRunner<Sig>>>* out_runners) {
   cudnn_frontend::EngineConfigList filtered_configs;
   auto generic_filter_fn = [=](cudnnBackendDescriptor_t engine_config) -> bool {
     return GenericEngineFilter(
@@ -4604,22 +4539,10 @@ port::Status CreateOpRunners(
   };
 
   if (!use_fallback) {
-    // In theory, mode GetCudnnFrontendHeurMode() is supposed to fall back to
-    // HEUR_MODE_INSTANT if it can't find any working engines. But there's a
-    // known cudnn issue where it doesn't when dealing with runtime compiled
-    // fusion engines. So we do it manually here.
-    // TODO(kaixih@nvidia): remove this when the cudnn fixes it.
-    cudnn_frontend::EngineHeuristics heuristics = [&] {
-      auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
-                            .setOperationGraph(*op_graph)
-                            .setHeurMode(GetCudnnFrontendHeurMode())
-                            .build();
-      if (heuristics.get_status() == CUDNN_STATUS_SUCCESS) return heuristics;
-      return cudnn_frontend::EngineHeuristicsBuilder()
-          .setOperationGraph(*op_graph)
-          .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
-          .build();
-    }();
+    auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
+                          .setOperationGraph(*op_graph)
+                          .setHeurMode(GetCudnnFrontendHeurMode())
+                          .build();
     RETURN_MSG_IF_CUDNN_ERROR(heuristics);
 
     // cuDNN frontend sneakily puts error messages on the object and returns
@@ -4677,8 +4600,7 @@ port::Status CreateOpRunners(
     }
 
     auto runner_or = CudnnExecutionPlanRunner<Sig>::Create(
-        gpu_executor, cudnn_access, std::move(plan), input_uids,
-        need_side_input);
+        gpu_executor, cudnn_access, std::move(plan), input_uids);
     if (!runner_or.ok()) {
       // Note this can happen if cuDNN Frontend gives us partially-initialized
       // ExecutionPlans because its error handling is broken in non-exception
@@ -4804,8 +4726,7 @@ port::Status CudnnSupport::GetConvolveRunners(
 
   return CreateOpRunners<dnn::ConvSignature>(
       stream, cudnn, parent_, cudnn_.get(), std::move(op_graph), kind,
-      input_type, {'x', 'w', 'y'}, use_fallback, out_exec_plans,
-      /*need_side_input=*/false);
+      input_type, {'x', 'w', 'y'}, use_fallback, out_exec_plans);
 #else
   return port::UnimplementedError(
       "Cudnn execution plans are only supported with Cudnn >= 8.1.");
@@ -4863,8 +4784,7 @@ CudnnSupport::ConvolveRunnerFromDesc(
   TF_ASSIGN_OR_RETURN(
       auto runner,
       CudnnExecutionPlanRunner<dnn::ConvSignature>::Create(
-          parent_, cudnn_.get(), std::move(execution_plan), {'x', 'w', 'y'},
-          /*need_side_input=*/false));
+          parent_, cudnn_.get(), std::move(execution_plan), {'x', 'w', 'y'}));
   return {std::make_unique<CudnnExecutionPlanRunner<dnn::ConvSignature>>(
       std::move(runner))};
 #else
@@ -5063,8 +4983,7 @@ CudnnSupport::FusedConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType input_type,
     dnn::DataType bias_type, dnn::DataType output_type, double conv_scale,
-    double side_input_scale, double leakyrelu_alpha,
-    const dnn::BatchDescriptor& input_descriptor,
+    double side_input_scale, const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
@@ -5113,19 +5032,17 @@ CudnnSupport::FusedConvolveRunnerFromDesc(
   TF_ASSIGN_OR_RETURN(auto op_graph,
                       GetCudnnFusedOperationGraph(
                           kind, input_type, bias_type, output_type, conv_scale,
-                          side_input_scale, leakyrelu_alpha, input_descriptor,
-                          filter_descriptor, bias_descriptor, output_descriptor,
+                          side_input_scale, input_descriptor, filter_descriptor,
+                          bias_descriptor, output_descriptor,
                           convolution_descriptor, activation_mode, cudnn));
 
   TF_ASSIGN_OR_RETURN(auto execution_plan,
                       RebuildExecutionPlan(cudnn, algorithm_desc, *op_graph));
 
-  bool need_side_input =
-      SideInputNeeded(activation_mode, conv_scale, side_input_scale);
   TF_ASSIGN_OR_RETURN(auto runner,
                       CudnnExecutionPlanRunner<dnn::FusedConvSignature>::Create(
                           parent_, cudnn_.get(), std::move(execution_plan),
-                          {'x', 'w', 'z', 'b', 'y'}, need_side_input));
+                          {'x', 'w', 'z', 'b', 'y'}));
   return {std::make_unique<CudnnExecutionPlanRunner<dnn::FusedConvSignature>>(
       std::move(runner))};
 #else
@@ -5138,8 +5055,7 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType input_type, dnn::DataType bias_type,
     dnn::DataType output_type, double conv_scale, double side_input_scale,
-    double leakyrelu_alpha, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor,
+    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
@@ -5204,13 +5120,10 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
   }
 
   if (activation_mode != dnn::ActivationMode::kRelu &&
-      activation_mode != dnn::ActivationMode::kRelu6 &&
-      activation_mode != dnn::ActivationMode::kElu &&
-      activation_mode != dnn::ActivationMode::kLeakyRelu &&
       activation_mode != dnn::ActivationMode::kNone) {
     return port::Status(port::error::INVALID_ARGUMENT,
-                        "CuDNN fusion only supports activations of "
-                        "{Relu, Relu6, Elu, <None>}.");
+                        "cudnnConvolutionBiasActivationForward() only supports "
+                        "Relu or None activation.");
   }
 
   if (!actually_use_cudnn_frontend) {
@@ -5232,9 +5145,9 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
       }
       auto runner_or = FusedConvolveRunnerFromDesc(
           stream, algo, kind, input_type, bias_type, output_type, conv_scale,
-          side_input_scale, leakyrelu_alpha, input_descriptor,
-          filter_descriptor, bias_descriptor, output_descriptor,
-          convolution_descriptor, activation_mode);
+          side_input_scale, input_descriptor, filter_descriptor,
+          bias_descriptor, output_descriptor, convolution_descriptor,
+          activation_mode);
       if (!runner_or.ok()) {
         // See the corresponding error handling in
         // CudnnSupport::GetConvolveRunners: this filters out algorithms that
@@ -5250,8 +5163,8 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   auto op_graph_status = GetCudnnFusedOperationGraph(
       kind, input_type, bias_type, output_type, conv_scale, side_input_scale,
-      leakyrelu_alpha, input_descriptor, filter_descriptor, bias_descriptor,
-      output_descriptor, convolution_descriptor, activation_mode, cudnn);
+      input_descriptor, filter_descriptor, bias_descriptor, output_descriptor,
+      convolution_descriptor, activation_mode, cudnn);
   if (!op_graph_status.status().ok()) {
     return port::Status(port::error::INTERNAL,
                         absl::StrCat("Cudnn graph failed to build: ",
@@ -5259,12 +5172,9 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
   }
   auto op_graph = std::move(op_graph_status).value();
 
-  bool need_side_input =
-      SideInputNeeded(activation_mode, conv_scale, side_input_scale);
   return CreateOpRunners<dnn::FusedConvSignature>(
       stream, cudnn, parent_, cudnn_.get(), std::move(op_graph), kind,
-      input_type, {'x', 'w', 'z', 'b', 'y'}, use_fallback, out_exec_plans,
-      need_side_input);
+      input_type, {'x', 'w', 'z', 'b', 'y'}, use_fallback, out_exec_plans);
 #else
   return port::UnimplementedError(
       "Cudnn execution plans are only supported with Cudnn >= 8.1.");

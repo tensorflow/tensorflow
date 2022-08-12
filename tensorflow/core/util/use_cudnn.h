@@ -24,7 +24,6 @@ namespace tensorflow {
 
 bool CudnnUseAutotune();
 bool CudnnUseFrontend();
-bool CudnnUseRuntimeFusion();
 bool CudnnRnnUseAutotune();
 bool CudnnDisableConv1x1Optimization();
 bool DebugCudnnRnn();
