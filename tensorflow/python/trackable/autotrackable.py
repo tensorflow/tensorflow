@@ -106,9 +106,9 @@ class AutoTrackable(base.Trackable):
       logging.set_verbosity(logging_verbosity)
 
     # Trace concrete functions to force side-effects:
-    #   1. populate the cache for functions that have an input_signature
+    #   1. Populate the cache for functions that have an input_signature
     #      and have not been called
-    #   2. force side effects of creation of concrete functions, e.g. create
+    #   2. Force side effects of creation of concrete functions, e.g. create
     #      variables on first run.
     for fn in functions.values():
       if isinstance(fn, core_types.GenericFunction):
