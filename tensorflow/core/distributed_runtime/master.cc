@@ -161,10 +161,9 @@ class DeviceFinder {
   explicit DeviceFinder(
       const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env,
       WorkerCacheInterface* worker_cache, uint64 timeout_in_micros)
-      : env_(env), worker_cache_(worker_cache) {
-    if (timeout_in_micros > 0) {
-      DeviceFinder::timeout_in_micros_ = timeout_in_micros;
-    }
+      : env_(env),
+        worker_cache_(worker_cache),
+        timeout_in_micros_(timeout_in_micros) {
     CHECK(worker_cache) << "Worker cache was null!";
     auto process_filter = [this](const string& filter) {
       DeviceNameUtils::ParsedName parsed;
