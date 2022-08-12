@@ -77,6 +77,35 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_call",
+    srcs = ["custom_call.cc"],
+    hdrs = ["custom_call.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/xla/runtime:diagnostics",
+        "//tensorflow/compiler/xla/runtime:logical_result",
+        "//tensorflow/compiler/xla/runtime:type_id",
+        "//third_party/eigen3",
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:dtype",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
+    name = "custom_call_registry",
+    srcs = ["custom_call_registry.cc"],
+    hdrs = ["custom_call_registry.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":custom_call",
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:dtype",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
     name = "diagnostics",
     srcs = ["diagnostics.cc"],
     hdrs = ["diagnostics.h"],

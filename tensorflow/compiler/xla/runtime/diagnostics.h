@@ -196,8 +196,9 @@ class DiagnosticEngine {
   }
 
   void Emit(Diagnostic diagnostic) const {
-    for (auto &handler : llvm::reverse(handlers_))
+    for (auto &handler : llvm::reverse(handlers_)) {
       if (succeeded(handler(diagnostic))) return;
+    }
 
     // Dump unhandled errors to llvm::errs() stream.
     if (diagnostic.severity() == DiagnosticSeverity::kError)

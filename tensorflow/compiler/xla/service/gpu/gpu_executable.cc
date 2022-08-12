@@ -112,7 +112,7 @@ class GpuExecutable::JitRtExecutable {
     };
 
     // Register JitRt Gpu runtime custom calls with the linker.
-    opts.runtime_symbol_map = GetSymbolsBinding(JitRtGpuCustomCalls());
+    opts.runtime_symbol_map = jitrt::GetSymbolsBinding(JitRtGpuCustomCalls());
 
     // We just use the default compilation pipeline provided by the JitRt.
     // Alternatively instead of having a separate JitRtProgram (LMHLO lowered to
@@ -1107,7 +1107,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   jitrt::FunctionType signature(std::move(args), /*results=*/{});
   jitrt::FunctionType rt_signature(std::move(rt_args), /*results=*/{});
 
-  auto symbol_map = GetSymbolsBinding(JitRtGpuCustomCalls());
+  auto symbol_map = jitrt::GetSymbolsBinding(JitRtGpuCustomCalls());
 
   // Load JitRt executable from an object file, and link it with Gpu runtime
   // intrinsics implementing Gpu custom calls.
