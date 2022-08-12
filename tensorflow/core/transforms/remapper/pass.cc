@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/transforms/remapper/pass.h"
 
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -40,8 +41,6 @@ namespace tfg {
 namespace mkl {
 #include "tensorflow/core/transforms/remapper/pdll/MklPDLLPatterns.h.inc"
 }  // namespace mkl
-
-using namespace remapping;
 
 // Convert Sigmoid+Mul to Swish
 // Mul(x, Sigmoid(x)) --> _MklSwish(x)

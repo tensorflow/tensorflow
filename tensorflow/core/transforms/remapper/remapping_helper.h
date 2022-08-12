@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace mlir {
 namespace tfg {
-namespace remapping {
+namespace {
 
 // The following structures store info of the operations to be fused. These
 // are mainly used for combining operands info and attributes for a fused
@@ -253,7 +253,7 @@ class OpPropertyHelper : public OpCatHelper {
   bool is_xla_auto_clustering_enabled_;
 };
 
-}  // namespace remapping
+}  // namespace
 }  // namespace tfg
 }  // namespace mlir
 
