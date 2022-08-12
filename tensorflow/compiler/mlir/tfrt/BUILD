@@ -6,7 +6,10 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library", "tfrt_cc_test")
-load("//tensorflow:tensorflow.google.bzl", "get_compatible_with_cloud", "get_compatible_with_portable")
+
+# Note: keep the following lines separate due to the way copybara works
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")  # buildifier: disable=same-origin-load
 
 # TF to TFRT kernels conversion.
 package(
