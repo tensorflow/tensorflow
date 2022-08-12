@@ -90,7 +90,6 @@ namespace se = ::stream_executor;
 namespace jitrt = ::tfrt::jitrt;
 namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
 namespace mhlo = ::mlir::mhlo;
-namespace runtime = ::tfrt::jitrt::runtime;
 
 // Disable all CustomCall checks in optimized build.
 static constexpr CustomCall::RuntimeChecks RuntimeChecks() {

@@ -77,6 +77,12 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime",
+    hdrs = ["runtime.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
     name = "memory_mapper",
     srcs = ["memory_mapper.cc"],
     hdrs = ["memory_mapper.h"],
