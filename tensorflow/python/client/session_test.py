@@ -165,11 +165,30 @@ class SessionTest(test_util.TensorFlowTestCase):
       results = s.run([inp], options=run_options)
       self.assertAllEqual([30.0], results)
 
-  def testErrorsReported(self):
-    with session.Session() as s:
-      constant_op.constant(10.0, name='W1')
-      with self.assertRaises(ValueError):
-        s.run('foo:0')
+  def testDeviceFinderTimeout(self):
+    worker_config = config_pb2.ConfigProto()
+    worker_config.device_count["CPU"] = 3
+    worker, _ = test_util.create_local_cluster(
+        3, 0, worker_config=worker_config)
+    with ops.Graph().as_default():
+      with ops.device('/job:worker/replica:0/task:0/cpu:0'):
+        inp_0 = constant_op.constant(1.0, name='input_0')
+      with ops.device('/job:worker/replica:0/task:1/cpu:0'):
+        inp_1 = constant_op.constant(2.0, name='input_1')
+      with ops.device('/job:worker/replica:0/task:2/cpu:0'):
+        add_op = math_ops.add(inp_0, inp_1)
+      with session.Session(
+          target=worker[2].target,
+          config=config_pb2.ConfigProto(
+              device_finder_timeout_in_micros=300000)) as sess:
+        res = sess.run(add_op)
+        self.assertEqual(res, 3.0)
+      with self.assertRaises(errors.DeadlineExceededError):
+        with session.Session(
+            target=worker[2].target,
+            config=config_pb2.ConfigProto(
+                device_finder_timeout_in_micros=1)) as sess:
+          sess.run(add_op)
 
   def testErrorPayload(self):
     with session.Session():
