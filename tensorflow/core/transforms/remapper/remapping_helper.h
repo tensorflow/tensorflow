@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TRANSFORMS_REMAPPER_REMAPPING_HELPER_H_
 #define TENSORFLOW_CORE_TRANSFORMS_REMAPPER_REMAPPING_HELPER_H_
 
+#include <string>
+
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/transforms/utils/op_cat_helper.h"
 #include "tensorflow/core/transforms/utils/utils.h"
