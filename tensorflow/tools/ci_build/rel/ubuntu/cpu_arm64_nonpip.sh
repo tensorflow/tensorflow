@@ -51,7 +51,7 @@ export TF_NEED_COMPUTECPP=0
 export TF_NEED_KAFKA=0
 export TF_NEED_TENSORRT=0
 
-# Export required variables for running pip_new.sh
+# Export required variables for running the tests
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="CPU"
 
