@@ -58,7 +58,7 @@ export CONTAINER_TYPE="CPU"
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
-# Export optional variables for running pip_new.sh
+# Export optional variables for running the tests
 export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-mtune=generic --copt=-march=armv8-a \
     --copt=-O3 --copt=-flax-vector-conversions"
 export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
