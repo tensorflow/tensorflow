@@ -68,7 +68,7 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/lite/..."
 export TF_TEST_FILTER_TAGS="-no_oss,-oss_serial,-v1only,-benchmark-test,-no_aarch64,-gpu,-tpu"
 
-bazel test ${TF_TEST_FLAGS} --test_tag_filters=${TF_TEST_FILTER_TAGS} --repo_env=PYTHON_BIN_PATH="$(which python)" --local_test_jobs=64 -k -- ${TF_TEST_TARGETS}
+bazel test ${TF_TEST_FLAGS} --build_tag_filters="${TF_TEST_FILTER_TAGS}"  --test_tag_filters=${TF_TEST_FILTER_TAGS} --repo_env=PYTHON_BIN_PATH="$(which python)" --local_test_jobs=64 -k -- ${TF_TEST_TARGETS}
 
 # Remove virtual environment
 remove_venv_ubuntu
