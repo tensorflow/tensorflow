@@ -343,8 +343,8 @@ class SingleSampleAdapter {
 
  private:
   // This implementation iteratively skips over `num_skips` samples
-  // from `generator_`. There is an O(1) implementation for PhiloxRandom
-  // in random_distributions.cc.
+  // from `generator_`. There is also a specialized O(1) implementation
+  // for PhiloxRandom.
   PHILOX_DEVICE_INLINE
   void SkipFromGenerator(uint64 num_skips) {
     while (num_skips--) {
@@ -356,6 +356,14 @@ class SingleSampleAdapter {
   typename Generator::ResultType unused_results_;
   int used_result_index_;
 };
+
+template <>
+PHILOX_DEVICE_INLINE
+void SingleSampleAdapter<PhiloxRandom>::SkipFromGenerator(uint64 num_skips) {
+  // Use the O(1) PhiloxRandom::Skip instead of the default O(N) impl.
+  generator_->Skip(num_skips);
+}
+
 
 // A class that generates unit normal distribution random numbers from the
 // underlying random integer generator.
