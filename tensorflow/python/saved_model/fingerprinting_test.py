@@ -77,6 +77,9 @@ class FingerprintingTest(test.TestCase):
     self.assertEqual(fingerprint_def.graph_def_program_hash,
                      14830488309055091319)
     self.assertEqual(fingerprint_def.signature_def_hash, 1050878586713189074)
+    # TODO(b/242348400): The checkpoint hash is non-deterministic, so we cannot
+    # check its value here.
+    self.assertGreater(fingerprint_def.checkpoint_hash, 0)
 
   def test_model_saved_with_different_signature_options(self):
     model = self._create_model_with_function()

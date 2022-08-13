@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/resize_bilinear.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
+#include "tensorflow/lite/kernels/internal/reference/select.h"
 #include "tensorflow/lite/kernels/internal/reference/slice.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/space_to_batch_nd.h"
@@ -763,29 +764,6 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
                    const RuntimeShape& output_shape, T2* output_data) {
   // Drop shape of second input: not needed.
   ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
-}
-
-template <typename D, typename T>
-void Select(const RuntimeShape& input_condition_shape,
-            const D* input_condition_data, const RuntimeShape& input_x_shape,
-            const T* input_x_data, const RuntimeShape& input_y_shape,
-            const T* input_y_data, const RuntimeShape& output_shape,
-            T* output_data) {
-  ruy::profiler::ScopeLabel label("Select");
-  int64_t flatsize;
-  // Allow select operator executions on mixed scalar tensors and one element
-  // tensors.
-  if (input_condition_shape.FlatSize() == 1 && input_x_shape.FlatSize() == 1 &&
-      input_y_shape.FlatSize() == 1 && output_shape.FlatSize() == 1) {
-    flatsize = 1;
-  } else {
-    flatsize = MatchingFlatSize(input_condition_shape, input_x_shape,
-                                input_y_shape, output_shape);
-  }
-  for (int64_t i = 0; i < flatsize; ++i) {
-    output_data[i] =
-        input_condition_data[i] ? input_x_data[i] : input_y_data[i];
-  }
 }
 
 template <typename D, typename T>

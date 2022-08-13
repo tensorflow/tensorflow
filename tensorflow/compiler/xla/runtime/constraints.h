@@ -49,6 +49,94 @@ constexpr const char* kArgumentConstraintAttrName = "rt.constraint";
 // For now these constraints are supported by arguments of shaped types (tensors
 // or memrefs), but potentially can be extended to support open type hierarchy
 // of user-defined types.
+//
+// XLA program example:
+//
+//   func @main(
+//     %input0: memref<*xf32>   { rt.constraint = "rank"  },
+//     %input1: memref<?x?xf32> { rt.constraint = "shape" },
+//     %perm: memref<4xi32>     { rt.constraint = "value" }
+//   ) attributes { rt.entrypoint } { ... }
+//
+// Entrypoint function can define constraints on its arguments, that must be
+// resolved before the function can be compiled. If constraints can't be
+// resolved statically from the function signature (e.g. rank is unknown), then
+// the runtime will specialize generic function to concrete operands at runtime
+// (concrete operands rank, shape or value).
+//
+// If function arguments do not have unresolved constraints, compiler can
+// instantiate the default executable, that can take all compatible inputs
+// without recompilation.
+//
+// (a) Rank constraint:
+//
+//     %arg : tensor<*xf32> { rt.constraint = "rank" }
+//
+//     Before compiling the function, unranked input type will be updated to the
+//     corresponding ranked input type (e.g. unranked tensor -> ranked tensor).
+//
+// (b) Shape constraint:
+//
+//     %arg : tensor<?x?xf32> { rt.constraint = "shape" }
+//
+//     Shape of the runtime argument will be used to specialize the compiled
+//     function, if this shape seen the first time, it will trigger function
+//     recompilation.
+//
+// (c) Value constraint:
+//
+//     %reduction_dimension : tensor<i32> { rt.constraint = "value" }
+//
+//     Runtime value will be sunk into the body of a function as a constant,
+//     and the function will be recompiled. For example this can be used to sink
+//     reduction dimensions to generate more efficient code.
+//
+//     Value constraint is only supported for the integer data type, in practice
+//     it should be reduction dimension, dimension permutation, or any similar
+//     value that does not change often, and is required for generating
+//     efficient code.
+//
+//  Shape and value specialization example:
+//
+//    // Computes `%arg0` mean value over the axis specified by the `%arg1`.
+//    // See: https://www.tensorflow.org/api_docs/python/tf/math/reduce_mean
+//    func @mean(%arg0: tensor<?x?xf32>, %arg1: tensor<i32>) -> tensor<?xf32> {
+//      %0 = "tf.Mean(%arg0, %arg1)
+//             : (tensor<?x?xf32>, tensor<i32>) -> tensor<?xf32>
+//      return %0: tensor<?xf32>
+//    }
+//
+//  Shape specialization to input shapes: [tensor<4x8xf32>, tensor<f32>]
+//
+//    func @mean(%arg0: tensor<4x8xf32>, %arg1: tensor<i32>) -> tensor<?xf32> {
+//      %0 = "tf.Mean(%arg0, %arg1)
+//             : (tensor<4x8xf32>, tensor<i32>) -> tensor<?xf32>
+//      return %0: tensor<?xf32>
+//    }
+//
+//    Shape specialization in this particular case doesn't bring much
+//    improvement, because without knowing the reduction axis we can't infer
+//    any new information from the input shape alone.
+//
+//  Value specialization to input values: [ <do-not-specialize>, dense<1 : i32>]
+//
+//    func @mean(%arg0: tensor<4x8xf32>) -> tensor<4xf32> {
+//      %0 = "tf.Constant" { value = dense<1 : i32>} -> tensor<i32>
+//      %1 = "tf.Mean(%arg0, %0)
+//             : (tensor<4x8xf32>, tensor<i32>) -> tensor<4xf32>
+//      return %1 : tensor<4xf32>
+//    }
+//
+//    By specializing function to the concrete value of the second argument, by
+//    sinking it into the function body we can infer the output shape. Also this
+//    information allows to statically choose reduction implementation optimized
+//    for reducing along the inner most dimension.
+//
+//    Furthermore static information about reduction axis allows to lower mean
+//    operation to Linalg generic operation. Dynamic reduction axis is not
+//    representable in Linalg, and would require multi-versioning and dynamic
+//    dispatch at runtime.
+//
 enum class ArgumentConstraint {
   // Constraint was resolved based on the static information in the function
   // signature type or it was never specified by the argument attribute.

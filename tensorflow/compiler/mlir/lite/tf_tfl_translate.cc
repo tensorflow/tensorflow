@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/None.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -294,10 +295,11 @@ int main(int argc, char **argv) {
   });
 
   std::string result;
-  // TODO(b/153507667): Pass the session object when importing logic is removed.
+  llvm::Optional<tensorflow::Session *> session = llvm::None;
+  if (bundle) session = bundle->GetSession();
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, toco_flags, pass_config, tags,
-      /*saved_model_dir=*/"", /*session=*/llvm::None, &result);
+      /*saved_model_dir=*/"", session, &result);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

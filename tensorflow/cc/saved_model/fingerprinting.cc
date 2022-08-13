@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -31,13 +32,16 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
 
 namespace tensorflow::fingerprinting {
 
@@ -86,6 +90,20 @@ void CanonicalizeNodes(GraphDef* graph_def) {
   }
 }
 
+// Returns the hash of the checkpoint .index file, 0 if there is none.
+uint64 HashCheckpointIndexFile(absl::string_view model_dir) {
+  std::string meta_filename = MetaFilename(io::JoinPath(
+      model_dir, kSavedModelVariablesDirectory, kSavedModelVariablesFilename));
+  std::string data;
+  Status read_status = ReadFileToString(Env::Default(), meta_filename, &data);
+  if (read_status.ok()) {
+    return tensorflow::Fingerprint64(data);
+  } else {
+    LOG(WARNING) << read_status.error_message();
+    return 0;
+  }
+}
+
 }  // namespace
 
 uint64 ComputeHash(const GraphDef& graph_def) {
@@ -94,7 +112,8 @@ uint64 ComputeHash(const GraphDef& graph_def) {
   return tensorflow::Fingerprint64(graph_def_string);
 }
 
-FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph) {
+FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
+                                    absl::string_view export_dir) {
   // Create a copy of `metagraph` which will be used and mutated for fingerprint
   // computation.
   MetaGraphDef metagraph_copy = metagraph;
@@ -114,6 +133,8 @@ FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph) {
       RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def());
   fingerprint_def.set_saved_object_graph_hash(
       RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def()));
+  // Set fingerprint field #5.
+  fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));
   // Set version of the fingerprint.
   VersionDef* version = fingerprint_def.mutable_version();
   version->set_producer(kFingerprintProducer);

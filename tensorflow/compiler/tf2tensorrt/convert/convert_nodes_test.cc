@@ -4799,19 +4799,49 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSoftmax) {
     std::vector<float> expected_values;
   };
   std::vector<TestParams> test_params = {
-      TestParams{{2, 3},
-                 {0.09003057, 0.24472848, 0.66524094, 0.09003057, 0.24472848,
-                  0.66524094}},
-      TestParams{{6, 1}, {1, 1, 1, 1, 1, 1}},  // works with std input
-      TestParams{{1, 6},  // this works with arange(1,7) input
-                 {0.00426978, 0.01160646, 0.03154963, 0.08576079, 0.23312202,
-                  0.6336913}},
-  };
+      TestParams{/*input_dims=*/{2, 3},
+                 /*expected_values=*/{0.09003057, 0.24472848, 0.66524094,
+                                      0.09003057, 0.24472848, 0.66524094}},
+      TestParams{/*input_dims=*/{6, 1},
+                 /*expected_values=*/{1, 1, 1, 1, 1, 1}},  // works w/ std input
+      TestParams{/*input_dims=*/{1, 6},  // this works w/ arange(1,7) input
+                 /*expected_values=*/{0.00426978, 0.01160646, 0.03154963,
+                                      0.08576079, 0.23312202, 0.6336913}}};
   std::vector<float> input_values{1, 2, 3, 4, 5, 6};
   for (auto p : test_params) {
     Reset();
     AddTestTensor("logits", p.input_dims, input_values);
     TestOpConverter("my_softmax", node_def, p.input_dims, Status::OK(),
+                    Status::OK(), ArrayFloatNear(p.expected_values, 1e-3));
+  }
+}
+
+TEST_P(OpConverter_FP32_FP16_Test, ConvertLogSoftmax) {
+  // Get the NodeDef for LogSoftMax.
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("logits"), tf_type_);
+  auto logsoftmax = ops::LogSoftmax(s.WithOpName("my_logsoftmax"), input);
+  const NodeDef& node_def = logsoftmax.operation.node()->def();
+
+  struct TestParams {
+    std::vector<int> input_dims;
+    std::vector<float> expected_values;
+  };
+
+  std::vector<TestParams> test_params = {
+      TestParams{/*input_dims=*/{2, 3},
+                 /*expected_values=*/{-2.4076061, -1.407606, -0.40760604,
+                                      -2.4076061, -1.407606, -0.40760604}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*expected_values=*/{-5.4561934, -4.4561934, -3.4561934,
+                                      -2.4561934, -1.4561933, -0.45619333}},
+      TestParams{/*input_dims=*/{6, 1},
+                 /*expected_values=*/{0, 0, 0, 0, 0, 0}}};
+  std::vector<float> input_values{1, 2, 3, 4, 5, 6};
+  for (auto p : test_params) {
+    Reset();
+    AddTestTensor("logits", p.input_dims, input_values);
+    TestOpConverter("my_logsoftmax", node_def, p.input_dims, Status::OK(),
                     Status::OK(), ArrayFloatNear(p.expected_values, 1e-3));
   }
 }

@@ -102,6 +102,13 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
       }
     }
 
+    // Case ConcatenateOp.
+    if (auto concat = llvm::dyn_cast<thlo::ConcatenateOp>(def)) {
+      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, concat.init(),
+                                                 op.getIndex());
+      return success();
+    }
+
     // Case DynamicBroadcastInDimOp.
     if (auto bcast = llvm::dyn_cast<thlo::DynamicBroadcastInDimOp>(def)) {
       rewriter.replaceOpWithNewOp<tensor::DimOp>(op, bcast.init(),

@@ -130,6 +130,49 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "executable",
+    srcs = ["executable.cc"],
+    hdrs = ["executable.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":arguments",
+        ":async_runtime",
+        ":custom_call",
+        ":custom_call_registry",
+        ":diagnostics",
+        ":execution_engine",
+        ":logical_result",
+        ":memory_mapper",
+        ":results",
+        ":runtime",
+        ":types",
+        "//tensorflow/compiler/xla/mlir/utils/runtime:async_runtime_api",
+        "//tensorflow/compiler/xla/mlir/utils/runtime:c_runner_utils",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
+    name = "execution_engine",
+    srcs = ["execution_engine.cc"],
+    hdrs = ["execution_engine.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:ARMAsmParser",
+        "@llvm-project//llvm:ARMCodeGen",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:ExecutionEngine",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:X86AsmParser",
+        "@llvm-project//llvm:X86CodeGen",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
     name = "logical_result",
     hdrs = ["logical_result.h"],
     compatible_with = get_compatible_with_portable(),

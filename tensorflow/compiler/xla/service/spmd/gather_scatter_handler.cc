@@ -80,26 +80,6 @@ std::optional<HloSharding> ComputeUpdateShardingFromIndices(
   return new_updates_sharding;
 }
 
-// Return if a scatter is of the supported kind for index+update partitioning.
-bool IsSupportedScatterForIndexUpdatePartitioning(
-    const HloInstruction* scatter) {
-  auto reduction_opcode = ParseReductionComputation(scatter->to_apply());
-  if (!reduction_opcode.has_value()) {
-    return false;
-  }
-  switch (*reduction_opcode) {
-    case HloOpcode::kAdd:
-    case HloOpcode::kOr:
-    case HloOpcode::kMultiply:
-    case HloOpcode::kAnd:
-    case HloOpcode::kMinimum:
-    case HloOpcode::kMaximum:
-      return true;
-    default:
-      return false;
-  }
-}
-
 // Returns the min and max for the indices (replicated) in a scatter/gather
 // which has the operand partitioned on trivial slice dimensions (slice size 1).
 std::pair<HloInstruction*, HloInstruction*>
@@ -507,13 +487,6 @@ StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> slice_sizes, PartitionedHlo& operand,
     PartitionedHlo& indices, SpmdPartitioningVisitor* visitor) {
-  absl::InlinedVector<std::pair<HloInstruction*, HloSharding>, 2>
-      top_level_sharding_to_reset;
-  auto cleaner = absl::MakeCleanup([&top_level_sharding_to_reset] {
-    for (auto& to_reset : top_level_sharding_to_reset) {
-      to_reset.first->set_sharding(to_reset.second);
-    }
-  });
   SpmdBuilder* b = visitor->builder();
   GatherDimensionNumbers dnums = gather->gather_dimension_numbers();
   // Handle the case where operand is tile maximal. In this case we check if
@@ -529,6 +502,8 @@ StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
           hlo_sharding_util::GatherParallelOutputDims(*gather, *parallel_dims);
       HloSharding indices_sharding = gather_sharding->indices_sharding;
       HloSharding operand_sharding = gather_sharding->operand_sharding;
+      operand = operand.Reshard(operand_sharding);
+      indices = indices.Reshard(indices_sharding);
       GroupedSharding grouped_indices = hlo_sharding_util::GroupShardingOnDims(
           indices_sharding, indices_parallel_dims);
       GroupedSharding grouped_operand = hlo_sharding_util::GroupShardingOnDims(
@@ -544,18 +519,25 @@ StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
         output_tiling[output_idx] =
             indices_sharding.tile_assignment().dim(indices_idx);
       }
-      operand = operand.Reshard(operand_sharding);
-      indices = indices.Reshard(indices_sharding);
-      if (indices_sharding.ReplicateOnLastTileDim()) {
-        output_tiling.push_back(
-            indices_sharding.tile_assignment().dimensions().back());
+      const int64_t indices_num_tiles =
+          indices_sharding.NumTiles() *
+          (indices_sharding.ReplicateOnLastTileDim()
+               ? indices_sharding.tile_assignment().dim(
+                     indices_sharding.SubgroupReplicationDim())
+               : 1);
+      const int64_t output_num_tiles =
+          absl::c_accumulate(output_tiling, 1LL, std::multiplies<int64_t>());
+      const int64_t output_last_dim_replicated_size =
+          indices_num_tiles / output_num_tiles;
+      if (output_last_dim_replicated_size != 1) {
+        output_tiling.push_back(output_last_dim_replicated_size);
       }
       Array<int64_t> output_tile_assignment =
           indices_sharding.tile_assignment();
       output_tile_assignment.Reshape(output_tiling);
       // New gather tiling.
       HloSharding gather_output_sharding =
-          indices_sharding.ReplicateOnLastTileDim()
+          output_last_dim_replicated_size != 1
               ? HloSharding::PartialTile(output_tile_assignment)
               : HloSharding::Tile(output_tile_assignment);
       // Refine output sharding from the operand. it should be inferred from
@@ -620,8 +602,7 @@ StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
           adjusted_indices));
       auto per_group_partitioner_state = CreatePerGroupPartitioningState(
           operand.state(), grouped_operand.device_groups, b);
-      top_level_sharding_to_reset.emplace_back(operand.hlo(),
-                                               operand.sharding());
+      HloSharding old_operand_sharding = operand.hlo()->sharding();
       adjusted_indices->set_sharding(grouped_indices.sharding);
       operand.hlo()->set_sharding(grouped_operand.sharding);
       VLOG(5) << "[Gather partitioning]: Partitioned as parallel batch_dim";
@@ -641,6 +622,7 @@ StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
                           GetPerGroupBaseShape(grouped_output, output_shape),
                           grouped_output.sharding, batch_dims, slice_sizes,
                           visitor));
+      operand.hlo()->set_sharding(old_operand_sharding);
       if (pgather) {
         pgather->set_sharding(gather_output_sharding);
         return PartitionedHlo(pgather, output_shape, operand.state())
@@ -765,6 +747,26 @@ Shape MaybeMakeTupleShape(absl::Span<const PartitionedHlo> phlos) {
   return ShapeUtil::MakeTupleShapeWithPtrs(element_shapes);
 }
 
+// Returns the opcode if `reduction_comp` represents a simple binary elementwise
+// computation on the two operands.
+std::optional<HloOpcode> ParseReductionComputation(
+    const HloComputation* reduction_comp) {
+  if (reduction_comp->num_parameters() != 2) {
+    return std::nullopt;
+  }
+  auto root = reduction_comp->root_instruction();
+  if (!HloOpcodeIsBinaryCommutative(root->opcode())) {
+    return std::nullopt;
+  }
+  if (!absl::c_linear_search(root->operands(),
+                             reduction_comp->parameter_instruction(0)) ||
+      !absl::c_linear_search(root->operands(),
+                             reduction_comp->parameter_instruction(1))) {
+    return std::nullopt;
+  }
+  return root->opcode();
+}
+
 // Perform partitioning of Scatter when the operand is split in a update window
 // dimension that is passed through (slice size is the same size of the operand
 // dimension).
@@ -786,14 +788,14 @@ StatusOr<HloInstruction*> PartitionScatterPassthroughOperand(
     for (auto& update : updates) {
       update = update.Reshard(*maybe_passthrough);
     }
-    absl::InlinedVector<HloInstruction*, 1> operand_hlos, updates_hlos;
+    absl::InlinedVector<HloInstruction*, 1> operand_hlos, update_hlos;
     absl::c_transform(operands, std::back_inserter(operand_hlos),
                       [](const PartitionedHlo& phlo) { return phlo.hlo(); });
-    absl::c_transform(updates, std::back_inserter(updates_hlos),
+    absl::c_transform(updates, std::back_inserter(update_hlos),
                       [](const PartitionedHlo& phlo) { return phlo.hlo(); });
     auto pscatter = b->AddInstruction(HloInstruction::CreateScatter(
-        MaybeMakeTupleShape(operands), operand_hlos, indices.hlo(),
-        updates_hlos, scatter->to_apply(), dnums, scatter->indices_are_sorted(),
+        MaybeMakeTupleShape(operands), operand_hlos, indices.hlo(), update_hlos,
+        scatter->to_apply(), dnums, scatter->indices_are_sorted(),
         scatter->unique_indices()));
     pscatter->set_sharding(
         HloSharding::Single(pscatter->shape(), operands[0].sharding()));
@@ -867,79 +869,79 @@ StatusOr<HloInstruction*> PartitionScatterIndexPassthroughPartition(
           operand_passthrough_partitioning_size &&
       index_and_update_partitioning_size <
           operand_trivial_slice_partitioning_size;
-  if (IsSupportedScatterForIndexUpdatePartitioning(scatter) &&
-      ((is_better_to_shard_updates_and_indices &&
-        should_shard_index_and_update) ||
+  if (should_shard_index_and_update &&
+      (is_better_to_shard_updates_and_indices ||
        operands[0].sharding().IsTileMaximal())) {
-    CHECK_EQ(operands.size(), 1);
-    if (should_shard_index_and_update) {
-      auto reduction_opcode = ParseReductionComputation(scatter->to_apply());
-      if (!reduction_opcode.has_value()) {
-        return nullptr;
-      }
-      operands[0] = operands[0].Replicate();
-      HloInstruction* identity;
-      switch (*reduction_opcode) {
-        case HloOpcode::kAdd:
-        case HloOpcode::kOr:
-          identity = CreateZero(operands[0].hlo()->shape(), b);
-          break;
-        case HloOpcode::kMultiply:
-        case HloOpcode::kAnd:
-          identity = CreateOne(operands[0].hlo()->shape(), b);
-          break;
-        case HloOpcode::kMinimum:
-          identity = CreateConstant(
-              operands[0].hlo()->shape(),
-              LiteralUtil::MaxValue(scatter->shape().element_type()), b);
-          break;
-        case HloOpcode::kMaximum:
-          identity = CreateConstant(
-              operands[0].hlo()->shape(),
-              LiteralUtil::MinValue(scatter->shape().element_type()), b);
-          break;
-        default:
-          return nullptr;
-      }
-      updates[0] = updates[0].Reshard(*new_updates_sharding);
-      // Update partition_id for partial replicate.
-      auto partition_id = visitor->MakePartitioningState().partition_id;
-      if (indices.sharding().ReplicateOnLastTileDim()) {
-        auto sharding_grouped = hlo_sharding_util::GroupShardingOnDims(
-            indices.sharding(),
-            {indices.sharding().tile_assignment().num_dimensions() - 1});
-        auto per_group_partitioner_state = CreatePerGroupPartitioningState(
-            indices.state(), sharding_grouped.device_groups, b);
-        partition_id = per_group_partitioner_state.partition_id;
-      }
-      // To avoid accumulating the initial operand multiple times during
-      // all-reduce, we use identity operands for all non-zero partitions.
-      auto not_partition_zero = b->AddInstruction(HloInstruction::CreateConvert(
-          ShapeUtil::MakeScalarShape(PRED), partition_id));
-      not_partition_zero = b->AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::ChangeElementType(identity->shape(), PRED),
-          not_partition_zero, {}));
-      auto select_operand =
-          b->AddInstruction(HloInstruction::HloInstruction::CreateTernary(
-              identity->shape(), HloOpcode::kSelect, not_partition_zero,
-              identity, operands[0].Replicate().hlo()));
-      auto pscatter = b->AddInstruction(scatter->CloneWithNewOperands(
-          scatter->shape(), {select_operand, indices.hlo(), updates[0].hlo()}));
-      // All-reduce along all dims in operand sharding -- this is OK because the
-      // operand is not sharded on index_vector_dim.
-      std::vector<int64_t> all_dims(indices.base_shape().rank());
-      absl::c_iota(all_dims, 0);
-      auto all_reduce =
-          operands[0].state().partitioner->AllReduceAlongShardingDims(
-              b, pscatter, indices.sharding(), indices.state().next_channel_id,
-              all_dims, visitor->MakePartitioningState().collective_ops_creator,
-              scatter->to_apply());
-      all_reduce->set_sharding(HloSharding::Replicate());
-      return PartitionedHlo(all_reduce, output_shape,
-                            visitor->MakePartitioningState())
-          .Reshard(output_sharding)
-          .hlo();
+    // Parse non-variadic computation only. Vardiadic case will be replicated.
+    auto reduction_opcode = ParseReductionComputation(scatter->to_apply());
+    if (!reduction_opcode.has_value() || *reduction_opcode == HloOpcode::kXor) {
+      // XOR is not supported for now, as it will need to keep the operand
+      // around in buffer after local scatter to XOR with the final all-reduced
+      // results.
+      return nullptr;
     }
+    operands[0] = operands[0].Replicate();
+    updates[0] = updates[0].Reshard(*new_updates_sharding);
+    HloInstruction* identity;
+    switch (*reduction_opcode) {
+      case HloOpcode::kAdd:
+      case HloOpcode::kOr:
+        identity = CreateZero(operands[0].hlo()->shape(), b);
+        break;
+      case HloOpcode::kMultiply:
+      case HloOpcode::kAnd:
+        identity = CreateOne(operands[0].hlo()->shape(), b);
+        break;
+      case HloOpcode::kMinimum:
+        identity = CreateConstant(
+            operands[0].hlo()->shape(),
+            LiteralUtil::MaxValue(scatter->shape().element_type()), b);
+        break;
+      case HloOpcode::kMaximum:
+        identity = CreateConstant(
+            operands[0].hlo()->shape(),
+            LiteralUtil::MinValue(scatter->shape().element_type()), b);
+        break;
+      default:
+        return nullptr;
+    }
+    // Update partition_id for partial replicate.
+    auto partition_id = visitor->MakePartitioningState().partition_id;
+    if (indices.sharding().ReplicateOnLastTileDim()) {
+      auto sharding_grouped = hlo_sharding_util::GroupShardingOnDims(
+          indices.sharding(),
+          {indices.sharding().tile_assignment().num_dimensions() - 1});
+      auto per_group_partitioner_state = CreatePerGroupPartitioningState(
+          indices.state(), sharding_grouped.device_groups, b);
+      partition_id = per_group_partitioner_state.partition_id;
+    }
+    // To avoid accumulating the initial operand multiple times during
+    // all-reduce, we use identity operands for all non-zero partitions.
+    auto not_partition_zero = b->AddInstruction(HloInstruction::CreateConvert(
+        ShapeUtil::MakeScalarShape(PRED), partition_id));
+    not_partition_zero = b->AddInstruction(HloInstruction::CreateBroadcast(
+        ShapeUtil::ChangeElementType(identity->shape(), PRED),
+        not_partition_zero, {}));
+    auto select_operand =
+        b->AddInstruction(HloInstruction::HloInstruction::CreateTernary(
+            identity->shape(), HloOpcode::kSelect, not_partition_zero, identity,
+            operands[0].Replicate().hlo()));
+    auto pscatter = b->AddInstruction(scatter->CloneWithNewOperands(
+        scatter->shape(), {select_operand, indices.hlo(), updates[0].hlo()}));
+    // All-reduce along all dims in operand sharding -- this is OK because the
+    // operand is not sharded on index_vector_dim.
+    std::vector<int64_t> all_dims(indices.base_shape().rank());
+    absl::c_iota(all_dims, 0);
+    auto all_reduce =
+        operands[0].state().partitioner->AllReduceAlongShardingDims(
+            b, pscatter, indices.sharding(), indices.state().next_channel_id,
+            all_dims, visitor->MakePartitioningState().collective_ops_creator,
+            scatter->to_apply());
+    all_reduce->set_sharding(HloSharding::Replicate());
+    return PartitionedHlo(all_reduce, output_shape,
+                          visitor->MakePartitioningState())
+        .Reshard(output_sharding)
+        .hlo();
   }
   return nullptr;
 }
@@ -983,14 +985,14 @@ StatusOr<HloInstruction*> PartitionScatterTrivialIndexedOperandDimension(
     auto adjusted_indices = b->AddInstruction(HloInstruction::CreateBinary(
         indices.hlo()->shape(), HloOpcode::kSubtract, indices.hlo(),
         indices_min));
-    absl::InlinedVector<HloInstruction*, 1> operand_hlos, updates_hlos;
+    absl::InlinedVector<HloInstruction*, 1> operand_hlos, update_hlos;
     absl::c_transform(operands, std::back_inserter(operand_hlos),
                       [](const PartitionedHlo& phlo) { return phlo.hlo(); });
-    absl::c_transform(updates, std::back_inserter(updates_hlos),
+    absl::c_transform(updates, std::back_inserter(update_hlos),
                       [](const PartitionedHlo& phlo) { return phlo.hlo(); });
     auto pscatter = b->AddInstruction(HloInstruction::CreateScatter(
         MaybeMakeTupleShape(operands), operand_hlos, adjusted_indices,
-        updates_hlos, scatter->to_apply(), dnums, scatter->indices_are_sorted(),
+        update_hlos, scatter->to_apply(), dnums, scatter->indices_are_sorted(),
         scatter->unique_indices()));
     pscatter->set_sharding(
         HloSharding::Single(pscatter->shape(), operands[0].sharding()));
@@ -1054,6 +1056,15 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   absl::c_transform(
       scatter->scatter_updates(), std::back_inserter(updates),
       [this](HloInstruction* hlo) { return GetPartitionedHlo(hlo); });
+  CHECK_EQ(operands.size(), updates.size());
+  CHECK_EQ(operands.size() * 2,
+           scatter->to_apply()->parameter_instructions().size());
+  HloInstruction* scatter_reduction_root =
+      scatter->to_apply()->root_instruction();
+  CHECK_EQ(operands.size(),
+           scatter_reduction_root->shape().IsTuple()
+               ? scatter_reduction_root->shape().tuple_shapes_size()
+               : 1);
   auto indices = GetPartitionedHlo(scatter->scatter_indices());
   auto indices_sharding = indices.sharding();
   // Reshard indices with -1 padding, which will have no effect on the result as

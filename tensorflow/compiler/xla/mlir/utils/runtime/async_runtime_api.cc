@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <iostream>
+#include <ostream>
 #include <thread>  // NOLINT TODO(ezhulenev): Remove this header.
 #include <type_traits>
 
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/support/alloc.h"  // from @tf_runtime
 #include "tfrt/support/msan.h"  // from @tf_runtime
 
@@ -39,36 +39,6 @@ using tfrt::AlignedFree;
 using tfrt::AsyncValue;
 using tfrt::AsyncValueRef;
 using tfrt::Chain;
-
-namespace {
-// Always keep the current active async runtime in a thread local variable.
-static thread_local AsyncRuntime async_runtime;
-
-static_assert(std::is_trivially_destructible<AsyncRuntime>::value,
-              "AsyncRuntime must be trivially destructible");
-
-static_assert(std::is_trivially_copy_assignable<AsyncRuntime>::value,
-              "AsyncRuntime must be trivially copy assignable");
-
-static_assert(std::is_trivially_copy_constructible<AsyncRuntime>::value,
-              "AsyncRuntime must be trivially copy constructible");
-
-// This is an arbitrary limitation, to make sure that AsyncRuntime would not
-// become expensive to copy unnoticed.
-static_assert(sizeof(AsyncRuntime) == 1 * sizeof(void *),
-              "AsyncRuntime must only hold one pointer");
-
-}  // namespace
-
-void SetAsyncRuntime(AsyncRuntime runtime) {
-  assert(runtime.runner() != nullptr);
-  async_runtime = runtime;
-}
-
-AsyncRuntime &GetAsyncRuntime() {
-  assert(async_runtime.runner() != nullptr);
-  return async_runtime;
-}
 
 AsyncValueRef<Chain> ConvertAsyncTokenToChain(AsyncRuntime::Token *token) {
   auto *async_value = AsyncRuntime::GetAsyncValue(token);
@@ -224,8 +194,6 @@ namespace runtime {
 
 using xla::runtime::AsyncRuntime;
 using xla::runtime::AsyncRuntimeObject;
-using xla::runtime::GetAsyncRuntime;
-using xla::runtime::SetAsyncRuntime;
 
 // Adds references to reference counted runtime object.
 void mlirAsyncRuntimeAddRef(RefCountedObjPtr ptr, int64_t count) {
@@ -245,121 +213,121 @@ void mlirAsyncRuntimeDropRef(RefCountedObjPtr ptr, int64_t count) {
 
 // Create a new `async.token` in not-ready state.
 AsyncToken *mlirAsyncRuntimeCreateToken() {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   return runtime.CreateToken();
 }
 
 // Creates a new `async.value` in not-ready state.
 AsyncValue *mlirAsyncRuntimeCreateValue(int64_t size) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&size, sizeof(int64_t));
   return runtime.CreateValue(size, /*alignment=*/alignof(std::max_align_t));
 }
 
 // Create a new `async.group` in empty state.
 AsyncGroup *mlirAsyncRuntimeCreateGroup(int64_t size) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&size, sizeof(int64_t));
   return runtime.CreateGroup(size);
 }
 
 int64_t mlirAsyncRuntimeAddTokenToGroup(AsyncToken *token, AsyncGroup *group) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&token, sizeof(void *));
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&group, sizeof(void *));
   return runtime.AddTokenToGroup(group, token);
 }
 
 bool mlirAsyncRuntimeIsGroupError(AsyncGroup *group) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&group, sizeof(void *));
   return runtime.IsError(group);
 }
 
 void mlirAsyncRuntimeEmplaceToken(AsyncToken *token) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&token, sizeof(void *));
   runtime.SetAvailable(token);
 }
 
 void mlirAsyncRuntimeSetTokenError(AsyncToken *token) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&token, sizeof(void *));
   runtime.SetError(token);
 }
 
 bool mlirAsyncRuntimeIsTokenError(AsyncToken *token) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&token, sizeof(void *));
   return runtime.IsError(token);
 }
 
 void mlirAsyncRuntimeAwaitToken(AsyncToken *token) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&token, sizeof(void *));
   runtime.AwaitToken(token);
 }
 
 void mlirAsyncRuntimeAwaitAllInGroup(AsyncGroup *group) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&group, sizeof(void *));
   runtime.AwaitGroup(group);
 }
 
 ValueStorage mlirAsyncRuntimeGetValueStorage(AsyncValue *value) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&value, sizeof(void *));
   return runtime.GetStorage(value);
 }
 
 void mlirAsyncRuntimeEmplaceValue(AsyncValue *value) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&value, sizeof(void *));
   runtime.SetAvailable(value);
 }
 
 void mlirAsyncRuntimeSetValueError(AsyncValue *value) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&value, sizeof(void *));
   runtime.SetError(value);
 }
 
 bool mlirAsyncRuntimeIsValueError(AsyncValue *value) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&value, sizeof(void *));
   return runtime.IsError(value);
 }
 
 void mlirAsyncRuntimeAwaitValue(AsyncValue *value) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&value, sizeof(void *));
   runtime.AwaitValue(value);
 }
 
 void mlirAsyncRuntimeExecute(CoroHandle handle, CoroResume resume) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   runtime.Execute([resume, handle, runtime]() {
-    SetAsyncRuntime(runtime);
+    AsyncRuntime::Set(runtime);
     (*resume)(handle);
   });
 }
 
 void mlirAsyncRuntimeAwaitTokenAndExecute(AsyncToken *token, CoroHandle handle,
                                           CoroResume resume) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&token, sizeof(void *));
   runtime.AwaitToken(token, [handle, resume, runtime]() {
-    SetAsyncRuntime(runtime);
+    AsyncRuntime::Set(runtime);
     (*resume)(handle);
   });
 }
 
 void mlirAsyncRuntimeAwaitValueAndExecute(AsyncValue *value, CoroHandle handle,
                                           CoroResume resume) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&value, sizeof(void *));
   runtime.AwaitValue(value, [handle, resume, runtime]() {
-    SetAsyncRuntime(runtime);
+    AsyncRuntime::Set(runtime);
 
     (*resume)(handle);
   });
@@ -368,10 +336,10 @@ void mlirAsyncRuntimeAwaitValueAndExecute(AsyncValue *value, CoroHandle handle,
 void mlirAsyncRuntimeAwaitAllInGroupAndExecute(AsyncGroup *group,
                                                CoroHandle handle,
                                                CoroResume resume) {
-  AsyncRuntime &runtime = GetAsyncRuntime();
+  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   TFRT_MSAN_MEMORY_IS_INITIALIZED(&group, sizeof(void *));
   runtime.AwaitGroup(group, [handle, resume, runtime]() {
-    SetAsyncRuntime(runtime);
+    AsyncRuntime::Set(runtime);
     (*resume)(handle);
   });
 }

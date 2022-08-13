@@ -6567,8 +6567,11 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",  # fixdeps: keep
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -6595,7 +6598,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
     ],
 )
 

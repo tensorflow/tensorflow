@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_IMPL_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_IMPL_H
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_GROUP_BY_DIALECT_H
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_GROUP_BY_DIALECT_H
+
+#include <memory>
+
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
+namespace TF {
 
-class DialectRegistry;
+// Create a pass that groups ops into functions that only contain one dialect.
+std::unique_ptr<Pass> CreateGroupByDialectPass();
 
-namespace gml_st {
+// Register this pass in the global registry of MLIR.
+void RegisterGroupByDialectPass();
 
-void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry);
-
-}  // namespace gml_st
+}  // namespace TF
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_IMPL_H
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_GROUP_BY_DIALECT_H

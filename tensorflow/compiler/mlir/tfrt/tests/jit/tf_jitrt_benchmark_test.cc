@@ -99,7 +99,7 @@ static void BM_InstantiateExecutable(::testing::benchmark::State& state) {
 
   // When lowering Tensorflow functions to JitRt we convert all input and
   // result tensors to memrefs, and add a kernel context input.
-  opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+  opts.calling_convention = xla::runtime::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
 
   for (auto _ : state) {

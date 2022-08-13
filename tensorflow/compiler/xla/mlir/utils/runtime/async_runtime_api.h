@@ -28,15 +28,6 @@ class Chain;
 namespace xla {
 namespace runtime {
 
-// Set the AsyncRuntime that will be implicitly propagated to all async tasks.
-//
-// On every launch of an async task, current async runtime will be captured, and
-// restored when the task will start its execution on a different thread.
-void SetAsyncRuntime(AsyncRuntime runtime);
-
-// Returns the current async runtime.
-AsyncRuntime& GetAsyncRuntime();
-
 // Converts MLIR Async Runtime token into the TFRT async chain, and drops the
 // reference count on the token.
 tfrt::AsyncValueRef<tfrt::Chain> ConvertAsyncTokenToChain(

@@ -415,11 +415,6 @@ HloInstruction* PerGroupSliceFromReplicated(
     absl::Span<const int64_t> group_dims,
     absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b);
 
-// Returns the opcode if `reduction_comp` represents a simple binary elementwise
-// computation on the two operands.
-std::optional<HloOpcode> ParseReductionComputation(
-    const HloComputation* reduction_comp);
-
 // Pad the shape from partial replicate shape for `dst_sharding`.
 // If dst_sharding needs more padding and per_shard_size increased in
 // dst_sharding, halo exchange on the right side is needed.

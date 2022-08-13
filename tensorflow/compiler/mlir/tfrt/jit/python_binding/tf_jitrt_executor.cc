@@ -104,7 +104,7 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
     opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
   }
   opts.specialization = specialization;
-  opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+  opts.calling_convention = xla::runtime::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
 
   // Instantiate new JitExecutable from the MLIR source.

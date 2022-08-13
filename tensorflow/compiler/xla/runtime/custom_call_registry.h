@@ -45,9 +45,9 @@ class CustomCallRegistry {
   CustomCallRegistry(const CustomCallRegistry&) = delete;
   CustomCallRegistry& operator=(const CustomCallRegistry&) = delete;
 
-  void Register(std::unique_ptr<CustomCall> custom_call);
+  void Register(std::unique_ptr<class CustomCall> custom_call);
 
-  CustomCall* Find(llvm::StringRef callee) const;
+  class CustomCall* Find(llvm::StringRef callee) const;
 
  private:
   class Impl;

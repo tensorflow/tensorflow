@@ -1619,24 +1619,6 @@ HloInstruction* PerGroupSliceFromReplicated(
       shard_shape.dimensions()));
 }
 
-std::optional<HloOpcode> ParseReductionComputation(
-    const HloComputation* reduction_comp) {
-  if (reduction_comp->num_parameters() != 2) {
-    return std::nullopt;
-  }
-  auto root = reduction_comp->root_instruction();
-  if (!root->IsElementwiseBinary()) {
-    return std::nullopt;
-  }
-  if (!absl::c_linear_search(root->operands(),
-                             reduction_comp->parameter_instruction(0)) ||
-      !absl::c_linear_search(root->operands(),
-                             reduction_comp->parameter_instruction(1))) {
-    return std::nullopt;
-  }
-  return root->opcode();
-}
-
 std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
     const HloSharding& sharding,
     const std::vector<std::vector<int64_t>>& device_groups) {

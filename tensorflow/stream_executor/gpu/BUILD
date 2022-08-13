@@ -121,6 +121,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -248,7 +249,6 @@ cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/base:core_headers",
         "//tensorflow/core/platform:regexp",
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:subprocess",

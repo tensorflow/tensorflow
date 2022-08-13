@@ -474,7 +474,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.
-    opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+    opts.calling_convention = xla::runtime::DefaultCallingConvention(
         mlir::bufferization::BufferizeTypeConverter());
 
     // Instantiate new JitExecutable from the MLIR source.
@@ -681,7 +681,6 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
 
   Executable::ExecuteOpts opts;
   opts.async_task_runner = &async_task_runner;
-  opts.kernel_context = &ctx;
 
   // Execution error automatically forwarded to all results, we only need to
   // notify the HostContext to emit the diagnostics for the kernel invocation.

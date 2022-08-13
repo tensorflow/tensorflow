@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/gpu/gpu_kernel.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -76,7 +75,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
    public:
     template <typename T>
     T* getOrCreate(StreamExecutor* se) {
-      tensorflow::mutex_lock l(mu_);
+      absl::MutexLock l(&mu_);
       if (!object_) {
         object_ = std::make_unique<Model<T>>(se);
       }
@@ -84,7 +83,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
     }
 
    private:
-    tensorflow::mutex mu_;
+    absl::Mutex mu_;
     std::unique_ptr<Concept> object_ ABSL_GUARDED_BY(mu_);
   };
 

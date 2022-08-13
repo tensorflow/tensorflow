@@ -676,6 +676,7 @@ tf_cuda_library(
         "convert/ops/einsum.cc",
         "convert/ops/fill_ops.cc",
         "convert/ops/like_ops.cc",
+        "convert/ops/log_softmax.cc",
         "convert/ops/quantization_ops.cc",
         "convert/ops/slice_ops.cc",
         "convert/ops/tile.cc",

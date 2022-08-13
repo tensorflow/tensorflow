@@ -171,6 +171,36 @@ namespace runtime {
 using tfrt::AsyncValue;
 using tfrt::DecodedDiagnostic;
 
+namespace {
+// Always keep the current active async runtime in a thread local variable.
+static thread_local AsyncRuntime async_runtime;
+
+static_assert(std::is_trivially_destructible<AsyncRuntime>::value,
+              "AsyncRuntime must be trivially destructible");
+
+static_assert(std::is_trivially_copy_assignable<AsyncRuntime>::value,
+              "AsyncRuntime must be trivially copy assignable");
+
+static_assert(std::is_trivially_copy_constructible<AsyncRuntime>::value,
+              "AsyncRuntime must be trivially copy constructible");
+
+// This is an arbitrary limitation, to make sure that AsyncRuntime would not
+// become expensive to copy unnoticed.
+static_assert(sizeof(AsyncRuntime) == 1 * sizeof(void*),
+              "AsyncRuntime must only hold one pointer");
+
+}  // namespace
+
+/*static*/ void AsyncRuntime::Set(AsyncRuntime runtime) {
+  assert(runtime.runner() != nullptr);
+  async_runtime = runtime;
+}
+
+/*static*/ AsyncRuntime& AsyncRuntime::GetCurrentRuntime() {
+  assert(async_runtime.runner() != nullptr);
+  return async_runtime;
+}
+
 /*static*/ void* AsyncRuntime::GetStorage(Value* value) {
   return value->GetStorage();
 }

@@ -74,7 +74,7 @@ JitExecutable& CreateJitExecutable(
         tfrt::jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
       };
   opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
-  opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+  opts.calling_convention = xla::runtime::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
 
   // Cache all jit executables, otherwise different benchmark runs will produce

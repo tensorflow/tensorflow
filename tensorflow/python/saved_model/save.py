@@ -1304,7 +1304,7 @@ def save_and_return_nodes(obj,
         compat.as_str(export_dir),
         compat.as_str(constants.FINGERPRINT_FILENAME))
     fingerprint_proto = fingerprinting.CreateFingerprintDef(
-        saved_model_serialized)
+        saved_model_serialized, export_dir)
     file_io.atomic_write_string_to_file(fingerprint_path, fingerprint_proto)
 
   path = file_io.join(

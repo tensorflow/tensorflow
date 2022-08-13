@@ -1444,8 +1444,11 @@ Status FindKernelDef(
     }
 
     // Do not print kernel registrations for other devices when using _JIT
-    // devices for compilation.
-    if (!absl::StrContains(device_str, "JIT")) {
+    // devices for compilation or for MKL ops.
+    // TODO (intel-tf) : Remove the check for MKL ops when support for
+    // block format is removed.
+    if (!absl::StrContains(device_str, "JIT") &&
+        !absl::StartsWith(node_name, "_Mkl")) {
       errors::AppendToMessage(
           &s, ".  Registered:", KernelsRegisteredForOp(node_op));
     }

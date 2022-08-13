@@ -158,8 +158,8 @@ class DirectCustomCallLibrary {
  public:
   // Function type corresponding to the direct custom call (custom calls
   // linked directly with the compiled executable).
-  using DirectCustomCall = bool (*)(xla::runtime::KernelContext* kernel_context,
-                                    void** args, void** attrs);
+  using DirectCustomCall = bool (*)(KernelContext* kernel_context, void** args,
+                                    void** attrs);
 
   void Insert(llvm::StringRef name, DirectCustomCall custom_call) {
     lib_.try_emplace(name, custom_call);

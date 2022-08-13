@@ -18,10 +18,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -97,14 +98,13 @@ port::StatusOr<std::shared_ptr<TypedKernel<Args...>>> LoadKernelOrGetPtr(
   using KernelPtrCacheKey =
       std::tuple<CUcontext, absl::string_view, absl::string_view>;
 
-  static tensorflow::mutex kernel_ptr_cache_mutex(
-      tensorflow::LINKER_INITIALIZED);
+  static absl::Mutex kernel_ptr_cache_mutex(absl::kConstInit);
   static auto& kernel_ptr_cache ABSL_GUARDED_BY(kernel_ptr_cache_mutex) =
       *new absl::flat_hash_map<KernelPtrCacheKey,
                                std::shared_ptr<TypedKernel<Args...>>>();
   CUcontext current_context = cuda::CurrentContextOrDie();
   KernelPtrCacheKey kernel_ptr_cache_key{current_context, kernel_name, ptx};
-  tensorflow::mutex_lock lock(kernel_ptr_cache_mutex);
+  absl::MutexLock lock(&kernel_ptr_cache_mutex);
 
   auto it = kernel_ptr_cache.find(kernel_ptr_cache_key);
   if (it == kernel_ptr_cache.end()) {

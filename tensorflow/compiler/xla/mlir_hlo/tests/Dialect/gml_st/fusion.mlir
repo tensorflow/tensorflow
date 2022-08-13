@@ -628,6 +628,24 @@ func.func @dim_reification_dynamic_broadcast_in_dim(%arg: tensor<?xf32>,
 
 // -----
 
+// CHECK-LABEL: @dim_reification_concatenate
+// CHECK-SAME:  %[[INIT:.*]]: tensor<?x?xi32>, %[[A:.*]]: tensor<?x?xi32>, %[[B:.*]]: tensor<?x?xi32>, %[[C:.*]]: tensor<?x?xi32>
+func.func @dim_reification_concatenate(%init : tensor<?x?xi32>,
+    %a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>) -> index {
+  // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+  // CHECK-DAG:  %[[DIM:.*]] = tensor.dim %[[INIT]], %[[C1]] : tensor<?x?xi32>
+  // CHECK:      return %[[DIM]] : index
+  %c1 = arith.constant 1 : index
+  %concat = thlo.concatenate
+      ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
+      outs(%init : tensor<?x?xi32>)
+      {dimension = 1 : i64}
+  %dim = tensor.dim %concat, %c1 : tensor<?x?xi32>
+  func.return %dim : index
+}
+
+// -----
+
 #transposed = affine_map<(d0, d1, d2, d3) -> (d1, d0, d3, d2)>
 #id = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 

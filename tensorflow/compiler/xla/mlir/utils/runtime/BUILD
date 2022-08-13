@@ -25,6 +25,16 @@ cc_library(
 )
 
 cc_library(
+    name = "c_runner_utils",
+    hdrs = ["c_runner_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//mlir:mlir_c_runner_utils",
+    ],
+)
+
+cc_library(
     name = "constraints",
     srcs = ["constraints.cc"],
     hdrs = ["constraints.h"],

@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for pywrap_saved_model_fingerprinting."""
 
+import os
+
 from tensorflow.core.protobuf import fingerprint_pb2
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import test
@@ -22,15 +24,17 @@ from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
 
 class FingerprintingTest(test.TestCase):
 
-  def test_module_basic(self):
-    sm_pb_file = test.test_src_dir_path(
-        "cc/saved_model/testdata/VarsAndArithmeticObjectGraph/saved_model.pb")
-    with file_io.FileIO(sm_pb_file, "rb") as f:
+  # Checks that the fingerprint values are preserved when passed from C++ to
+  # Python.
+  def test_fingerprint_def_is_deserialized_correctly(self):
+    export_dir = test.test_src_dir_path(
+        "cc/saved_model/testdata/VarsAndArithmeticObjectGraph")
+    with file_io.FileIO(os.path.join(export_dir, "saved_model.pb"), "rb") as f:
       file_content = f.read()
 
     fingerprint_def = fingerprint_pb2.FingerprintDef()
     fingerprint_def.ParseFromString(
-        fingerprinting.CreateFingerprintDef(file_content))
+        fingerprinting.CreateFingerprintDef(file_content, export_dir))
     # We cannot check the value of the graph_def_checksum due to non-determinism
     # in serialization.
     self.assertGreater(fingerprint_def.graph_def_checksum, 0)
@@ -39,7 +43,9 @@ class FingerprintingTest(test.TestCase):
     self.assertEqual(fingerprint_def.signature_def_hash, 5693392539583495303)
     self.assertEqual(fingerprint_def.saved_object_graph_hash,
                      3678101440349108924)
-
+    # TODO(b/242348400): The checkpoint hash is non-deterministic, so we cannot
+    # check its value here.
+    self.assertGreater(fingerprint_def.checkpoint_hash, 0)
 
 if __name__ == "__main__":
   test.main()

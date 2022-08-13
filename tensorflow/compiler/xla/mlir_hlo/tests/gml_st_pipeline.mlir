@@ -229,7 +229,6 @@ func.func @log_log_bcast(%arg0: tensor<?x?xf32>, %arg1: tensor<2xindex>)
 // TILE-CHECK:         gml_st.set_yield %[[GENERIC_SUB1]] into %[[INIT]][%[[TILE]]]
 // TILE-CHECK:       return %[[PARALLEL]]
 
-
 // POINT-CHECK-LABEL: @log_log_bcast
 // POINT-CHECK-SAME:  %[[ARG:.*]]: tensor<?x?xf32>, %[[SHAPE:.*]]: tensor<2xindex>
 // POINT-CHECK:       %[[C0:.*]] = arith.constant 0
@@ -249,3 +248,43 @@ func.func @log_log_bcast(%arg0: tensor<?x?xf32>, %arg1: tensor<2xindex>)
 // POINT-CHECK:         %[[LOG_LOG:.*]] = math.log %[[LOG]]
 // POINT-CHECK:         gml_st.set_yield %[[LOG_LOG]] into %[[INIT]][%[[POINT]]]
 // POINT-CHECK:       return %[[RES]]
+
+// -----
+
+func.func @concat(%a: tensor<?x?xf32>, %b: tensor<?x?xf32>, %c: tensor<?x?xf32>)
+    -> tensor<?x?xf32> {
+  %concat = "mhlo.concatenate"(%a, %b, %c) { dimension = 1 }
+      : (tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  func.return %concat : tensor<?x?xf32>
+}
+
+// POINT-CHECK-LABEL: @concat
+// POINT-CHECK-SAME:  %[[ARG_A:.*]]: tensor<?x?xf32>, %[[ARG_B:.*]]: tensor<?x?xf32>, %[[ARG_C:.*]]: tensor<?x?xf32>
+// POINT-CHECK:       %[[RESULT:.*]] = gml_st.parallel
+// POINT-CHECK:         %[[RESULT_IN_ABC:.*]] = scf.if
+// POINT-CHECK:           %[[RESULT_IN_A:.*]] = gml_st.materialize %[[ARG_A]][%{{.*}}]
+// POINT-CHECK:           scf.yield %[[RESULT_IN_A]]
+// POINT-CHECK:         else
+// POINT-CHECK:           %[[RESULT_IN_BC:.*]] = scf.if
+// POINT-CHECK:             %[[RESULT_IN_B:.*]] = gml_st.materialize %[[ARG_B]][%{{.*}}]
+// POINT-CHECK:             scf.yield %[[RESULT_IN_B]]
+// POINT-CHECK:           else
+// POINT-CHECK:             %[[RESULT_IN_C:.*]] = gml_st.materialize %[[ARG_C]][%{{.*}}]
+// POINT-CHECK:             scf.yield %[[RESULT_IN_C]]
+// POINT-CHECK:           scf.yield %[[RESULT_IN_BC]]
+// POINT-CHECK:         gml_st.set_yield %[[RESULT_IN_ABC]]
+// POINT-CHECK:       return %[[RESULT]]
+
+// TILE-CHECK-LABEL: @concat
+// TILE-CHECK-SAME:  %[[ARG_A:.*]]: tensor<?x?xf32>, %[[ARG_B:.*]]: tensor<?x?xf32>, %[[ARG_C:.*]]: tensor<?x?xf32>
+// TILE-CHECK:       %[[PARALLEL:.*]] = gml_st.parallel
+// TILE-CHECK-DAG:     %[[ARG_A_SUB:.*]] = gml_st.materialize %[[ARG_A]][%{{.*}}]
+// TILE-CHECK-DAG:     %[[ARG_B_SUB:.*]] = gml_st.materialize %[[ARG_B]][%{{.*}}]
+// TILE-CHECK-DAG:     %[[ARG_C_SUB:.*]] = gml_st.materialize %[[ARG_C]][%{{.*}}]
+// TILE-CHECK-DAG:     %[[INIT_SUB:.*]] = gml_st.materialize %{{.*}}[%{{.*}}]
+// TILE-CHECK:         %[[CONCAT:.*]] = thlo.concatenate
+// TILE-CHECK-SAME:        ins(%[[ARG_A_SUB]] : tensor<?x?xf32>, %[[ARG_B_SUB]] : tensor<?x?xf32>, %[[ARG_C_SUB]] : tensor<?x?xf32>)
+// TILE-CHECK-SAME:        outs(%[[INIT_SUB]] : tensor<?x?xf32>)
+// TILE-CHECK-SAME:        {dimension = 1 : i64}
+// TILE-CHECK:         gml_st.set_yield %[[CONCAT]]
+// TILE-CHECK:       return %[[PARALLEL]]

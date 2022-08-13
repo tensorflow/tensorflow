@@ -75,7 +75,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
       const CoordinationServiceDeviceInfo& local_devices) override;
   const CoordinationServiceDeviceInfo& GetClusterDeviceInfo() override;
   StatusOr<CoordinatedTask> GetOwnTask() override;
-  StatusOr<TaskState> GetTaskStatus(const CoordinatedTask& task) override;
+  StatusOr<CoordinatedTaskState> GetTaskStatus(
+      const CoordinatedTask& task) override;
   Status ReportError(const Status& error) override;
   Status Shutdown() override;
   Status Reset() override;
@@ -126,15 +127,9 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   CoordinationServiceConfig configs_;
   StatusCallback error_fn_;
 
-  enum class State {
-    UNINITIALIZED,
-    DISCONNECTED,
-    RUNNING,
-    ERROR,
-    SHUTDOWN,
-  };
   mutable mutex state_mu_;
-  State state_ TF_GUARDED_BY(state_mu_) = State::UNINITIALIZED;
+  CoordinatedTaskState state_ TF_GUARDED_BY(state_mu_) =
+      CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
   Status status_ TF_GUARDED_BY(state_mu_) = OkStatus();
   // Note: this set grows without bounds. For now, this is okay as most users
   // require < 100 barriers. If there is a use case that requires many barriers,
@@ -200,7 +195,7 @@ Status CoordinationServiceAgentImpl::Initialize(
     std::unique_ptr<CoordinationClient> leader_client,
     StatusCallback error_fn) {
   mutex_lock l(state_mu_);
-  if (state_ != State::UNINITIALIZED) {
+  if (state_ != CoordinatedTaskState::TASKSTATE_UNINITIALIZED) {
     return MakeCoordinationError(errors::FailedPrecondition(
         "Coordination service agent has already been initialized."));
   }
@@ -218,13 +213,13 @@ Status CoordinationServiceAgentImpl::Initialize(
         "CoordinationServiceAgent must have a valid leader client."));
   }
   error_fn_ = error_fn;
-  state_ = State::DISCONNECTED;
+  state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   return OkStatus();
 }
 
 bool CoordinationServiceAgentImpl::IsInitialized() {
   mutex_lock l(state_mu_);
-  return state_ != State::UNINITIALIZED;
+  return state_ != CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
 }
 
 void CoordinationServiceAgentImpl::StopHeartbeat() {
@@ -239,7 +234,7 @@ void CoordinationServiceAgentImpl::StopHeartbeat() {
 Status CoordinationServiceAgentImpl::Connect() {
   {
     mutex_lock l(state_mu_);
-    if (state_ != State::DISCONNECTED) {
+    if (state_ != CoordinatedTaskState::TASKSTATE_DISCONNECTED) {
       return MakeCoordinationError(errors::FailedPrecondition(
           "Coordination service agent is not in DISCONNECTED state."));
     }
@@ -265,7 +260,7 @@ Status CoordinationServiceAgentImpl::Connect() {
           leader_incarnation_ = response.leader_incarnation();
           {
             mutex_lock l(state_mu_);
-            state_ = State::RUNNING;
+            state_ = CoordinatedTaskState::TASKSTATE_CONNECTED;
           }
         }
         n.Notify();
@@ -273,7 +268,7 @@ Status CoordinationServiceAgentImpl::Connect() {
   n.WaitForNotification();
   {
     mutex_lock l(state_mu_);
-    if (state_ == State::ERROR) {
+    if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
       return status_;
     }
   }
@@ -362,8 +357,8 @@ StatusOr<CoordinatedTask> CoordinationServiceAgentImpl::GetOwnTask() {
   return task_;
 }
 
-StatusOr<CoordinationServiceAgentImpl::TaskState>
-CoordinationServiceAgentImpl::GetTaskStatus(const CoordinatedTask& task) {
+StatusOr<CoordinatedTaskState> CoordinationServiceAgentImpl::GetTaskStatus(
+    const CoordinatedTask& task) {
   return MakeCoordinationError(errors::Unimplemented(
       "CoordinationServiceAgentImpl::GetTaskStatus is not implemented."));
 }
@@ -371,11 +366,11 @@ CoordinationServiceAgentImpl::GetTaskStatus(const CoordinatedTask& task) {
 Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
   {
     mutex_lock l(state_mu_);
-    if (state_ == State::UNINITIALIZED) {
+    if (state_ == CoordinatedTaskState::TASKSTATE_UNINITIALIZED) {
       return MakeCoordinationError(errors::FailedPrecondition(
           "Coordination service agent must be initialized first before "
           "reporting error."));
-    } else if (state_ == State::ERROR) {
+    } else if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
       return MakeCoordinationError(errors::FailedPrecondition(
           "Coordination service agent is already in error state."));
     }
@@ -408,7 +403,7 @@ Status CoordinationServiceAgentImpl::Shutdown() {
   bool is_connected = false;
   {
     mutex_lock l(state_mu_);
-    is_connected = state_ == State::RUNNING;
+    is_connected = state_ == CoordinatedTaskState::TASKSTATE_CONNECTED;
   }
   // Disconnect agent from service.
   if (!configs_.agent_destruction_without_shutdown() && is_connected) {
@@ -442,14 +437,14 @@ Status CoordinationServiceAgentImpl::Shutdown() {
   StopHeartbeat();
   {
     mutex_lock l(state_mu_);
-    if (state_ == State::ERROR) {
+    if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
       status = MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(
           "Shutdown() was called while coordination agent is in error state, "
           "implying that distributed execution failed. Note: agent will still "
           "shutdown anyway. Agent status: ",
           status_.ToString())));
     }
-    state_ = State::SHUTDOWN;
+    state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   }
 
   // Cancel all pending GetKeyValue() RPC calls.
@@ -460,7 +455,7 @@ Status CoordinationServiceAgentImpl::Shutdown() {
 Status CoordinationServiceAgentImpl::Reset() {
   {
     mutex_lock l(state_mu_);
-    if (state_ != State::ERROR) {
+    if (state_ != CoordinatedTaskState::TASKSTATE_ERROR) {
       return MakeCoordinationError(errors::FailedPrecondition(
           "Reset() failed: coordination service agent is not in ERROR state."));
     }
@@ -485,7 +480,7 @@ Status CoordinationServiceAgentImpl::Reset() {
   StopHeartbeat();
   {
     mutex_lock l(state_mu_);
-    state_ = State::DISCONNECTED;
+    state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   }
   {
     mutex_lock l(heartbeat_thread_shutdown_mu_);
@@ -660,10 +655,10 @@ Status CoordinationServiceAgentImpl::StopWatchKey(const std::string& key) {
 void CoordinationServiceAgentImpl::SetError(const Status& error) {
   assert(!error.ok());
   mutex_lock l(state_mu_);
-  if (state_ == State::ERROR) return;
+  if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
 
   LOG(ERROR) << "Coordination agent is in ERROR: " << error;
-  state_ = State::ERROR;
+  state_ = CoordinatedTaskState::TASKSTATE_ERROR;
   status_ = error;
   error_fn_(error);
 }
@@ -754,29 +749,25 @@ Status CoordinationServiceAgentImpl::ValidateRunningAgent(
     bool allow_disconnected) {
   mutex_lock l(state_mu_);
   switch (state_) {
-    case State::RUNNING:
+    case CoordinatedTaskState::TASKSTATE_CONNECTED:
       return OkStatus();
 
-    case State::UNINITIALIZED:
+    case CoordinatedTaskState::TASKSTATE_UNINITIALIZED:
       return MakeCoordinationError(errors::FailedPrecondition(
-          "Agent must be in RUNNING state. It is currently UNINITIALIZED."));
+          "Agent must be in CONNECTED state. It is currently UNINITIALIZED."));
 
-    case State::DISCONNECTED:
+    case CoordinatedTaskState::TASKSTATE_DISCONNECTED:
       if (allow_disconnected) return OkStatus();
       return MakeCoordinationError(errors::FailedPrecondition(
-          "Agent must be in RUNNING state. It is currently DISCONNECTED."));
+          "Agent must be in CONNECTED state. It is currently DISCONNECTED."));
 
-    case State::ERROR:
+    case CoordinatedTaskState::TASKSTATE_ERROR:
       return MakeCoordinationError(errors::FailedPrecondition(
-          "Agent must be in RUNNING state. It is currently in ERROR."));
-
-    case State::SHUTDOWN:
-      return MakeCoordinationError(errors::FailedPrecondition(
-          "Agent must be in RUNNING state. It is currently in SHUTDOWN."));
+          "Agent must be in CONNECTED state. It is currently in ERROR."));
 
     default:
       return MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(
-          "Agent is not in RUNNING state. Current state: ", state_)));
+          "Agent is not in CONNECTED state. Current state: ", state_)));
   }
 }
 

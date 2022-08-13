@@ -69,6 +69,20 @@ class AsyncRuntime {
   AsyncRuntime() : runner_(nullptr) {}
 
   // ------------------------------------------------------------------------ //
+  // Implicit AsyncRuntime propagation.
+  // ------------------------------------------------------------------------ //
+
+  // Set the AsyncRuntime that will be implicitly propagated to all async tasks.
+  //
+  // On every launch of an async task (see `async_runtime_api.h`), current async
+  // runtime will be captured, and restored when the task will start its
+  // execution on a different thread.
+  static void Set(AsyncRuntime runtime);
+
+  // Returns the current async runtime.
+  static AsyncRuntime& GetCurrentRuntime();
+
+  // ------------------------------------------------------------------------ //
   // Async Token API.
   // ------------------------------------------------------------------------ //
 

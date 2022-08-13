@@ -31,10 +31,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
     ArrayRef<int64_t> tileSizes = {});
 
-/// Pass to tile ops using TilingInterface and gml_st::ForOp.
-std::unique_ptr<OperationPass<func::FuncOp>> createTileToForPass(
-    ArrayRef<int64_t> tileSizes = {});
-
 /// Pass to compose set operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createComposeSetOpsPass();
 

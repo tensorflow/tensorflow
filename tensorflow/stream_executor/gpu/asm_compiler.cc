@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
@@ -38,11 +39,11 @@ namespace stream_executor {
 
 static port::StatusOr<absl::string_view> GetPtxasVersionString(
     const std::string& binary_path) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static absl::Mutex mu(absl::kConstInit);
   static auto* seen_binary_paths ABSL_GUARDED_BY(mu) =
       new absl::flat_hash_map<std::string, std::string>();
 
-  tensorflow::mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   auto it = seen_binary_paths->find(binary_path);
   if (it != seen_binary_paths->end()) {
     // Already checked this binary, nothing to do.
@@ -123,11 +124,11 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
     int device_ordinal, const char* ptx, GpuAsmOpts compilation_options) {
   using PtxCacheKey = std::tuple<int, std::string, GpuAsmOpts::PtxOptionsTuple>;
   using PtxCompilerResult = port::StatusOr<std::vector<uint8>>;
-  static tensorflow::mutex ptx_cache_mutex(tensorflow::LINKER_INITIALIZED);
+  static absl::Mutex ptx_cache_mutex(absl::kConstInit);
   static auto& ptx_cache ABSL_GUARDED_BY(ptx_cache_mutex) =
       *new absl::flat_hash_map<PtxCacheKey, PtxCompilerResult>();
 
-  tensorflow::mutex_lock lock(ptx_cache_mutex);
+  absl::MutexLock lock(&ptx_cache_mutex);
   PtxCacheKey cache_key{device_ordinal, std::string(ptx),
                         compilation_options.ToTuple()};
   auto it = ptx_cache.find(cache_key);
@@ -165,7 +166,7 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
 
 static std::string FindCudaExecutable(const std::string binary_name,
                                       const std::string preferred_cuda_dir) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static absl::Mutex mu(absl::kConstInit);
   static auto* seen_binary_paths ABSL_GUARDED_BY(mu) =
       new absl::flat_hash_map<std::pair<std::string, std::string>,
                               std::string>();
@@ -178,7 +179,7 @@ static std::string FindCudaExecutable(const std::string binary_name,
 
   auto cache_key = std::make_pair(binary_name, preferred_cuda_dir);
 
-  tensorflow::mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   auto it = seen_binary_paths->find(cache_key);
   if (it != seen_binary_paths->end()) {
     return it->second;

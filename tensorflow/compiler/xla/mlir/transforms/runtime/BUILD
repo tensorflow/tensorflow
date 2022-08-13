@@ -45,6 +45,44 @@ cc_library(
 )
 
 cc_library(
+    name = "calling_convention",
+    srcs = ["calling_convention.cc"],
+    hdrs = ["calling_convention.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "compiler",
+    srcs = ["compiler.cc"],
+    hdrs = ["compiler.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":calling_convention",
+        ":passes",
+        ":specialization",
+        ":type_converter",
+        "//tensorflow/compiler/xla/runtime:arguments",
+        "//tensorflow/compiler/xla/runtime:constraints",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:symbolic_shape",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ExecutionEngineUtils",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ToLLVMIRTranslation",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
     name = "specialization",
     srcs = ["specialization.cc"],
     hdrs = ["specialization.h"],

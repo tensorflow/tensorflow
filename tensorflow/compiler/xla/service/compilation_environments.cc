@@ -15,14 +15,114 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
+namespace {
+
+// A global singleton stats object for implementing CompilationEnvironments::{
+// DefaultEnvCreated(), DefaultEnvCreatedByCompilationEnvironments(),
+// EnvAdded()}.
+class GlobalCompEnvStats {
+ public:
+  static GlobalCompEnvStats& GetSingleton() {
+    static GlobalCompEnvStats* singleton = new GlobalCompEnvStats();
+
+    return *singleton;
+  }
+
+  void DefaultEnvCreated(std::string_view env_type) ABSL_LOCKS_EXCLUDED(mu_) {
+    {
+      absl::MutexLock l(&mu_);
+      ++stats_[std::string(env_type)].default_env_created;
+    }
+    LOG(INFO) << "New GlobalCompEnvStats value: " << ToString();
+  }
+
+  void DefaultEnvCreatedByCompilationEnvironments(std::string_view env_type)
+      ABSL_LOCKS_EXCLUDED(mu_) {
+    {
+      absl::MutexLock l(&mu_);
+      ++stats_[std::string(env_type)]
+            .default_env_created_by_compilation_environments;
+    }
+    LOG(INFO) << "New GlobalCompEnvStats value: " << ToString();
+  }
+
+  void EnvAdded(std::string_view env_type) ABSL_LOCKS_EXCLUDED(mu_) {
+    {
+      absl::MutexLock l(&mu_);
+      ++stats_[std::string(env_type)].env_added;
+    }
+    LOG(INFO) << "New GlobalCompEnvStats value: " << ToString();
+  }
+
+  std::string ToString() const ABSL_LOCKS_EXCLUDED(mu_) {
+    absl::ReaderMutexLock l(&mu_);
+    return absl::StrJoin(
+        stats_, "; ",
+        [](std::string* out, const StatMap::value_type& env_stats_pair) {
+          absl::StrAppend(out, env_stats_pair.first, ": { ",
+                          env_stats_pair.second.ToString(), " }");
+        });
+  }
+
+ private:
+  struct PerEnvStats {
+    std::string ToString() const {
+      return absl::StrCat(
+          "# default envs created: ", default_env_created, " ",
+          "# default envs created by CompilationEnvironments: ",
+          default_env_created_by_compilation_environments, " ",
+          "# envs added to CompilationEnvironments: ", env_added);
+    }
+
+    unsigned default_env_created = 0;
+    unsigned default_env_created_by_compilation_environments = 0;
+    unsigned env_added = 0;
+  };
+
+  using StatMap = absl::flat_hash_map<std::string, PerEnvStats>;
+
+  GlobalCompEnvStats() = default;
+  GlobalCompEnvStats(const GlobalCompEnvStats&) = delete;
+  GlobalCompEnvStats& operator=(const GlobalCompEnvStats&) = delete;
+  GlobalCompEnvStats(GlobalCompEnvStats&&) = delete;
+  GlobalCompEnvStats& operator=(GlobalCompEnvStats&&) = delete;
+
+  mutable absl::Mutex mu_;
+  StatMap stats_ ABSL_GUARDED_BY(mu_);
+};
+
+}  // namespace
+
+void CompilationEnvironments::DefaultEnvCreated(std::string_view env_type) {
+  GlobalCompEnvStats::GetSingleton().DefaultEnvCreated(env_type);
+}
+
+void CompilationEnvironments::DefaultEnvCreatedByCompilationEnvironments(
+    std::string_view env_type) {
+  GlobalCompEnvStats::GetSingleton().DefaultEnvCreatedByCompilationEnvironments(
+      env_type);
+}
+
+void CompilationEnvironments::EnvAdded(std::string_view env_type) {
+  GlobalCompEnvStats::GetSingleton().EnvAdded(env_type);
+}
 
 CompilationEnvironments& CompilationEnvironments::operator=(
     const CompilationEnvironments& rhs) {
@@ -44,6 +144,7 @@ void CompilationEnvironments::AddEnv(
   }
 
   environments_.insert({descriptor, std::move(env)});
+  EnvAdded(descriptor->full_name());
 }
 
 }  // namespace xla
