@@ -237,5 +237,40 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
         fused_op = ['_FusedConv2D']
         graph = self._VerifyValues(out, use_fp16, fused_op, epilog_ops)
 
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
+  def test_two_conv2d_fusions(self):
+    """Test two Conv2D patterns and only the second is fusable."""
+    if not test_util.is_gpu_available(cuda_only=True,
+                                      min_cuda_compute_capability=(8, 0)):
+      self.skipTest('No GPU with compute compatibility >= 8.0 available')
+
+    N, H, W, C = (5, 3, 3, 8)
+
+    ops.reset_default_graph()
+    x_shape = [N, C, H, W]
+    x_format, b_format = ('NCHW', 'NC..')
+
+    x = _input(x_shape)
+    w = _weight([2, 2, C, C])
+    b = _bias([C])
+
+    y = nn_ops.conv2d(
+        x, w, strides=(1, 1), padding='SAME', data_format=x_format)
+    y = nn.bias_add(y, b, data_format=b_format)
+    y = nn.leaky_relu(y)
+    y = nn_ops.conv2d(
+        y, w, strides=(1, 1), padding='SAME', data_format=x_format)
+    y = nn.bias_add(y, b, data_format=b_format)
+    y = nn.relu(y)
+    out = array_ops.identity(y)
+
+    # The first Conv-BiasAdd-LeakyRelu is not fusable because cuDNN requires
+    # fp16 for this pattern. The second Conv-BiasAdd-Relu is fusable.
+    epilog_ops = [b'BiasAdd', b'Relu']
+    fused_op = ['_FusedConv2D']
+    graph = self._VerifyValues(out, False, fused_op, epilog_ops)
+
+
 if __name__ == '__main__':
   test.main()
