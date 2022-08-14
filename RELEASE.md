@@ -25,9 +25,10 @@
 
 # Bug Fixes and Other Changes
 
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
+*   `tf.image`
+    *   Added an optional parameter `return_index_map` to `tf.image.ssim` which
+        causes the returned value to be the local SSIM map instead of the global
+        mean.
 
 # Thanks to our Contributors
 
