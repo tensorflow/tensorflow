@@ -1922,6 +1922,22 @@ OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
 // DynamicIotaOp
 //===----------------------------------------------------------------------===//
 
+// Checks if the provided `value` is a shape constant; returns true if the
+// match succeeds and false if the match fails.
+// If the match succeeds, also fills `shape` with the elements of the
+// successfully matches constant.
+bool matchConstantShape(Value value, SmallVector<int64_t>& shape) {
+  DenseIntElementsAttr outputShapeAttr;
+  if (matchPattern(value, m_Constant(&outputShapeAttr))) {
+    shape.clear();
+    for (APInt dim : outputShapeAttr.getValues<APInt>()) {
+      shape.push_back(dim.getSExtValue());
+    }
+    return true;
+  }
+  return false;
+}
+
 // Does the same as PatternRewriter::replaceOpWithNewOp, but with a twist.
 //
 // Sometimes, we want to replace an op with a new op and simultaneously refine
@@ -1932,6 +1948,9 @@ OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
 // this kind of type refinements. But sometimes, this doesn't work - when
 // the op is used outside of the MHLO dialect (e.g. in func.return). In these
 // cases, we insert a tensor.cast to smooth things out.
+//
+// TODO(b/242456962): Obviate the need for refineOpWithNewOp by improving
+// MHLO's shape inference appropriately.
 template <typename OpTy, typename... Args>
 OpTy refineOpWithNewOp(PatternRewriter& rewriter, Operation* op,
                        Args&&... args) {
@@ -1973,12 +1992,8 @@ struct DynamicIotaIsStatic : public OpRewritePattern<DynamicIotaOp> {
 
     // Output shape is constant, compute result type with static shape, then
     // replace with iota.
-    DenseIntElementsAttr outputShapeAttr;
-    if (matchPattern(iota.output_shape(), m_Constant(&outputShapeAttr))) {
-      SmallVector<int64_t> outputShape;
-      for (APInt dim : outputShapeAttr.getValues<APInt>()) {
-        outputShape.push_back(dim.getSExtValue());
-      }
+    SmallVector<int64_t> outputShape;
+    if (matchConstantShape(iota.output_shape(), outputShape)) {
       resultTy = RankedTensorType::get(outputShape, resultTy.getElementType());
       refineOpWithNewOp<IotaOp>(rewriter, iota, resultTy,
                                 iota.iota_dimension());
@@ -3439,7 +3454,6 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
                                 PatternRewriter& rewriter) const override {
     auto type = op.getType().dyn_cast<RankedTensorType>();
     auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
-    auto* outputDimOp = op.output_dimensions().getDefiningOp();
     if (!type || !operandType || !operandType.hasStaticShape()) {
       return rewriter.notifyMatchFailure(op, "requires operand static shape");
     }
@@ -3451,19 +3465,13 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
     }
     // output_dimensions are constant, set output shape with output_dimensions,
     // then replace with broadcast_in_dim
-    if (outputDimOp && outputDimOp->hasTrait<mlir::OpTrait::ConstantLike>()) {
-      DenseIntElementsAttr shapeAttr;
-      if (matchPattern(outputDimOp, m_Constant(&shapeAttr))) {
-        SmallVector<int64_t> outputShape;
-        for (APInt shape : shapeAttr.getValues<APInt>()) {
-          outputShape.push_back(shape.getZExtValue());
-        }
-        refineOpWithNewOp<BroadcastInDimOp>(
-            rewriter, op,
-            RankedTensorType::get(outputShape, type.getElementType()),
-            op.operand(), op.broadcast_dimensions());
-        return success();
-      }
+    SmallVector<int64_t> outputShape;
+    if (matchConstantShape(op.output_dimensions(), outputShape)) {
+      refineOpWithNewOp<BroadcastInDimOp>(
+          rewriter, op,
+          RankedTensorType::get(outputShape, type.getElementType()),
+          op.operand(), op.broadcast_dimensions());
+      return success();
     }
     return rewriter.notifyMatchFailure(
         op, "requires output static shape or constant broadcast dimensions");
@@ -4030,12 +4038,24 @@ class DynamicReshapeOpNotActuallyDynamic
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(DynamicReshapeOp op,
                                 PatternRewriter& rewriter) const override {
-    auto type = op.result().getType().dyn_cast<RankedTensorType>();
-    if (!type || !type.hasStaticShape()) {
-      return rewriter.notifyMatchFailure(op, "requires static shape tensor");
+    // Result type has static shape, replace with reshape.
+    auto resultTy = op.getType().cast<ShapedType>();
+    if (resultTy.hasStaticShape()) {
+      rewriter.replaceOpWithNewOp<ReshapeOp>(op, resultTy, op.operand());
+      return success();
     }
-    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.operand());
-    return success();
+
+    // Output shape is constant, compute result type with static shape, then
+    // replace with reshape.
+    SmallVector<int64_t> outputShape;
+    if (matchConstantShape(op.output_shape(), outputShape)) {
+      resultTy = RankedTensorType::get(outputShape, resultTy.getElementType());
+      refineOpWithNewOp<ReshapeOp>(rewriter, op, resultTy, op.operand());
+      return success();
+    }
+
+    return rewriter.notifyMatchFailure(
+        op, "requires static shape or constant output shape");
   }
 };
 
