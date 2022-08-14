@@ -946,17 +946,6 @@ func.func @dynamic_reshape_not_actually_dynamic(%arg0: tensor<4xf32>, %shape: te
   func.return %0 : tensor<4x1xf32>
 }
 
-// CHECK-LABEL: func @dynamic_reshape_not_actually_dynamic_constant_arg
-func.func @dynamic_reshape_not_actually_dynamic_constant_arg(%arg0: tensor<4xf32>) -> tensor<?x?xf32> {
-  // CHECK-NOT: mhlo.dynamic_reshape
-  // CHECK: [[RESULT:%.*]] = mhlo.reshape
-  // CHECK: [[CAST:%.*]] = tensor.cast [[RESULT]]
-  // CHECK: return [[CAST]]
-  %0 = mhlo.constant dense<[4, 1]> : tensor<2xi32>
-  %1 = "mhlo.dynamic_reshape"(%arg0, %0) : (tensor<4xf32>, tensor<2xi32>) -> tensor<?x?xf32>
-  func.return %1 : tensor<?x?xf32>
-}
-
 // CHECK-LABEL: func @shape_of_dynamic_reshape
 // CHECK-SAME: [[ARG0:%[a-zA-Z0-9]+]]
 // CHECK-SAME: [[ARG1:%[a-zA-Z0-9]+]]
