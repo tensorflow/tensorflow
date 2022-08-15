@@ -59,6 +59,14 @@ bool IsConvCustomCall(const HloInstruction* instr) {
               kCudnnConvBiasActivationForwardCallTarget);
 }
 
+// Make convert instruction and copy over the metadata.
+HloInstruction* MakeConvertWithMetadata(HloInstruction* hlo,
+                                        PrimitiveType type) {
+  HloInstruction* convert = MakeConvertToHlo(hlo, type);
+  convert->set_metadata(hlo->metadata());
+  return convert;
+}
+
 // Can instr be converted to type `dst_ty` without losing any precision?  For
 // our purposes, this is true if:
 //
@@ -308,10 +316,11 @@ StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
     absl::InlinedVector<HloInstruction*, 4> new_operands(
         conv->operands().begin(), conv->operands().end());
     if (can_accept_bias && addend_may_be_rank1_bias) {
-      new_operands[2] = MakeConvertToHlo(addend->mutable_operand(0), bias_ty);
+      new_operands[2] =
+          MakeConvertWithMetadata(addend->mutable_operand(0), bias_ty);
     } else if (can_accept_bias && addend_may_be_rank0_bias) {
       new_operands[2] = MakeBroadcastHlo(
-          MakeConvertToHlo(addend->mutable_operand(0), bias_ty),
+          MakeConvertWithMetadata(addend->mutable_operand(0), bias_ty),
           /*broadcast_dimensions=*/{},
           /*result_shape_bounds=*/
           {gte->shape().dimensions(conv->convolution_dimension_numbers()
@@ -536,7 +545,7 @@ StatusOr<bool> FuseConvertToF16(HloComputation* comp) {
     // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
     absl::InlinedVector<HloInstruction*, 4> new_operands;
     for (HloInstruction* operand : conv->operands()) {
-      new_operands.push_back(MakeConvertToHlo(operand, F16));
+      new_operands.push_back(MakeConvertWithMetadata(operand, F16));
     }
 
     Shape new_shape = conv->shape();
@@ -615,14 +624,15 @@ StatusOr<bool> FuseConvertToS8(HloComputation* comp) {
 
     absl::InlinedVector<HloInstruction*, 4> new_operands(
         conv->operands().begin(), conv->operands().end());
-    new_operands[0] = MakeConvertToHlo(new_operands[0], S8);
-    new_operands[1] = MakeConvertToHlo(new_operands[1], S8);
+    new_operands[0] = MakeConvertWithMetadata(new_operands[0], S8);
+    new_operands[1] = MakeConvertWithMetadata(new_operands[1], S8);
     // Don't convert bias (operand 2); it's always f32 for s8 ops in cudnn.  See
     // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
     if (new_operands.size() >= 4) {
       // side-input always matches conv output type.  We checked in the patterns
       // above that it's losslessly-convertible to this type.
-      new_operands[3] = MakeConvertToHlo(new_operands[3], conv_output_ty);
+      new_operands[3] =
+          MakeConvertWithMetadata(new_operands[3], conv_output_ty);
     }
 
     Shape new_shape = conv->shape();
