@@ -329,16 +329,40 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Sometimes Bazel reports darwin_x86_64 as "darwin" and sometimes as
+# "darwin_x86_64". The former shows up when building on a Mac x86_64 host for a Mac x86_64 target.
+# The latter shows up when cross-compiling for Mac x86_64 from a Mac ARM machine and in internal
+# Google builds.
 config_setting(
-    name = "macos_x86_64",
+    name = "macos_x86_64_default",
     flag_values = if_google(
         {"//tools/cpp:cc_target_os": "apple"},
         {},
     ),
     values = {
         "apple_platform_type": "macos",
-        "cpu": if_google("darwin_x86_64", "darwin"),
+        "cpu": "darwin",
     },
+)
+
+config_setting(
+    name = "macos_x86_64_crosscompile",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "apple"},
+        {},
+    ),
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_x86_64",
+    },
+)
+
+selects.config_setting_group(
+    name = "macos_x86_64",
+    match_any = [
+        ":macos_x86_64_default",
+        ":macos_x86_64_crosscompile",
+    ],
     visibility = ["//visibility:public"],
 )
 
