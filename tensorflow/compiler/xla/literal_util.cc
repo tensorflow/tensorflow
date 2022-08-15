@@ -307,6 +307,11 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
   return ConvertType<double, float>(f64_literal);
 }
 
+/* static */ Literal LiteralUtil::ConvertS32ToF32(
+    const LiteralSlice& s32_literal) {
+  return ConvertType<int32_t, float>(s32_literal);
+}
+
 /* static */ Literal LiteralUtil::CreateToken() {
   return Literal(ShapeUtil::MakeTokenShape());
 }
