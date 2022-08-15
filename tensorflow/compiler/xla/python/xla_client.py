@@ -111,6 +111,11 @@ def make_tpu_client():
       max_inflight_computations=max_inflight_computations)
 
 
+def make_plugin_device_client():
+  """Returns a plugin device client."""
+  return _xla.get_plugin_device_client()
+
+
 class OpMetadata:
   """Python representation of a xla.OpMetadata protobuf."""
   __slots__ = ('op_type', 'op_name', 'source_file', 'source_line')
