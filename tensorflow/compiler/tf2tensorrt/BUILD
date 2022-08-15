@@ -430,6 +430,8 @@ tf_cuda_library(
     deps = [
         ":common_utils",
         ":logger_registry",
+        ":utils",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
@@ -949,10 +951,14 @@ tf_cuda_library(
 
 cc_library(
     name = "utils",
-    srcs = ["convert/utils.cc"],
+    srcs = [
+        "convert/utils.cc",
+        "utils/trt_experimental_features.cc",
+    ],
     hdrs = [
         "common/utils.h",
         "convert/utils.h",
+        "utils/trt_experimental_features.h",
         "utils/trt_tensor_proxy.h",
     ],
     copts = tf_copts(),
