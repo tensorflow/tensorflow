@@ -911,6 +911,18 @@ xla_test(
 )
 
 xla_test(
+    name = "fft_test",
+    srcs = ["fft_test.cc"],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
     name = "dot_operation_test",
     srcs = ["dot_operation_test.cc"],
     shard_count = 20,
