@@ -23,8 +23,6 @@ import threading
 import time
 import weakref
 
-import six
-
 from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
@@ -119,7 +117,7 @@ def _get_checkpoint_size(prefix):
   return size
 
 
-class ObjectGraphProtoPrettyPrinter(object):
+class ObjectGraphProtoPrettyPrinter:
   """Lazily traverses an object graph proto to pretty print names.
 
   If no calls to `node_names` are made this object has no performance
@@ -163,7 +161,7 @@ class ObjectGraphProtoPrettyPrinter(object):
     return node_names
 
 
-class _CheckpointRestoreCoordinatorDeleter(object):
+class _CheckpointRestoreCoordinatorDeleter:
   """Deleter to avoid overriding _CheckpointRestoreCoordinator.__del__()."""
 
   __slots__ = [
@@ -218,7 +216,7 @@ class _CheckpointRestoreCoordinatorDeleter(object):
                f"checkpoint. Object: {node_path}, attribute: {attr}")
 
 
-class _CheckpointRestoreCoordinator(object):
+class _CheckpointRestoreCoordinator:
   """Holds the status of an object-based checkpoint load."""
 
   def __init__(self, object_graph_proto, save_path, save_path_tensor, reader,
@@ -361,7 +359,7 @@ class _CheckpointRestoreCoordinator(object):
     return restore_ops
 
 
-class _NameBasedRestoreCoordinator(object):
+class _NameBasedRestoreCoordinator:
   """Keeps the status of a name-based checkpoint restore."""
 
   def __init__(self, save_path, dtype_map=None):
@@ -675,7 +673,7 @@ def capture_dependencies(template):
     yield
 
 
-class _LoadStatus(object):
+class _LoadStatus:
   """Abstract base for load status callbacks."""
 
   @abc.abstractmethod
@@ -798,8 +796,7 @@ class CheckpointLoadStatus(_LoadStatus):
           f"Unresolved slot restorations: {self._checkpoint.slot_restorations}")
     if self._checkpoint.unused_attributes:
       unused_attribute_messages = []
-      for node_id, attribute in six.iteritems(
-          self._checkpoint.unused_attributes):
+      for node_id, attribute in self._checkpoint.unused_attributes.items():
         obj = self._checkpoint.object_by_proto_id[node_id]
         unused_attribute_messages.append(
             f"{pretty_printer.node_names[node_id]} ({obj}): {attribute}")
@@ -1121,7 +1118,7 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
         fetches=fetches, feed_dict=feed_dict, **kwargs)
 
 
-class TrackableSaver(object):
+class TrackableSaver:
   """Saves and restores a `Trackable` object and its dependencies.
 
   See `Trackable` for details of dependency management. `Saver` wraps
@@ -1664,7 +1661,7 @@ class CheckpointV1(autotrackable.AutoTrackable):
   class Regress(tf.keras.Model):
 
     def __init__(self):
-      super(Regress, self).__init__()
+      super().__init__()
       self.input_transform = tf.keras.layers.Dense(10)
       # ...
 
@@ -1708,7 +1705,7 @@ class CheckpointV1(autotrackable.AutoTrackable):
     Raises:
       ValueError: If objects in `kwargs` are not trackable.
     """
-    super(CheckpointV1, self).__init__()
+    super().__init__()
     global _END_TIME_OF_LAST_WRITE
     with _END_TIME_OF_LAST_WRITE_LOCK:
       if _END_TIME_OF_LAST_WRITE is None:
@@ -2057,7 +2054,7 @@ class Checkpoint(autotrackable.AutoTrackable):
   class Regress(tf.keras.Model):
 
     def __init__(self):
-      super(Regress, self).__init__()
+      super().__init__()
       self.input_transform = tf.keras.layers.Dense(10)
       # ...
 
@@ -2109,7 +2106,7 @@ class Checkpoint(autotrackable.AutoTrackable):
         incompatible).
 
     """
-    super(Checkpoint, self).__init__()
+    super().__init__()
     global _END_TIME_OF_LAST_WRITE
     with _END_TIME_OF_LAST_WRITE_LOCK:
       if _END_TIME_OF_LAST_WRITE is None:

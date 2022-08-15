@@ -15,15 +15,12 @@
 # ==============================================================================
 import abc
 
-import six
-
 from tensorflow.python.trackable import base
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("train.experimental.PythonState")
-@six.add_metaclass(abc.ABCMeta)
-class PythonState(base.Trackable):
+class PythonState(base.Trackable, metaclass=abc.ABCMeta):
   """A mixin for putting Python state in an object-based checkpoint.
 
   This is an abstract class which allows extensions to TensorFlow's object-based

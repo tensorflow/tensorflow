@@ -73,7 +73,6 @@ py_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:data_structures",
         "//tensorflow/python/training/saving:saveable_object_util",
-        "@six_archive//:six",
     ],
 )
 
@@ -114,7 +113,6 @@ tf_py_test(
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:base",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 
@@ -138,7 +136,6 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/trackable:autotrackable",
-        "@six_archive//:six",
     ],
 )
 
