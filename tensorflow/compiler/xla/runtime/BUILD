@@ -145,6 +145,7 @@ cc_library(
         ":memory_mapper",
         ":results",
         ":runtime",
+        ":type_id",
         ":types",
         "//tensorflow/compiler/xla/mlir/utils/runtime:async_runtime_api",
         "//tensorflow/compiler/xla/mlir/utils/runtime:c_runner_utils",
@@ -271,7 +272,11 @@ cc_library(
 
 cc_library(
     name = "type_id",
+    srcs = ["type_id.cc"],
     hdrs = ["type_id.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["@llvm-project//mlir:Support"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Support",
+    ],
 )

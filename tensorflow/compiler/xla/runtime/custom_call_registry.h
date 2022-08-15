@@ -59,10 +59,12 @@ class CustomCallRegistry {
 // prototype given by the CustomCallRegistry::RegistrationFunction alias.
 #define XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION(FUNC) \
   XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL(FUNC, __COUNTER__)
-#define XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL(FUNC, N)       \
-  static bool XLA_RUNTIME_static_custom_call_##N##_registered_ = []() { \
-    ::xla::runtime::AddStaticCustomCallRegistration(FUNC);              \
-    return true;                                                        \
+#define XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL(FUNC, N) \
+  XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL_EXPAND(FUNC, N)
+#define XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL_EXPAND(FUNC, N) \
+  static bool XLA_RUNTIME_static_custom_call_##N##_registered_ = []() {  \
+    ::xla::runtime::AddStaticCustomCallRegistration(FUNC);               \
+    return true;                                                         \
   }()
 
 // Registers all statically linked custom calls in the given registry.

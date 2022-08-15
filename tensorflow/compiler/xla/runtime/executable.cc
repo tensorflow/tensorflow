@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/utils/runtime/c_runner_utils.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/runtime.h"
+#include "tensorflow/compiler/xla/runtime/type_id.h"
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 
 namespace xla {
@@ -80,6 +81,26 @@ ExecutionEngine::SymbolsBinding GetSymbolsBinding(DirectCustomCallLibrary lib) {
 }
 
 //===----------------------------------------------------------------------===//
+// Converts typeid symbol map into the execution engine symbols binding.
+//===----------------------------------------------------------------------===//
+
+ExecutionEngine::SymbolsBinding GetTypeIDSymbolsBinding(
+    TypeIDNameRegistry* registry) {
+  return [registry](llvm::orc::MangleAndInterner mangle) {
+    llvm::orc::SymbolMap symbol_map;
+
+    registry->ForEach([&](llvm::StringRef name, TypeID type_id) {
+      auto type_id_ptr =
+          reinterpret_cast<std::uintptr_t>(type_id.getAsOpaquePointer());
+      symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
+          static_cast<llvm::JITTargetAddress>(type_id_ptr),
+          llvm::JITSymbolFlags());
+    });
+
+    return symbol_map;
+  };
+}
+//===----------------------------------------------------------------------===//
 // Register XLA runtime symbols with XLA execution engine.
 //===----------------------------------------------------------------------===//
 
@@ -91,6 +112,11 @@ static SymbolMap RuntimeApiSymbolMap(MangleAndInterner);
 
 ExecutionEngine::SymbolsBinding RuntimeSymbolsBinding(
     ExecutionEngine::SymbolsBinding custom_binding) {
+  static TypeIDNameRegistry* registry = []() {
+    auto* registry = new TypeIDNameRegistry();
+    RegisterStaticTypeIDName(registry);
+    return registry;
+  }();
   return ExecutionEngine::BindAll({
       // Register MLIR C Runner API intrinsics (defined in CRunnerUtils).
       CRunnerUtilsSymbolMap,
@@ -102,6 +128,8 @@ ExecutionEngine::SymbolsBinding RuntimeSymbolsBinding(
       RuntimeApiSymbolMap,
       // Register any additional user-defined APIs.
       std::move(custom_binding),
+      // Register runtime binding for TypeIDs
+      GetTypeIDSymbolsBinding(registry),
   });
 }
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string_view>
 
 #include "llvm/Support/raw_ostream.h"
+#include "tensorflow/compiler/xla/runtime/type_id.h"
 
 namespace xla {
 namespace runtime {
@@ -50,6 +51,48 @@ raw_ostream& operator<<(raw_ostream& os, const FlatMemrefView& view) {
   return os << "FlatMemrefView: dtype: " << view.dtype
             << " size_in_bytes: " << view.size_in_bytes;
 }
+
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(uint8_t, "__type_id_uint8");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(uint32_t, "__type_id_uint32");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(uint64_t, "__type_id_uint64");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(bool, "__type_id_bool");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(int32_t, "__type_id_int32");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(int64_t, "__type_id_int64");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(Eigen::half,
+                                            "__type_id_eigen_half");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(float, "__type_id_float");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(double, "__type_id_double");
+
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::StringRef,
+                                            "__type_id_string");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(MemrefView,
+                                            "__type_id_memref_view");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(StridedMemrefView,
+                                            "__type_id_strided_memref_view");
+
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(EmptyArrayRef,
+                                            "__type_id_empty_arrayref");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::ArrayRef<int8_t>,
+                                            "__type_id_arrayref_int8");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::ArrayRef<int16_t>,
+                                            "__type_id_arrayref_int16");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::ArrayRef<int32_t>,
+                                            "__type_id_arrayref_int32");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::ArrayRef<int64_t>,
+                                            "__type_id_arrayref_int64");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::ArrayRef<float>,
+                                            "__type_id_arrayref_float");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::ArrayRef<double>,
+                                            "__type_id_arrayref_double");
+
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(
+    CustomCall::TensorRef<int32_t>, "__type_id_customcall_tensorref_int32_t");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(
+    CustomCall::TensorRef<int64_t>, "__type_id_customcall_tensorref_int64_t");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(
+    CustomCall::TensorRef<float>, "__type_id_customcall_tensorref_float");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(
+    CustomCall::TensorRef<double>, "__type_id_customcall_tensorref_double");
 
 }  // namespace runtime
 }  // namespace xla
