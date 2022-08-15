@@ -53,7 +53,6 @@ using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::StrCat;
 
-using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
 using ::tfrt::jitrt::Executable;
@@ -83,15 +82,15 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
   copts.alignment = EIGEN_MAX_ALIGN_BYTES;
   copts.num_worker_threads = 4;
 
-  CompilationOptions opts;
-  opts.register_dialects = [](mlir::DialectRegistry& registry) {
+  JitExecutable::Options opts;
+  opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
     mlir::RegisterAllTensorFlowDialects(registry);
     RegisterDefaultJitRtDialects(registry);
     // Needed to verify function argument attributes which are used to
     // annotate dynamic shaped types with static type information.
     mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
   };
-  opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
+  opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
     tensorflow::TfJitRtPipelineOptions opts;
     opts.vectorize = vectorize;
     opts.codegen_transpose = codegen_transpose;
@@ -101,10 +100,11 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
     CreateDefaultJitRtCompilationPipeline(pm, copts);
   };
   if (specialization != Specialization::kDisabled) {
-    opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
+    opts.compiler.create_specialization_pipeline =
+        CreateJitRtSpecializationPipeline;
   }
   opts.specialization = specialization;
-  opts.calling_convention = xla::runtime::DefaultCallingConvention(
+  opts.compiler.calling_convention = xla::runtime::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
 
   // Instantiate new JitExecutable from the MLIR source.

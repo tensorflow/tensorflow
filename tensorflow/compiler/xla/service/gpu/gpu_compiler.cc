@@ -1435,14 +1435,15 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     copts.num_worker_threads = 1;
 
     // Options for constructing JitRt JitExecutable.
-    jitrt::CompilationOptions opts;
-    opts.specialization = jitrt::CompilationOptions::Specialization::kDisabled;
-    opts.register_dialects = jitrt::RegisterDefaultJitRtDialects;
+    jitrt::JitExecutable::Options opts;
+    opts.specialization = jitrt::JitExecutable::Specialization::kDisabled;
+    opts.compiler.register_dialects = jitrt::RegisterDefaultJitRtDialects;
 
     // Register JitRt Gpu runtime custom calls with the linker.
-    opts.runtime_symbol_map = jitrt::GetSymbolsBinding(JitRtGpuCustomCalls());
+    opts.compiler.runtime_symbol_map =
+        jitrt::GetSymbolsBinding(JitRtGpuCustomCalls());
 
-    opts.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
+    opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
       jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
     };
 

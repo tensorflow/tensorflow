@@ -102,7 +102,6 @@ using ::tfrt::TaskFunction;
 
 using ::tfrt::jitrt::ArgumentConstraint;
 using ::tfrt::jitrt::ArgumentsRef;
-using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
 using ::tfrt::jitrt::EigenThreadPoolAsyncTaskRunner;
@@ -434,19 +433,19 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
         GetJitRtFlags().cost_driven_async_parallel_for;
 
     // Options for the JitRt JitExecutable compilation.
-    CompilationOptions opts;
+    JitExecutable::Options opts;
     opts.specialization = GetJitRtFlags().always_specialize
-                              ? CompilationOptions::Specialization::kAlways
-                              : CompilationOptions::Specialization::kEnabled;
+                              ? JitExecutable::Specialization::kAlways
+                              : JitExecutable::Specialization::kEnabled;
 
     // Register dialects and interfaces required for the compilation pipeline.
-    opts.register_dialects = [](mlir::DialectRegistry& registry) {
+    opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
       mlir::RegisterAllTensorFlowDialects(registry);
       RegisterDefaultJitRtDialects(registry);
     };
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
-    opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
+    opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
       if (GetJitRtFlags().enable_crash_reproducer)
         SetCrashReproducer(pm, kCrashReproducerStdErr);
 
@@ -466,7 +465,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     };
 
     // Register a custom pipeline to propagate specialization information.
-    opts.create_specialization_pipeline = [=](mlir::PassManager& pm) {
+    opts.compiler.create_specialization_pipeline = [=](mlir::PassManager& pm) {
       if (GetJitRtFlags().enable_crash_reproducer)
         SetCrashReproducer(pm, kCrashReproducerStdErr);
       CreateJitRtSpecializationPipeline(pm);
@@ -474,7 +473,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.
-    opts.calling_convention = xla::runtime::DefaultCallingConvention(
+    opts.compiler.calling_convention = xla::runtime::DefaultCallingConvention(
         mlir::bufferization::BufferizeTypeConverter());
 
     // Instantiate new JitExecutable from the MLIR source.

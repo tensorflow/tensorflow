@@ -103,23 +103,24 @@ class GpuExecutable::JitRtExecutable {
     copts.populate_attr_encodings = PopulateLmhloToXlaAttrEncoding;
 
     // Options for constructing JitRt JitExecutable.
-    jitrt::CompilationOptions opts;
-    opts.specialization = jitrt::CompilationOptions::Specialization::kDisabled;
-    opts.register_dialects = [](mlir::DialectRegistry& registry) {
+    jitrt::JitExecutable::Options opts;
+    opts.specialization = jitrt::JitExecutable::Specialization::kDisabled;
+    opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
       jitrt::RegisterDefaultJitRtDialects(registry);
       // For the encoding of attributes to custom calls.
       registry.insert<mlir::lmhlo_gpu::LmhloGpuDialect>();
     };
 
     // Register JitRt Gpu runtime custom calls with the linker.
-    opts.runtime_symbol_map = jitrt::GetSymbolsBinding(JitRtGpuCustomCalls());
+    opts.compiler.runtime_symbol_map =
+        jitrt::GetSymbolsBinding(JitRtGpuCustomCalls());
 
     // We just use the default compilation pipeline provided by the JitRt.
     // Alternatively instead of having a separate JitRtProgram (LMHLO lowered to
     // JitRt dialects), we can assemble a pipeline that will compile starting
     // from the LMHLO dialect. However this intermediate step helps with
     // debugging, by materializing IR with XLA runtime custom calls.
-    opts.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
+    opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
       jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
     };
 
@@ -127,7 +128,7 @@ class GpuExecutable::JitRtExecutable {
     // loads and stores pattern generated in very large XLA programs, and can
     // take minutes to run. Currently we do not expect any expensive code
     // running on the host, so we can safely disable optimization passes.
-    opts.jit_code_opt_level = llvm::CodeGenOpt::None;
+    opts.compiler.jit_code_opt_level = llvm::CodeGenOpt::None;
 
     // Instantiate new JitExecutable from the MLIR source.
     auto jit_executable = jitrt::JitExecutable::Instantiate(
