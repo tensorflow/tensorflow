@@ -38,9 +38,10 @@ struct TfTrtConversionParams {
   // Corresponds 'workspaceSize' parameter of
   // nvinfer1::IBuilderConfig::setMaxWorkspaceSize.
 #if IS_TRT_VERSION_GE(8, 4, 0, 0)
-  size_t max_workspace_size_bytes = INT_MAX;
+  // Must use `LLONG_MAX - 512` to avoid overflow during casting.
+  size_t max_workspace_size_bytes = LLONG_MAX - 512;
 #else
-  size_t max_workspace_size_bytes = 1 << 30;
+  size_t max_workspace_size_bytes = 1 << 30;  // 1,073,741,824
 #endif
 
   // Minimum precision used by the TRT Engine.

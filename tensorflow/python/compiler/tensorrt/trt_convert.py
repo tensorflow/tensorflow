@@ -18,6 +18,7 @@ import collections
 from functools import partial  # pylint: disable=g-importing-member
 import os
 import platform
+import sys
 import tempfile
 
 import numpy as np
@@ -111,9 +112,10 @@ class TrtPrecisionMode(object):
 # For TRT >= 8.4, the recommendation is MAX_INT.
 if (_pywrap_py_utils.is_tensorrt_enabled() and
     trt_utils.is_loaded_tensorrt_version_greater_equal(8, 4, 0)):
-  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = np.iinfo(np.int32).max
+  # We must use `sys.maxsize - 512` to avoid overflow during casting.
+  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = sys.maxsize - 512
 else:
-  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
+  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30  # 1,073,741,824
 
 PROFILE_STRATEGY_RANGE = "Range"
 PROFILE_STRATEGY_OPTIMAL = "Optimal"
