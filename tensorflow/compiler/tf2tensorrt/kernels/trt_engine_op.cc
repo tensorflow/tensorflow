@@ -1149,14 +1149,20 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       }
       static_engine = std::move(result.ValueOrDie());
     }
+
     auto raw_static_engine = static_engine.get();
-    const auto max_batch_size = raw_static_engine->getMaxBatchSize();
-    // Static engine will have max_batch_size for batch size so that all inputs
-    // will map to this single engine.
     std::vector<TensorShape> engine_input_shapes(input_concrete_shapes);
-    for (int i = 0; i < engine_input_shapes.size(); i++) {
-      engine_input_shapes[i].set_dim(0, max_batch_size);
+
+    int max_batch_size = 1;
+    if (use_implicit_batch_) {
+      max_batch_size = raw_static_engine->getMaxBatchSize();
+      // Static engine will have max_batch_size for batch size so that all
+      // inputs will map to this single engine.
+      for (int i = 0; i < engine_input_shapes.size(); i++) {
+        engine_input_shapes[i].set_dim(0, max_batch_size);
+      }
     }
+
     ExecutionContext context = ExecutionContext::Create(raw_static_engine);
     // TODO(laigd): here we assume engine_input_shapes matches the actual input
     // shapes of the engine, we should verify that.
