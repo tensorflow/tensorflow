@@ -24,6 +24,7 @@
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/runtime/type_id.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
@@ -101,6 +102,22 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 }
 
 // -------------------------------------------------------------------------- //
+
+// Define type id names for all enums and structs passed to the custom calls.
+
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(se::dnn::ActivationMode,
+                                            "__type_id_se_dnn_activation");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(se::cuda::BlasLt::Epilogue,
+                                            "__type_id_se_cublas_lt_epilogue");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(se::fft::Type,
+                                            "__type_id_se_fft_type");
+
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(DotDimensionNumbers,
+                                            "__type_id_dot_dimension_numbers");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(ConvDimensionNumbers,
+                                            "__type_id_conv_dimension_numbers");
+XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(ConvBackendConfig,
+                                            "__type_id_conv_backend_config");
 
 // Add custom call arguments and attributes encoding for custom HLO enums and
 // structs, so that we can pass them to custom calls.

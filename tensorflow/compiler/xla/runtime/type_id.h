@@ -67,8 +67,8 @@ void AddStaticTypeIDNameRegistration(
   XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION_IMPL_EXPAND(T, NAME, N)
 #define XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION_IMPL_EXPAND(T, NAME, N) \
   static bool XLA_RUNTIME_static_typeid_name_##N##_registered = []() {      \
-    auto func = [](TypeIDNameRegistry* registry) {                          \
-      registry->Register<Tagged<T>>(NAME);                                  \
+    auto func = [](::xla::runtime::TypeIDNameRegistry* registry) {          \
+      registry->Register<::xla::runtime::Tagged<T>>(NAME);                  \
     };                                                                      \
     ::xla::runtime::AddStaticTypeIDNameRegistration(func);                  \
     return true;                                                            \
