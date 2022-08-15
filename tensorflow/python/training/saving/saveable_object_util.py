@@ -37,6 +37,7 @@ from tensorflow.python.trackable import python_state
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.types import core
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
@@ -472,7 +473,7 @@ def validate_saveables_for_saved_model(saveables, obj):
 class RestoredSaveableObject(saveable_object.SaveableObject):
   """SaveableObject restored from SavedModel using the traced save/restore."""
 
-  def __init__(self, save_function, restore_function, name):
+  def __init__(self, names_and_slices, save_function, restore_function, name):
     self.save_function = save_function
     self.restore_function = restore_function
 
@@ -482,8 +483,10 @@ class RestoredSaveableObject(saveable_object.SaveableObject):
       with ops.init_scope():
         name_tensor = constant_op.constant(name)
     tensors = save_function(name_tensor)
-    specs = [saveable_object.SaveSpec(x["tensor"], x["slice_spec"], x["name"])
-             for x in tensors]
+    specs = []
+    for (str_name, str_slice), tensor_info in zip(names_and_slices, tensors):
+      specs.append(saveable_object.SaveSpec(tensor_info["tensor"], str_slice,
+                                            name + str_name))
     super(RestoredSaveableObject, self).__init__(None, specs, name)
 
   def restore(self, restored_tensors, restored_shapes):
@@ -494,11 +497,23 @@ class RestoredSaveableObject(saveable_object.SaveableObject):
 
 def recreate_saveable_objects(saveable_fn_by_name):
   """Returns a dict of SaveableObject factories generated from loaded fns."""
+
+  names_and_slices = []
+
+  with ops.init_scope():
+    for save_fn, _ in saveable_fn_by_name.values():
+      for tensor_info in save_fn(""):
+        names_and_slices.append((
+            _convert_to_string(tensor_info["name"]),
+            _convert_to_string(tensor_info["slice_spec"])))
+
   saveable_factories = {}
   for name, (save_fn, restore_fn) in saveable_fn_by_name.items():
-    saveable_factories[name] = functools.partial(RestoredSaveableObject,
-                                                 save_function=save_fn,
-                                                 restore_function=restore_fn)
+    saveable_factories[name] = functools.partial(
+        RestoredSaveableObject,
+        names_and_slices=names_and_slices,
+        save_function=save_fn,
+        restore_function=restore_fn)
   return saveable_factories
 
 
@@ -671,6 +686,10 @@ def trackable_has_serialize_to_tensor(obj):
     obj_serialize_fn = obj_serialize_fn.__func__
   return trackable.Trackable._serialize_to_tensors != obj_serialize_fn
   # pylint: enable=protected-access
+
+
+def _convert_to_string(x):
+  return compat.as_str(tensor_util.constant_value(x))
 
 
 class SaveableCompatibilityConverter(trackable.Trackable):
