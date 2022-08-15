@@ -38,7 +38,7 @@ def serialize_slot_variables(trackable_objects, node_ids, object_names):
         # TODO(b/110718070): Fix Keras imports.
         # Note: dir() is used rather than hasattr() here to avoid triggering
         # custom __getattr__ code, see b/152031870 for context.
-        or "_create_or_restore_slot_variable" in dir(trackable)):
+        or "get_slot_names" in dir(trackable)):
       slot_names = trackable.get_slot_names()
       for slot_name in slot_names:
         for original_variable_node_id, original_variable in enumerate(
