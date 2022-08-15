@@ -695,6 +695,19 @@ config_setting(
     },
 )
 
+bool_flag(
+    name = "enable_plugin_device",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "plugin_device_enabled",
+    flag_values = {
+        ":enable_plugin_device": "True",
+    },
+)
+
+
 pybind_extension(
     name = "xla_extension",
     srcs = [
@@ -705,6 +718,9 @@ pybind_extension(
         "//conditions:default": [],
     }) + select({
         ":tpu_enabled": ["XLA_PYTHON_ENABLE_TPU=1"],
+        "//conditions:default": [],
+    }) + select({
+        ":plugin_device_enabled" : ["XLA_PYTHON_ENABLE_PLUGIN_DEVICE=1"],
         "//conditions:default": [],
     }),
     pytype_deps = [
@@ -763,11 +779,13 @@ pybind_extension(
            }) + select({
                ":link_gpu_plugin": ["//tensorflow/compiler/xla/service:gpu_plugin"],
                "//conditions:default": [],
-           }) +
-           select({
-               ":tpu_enabled": [
-                   "//tensorflow/compiler/xla/pjrt:tpu_client",
-               ],
+           }) + select({
+               ":tpu_enabled": ["//tensorflow/compiler/xla/pjrt:tpu_client"],
                "//conditions:default": [],
+           }) + select({
+               ":plugin_device_enabled": [
+                    "//tensorflow/compiler/xla/pjrt:pjrt_plugin_device_client",
+                ],
+                "//conditions:default": [],
            }),
 )

@@ -86,6 +86,10 @@ def make_tpu_client() -> Client:
   ...
 
 
+def make_plugin_device_client() -> Client:
+  ...
+
+
 class OpMetadata:
 
   def __init__(self,
