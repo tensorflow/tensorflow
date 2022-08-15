@@ -173,6 +173,23 @@ cc_library(
 )
 
 cc_library(
+    name = "jit_executable",
+    srcs = ["jit_executable.cc"],
+    hdrs = ["jit_executable.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":arguments",
+        ":async_values_cache",
+        ":constraints",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:compiler",
+        "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
     name = "logical_result",
     hdrs = ["logical_result.h"],
     compatible_with = get_compatible_with_portable(),
