@@ -34,6 +34,8 @@ class ResourceBase {
 
   // Returns true if it is initialized.
   virtual bool IsInitialized() = 0;
+
+  virtual size_t GetMemoryUsage() = 0;
 };
 
 /// WARNING: Experimental interface, subject to change.

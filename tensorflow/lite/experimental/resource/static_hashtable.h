@@ -65,6 +65,8 @@ class StaticHashtable : public tflite::resource::LookupInterface {
   // Returns true if the hash table is initialized.
   bool IsInitialized() override { return is_initialized_; }
 
+  size_t GetMemoryUsage() override { return map_.size() * sizeof(ValueType); }
+
  private:
   TfLiteType key_type_;
   TfLiteType value_type_;

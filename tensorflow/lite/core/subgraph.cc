@@ -1914,16 +1914,20 @@ void Subgraph::DumpMemoryPlannerDebugInfo() const {
   memory_planner_->DumpDebugInfo(execution_plan());
 }
 
-void Subgraph::GetMemoryAllocInfo(size_t* arena_size,
-                                  size_t* arena_persist_size,
-                                  size_t* dynamic_size) const {
+void Subgraph::GetMemoryAllocInfo(SubgraphAllocInfo* alloc_info) const {
+  memset(alloc_info, 0, sizeof(SubgraphAllocInfo));
   if (memory_planner_ == nullptr) return;
-  memory_planner_->GetAllocInfo(arena_size, arena_persist_size);
-  *dynamic_size = 0;
+  memory_planner_->GetAllocInfo(&alloc_info->arena_size,
+                                &alloc_info->arena_persist_size);
   for (const auto& tensor : tensors_) {
     if (tensor.allocation_type == kTfLiteDynamic &&
         tensor.data.raw != nullptr) {
-      *dynamic_size += tensor.bytes;
+      alloc_info->dynamic_size += tensor.bytes;
+    }
+  }
+  if (GetSubgraphIndex() == 0) {
+    for (const auto& res : *resources_) {
+      alloc_info->resource_size += res.second->GetMemoryUsage();
     }
   }
 }

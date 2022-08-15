@@ -379,10 +379,16 @@ class Subgraph {
   // information about tenosrs and ops.
   void DumpMemoryPlannerDebugInfo() const;
 
+  typedef struct SubgraphAllocInfo {
+    size_t arena_size;
+    size_t arena_persist_size;
+    size_t dynamic_size;
+    size_t resource_size;
+  } SubgraphAllocInfo;
+
   // WARNING: This is an experimental API and subject to change.
   // Returns memory allocation status.
-  void GetMemoryAllocInfo(size_t* arena_size, size_t* arena_persist_size,
-                          size_t* dynamic_size) const;
+  void GetMemoryAllocInfo(SubgraphAllocInfo* alloc_info) const;
 
   // WARNING: This is an experimental API and subject to change.
   // Set the given `InterpreterOptions` object.
