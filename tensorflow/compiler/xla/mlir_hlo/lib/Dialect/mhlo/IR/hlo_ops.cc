@@ -9277,6 +9277,33 @@ Type getExpressedTypeOrSelf(Type type) {
   return quantType ? quantType.getExpressedType() : type;
 }
 
+LogicalResult verifyCompatibleShapeWithBounds(Type type1, Type type2) {
+  if (failed(verifyCompatibleShape(type1, type2))) return failure();
+
+  // Verify shapes against bounds
+  auto isCompatible = [](ArrayRef<int64_t> shape,
+                         TypeExtensionsAttr extensionAttr) {
+    if (shape.empty() || !extensionAttr) return true;
+    auto bounds = extensionAttr.getBounds();
+    for (auto [dim_size, bound] : llvm::zip(shape, bounds))  // NOLINT
+      if (bound != ShapedType::kDynamicSize && bound < dim_size) return false;
+    return true;
+  };
+
+  RankedTensorType rankedType1 = type1.dyn_cast<RankedTensorType>();
+  RankedTensorType rankedType2 = type2.dyn_cast<RankedTensorType>();
+  if (rankedType1 && rankedType2) {
+    TypeExtensionsAttr extensionAttr1 =
+        rankedType1.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>();
+    TypeExtensionsAttr extensionAttr2 =
+        rankedType2.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>();
+    return LogicalResult::success(
+        isCompatible(rankedType1.getShape(), extensionAttr2) &&
+        isCompatible(rankedType2.getShape(), extensionAttr1));
+  }
+  return success();
+}
+
 bool isCompatibleForMhloTypeInference(Type tp1, Type tp2) {
   // Dynamism: We don't require shapes to be the same, we only require them
   // to be compatible, which means that:
@@ -9287,12 +9314,10 @@ bool isCompatibleForMhloTypeInference(Type tp1, Type tp2) {
   //       2.2) Or both dimensions are equal.
   // These relaxed rules simplify the implementation of type inference, allowing
   // ops with partially inferred types to pass verification.
-  // No additional code is needed to check bounded cases.
-  // Individual ops may introduce additional constraints.
   auto stp1 = tp1.dyn_cast<ShapedType>();
   auto stp2 = tp2.dyn_cast<ShapedType>();
   if (stp1 && stp2) {
-    return succeeded(verifyCompatibleShape(stp1, stp2)) &&
+    return succeeded(verifyCompatibleShapeWithBounds(stp1, stp2)) &&
            isCompatibleForMhloTypeInference(stp1.getElementType(),
                                             stp2.getElementType());
   }
