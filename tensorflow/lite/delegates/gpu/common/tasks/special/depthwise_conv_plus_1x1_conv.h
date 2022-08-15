@@ -22,43 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 namespace tflite {
 namespace gpu {
-
-class ThinPointwiseFuser {
- public:
-  void Init(CalculationsPrecision precision, const TensorDescriptor& src_desc,
-            int output_batch, int output_width, int output_height);
-  void AddConvNode(const GpuInfo& gpu_info,
-                   const Convolution2DAttributes& attr);
-  void AddReluNode(const ReLUAttributes& attr);
-  void AddPreluNode(const PReLUAttributes& attr);
-  void AddDepthwiseConvNode(const GpuInfo& gpu_info,
-                            const DepthwiseConvolution2DAttributes& attr);
-  GPUOperation Finalize(const GpuInfo& gpu_info,
-                        const TensorDescriptor& dst_desc);
-  std::string GetOperationName() const { return op_name_; }
-
- private:
-  void AddElementwiseNode(ElementwiseDescriptor&& op_desc);
-  void AddConvData(const Convolution2DAttributes& conv_attr);
-  void AddDepthwiseConvData(const DepthwiseConvolution2DAttributes& dw_attr);
-  void CreateConstantsGpuBuffer(const GpuInfo& gpu_info);
-  OperationDef op_def_;
-  Arguments args_;
-  std::string code_;
-  std::vector<std::string> outputs_;
-  std::vector<float> gpu_data_;
-  int weights_counter_ = 0;
-  std::string op_name_;
-  uint64_t flops_ = 0;
-  BHWC output_shape_;
-};
 
 absl::Status TryDepthwiseConvPlus1x1Conv(
     const GpuInfo& gpu_info, CalculationsPrecision precision,

@@ -1025,3 +1025,10 @@ cc_library(
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+cc_library(
+    name = "c_op_requires",
+    hdrs = ["c_op_requires.h"],
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/core/platform:macros"],
+)

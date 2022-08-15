@@ -381,5 +381,52 @@ void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
   }
 }
 
+void DeriveLinesFromStats(XPlane* device_trace) {
+  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(device_trace);
+  XPlaneBuilder plane_builder(device_trace);
+  int64_t start_timestamp_ns = GetStartTimestampNs(*device_trace);
+  DerivedXLineBuilder tf_ops(
+      &plane_builder, tensorflow::profiler::kThreadIdTfOp,
+      tensorflow::profiler::kTensorFlowOpLineName, start_timestamp_ns, {});
+  DerivedXLineBuilder tf_name_scope(
+      &plane_builder, tensorflow::profiler::kThreadIdTfNameScope,
+      tensorflow::profiler::kTensorFlowNameScopeLineName, start_timestamp_ns,
+      {&tf_ops});
+  DerivedXLineBuilder source(
+      &plane_builder, tensorflow::profiler::kThreadIdSource,
+      tensorflow::profiler::kSourceLineName, start_timestamp_ns, {});
+
+  for (const XEventVisitor& event :
+       GetSortedEvents<XEventVisitor>(plane_visitor, true)) {
+    Timespan event_span = event.GetTimespan();
+    std::optional<absl::string_view> tf_op_name;
+    std::optional<absl::string_view> source_info;
+    std::optional<uint64_t> group_id;
+    auto for_each_stat = [&](const XStatVisitor& stat) {
+      if (stat.Type() == StatType::kTfOp) {
+        tf_op_name = stat.StrOrRefValue();
+      } else if (stat.Type() == StatType::kGroupId) {
+        group_id = stat.IntOrUintValue();
+      } else if (stat.Type() == StatType::kSourceInfo) {
+        source_info = stat.StrOrRefValue();
+      }
+    };
+    event.Metadata().ForEachStat(for_each_stat);
+    event.ForEachStat(for_each_stat);
+
+    if (tf_op_name && !tf_op_name->empty()) {
+      ProcessTfOpEvent(*tf_op_name, event_span, group_id, plane_builder,
+                       tf_name_scope, tf_ops);
+    }
+    if (source_info && !source_info->empty()) {
+      source.ExpandOrAddEvent(
+          *plane_builder.GetOrCreateEventMetadata(*source_info), event_span,
+          group_id);
+    }
+  }
+
+  RemoveEmptyLines(device_trace);
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

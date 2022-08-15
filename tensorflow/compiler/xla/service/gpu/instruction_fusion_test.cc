@@ -667,5 +667,33 @@ TEST_F(InstructionFusionTest, FloatingPointExpIsCheap) {
       << module->ToString();
 }
 
+TEST_F(InstructionFusionTest, SmallReducedDimensionIsNotLoweredToLoop) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY FuseSmallReduction {
+      p0 = s32[1048576,4] parameter(0)
+      p1 = s32[1048576,4] parameter(1)
+      sum = s32[1048576,4] add(p0, p1)
+      init = s32[] constant(0)
+      ROOT reduce = s32[1048576] reduce(sum, init), dimensions={1}, to_apply=add
+    })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Fusion());
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kInput);
+}
+
 }  // namespace gpu
 }  // namespace xla

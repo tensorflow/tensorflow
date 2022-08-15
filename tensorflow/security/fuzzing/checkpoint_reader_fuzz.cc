@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <map>
 #include <memory>
 #include <set>
+#include <string>
 
 #include "src/libfuzzer/libfuzzer_macro.h"  // from @com_google_libprotobuf_mutator
 #include "tensorflow/c/checkpoint_reader.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/io/table_options.h"
 #include "tensorflow/core/platform/env.h"
@@ -97,6 +100,11 @@ DEFINE_PROTO_FUZZER(const tensorflow::CheckpointReaderFuzzInput& input) {
   // Using a ram file avoids disk I/O, speeding up the fuzzer.
   const std::string filename = "ram:///checkpoint";
   CreateCheckpoint(filename, input);
+  // RamFileSystem::NewWritableFile doesn't remove existing files, so
+  // expliciently ensure the checkpoint is deleted after each test.
+  auto checkpoint_cleanup = tensorflow::gtl::MakeCleanup([&filename] {
+    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(filename));
+  });
 
   tensorflow::TF_StatusPtr status(TF_NewStatus());
   tensorflow::checkpoint::CheckpointReader reader(filename, status.get());

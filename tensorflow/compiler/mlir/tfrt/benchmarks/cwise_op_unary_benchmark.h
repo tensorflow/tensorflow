@@ -39,7 +39,7 @@ using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
-using ::tfrt::jitrt::ReturnValueConverter;
+using ::tfrt::jitrt::RemainingResultsConverter;
 
 // -------------------------------------------------------------------------- //
 // Run benchmark by compiling MLIR function using TFRT JitRt API.
@@ -51,7 +51,7 @@ struct MlirBenchmark {
   const Executable* executable;
   tfrt::ExecutionContext exec_ctx;
   std::unique_ptr<ResultConversionCtx> conversion_ctx;
-  ReturnValueConverter<ResultConversionCtx> converter;
+  RemainingResultsConverter<ResultConversionCtx> converter;
 };
 
 template <typename T, int rank>
@@ -85,7 +85,7 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
 
   // Free memory owned by the returned memrefs.
   auto ctx = std::make_unique<ResultConversionCtx>(std::move(input_ptrs));
-  ReturnValueConverter<ResultConversionCtx> converter(results, *ctx);
+  RemainingResultsConverter<ResultConversionCtx> converter(results, *ctx);
   converter.AddConversion(FreeReturnedMemref);
 
   // Get an executable that might be specialized to the operands.

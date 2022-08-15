@@ -562,7 +562,7 @@ cc_library(
         #
         # TODO(b/202546057) get rid of this once fused_conv is moved out of
         # contrib.
-        "//tensorflow/stream_executor:lazy_op_runner.h",
+        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner.h",
     ],
 )
 
@@ -578,7 +578,7 @@ tf_cuda_library(
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util/proto:proto_utils",
-        "//tensorflow/stream_executor:lazy_op_runner",
+        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
         "@com_google_absl//absl/algorithm:container",
@@ -3620,7 +3620,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
         ":matmul_util",
-        "//tensorflow/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
     ]),
@@ -3636,8 +3636,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/util:env_var",
-        "//tensorflow/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/stream_executor/cuda:cublas_lt_header",
     ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
@@ -4417,7 +4418,10 @@ tf_kernel_library(
         "topk_op_gpu_int8.cu.cc",
         "topk_op_gpu_uint8.cu.cc",
     ],
-    deps = NN_DEPS + [":gpu_prim_hdrs"],
+    deps = NN_DEPS + [
+        ":gpu_prim_hdrs",
+        ":gpu_prim_helpers",
+    ],
 )
 
 tf_kernel_library(

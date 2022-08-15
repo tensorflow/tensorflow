@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
@@ -75,23 +76,34 @@ constexpr int kOtherDimOfTpuInputFastPath = 8;
 constexpr char kXLAShardingAttrName[] = "sharding";
 constexpr char kXLAShardingAttrAltName[] = "_XlaSharding";
 
-Status GenerateDeviceNaturalOrder(int x_num_cores, int y_num_cores,
-                                  int z_num_cores, int num_cores_per_chip,
-                                  std::vector<int>* natural_order) {
-  for (int y = 0; y < y_num_cores; ++y) {
-    for (int x = 0; x < x_num_cores; ++x) {
-      for (int z = 0; z < z_num_cores; ++z) {
-        for (int c = 0; c < num_cores_per_chip; ++c) {
-          natural_order->push_back(x);
-          natural_order->push_back(y);
-          natural_order->push_back(z);
-          natural_order->push_back(c);
-        }
-      }
-    }
+tpu::TopologyProto GetTPUTopology() {
+  const tpu::TpuTopologyExternal& topology =
+      tpu::TpuPlatformInterface::GetRegisteredPlatform()->topology();
+
+  tpu::TopologyProto topology_proto;
+  topology_proto.set_num_tasks(topology.HostCount());
+  topology_proto.set_num_tpu_devices_per_task(
+      topology.LogicalDevicesPerHost(TpuCoreTypeEnum::kTensorCore));
+
+  // mesh shape.
+  int devices_per_chip =
+      topology.LogicalDevicesPerChip(TpuCoreTypeEnum::kTensorCore);
+  topology_proto.add_mesh_shape(topology.chip_bounds().x);
+  topology_proto.add_mesh_shape(topology.chip_bounds().y);
+  topology_proto.add_mesh_shape(topology.chip_bounds().z);
+  topology_proto.add_mesh_shape(devices_per_chip);
+
+  // device coordinates.
+  for (const tpu::TpuCoreLocationExternal& core :
+       topology.cores(TpuCoreTypeEnum::kTensorCore)) {
+    const tpu::TpuDimensionsExternal coords = core.chip_coordinates();
+    topology_proto.add_device_coordinates(coords.x);
+    topology_proto.add_device_coordinates(coords.y);
+    topology_proto.add_device_coordinates(coords.z);
+    topology_proto.add_device_coordinates(core.index());
   }
 
-  return OkStatus();
+  return topology_proto;
 }
 
 struct TPUVariableInfo {
@@ -2051,7 +2063,8 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
 }
 
 Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
-    Graph* graph, int num_cores_per_replica, OpKernelContext* ctx) {
+    Graph* graph, const std::string& cluster_name, int num_cores_per_replica,
+    OpKernelContext* ctx) {
   for (Node* replicated_input_node : graph->nodes()) {
     if (replicated_input_node->type_string() != "TPUReplicatedInput") continue;
 
@@ -2132,7 +2145,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
               .Attr("T", replicated_input_node->output_type(0))
               .Attr(kXLAShardingAttrName, sharding->SerializeAsString())
               .Attr(kXLAShardingAttrAltName, sharding->SerializeAsString())
-              .Attr("_tpu_replicate", "cluster")
+              .Attr("_tpu_replicate", cluster_name)
               .Finalize(graph, &sharding_op));
       for (const Edge* edge : edges_to_remove) {
         VLOG(3) << "XlaSharding op creation output edge "
@@ -2169,12 +2182,15 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
     Graph* graph, bool enable_spmd_xla_partitioning, int num_cores_per_replica,
     std::map<std::string, std::vector<int>>& named_input_shapes,
     OpKernelContext* ctx) {
+  std::string cluster_name;
+  TF_RETURN_IF_ERROR(GetClusterName(graph, &cluster_name));
+
   if (runtime_params_.enable_auto_xla_input_sharding) {
     VLOG(2) << DumpGraphToFile("before_enable_auto_xla_input_sharding", *graph,
                                flib_def_.get());
 
-    TF_RETURN_IF_ERROR(
-        ShardInputsWithXlaSharding(graph, num_cores_per_replica, ctx));
+    TF_RETURN_IF_ERROR(ShardInputsWithXlaSharding(graph, cluster_name,
+                                                  num_cores_per_replica, ctx));
   }
 
   GraphShapeInfo tpu_inferred_info;
@@ -2204,10 +2220,8 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
       runtime_params_.enable_auto_xla_input_sharding) {
     // Currently we remove `TPUReplicatedInput` nodes when the input tensors are
     // not sharded, input tensors packing optimization is enabled or when
-    // auto xla input sharding is there.
-    //
-    // In all thse cases, we want to remove both the TPUReplicatedInput and
-    // XlaSharding ops or else downstream rewrites will be confused.
+    // auto xla input sharding is there, or else downstream rewrites will be
+    // confused.
     RemoveDescendantNodeOfArg(graph, "TPUReplicatedInput",
                               /*must_be_child_of=*/{});
   }
@@ -2230,9 +2244,6 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
 
   VLOG(2) << DumpGraphToFile("before_optimize_tpu_input_output_tensors", *graph,
                              flib_def_.get());
-
-  string cluster_name;
-  TF_RETURN_IF_ERROR(GetClusterName(graph, &cluster_name));
 
   if (runtime_params_.minimum_output_tensors_packing > 1) {
     // Copy graph to shape_inference_graph
@@ -2332,10 +2343,18 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
               "round-robin core selection is enabled.");
         }
 
+        tpu_metadata->topology = GetTPUTopology();
+        VLOG(1) << "TPU topology: " << tpu_metadata->topology.DebugString();
         std::string topology_str;
         TF_RETURN_IF_ERROR(
             GetNodeAttr(node->attrs(), "topology", &topology_str));
-        tpu_metadata->topology.ParseFromString(topology_str);
+        if (!topology_str.empty()) {
+          LOG(WARNING)
+              << "Ignore the `topology` value set in TPUReplicateMetadata "
+                 "node, the TPU topology is queried in the runtime.";
+        }
+        node->ClearAttr("topology");
+        node->AddAttr("topology", tpu_metadata->topology.SerializeAsString());
 
         if (tpu_metadata->topology.num_tasks() > 1) {
           return errors::InvalidArgument(
@@ -2344,74 +2363,15 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
               tpu_metadata->topology.num_tasks());
         }
 
-        int num_cores = tpu_metadata->topology.device_coordinates_size() / 4;
-
         if (tpu_metadata->device_assignment.empty()) {
           VLOG(1) << "Auto assigning device assignment";
-          // Number of devices match the cores per replica, so we can just use
-          // the device assignment from the existing topology instead of
-          // generating our own.
-          //
-          // TODO(b/179292031): Add support for non-natural orders for pods.
 
-          // check that the device coordinates for a donut is always in
-          // natural order.
-          std::vector<int> natural_order;
-          // Be smart about mesh choice considering TPU platform, given V4
-          // has potentially different mesh shapes.
-          tpu::TpuPlatformInterface* tpu_platform =
-              tpu::TpuPlatformInterface::GetRegisteredPlatform();
-          tpu::TpuTopologyExternal tpu_topology = tpu_platform->topology();
-          bool single_logic_device_per_chip =
-              tpu_topology.LogicalDevicesPerChip(
-                  TpuCoreTypeEnum::kTensorCore) == 1;
-          switch (num_cores) {
-            case 2:
-              if (single_logic_device_per_chip) {
-                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                    /*x_num_cores=*/1, /*y_num_cores=*/2, /*z_num_cores=*/1,
-                    /*num_cores_per_chip=*/1, &natural_order));
-              } else {
-                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                    /*x_num_cores=*/1, /*y_num_cores=*/1, /*z_num_cores=*/1,
-                    /*num_cores_per_chip=*/2, &natural_order));
-              }
-              break;
-            case 4:
-              if (single_logic_device_per_chip) {
-                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                    /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
-                    /*num_cores_per_chip=*/1, &natural_order));
-              } else {
-                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                    /*x_num_cores=*/1, /*y_num_cores=*/2, /*z_num_cores=*/1,
-                    /*num_cores_per_chip=*/2, &natural_order));
-              }
-              break;
-            case 8:
-              if (!single_logic_device_per_chip) {
-                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                    /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
-                    /*num_cores_per_chip=*/2, &natural_order));
-                break;
-              }
-              // Intentionally fall through since with v4 shape and 8 cores per
-              // replica, we're crossing host bounds -- so we ask for a explicit
-              // device assignment.
-              ABSL_FALLTHROUGH_INTENDED;
-            default:
-              return errors::Unimplemented(
-                  "Unable to auto assign device assignment. For topology cross "
-                  "host bounds, you must explicit specify an assignment.");
-          }
-          if (tpu_metadata->num_cores_per_replica != num_cores &&
-              !std::equal(
-                  natural_order.begin(), natural_order.end(),
-                  tpu_metadata->topology.device_coordinates().begin())) {
-            return errors::InvalidArgument(
-                "Topology device coordinates for XLA SPMD on donuts must be in "
-                "natural order.");
-          }
+          // The auto generated device assignment should be the same as or a
+          // slice of TPU topology device_coordinates. This guarantees the
+          // logical device IDs order the same as the physical device IDs order.
+          // It is important for round-robin core selection, as we assume
+          // the TPU device group for one inference request is
+          // [TPU:device_ordinal, TPU:device_ordinal + num_cores_per_replica].
 
           auto coordinates_start =
               tpu_metadata->topology.device_coordinates().begin() +

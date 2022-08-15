@@ -419,13 +419,12 @@ Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
 }
 
 std::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
-  std::optional<tensorflow::StringPiece> error_detail =
-      error.GetPayload(kEvalErrorDetailUrl);
+  auto error_detail = error.GetPayload(kEvalErrorDetailUrl);
   if (!error_detail.has_value() && error_detail->empty()) {
     return std::nullopt;
   }
   return static_cast<EvalErrorDetail>(
-      absl::little_endian::Load32(error_detail->data()));
+      absl::little_endian::Load32(error_detail->Flatten().data()));
 }
 
 // A convenience wrapper to compute the while loop's argument's init value at

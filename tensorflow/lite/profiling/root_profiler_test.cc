@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/profiling/root_profiler.h"
 
+#include <memory>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -43,8 +44,11 @@ class MockProfiler : public Profiler {
                int64_t event_metadata2),
               (override));
   MOCK_METHOD(void, AddEvent,
-              (const char* tag, EventType event_type, uint64_t elapsed_time,
+              (const char* tag, EventType event_type, uint64_t metric,
                int64_t event_metadata1, int64_t event_metadata2),
+              (override));
+  MOCK_METHOD(void, AddEventWithData,
+              (const char* tag, EventType event_type, const void* data),
               (override));
 };
 
@@ -62,11 +66,13 @@ TEST(RootProfilerTest, ChildProfilerTest) {
   EXPECT_CALL(*mock, EndEvent(42, 3, 4));
   EXPECT_CALL(*mock, AddEvent(kTag, Profiler::EventType::OPERATOR_INVOKE_EVENT,
                               5, 6, 7));
+  EXPECT_CALL(*mock, AddEventWithData(kTag, Profiler::EventType::DEFAULT, _));
 
   // Calls each method sequentially.
   auto begin = root.BeginEvent(kTag, Profiler::EventType::DEFAULT, 1, 2);
   root.EndEvent(begin, 3, 4);
   root.AddEvent(kTag, Profiler::EventType::OPERATOR_INVOKE_EVENT, 5, 6, 7);
+  root.AddEventWithData(kTag, Profiler::EventType::DEFAULT, nullptr);
 }
 
 TEST(RootProfilerTest, OwnedProfilerTest) {

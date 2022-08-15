@@ -38,6 +38,8 @@ from tensorflow.dtensor.python.api import run_on
 from tensorflow.dtensor.python.api import unpack
 from tensorflow.dtensor.python.d_checkpoint import DTensorCheckpoint
 from tensorflow.dtensor.python.d_variable import DVariable
+from tensorflow.dtensor.python.input_util import DTensorDataset
+from tensorflow.dtensor.python.input_util import TFDataServiceConfig
 from tensorflow.dtensor.python.layout import Layout
 from tensorflow.dtensor.python.layout import MATCH
 from tensorflow.dtensor.python.layout import Mesh

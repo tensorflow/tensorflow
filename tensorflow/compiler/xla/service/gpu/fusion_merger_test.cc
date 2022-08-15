@@ -492,6 +492,68 @@ TEST_F(FusionMergerTest, WillNotMergeExpensiveFusionsWithReusingConsumer) {
   EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
 }
 
+TEST_F(FusionMergerTest, NoMergeBecauseOfTwoUsers) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+fused_computation.1 {
+  param_1.917 = f32[64,4]{1,0} parameter(1)
+  broadcast.1982 = f32[1,6400,64,4,1]{3,2,1,4,0} broadcast(param_1.917), dimensions={2,3}
+  param_0.776 = f32[64,4]{1,0} parameter(0)
+  broadcast.1981 = f32[1,6400,64,4,1]{3,2,1,4,0} broadcast(param_0.776), dimensions={2,3}
+  ROOT concatenate.91 = f32[1,6400,64,4,2]{3,2,1,4,0} concatenate(broadcast.1982, broadcast.1981), dimensions={4}
+}
+
+fused_computation.2 {
+  param_0 = f32[1,6400,64,4,2]{3,2,1,4,0} parameter(0)
+  sqrt = f32[1,6400,64,4,2]{3,2,1,4,0} sqrt(param_0)
+  log = f32[1,6400,64,4,2]{3,2,1,4,0} log(param_0)
+  ROOT add = f32[1,6400,64,4,2]{3,2,1,4,0} add(sqrt, log)
+}
+
+ENTRY main {
+  param_0.776 = f32[64,4]{1,0} parameter(0)
+  param_1.917 = f32[64,4]{1,0} parameter(1)
+  param_2 = f32[1,6400,64,4,2]{3,2,1,4,0} parameter(2)
+  fusion.1 = f32[1,6400,64,4,2]{3,2,1,4,0} fusion(param_0.776, param_1.917), kind=kLoop, calls=fused_computation.1
+  ROOT fusion.2 = f32[1,6400,64,4,2]{3,2,1,4,0} fusion(fusion.1), kind=kLoop, calls=fused_computation.2
+}
+)")
+                    .ValueOrDie();
+  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+}
+
+TEST_F(FusionMergerTest, AllowMergeBecauseUsersAreInDifferentFusions) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+fused_computation.1 {
+  param_1.917 = f32[64,4]{1,0} parameter(1)
+  broadcast.1982 = f32[1,6400,64,4,1]{3,2,1,4,0} broadcast(param_1.917), dimensions={2,3}
+  param_0.776 = f32[64,4]{1,0} parameter(0)
+  broadcast.1981 = f32[1,6400,64,4,1]{3,2,1,4,0} broadcast(param_0.776), dimensions={2,3}
+  ROOT concatenate.91 = f32[1,6400,64,4,2]{3,2,1,4,0} concatenate(broadcast.1982, broadcast.1981), dimensions={4}
+}
+
+fused_computation.2 {
+  param_0 = f32[1,6400,64,4,2]{3,2,1,4,0} parameter(0)
+  sqrt = f32[1,6400,64,4,2]{3,2,1,4,0} sqrt(param_0)
+  ROOT log = f32[1,6400,64,4,2]{3,2,1,4,0} log(sqrt)
+}
+
+ENTRY main {
+  param_0.776 = f32[64,4]{1,0} parameter(0)
+  param_1.917 = f32[64,4]{1,0} parameter(1)
+  param_2 = f32[1,6400,64,4,2]{3,2,1,4,0} parameter(2)
+  fusion.1 = f32[1,6400,64,4,2]{3,2,1,4,0} fusion(param_0.776, param_1.917), kind=kLoop, calls=fused_computation.1
+  fusion.2 = f32[1,6400,64,4,2]{3,2,1,4,0} fusion(fusion.1), kind=kLoop, calls=fused_computation.2
+  ROOT add = f32[1,6400,64,4,2]{3,2,1,4,0} add(fusion.1, param_2)
+}
+)")
+                    .ValueOrDie();
+  EXPECT_TRUE(FusionMerger().Run(module.get()).ValueOrDie());
+}
+
 TEST_F(FusionMergerTest, NoMergeBecauseCodeDuplication) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule module

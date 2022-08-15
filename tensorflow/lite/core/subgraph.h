@@ -730,15 +730,15 @@ class Subgraph {
   // tensors if configured.
   void MaybeReleaseDynamicTensors(const TfLiteNode& node, size_t node_index);
 
-  // The state of the Interpreter.
+  // The state of the Subgraph.
   enum State {
-    // The interpreter isn't ready to be invoked.
+    // The Subgraph isn't ready to be invoked.
     // `AllocateTensor` need to be called to enter an invokable state.
     kStateUninvokable = 0,
-    // The interpreter is ready to be invoked.
+    // The Subgraph is ready to be invoked.
     kStateInvokable,
-    // The interpreter is ready to be invoked, and graph can't be further
-    // modified. The interpreter will enter this state when calling
+    // The Subgraph is ready to be invoked, and graph can't be further
+    // modified. The Subgraph will enter this state when calling
     // `ModifyGraphWithDelegate` and the delegate doesn't support dynamic
     // tensors.
     kStateInvokableAndImmutable,

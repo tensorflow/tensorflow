@@ -128,13 +128,6 @@ struct HostCallbackStates {
 };
 
 // Creates the execution context for the `host_callback` for one replica.
-ABSL_DEPRECATED(
-    "Use the overload that takes PjRtHostMemoryForDeviceManager* instead")
-std::unique_ptr<HostCallbackContext>
-CreateHostCallbackStateAndAppendSendRecvCallbacks(
-    const HostCallback* host_callback, PjRtClient* client,
-    std::vector<SendCallback>& send_callbacks,
-    std::vector<RecvCallback>& recv_callbacks);
 std::unique_ptr<HostCallbackContext>
 CreateHostCallbackStateAndAppendSendRecvCallbacks(
     const HostCallback* host_callback,

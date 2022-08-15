@@ -23,6 +23,7 @@
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
@@ -43,7 +44,6 @@
 #include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
-#include "tfrt/jitrt/custom_call.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
@@ -90,7 +90,6 @@ namespace se = ::stream_executor;
 namespace jitrt = ::tfrt::jitrt;
 namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
 namespace mhlo = ::mlir::mhlo;
-namespace runtime = ::tfrt::jitrt::runtime;
 
 // Disable all CustomCall checks in optimized build.
 static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
@@ -103,6 +102,8 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 
 // -------------------------------------------------------------------------- //
 
+// Add custom call arguments and attributes encoding for custom HLO enums and
+// structs, so that we can pass them to custom calls.
 void PopulateLmhloToXlaAttrEncoding(
     jitrt::CustomCallAttrEncodingSet& encoding) {
   encoding.Add<
@@ -110,6 +111,14 @@ void PopulateLmhloToXlaAttrEncoding(
                               se::dnn::ActivationMode>>(
       [](lmhlo_gpu::Activation value) -> se::dnn::ActivationMode {
         return ConvertConvActivationMode(value).value();
+      });
+
+  encoding.Add<jitrt::EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
+                                       lmhlo_gpu::CublasLtMatmulEpilogue,
+                                       se::cuda::BlasLt::Epilogue>>(
+      [](lmhlo_gpu::CublasLtMatmulEpilogue value)
+          -> se::cuda::BlasLt::Epilogue {
+        return cublas_lt::AsBlasLtEpilogue(value).value();
       });
 
   encoding.Add<
@@ -528,6 +537,118 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
 
 // -------------------------------------------------------------------------- //
 
+// TODO(ezhulenev): Cache matmul plans similar to GemmConfig for Gemm.
+
+namespace {
+struct CublasLtMatmul {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   const DebugOptions* debug_options,
+                   jitrt::StridedMemrefView a, jitrt::StridedMemrefView b,
+                   jitrt::StridedMemrefView c, jitrt::StridedMemrefView d,
+                   Optional<jitrt::StridedMemrefView> bias, int64_t algorithm,
+                   double alpha_real, double alpha_imag, double beta,
+                   DotDimensionNumbers dot_dims,
+                   se::cuda::BlasLt::Epilogue epilogue,
+                   ArrayRef<int32_t> precision, int64_t uid) const;
+
+  static CublasLtMatmul Handler() { return CublasLtMatmul(); }
+};
+}  // namespace
+
+Error CublasLtMatmul::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, jitrt::StridedMemrefView a,
+    jitrt::StridedMemrefView b, jitrt::StridedMemrefView c,
+    jitrt::StridedMemrefView d, Optional<jitrt::StridedMemrefView> bias,
+    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
+    DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
+    ArrayRef<int32_t> precision, int64_t uid) const {
+  VLOG(3) << "Running CublasLtMatmul";
+  se::Stream* stream = run_options->stream();
+
+  // Construct a plan from a gemm config and an epilogue.
+  auto cfg = GetGemmConfig(a, b, c, algorithm, alpha_real, alpha_imag, beta,
+                           dot_dims.lhs_batch, dot_dims.lhs_contract,
+                           dot_dims.rhs_batch, dot_dims.rhs_contract);
+  if (!cfg.ok()) return AsError(cfg);
+
+  auto plan = cublas_lt::MatmulPlan::From(*cfg, epilogue);
+  if (!plan.ok()) return AsError(plan);
+
+  auto algos = plan->GetAlgorithms(stream);
+  if (!algos.ok()) return AsError(algos);
+
+  se::DeviceMemoryBase a_data = GetDeviceAddress(a);
+  se::DeviceMemoryBase b_data = GetDeviceAddress(b);
+  se::DeviceMemoryBase c_data = GetDeviceAddress(c);
+  se::DeviceMemoryBase d_data = GetDeviceAddress(d);
+  se::DeviceMemoryBase bias_data;
+  if (bias.has_value()) bias_data = GetDeviceAddress(*bias);
+
+  se::OwningScratchAllocator<> scratch_allocator(
+      stream->parent()->device_ordinal(), stream->parent()->GetAllocator());
+
+  auto st =
+      plan->ExecuteOnStream(stream, a_data, b_data, c_data, d_data, bias_data,
+                            (*algos)[algorithm], scratch_allocator);
+  if (!st.ok()) return AsError(st);
+
+  return Error::success();
+}
+
+// Adds custom call bindings for matmul operations.
+template <typename... Ts>
+static auto BindMatmulAttributes(jitrt::CustomCallBinding<Ts...> binding) {
+  return std::move(binding)
+      .template Attr<int64_t>("algorithm")
+      .template Attr<double>("alpha_real")
+      .template Attr<double>("alpha_imag")
+      .template Attr<double>("beta")
+      .template Attr<DotDimensionNumbers>("dot_dims")
+      .template Attr<se::cuda::BlasLt::Epilogue>("epilogue")
+      .template Attr<ArrayRef<int32_t>>("precision")
+      .template Attr<int64_t>("uid");
+}
+
+static bool CublasLtMatmul(runtime::KernelContext* ctx, void** args,
+                           void** attrs) {
+  static auto* handler =
+      BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul")
+                               .UserData<const ServiceExecutableRunOptions*>()
+                               .UserData<const DebugOptions*>()
+                               .Arg<jitrt::StridedMemrefView>()  // a
+                               .Arg<jitrt::StridedMemrefView>()  // b
+                               .Arg<jitrt::StridedMemrefView>()  // c
+                               .Arg<jitrt::StridedMemrefView>()  // d
+                               .Value(CustomCall::None)          // bias
+                           )
+          .To<RuntimeChecks()>(CublasLtMatmul::Handler())
+          .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+}
+
+static bool CublasLtMatmulBias(runtime::KernelContext* ctx, void** args,
+                               void** attrs) {
+  static auto* handler =
+      BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul.bias")
+                               .UserData<const ServiceExecutableRunOptions*>()
+                               .UserData<const DebugOptions*>()
+                               .Arg<jitrt::StridedMemrefView>()  // a
+                               .Arg<jitrt::StridedMemrefView>()  // b
+                               .Arg<jitrt::StridedMemrefView>()  // c
+                               .Arg<jitrt::StridedMemrefView>()  // d
+                               .Arg<jitrt::StridedMemrefView>()  // bias
+                           )
+          .To<RuntimeChecks()>(CublasLtMatmul::Handler())
+          .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+}
+
+// -------------------------------------------------------------------------- //
+
 // TODO(ezhulenev): We need to find a better way to pass structured attributes
 // to JitRt custom calls.
 
@@ -836,7 +957,7 @@ Error Infeed::operator()(const ServiceExecutableRunOptions* run_options,
 
     // Check that destination shape matches the source shape.
     Shape dest_shape = ToShape(*dest);
-    if (!ShapeUtil::Equal(dest_shape, source_shape)) {
+    if (!ShapeUtil::ReshapeIsBitcast(dest_shape, source_shape)) {
       return MakeStringError(
           "The destination shape does not match the source shape");
     }
@@ -888,6 +1009,11 @@ Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
   ShapeTree<std::unique_ptr<OutfeedBuffer>>* dest_buffers =
       outfeed_manager->BlockingGetNextDestination();
 
+  // Nothing to be done for an outfeed with no inputs.
+  // Note: Must do this after `BlockingGetNextDestination` above to dequeue an
+  // entry from the outfeed manager.
+  if (args.empty()) return Error::success();
+
   // Check that we have correct number of arguments.
   if (args.size() != dest_buffers->leaf_count())
     return MakeStringError("Incorrect number of arguments");
@@ -905,7 +1031,7 @@ Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
 
     // Check that destination shape matches the source shape.
     Shape source_shape = ToShape(*source);
-    if (!ShapeUtil::Equal(dest_shape, source_shape)) {
+    if (!ShapeUtil::ReshapeIsBitcast(dest_shape, source_shape)) {
       return MakeStringError(
           "The destination shape does not match the source shape");
     }
@@ -2016,6 +2142,8 @@ DirectCustomCallLibrary JitRtGpuCustomCalls() {
   lib.Insert("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
   lib.Insert("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   lib.Insert("xla.gpu.gemm", &xla::gpu::Gemm);
+  lib.Insert("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
+  lib.Insert("xla.gpu.cublas.lt.matmul.bias", &xla::gpu::CublasLtMatmulBias);
 
   auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
   lib.Insert(conv("forward"), &ConvFn<CudnnConvKind::kForward>);

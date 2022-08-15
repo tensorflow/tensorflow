@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/resize_bilinear.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
+#include "tensorflow/lite/kernels/internal/reference/select.h"
 #include "tensorflow/lite/kernels/internal/reference/slice.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/space_to_batch_nd.h"
@@ -86,7 +87,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/internal/types.h"
 namespace tflite {
 
 namespace reference_ops {
@@ -767,29 +767,6 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
 }
 
 template <typename D, typename T>
-void Select(const RuntimeShape& input_condition_shape,
-            const D* input_condition_data, const RuntimeShape& input_x_shape,
-            const T* input_x_data, const RuntimeShape& input_y_shape,
-            const T* input_y_data, const RuntimeShape& output_shape,
-            T* output_data) {
-  ruy::profiler::ScopeLabel label("Select");
-  int64_t flatsize;
-  // Allow select operator executions on mixed scalar tensors and one element
-  // tensors.
-  if (input_condition_shape.FlatSize() == 1 && input_x_shape.FlatSize() == 1 &&
-      input_y_shape.FlatSize() == 1 && output_shape.FlatSize() == 1) {
-    flatsize = 1;
-  } else {
-    flatsize = MatchingFlatSize(input_condition_shape, input_x_shape,
-                                input_y_shape, output_shape);
-  }
-  for (int64_t i = 0; i < flatsize; ++i) {
-    output_data[i] =
-        input_condition_data[i] ? input_x_data[i] : input_y_data[i];
-  }
-}
-
-template <typename D, typename T>
 void RankOneSelect(const RuntimeShape& input_condition_shape,
                    const D* input_condition_data,
                    const RuntimeShape& input_x_shape, const T* input_x_data,
@@ -1141,9 +1118,11 @@ inline void UnsortedSegmentRef(const RuntimeShape& input_shape,
     output_data[i] = Op<T>::kInitialValue;
   }
   Op<T> op;
-  const int segment_flat_size =
-      MatchingFlatSizeSkipDim(input_shape, 0, output_shape);
-  for (int i = 0; i < input_shape.Dims(0); i++) {
+  int segment_flat_size = 1;
+  for (int i = 1; i < output_shape.DimensionsCount(); ++i) {
+    segment_flat_size *= output_shape.Dims(i);
+  }
+  for (int i = 0; i < segment_ids_shape.FlatSize(); i++) {
     int output_index = segment_ids_data[i];
     if (output_index < 0) continue;
     for (int j = 0; j < segment_flat_size; ++j) {

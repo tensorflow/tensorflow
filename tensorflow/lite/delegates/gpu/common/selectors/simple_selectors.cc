@@ -259,8 +259,8 @@ void SelectCast(const OperationDef& op_def, const GpuInfo& gpu_info,
 
 void SelectCumsum(const OperationDef& op_def, const CumsumAttributes& attr,
                   std::unique_ptr<GPUOperation>* ptr) {
-  GPUOperation operation = CreateCumsum(op_def, attr);
-  *ptr = std::make_unique<GPUOperation>(std::move(operation));
+  Cumsum operation = CreateCumsum(op_def, attr);
+  *ptr = std::make_unique<Cumsum>(std::move(operation));
 }
 
 void SelectOneHot(const OperationDef& op_def, const OneHotAttributes& attr,

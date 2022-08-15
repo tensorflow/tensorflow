@@ -68,31 +68,12 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/python/data/kernel_tests:iterator_test_cpu \
     -//tensorflow/python/data/kernel_tests:iterator_test_gpu \
     -//tensorflow/python/eager:forwardprop_test \
-    -//tensorflow/python/kernel_tests/array_ops:array_ops_test_cpu \
-    -//tensorflow/python/kernel_tests/array_ops:array_ops_test_gpu \
-    -//tensorflow/python/kernel_tests/array_ops:concat_op_test_cpu \
-    -//tensorflow/python/kernel_tests/array_ops:concat_op_test_gpu \
-    -//tensorflow/python/kernel_tests/array_ops:pad_op_test_cpu \
-    -//tensorflow/python/kernel_tests/array_ops:pad_op_test_gpu \
-    -//tensorflow/python/kernel_tests/array_ops:slice_op_test_cpu \
-    -//tensorflow/python/kernel_tests/array_ops:slice_op_test_gpu \
-    -//tensorflow/python/kernel_tests/array_ops:split_op_test_cpu \
-    -//tensorflow/python/kernel_tests/array_ops:split_op_test_gpu \
-    -//tensorflow/python/kernel_tests/control_flow:scan_ops_test_cpu \
-    -//tensorflow/python/kernel_tests/control_flow:scan_ops_test_gpu \
-    -//tensorflow/python/kernel_tests/linalg:linear_operator_householder_test \
-    -//tensorflow/python/kernel_tests/linalg:linear_operator_inversion_test \
-    -//tensorflow/python/kernel_tests/linalg:linear_operator_block_diag_test \
-    -//tensorflow/python/kernel_tests/linalg:linear_operator_block_lower_triangular_test \
-    -//tensorflow/python/kernel_tests/linalg:linear_operator_kronecker_test \
-    -//tensorflow/python/kernel_tests/math_ops:batch_matmul_op_test \
     -//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
     -//tensorflow/python/kernel_tests/nn_ops:conv2d_backprop_filter_grad_test \
     -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
-    -//tensorflow/python/ops/parallel_for:math_test \
     -//tensorflow/python/training:server_lib_test"
 export TF_PIP_TESTS="test_pip_virtualenv_clean"
-export TF_TEST_FILTER_TAGS="-nopip,-no_pip,-no_oss,-oss_serial,-v1only,-benchmark-test,-no_aarch64"
+export TF_TEST_FILTER_TAGS="-no_oss,-oss_serial,-v1only,-benchmark-test,-no_aarch64"
 export TF_PIP_TEST_ROOT="pip_test"
 export TF_AUDITWHEEL_TARGET_PLAT="manylinux2014"
 

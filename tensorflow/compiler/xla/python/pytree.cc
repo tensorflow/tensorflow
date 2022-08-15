@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/pybind11.h"
@@ -707,9 +708,65 @@ std::string PyTreeDef::ToString() const {
   return absl::StrCat("PyTreeDef(", agenda.back(), ")");
 }
 
+py::object PyTreeDef::ToPickleable() const {
+  py::list traversal;
+  for (const auto& node : traversal_) {
+    traversal.append(
+        py::make_tuple(static_cast<int>(node.kind), node.arity,
+                       node.node_data ? node.node_data : py::none(),
+                       node.custom != nullptr ? node.custom->type : py::none(),
+                       node.num_leaves, node.num_nodes));
+  }
+  return traversal;
+}
+
+PyTreeDef PyTreeDef::FromPickleable(py::object pickleable) {
+  PyTreeDef tree;
+  for (const auto& item : pickleable.cast<py::list>()) {
+    auto t = item.cast<py::tuple>();
+    if (t.size() != 6) {
+      throw xla::XlaRuntimeError("Malformed pickled PyTreeDef");
+    }
+    Node& node = tree.traversal_.emplace_back();
+    node.kind = static_cast<PyTreeKind>(t[0].cast<int>());
+    node.arity = t[1].cast<int>();
+    switch (node.kind) {
+      case PyTreeKind::kNamedTuple:
+        node.node_data = t[2].cast<py::type>();
+        break;
+      case PyTreeKind::kDict:
+        node.node_data = t[2].cast<py::list>();
+        break;
+      case PyTreeKind::kCustom:
+        node.node_data = t[2];
+        break;
+      default:
+        if (!t[2].is_none()) {
+          throw xla::XlaRuntimeError("Malformed pickled PyTreeDef");
+        }
+        break;
+    }
+    if (node.kind == PyTreeKind::kCustom) {
+      node.custom = t[3].is_none() ? nullptr : PyTreeTypeRegistry::Lookup(t[3]);
+      if (node.custom == nullptr) {
+        throw xla::XlaRuntimeError(
+            absl::StrCat("Unknown custom type in pickled PyTreeDef: ",
+                         static_cast<std::string>(py::repr(t[3]))));
+      }
+    } else {
+      if (!t[3].is_none()) {
+        throw xla::XlaRuntimeError("Malformed pickled PyTreeDef");
+      }
+    }
+    node.num_leaves = t[4].cast<int>();
+    node.num_nodes = t[5].cast<int>();
+  }
+  return tree;
+}
+
 void BuildPytreeSubmodule(py::module& m) {
   py::module pytree = m.def_submodule("pytree", "Python tree library");
-  pytree.attr("version") = py::int_(2);
+  pytree.attr("version") = py::int_(3);
   pytree.def("flatten", &PyTreeDef::Flatten, py::arg("tree"),
              py::arg("leaf_predicate") = std::nullopt);
   pytree.def("tuple", &PyTreeDef::Tuple);
@@ -734,7 +791,10 @@ void BuildPytreeSubmodule(py::module& m) {
            [](const PyTreeDef& a, const PyTreeDef& b) { return a == b; })
       .def("__ne__",
            [](const PyTreeDef& a, const PyTreeDef& b) { return a != b; })
-      .def("__hash__", [](const PyTreeDef& t) { return absl::HashOf(t); });
+      .def("__hash__", [](const PyTreeDef& t) { return absl::HashOf(t); })
+      .def(py::pickle(
+          [](const PyTreeDef& t) { return t.ToPickleable(); },
+          [](py::object o) { return PyTreeDef::FromPickleable(o); }));
 
   pytree.def("register_node", [](py::object type, py::function to_iterable,
                                  py::function from_iterable) {

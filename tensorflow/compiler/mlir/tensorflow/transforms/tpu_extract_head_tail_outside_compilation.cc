@@ -420,6 +420,39 @@ void RemoveClusterAliasedOutputs(OpBuilder* builder,
   cluster.erase();
 }
 
+// Checks if `type` is allowed for data on TPUs. String and resources cannot be
+// assigned to TPUs. There are other TF types that are not allowed on TPUs, but
+// these will be removed by successive passes in TF/XLA bridge phase 2.
+bool TypeValidForTPU(Type type) {
+  Type elem = getElementTypeOrSelf(type);
+  return !elem.isa<TF::ResourceType>() && !elem.isa<TF::StringType>();
+}
+
+// Check that cluster results are valid. An result is invalid when it does not
+// have a valid XLA type.
+LogicalResult CheckClusterResults(tf_device::ClusterOp cluster) {
+  for (OpResult result : cluster.getResults()) {
+    if (!TypeValidForTPU(result.getType())) {
+      cluster.emitError()
+          << "The TPUExtractHeadTailOutsideCompilation pass produced a TPU "
+             "cluster with a result with a non-XLA type: "
+          << result.getType();
+      return failure();
+    }
+  }
+  return success();
+}
+
+// Check the validity of the module, post-pass.
+LogicalResult CheckPostconditions(ModuleOp module) {
+  auto walk_result = module.walk([&](tf_device::ClusterOp cluster) {
+    if (failed(CheckClusterResults(cluster))) return WalkResult::interrupt();
+    return WalkResult::advance();
+  });
+  if (walk_result.wasInterrupted()) return failure();
+  return success();
+}
+
 struct TPUExtractHeadTailOutsideCompilationPass
     : public TF::TPUExtractHeadTailOutsideCompilationPassBase<
           TPUExtractHeadTailOutsideCompilationPass> {
@@ -451,6 +484,8 @@ void TPUExtractHeadTailOutsideCompilationPass::runOnOperation() {
       return signalPassFailure();
     if (cluster_updated) RemoveClusterAliasedOutputs(&builder, cluster);
   }
+
+  if (failed(CheckPostconditions(module))) return signalPassFailure();
 }
 
 }  // anonymous namespace

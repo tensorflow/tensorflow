@@ -6,7 +6,10 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library", "tfrt_cc_test")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# Note: keep the following lines separate due to the way copybara works
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")  # buildifier: disable=same-origin-load
 
 # TF to TFRT kernels conversion.
 package(
@@ -29,6 +32,7 @@ package_group(
         "//learning/brain/experimental/mlir/tfrt_compiler/...",
         "//learning/brain/experimental/tfrt/...",
         "//learning/brain/tfrt/...",
+        "//learning/infra/mira/...",
         "//learning/serving/contrib/tfrt/mlir/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
@@ -104,6 +108,7 @@ cc_library(
     name = "tf_jitrt_pipeline",
     srcs = ["jit/tf_jitrt_pipeline.cc"],
     hdrs = ["jit/tf_jitrt_pipeline.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
@@ -198,6 +203,8 @@ tfrt_cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
+        "//tensorflow/compiler/xla/mlir/utils/runtime:async_runtime_api",
+        "//tensorflow/compiler/xla/runtime:async_runtime",
         "//tensorflow/core:framework",
         "//tensorflow/core:platform_base",
         "//tensorflow/core/platform:dynamic_annotations",
@@ -216,8 +223,6 @@ tfrt_cc_library(
         "@tf_runtime//:tensor",
         "@tf_runtime//:tracing",
         "@tf_runtime//backends/jitrt",
-        "@tf_runtime//backends/jitrt:async_runtime",
-        "@tf_runtime//backends/jitrt:async_runtime_api",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
     ],
 )
@@ -578,6 +583,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/fallback:op_cost_map_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -615,27 +621,6 @@ cc_library(
         ":tensor_array_side_effect_analysis",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "compatibility_analysis",
-    srcs = [
-        "analysis/compatibility_analysis.cc",
-    ],
-    hdrs = [
-        "analysis/compatibility_analysis.h",
-    ],
-    deps = [
-        ":analysis/analysis_proto_cc",
-        ":tf_to_tfrt",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/core:lib_proto_parsing",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:TranslateLib",
     ],
     alwayslink = 1,
 )

@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 
 #include <utility>
-#include <vector>
+#include <variant>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -24,21 +24,26 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
+#include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
+#include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
+#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/pod_viewer.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
@@ -205,12 +210,35 @@ std::pair<std::string, bool> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
   return std::make_pair(combined_tf_data_stats.SerializeAsString(), true);
 }
 
+std::pair<std::string, bool> ConvertMultiXSpacesToOpProfileViewer(
+    const std::vector<XSpace>& xspaces) {
+  OpStatsOptions options;
+  options.generate_op_metrics_db = true;
+  OpStats combined_op_stats;
+  Status status = ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
+                                                       &combined_op_stats);
+  if (!status.ok()) {
+    LOG(WARNING) << "Could not generate OpStats for op_profile. Error: "
+                 << status.error_message();
+    return std::make_pair("", false);
+  }
+
+  tensorflow::profiler::op_profile::Profile profile;
+  ConvertOpStatsToOpProfile(
+      combined_op_stats,
+      ParseHardwareType(combined_op_stats.run_environment().device_type()),
+      profile);
+
+  return std::make_pair(profile.SerializeAsString(), true);
+}
 }  // namespace
 
 std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
     const std::vector<XSpace>& xspaces,
     const std::vector<std::string>& filenames,
-    const absl::string_view tool_name) {
+    const absl::string_view tool_name,
+    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
+        options) {
   if (tool_name == "trace_viewer") {
     return ConvertXSpaceToTraceEvents(xspaces);
   } else if (tool_name == "overview_page") {
@@ -227,6 +255,19 @@ std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
     return ConvertMultiXSpacesToPodViewer(xspaces);
   } else if (tool_name == "tf_data_bottleneck_analysis") {
     return ConvertMultiXSpacesToTfDataBottleneckAnalysis(xspaces, filenames);
+  } else if (tool_name == "hlo_proto") {
+    // <hlo_proto> is a special tool name to generate HLO proto files from
+    // XSpace and store them in profile repository, this method does not return
+    // actual tool data.
+    auto status = GetHloProtoFromMultiXSpaceAndSaveToFile(xspaces, filenames);
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to convert XSpace to HLO proto: "
+                 << status.error_message();
+      return std::make_pair("", false);
+    }
+    return std::make_pair("", true);
+  } else if (tool_name == "op_profile") {
+    return ConvertMultiXSpacesToOpProfileViewer(xspaces);
   } else {
     LOG(WARNING) << "Can not find tool: " << tool_name << ". Please update to "
                  << "the latest version of Tensorflow.";

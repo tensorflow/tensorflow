@@ -17,6 +17,7 @@ limitations under the License.
 // This transformation pass applies quantization propagation on TF dialect.
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -114,28 +116,29 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
   }
 
  private:
-  // Check if the operand_index is included in the quantizable_indices.
-  bool isQuantizableIndex(const int operand_index,
-                          const std::vector<int>& quantizable_indices) const {
-    return std::find(std::begin(quantizable_indices),
-                     std::end(quantizable_indices),
-                     operand_index) != std::end(quantizable_indices);
-  }
+  // Mark users that are applicable for dynamic range quantization where the
+  // criteria for determining quantizable ops differs by the inference type.
+  bool getQuantizableOps(arith::ConstantOp op,
+                         QuantizationUnits& quantizable_ops) const {
+    // Non-float tensors do not need quantization.
+    auto type = op.getType().dyn_cast<ShapedType>();
+    if (!type || !type.getElementType().isF32()) return false;
 
-  // Check if any specific operand and its index pair is supported for int8
-  // quantization.
-  bool hasInt8QuantizableOperandAt(Operation* op, int operand_index) const {
-    if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
-      StringRef function_name =
-          call_op.fAttr().cast<FlatSymbolRefAttr>().getValue();
-      if (!function_name.startswith("composite_")) {
-        return false;
-      }
-      if (function_name.contains("matmul")) {
-        return isQuantizableIndex(operand_index, {1});
+    Value value = op.getResult();
+
+    // Check whether dynamic range quantization can be applied.
+    for (auto& use : value.getUses()) {
+      Operation* user = use.getOwner();
+      int operand_num = use.getOperandNumber();
+      std::unique_ptr<OpQuantSpec> spec = op_spec_.GetOpQuantSpec(user);
+
+      if (quant_specs_.inference_type == tensorflow::DT_QINT8 &&
+          spec->quantizable_operands.contains(operand_num)) {
+        quantizable_ops.insert({user, operand_num});
       }
     }
-    return false;
+
+    return !quantizable_ops.empty();
   }
 
   // Apply per-tensor quantization for int8 dynamic range quantization.
@@ -191,29 +194,6 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
     return true;
   }
 
-  // Mark users that are applicable for dynamic range quantization where the
-  // criteria for determining quantizable ops differs by the inference type.
-  bool getQuantizableOps(arith::ConstantOp op,
-                         QuantizationUnits& quantizable_ops) const {
-    // Non-float tensors do not need quantization.
-    auto type = op.getType().dyn_cast<ShapedType>();
-    if (!type || !type.getElementType().isF32()) return false;
-
-    Value value = op.getResult();
-
-    // Check whether dynamic range quantization can be applied.
-    for (auto& use : value.getUses()) {
-      Operation* user = use.getOwner();
-      int operand_num = use.getOperandNumber();
-
-      if (quant_specs_.inference_type == tensorflow::DT_QINT8 &&
-          hasInt8QuantizableOperandAt(user, operand_num)) {
-        quantizable_ops.insert({user, operand_num});
-      }
-    }
-    return !quantizable_ops.empty();
-  }
-
   // For each filtered user, apply quantization.
   bool quantizeOps(PatternRewriter& rewriter, arith::ConstantOp op,
                    QuantizationUnits& quantizable_ops) const {
@@ -229,6 +209,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
 
  protected:
   quant::QuantizationSpecs quant_specs_;
+  TFOpQuantSpec op_spec_;
 };
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.

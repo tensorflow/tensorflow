@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/call_once.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "absl/types/optional.h"
@@ -256,12 +257,12 @@ void Status::SetPayload(absl::string_view type_url, absl::string_view payload) {
   state_->payloads[std::string(type_url)] = std::string(payload);
 }
 
-absl::optional<absl::string_view> Status::GetPayload(
+absl::optional<absl::Cord> Status::GetPayload(
     absl::string_view type_url) const {
   if (ok()) return absl::nullopt;
   auto payload_iter = state_->payloads.find(std::string(type_url));
   if (payload_iter == state_->payloads.end()) return absl::nullopt;
-  return absl::string_view(payload_iter->second);
+  return absl::Cord(payload_iter->second);
 }
 
 bool Status::ErasePayload(absl::string_view type_url) {

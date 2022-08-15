@@ -20,7 +20,6 @@ package(
         "//tensorflow/compiler/xrt/kernels:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
-        "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -1198,6 +1197,7 @@ cc_library(
         ":tpu_op_consts",
         "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
+        "//tensorflow/stream_executor/tpu:tpu_topology_external",
     ] + if_static(["//tensorflow/core/common_runtime:rendezvous_mgr"]),
     alwayslink = 1,
 )

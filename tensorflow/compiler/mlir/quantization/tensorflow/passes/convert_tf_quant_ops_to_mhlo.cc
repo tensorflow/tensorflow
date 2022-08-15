@@ -90,8 +90,8 @@ struct ReplaceConstDotHybridPattern : public RewritePattern {
       return failure();
 
     // Check whether the rhs operand has constant op.
-    OpaqueElementsAttr opaque_attr;
-    if (!matchPattern(this_op.rhs(), m_Constant(&opaque_attr)))
+    TF::TensorProtoAttr tensor_proto_attr;
+    if (!matchPattern(this_op.rhs(), m_Constant(&tensor_proto_attr)))
       return failure();
 
     // Check whether the rhs_scales operand has constant op.
@@ -126,7 +126,7 @@ struct ReplaceConstDotHybridPattern : public RewritePattern {
     Type rhs_type = getSameShapeTensorType(
         this_op.rhs().getType().cast<TensorType>(), rhs_elem_ty);
 
-    llvm::StringRef mangled_tensor = opaque_attr.getValue();
+    llvm::StringRef mangled_tensor = tensor_proto_attr.getValue();
     absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
     tensorflow::TensorProto tensor_proto;
     tensorflow::Status status =
@@ -141,14 +141,14 @@ struct ReplaceConstDotHybridPattern : public RewritePattern {
     }
 
     auto arr = t.flat<tensorflow::qint8>();
-    auto new_opaque_attr = ElementsAttr(mlir::DenseElementsAttr::get(
+    auto dense_attr = ElementsAttr(mlir::DenseElementsAttr::get(
         getSameShapeTensorType(rhs_type.cast<TensorType>(), storage_type),
         llvm::makeArrayRef(arr.data(), arr.size())));
 
     Value lhs = this_op.lhs();
     rewriter.setInsertionPointAfterValue(this_op.rhs());
     Value rhs = rewriter.create<mhlo::ConstantOp>(rewriter.getUnknownLoc(),
-                                                  rhs_type, new_opaque_attr);
+                                                  rhs_type, dense_attr);
 
     rewriter.setInsertionPoint(op);
     rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, lhs, rhs,

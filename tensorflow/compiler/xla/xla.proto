@@ -354,11 +354,6 @@ message DebugOptions {
   // Compilation errors out if these ops are encountered.
   bool xla_gpu_deterministic_ops = 148;
 
-  // Simplify all Scatter ops to the form described in scatter_simplifier.h.
-  bool xla_gpu_simplify_scatters = 176;
-  // Simplify all Gather ops to the form described in gather_simplifier.h.
-  bool xla_gpu_simplify_gathers = 178;
-
   // Paths to files with LLVM code.
   repeated string xla_gpu_llvm_ir_file = 150;
 
@@ -439,10 +434,11 @@ message DebugOptions {
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
 
-  reserved 5, 117, 133,
-      139;  // were xla_hlo_dump_as_graphdef, xla_dump_to,
-            // xla_gpu_use_horizontal_fusion, and
-            // xla_gpu_unsafe_fallback_to_driver_on_ptxas_error
+  // Reserved tags were xla_hlo_dump_as_graphdef, xla_dump_to,
+  // xla_gpu_use_horizontal_fusion,
+  // xla_gpu_unsafe_fallback_to_driver_on_ptxas_error,
+  // xla_gpu_simplify_scatters, xla_gpu_simplify_gathers
+  reserved 5, 117, 133, 139, 176, 178;
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings

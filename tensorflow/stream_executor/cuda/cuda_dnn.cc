@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -234,10 +236,10 @@ class CudnnAccess {
 
   // If set, indicates the stream currently active on handle_, to avoid the
   // overhead of re-setting the same stream unnecessarily.
-  std::optional<CUstream> current_stream_ TF_GUARDED_BY(mutex_);
+  std::optional<CUstream> current_stream_ ABSL_GUARDED_BY(mutex_);
 
   // cuDNN library handle.
-  cudnnHandle_t handle_ TF_GUARDED_BY(mutex_);  // Owned.
+  cudnnHandle_t handle_ ABSL_GUARDED_BY(mutex_);  // Owned.
 };
 
 namespace {
@@ -333,16 +335,56 @@ port::Status GetLoadedCudnnVersion(CudnnVersion* version) {
   return ::tensorflow::OkStatus();
 }
 
-#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
-void PreloadCudnnLibrary(cudnnStatus_t (*version_check_fn)(),
-                         absl::string_view sub_library) {
-  cudnnStatus_t status = version_check_fn();
-  if (status != CUDNN_STATUS_SUCCESS) {
-    VLOG(1) << "Could not pre-initialize cuDNN sub-library " << sub_library
-            << ".  Error: " << cudnnGetErrorString(status) << ".";
+enum class PreloadCudnnType { ConvFwd, ConvBwdFilter, ConvBwdData, Rnn };
+
+// Preload sub libs for cudnn 8.0.4+ to make sure that the loading time isn't
+// measured in the autotuning.
+void PreloadCudnnSubLibs(PreloadCudnnType type) {
+#if CUDNN_VERSION >= 8004
+  switch (type) {
+    case PreloadCudnnType::ConvBwdFilter:
+    case PreloadCudnnType::ConvBwdData: {
+      cudnnOpsTrainVersionCheck();
+      cudnnCnnTrainVersionCheck();
+      [[clang::fallthrough]];
+    }
+    case PreloadCudnnType::ConvFwd: {
+      cudnnOpsInferVersionCheck();
+      cudnnCnnInferVersionCheck();
+      break;
+    }
+    case PreloadCudnnType::Rnn: {
+      cudnnOpsInferVersionCheck();
+      cudnnAdvInferVersionCheck();
+      cudnnOpsTrainVersionCheck();
+      cudnnAdvTrainVersionCheck();
+      break;
+    }
+  }
+#endif  // CUDNN_VERSION >= 8004
+}
+
+void PreloadCudnnSubLibsHelper(dnn::ConvolutionKind kind) {
+  switch (kind) {
+    case dnn::ConvolutionKind::FORWARD: {
+      PreloadCudnnSubLibs(PreloadCudnnType::ConvFwd);
+      break;
+    }
+    case dnn::ConvolutionKind::BACKWARD_DATA: {
+      PreloadCudnnSubLibs(PreloadCudnnType::ConvBwdData);
+      break;
+    }
+    case dnn::ConvolutionKind::BACKWARD_FILTER: {
+      PreloadCudnnSubLibs(PreloadCudnnType::ConvBwdFilter);
+      break;
+    }
+    default: {
+      LOG(WARNING) << "Unsupported dnn::ConvolutionKind: "
+                   << static_cast<int>(kind) << " for cuDNN preload.";
+      break;
+    }
   }
 }
-#endif
 
 }  // namespace
 
@@ -689,6 +731,7 @@ class CudnnFilterDescriptor {
 // We skip a non-existing eng999 in the static filter as a placeholder.
 // Additionally, users can specify an additional errata JSON file via
 // CUDNN_ERRATA_JSON_FILE at runtime.
+// We are also excluding two flavors of ConvFwd_eng42 due to b/234183340.
 const json* CudnnExecutionPlanEngineFilterStatic() {
   static absl::string_view filter_str = R"({
       "version" : 1,
@@ -697,6 +740,34 @@ const json* CudnnExecutionPlanEngineFilterStatic() {
             "operation"           : "ConvFwd",
             "engine"              : 999,
             "knob"                : [],
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvFwd_eng42_k2=2_k4=3_k5=0_k6=0_k7=0",
+            "operation"           : "ConvFwd",
+            "engine"              : 42,
+            "knob"                :
+            {
+                                    "k2" : "2",
+                                    "k4" : "3",
+                                    "k5" : "0",
+                                    "k6" : "0",
+                                    "k7" : "0"
+            },
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvFwd_eng42_k2=1_k4=3_k5=1_k6=0_k7=0",
+            "operation"           : "ConvFwd",
+            "engine"              : 42,
+            "knob"                :
+            {
+                                    "k2" : "1",
+                                    "k4" : "3",
+                                    "k5" : "1",
+                                    "k6" : "0",
+                                    "k7" : "0"
+            },
             "cudnn_version_start" : 8000,
             "cudnn_version_end"   : -1
           }
@@ -3437,6 +3508,8 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
                        const dnn::BatchDescriptor& output_descriptor,
                        const dnn::ConvolutionDescriptor& convolution_descriptor,
                        CudnnHandle& cudnn) {
+  PreloadCudnnSubLibsHelper(kind);
+
   cudnnBackendDescriptorType_t conv_mode = GetCudnnConvolutionType(kind);
 
   // x tensor.
@@ -3547,6 +3620,8 @@ GetCudnnFusedOperationGraph(
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::ActivationMode activation_mode, CudnnHandle& cudnn) {
+  PreloadCudnnSubLibsHelper(kind);
+
   cudnnBackendDescriptorType_t conv_mode = GetCudnnConvolutionType(kind);
   dnn::DataType accumulator_type = GetConvAccumulatorType(input_type);
   dnn::DataType activation_type = GetConvActivationType(input_type);
@@ -5109,11 +5184,8 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
 bool CudnnSupport::GetConvolveAlgorithms(
     CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  // Preload sub libs for cudnn 8.0.4+
-#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
-  cudnnOpsInferVersionCheck();
-  cudnnCnnInferVersionCheck();
-#endif
+  PreloadCudnnSubLibs(PreloadCudnnType::ConvFwd);
+
   bool tensor_op_math_available =
       TensorOpMathAvailable(cuda_compute_capability);
   out_algorithms->clear();
@@ -5150,13 +5222,8 @@ bool CudnnSupport::GetConvolveAlgorithms(
 
 bool CudnnSupport::GetRnnAlgorithms(
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  // Preload sub libs for cudnn 8.0.4+
-#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
-  cudnnOpsInferVersionCheck();
-  cudnnOpsTrainVersionCheck();
-  cudnnAdvInferVersionCheck();
-  cudnnAdvTrainVersionCheck();
-#endif
+  PreloadCudnnSubLibs(PreloadCudnnType::Rnn);
+
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
       // clang-format off
     CUDNN_RNN_ALGO_STANDARD,
@@ -5176,13 +5243,8 @@ bool CudnnSupport::GetRnnAlgorithms(
 bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
     CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  // Preload sub libs for cudnn 8.0.4+
-#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
-  cudnnOpsInferVersionCheck();
-  cudnnOpsTrainVersionCheck();
-  cudnnCnnInferVersionCheck();
-  cudnnCnnTrainVersionCheck();
-#endif
+  PreloadCudnnSubLibs(PreloadCudnnType::ConvBwdData);
+
   bool tensor_op_math_available =
       TensorOpMathAvailable(cuda_compute_capability);
   out_algorithms->clear();
@@ -5216,13 +5278,8 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
 bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
     CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  // Preload sub libs for cudnn 8.0.4+
-#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
-  cudnnOpsInferVersionCheck();
-  cudnnOpsTrainVersionCheck();
-  cudnnCnnInferVersionCheck();
-  cudnnCnnTrainVersionCheck();
-#endif
+  PreloadCudnnSubLibs(PreloadCudnnType::ConvBwdFilter);
+
   bool tensor_op_math_available =
       TensorOpMathAvailable(cuda_compute_capability);
   out_algorithms->clear();

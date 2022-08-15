@@ -148,6 +148,7 @@ package_group(
     name = "dependency_whitelist",
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
+        "//learning/infra/mira/...",
         "//perftools/accelerators/xprof/api/...",
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
         "//smartass/brain/server/...",
@@ -297,6 +298,7 @@ cc_library(
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:stack_frame",
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/platform:threadpool_options",
         "//tensorflow/core/platform:types",
@@ -356,6 +358,7 @@ cc_library(
         "//tensorflow/core/lib/strings:legacy_lib_string_headers",
         "//tensorflow/core/platform:lib_hdrs",
         "//tensorflow/core/util:lib_hdrs",
+        "//tensorflow/tsl/platform:lib_hdrs",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -1052,6 +1055,7 @@ filegroup(
         "tpu_replication_ops_op_lib",
         "tpu_sharding_util_ops_op_lib",
         "training_ops_op_lib",
+        "uniform_quant_ops_op_lib",
         "word2vec_ops",
     ]
 ]

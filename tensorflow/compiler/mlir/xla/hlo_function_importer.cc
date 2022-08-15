@@ -991,6 +991,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (all_reduce->channel_id().has_value())
         attributes.push_back(
             ConvertChannelHandle(all_reduce->channel_id().value()));
+      if (all_reduce->use_global_device_ids())
+        attributes.push_back(ConvertUseGlobalDeviceIds());
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
           loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*all_reduce->to_apply(),
@@ -1707,6 +1709,11 @@ mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
   return builder_->getNamedAttr(
       "channel_handle", mlir::mhlo::ChannelHandleAttr::get(
                             context_, channel.handle(), channel.type()));
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertUseGlobalDeviceIds() {
+  return builder_->getNamedAttr("use_global_device_ids",
+                                builder_->getUnitAttr());
 }
 
 void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,

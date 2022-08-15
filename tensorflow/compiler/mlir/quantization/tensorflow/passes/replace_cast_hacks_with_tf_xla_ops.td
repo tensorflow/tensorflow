@@ -31,17 +31,18 @@ def CreateXLAConvOpFromTFDepthwiseConv2DOp : NativeCodeCall<
 def ConvertTFConv2DToXLAConvOp : Pat<
   (TF_Conv2DOp:$conv
     (TF_SubOp (TF_CastOp $input, $truncate), $input_zp),
-    (TF_ConstOp:$filter $filter_value),
+    (TF_CastOp (TF_IdentityOp $filter), $truncate1),
     $strides, $use_cudnn, $padding, $explicit_padding,
     IsDataFormatNHWC:$data_format, $dilations),
   (CreateXLAConvOpFromTFConv2DOp
     $input, $filter, $input_zp, $conv, $strides,
     $dilations, $padding, $explicit_padding),
   [(IsInt8ElementType $input),
-   (IsInt32ElementType $filter),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
-   (HasStaticShapeAtDimsConstraint<"1, 2, 3"> $input)],
+   (HasStaticShapeAtDimsConstraint<"3"> $input)],
   (addBenefit 10)>;
 
 // Same as ConvertTFConv2DToXLAConvOp but handles the case where input zero
@@ -49,17 +50,18 @@ def ConvertTFConv2DToXLAConvOp : Pat<
 def ConvertTFConv2DWithNoZeroPointToXLAConvOp : Pat<
   (TF_Conv2DOp:$conv
     (TF_CastOp $input, $truncate),
-    (TF_ConstOp:$filter $filter_value),
+    (TF_CastOp (TF_IdentityOp $filter), $truncate1),
     $strides, $use_cudnn, $padding, $explicit_padding,
     IsDataFormatNHWC:$data_format, $dilations),
   (CreateXLAConvOpFromTFConv2DOp
     $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $conv, $strides, $dilations, $padding, $explicit_padding),
   [(IsInt8ElementType $input),
-   (IsInt32ElementType $filter),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
-   (HasStaticShapeAtDimsConstraint<"1, 2, 3"> $input)],
+   (HasStaticShapeAtDimsConstraint<"3"> $input)],
   (addBenefit 10)>;
 
 // Converts inlined DepthwiseConv2D pattern to TF XlaConvV2 op. This pattern
@@ -71,18 +73,19 @@ def ConvertTFDepthwiseConv2DToXLAConvOp : Pat<
       (TF_CastOp:$casted_input
         (TF_SubOp (TF_CastOp $input, $truncate1), $input_zp), $truncate2),
       (TF_CastOp
-        (TF_IdentityOp (TF_ConstOp:$filter $filter_value)), $truncate3),
+        (TF_CastOp (TF_IdentityOp $filter), $truncate3), $truncate4),
       $strides, $padding, $explicit_padding,
-      IsDataFormatNHWC:$data_format, $dilations), $truncate4),
+      IsDataFormatNHWC:$data_format, $dilations), $truncate5),
   (CreateXLAConvOpFromTFDepthwiseConv2DOp
     $input, $filter, $input_zp, $conv, $strides,
     $dilations, $padding, $explicit_padding),
   [(IsInt8ElementType $input),
    (IsF32ElementType $casted_input),
-   (IsInt32ElementType $filter),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
-   (HasStaticShapeAtDimsConstraint<"1, 2, 3"> $input)],
+   (HasStaticShapeAtDimsConstraint<"3"> $input)],
   (addBenefit 10)>;
 
 // Same as ConvertTFDepthwiseConv2DToXLAConvOp but handles the case where input
@@ -93,16 +96,17 @@ def ConvertTFDepthwiseConv2DWithNoZeroPointToXLAConvOp : Pat<
       (TF_CastOp:$casted_input
         (TF_CastOp $input, $truncate1), $truncate2),
       (TF_CastOp
-        (TF_IdentityOp (TF_ConstOp:$filter $filter_value)), $truncate3),
+        (TF_CastOp (TF_IdentityOp $filter), $truncate3), $truncate4),
       $strides, $padding, $explicit_padding,
-      IsDataFormatNHWC:$data_format, $dilations), $truncate4),
+      IsDataFormatNHWC:$data_format, $dilations), $truncate5),
   (CreateXLAConvOpFromTFDepthwiseConv2DOp
     $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $conv, $strides, $dilations, $padding, $explicit_padding),
   [(IsInt8ElementType $input),
    (IsF32ElementType $casted_input),
-   (IsInt32ElementType $filter),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
-   (HasStaticShapeAtDimsConstraint<"1, 2, 3"> $input)],
+   (HasStaticShapeAtDimsConstraint<"3"> $input)],
   (addBenefit 10)>;

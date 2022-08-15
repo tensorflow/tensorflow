@@ -18,8 +18,6 @@
 
 import abc
 
-import six
-
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
@@ -92,8 +90,7 @@ def _var_key(var):
   # pylint: enable=protected-access
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _OptimizableVariable(object):
+class _OptimizableVariable(metaclass=abc.ABCMeta):
   """Interface for abstracting over variables in the optimizers."""
 
   @abc.abstractmethod

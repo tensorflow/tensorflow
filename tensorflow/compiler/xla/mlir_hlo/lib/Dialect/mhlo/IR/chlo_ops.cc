@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/utils/broadcast_utils.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Traits.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -398,6 +399,8 @@ OpFoldResult ConstantLikeOp::fold(ArrayRef<Attribute> /*operands*/) {
   auto opType = operand().getType().cast<ShapedType>();
   if (!opType.hasStaticShape()) return {};
   auto type = RankedTensorType::get(opType.getShape(), value().getType());
+  if (auto complexAttr = value().dyn_cast<complex::NumberAttr>())
+    return DenseElementsAttr::get(type, complexAttr.getValue());
   return DenseElementsAttr::get(type, value());
 }
 

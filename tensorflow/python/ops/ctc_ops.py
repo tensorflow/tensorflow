@@ -638,8 +638,8 @@ def _state_to_olabel_unique(labels, num_labels, states, unique):
   unique_y, unique_idx = unique
   mul_reduce = _sum_states(unique_idx, label_states)
 
-  num_frames = states.shape[0]
-  batch_size = states.shape[1]
+  num_frames = _get_dim(states, 0)
+  batch_size = _get_dim(states, 1)
   num_states = num_label_states - 1
   batch_state_major = array_ops.transpose(mul_reduce, perm=[1, 2, 0])
   batch_state_major = array_ops.reshape(batch_state_major,

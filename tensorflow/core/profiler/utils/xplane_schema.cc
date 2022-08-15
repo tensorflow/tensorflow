@@ -376,6 +376,8 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
     case StatType::kIsRoot:
     case StatType::kFlops:
     case StatType::kBytesAccessed:
+    case StatType::kProgramId:
+    case StatType::kSymbolId:
       return true;
     default:
       return false;

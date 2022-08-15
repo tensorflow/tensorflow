@@ -71,6 +71,7 @@ cc_library(
 #         ":JitRtPassesIncGen",
 #         ":lmhlo_to_gpu_binary",
 #         "//tensorflow/compiler/mlir/xla:attribute_exporter",
+#         "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
 #         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
@@ -87,7 +88,6 @@ cc_library(
 #         "@llvm-project//mlir:Transforms",
 #         "@tf_runtime//backends/gpu:gpu_opdefs",
 #         "@tf_runtime//backends/gpu:gpu_passes",
-#         "@tf_runtime//backends/jitrt:rt_opdefs",
 #     ],
 # )
 #

@@ -33,6 +33,7 @@ add_mlir_dialect_library(ChloDialect
 
   LINK_LIBS PUBLIC
   MhloDialect
+  MLIRComplexDialect
   MLIRIR
   MLIRMhloUtils
 )
@@ -54,6 +55,7 @@ add_mlir_dialect_library(MhloDialect
 )
 target_link_libraries(MhloDialect
   PUBLIC
+  MLIRComplexDialect
   MLIRIR
   MLIRMhloUtils
   MLIRQuantDialect

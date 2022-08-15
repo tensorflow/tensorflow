@@ -35,11 +35,6 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
-// Include order below matters.
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc"
-#define GET_ATTRDEF_CLASSES
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc"
-
 namespace mlir {
 class OpBuilder;
 

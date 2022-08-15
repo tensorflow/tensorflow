@@ -15,11 +15,11 @@
 """Container for origin source code information before AutoGraph compilation."""
 import collections
 import difflib
+import io
 import os
 import tokenize
 
 import gast
-import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
@@ -153,7 +153,7 @@ def create_source_map(nodes, code, filepath):
   return source_map
 
 
-class _Function(object):
+class _Function:
 
   def __init__(self, name):
     self.name = name
@@ -248,7 +248,7 @@ def resolve(node, source, context_filepath, context_lineno, context_col_offset):
     context_col_offset: int
   """
   # TODO(mdan): Pull this to a separate utility.
-  code_reader = six.StringIO(source)
+  code_reader = io.StringIO(source)
   comments_map = {}
   try:
     for token in tokenize.generate_tokens(code_reader.readline):

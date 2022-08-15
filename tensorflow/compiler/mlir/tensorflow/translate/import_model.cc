@@ -909,7 +909,7 @@ Status ImporterBase::AddNodesToShapeRefiner(
         return OkStatus();
       }
 
-      for (auto shape : llvm::enumerate(list.shape())) {
+      for (const auto& shape : llvm::enumerate(list.shape())) {
         auto* node_context = shape_refiner_->GetContext(node);
         shape_inference::ShapeHandle handle;
         Status status =
@@ -3491,7 +3491,7 @@ Status CreateSavedModelIR(
           builder.getUnknownLoc(),
           builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
           value_attr,
-          /*type=*/mlir::TypeAttr::get(value_attr.Attribute::getType()),
+          /*type=*/mlir::TypeAttr::get(value_attr.getType()),
           /*is_mutable=*/nullptr);
       op->setAttr(
           "tf_saved_model.exported_names",

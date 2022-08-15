@@ -99,16 +99,6 @@ void HostCallbackContext::Receive(int res_num,
 
 std::unique_ptr<HostCallbackContext>
 CreateHostCallbackStateAndAppendSendRecvCallbacks(
-    const HostCallback* host_callback, PjRtClient* client,
-    std::vector<SendCallback>& send_callbacks,
-    std::vector<RecvCallback>& recv_callbacks) {
-  return CreateHostCallbackStateAndAppendSendRecvCallbacks(
-      host_callback, client->GetPjRtHostMemoryForDeviceManager(),
-      send_callbacks, recv_callbacks);
-}
-
-std::unique_ptr<HostCallbackContext>
-CreateHostCallbackStateAndAppendSendRecvCallbacks(
     const HostCallback* host_callback,
     PjRtHostMemoryForDeviceManager* host_memory_for_device_manager,
     std::vector<SendCallback>& send_callbacks,

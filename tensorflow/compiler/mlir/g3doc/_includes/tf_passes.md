@@ -541,6 +541,21 @@ will be transformed into this region-based operation
 This pass is performing fusion specific to GPU targets. This is an ad-hoc
 pass for now, but should be integrated with some notion of "target" in the
 MLIR pipeline in the future.
+### `-tf-group-by-dialect`: Groups ops into functions that only contain one dialect.
+Factors operations into subroutines such that all functions only
+contain a single dialect. Which of the dialects are allowed in the
+"top" function is configurable.
+
+For example, the code
+  x.a()
+  x.b()
+  %c = y.c()
+  x.d(%c)
+would be transformed into something like
+  call @x_1()
+  %c = call @y_1()
+  call @x_2(%c)
+with @x_1, @x_2 and @y_1 filled in.
 ### `-tf-guarantee-all-funcs-one-use`: Guarantee all FuncOp's have only a single use.
 ### `-tf-hoist-replicate-invariant-resource-writes`: Hoists writes to replicate invariant resource variables.
 This pass hoists replicate invariant resource variable writes outside
@@ -661,6 +676,20 @@ Would be transformed to:
 -direction             : Move transposes to the beginning or the end of the block where they are defined.
 ```
 ### `-tf-optimize`: Optimize TensorFlow module
+### `-tf-order-by-dialect`: Reorders ops so ops of the same dialect are next to each other.
+Performs a reordering of ops so that
+  (a) ops of the same dialect are next to each other
+  (b) order within a dialect is preserved
+.
+For example, this would transform
+  %a = "x.f"()
+  %b = "y.f"(%a)
+  %c = "x.f"(%a)
+to
+  %a = "x.f"()
+  %c = "x.f"(%a)
+  %b = "y.f"(%a)
+so that the two "x" dialect instructions are next to each other.
 ### `-tf-outside-compiled-to-host-launch`: Wraps each op with the _xla_outside_compiled attribute in a separate tf_device.launch on replicated host device.
 This pass wraps ops with the same `_xla_outside_compilation`
 attribute value in a tf_device.launch op with host device assignment.

@@ -903,6 +903,7 @@ package_group(
         "//learning/brain/mlir/...",
         "//learning/brain/tfrt/...",
         "//learning/lib/ami/simple_ml/...",
+        "//learning/pathways/...",
         "//smartass/brain/configure/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
@@ -1077,7 +1078,7 @@ tf_cc_shared_library(
         "//tensorflow/core/profiler:profiler_impl",
         "//tensorflow/core/util:determinism",
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
-        "//tensorflow/stream_executor:stream_executor_impl",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
     ] + tf_additional_binary_deps(),
     soversion = VERSION,
     static_deps = PACKAGE_STATIC_DEPS,
@@ -1211,7 +1212,7 @@ tf_cc_shared_library(
         "//tensorflow/core/profiler:profiler_impl",
         "//tensorflow/core/util:determinism",
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
-        "//tensorflow/stream_executor:stream_executor_impl",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
     ] + tf_additional_binary_deps(),
 )
 

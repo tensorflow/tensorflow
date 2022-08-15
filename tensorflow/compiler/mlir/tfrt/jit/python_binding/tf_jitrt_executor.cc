@@ -53,7 +53,6 @@ using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::StrCat;
 
-using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
 using ::tfrt::jitrt::Executable;
@@ -61,8 +60,8 @@ using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
+using ::tfrt::jitrt::RemainingResultsConverter;
 using ::tfrt::jitrt::ReturnStridedMemref;
-using ::tfrt::jitrt::ReturnValueConverter;
 
 namespace tensorflow {
 
@@ -83,15 +82,15 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
   copts.alignment = EIGEN_MAX_ALIGN_BYTES;
   copts.num_worker_threads = 4;
 
-  CompilationOptions opts;
-  opts.register_dialects = [](mlir::DialectRegistry& registry) {
+  JitExecutable::Options opts;
+  opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
     mlir::RegisterAllTensorFlowDialects(registry);
     RegisterDefaultJitRtDialects(registry);
     // Needed to verify function argument attributes which are used to
     // annotate dynamic shaped types with static type information.
     mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
   };
-  opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
+  opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
     tensorflow::TfJitRtPipelineOptions opts;
     opts.vectorize = vectorize;
     opts.codegen_transpose = codegen_transpose;
@@ -101,10 +100,11 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
     CreateDefaultJitRtCompilationPipeline(pm, copts);
   };
   if (specialization != Specialization::kDisabled) {
-    opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
+    opts.compiler.create_specialization_pipeline =
+        CreateJitRtSpecializationPipeline;
   }
   opts.specialization = specialization;
-  opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+  opts.compiler.calling_convention = xla::runtime::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
 
   // Instantiate new JitExecutable from the MLIR source.
@@ -142,8 +142,8 @@ static llvm::ArrayRef<int64_t> Strides(StridedMemRefType<T, 0>* memref) {
 namespace {
 struct PyBindingConversionContext {};
 
-using PyBindingReturnValueConverter =
-    ReturnValueConverter<PyBindingConversionContext>;
+using PyBindingResultConverter =
+    RemainingResultsConverter<PyBindingConversionContext>;
 }  // namespace
 
 template <typename T>
@@ -236,7 +236,7 @@ std::vector<py::array> TfJitRtExecutor::Execute(
 
   // Convert returned memrefs to python arrays.
   PyBindingConversionContext results_ctx;
-  PyBindingReturnValueConverter converter(results, results_ctx);
+  PyBindingResultConverter converter(results, results_ctx);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
   if (auto err = (*executable)->Execute(memrefs, converter, opts))
     throw std::runtime_error(StrCat("Unsupported argument: ", err));

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/spmd/custom_call_handler.h"
 
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
@@ -410,6 +412,30 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
 
   if (hlo->sharding().HasUniqueDevice()) {
     return HandleSingleDevice(hlo);
+  }
+
+  if (hlo->sharding().IsManual()) {
+    // Handle manual custom calls by just cloning it and apply as sharding what
+    // the system expects, which is UniqueDevice(0).
+    std::vector<HloInstruction*> new_operands;
+    new_operands.reserve(hlo->operands().size());
+    for (HloInstruction* operand : hlo->operands()) {
+      new_operands.push_back(GetPartitionedHlo(operand).hlo());
+    }
+    SetPartitionedHlo(hlo, [&] {
+      auto* instr = b_.AddInstruction(
+          hlo->CloneWithNewOperands(hlo->shape(), new_operands));
+      if (hlo->shape().IsTuple()) {
+        std::vector<HloSharding> subshardings(
+            hlo->sharding().tuple_elements().size(),
+            HloSharding::AssignDevice(0));
+        instr->set_sharding(HloSharding::Tuple(hlo->shape(), subshardings));
+      } else {
+        instr->set_sharding(HloSharding::AssignDevice(0));
+      }
+      return instr;
+    });
+    return OkStatus();
   }
 
   return DefaultAction(hlo);

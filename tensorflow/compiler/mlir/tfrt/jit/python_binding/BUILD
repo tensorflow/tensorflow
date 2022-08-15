@@ -92,7 +92,8 @@ pybind_library(
     srcs = ["conversion_utils.cc"],
     hdrs = ["conversion_utils.h"],
     deps = [
+        "//tensorflow/compiler/xla/runtime:arguments",
         "@tf_runtime//:dtype",
-        "@tf_runtime//backends/jitrt:arguments",
+        "@tf_runtime//backends/jitrt:xla",
     ],
 )

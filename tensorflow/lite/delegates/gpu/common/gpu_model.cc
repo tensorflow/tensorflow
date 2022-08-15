@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base.h"
-#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/global_pooling_to_reduce_op.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
@@ -381,6 +380,69 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
 
   return absl::OkStatus();
 }
+// TYPE_0
+//    input       input
+//      |           |
+//    elem0         |
+//      |    -->  elem
+//  elem_root       |
+//      |           |
+//    output      output
+
+absl::Status MergeElementwiseNodes(const GpuInfo& gpu_info,
+                                   GpuModel* gpu_model) {
+  auto& nodes = gpu_model->nodes;
+  for (int elem_root_index = 1; elem_root_index < nodes.size();
+       ++elem_root_index) {
+    auto& elem_root = nodes[elem_root_index];
+    if (!(elem_root.inputs.size() == 1 || elem_root.inputs.size() == 2) ||
+        elem_root.outputs.size() != 1 ||
+        !elem_root.gpu_operation->IsLinkable()) {
+      continue;
+    }
+    // key is elem_root input index, value is node index
+    std::map<int, int> prev_nodes;
+    for (int j = elem_root_index - 1; j >= 0; --j) {
+      for (int k = 0; k < elem_root.inputs.size(); ++k) {
+        if (elem_root.inputs[k] == nodes[j].outputs[0]) {
+          prev_nodes[k] = j;
+          break;
+        }
+      }
+    }
+    // check TYPE_0
+    if (prev_nodes.size() == 1) {
+      if (elem_root.inputs.size() != 1) {
+        continue;
+      }
+      const int prev_first_node_index = prev_nodes[0];
+      auto& prev_node = nodes[prev_first_node_index];
+      if (prev_node.inputs.size() != 1 || prev_node.outputs.size() != 1 ||
+          !prev_node.gpu_operation->IsLinkable()) {
+        continue;
+      }
+      int consumers_count = 0;
+      for (const auto& node : nodes) {
+        for (const auto& input : node.inputs) {
+          if (input == elem_root.inputs[0]) {
+            consumers_count++;
+          }
+        }
+      }
+      if (consumers_count != 1) {
+        continue;
+      }
+      prev_node.outputs[0] = elem_root.outputs[0];
+      prev_node.name += " -> " + elem_root.name;
+      RETURN_IF_ERROR(prev_node.gpu_operation->FuseSimpleElemWithSimpleElem(
+          gpu_info, elem_root.gpu_operation.get()));
+      nodes.erase(nodes.begin() + elem_root_index);
+      elem_root_index = prev_first_node_index;
+      continue;
+    }
+  }
+  return absl::OkStatus();
+}
 
 absl::Status MergeNodes(const GpuInfo& gpu_info, GpuModel* gpu_model) {
   absl::flat_hash_set<ValueId> ready_tensors;
@@ -525,6 +587,9 @@ absl::Status GraphToGpuModel(const GraphFloat32& graph,
   CopyExternals(graph, gpu_model);
   RETURN_IF_ERROR(ConvertOperations(gpu_info, graph, create_info,
                                     &tensor_reserver, gpu_model));
+  // MergeElementwise fuse only elemntwise nodes, MergeNodes fuse elementwise to
+  // usual nodes
+  RETURN_IF_ERROR(MergeElementwiseNodes(gpu_info, gpu_model));
   RETURN_IF_ERROR(MergeNodes(gpu_info, gpu_model));
   gpu_model->tensors = std::move(tensor_reserver.reservations_);
   RemoveUnusedTensors(gpu_model);

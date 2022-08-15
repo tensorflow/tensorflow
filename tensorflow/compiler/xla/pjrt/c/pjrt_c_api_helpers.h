@@ -36,6 +36,12 @@ using PJRT_ErrorDeleter = std::function<void(PJRT_Error*)>;
 // The lifetime of the Api pointed to must be longer than the error.
 PJRT_ErrorDeleter MakeErrorDeleter(const PJRT_Api* api);
 
+using PJRT_BufferDeleter = std::function<void(PJRT_Buffer*)>;
+
+// Pass in an API pointer; receive a custom deleter for smart pointers.
+// The lifetime of the Api pointed to must be longer than the buffer.
+PJRT_BufferDeleter MakeBufferDeleter(const PJRT_Api* api);
+
 // Fatal error logging if status is not success. This terminates the process
 // and frees the PJRT_Error passed in.
 void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api);
@@ -44,6 +50,12 @@ absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
                                       const PJRT_Api* api);
 
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
+
+using PJRT_EventDeleter = std::function<void(PJRT_Event*)>;
+
+// Pass in an API pointer; receive a custom deleter for smart pointers.
+// The lifetime of the Api pointed to must be longer than the event.
+PJRT_EventDeleter MakeEventDeleter(const PJRT_Api* api);
 
 }  // namespace pjrt
 

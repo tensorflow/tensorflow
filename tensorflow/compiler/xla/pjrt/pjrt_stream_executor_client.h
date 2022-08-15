@@ -781,6 +781,8 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
 
   bool IsDeleted() override { return executables_.empty(); }
 
+  bool IsReturnedFutureSupported() const override { return true; }
+
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;
   }

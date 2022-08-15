@@ -153,7 +153,7 @@ func.func @abs(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
     ins(%input : tensor<?x?xf32>)
     outs(%init : tensor<?x?xf32>) {
   ^bb0(%in: f32, %out: f32):
-    %abs = math.abs %in: f32
+    %abs = math.absf %in: f32
     linalg.yield %abs : f32
   } -> tensor<?x?xf32>
   func.return %sum : tensor<?x?xf32>

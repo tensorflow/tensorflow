@@ -303,6 +303,38 @@ class TestKernelAttr : public ::testing::Test {
   }
 };
 
+TEST_F(TestKernelAttr, GetNodeDef) {
+  auto my_create_func = [](TF_OpKernelConstruction* ctx) {
+    struct MyCustomKernel* s = new struct MyCustomKernel;
+    s->created = true;
+    s->compute_called = false;
+
+    TF_Status* status = TF_NewStatus();
+    TF_Buffer* node_def_buf = TF_OpKernelConstruction_GetNodeDef(ctx, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    NodeDef node_def;
+    node_def.ParseFromArray(node_def_buf->data, node_def_buf->length);
+    EXPECT_EQ(node_def.op(), "TestKernelAttrGetNodeDef");
+    EXPECT_EQ(node_def.name(), "FakeNode");
+    EXPECT_EQ(node_def.device(), "FakeDevice");
+    EXPECT_EQ(node_def.attr_size(), 1);
+    const ::tensorflow::AttrValue& value = node_def.attr().at("Attr");
+    EXPECT_TRUE(value.value_case() == ::tensorflow::AttrValue::ValueCase::kI);
+    EXPECT_EQ(value.i(), 1234);
+    TF_DeleteBuffer(node_def_buf);
+    TF_DeleteStatus(status);
+    return static_cast<void*>(s);
+  };
+
+  REGISTER_OP("TestKernelAttrGetNodeDef")
+      .Attr("Attr: int")
+      .SetShapeFn(tensorflow::shape_inference::UnknownShape);
+
+  AttrValue v;
+  v.set_i(1234);
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrGetNodeDef", v);
+}
+
 TEST_F(TestKernelAttr, String) {
   auto my_create_func = [](TF_OpKernelConstruction* ctx) {
     struct MyCustomKernel* s = new struct MyCustomKernel;
@@ -886,10 +918,51 @@ TEST(TestKernel, TestHostMemory) {
       .Input("input1: double")
       .Input("input2: uint8")
       .Output("output1: uint8")
+      .Output("output2: uint8")
       .Attr("T: type");
 
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    MyComputeFunc(kernel, ctx);
+
+    TF_Status* status = TF_NewStatus();
+
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(false, TF_IsHostMemoryInput(ctx, 0, status));
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(true, TF_IsHostMemoryInput(ctx, 1, status));
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(true, TF_IsHostMemoryOutput(ctx, 0, status));
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(false, TF_IsHostMemoryOutput(ctx, 1, status));
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    TF_IsHostMemoryInput(ctx, -1, status);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    TF_IsHostMemoryInput(ctx, 2, status);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    TF_IsHostMemoryOutput(ctx, -1, status);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    TF_IsHostMemoryOutput(ctx, 2, status);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(status));
+
+    TF_DeleteStatus(status);
+  };
+
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
-      op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc);
+      op_name, device_name, &MyCreateFunc, my_compute_func, &MyDeleteFunc);
   TF_KernelBuilder_HostMemory(builder, "input2");
   TF_KernelBuilder_HostMemory(builder, "output1");
   TF_Status* status = TF_NewStatus();

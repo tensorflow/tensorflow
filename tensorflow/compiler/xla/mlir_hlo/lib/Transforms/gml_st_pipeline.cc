@@ -30,8 +30,8 @@ using ::mlir::func::FuncOp;
 
 void createGmlStPipeline(mlir::OpPassManager& pm,
                          const GmlStPipelineOptions& options) {
-  // Transforms HLO to Linalg + GmlSt.
-  pm.addNestedPass<FuncOp>(gml_st::createLegalizeMHLOToGMLPass());
+  // Transforms HLO to Linalg + THLO.
+  pm.addNestedPass<FuncOp>(mhlo::createLegalizeMHLOToTHLOPass());
   pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
 
   // Perform tiling, fusion, vectorization and other transformations.

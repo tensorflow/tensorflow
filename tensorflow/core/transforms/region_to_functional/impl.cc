@@ -970,9 +970,9 @@ ConvertWhileLikeOp<WhileLikeRegionOp, WhileLikeOp>::matchAndRewrite(
         cond_op, cond_rets,
         this->GetControlRetAttrs(cond_op.ctls(), op.init(), &name_uniquer));
     // Insert the function and grab a reference.
-    cond_ref = FuncAttr::get(
-        op.getContext(), this->table_.insert(cond_func),
-        op.cond_attrs().getValueOr(rewriter.getDictionaryAttr({})));
+    cond_ref =
+        FuncAttr::get(op.getContext(), this->table_.insert(cond_func),
+                      op.cond_attrs().value_or(rewriter.getDictionaryAttr({})));
 
     // Outline the body.
     body_ref = this->Outline(op, rewriter, op.init(), op.body_region(),

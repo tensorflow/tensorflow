@@ -308,7 +308,7 @@ class PartitionedHlo {
   // A cache for resharding each partitioned HLO.
   struct ReshardCache {
     struct PerHloCache {
-      std::vector<std::pair<HloSharding, PartitionedHlo>> reshard_cache;
+      absl::flat_hash_map<HloSharding, PartitionedHlo> reshard_cache;
       std::vector<
           std::tuple<HloSharding, Window, WindowedInputShardReturnValue>>
           window_reshard_cache;
@@ -342,9 +342,11 @@ class PartitionedHlo {
     }
   }
 
-  // Reshards the current SPMD instruction to a new sharding. Could only modify
-  // the reshard cache.
-  PartitionedHlo Reshard(const HloSharding& target);
+  // Reshards the current SPMD instruction to a new sharding with optional
+  // specified pad value used during resharding. Could only modify the reshard
+  // cache.
+  PartitionedHlo Reshard(const HloSharding& target,
+                         std::optional<Literal> pad_value = std::nullopt);
 
   // Pads the garbage area of the output with the provided value. Normally,
   // unevenly partitioned dimensions are padded on the right, but this function
@@ -397,6 +399,7 @@ class PartitionedHlo {
   // Same as Reshard except that it does not explicitly modify the reshard
   // cache, although it would indirectly modify by calling Replicate().
   PartitionedHlo ReshardNoCache(const HloSharding& target,
+                                std::optional<Literal> pad_value = std::nullopt,
                                 bool allow_full_replication = true);
 
   // Helper function to broadcast data from a single device to all devices.

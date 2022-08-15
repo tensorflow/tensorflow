@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -547,20 +548,24 @@ absl::Status Arguments::ResolveSelector(
         return absl::FailedPreconditionError(absl::StrCat(
             "Object with name - ", object_name, " should have Write access."));
       }
-      std::string value_name, x_coord, y_coord, s_coord;
+      std::string value_name, x_coord, y_coord, z_coord, s_coord, b_coord;
       RETURN_IF_ERROR(tensor_desc->GetLinkingContextFromWriteSelector(
-          function_args_new, &value_name, &x_coord, &y_coord, &s_coord));
-      // x_coord can have batch size property of link_object
-      ResolveObjectNames(object_name, names, &x_coord);
+          function_args_new, &value_name, &x_coord, &y_coord, &z_coord,
+          &s_coord, &b_coord));
       const std::string new_value_name = value_name + "_final";
-      *result = "{\n" +
-                GetTypeDeclaration(gpu_info, tensor_desc->GetDataType(), 4) +
-                " " + new_value_name + ";\n" + it->second + "\n";
+      const std::string out_var_declaration =
+          "\n" + GetTypeDeclaration(gpu_info, tensor_desc->GetDataType(), 4) +
+          " " + new_value_name + ";\n";
+      *result = "{  // elementwise code with input:" + value_name +
+                absl::Substitute(it->second, out_var_declaration) + "\n";
+      *result = absl::StrReplaceAll(*result, {{"\n", "\n  "}});
       ReplaceAllWords("in_value", value_name, result);
       ReplaceAllWords("out_value", new_value_name, result);
       ReplaceAllWords("X_COORD", x_coord, result);
       ReplaceAllWords("Y_COORD", y_coord, result);
+      ReplaceAllWords("Z_COORD", z_coord, result);
       ReplaceAllWords("S_COORD", s_coord, result);
+      ReplaceAllWords("B_COORD", b_coord, result);
       function_args_new[0] = new_value_name;
       RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, result));
       RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, {}, result));
@@ -574,7 +579,7 @@ absl::Status Arguments::ResolveSelector(
     *result += patch;
   } else {
     // result has elementwise code
-    *result += patch + ";}";
+    *result += "// write result to tensor\n  " + patch + ";\n}";
   }
   return absl::OkStatus();
 }

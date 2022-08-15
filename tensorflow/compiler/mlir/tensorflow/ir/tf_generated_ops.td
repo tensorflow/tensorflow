@@ -2520,7 +2520,7 @@ for operation.}]>:$common_config
   );
 
   let results = (outs
-    Res<TF_StrTensor, [{A string-encoded HbmBuffersConfig proto containing metadata about
+    Res<TF_StrTensor, [{A string-encoded memory configuration containing metadata about
 the memory allocations reserved for TPUEmbedding.}]>:$memory_config
   );
 }

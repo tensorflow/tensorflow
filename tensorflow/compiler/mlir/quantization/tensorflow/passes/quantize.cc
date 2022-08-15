@@ -342,11 +342,12 @@ struct QuantizeAvgPoolOpPattern
 
     // Cast back to the storage type after AvgPool op.
     rewriter.setInsertionPointAfter(avg_pool_op);
-    auto round_op =
-        rewriter.create<TF::RoundOp>(q_op.getLoc(), avg_pool_op.output());
+    auto const_val = CreateScalarConstValue(rewriter, q_op.getLoc(), 0.5f);
+    auto add_val = rewriter.create<TF::AddV2Op>(
+        q_op.getLoc(), avg_pool_op.output(), const_val);
+    auto floor_val = rewriter.create<TF::FloorOp>(q_op.getLoc(), add_val);
     auto icast_op = rewriter.create<TF::CastOp>(
-        q_op.getLoc(), q_result_type.clone(qtype.getStorageType()),
-        round_op.y());
+        q_op.getLoc(), q_result_type.clone(qtype.getStorageType()), floor_val);
     auto iscast_op = rewriter.create<quantfork::StorageCastOp>(
         q_op.getLoc(), q_op.getType(), icast_op.y());
     q_op.getResult().replaceAllUsesWith(iscast_op.getResult());

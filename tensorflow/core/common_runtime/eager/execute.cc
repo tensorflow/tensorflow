@@ -904,7 +904,7 @@ bool IntArgsAndRetvalsOnDevice(EagerOperation* op,
 
 StatusOr<Fprint128> GetKernelCacheKey(
     const EagerOperation& op, const Fprint128& op_cache_key,
-    const std::vector<Device*>& input_dev_ptrs,
+    const std::vector<Device*>& input_device_ptrs,
     const std::unordered_map<int, DtypeAndPartialTensorShape>&
         input_resource_variable_dtypes_and_shapes) {
   EagerContext& ctx = op.EagerContext();
@@ -928,9 +928,9 @@ StatusOr<Fprint128> GetKernelCacheKey(
   // need to include it in the cache key.
   cache_key = FingerprintCat128(cache_key, reuse_rendezvous_for_functions);
 
-  for (int i = 0, end = input_dev_ptrs.size(); i < end; ++i) {
-    cache_key =
-        FingerprintCat128(cache_key, Fingerprint128(input_dev_ptrs[i]->name()));
+  for (int i = 0, end = input_device_ptrs.size(); i < end; ++i) {
+    cache_key = FingerprintCat128(cache_key,
+                                  Fingerprint128(input_device_ptrs[i]->name()));
 
     auto input_resource = input_resource_variable_dtypes_and_shapes.find(i);
     if (input_resource != input_resource_variable_dtypes_and_shapes.end()) {
@@ -945,6 +945,66 @@ StatusOr<Fprint128> GetKernelCacheKey(
   }
 
   return cache_key;
+}
+
+// Extracts function input info for `op` with `kernel_def`.
+// The following are extracted:
+//   `input_device_ptrs` - The input devices of `op`.
+//   `composite_devices` - Maps from a CompositeDevice name to a list of
+//     physical device names.
+//   `input_resource_variable_dtypes_shape` - A map from input index
+//     to dtype and shapes for resource inputs.
+Status ExtractFunctionInputInfo(
+    EagerOperation* op, const KernelDef* kernel_def,
+    std::vector<Device*>& input_device_ptrs,
+    absl::flat_hash_map<string, const std::vector<string>*>& composite_devices,
+    std::unordered_map<int, DtypeAndPartialTensorShape>&
+        input_resource_variable_dtypes_and_shapes) {
+  profiler::TraceMe activity("EagerCopyToDevice",
+                             profiler::TraceMeLevel::kInfo);
+  EagerContext& ctx = op->EagerContext();
+  input_device_ptrs.reserve(op->Inputs().size());
+  const absl::InlinedVector<TensorHandle*, 4>* inputs;
+  TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
+  Device* op_device = nullptr;
+  const NodeDef* node_def = nullptr;
+  if (!op->is_function()) {
+    op_device = absl::get<Device*>(op->Device());
+    node_def = &op->MutableAttrs()->BuildNodeDef();
+  }
+  for (int i = 0, end = inputs->size(); i < end; ++i) {
+    TensorHandle* input = (*inputs)[i];
+
+    Device* input_device;
+    bool is_host_memory_arg =
+        IsHostMemoryArg(*op, node_def, op_device, kernel_def, i);
+    TF_RETURN_IF_ERROR(
+        GetDeviceForInput(*op, ctx, is_host_memory_arg, input, &input_device));
+    VLOG(1) << op->Name() << ":input:" << i << " " << input_device->name();
+    input_device_ptrs.push_back(input_device);
+    CompositeDevice* composite_device = nullptr;
+    if (ctx.FindCompositeDeviceFromName(input_device->name(), &composite_device)
+            .ok()) {
+      composite_devices[input_device->name()] =
+          composite_device->underlying_devices();
+    }
+    if (input->dtype == DT_RESOURCE) {
+      // We only care about data type and shape for resource variable inputs.
+      // But we have no way to tell if input is resource variable (other than
+      // looking it up in ResourceMgr, which is slow). So we just get
+      // resource_dtypes_and_shapes for all DT_RESOURCE inputs. If
+      // resource_dtypes_and_shapes is not empty, take the first element.
+      std::vector<DtypeAndPartialTensorShape> resource_dtypes_and_shapes;
+      TF_RETURN_IF_ERROR(
+          input->GetResourceHandleDtypesAndShapes(&resource_dtypes_and_shapes));
+      if (!resource_dtypes_and_shapes.empty()) {
+        const DtypeAndPartialTensorShape& dtype_and_shape =
+            resource_dtypes_and_shapes.at(0);
+        input_resource_variable_dtypes_and_shapes[i] = dtype_and_shape;
+      }
+    }
+  }
+  return OkStatus();
 }
 
 Status SetOpDevice(EagerContext& ctx, EagerOperation* op, Device** device) {
@@ -990,10 +1050,9 @@ Status GetOrCreateKernelAndDevice(
     core::RefCountPtr<KernelAndDevice>* out_kernel) {
   EagerContext& ctx = op->EagerContext();
   Device* device = absl::get<Device*>(op->Device());
-  const KernelDef* kernel_def = nullptr;
 
-  // Set the EagerOperation's device prior to extracting the input_dev_ptrs to
-  // avoid any redundant H2D/D2H copies.
+  // Set the EagerOperation's device prior to extracting the input_device_ptrs
+  // to avoid any redundant H2D/D2H copies.
   if (device == nullptr && !op->is_function()) {
     Fprint128 device_cache_key = GetDeviceCacheKey(op, ctx);
     device = ctx.GetCachedDevice(device_cache_key);
@@ -1014,62 +1073,25 @@ Status GetOrCreateKernelAndDevice(
       (ctx.RunEagerOpAsFunction() && !op->is_function()) ||
       reuse_rendezvous_for_functions_original_value;
 
-  std::vector<Device*> input_dev_ptrs;
+  std::vector<Device*> input_device_ptrs;
   absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_variable_dtypes_and_shapes;
+  const KernelDef* kernel_def = nullptr;
+  if (!op->is_function()) {
+    const NodeDef* node_def = &op->MutableAttrs()->BuildNodeDef();
+    kernel_def = GetKernelDef(*op, node_def, device);
+  }
   if (op->is_function() || ctx.RunEagerOpAsFunction()) {
-    profiler::TraceMe activity("EagerCopyToDevice",
-                               profiler::TraceMeLevel::kInfo);
-    input_dev_ptrs.reserve(op->Inputs().size());
-    const absl::InlinedVector<TensorHandle*, 4>* inputs;
-    TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
-    Device* op_device = nullptr;
-    const NodeDef* node_def = nullptr;
-    if (!op->is_function()) {
-      op_device = absl::get<Device*>(op->Device());
-      node_def = &op->MutableAttrs()->BuildNodeDef();
-      kernel_def = GetKernelDef(*op, node_def, op_device);
-    }
-    for (int i = 0, end = inputs->size(); i < end; ++i) {
-      TensorHandle* input = (*inputs)[i];
-
-      Device* input_device;
-      bool is_host_memory_arg =
-          IsHostMemoryArg(*op, node_def, op_device, kernel_def, i);
-      TF_RETURN_IF_ERROR(GetDeviceForInput(*op, ctx, is_host_memory_arg, input,
-                                           &input_device));
-      VLOG(1) << op->Name() << ":input:" << i << " " << input_device->name();
-      input_dev_ptrs.push_back(input_device);
-      CompositeDevice* composite_device = nullptr;
-      if (ctx.FindCompositeDeviceFromName(input_device->name(),
-                                          &composite_device)
-              .ok()) {
-        composite_devices[input_device->name()] =
-            composite_device->underlying_devices();
-      }
-      if (input->dtype == DT_RESOURCE) {
-        // We only care about data type and shape for resource variable inputs.
-        // But we have no way to tell if input is resource variable (other than
-        // looking it up in ResourceMgr, which is slow). So we just get
-        // resource_dtypes_and_shapes for all DT_RESOURCE inputs. If
-        // resource_dtypes_and_shapes is not empty, take the first element.
-        std::vector<DtypeAndPartialTensorShape> resource_dtypes_and_shapes;
-        TF_RETURN_IF_ERROR(input->GetResourceHandleDtypesAndShapes(
-            &resource_dtypes_and_shapes));
-        if (!resource_dtypes_and_shapes.empty()) {
-          const DtypeAndPartialTensorShape& dtype_and_shape =
-              resource_dtypes_and_shapes.at(0);
-          input_resource_variable_dtypes_and_shapes[i] = dtype_and_shape;
-        }
-      }
-    }
+    TF_RETURN_IF_ERROR(ExtractFunctionInputInfo(
+        op, kernel_def, input_device_ptrs, composite_devices,
+        input_resource_variable_dtypes_and_shapes));
   }
 
   TF_ASSIGN_OR_RETURN(
       Fprint128 cache_key,
       GetKernelCacheKey(*op, op->MutableAttrs()->CacheKey(op->DeviceName()),
-                        input_dev_ptrs,
+                        input_device_ptrs,
                         input_resource_variable_dtypes_and_shapes));
   core::RefCountPtr<KernelAndDevice> kernel = ctx.GetCachedKernel(cache_key);
   AbstractOperationPtr wrapped_op_releaser;
@@ -1199,7 +1221,7 @@ Status GetOrCreateKernelAndDevice(
           reuse_rendezvous_for_functions_original_value);
       ctx.reuse_rendezvous_for_functions_mu()->unlock();
       kernel.reset(new KernelAndDeviceFunc(
-          flr, ctx.pflr(), std::move(input_dev_ptrs),
+          flr, ctx.pflr(), std::move(input_device_ptrs),
           std::move(composite_devices),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),

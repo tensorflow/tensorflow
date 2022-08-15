@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_replace.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
@@ -75,6 +76,14 @@ std::string GetElementWiseCode(const OperationDef& op_def) {
   c += "  args.dst_tensor.Write(src, X, Y, Z);\n";
   c += "} \n";
   return c;
+}
+
+bool NeedsBroadcast(const TensorDescriptor& desc, const BHWC& shape) {
+  bool needs_broadcast = shape.w == 1 || shape.h == 1 || shape.c == 1;
+  if (desc.HasAxis(Axis::BATCH)) {
+    needs_broadcast = needs_broadcast || shape.b == 1;
+  }
+  return needs_broadcast;
 }
 
 }  // namespace
@@ -139,6 +148,9 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       dst_tensors_names_(std::move(operation.dst_tensors_names_)),
       work_groups_count_(operation.work_groups_count_),
       elementwise_(operation.elementwise_),
+      elementwise_inputs_(operation.elementwise_inputs_),
+      second_elementwise_tensor_name_(
+          operation.second_elementwise_tensor_name_),
       linkable_count_(operation.linkable_count_),
       elementwise_code_(std::move(operation.elementwise_code_)) {}
 
@@ -161,10 +173,45 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     dst_tensors_names_ = std::move(operation.dst_tensors_names_);
     std::swap(work_groups_count_, operation.work_groups_count_);
     elementwise_ = operation.elementwise_;
+    std::swap(elementwise_inputs_, operation.elementwise_inputs_);
+    std::swap(second_elementwise_tensor_name_,
+              operation.second_elementwise_tensor_name_);
     std::swap(linkable_count_, operation.linkable_count_);
     elementwise_code_ = std::move(operation.elementwise_code_);
   }
   return *this;
+}
+
+//    input       input
+//      |           |
+//    elem0         |
+//      |    -->  elem
+//    elem1         |
+//      |           |
+//    output      output
+// GPUOperation* operation is elem1
+// *this is elem0
+absl::Status GPUOperation::FuseSimpleElemWithSimpleElem(
+    const GpuInfo& gpu_info, GPUOperation* operation) {
+  GPUOperation& elem0 = *this;
+  GPUOperation& elem1 = *operation;
+  elem0.definition_.dst_tensors[0] = elem1.definition_.dst_tensors[0];
+  const auto link_value_type = elem1.definition_.src_tensors[0].GetDataType();
+  elem0.linkable_count_ += (elem1.linkable_count_ + 1);
+  std::string unique_postfix = absl::StrCat("_link", elem0.linkable_count_);
+  elem1.args_.RenameArgs(unique_postfix, &elem1.elementwise_code_);
+  const std::string link_value_name = "interm_value" + unique_postfix;
+  const std::string value_declaration =
+      "\n" + GetTypeDeclaration(gpu_info, link_value_type, 4) + " " +
+      link_value_name + ";\n";
+  elem1.elementwise_code_ = absl::StrReplaceAll(
+      elem1.elementwise_code_, {{"in_value", link_value_name}});
+  elem0.elementwise_code_ = absl::StrReplaceAll(
+      elem0.elementwise_code_, {{"out_value", link_value_name}});
+  elem0.elementwise_code_ =
+      absl::Substitute(elem0.elementwise_code_, value_declaration);
+  elem0.elementwise_code_ += "\n" + elem1.elementwise_code_;
+  return args_.Merge(std::move(elem1.args_), unique_postfix);
 }
 
 absl::Status GPUOperation::AddOperation(const GpuInfo& gpu_info,
@@ -172,19 +219,37 @@ absl::Status GPUOperation::AddOperation(const GpuInfo& gpu_info,
   const auto prev_type = definition_.dst_tensors[0].GetDataType();
   definition_.dst_tensors[0] = operation->definition_.dst_tensors[0];
   linkable_count_ += (operation->linkable_count_ + 1);
-  std::string code = "{\n" + operation->elementwise_code_ + "\n}";
+  std::string code = operation->elementwise_code_;
   std::string unique_postfix = absl::StrCat("_link", linkable_count_);
   operation->args_.RenameArgs(unique_postfix, &code);
+  operation->second_elementwise_tensor_name_ += unique_postfix;
   if (elementwise_code_.empty()) {
     elementwise_code_ = code;
+    elementwise_inputs_ = operation->elementwise_inputs_;
+    second_elementwise_tensor_name_ =
+        operation->second_elementwise_tensor_name_;
   } else {
+    if (operation->elementwise_inputs_ == 2) {
+      if (elementwise_inputs_ == 2) {
+        // if we have fusion of 2 2-input elementwise ops, we will get 3-input
+        // elementwise, but currently we support only max 2-input elementwise.
+        // So we will resolve one input here.
+        RETURN_IF_ERROR(ResolveSecondElementwiseInput());
+      }
+      second_elementwise_tensor_name_ =
+          operation->second_elementwise_tensor_name_;
+      elementwise_inputs_ = 2;
+    }
     const std::string new_value_name = "interm_value" + unique_postfix;
     code = absl::StrReplaceAll(code, {{"in_value", new_value_name}});
     elementwise_code_ =
         absl::StrReplaceAll(elementwise_code_, {{"out_value", new_value_name}});
-    elementwise_code_ = "{\n" + GetTypeDeclaration(gpu_info, prev_type, 4) +
-                        " " + new_value_name + ";\n" + elementwise_code_ +
-                        "\n" + code + "\n}\n";
+    const std::string out_var_declaration =
+        "\n" + GetTypeDeclaration(gpu_info, prev_type, 4) + " " +
+        new_value_name + ";\n";
+    elementwise_code_ =
+        absl::Substitute(elementwise_code_, out_var_declaration);
+    elementwise_code_ = elementwise_code_ + "\n" + code;
   }
   RETURN_IF_ERROR(args_.Merge(std::move(operation->args_), unique_postfix));
   for (int i = 0; i < operation->src_tensors_names_.size(); ++i) {
@@ -198,6 +263,49 @@ absl::Status GPUOperation::AddOperation(const GpuInfo& gpu_info,
                                  unique_postfix);
   }
   return absl::OkStatus();
+}
+
+absl::Status GPUOperation::ResolveSecondElementwiseInput() {
+  if (elementwise_inputs_ != 2) {
+    return absl::FailedPreconditionError(
+        "Can not apply ResolveSecondElementwiseInput for non 2 input "
+        "elementwise");
+  }
+  TensorDescriptor* tensor_desc;
+  RETURN_IF_ERROR(
+      GetTensorDescriptor(second_elementwise_tensor_name_, &tensor_desc));
+  std::string coords = "X_COORD, Y_COORD, S_COORD";
+  if (tensor_desc->HasAxis(Axis::BATCH)) {
+    coords += ", B_COORD";
+  }
+  const std::string read_code = "args." + second_elementwise_tensor_name_ +
+                                "::type second_value = args." +
+                                second_elementwise_tensor_name_ + ".Read(" +
+                                coords + ");\n";
+  elementwise_code_ = absl::StrReplaceAll(
+      elementwise_code_,
+      {{"in2_value", "second_value"}, {"READ_SECOND_VALUE", read_code}});
+  elementwise_inputs_ = 1;
+  return absl::OkStatus();
+}
+
+absl::Status GPUOperation::GetTensorDescriptor(const std::string& tensor_name,
+                                               TensorDescriptor** resutl) {
+  for (int i = 0; i < src_tensors_names_.size(); ++i) {
+    if (src_tensors_names_[i] == tensor_name) {
+      int index = elementwise_ ? i + 1 : i;
+      *resutl = &definition_.src_tensors[index];
+      return absl::OkStatus();
+    }
+  }
+  for (int i = 0; i < dst_tensors_names_.size(); ++i) {
+    if (dst_tensors_names_[i] == tensor_name) {
+      int index = elementwise_ ? i + 1 : i;
+      *resutl = &definition_.dst_tensors[index];
+      return absl::OkStatus();
+    }
+  }
+  return absl::NotFoundError("Can not find tensor with this name");
 }
 
 void GPUOperation::AddSrcTensor(const std::string& tensor_name,
@@ -229,6 +337,9 @@ void GPUOperation::AddDstTensor(const std::string& tensor_name,
 }
 
 absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
+  if (elementwise_inputs_ == 2) {
+    RETURN_IF_ERROR(ResolveSecondElementwiseInput());
+  }
   if (elementwise_) {
     src_tensors_names_.insert(src_tensors_names_.begin(), "src_tensor");
     args_.AddObjectRef(
@@ -314,17 +425,55 @@ int3 GPUOperation::GetGridSize() const {
 
 GPUOperation CreateGpuOperation(const OperationDef& definition,
                                 ElementwiseDescriptor&& descriptor) {
+  const BHWC second_shape(2, 2, 2, 2);  // dummy non-broadcasted shape
+  return CreateGpuOperation(definition, std::move(descriptor), second_shape);
+}
+
+GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                ElementwiseDescriptor&& descriptor,
+                                const BHWC& second_shape) {
   GPUOperation op(definition);
   op.elementwise_code_ = std::move(descriptor.code);
   op.elementwise_ = true;
+  if (definition.src_tensors.size() > 1 &&
+      op.elementwise_code_.find("in2_value")) {
+    const auto second_tensor_def = definition.src_tensors[1];
+    if (NeedsBroadcast(second_tensor_def, second_shape)) {
+      const std::string x_coord = second_shape.w == 1 ? "0" : "X_COORD";
+      const std::string y_coord = second_shape.h == 1 ? "0" : "Y_COORD";
+      const std::string s_coord = second_shape.c == 1 ? "0" : "S_COORD";
+      std::string coords = absl::StrCat(x_coord, ", ", y_coord, ", ", s_coord);
+      if (second_tensor_def.HasAxis(Axis::BATCH)) {
+        const std::string b_coord = second_shape.b == 1 ? "0" : "B_COORD";
+        coords += ", " + b_coord;
+      }
+      std::string read_value_code = absl::StrCat(
+          "args.src_tensor_1::type in2_value = args.src_tensor_1.Read(", coords,
+          ");\n");
+      if (second_shape.c == 1) {
+        read_value_code += "  in2_value.y = in2_value.x;\n";
+        read_value_code += "  in2_value.z = in2_value.x;\n";
+        read_value_code += "  in2_value.w = in2_value.x;\n";
+      }
+      op.elementwise_code_ =
+          "$0{" + read_value_code + op.elementwise_code_ + "}";
+      op.elementwise_code_ = absl::StrReplaceAll(
+          op.elementwise_code_, {{"in2_value", "second_value"}});
+      op.elementwise_inputs_ = 1;
+    } else {
+      op.elementwise_code_ =
+          "$0{READ_SECOND_VALUE" + op.elementwise_code_ + "}";
+      op.elementwise_inputs_ = 2;
+      op.second_elementwise_tensor_name_ = "src_tensor_1";
+    }
+  } else {
+    op.elementwise_code_ = "$0{" + op.elementwise_code_ + "}";
+    op.elementwise_inputs_ = 1;
+  }
   op.args_ = std::move(descriptor.args);
   for (int i = 1; i < definition.src_tensors.size(); ++i) {
     const std::string tensor_name = "src_tensor_" + std::to_string(i);
-    auto src_desc = definition.src_tensors[i];
-    if (definition.IsBatchSupported()) {
-      src_desc.SetStateVar("BatchedWidth", "true");
-    }
-    op.AddSrcTensor(tensor_name, src_desc);
+    op.AddSrcTensor(tensor_name, definition.src_tensors[i]);
   }
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
   return op;

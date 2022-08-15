@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "absl/base/call_once.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
@@ -175,9 +176,15 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
 
   // We set `uses_uninitialized_resource_args` to false here because the first
   // phase of the bridge is not affected by uninitialized resource args.
-  MlirBridgeRolloutPolicy policy =
-      GetMlirBridgeRolloutPolicy(graph, &function_library, config_proto,
-                                 /*uses_uninitialized_resource_args=*/false);
+  // Note we are recording the stats using LogGraphFeatures in the pass
+  // that calls this one to avoid duplicate logging due to
+  // GetMlirBridgeRolloutPolicy being called multiple times for the same graph.
+  // TODO(b/241853328): Add caching of pass state and call logging/metrics
+  // related to graph analysis from here.
+  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
+      graph, &function_library, config_proto,
+      /*uses_uninitialized_resource_args=*/false,
+      /*is_v1_compat=*/false, /*record_stats=*/false);
   switch (policy) {
     case MlirBridgeRolloutPolicy::kEnabledByUser:
       return MlirOptimizationPassState::Enabled;
@@ -230,6 +237,8 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
 
   // Set device_set to nullptr here as the device specific checks are performed
   // based on the devices in the module.
+  // TODO(b/241853328): Add caching of pass state and call logging/metrics
+  // related to graph analysis from here.
   auto pass_state = GetPassState(/*device_set=*/nullptr, config_proto, graph,
                                  function_library);
 
@@ -265,9 +274,14 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
   // only run if it's enabled by the user explicitly.
   // We set `uses_uninitialized_resource_args` to false here because the first
   // phase of the bridge is not affected by uninitialized resource args.
+  // Note we are recording the stats using LogGraphFeatures in the pass
+  // that calls this one.
+  // TODO(b/241853328): Add caching of pass state and call logging/metrics
+  // related to graph analysis from here.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, /*function_library=*/&function_library, config_proto,
-      /*uses_uninitialized_resource_args=*/false);
+      /*uses_uninitialized_resource_args=*/false, /*is_v1_compat=*/true,
+      /*record_stats=*/false);
   switch (policy) {
     case MlirBridgeRolloutPolicy::kEnabledByUser:
       return MlirOptimizationPassState::Enabled;

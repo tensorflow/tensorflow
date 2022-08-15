@@ -45,6 +45,17 @@ PJRT_ErrorDeleter MakeErrorDeleter(const PJRT_Api* api) {
   };
 }
 
+PJRT_BufferDeleter MakeBufferDeleter(const PJRT_Api* api) {
+  return [api](PJRT_Buffer* buffer) -> void {
+    PJRT_Buffer_Destroy_Args destroy_args;
+    destroy_args.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
+    destroy_args.priv = nullptr;
+    destroy_args.buffer = buffer;
+
+    pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_Destroy(&destroy_args), api);
+  };
+}
+
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   xla::Status status;
   if (error != nullptr) {
@@ -72,6 +83,18 @@ void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api) {
   if (!_status.ok()) {
     LOG(FATAL) << "Unexpected error status " << _status.error_message();
   }
+}
+
+PJRT_EventDeleter MakeEventDeleter(const PJRT_Api* api) {
+  CHECK(api != nullptr);
+  return [api](PJRT_Event* managed) {
+    PJRT_Event_Destroy_Args args;
+    args.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.event = managed;
+
+    LogFatalIfPjrtError(api->PJRT_Event_Destroy(&args), api);
+  };
 }
 
 }  // namespace pjrt

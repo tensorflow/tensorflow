@@ -15,11 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LegalizeMHLOToGMLPass : Pass<"legalize-mhlo-to-gml", "mlir::func::FuncOp"> {
-  let summary = "TBD";
-  let constructor = "::mlir::gml_st::createLegalizeMHLOToGMLPass()";
-}
-
 def FusionPass : Pass<"gml-fusion", "mlir::func::FuncOp"> {
   let summary = "Fuse producers in into `gml_st.materialize` operations";
   let constructor = "::mlir::gml_st::createFusionPass()";

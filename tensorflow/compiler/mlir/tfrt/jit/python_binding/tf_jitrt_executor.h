@@ -34,7 +34,7 @@ namespace tensorflow {
 class TfJitRtExecutor {
  public:
   using Handle = int64_t;
-  using Specialization = tfrt::jitrt::CompilationOptions::Specialization;
+  using Specialization = tfrt::jitrt::JitExecutable::Specialization;
 
   TfJitRtExecutor();
 

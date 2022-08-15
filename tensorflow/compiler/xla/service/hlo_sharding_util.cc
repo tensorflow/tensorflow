@@ -1113,6 +1113,21 @@ std::optional<HloSharding> GatherDataOperandShardingFromOutput(
   return parallel_sharding;
 }
 
+std::vector<int64_t> GetScatterSliceSize(const Shape& operand_shape,
+                                         const Shape& update_shape,
+                                         const ScatterDimensionNumbers& dnums) {
+  std::vector<int64_t> slice_size(operand_shape.rank(), 1);
+  int64_t num_update_window_dims = 0;
+  for (int64_t i = 0; i < operand_shape.rank(); ++i) {
+    if (absl::c_linear_search(dnums.inserted_window_dims(), i)) {
+      continue;
+    }
+    slice_size[i] = update_shape.dimensions(
+        dnums.update_window_dims(num_update_window_dims++));
+  }
+  return slice_size;
+}
+
 std::optional<HloSharding> ScatterOutputShardingFromUpdate(
     const HloSharding& update_sharding, const HloScatterInstruction& scatter) {
   const auto& dnums = scatter.scatter_dimension_numbers();
@@ -1123,15 +1138,9 @@ std::optional<HloSharding> ScatterOutputShardingFromUpdate(
       dnums.scatter_dims_to_operand_dims().end());
   std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
                                           dnums.update_window_dims().end());
-  std::vector<int64_t> slice_size(scatter.shape().rank(), 1);
-  int64_t num_update_window_dims = 0;
-  for (int64_t i = 0; i < scatter.shape().rank(); ++i) {
-    if (absl::c_linear_search(dnums.inserted_window_dims(), i)) {
-      continue;
-    }
-    slice_size[i] = scatter.scatter_updates()[0]->shape().dimensions(
-        dnums.update_window_dims(num_update_window_dims++));
-  }
+  std::vector<int64_t> slice_size =
+      GetScatterSliceSize(scatter.scatter_operands()[0]->shape(),
+                          scatter.scatter_updates()[0]->shape(), dnums);
   return PassthroughGatherOutputOrScatterUpdateToOperand(
       scatter.shape(), update_sharding, inserted_window_dims,
       scatter_dims_to_operand_dims, update_window_dims, slice_size);
@@ -1148,20 +1157,11 @@ std::optional<HloSharding> ScatterUpdateShardingFromOutput(
       dnums.scatter_dims_to_operand_dims().end());
   std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
                                           dnums.update_window_dims().end());
-  const Shape& first_output_shape = scatter.shape().IsArray()
-                                        ? scatter.shape()
-                                        : scatter.shape().tuple_shapes(0);
-  std::vector<int64_t> slice_size(first_output_shape.rank(), 1);
-  int64_t num_update_window_dims = 0;
-  for (int64_t i = 0; i < first_output_shape.rank(); ++i) {
-    if (absl::c_linear_search(dnums.inserted_window_dims(), i)) {
-      continue;
-    }
-    slice_size[i] = scatter.scatter_updates()[0]->shape().dimensions(
-        dnums.update_window_dims(num_update_window_dims++));
-  }
+  std::vector<int64_t> slice_size =
+      GetScatterSliceSize(scatter.scatter_operands()[0]->shape(),
+                          scatter.scatter_updates()[0]->shape(), dnums);
   return PassthroughOperandToGatherOutputOrScatterUpdate(
-      first_output_shape, per_output_sharding,
+      scatter.scatter_operands()[0]->shape(), per_output_sharding,
       scatter.scatter_updates()[0]->shape(), inserted_window_dims,
       scatter_dims_to_operand_dims, update_window_dims, slice_size);
 }
