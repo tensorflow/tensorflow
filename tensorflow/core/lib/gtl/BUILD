@@ -41,6 +41,7 @@ cc_library(
 cc_library(
     name = "cleanup",
     hdrs = ["cleanup.h"],
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/platform:macros"],
 )
 
