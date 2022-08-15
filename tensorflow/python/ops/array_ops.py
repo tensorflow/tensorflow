@@ -925,31 +925,31 @@ def _slice_helper(tensor, slice_spec, var=None):
   ```python
   # Strip leading and trailing 2 elements
   foo = tf.constant([1,2,3,4,5,6])
-  print(foo[2:-2].eval())  # => [3,4]
+  print(foo[2:-2])  # => [3,4]
 
   # Skip every other row and reverse the order of the columns
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[::2,::-1].eval())  # => [[3,2,1], [9,8,7]]
+  print(foo[::2,::-1])  # => [[3,2,1], [9,8,7]]
 
   # Use scalar tensors as indices on both dimensions
-  print(foo[tf.constant(0), tf.constant(2)].eval())  # => 3
+  print(foo[tf.constant(0), tf.constant(2)])  # => 3
 
   # Insert another dimension
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[tf.newaxis, :, :].eval()) # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[:, tf.newaxis, :].eval()) # => [[[1,2,3]], [[4,5,6]], [[7,8,9]]]
-  print(foo[:, :, tf.newaxis].eval()) # => [[[1],[2],[3]], [[4],[5],[6]],
+  print(foo[tf.newaxis, :, :]) # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[:, tf.newaxis, :]) # => [[[1,2,3]], [[4,5,6]], [[7,8,9]]]
+  print(foo[:, :, tf.newaxis]) # => [[[1],[2],[3]], [[4],[5],[6]],
   [[7],[8],[9]]]
 
   # Ellipses (3 equivalent operations)
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[tf.newaxis, :, :].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis, ...].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, :, :])  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, ...])  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis])  # => [[[1,2,3], [4,5,6], [7,8,9]]]
 
   # Masks
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[foo > 2].eval())  # => [3, 4, 5, 6, 7, 8, 9]
+  print(foo[foo > 2])  # => [3, 4, 5, 6, 7, 8, 9]
   ```
 
   Notes:
@@ -1314,18 +1314,16 @@ def _SliceHelperVar(var, slice_spec):
   This function in addition also allows assignment to a sliced range.
   This is similar to `__setitem__` functionality in Python. However,
   the syntax is different so that the user can capture the assignment
-  operation for grouping or passing to `sess.run()`.
+  operation for grouping or passing to `sess.run()` in TF1.
   For example,
 
   ```python
   import tensorflow as tf
   A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
-  with tf.compat.v1.Session() as sess:
-    sess.run(tf.compat.v1.global_variables_initializer())
-    print(sess.run(A[:2, :2]))  # => [[1,2], [4,5]]
+  print(A[:2, :2])  # => [[1,2], [4,5]]
 
-    op = A[:2,:2].assign(22. * tf.ones((2, 2)))
-    print(sess.run(op))  # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
+  A[:2,:2].assign(22. * tf.ones((2, 2))))
+  print(A) # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
   ```
 
   Note that assignments currently do not support NumPy broadcasting
