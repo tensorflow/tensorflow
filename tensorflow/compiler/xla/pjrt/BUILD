@@ -639,6 +639,7 @@ cc_library(
         "transpose_kernels.h",
     ],
     hdrs = ["transpose.h"],
+    visibility = [":friends"],
     deps = [
         ":lru_cache",
         "//tensorflow/compiler/xla:permutation_util",

@@ -16,11 +16,16 @@ load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pytype_library")
 
 package(
-    default_visibility = [
-        "//learning/pathways/data_parallel/jax:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    includes = [
+        "//tensorflow:internal",
+        "//tensorflow/compiler/xla:friends",
+    ],
 )
 
 pytype_library(
@@ -60,6 +65,7 @@ py_library(
     testonly = 1,
     srcs = ["xla_client_test.py"],
     srcs_version = "PY3",
+    visibility = [":friends"],
     deps = [
         ":xla_client",
         "@absl_py//absl/flags",
@@ -152,6 +158,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
+    visibility = [":friends"],
     deps = [
         ":exceptions",
         ":status_casters",
@@ -181,6 +188,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
+    visibility = [":friends"],
     deps = [
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -216,6 +224,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
+    visibility = [":friends"],
     deps = [
         ":exceptions",
         ":python_ref_manager",
@@ -590,6 +599,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
