@@ -20,7 +20,6 @@ import typing
 from typing import Any, Dict, Callable, List, Optional, Text, Tuple, TypeVar, Union
 
 from absl import logging
-import six
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
@@ -42,8 +41,7 @@ SlotVarCreationFnType = Callable[
 ClipValueType = Union[Tuple[float, float], float]
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _Optimizer(object):
+class _Optimizer(metaclass=abc.ABCMeta):
   """Base class for all optimizers, with common parameters."""
 
   def __init__(
@@ -254,10 +252,9 @@ class SGD(_Optimizer):
         'tensorflow/core/protobuf/tpu/optimization_parameters.proto' for more
         information on gradient accumulation and its impact on tpu embeddings.
     """
-    super(SGD, self).__init__(
-        learning_rate, use_gradient_accumulation, clip_weight_min,
-        clip_weight_max, weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate, clipvalue)
+    super().__init__(learning_rate, use_gradient_accumulation, clip_weight_min,
+                     clip_weight_max, weight_decay_factor,
+                     multiply_weight_decay_factor_by_learning_rate, clipvalue)
 
   def _slot_names(self) -> List[Text]:
     return []
@@ -267,7 +264,7 @@ class SGD(_Optimizer):
 
   def _set_optimization_parameters(
       self, parameters: optimization_parameters_pb2.OptimizationParameters):
-    super(SGD, self)._set_optimization_parameters(parameters)
+    super()._set_optimization_parameters(parameters)
     parameters.stochastic_gradient_descent.SetInParent()
 
   def _load(self) -> Callable[..., ops.Operation]:
@@ -361,11 +358,10 @@ class Adagrad(_Optimizer):
         max) to set a separate maximum or minimum. If one of the two entries is
         None, then there will be no clipping that direction.
     """
-    super(Adagrad, self).__init__(
-        learning_rate, use_gradient_accumulation, clip_weight_min,
-        clip_weight_max, weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate, clipvalue,
-        slot_variable_creation_fn)
+    super().__init__(learning_rate, use_gradient_accumulation, clip_weight_min,
+                     clip_weight_max, weight_decay_factor,
+                     multiply_weight_decay_factor_by_learning_rate, clipvalue,
+                     slot_variable_creation_fn)
     if initial_accumulator_value <= 0:
       raise ValueError(
           f"Argument `initial_accumulator_value` must be a positive float. "
@@ -380,7 +376,7 @@ class Adagrad(_Optimizer):
 
   def _set_optimization_parameters(
       self, parameters: optimization_parameters_pb2.OptimizationParameters):
-    super(Adagrad, self)._set_optimization_parameters(parameters)
+    super()._set_optimization_parameters(parameters)
     parameters.adagrad.SetInParent()
 
   def _load(self) -> Callable[..., ops.Operation]:
@@ -483,11 +479,10 @@ class AdagradMomentum(_Optimizer):
         max) to set a separate maximum or minimum. If one of the two entries is
         None, then there will be no clipping that direction.
     """
-    super(AdagradMomentum,
-          self).__init__(learning_rate, use_gradient_accumulation,
-                         clip_weight_min, clip_weight_max, weight_decay_factor,
-                         multiply_weight_decay_factor_by_learning_rate,
-                         clipvalue, slot_variable_creation_fn)
+    super().__init__(learning_rate, use_gradient_accumulation, clip_weight_min,
+                     clip_weight_max, weight_decay_factor,
+                     multiply_weight_decay_factor_by_learning_rate, clipvalue,
+                     slot_variable_creation_fn)
     if epsilon <= 0:
       raise ValueError("Adagrad momentum: epsilon must be positive")
     if exponent <= 0:
@@ -506,7 +501,7 @@ class AdagradMomentum(_Optimizer):
 
   def _set_optimization_parameters(
       self, parameters: optimization_parameters_pb2.OptimizationParameters):
-    super(AdagradMomentum, self)._set_optimization_parameters(parameters)
+    super()._set_optimization_parameters(parameters)
     parameters.adagrad_momentum.SetInParent()
     parameters.adagrad_momentum.momentum = self.momentum
     parameters.adagrad_momentum.use_nesterov = self.use_nesterov
@@ -832,7 +827,7 @@ class Adam(_Optimizer):
 
 
 @tf_export("tpu.experimental.embedding.TableConfig")
-class TableConfig(object):
+class TableConfig:
   """Configuration data for one embedding table.
 
   This class holds the configuration data for a single embedding table. It is
@@ -961,7 +956,7 @@ class TableConfig(object):
 
 
 @tf_export("tpu.experimental.embedding.FeatureConfig")
-class FeatureConfig(object):
+class FeatureConfig:
   """Configuration data for one embedding feature.
 
   This class holds the configuration data for a single embedding feature. The
