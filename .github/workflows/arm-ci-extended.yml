@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-name: ARM CI NonPip
+name: ARM CI Extended
 
 on:
   push:
@@ -28,6 +28,7 @@ on:
 
 jobs:
   build:
+    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     runs-on: [self-hosted, linux, ARM64]
     strategy:
       matrix:
@@ -44,6 +45,7 @@ jobs:
             docker stop $running_containers;
           fi
           docker container prune -f
+          docker image prune -af
       - name: Clean repository
         shell: bash
         run: find /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/. -name . -o -prune -exec sudo rm -rf -- {} + || true
