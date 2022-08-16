@@ -3633,8 +3633,9 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   if mode == "CONSTANT":
     # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
     # remove the "Pad" fallback here.
-    if not tensor_util.is_tf_type(constant_values) and np.ndim(
-        constant_values) == 0 and constant_values == 0:
+    if (not tensor_util.is_tf_type(constant_values) and
+        np.ndim(constant_values) == 0 and
+        constant_values == np.zeros_like(constant_values)):
       result = gen_array_ops.pad(tensor, paddings, name=name)
     else:
       result = gen_array_ops.pad_v2(
