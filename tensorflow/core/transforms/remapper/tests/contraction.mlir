@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt -remapper %s | FileCheck %s
+// RUN: tfg-transforms-opt --tfg-remapper %s | FileCheck %s
 
 // -----
 
