@@ -293,7 +293,6 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:fake_quant_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:quant_spec",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",

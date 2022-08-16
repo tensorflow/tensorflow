@@ -39,8 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -229,40 +229,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
   return false;
 }
 
-// TODO(b/213253905): set appropriate quant spec getter
-std::unique_ptr<OpQuantSpec> GetOpQuantSpec(Operation* op) {
-  auto spec = std::make_unique<OpQuantSpec>();
-  if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
-    StringRef function_name =
-        call_op.fAttr().cast<FlatSymbolRefAttr>().getValue();
-    if (!function_name.startswith("composite_")) {
-      return spec;
-    }
-    if (function_name.contains("depthwise_conv2d")) {
-      spec->coeff_op_quant_dim[1] = 3;
-      if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
-      }
-    } else if (function_name.contains("conv2d")) {
-      spec->coeff_op_quant_dim[1] = 3;
-      if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
-      }
-    } else if (function_name.contains("matmul")) {
-      spec->coeff_op_quant_dim[1] = -1;
-      if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
-      }
-    }
-  }
-  return spec;
-}
-
 bool PrepareQuantizePass::RemoveRedundantStats(func::FuncOp func) {
-  return RemoveRedundantStatsOps(func, GetOpQuantSpec, GetTfQuantScaleSpec);
+  return RemoveRedundantStatsOps(func, GetTFOpQuantSpec, GetTfQuantScaleSpec);
 }
 
 static Value Quantized(Operation* user) {
@@ -402,7 +370,7 @@ void PrepareQuantizePass::runOnOperation() {
   // values (tensors).
   ApplyQuantizationParamsPropagation(
       func, is_signed, disable_per_channel_ || quant_specs_.disable_per_channel,
-      GetOpQuantSpec, GetTfQuantScaleSpec, infer_tensor_range,
+      GetTFOpQuantSpec, GetTfQuantScaleSpec, infer_tensor_range,
       quant_specs_.legacy_float_scale);
 }
 
