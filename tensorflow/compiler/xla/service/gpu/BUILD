@@ -1098,6 +1098,7 @@ tf_cc_test(
         ":cublas_cudnn",
         ":gpu_conv_rewriter",
         "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:hlo",
