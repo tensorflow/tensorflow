@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_MLIR_RUNTIME_COMPILER_H_
-#define XLA_MLIR_RUNTIME_COMPILER_H_
+#ifndef XLA_MLIR_RUNTIME_JIT_COMPILER_H_
+#define XLA_MLIR_RUNTIME_JIT_COMPILER_H_
 
 #include <functional>
 #include <memory>
@@ -42,6 +42,9 @@ namespace runtime {
 // module to the XLA runtime executable. It owns the MLIR context where the
 // module is created, and handlers to capture all compilation diagnostics
 // messages.
+//
+// TODO(ezhulenev): Allow constructing JitCompiler (and JitExecutable) from the
+// MLIR module directly without serializing it to string first.
 class JitCompiler {
  public:
   using SymbolicShape = SymbolicShapesResolver::SymbolicShape;
@@ -177,4 +180,4 @@ class JitCompiler {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_MLIR_RUNTIME_COMPILER_H_
+#endif  // XLA_MLIR_RUNTIME_JIT_COMPILER_H_

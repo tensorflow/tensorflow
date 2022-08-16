@@ -182,7 +182,7 @@ cc_library(
         ":arguments",
         ":async_values_cache",
         ":constraints",
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:compiler",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:jit_compiler",
         "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",

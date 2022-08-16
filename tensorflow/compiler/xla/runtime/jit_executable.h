@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/jit_compiler.h"
 #include "tensorflow/compiler/xla/runtime/async_values_cache.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
 #include "tfrt/host_context/task_function.h"  // from @tf_runtime

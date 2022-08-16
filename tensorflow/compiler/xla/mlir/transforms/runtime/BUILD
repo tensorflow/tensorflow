@@ -58,9 +58,9 @@ cc_library(
 )
 
 cc_library(
-    name = "compiler",
-    srcs = ["compiler.cc"],
-    hdrs = ["compiler.h"],
+    name = "jit_compiler",
+    srcs = ["jit_compiler.cc"],
+    hdrs = ["jit_compiler.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":calling_convention",
