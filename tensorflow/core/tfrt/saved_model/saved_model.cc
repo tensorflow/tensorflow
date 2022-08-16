@@ -23,6 +23,8 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "third_party/mira/mlarchive/env.h"
 #include "third_party/mira/mlarchive/mla.h"
@@ -111,6 +113,11 @@ auto* saved_model_grappler_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
         "/tensorflow/tfrt/saved_model/grappler_time",
         "Record the grappler time for the savedmodel.", "model_name");
+
+auto* saved_model_mla_check_time_milli_seconds =
+    tensorflow::monitoring::Gauge<int64_t, 1>::New(
+        "/tensorflow/tfrt/saved_model/mla_check_time",
+        "Record the MLA check time for the savedmodel.", "model_name");
 
 auto* saved_model_import_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
@@ -459,13 +466,13 @@ StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags) {
   LOG(INFO) << "TFRT reading v1 savedmodel: " << saved_model_dir;
-  auto read_start_time = absl::Now();
+  const auto read_start_time = absl::Now();
 
   tensorflow::MetaGraphDef meta_graph_def;
   TF_RETURN_IF_ERROR(tensorflow::ReadMetaGraphDefFromSavedModel(
       std::string(saved_model_dir), tags, &meta_graph_def));
 
-  auto read_meta_graph_duration = absl::Now() - read_start_time;
+  const auto read_meta_graph_duration = absl::Now() - read_start_time;
   saved_model_read_meta_graph_time_seconds
       ->GetCell(std::string(saved_model_dir))
       ->Set(absl::ToInt64Seconds(read_meta_graph_duration));
@@ -481,8 +488,16 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     const std::unordered_set<std::string>& tags, tensorflow::Status* status) {
   std::string saved_model_dir_str = "unused";
   if (options.maybe_load_from_mla) {
-    if (mlarchive::Mla::IsMlarchive(saved_model_dir,
-                                    mlarchive::GetPosixEnv())) {
+    const auto mla_check_start_time = absl::Now();
+    const bool is_mla =
+        mlarchive::Mla::IsMlarchive(saved_model_dir, mlarchive::GetPosixEnv());
+    const auto mla_check_duration = absl::Now() - mla_check_start_time;
+    saved_model_mla_check_time_milli_seconds
+        ->GetCell(std::string(saved_model_dir))
+        ->Set(absl::ToInt64Milliseconds(mla_check_duration));
+    LOG(INFO) << "TFRT finished checking MLA. Took "
+              << absl::ToInt64Milliseconds(mla_check_duration) << " ms.";
+    if (is_mla) {
       LOG(INFO) << "TFRT got an MLArchive dir: " << saved_model_dir
                 << ". Continuing to find the actual saved_model_dir in it.";
       const auto statusor_saved_model_dir =
@@ -519,7 +534,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
         meta_graph_def->signature_def_size() > options.lazy_loading_threshold;
 
     // Step 1: Import saved model from a proto to an MLIR module.
-    auto import_start_time = absl::Now();
+    const auto import_start_time = absl::Now();
     auto session_options =
         CreateDefaultSessionOptions(options.graph_execution_options);
     // Set optimize_for_static_graph to true since we won't extend the graph
@@ -544,14 +559,14 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
             options.graph_execution_options.run_placer_grappler_on_functions,
             options.graph_execution_options.enable_tfrt_gpu));
 
-    auto import_duration = absl::Now() - import_start_time;
+    const auto import_duration = absl::Now() - import_start_time;
     saved_model_import_time_seconds->GetCell(std::string(saved_model_dir))
         ->Set(absl::ToInt64Seconds(import_duration));
     LOG(INFO) << "TFRT finished importing savedmodel. Took "
               << absl::ToInt64Milliseconds(import_duration) << " ms.";
 
     // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
-    auto compile_start_time = absl::Now();
+    const auto compile_start_time = absl::Now();
     ASSIGN_OR_RETURN_IN_COMPILE(
         auto initializers_and_signatures,
         GetInitializersAndSignatures(mlir_module.get(), saved_model_dir));
@@ -567,14 +582,14 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
         options.graph_execution_options.compile_options, mlir_module.get(),
         &bef));
 
-    auto compile_duration = absl::Now() - compile_start_time;
+    const auto compile_duration = absl::Now() - compile_start_time;
     saved_model_compile_time_seconds->GetCell(std::string(saved_model_dir))
         ->Set(absl::ToInt64Seconds(compile_duration));
     LOG(INFO) << "TFRT finished compiling savedmodel. Took "
               << absl::ToInt64Milliseconds(compile_duration) << " ms.";
 
     // Step 3: Initialize runtime states using special BEF functions.
-    auto init_start_time = absl::Now();
+    const auto init_start_time = absl::Now();
     ASSIGN_OR_RETURN_IN_INIT(
         auto bef_file, tfrt::CreateBefFileFromBefBuffer(
                            *options.graph_execution_options.runtime, bef));
@@ -587,7 +602,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
         InitSavedModel(initializers_and_signatures, bef_file.get(), options,
                        resource_context.get(), *fallback_state));
 
-    auto init_duration = absl::Now() - init_start_time;
+    const auto init_duration = absl::Now() - init_start_time;
     saved_model_init_time_seconds->GetCell(std::string(saved_model_dir))
         ->Set(absl::ToInt64Seconds(init_duration));
     LOG(INFO) << "TFRT finished initializing savedmodel. Took "
