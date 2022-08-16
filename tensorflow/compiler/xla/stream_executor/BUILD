@@ -747,3 +747,8 @@ cc_library(
 )
 
 exports_files(["lazy_op_runner.h"])
+
+alias(
+    name = "cuda_platform",
+    actual = "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
+)
