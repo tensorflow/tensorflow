@@ -969,6 +969,7 @@ class PjRtBuffer {
   // Returns a future that can be used to discover when the data in the
   // PjRtBuffer has been computed, or an error has occurred.
   //
+  // TODO(b/241967811): change these weird semantics
   // If the buffer has been deleted or donated the returned future will
   // immediately hold an error, however if GetReadyFuture() is called before
   // the buffer has been deleted or donated then the returned future will stay

@@ -536,6 +536,16 @@ PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_ReadyEvent_Args", PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE,
+      args->struct_size));
+  xla::PjRtFuture<xla::Status> wrapped_promise =
+      args->buffer->buffer->GetReadyFuture();
+  args->event = new PJRT_Event{std::move(wrapped_promise)};
+  return nullptr;
+}
+
 // -------------------------------- Events -------------------------------------
 
 PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args) {
