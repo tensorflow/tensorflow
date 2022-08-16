@@ -183,14 +183,14 @@ StatusOr<SignatureMap> GetFunctionSignaturesFromTFSavedModelMLIR(
         }
 
         for (auto* bound_input : sig_info.bound_inputs) {
-          auto statusor_capture = CreateTensorFromBoundInput(
+          auto capture = CreateTensorFromBoundInput(
               bound_input, saved_model_dir, &variables);
-          if (!statusor_capture.ok()) {
-            status_group.Update(statusor_capture.status());
+          if (!capture.ok()) {
+            status_group.Update(capture.status());
             // Insert a random tensor in case of errors.
             signature.captures.push_back(tensorflow::Tensor());
           } else {
-            signature.captures.push_back(*std::move(statusor_capture));
+            signature.captures.push_back(*std::move(capture));
           }
         }
       }));
@@ -437,7 +437,7 @@ void UpdateCompileOptions(SavedModel::Options& options) {
 }
 
 StatusOr<std::string> GetSavedModelDirFromMlaDir(absl::string_view mla_dir) {
-  auto statusor_dir = [&]() -> absl::StatusOr<std::string> {
+  auto dir = [&]() -> absl::StatusOr<std::string> {
     ASSIGN_OR_RETURN(const auto mla, mlarchive::Mla::FromArchiveRoot(
                                          mla_dir, mlarchive::GetPosixEnv()));
     ASSIGN_OR_RETURN(const auto* saved_model_module,
@@ -449,10 +449,10 @@ StatusOr<std::string> GetSavedModelDirFromMlaDir(absl::string_view mla_dir) {
     return saved_model_dir;
   }();
 
-  if (!statusor_dir.ok()) {
-    return tfrt::TfStatusFromAbslStatus(statusor_dir.status());
+  if (!dir.ok()) {
+    return tfrt::TfStatusFromAbslStatus(dir.status());
   }
-  return *statusor_dir;
+  return *dir;
 }
 
 StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
@@ -498,26 +498,25 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     }  // Not an MLA; `saved_model_dir` is ready to use.
   }
 
-  auto statusor_meta_graph_def = ReadSavedModel(saved_model_dir, tags);
-  if (!statusor_meta_graph_def.ok()) {
-    *status = statusor_meta_graph_def.status();
+  auto meta_graph_def = ReadSavedModel(saved_model_dir, tags);
+  if (!meta_graph_def.ok()) {
+    *status = meta_graph_def.status();
     return nullptr;
   }
-  auto meta_graph_def = *statusor_meta_graph_def;
 
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
   tfrt::metrics::AddTFRTVersionMetric();
 
   UpdateTpuTargetByBridgeCompatibility(options.graph_execution_options,
-                                       meta_graph_def.graph_def());
+                                       meta_graph_def->graph_def());
   UpdateCompileOptions(options);
 
-  auto statusor_saved_model =
+  auto saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {
     mlir::MLIRContext context;
 
     const bool lazy_loading_enabled =
-        meta_graph_def.signature_def_size() > options.lazy_loading_threshold;
+        meta_graph_def->signature_def_size() > options.lazy_loading_threshold;
 
     // Step 1: Import saved model from a proto to an MLIR module.
     auto import_start_time = absl::Now();
@@ -533,13 +532,13 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     // Creating the fallback_state using the original function def library
     // without applying placer or grappler, it is OK for now because it's only
     // used for captured functions in certain tf.data ops
-    const auto& fdef_lib = meta_graph_def.graph_def().library();
+    const auto& fdef_lib = meta_graph_def->graph_def().library();
     ASSIGN_OR_RETURN_IN_IMPORT(
         auto fallback_state, FallbackState::Create(session_options, fdef_lib));
     ASSIGN_OR_RETURN_IN_IMPORT(
         auto mlir_module,
         ImportSavedModel(
-            &context, meta_graph_def, *fallback_state,
+            &context, *meta_graph_def, *fallback_state,
             std::string(saved_model_dir),
             /*import_user_signatures=*/!lazy_loading_enabled,
             options.graph_execution_options.run_placer_grappler_on_functions,
@@ -561,7 +560,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     // TODO(b/187228559): Unify the code paths for populating the signature map.
     if (lazy_loading_enabled) {
       GetSignaturesFromSignatureDef(initializers_and_signatures.signature_map,
-                                    meta_graph_def.signature_def(), options);
+                                    meta_graph_def->signature_def(), options);
     }
     tfrt::BefBuffer bef;
     RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
@@ -598,23 +597,23 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
         "graph_executor creation", auto graph_executor,
         GraphExecutor::Create(options.graph_execution_options, *fallback_state,
                               tpu_model_resource.get(),
-                              std::move(*meta_graph_def.mutable_graph_def())));
+                              std::move(*meta_graph_def->mutable_graph_def())));
 
     // Finally, create the saved model.
     return {std::make_unique<SavedModelImpl>(
-        std::move(options), std::move(meta_graph_def), std::move(bef),
+        std::move(options), *std::move(meta_graph_def), std::move(bef),
         std::move(bef_file),
         std::move(initializers_and_signatures.signature_map),
         std::move(fallback_state), std::move(tpu_model_resource),
         std::move(resource_context), std::move(graph_executor))};
   }();
 
-  if (!statusor_saved_model.ok()) {
-    *status = statusor_saved_model.status();
+  if (!saved_model.ok()) {
+    *status = saved_model.status();
     return nullptr;
   }
   *status = OkStatus();
-  return *std::move(statusor_saved_model);
+  return *std::move(saved_model);
 }
 
 SavedModelImpl::SavedModelImpl(
