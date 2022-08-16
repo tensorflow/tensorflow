@@ -36,19 +36,15 @@ from tensorflow.python.util import nest
 class _SingleDeviceSaver(object):
   """Saves and restores checkpoints from the current device."""
 
-  __slots__ = ["_saveable_objects"]
+  __slots__ = ["_tensor_slice_dict"]
 
-  def __init__(self, saveable_objects):
+  def __init__(self, tensor_slice_dict):
     """Specify a list of `SaveableObject`s to save and restore.
 
     Args:
-      saveable_objects: A list of `SaveableObject`s.
+      tensor_slice_dict: A dict mapping checkpoint key -> slice_spec -> tensor.
     """
-    saveable_objects = list(saveable_objects)
-    for saveable in saveable_objects:
-      if not isinstance(saveable, saveable_object.SaveableObject):
-        raise ValueError(f"Expected a list of SaveableObjects, got {saveable}.")
-    self._saveable_objects = saveable_objects
+    self._tensor_slice_dict = tensor_slice_dict
 
   def save(self, file_prefix, options=None):
     """Save the saveable objects to a checkpoint with `file_prefix`.
@@ -63,20 +59,25 @@ class _SingleDeviceSaver(object):
     options = options or checkpoint_options.CheckpointOptions()
     tensor_names = []
     tensors = []
-    tensor_slices = []
-    for saveable in self._saveable_objects:
-      for spec in saveable.specs:
-        tensor = spec.tensor
-        # A tensor value of `None` indicates that this SaveableObject gets
-        # recorded in the object graph, but that no value is saved in the
-        # checkpoint.
-        if tensor is not None:
-          tensor_names.append(spec.name)
+    slice_specs = []
+    for checkpoint_key, tensor_slices in self._tensor_slice_dict.items():
+      for slice_spec, tensor in tensor_slices.items():
+        if isinstance(tensor, saveable_object.SaveSpec):
+          tensor_value = tensor.tensor
+          # A tensor value of `None` indicates that this SaveableObject gets
+          # recorded in the object graph, but that no value is saved in the
+          # checkpoint.
+          if tensor_value is not None:
+            tensor_names.append(tensor.name)
+            tensors.append(tensor_value)
+            slice_specs.append(tensor.slice_spec)
+        else:
+          tensor_names.append(checkpoint_key)
           tensors.append(tensor)
-          tensor_slices.append(spec.slice_spec)
+          slice_specs.append(slice_spec)
     save_device = options.experimental_io_device or "cpu:0"
     with ops.device(save_device):
-      return io_ops.save_v2(file_prefix, tensor_names, tensor_slices, tensors)
+      return io_ops.save_v2(file_prefix, tensor_names, slice_specs, tensors)
 
   def restore(self, file_prefix, options=None):
     """Restore the saveable objects from a checkpoint with `file_prefix`.
@@ -87,30 +88,35 @@ class _SingleDeviceSaver(object):
       options: Optional `CheckpointOptions` object.
 
     Returns:
-      A dictionary mapping from SaveableObject names to restore operations.
+      A restored tensor dict (maps checkpoint_key -> slice_spec -> tensor).
     """
     options = options or checkpoint_options.CheckpointOptions()
-    restore_specs = []
-    tensor_structure = []
-    for saveable in self._saveable_objects:
-      saveable_tensor_structure = []
-      tensor_structure.append(saveable_tensor_structure)
-      for spec in saveable.specs:
-        saveable_tensor_structure.append(spec.name)
-        restore_specs.append((spec.name, spec.slice_spec, spec.dtype))
-    tensor_names, tensor_slices, tensor_dtypes = zip(*restore_specs)
+    tensor_names = []
+    tensor_dtypes = []
+    slice_specs = []
+
+    for checkpoint_key, tensor_slices in self._tensor_slice_dict.items():
+      for slice_spec, tensor in tensor_slices.items():
+        tensor_dtypes.append(tensor.dtype)
+        if isinstance(tensor, saveable_object.SaveSpec):
+          slice_specs.append(tensor.slice_spec)
+          tensor_names.append(tensor.name)
+        else:
+          slice_specs.append(slice_spec)
+          tensor_names.append(checkpoint_key)
+
     restore_device = options.experimental_io_device or "cpu:0"
     with ops.device(restore_device):
       restored_tensors = io_ops.restore_v2(
-          file_prefix, tensor_names, tensor_slices, tensor_dtypes)
-    structured_restored_tensors = nest.pack_sequence_as(
-        tensor_structure, restored_tensors)
-    restore_ops = {}
-    for saveable, restored_tensors in zip(self._saveable_objects,
-                                          structured_restored_tensors):
-      restore_ops[saveable.name] = saveable.restore(
-          restored_tensors, restored_shapes=None)
-    return restore_ops
+          file_prefix, tensor_names, slice_specs, tensor_dtypes)
+
+    restored_tensor_dict = {}
+    for checkpoint_key, tensor_slices in self._tensor_slice_dict.items():
+      for slice_spec in tensor_slices:
+        restored_tensor = restored_tensors.pop(0)
+        restored_tensor_dict.setdefault(checkpoint_key, {})[slice_spec] = (
+            restored_tensor)
+    return restored_tensor_dict
 
 
 def sharded_filename(filename_tensor, shard, num_shards):
@@ -193,20 +199,44 @@ class MultiDeviceSaver(object):
       call_with_mapped_captures: TODO
     """
     saveable_objects = list(saveable_objects)
-    saveables_by_device = {}
+
+    # Keep these two data structures so that we can map restored tensors to
+    # the Trackable restore functions.
+    self._keys_to_restore_fn = {}
+    self._restore_fn_to_keys = {}
+
+    # Extract serialized tensors and separate by device.
+    tensors_by_device = {}  # device -> checkpoint key -> (slice_spec ->) tensor
     for saveable in saveable_objects:
-      is_saveable = isinstance(saveable, saveable_object.SaveableObject)
+      tensor_dict = saveable_object_util.saveable_object_to_tensor_dict(
+          [saveable])
+      restore_fn = saveable_object_util.saveable_object_to_restore_fn(
+          [saveable])
 
-      if not is_saveable:
-        raise ValueError(
-            f"Expected a dictionary of SaveableObjects, got {saveable}.")
+      # Divide tensor_dict by device.
+      for checkpoint_key, maybe_tensor in tensor_dict.items():
+        if not isinstance(maybe_tensor, dict):
+          # Make sure that maybe_tensor is structured as {slice_spec -> tensor}.
+          maybe_tensor = {"": maybe_tensor}
 
-      host_device = saveable_object_util.set_cpu0(saveable.device)
-      saveables_by_device.setdefault(host_device, []).append(saveable)
+        for slice_spec, tensor in maybe_tensor.items():
+          if (checkpoint_key, slice_spec) in self._keys_to_restore_fn:
+            raise ValueError(
+                "Recieved multiple tensors with the same checkpoint key and "
+                "slice spec. This is invalid because one will overwrite the "
+                "other in the checkpoint. This indicates a bug in the "
+                "Checkpoint key-generation.")
+          self._keys_to_restore_fn[(checkpoint_key, slice_spec)] = restore_fn
+          self._restore_fn_to_keys.setdefault(restore_fn, []).append(
+              (checkpoint_key, slice_spec))
 
+          host_device = saveable_object_util.set_cpu0(tensor.device)
+          (tensors_by_device
+           .setdefault(host_device, {})
+           .setdefault(checkpoint_key, {})[slice_spec]) = tensor
     self._single_device_savers = {
-        device: _SingleDeviceSaver(saveables)
-        for device, saveables in saveables_by_device.items()}
+        device: _SingleDeviceSaver(tensor_slice_dict)
+        for device, tensor_slice_dict in tensors_by_device.items()}
 
     self._registered_savers = {}
     if registered_savers:
@@ -377,12 +407,33 @@ class MultiDeviceSaver(object):
     options = options or checkpoint_options.CheckpointOptions()
 
     def restore_fn():
+      restore_fn_inputs = {}
+      restore_fn_input_count = {
+          fn: len(keys) for fn, keys in self._restore_fn_to_keys.items()}
+
       restore_ops = {}
       # Sort by device name to avoid propagating non-deterministic dictionary
       # ordering in some Python versions.
       for device, saver in sorted(self._single_device_savers.items()):
         with ops.device(device):
-          restore_ops.update(saver.restore(file_prefix, options))
+          # Load values from checkpoint
+          restored_tensor_dict = saver.restore(file_prefix, options)
+
+          # Map restored tensors to the corresponding restore_fn, and see if all
+          # inputs have all been loaded. Call `restore_fn` if that is the case.
+          for checkpoint_key, slice_and_tensor in restored_tensor_dict.items():
+            for slice_spec, tensor in slice_and_tensor.items():
+              restore_fn = self._keys_to_restore_fn[(checkpoint_key,
+                                                     slice_spec)]
+              (restore_fn_inputs
+               .setdefault(restore_fn, {})
+               .setdefault(checkpoint_key, {})[slice_spec]) = tensor
+              restore_fn_input_count[restore_fn] -= 1
+
+              if restore_fn_input_count[restore_fn] == 0:
+                ret = restore_fn(restore_fn_inputs[restore_fn])
+                if isinstance(ret, dict):
+                  restore_ops.update(ret)
       # Run registered restore methods after the default restore ops.
       for _, (_, restore_fn) in self._registered_savers.items():
         restore_fn(file_prefix)
