@@ -114,24 +114,8 @@ ENTRY %fused_computation.371 (param_0: f32[6400,4,8,32]) -> f32[6400,4,8] {
 }
 )";
 
-<<<<<<< HEAD
-  const char* expected_optimized_llvm_ir = is_built_with_rocm_ ? R"(
-CHECK:  %[[thread_id:.*]] = tail call i32 @llvm.amdgcn.workitem.id.x()
-CHECK:  %[[masked_thread_id:.*]] = and i32 %[[thread_id]], 31
-// Verify that there is no comparison masking half the warp.
-CHECK-NOT: icmp ult i32 %[[masked_thread_id]], 16
-// Verify that we only do one warp reducton by checking that there are 6
-// ds.bpermute corresponding to 1 declaration and 5 permute instructions.  The
-// second warp reduction was originally produced for inter-warp reduction
-// which we have now optimized away.
-CHECK-COUNT-6: llvm.amdgcn.ds.bpermute
-CHECK-NOT: llvm.amdgcn.ds.bpermute
-)" : R"(
-CHECK:  %[[thread_id:.*]] = tail call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
-=======
   std::string expected_optimized_llvm_ir = R"(
 CHECK:  %[[thread_id:.*]] = tail call i32 X_THREAD
->>>>>>> google_upstream/master
 CHECK:  %[[masked_thread_id:.*]] = and i32 %[[thread_id]], 31
 // Verify that there is no comparison masking half the warp.
 CHECK-NOT: icmp ult i32 %[[masked_thread_id]], 16
@@ -143,12 +127,14 @@ CHECK-COUNT-6: SHUFFLE
 CHECK-NOT: SHUFFLE
 )";
 
-  expected_optimized_llvm_ir = absl::StrReplaceAll(
-      expected_optimized_llvm_ir,
-      {{"X_THREAD", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
-                                        : "@llvm.nvvm.read.ptx.sreg.tid.x"},
-       {"SHUFFLE", is_built_with_rocm_ ? "llvm.amdgcn.ds.bpermute"
-                                       : "llvm.nvvm.shfl.sync.down.f32"}});
+  expected_optimized_llvm_ir =
+    absl::StrReplaceAll(expected_optimized_llvm_ir, {
+      {"X_THREAD", is_built_with_rocm_ ? 
+        "@llvm.amdgcn.workitem.id.x" :
+        "@llvm.nvvm.read.ptx.sreg.tid.x"},
+      {"SHUFFLE", is_built_with_rocm_ ?
+        "llvm.amdgcn.ds.bpermute" :
+       	"llvm.nvvm.shfl.sync.down.f32"}});
 
   CompileAndVerifyIr(hlo_text, expected_optimized_llvm_ir, true);
 

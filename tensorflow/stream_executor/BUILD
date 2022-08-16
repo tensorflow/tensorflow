@@ -35,14 +35,6 @@ cc_library(
     hdrs = ["device_description.h"],
     deps = [
         "//tensorflow/compiler/xla/stream_executor:device_description",
-<<<<<<< HEAD
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:variant",
-=======
->>>>>>> google_upstream/master
     ],
 )
 
