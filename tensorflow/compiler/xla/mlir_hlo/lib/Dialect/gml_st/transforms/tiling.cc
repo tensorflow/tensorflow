@@ -35,22 +35,6 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-// TODO(frgossen): Move this upstream as `tensor::createDimValues`.
-llvm::SmallVector<Value> createDimValues(OpBuilder &b, Location loc,
-                                         Value tensorValue) {
-  auto ty = tensorValue.getType().cast<RankedTensorType>();
-  llvm::SmallVector<Value> dims;
-  for (const auto &en : llvm::enumerate(ty.getShape())) {
-    int64_t d = en.value();
-    if (ShapedType::isDynamic(d)) {
-      dims.push_back(b.create<tensor::DimOp>(loc, tensorValue, en.index()));
-    } else {
-      dims.push_back(b.create<arith::ConstantIndexOp>(loc, d));
-    }
-  }
-  return dims;
-}
-
 Value createPointSet(OpBuilder &b, Location loc, Value space, ValueRange ivs) {
   size_t rank = ivs.size();
   SmallVector<int64_t> allDynamicOffsets(rank,
@@ -127,7 +111,7 @@ Value createParallelLoopTiling(OpBuilder &b, Location loc, Value target,
   // Create loop bounds.
   Value zero = b.create<arith::ConstantIndexOp>(loc, 0);
   SmallVector<Value> lowerBounds(ty.getRank(), zero);
-  SmallVector<Value> upperBounds = createDimValues(b, loc, target);
+  SmallVector<Value> upperBounds = tensor::createDimValues(b, loc, target);
   auto steps =
       llvm::to_vector(llvm::map_range(tileSizes, [&](int64_t s) -> Value {
         return b.create<arith::ConstantIndexOp>(loc, s).getResult();
