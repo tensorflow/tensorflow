@@ -238,7 +238,13 @@ struct CompileOptions {
   // Set multi_slice_config to trigger compilation for DCN connected multi
   // slice operation.
   const MultiSliceConfig* multi_slice_config = nullptr;
+
+  // Serialize the CompileOptions into a CompileOptionsProto.
+  StatusOr<CompileOptionsProto> ToProto() const;
 };
+
+StatusOr<CompileOptions> CompileOptionsFromProto(
+    const CompileOptionsProto& input);
 
 // A sized chunk of host data. The host data can be either in host layout or in
 // device layout, and it can be one part of the entire buffer. The PjRt

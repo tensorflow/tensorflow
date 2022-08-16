@@ -4,6 +4,10 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -727,5 +731,16 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:test",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_proto_library(
+    name = "compile_options_proto",
+    srcs = ["compile_options.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_proto",
     ],
 )

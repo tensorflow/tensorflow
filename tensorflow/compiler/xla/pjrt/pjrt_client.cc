@@ -20,8 +20,20 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
+
+StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
+  // TODO(b/240299401): Implement.
+  return Unimplemented("Unimplemented!");
+}
+
+StatusOr<CompileOptions> CompileOptionsFromProto(
+    const CompileOptionsProto& input) {
+  // TODO(b/240299401): Implement.
+  return Unimplemented("Unimplemented!");
+}
 
 PjRtBuffer::ExternalReference::~ExternalReference() = default;
 
