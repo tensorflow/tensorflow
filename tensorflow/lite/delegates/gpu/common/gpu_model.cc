@@ -440,7 +440,7 @@ absl::Status MergeElementwiseNodes(const GpuInfo& gpu_info,
       continue;
     }
 
-    // check TYPE_1
+    // check TYPE_1/2
     if (prev_nodes.size() == 2) {
       if (elem_root.inputs.size() != 2) {
         continue;
@@ -494,6 +494,53 @@ absl::Status MergeElementwiseNodes(const GpuInfo& gpu_info,
                                 gpu_info, elem_root.gpu_operation.get()));
         nodes.erase(nodes.begin() + elem_root_index);
         elem_root_index = prev_first_node_index;
+        continue;
+      }
+
+      // check TYPE_2
+      // TYPE_2
+      //      input           input
+      //     /    \             |
+      //    |    elem0          |
+      //     \    /      -->  elem
+      //   elem_root            |
+      //       |                |
+      //     output           output
+      if (!prev_first_node.gpu_operation->IsLinkable() &&
+          prev_second_node.gpu_operation->IsLinkable() &&
+          prev_first_node.outputs.size() == 1 &&
+          prev_second_node.inputs.size() == 1 &&
+          prev_second_node.outputs.size() == 1) {
+        int second_node_parent_index = -1;
+        for (int j = prev_second_node_index - 1; j >= 0; --j) {
+          if (nodes[j].outputs[0] == prev_second_node.inputs[0]) {
+            second_node_parent_index = j;
+            break;
+          }
+        }
+        if (second_node_parent_index == -1 ||
+            second_node_parent_index != prev_first_node_index) {
+          continue;
+        }
+        int consumers_count = 0;
+        for (const auto& node : nodes) {
+          for (const auto& input : node.inputs) {
+            if (input == elem_root.inputs[1]) {
+              consumers_count++;
+            }
+          }
+        }
+        if (consumers_count != 1) {
+          continue;
+        }
+
+        prev_second_node.outputs[0] = elem_root.outputs[0];
+        prev_second_node.name += " -> " + elem_root.name;
+        RETURN_IF_ERROR(prev_second_node.gpu_operation
+                            ->Fuse2InputElemWithSimpleElemAsSecondInput(
+                                gpu_info, elem_root.gpu_operation.get()));
+        nodes.erase(nodes.begin() + elem_root_index);
+        elem_root_index = prev_second_node_index;
         continue;
       }
     }

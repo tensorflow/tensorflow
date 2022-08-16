@@ -249,6 +249,40 @@ absl::Status GPUOperation::Fuse2InputElemWithSimpleElemAsFirstInput(
                            {elem1.second_elementwise_tensor_name_});
 }
 
+//      input           input
+//     /    \             |
+//    |    elem0          |
+//     \    /      -->  elem
+//     elem1              |
+//       |                |
+//     output           output
+// GPUOperation* operation is elem1
+// *this is elem0
+absl::Status GPUOperation::Fuse2InputElemWithSimpleElemAsSecondInput(
+    const GpuInfo& gpu_info, GPUOperation* operation43) {
+  GPUOperation& elem0 = *this;
+  GPUOperation& elem1 = *operation43;
+  const auto link_value_type = elem0.definition_.dst_tensors[0].GetDataType();
+  elem0.definition_.dst_tensors[0] = elem1.definition_.dst_tensors[0];
+  elem0.linkable_count_ += (elem1.linkable_count_ + 1);
+  std::string unique_postfix = absl::StrCat("_link", elem0.linkable_count_);
+  elem1.args_.RenameArgs(unique_postfix, &elem1.elementwise_code_);
+  const std::string link_value_name = "interm_value" + unique_postfix;
+  const std::string value_declaration =
+      "\n" + GetTypeDeclaration(gpu_info, link_value_type, 4) + " " +
+      link_value_name + ";\n";
+  elem0.elementwise_code_ = absl::StrReplaceAll(
+      elem0.elementwise_code_, {{"out_value", link_value_name}});
+  elem0.elementwise_code_ =
+      absl::Substitute(elem0.elementwise_code_, value_declaration);
+  elem1.elementwise_code_ = absl::StrReplaceAll(
+      elem1.elementwise_code_,
+      {{"in2_value", link_value_name}, {"READ_SECOND_VALUE", ""}});
+  elem0.elementwise_code_ += "\n" + elem1.elementwise_code_;
+  return elem0.args_.Merge(std::move(elem1.args_), unique_postfix,
+                           {elem1.second_elementwise_tensor_name_});
+}
+
 absl::Status GPUOperation::AddOperation(const GpuInfo& gpu_info,
                                         GPUOperation* operation) {
   const auto prev_type = definition_.dst_tensors[0].GetDataType();

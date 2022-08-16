@@ -53,6 +53,11 @@ TEST_F(OpenCLOperationTest, LinkingConvolutionFirstTanh2InputDiff) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, LinkingConvolutionSecondTanh2InputDiff) {
+  auto status = TestLinkingConvolutionSecondTanh2InputDiff(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 }  // namespace
 }  // namespace cl
 }  // namespace gpu
