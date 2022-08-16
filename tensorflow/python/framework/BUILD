@@ -232,7 +232,6 @@ py_library(
         ":tensor_util",
         ":type_spec",
         "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/python/client:_pywrap_debug_events_writer",
         "//tensorflow/python/client:_pywrap_events_writer",
         "//tensorflow/python/eager:context",
@@ -489,7 +488,6 @@ py_library(
         "//tensorflow/core/config:flags_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 
@@ -938,7 +936,6 @@ py_library(
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 
@@ -1402,7 +1399,6 @@ py_library(
         "//tensorflow/python/util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 

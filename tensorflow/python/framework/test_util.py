@@ -32,7 +32,6 @@ import unittest
 
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
@@ -2016,7 +2015,7 @@ def deterministic_ops():
     config.disable_op_determinism()
 
 
-class CapturedWrites(object):
+class CapturedWrites:
   """A utility class to load the captured writes made to a stream."""
 
   def __init__(self, capture_location):
@@ -2029,7 +2028,7 @@ class CapturedWrites(object):
     return output_data
 
 
-class FakeEagerSession(object):
+class FakeEagerSession:
   """Fake session so tests that conditionally use placeholders can use eager.
 
   There are a number of tests that conditionally use placeholders for shape
@@ -2091,7 +2090,7 @@ class ErrorLoggingSession(session.Session):
 
   def run(self, *args, **kwargs):
     try:
-      return super(ErrorLoggingSession, self).run(*args, **kwargs)
+      return super().run(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
       # Note: disable the logging for OutOfRangeError, which makes the output
       # of tf.data tests hard to read, because OutOfRangeError is used as the
@@ -2418,7 +2417,7 @@ def matmul_without_tf32(a, b, *args, **kwargs):
     return math_ops.matmul(a, b, *args, **kwargs)
 
 
-class EagerSessionWarner(object):
+class EagerSessionWarner:
 
   def __getattr__(self, attr):
     raise AttributeError(
@@ -2435,7 +2434,7 @@ class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow."""
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
-    super(TensorFlowTestCase, self).__init__(methodName)
+    super().__init__(methodName)
     # Make sure we get unfiltered stack traces during the test
     traceback_utils.disable_traceback_filtering()
     if is_xla_enabled():
@@ -2465,7 +2464,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self._set_default_seed = True
 
   def setUp(self):
-    super(TensorFlowTestCase, self).setUp()
+    super().setUp()
     self._ClearCachedSession()
     random.seed(random_seed.DEFAULT_GRAPH_SEED)
     np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
@@ -2501,7 +2500,7 @@ class TensorFlowTestCase(googletest.TestCase):
       thread.check_termination()
 
     self._ClearCachedSession()
-    super(TensorFlowTestCase, self).tearDown()
+    super().tearDown()
 
   def _ClearCachedSession(self):
     if self._cached_session is not None:
@@ -3274,24 +3273,20 @@ class TensorFlowTestCase(googletest.TestCase):
       msgs.append("not equal lhs = %r" % x)
       msgs.append("not equal rhs = %r" % y)
 
-      # Handle mixed string types as a result of PY2to3 migration. That is, the
-      # mixing between bytes (b-prefix strings, PY2 default) and unicodes
-      # (u-prefix strings, PY3 default).
-      if six.PY3:
-        if (a.dtype.kind != b.dtype.kind and
-            {a.dtype.kind, b.dtype.kind}.issubset({"U", "S", "O"})):
-          a_list = []
-          b_list = []
-          # OK to flatten `a` and `b` because they are guaranteed to have the
-          # same shape.
-          for out_list, flat_arr in [(a_list, a.flat), (b_list, b.flat)]:
-            for item in flat_arr:
-              if isinstance(item, str):
-                out_list.append(item.encode("utf-8"))
-              else:
-                out_list.append(item)
-          a = np.array(a_list)
-          b = np.array(b_list)
+      if (a.dtype.kind != b.dtype.kind and
+          {a.dtype.kind, b.dtype.kind}.issubset({"U", "S", "O"})):
+        a_list = []
+        b_list = []
+        # OK to flatten `a` and `b` because they are guaranteed to have the
+        # same shape.
+        for out_list, flat_arr in [(a_list, a.flat), (b_list, b.flat)]:
+          for item in flat_arr:
+            if isinstance(item, str):
+              out_list.append(item.encode("utf-8"))
+            else:
+              out_list.append(item)
+        a = np.array(a_list)
+        b = np.array(b_list)
 
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
@@ -3995,7 +3990,7 @@ def run_functions_eagerly(run_eagerly):
     def_function.run_functions_eagerly(initial_state)
 
 
-class TestDelta(object):
+class TestDelta:
   """A utility class to track increments to test counters."""
 
   def __init__(self, name, label):
