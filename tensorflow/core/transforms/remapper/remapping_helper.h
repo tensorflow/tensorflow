@@ -23,7 +23,6 @@ limitations under the License.
 
 namespace mlir {
 namespace tfg {
-namespace {
 
 // The following structures store info of the operations to be fused. These
 // are mainly used for combining operands info and attributes for a fused
@@ -56,30 +55,6 @@ struct ContractionBiasAddAddActivation {
   Operation* add;
   Operation* activation;
 };
-
-// This enum class is used as a template parameter and meant for alias to tfg op
-// name.
-// TODO(intel-tf): Add more items as needed.
-enum class OpKind { Relu, Relu6, Elu, LeakyRelu, Tanh, Sigmoid };
-
-inline std::string GetTfgOpName(OpKind op_kind) {
-  switch (op_kind) {
-    case OpKind::Relu:
-      return "tfg.Relu";
-    case OpKind::Relu6:
-      return "tfg.Relu6";
-    case OpKind::Elu:
-      return "tfg.Elu";
-    case OpKind::LeakyRelu:
-      return "tfg.LeakyRelu";
-    case OpKind::Tanh:
-      return "tfg.Tanh";
-    case OpKind::Sigmoid:
-      return "tfg.Sigmoid";
-    default:
-      return "tfg.NoOp";
-  }
-}
 
 class OpPropertyHelper : public OpCatHelper {
  public:
@@ -255,7 +230,6 @@ class OpPropertyHelper : public OpCatHelper {
   bool is_xla_auto_clustering_enabled_;
 };
 
-}  // namespace
 }  // namespace tfg
 }  // namespace mlir
 

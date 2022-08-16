@@ -54,8 +54,9 @@ class MatchMulSigmoid : public RewritePattern {
                                 PatternRewriter &rewriter) const override {
     TypeAttr dtype_attr = op->getAttrOfType<TypeAttr>("T");
     if (!dtype_attr.getValue().isa<Float32Type>() &&
-        !dtype_attr.getValue().isa<BFloat16Type>())
+        !dtype_attr.getValue().isa<BFloat16Type>()) {
       return failure();
+    }
 
     if (!util::OpHasDevice(op, tensorflow::DEVICE_CPU)) return failure();
 
@@ -96,7 +97,30 @@ class MatchMulSigmoid : public RewritePattern {
   OperationName sigmoid_name_;
 };
 
-namespace {
+// This enum class is used as a template parameter and meant for alias to tfg op
+// name.
+// TODO(intel-tf): Add more items as needed.
+enum class OpKind { Relu, Relu6, Elu, LeakyRelu, Tanh, Sigmoid };
+
+inline std::string GetTfgOpName(OpKind op_kind) {
+  switch (op_kind) {
+    case OpKind::Relu:
+      return "tfg.Relu";
+    case OpKind::Relu6:
+      return "tfg.Relu6";
+    case OpKind::Elu:
+      return "tfg.Elu";
+    case OpKind::LeakyRelu:
+      return "tfg.LeakyRelu";
+    case OpKind::Tanh:
+      return "tfg.Tanh";
+    case OpKind::Sigmoid:
+      return "tfg.Sigmoid";
+    default:
+      return "tfg.NoOp";
+  }
+}
+
 class RemapperPatternBase : public RewritePattern {
  public:
   RemapperPatternBase(StringRef opName, OpPropertyHelper &helper,
@@ -111,7 +135,6 @@ class RemapperPatternBase : public RewritePattern {
  protected:
   OpPropertyHelper helper_;
 };
-}  // namespace
 
 static std::unique_ptr<OperationState> GetContractionBiasAddOpState(
     OpBuilder &builder, const OpPropertyHelper &helper,
@@ -347,8 +370,9 @@ class Remapper : public RemapperBase<Remapper> {
 };
 
 void Remapper::runOnOperation() {
-  if (failed(applyPatternsAndFoldGreedily(getOperation(), final_patterns_)))
+  if (failed(applyPatternsAndFoldGreedily(getOperation(), final_patterns_))) {
     signalPassFailure();
+  }
 }
 
 std::unique_ptr<Pass> CreateRemapperPass(bool enable_onednn_patterns,
