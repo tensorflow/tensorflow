@@ -18,7 +18,12 @@ limitations under the License.
 
 #include <iostream>
 
-#ifdef ENABLE_MKL
+// Currently MKL ML cblas_* functions are called, but they
+// are not supported . Thus we temporarily disable it.
+// TODO(intel-tf): remove this restriction by using oneDNN APIs.
+#if defined(ENABLE_MKL) && !defined(INTEL_MKL_DNN_ONLY) && \
+    defined(DNNL_AARCH64_USE_ACL)
+
 #include "third_party/intel_mkl_ml/include/mkl_cblas.h"
 
 extern void __xla_cpu_runtime_MKLMatMulF32(

@@ -13,7 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(ENABLE_MKL) && !defined(INTEL_MKL_DNN_ONLY)
+// Currently MKL ML cblas_* functions are called, but they
+// are not supported . Thus we temporarily disable it.
+// TODO(intel-tf): remove this restriction by using oneDNN APIs.
+#if defined(ENABLE_MKL) && !defined(INTEL_MKL_DNN_ONLY) && \
+    defined(DNNL_AARCH64_USE_ACL)
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 
 #include "third_party/intel_mkl_ml/include/mkl_cblas.h"

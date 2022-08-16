@@ -20,7 +20,6 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/strings/str_format.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_custom_call_status.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
 namespace {
@@ -170,7 +170,8 @@ INSTANTIATE_TEST_SUITE_P(EigenMatMulTestInstantiaion, EigenMatMulTest,
                                             ::testing::Bool()),
                          EigenMatMulTest::Name);
 
-#ifdef ENABLE_MKL
+// TODO(intel-tf): remove this workaround once MKL ML calls are cleaned.
+#if defined(ENABLE_MKL) && defined(DNNL_AARCH64_USE_ACL)
 class MKLMatMulTest : public CpuRuntimeTest,
                       public ::testing::WithParamInterface<MatMulTestParam> {
  public:

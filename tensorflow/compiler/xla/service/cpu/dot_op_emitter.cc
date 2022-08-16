@@ -802,6 +802,10 @@ Status DotOpEmitter::EmitCallToRuntime() {
 
   bool multi_threaded = ShouldUseMultiThreadedEigen(hlo_module_config_);
   bool use_mkl_dnn = hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn();
+  // Currently MKL ML cblas_* functions are called, but they
+  // are not supported . Thus we temporarily disable it.
+  // TODO(intel-tf): remove this restriction by using oneDNN APIs.
+  use_mkl_dnn = false;
   bool use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
   PrimitiveType type = target_array_.GetShape().element_type();
   llvm::Function* function = b_->GetInsertBlock()->getParent();

@@ -997,6 +997,10 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
           hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn() &&
           convolution->feature_group_count() == 1;
       bool use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
+      // Currently MKL ML cblas_* functions are called, but they
+      // are not supported . Thus we temporarily disable it.
+      // TODO(intel-tf): remove this restriction by using oneDNN APIs.
+      use_mkl_dnn = false;
 
       auto valid_num_dims = [](absl::Span<const int64_t> xs) {
         return xs.size() >= 2 && xs.size() <= 3;
