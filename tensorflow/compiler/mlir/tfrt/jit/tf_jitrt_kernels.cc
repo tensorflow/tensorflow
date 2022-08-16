@@ -32,7 +32,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
+#include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
+#include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/runtime/types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -42,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
+#include "tfrt/jitrt/results.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
@@ -100,21 +105,22 @@ using ::tfrt::StrCat;
 using ::tfrt::StringAttribute;
 using ::tfrt::TaskFunction;
 
-using ::tfrt::jitrt::ArgumentConstraint;
-using ::tfrt::jitrt::ArgumentsRef;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
-using ::tfrt::jitrt::EigenThreadPoolAsyncTaskRunner;
-using ::tfrt::jitrt::Executable;
-using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::JitExecutableCache;
-using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnErrors;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConversion;
-using ::tfrt::jitrt::SpecializationListener;
 using ::tfrt::jitrt::StaticRemainingResultsConverter;
+
+using ::xla::runtime::ArgumentConstraint;
+using ::xla::runtime::ArgumentsRef;
+using ::xla::runtime::EigenThreadPoolAsyncTaskRunner;
+using ::xla::runtime::Executable;
+using ::xla::runtime::JitExecutable;
+using ::xla::runtime::MemrefDesc;
+using ::xla::runtime::SpecializationListener;
 
 using ::tensorflow::profiler::TraceMe;
 using ::tensorflow::profiler::TraceMeEncode;

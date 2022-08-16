@@ -32,7 +32,7 @@ namespace tensorflow {
 
 using ::tfrt::HostContext;
 using ::tfrt::jitrt::CompilationPipelineOptions;
-using ::tfrt::jitrt::MemrefType;
+using ::xla::runtime::MemrefType;
 
 const bool kStaticDim = false;
 const bool kDynamicDim = true;

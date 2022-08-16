@@ -170,9 +170,12 @@ tfrt_cc_library(
 #     srcs = ["jit/tf_jitrt_test.cc"],
 #     deps = [
 #         ":tf_jitrt",
+#         "//tensorflow/compiler/xla/runtime:results",
+#         "//tensorflow/compiler/xla/runtime:types",
 #         "@com_google_googletest//:gtest_main",
 #         "@llvm-project//mlir:mlir_c_runner_utils",
 #         "@tf_runtime//backends/jitrt",
+#         "@tf_runtime//backends/jitrt:results",
 #     ],
 # )
 # copybara:uncomment_end
@@ -204,7 +207,11 @@ tfrt_cc_library(
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/xla/mlir/utils/runtime:async_runtime_api",
+        "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:async_runtime",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:jit_executable",
+        "//tensorflow/compiler/xla/runtime:types",
         "//tensorflow/core:framework",
         "//tensorflow/core:platform_base",
         "//tensorflow/core/platform:dynamic_annotations",
@@ -224,6 +231,7 @@ tfrt_cc_library(
         "@tf_runtime//:tracing",
         "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
+        "@tf_runtime//backends/jitrt:results",
     ],
 )
 

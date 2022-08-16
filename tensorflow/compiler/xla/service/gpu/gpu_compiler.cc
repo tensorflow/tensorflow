@@ -1435,27 +1435,27 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     copts.num_worker_threads = 1;
 
     // Options for constructing JitRt JitExecutable.
-    jitrt::JitExecutable::Options opts;
-    opts.specialization = jitrt::JitExecutable::Specialization::kDisabled;
+    runtime::JitExecutable::Options opts;
+    opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
     opts.compiler.register_dialects = jitrt::RegisterDefaultJitRtDialects;
 
     // Register JitRt Gpu runtime custom calls with the linker.
     opts.compiler.runtime_symbol_map =
-        jitrt::GetSymbolsBinding(JitRtGpuCustomCalls());
+        runtime::GetSymbolsBinding(JitRtGpuCustomCalls());
 
     opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
       jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
     };
 
     // Instantiate new JitExecutable from the MLIR source.
-    auto jit_executable = jitrt::JitExecutable::Instantiate(
+    auto jit_executable = runtime::JitExecutable::Instantiate(
         program->module, program->entry_point, opts);
     if (auto err = jit_executable.takeError())
       return InternalError("Failed to compile JitRt program: %s",
                            tfrt::StrCat(err));
 
     // For static shapes we can always serialize only the default executable.
-    jitrt::Executable& executable = jit_executable->DefaultExecutable().get();
+    runtime::Executable& executable = jit_executable->DefaultExecutable().get();
 
     // Check if JitRt executable saved the compilation result.
     std::unique_ptr<llvm::MemoryBuffer> obj_file = executable.obj_file();

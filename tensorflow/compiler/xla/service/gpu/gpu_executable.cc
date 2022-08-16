@@ -103,8 +103,8 @@ class GpuExecutable::JitRtExecutable {
     copts.populate_attr_encodings = PopulateLmhloToXlaAttrEncoding;
 
     // Options for constructing JitRt JitExecutable.
-    jitrt::JitExecutable::Options opts;
-    opts.specialization = jitrt::JitExecutable::Specialization::kDisabled;
+    runtime::JitExecutable::Options opts;
+    opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
     opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
       jitrt::RegisterDefaultJitRtDialects(registry);
       // For the encoding of attributes to custom calls.
@@ -113,7 +113,7 @@ class GpuExecutable::JitRtExecutable {
 
     // Register JitRt Gpu runtime custom calls with the linker.
     opts.compiler.runtime_symbol_map =
-        jitrt::GetSymbolsBinding(JitRtGpuCustomCalls());
+        runtime::GetSymbolsBinding(JitRtGpuCustomCalls());
 
     // We just use the default compilation pipeline provided by the JitRt.
     // Alternatively instead of having a separate JitRtProgram (LMHLO lowered to
@@ -131,7 +131,7 @@ class GpuExecutable::JitRtExecutable {
     opts.compiler.jit_code_opt_level = llvm::CodeGenOpt::None;
 
     // Instantiate new JitExecutable from the MLIR source.
-    auto jit_executable = jitrt::JitExecutable::Instantiate(
+    auto jit_executable = runtime::JitExecutable::Instantiate(
         program->module, program->entry_point, opts);
     if (auto err = jit_executable.takeError())
       return InternalError("Failed to compile JitRt program: %s",
@@ -140,22 +140,22 @@ class GpuExecutable::JitRtExecutable {
     // Pass ownership to the GpuExecutable.
     return new JitRtExecutable(
         std::move(program->buffer_sizes),
-        std::make_unique<jitrt::JitExecutable>(std::move(*jit_executable)),
+        std::make_unique<runtime::JitExecutable>(std::move(*jit_executable)),
         std::move(program->debug_options));
   }
 
   // Create JitRtExecutable from the AOT compiled binary.
   static StatusOr<JitRtExecutable*> Create(
-      absl::Span<const int64_t> buffer_sizes, jitrt::Executable executable,
+      absl::Span<const int64_t> buffer_sizes, runtime::Executable executable,
       DebugOptions debug_options) {
     // Pass ownership to the GpuExecutable.
     return new JitRtExecutable(
         std::vector<int64_t>(buffer_sizes.begin(), buffer_sizes.end()),
-        std::make_unique<jitrt::Executable>(std::move(executable)),
+        std::make_unique<runtime::Executable>(std::move(executable)),
         std::move(debug_options));
   }
 
-  jitrt::Executable& default_executable() { return *default_executable_; }
+  runtime::Executable& default_executable() { return *default_executable_; }
   JitRtKernelsCache& kernels_cache() { return kernels_cache_; }
   JitRtGemmConfigCache& gemm_configs_cache() { return gemm_configs_cache_; }
   JitRtCollectiveSupport& collectives() { return collectives_; }
@@ -170,7 +170,7 @@ class GpuExecutable::JitRtExecutable {
 
  private:
   JitRtExecutable(std::vector<int64_t> buffer_sizes,
-                  std::unique_ptr<jitrt::JitExecutable> jit_executable,
+                  std::unique_ptr<runtime::JitExecutable> jit_executable,
                   DebugOptions debug_options)
       : buffer_sizes_(std::move(buffer_sizes)),
         jit_executable_(std::move(jit_executable)),
@@ -178,7 +178,7 @@ class GpuExecutable::JitRtExecutable {
         debug_options_(std::move(debug_options)) {}
 
   JitRtExecutable(std::vector<int64_t> buffer_sizes,
-                  std::unique_ptr<jitrt::Executable> aot_executable,
+                  std::unique_ptr<runtime::Executable> aot_executable,
                   DebugOptions debug_options)
       : buffer_sizes_(std::move(buffer_sizes)),
         aot_executable_(std::move(aot_executable)),
@@ -187,11 +187,11 @@ class GpuExecutable::JitRtExecutable {
 
   std::vector<int64_t> buffer_sizes_;
 
-  std::unique_ptr<jitrt::JitExecutable> jit_executable_;
-  jitrt::Executable* default_executable_;  // owned by `jit_executable`
+  std::unique_ptr<runtime::JitExecutable> jit_executable_;
+  runtime::Executable* default_executable_;  // owned by `jit_executable`
 
-  std::unique_ptr<jitrt::Executable> aot_executable_;
-  jitrt::Executable* executable_;
+  std::unique_ptr<runtime::Executable> aot_executable_;
+  runtime::Executable* executable_;
 
   DebugOptions debug_options_;
 
@@ -615,7 +615,7 @@ static Status ExecuteJitRt(const std::string& module_name,
   // compiled function will make a copy of all arguments and will write all
   // results after the call to `Execute` completes, so it is safe to keep in on
   // the stack.
-  jitrt::Executable::CallFrame call_frame;
+  runtime::Executable::CallFrame call_frame;
 
   // Each buffer allocation pased as 1d memref to the compiled kernel:
   //   {basePtr, dataPtr, offset, [sizes, ...], [strides, ...]}
@@ -648,14 +648,14 @@ static Status ExecuteJitRt(const std::string& module_name,
   }
 
   // JitRt executables do not return any values.
-  jitrt::NoResultConverter converter;
+  runtime::NoResultConverter converter;
 
   // Prepare options for executing JitRt program.
-  jitrt::Executable::ExecuteOpts opts;
+  runtime::Executable::ExecuteOpts opts;
 
   // We don't expect to see any async tasks in the JitRt executable.
   opts.async_task_runner =
-      reinterpret_cast<jitrt::AsyncTaskRunner*>(0XDEADBEEF);
+      reinterpret_cast<runtime::AsyncTaskRunner*>(0XDEADBEEF);
 
   // Get the async communications stream for async collectives.
   int device_ordinal = run_options->stream()->parent()->device_ordinal();
@@ -669,7 +669,7 @@ static Status ExecuteJitRt(const std::string& module_name,
       async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
 
   // Pass auxiliary data to the custom call handlers.
-  jitrt::CustomCall::UserData user_data;
+  runtime::CustomCall::UserData user_data;
   user_data.insert_all(
       run_options, &jitrt_executable->debug_options(),
       &jitrt_executable->kernels_cache(),
@@ -678,9 +678,9 @@ static Status ExecuteJitRt(const std::string& module_name,
   opts.custom_call_data = &user_data;
 
   // Collect all emitted diagnostic messages.
-  jitrt::DiagnosticEngine diagnostic_engine;
+  runtime::DiagnosticEngine diagnostic_engine;
   std::string diagnostic;
-  diagnostic_engine.AddHandler([&](jitrt::Diagnostic& d) {
+  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
     llvm::raw_string_ostream(diagnostic) << d.str();
     return mlir::success();
   });
@@ -689,7 +689,7 @@ static Status ExecuteJitRt(const std::string& module_name,
 
   // Get the default executable. We do not support specialization because
   // all shapes are static. Default executable is guaranteed to be available.
-  jitrt::Executable& executable = jitrt_executable->default_executable();
+  runtime::Executable& executable = jitrt_executable->default_executable();
 
   // Execute with the prepared call frame.
   executable.Execute(call_frame, opts);
@@ -1095,24 +1095,24 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   auto buffer = llvm::MemoryBuffer::getMemBuffer(data, hlo_module->name());
 
   // Create a JitRt function signature (all arguments passed as 1d memrefs).
-  llvm::SmallVector<std::unique_ptr<jitrt::Type>> args;
-  llvm::SmallVector<std::unique_ptr<jitrt::Type>> rt_args;
-  rt_args.push_back(std::make_unique<jitrt::KernelContextOperandType>());
+  llvm::SmallVector<std::unique_ptr<runtime::Type>> args;
+  llvm::SmallVector<std::unique_ptr<runtime::Type>> rt_args;
+  rt_args.push_back(std::make_unique<runtime::KernelContextOperandType>());
 
   for (int64_t size : buffer_sizes) {
     auto i8 = tfrt::DType::I8;
-    args.push_back(std::make_unique<jitrt::MemrefType>(size, i8));
-    rt_args.push_back(std::make_unique<jitrt::MemrefType>(size, i8));
+    args.push_back(std::make_unique<runtime::MemrefType>(size, i8));
+    rt_args.push_back(std::make_unique<runtime::MemrefType>(size, i8));
   }
 
-  jitrt::FunctionType signature(std::move(args), /*results=*/{});
-  jitrt::FunctionType rt_signature(std::move(rt_args), /*results=*/{});
+  runtime::FunctionType signature(std::move(args), /*results=*/{});
+  runtime::FunctionType rt_signature(std::move(rt_args), /*results=*/{});
 
-  auto symbol_map = jitrt::GetSymbolsBinding(JitRtGpuCustomCalls());
+  auto symbol_map = runtime::GetSymbolsBinding(JitRtGpuCustomCalls());
 
   // Load JitRt executable from an object file, and link it with Gpu runtime
   // intrinsics implementing Gpu custom calls.
-  auto executable = jitrt::Executable::LoadFromObjFile(
+  auto executable = runtime::Executable::LoadFromObjFile(
       hlo_module->name(), std::move(buffer),
       hlo_module->entry_computation()->name(), std::move(signature),
       std::move(rt_signature), symbol_map);
