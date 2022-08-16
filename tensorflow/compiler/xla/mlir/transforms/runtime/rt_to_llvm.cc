@@ -39,6 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
+#include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/runtime/type_id.h"
 
 namespace xla {
 namespace runtime {
@@ -429,8 +431,13 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
     opts_.populate_type_conversions(llvm_converter);
   }
 
+  // Register mappings from the TypeID to type names.
+  TypeIDNameRegistry type_id_names;
+  PopulateCustomCallTypeIdNames(type_id_names);
+  if (opts_.populate_type_id_names) opts_.populate_type_id_names(type_id_names);
+
   // A helper class to create unique global constants.
-  Globals globals(module);
+  Globals globals(module, type_id_names);
 
   // Keep a cache of encoded values to encode each unique value just once.
   DenseMap<Value, CustomCallArgEncoding::Encoded> encoded_args;

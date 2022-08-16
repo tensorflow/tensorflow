@@ -126,6 +126,9 @@ TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
 namespace xla {
 namespace gpu {
 
+// Populate mapping from XLA (SE) enums/structs type id to symbol names.
+void PopulateXlaTypeIdNames(runtime::TypeIDNameRegistry& registry);
+
 // Populate encoding from LMHLO attributes to XLA(SE) enums and structs.
 void PopulateLmhloToXlaAttrEncoding(
     runtime::CustomCallAttrEncodingSet& encoding);

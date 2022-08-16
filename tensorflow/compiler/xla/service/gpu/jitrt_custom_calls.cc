@@ -94,6 +94,8 @@ using ::xla::runtime::CustomCallAttrEncodingSet;
 using ::xla::runtime::DirectCustomCallLibrary;
 using ::xla::runtime::EnumAttrEncoding;
 using ::xla::runtime::Executable;
+using ::xla::runtime::Tagged;
+using ::xla::runtime::TypeIDNameRegistry;
 
 namespace se = ::stream_executor;
 namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
@@ -110,21 +112,20 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 
 // -------------------------------------------------------------------------- //
 
-// Define type id names for all enums and structs passed to the custom calls.
+// Populate mapping from XLA (SE) enums/structs type id to symbol names.
+void PopulateXlaTypeIdNames(TypeIDNameRegistry& registry) {
+  registry.Register<Tagged<se::dnn::ActivationMode>>(
+      "__type_id_se_dnn_activation");
+  registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
+      "__type_id_se_cublas_lt_epilogue");
+  registry.Register<Tagged<se::fft::Type>>("__type_id_se_fft_type");
 
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(se::dnn::ActivationMode,
-                                            "__type_id_se_dnn_activation");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(se::cuda::BlasLt::Epilogue,
-                                            "__type_id_se_cublas_lt_epilogue");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(se::fft::Type,
-                                            "__type_id_se_fft_type");
-
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(DotDimensionNumbers,
-                                            "__type_id_dot_dimension_numbers");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(ConvDimensionNumbers,
-                                            "__type_id_conv_dimension_numbers");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(ConvBackendConfig,
-                                            "__type_id_conv_backend_config");
+  registry.Register<Tagged<DotDimensionNumbers>>(
+      "__type_id_dot_dimension_numbers");
+  registry.Register<Tagged<ConvDimensionNumbers>>(
+      "__type_id_conv_dimension_numbers");
+  registry.Register<Tagged<ConvBackendConfig>>("__type_id_conv_backend_config");
+}
 
 // Add custom call arguments and attributes encoding for custom HLO enums and
 // structs, so that we can pass them to custom calls.

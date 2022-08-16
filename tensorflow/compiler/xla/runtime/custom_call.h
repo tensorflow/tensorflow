@@ -54,6 +54,10 @@ struct KernelContext;
 template <typename... Ts>
 class CustomCallBinding;
 
+// Registers mappings from TypeIDs supported by the custom calls to their unique
+// names in the given registry.
+void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& registry);
+
 class CustomCall {
  public:
   // Container for passing data between XLA user and the custom call handler.

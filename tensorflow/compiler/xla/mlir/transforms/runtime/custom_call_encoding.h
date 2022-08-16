@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/runtime/type_id.h"
 
 namespace xla {
 namespace runtime {
@@ -201,8 +202,14 @@ class Globals {
   using FailureOrGlobalInitializer = std::function<mlir::LogicalResult(
       mlir::ImplicitLocOpBuilder &, mlir::Attribute)>;
 
-  explicit Globals(mlir::ModuleOp module)
-      : module_(module), sym_table_(module_) {}
+  Globals(mlir::ModuleOp module, TypeIDNameRegistry type_id_names)
+      : module_(module),
+        sym_table_(module_),
+        type_id_names_(std::move(type_id_names)) {}
+
+  // Creates a global external variable for the type id.
+  mlir::LLVM::GlobalOp GetOrCreate(mlir::ImplicitLocOpBuilder &b,
+                                   mlir::TypeID type_id);
 
   // Creates a global null-terminated string constant.
   mlir::LLVM::GlobalOp GetOrCreate(mlir::ImplicitLocOpBuilder &b,
@@ -215,15 +222,12 @@ class Globals {
                                    mlir::TypedAttr attr,
                                    llvm::StringRef symbol_base);
 
-  mlir::LLVM::GlobalOp GetOrCreateExternal(mlir::ImplicitLocOpBuilder &b,
-                                           llvm::StringRef symbol_base);
-
   // Creates a global constant value of the given type from the attribute, using
   // optional user-provided global constant initialization.
-  mlir::LLVM::GlobalOp GetOrCreate(mlir::ImplicitLocOpBuilder &b,
-                                   mlir::Attribute attr, mlir::Type type,
-                                   llvm::StringRef symbol_base,
-                                   GlobalInitializer initialize = {});
+  mlir::LLVM::GlobalOp GetOrCreate(
+      mlir::ImplicitLocOpBuilder &b, mlir::Attribute attr, mlir::Type type,
+      llvm::StringRef symbol_base, GlobalInitializer initialize = {},
+      mlir::LLVM::Linkage linkage = mlir::LLVM::Linkage::Internal);
 
   // Creates a global constant value of the given type from the attribute, using
   // optional user-provided global constant initialization. Returns failure if
@@ -255,6 +259,10 @@ class Globals {
   mlir::ModuleOp module_;
   mlir::SymbolTable sym_table_;  // symbol table for the `module_`
   llvm::DenseMap<Key, mlir::LLVM::GlobalOp> globals_;
+
+  // A mapping from the TypeID to the unique type name for encoding external
+  // globals corresponding to types ids.
+  TypeIDNameRegistry type_id_names_;
 };
 
 //===----------------------------------------------------------------------===//

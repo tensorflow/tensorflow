@@ -39,6 +39,8 @@ cc_library(
         ":custom_call_encoding",
         ":passes_inc_gen",
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:type_id",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ControlFlowDialect",

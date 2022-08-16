@@ -41,6 +41,7 @@ CreateConvertToEntrypoint();
 // Conversions targeting `rt` dialect.
 //===-----------------------------------------------------------------------===/
 
+class TypeIDNameRegistry;
 class CustomCallArgEncodingSet;
 class CustomCallAttrEncodingSet;
 
@@ -55,6 +56,10 @@ class CustomCallAttrEncodingSet;
 // All user-defined types (values and attributes) that are passed to the custom
 // calls must define the argument or attribute encoding.
 struct ConvertRuntimeToLLvmOpts {
+  // Register names for the TypeIDs used for encoding types of custom arguments
+  // and attributes.
+  std::function<void(TypeIDNameRegistry&)> populate_type_id_names;
+
   // Add type conversions for user-defined types to the corresponding LLVM
   // types. Conversion pass uses these extra conversions to convert arguments
   // of the entrypoint function and values passed to the custom calls. Custom

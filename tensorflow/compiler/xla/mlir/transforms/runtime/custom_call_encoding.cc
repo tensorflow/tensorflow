@@ -80,14 +80,7 @@ FailureOr<EncodedAttr> CustomCallAttrEncodingSet::Encode(
 //===----------------------------------------------------------------------===//
 
 Value PackTypeId(Globals &g, ImplicitLocOpBuilder &b, TypeID type_id) {
-  static TypeIDNameRegistry *registry = []() {
-    auto *registry = new TypeIDNameRegistry();
-    RegisterStaticTypeIDName(registry);
-    return registry;
-  }();
-  llvm::StringRef symbol_name = registry->FindTypeIDSymbolName(type_id);
-  assert(!symbol_name.empty() && "cannot find the symbol name of type id");
-  auto global = g.GetOrCreateExternal(b, symbol_name);
+  auto global = g.GetOrCreate(b, type_id);
   return Globals::AddrOf(b, global);
 }
 
@@ -412,21 +405,29 @@ LLVM::GlobalOp Globals::GetOrCreate(ImplicitLocOpBuilder &b, TypedAttr attr,
   return GetOrCreate(b, attr, attr.getType(), symbol_base);
 }
 
-LLVM::GlobalOp Globals::GetOrCreateExternal(ImplicitLocOpBuilder &b,
-                                            StringRef symbol_base) {
-  return *TryGetOrCreate(b, IntegerAttr(), b.getI64Type(), symbol_base, {},
-                         mlir::LLVM::Linkage::External);
+LLVM::GlobalOp Globals::GetOrCreate(ImplicitLocOpBuilder &b,
+                                    mlir::TypeID type_id) {
+  llvm::StringRef name = type_id_names_.FindTypeIDSymbolName(type_id);
+  assert(!name.empty() && "cannot find the symbol name of type_id");
+  return GetOrCreate(b, IntegerAttr(), b.getI64Type(), name, /*initialize=*/{},
+                     LLVM::Linkage::External);
 }
 
 LLVM::GlobalOp Globals::GetOrCreate(ImplicitLocOpBuilder &b, Attribute attr,
                                     Type type, StringRef symbol_base,
-                                    GlobalInitializer initialize) {
-  if (!initialize) return *TryGetOrCreate(b, attr, type, symbol_base);
+                                    GlobalInitializer initialize,
+                                    LLVM::Linkage linkage) {
+  if (!initialize) {
+    return *TryGetOrCreate(b, attr, type, symbol_base, /*initialize=*/{},
+                           linkage);
+  }
 
-  return *TryGetOrCreate(b, attr, type, symbol_base,
-                         [&](ImplicitLocOpBuilder &b, Attribute) {
-                           return (initialize(b, attr), success());
-                         });
+  return *TryGetOrCreate(
+      b, attr, type, symbol_base,
+      [&](ImplicitLocOpBuilder &b, Attribute) {
+        return (initialize(b, attr), success());
+      },
+      linkage);
 }
 
 mlir::FailureOr<mlir::LLVM::GlobalOp> Globals::TryGetOrCreate(

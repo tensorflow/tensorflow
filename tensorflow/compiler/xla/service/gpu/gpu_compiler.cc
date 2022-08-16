@@ -1439,9 +1439,14 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
     opts.compiler.register_dialects = jitrt::RegisterDefaultJitRtDialects;
 
+    // Register types supported at run time.
+    runtime::TypeIDNameRegistry type_registry;
+    runtime::PopulateCustomCallTypeIdNames(type_registry);
+    PopulateXlaTypeIdNames(type_registry);
+
     // Register JitRt Gpu runtime custom calls with the linker.
     opts.compiler.runtime_symbol_map =
-        runtime::GetSymbolsBinding(JitRtGpuCustomCalls());
+        runtime::GetSymbolsBinding(JitRtGpuCustomCalls(), type_registry);
 
     opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
       jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);

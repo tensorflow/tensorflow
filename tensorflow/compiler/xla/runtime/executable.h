@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/memory_mapper.h"
 #include "tensorflow/compiler/xla/runtime/results.h"
+#include "tensorflow/compiler/xla/runtime/type_id.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
 namespace xla {
@@ -45,6 +46,13 @@ ExecutionEngine::SymbolsBinding RuntimeSymbolsBinding(
 
 // Converts a custom call library into the execution engine symbols binding.
 ExecutionEngine::SymbolsBinding GetSymbolsBinding(DirectCustomCallLibrary lib);
+
+// Converts TypeID name registry into the execution engine symbols binding
+ExecutionEngine::SymbolsBinding GetSymbolsBinding(TypeIDNameRegistry registry);
+
+// Converts custom call library and type id registry to the symbols binding.
+ExecutionEngine::SymbolsBinding GetSymbolsBinding(DirectCustomCallLibrary lib,
+                                                  TypeIDNameRegistry registry);
 
 class Executable {
  public:

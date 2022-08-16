@@ -100,7 +100,10 @@ class GpuExecutable::JitRtExecutable {
     // all concurrency (async parallel for loops).
     copts.num_worker_threads = 1;
 
-    // For passing LMHLO attributes as XLA(SE) enums/structs to custom calls.
+    // Populate mapping from XLA (SE) enums/structs type id to symbol names.
+    copts.populate_type_id_names = PopulateXlaTypeIdNames;
+
+    // For passing LMHLO attributes as XLA (SE) enums/structs to custom calls.
     copts.populate_attr_encodings = PopulateLmhloToXlaAttrEncoding;
 
     // Options for constructing JitRt JitExecutable.
@@ -112,9 +115,14 @@ class GpuExecutable::JitRtExecutable {
       registry.insert<mlir::lmhlo_gpu::LmhloGpuDialect>();
     };
 
+    // Register types supported at run time.
+    runtime::TypeIDNameRegistry registry;
+    runtime::PopulateCustomCallTypeIdNames(registry);
+    PopulateXlaTypeIdNames(registry);
+
     // Register JitRt Gpu runtime custom calls with the linker.
     opts.compiler.runtime_symbol_map =
-        runtime::GetSymbolsBinding(JitRtGpuCustomCalls());
+        runtime::GetSymbolsBinding(JitRtGpuCustomCalls(), std::move(registry));
 
     // We just use the default compilation pipeline provided by the JitRt.
     // Alternatively instead of having a separate JitRtProgram (LMHLO lowered to
@@ -1109,7 +1117,13 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   runtime::FunctionType signature(std::move(args), /*results=*/{});
   runtime::FunctionType rt_signature(std::move(rt_args), /*results=*/{});
 
-  auto symbol_map = runtime::GetSymbolsBinding(JitRtGpuCustomCalls());
+  // Register types supported at run time.
+  runtime::TypeIDNameRegistry type_registry;
+  runtime::PopulateCustomCallTypeIdNames(type_registry);
+  PopulateXlaTypeIdNames(type_registry);
+
+  auto symbol_map = runtime::GetSymbolsBinding(JitRtGpuCustomCalls(),
+                                               std::move(type_registry));
 
   // Load JitRt executable from an object file, and link it with Gpu runtime
   // intrinsics implementing Gpu custom calls.

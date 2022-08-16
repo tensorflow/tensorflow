@@ -63,7 +63,7 @@ struct KernelContext {
 };
 
 //===----------------------------------------------------------------------===//
-// Converts a custom call library into the execution engine symbols binding.
+// Conversion from custom calls library and type id registry to symbols binding.
 //===----------------------------------------------------------------------===//
 
 ExecutionEngine::SymbolsBinding GetSymbolsBinding(DirectCustomCallLibrary lib) {
@@ -80,16 +80,11 @@ ExecutionEngine::SymbolsBinding GetSymbolsBinding(DirectCustomCallLibrary lib) {
   };
 }
 
-//===----------------------------------------------------------------------===//
-// Converts typeid symbol map into the execution engine symbols binding.
-//===----------------------------------------------------------------------===//
-
-ExecutionEngine::SymbolsBinding GetTypeIDSymbolsBinding(
-    TypeIDNameRegistry* registry) {
-  return [registry](llvm::orc::MangleAndInterner mangle) {
+ExecutionEngine::SymbolsBinding GetSymbolsBinding(TypeIDNameRegistry registry) {
+  return [registry = std::move(registry)](llvm::orc::MangleAndInterner mangle) {
     llvm::orc::SymbolMap symbol_map;
 
-    registry->ForEach([&](llvm::StringRef name, TypeID type_id) {
+    registry.ForEach([&](llvm::StringRef name, TypeID type_id) {
       auto type_id_ptr =
           reinterpret_cast<std::uintptr_t>(type_id.getAsOpaquePointer());
       symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
@@ -100,6 +95,13 @@ ExecutionEngine::SymbolsBinding GetTypeIDSymbolsBinding(
     return symbol_map;
   };
 }
+
+ExecutionEngine::SymbolsBinding GetSymbolsBinding(DirectCustomCallLibrary lib,
+                                                  TypeIDNameRegistry registry) {
+  return ExecutionEngine::BindAll({GetSymbolsBinding(std::move(lib)),
+                                   GetSymbolsBinding(std::move(registry))});
+}
+
 //===----------------------------------------------------------------------===//
 // Register XLA runtime symbols with XLA execution engine.
 //===----------------------------------------------------------------------===//
@@ -112,25 +114,17 @@ static SymbolMap RuntimeApiSymbolMap(MangleAndInterner);
 
 ExecutionEngine::SymbolsBinding RuntimeSymbolsBinding(
     ExecutionEngine::SymbolsBinding custom_binding) {
-  static TypeIDNameRegistry* registry = []() {
-    auto* registry = new TypeIDNameRegistry();
-    RegisterStaticTypeIDName(registry);
-    return registry;
-  }();
-  return ExecutionEngine::BindAll({
-      // Register MLIR C Runner API intrinsics (defined in CRunnerUtils).
-      CRunnerUtilsSymbolMap,
-      // Register Async Runtime API intrinsics.
-      AsyncRuntimeApiSymbolMap,
-      // Register memory allocation functions (malloc, free, ...).
-      AsyncRuntimeMemoryAllocationSymbolMap,
-      // Register Runtime API intrinsics (returning results and errors).
-      RuntimeApiSymbolMap,
-      // Register any additional user-defined APIs.
-      std::move(custom_binding),
-      // Register runtime binding for TypeIDs
-      GetTypeIDSymbolsBinding(registry),
-  });
+  return ExecutionEngine::BindAll(
+      {// Register MLIR C Runner API intrinsics (defined in CRunnerUtils).
+       CRunnerUtilsSymbolMap,
+       // Register Async Runtime API intrinsics.
+       AsyncRuntimeApiSymbolMap,
+       // Register memory allocation functions (malloc, free, ...).
+       AsyncRuntimeMemoryAllocationSymbolMap,
+       // Register Runtime API intrinsics (returning results and errors).
+       RuntimeApiSymbolMap,
+       // Register any additional user-defined symbol bindings
+       std::move(custom_binding)});
 }
 
 //===----------------------------------------------------------------------===//
