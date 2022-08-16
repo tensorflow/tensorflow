@@ -164,10 +164,16 @@ class GpuExecutable::JitRtExecutable {
         std::move(debug_options));
   }
 
-  runtime::Executable& default_executable() { return *default_executable_; }
   JitRtKernelsCache& kernels_cache() { return kernels_cache_; }
   JitRtGemmConfigCache& gemm_configs_cache() { return gemm_configs_cache_; }
   JitRtCollectiveSupport& collectives() { return collectives_; }
+
+  runtime::Executable& executable() {
+    // Exactly one kind of `Executable` should be available at run time.
+    assert((default_executable_ || executable_) &&
+           !(default_executable_ && executable_));
+    return default_executable_ ? *default_executable_ : *executable_;
+  }
 
   // We pass a pointer to the buffer size to the compiled function, so we return
   // a reference to a stable memory location.
@@ -191,16 +197,18 @@ class GpuExecutable::JitRtExecutable {
                   DebugOptions debug_options)
       : buffer_sizes_(std::move(buffer_sizes)),
         aot_executable_(std::move(aot_executable)),
-        executable_(aot_executable.get()),
+        executable_(aot_executable_.get()),
         debug_options_(std::move(debug_options)) {}
 
   std::vector<int64_t> buffer_sizes_;
 
+  // In JIT compilation mode the `JitExecutable` owns the default `Executable`.
   std::unique_ptr<runtime::JitExecutable> jit_executable_;
-  runtime::Executable* default_executable_;  // owned by `jit_executable`
+  runtime::Executable* default_executable_ = nullptr;
 
+  // In AOT compilation mode we directly own the `Executable`.
   std::unique_ptr<runtime::Executable> aot_executable_;
-  runtime::Executable* executable_;
+  runtime::Executable* executable_ = nullptr;
 
   DebugOptions debug_options_;
 
@@ -696,12 +704,10 @@ static Status ExecuteJitRt(const std::string& module_name,
 
   opts.diagnostic_engine = &diagnostic_engine;
 
-  // Get the default executable. We do not support specialization because
-  // all shapes are static. Default executable is guaranteed to be available.
-  runtime::Executable& executable = jitrt_executable->default_executable();
-
   // Execute with the prepared call frame.
+  runtime::Executable& executable = jitrt_executable->executable();
   executable.Execute(call_frame, opts);
+
   if (auto err = executable.ReturnResults(converter, &call_frame)) {
     return InternalError(
         "Failed to execute JitRt executable: %s.",
