@@ -49,11 +49,11 @@ export TF_NEED_TENSORRT=0
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="CPU"
 
-# Get the default test targets for bazel.
+# Get the default test targets for bazel
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
-# Set python version string
-py_ver=$(python -c 'import sys; print(str(sys.version_info.major)+str(sys.version_info.minor))')
+# Get the skip test list for arm
+source tensorflow/tools/ci_build/build_scripts/ARM_SKIP_TESTS.sh
 
 # Export optional variables for running pip_new.sh
 export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-mtune=generic --copt=-march=armv8-a \
@@ -61,17 +61,7 @@ export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-mtune=generic --c
 export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --define=no_tensorflow_py_deps=true \
     --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium --verbose_failures=true --test_keep_going"
-export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
-    -//tensorflow/lite/... \
-    -//tensorflow/python:nn_grad_test \
-    -//tensorflow/python/client:session_list_devices_test \
-    -//tensorflow/python/data/kernel_tests:iterator_test_cpu \
-    -//tensorflow/python/data/kernel_tests:iterator_test_gpu \
-    -//tensorflow/python/eager:forwardprop_test \
-    -//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
-    -//tensorflow/python/kernel_tests/nn_ops:conv2d_backprop_filter_grad_test \
-    -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
-    -//tensorflow/python/training:server_lib_test"
+export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} ${ARM_SKIP_TESTS}"
 export TF_PIP_TESTS="test_pip_virtualenv_clean"
 export TF_TEST_FILTER_TAGS="-no_oss,-oss_serial,-v1only,-benchmark-test,-no_aarch64"
 export TF_PIP_TEST_ROOT="pip_test"
