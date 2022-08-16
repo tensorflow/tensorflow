@@ -738,9 +738,9 @@ tf_proto_library(
     name = "compile_options_proto",
     srcs = ["compile_options.proto"],
     cc_api_version = 2,
-    visibility = ["//visibility:public"],
-    deps = [
+    protodeps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
     ],
+    visibility = ["//visibility:public"],
 )
