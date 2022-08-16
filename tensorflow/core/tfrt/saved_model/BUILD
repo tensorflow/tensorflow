@@ -40,6 +40,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "//third_party/mira/mlarchive:env",
         "//third_party/mira/mlarchive:mla",
         "//third_party/mira/mlarchive:posix_env",
         "//third_party/mira/mlarchive:status_macro",

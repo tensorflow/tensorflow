@@ -593,7 +593,7 @@ TEST(SavedModelTest, UseMla) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.load_from_mla = true;
+  options.maybe_load_from_mla = true;
 
   // Load the model using the MLA dir.
   tensorflow::Status status;

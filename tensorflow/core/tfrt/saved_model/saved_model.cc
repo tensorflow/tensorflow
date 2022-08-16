@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/mira/mlarchive/env.h"
+#include "third_party/mira/mlarchive/mla.h"
 #include "third_party/mira/mlarchive/posix_env.h"
 #include "third_party/mira/mlarchive/status_macro.h"
 #include "tensorflow/cc/experimental/tfa/saved_model_converter.h"
@@ -436,17 +438,14 @@ void UpdateCompileOptions(SavedModel::Options& options) {
 
 StatusOr<std::string> GetSavedModelDirFromMlaDir(absl::string_view mla_dir) {
   auto statusor_dir = [&]() -> absl::StatusOr<std::string> {
-    LOG(INFO) << "TFRT looking for saved model from MLA: " << mla_dir;
-    mlarchive::Env& env = mlarchive::GetPosixEnv();
-    ASSIGN_OR_RETURN(const auto mla,
-                     mlarchive::Mla::FromArchiveRoot(mla_dir, env));
+    ASSIGN_OR_RETURN(const auto mla, mlarchive::Mla::FromArchiveRoot(
+                                         mla_dir, mlarchive::GetPosixEnv()));
     ASSIGN_OR_RETURN(const auto* saved_model_module,
                      mla.GetModule("saved_model"));
     ASSIGN_OR_RETURN(const auto saved_model_path,
                      tfa::GetSavedModelProtoPath(mla, *saved_model_module));
     const auto saved_model_dir =
         std::string(tensorflow::io::Dirname(saved_model_path));
-    LOG(INFO) << "TFRT found saved model: " << saved_model_dir;
     return saved_model_dir;
   }();
 
@@ -481,15 +480,22 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     Options options, absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags, tensorflow::Status* status) {
   std::string saved_model_dir_str = "unused";
-  if (options.load_from_mla) {
-    auto statusor_saved_model_dir =
-        GetSavedModelDirFromMlaDir(/*mla_dir=*/saved_model_dir);
-    if (!statusor_saved_model_dir.ok()) {
-      *status = statusor_saved_model_dir.status();
-      return nullptr;
-    }
-    saved_model_dir_str = *statusor_saved_model_dir;
-    saved_model_dir = saved_model_dir_str;
+  if (options.maybe_load_from_mla) {
+    if (mlarchive::Mla::IsMlarchive(saved_model_dir,
+                                    mlarchive::GetPosixEnv())) {
+      LOG(INFO) << "TFRT got an MLArchive dir: " << saved_model_dir
+                << ". Continuing to find the actual saved_model_dir in it.";
+      const auto statusor_saved_model_dir =
+          GetSavedModelDirFromMlaDir(saved_model_dir);
+      if (!statusor_saved_model_dir.ok()) {
+        *status = statusor_saved_model_dir.status();
+        return nullptr;
+      }
+      saved_model_dir_str = *statusor_saved_model_dir;
+      saved_model_dir = saved_model_dir_str;
+      LOG(INFO) << "TFRT found from MLArchive a saved model: "
+                << saved_model_dir;
+    }  // Not an MLA; `saved_model_dir` is ready to use.
   }
 
   auto statusor_meta_graph_def = ReadSavedModel(saved_model_dir, tags);
