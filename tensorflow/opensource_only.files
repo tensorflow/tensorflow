@@ -8,7 +8,6 @@ tensorflow/compiler/mlir/glob_lit_test.bzl:
 tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.bzl:
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
-tensorflow/core/platform/default/build_config/BUILD:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
 tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
@@ -147,6 +146,7 @@ tensorflow/tools/toolchains/win_1803/py36/BUILD:
 tensorflow/tools/toolchains/win_1803/py37/BUILD:
 tensorflow/tools/toolchains/win_1803/py38/BUILD:
 tensorflow/tools/toolchains/win_1803/py39/BUILD:
+tensorflow/tsl/platform/default/build_config/BUILD:
 tensorflow/virtual_root_template_v1.__init__:.py
 tensorflow/virtual_root_template_v2.__init__:.py
 third_party/BUILD:

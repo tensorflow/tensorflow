@@ -7,7 +7,7 @@ load(
     "if_gpu_is_configured",
 )
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_copts")

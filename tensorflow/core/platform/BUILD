@@ -401,7 +401,7 @@ filegroup(
         "tstring.h",
         "types.h",
     ] + if_windows([
-        "//tensorflow/core/platform/windows:xla_cpu_runtime_srcs",
+        "//tensorflow/tsl/platform/windows:xla_cpu_runtime_srcs",
     ]),
 )
 
@@ -1073,7 +1073,7 @@ tf_cuda_library(
     ],
     features = ["-parse_headers"],
     deps = [
-        "//tensorflow/core/platform/default/build_config:stream_executor",
+        "//tensorflow/tsl/platform/default/build_config:stream_executor",
     ],
 )
 
@@ -1087,7 +1087,7 @@ cc_library(
     ],
     features = ["-parse_headers"],
     deps = [
-        "//tensorflow/core/platform/default/build_config:stream_executor_no_cuda",
+        "//tensorflow/tsl/platform/default/build_config:stream_executor_no_cuda",
     ],
 )
 
@@ -1584,11 +1584,11 @@ filegroup(
         "subprocess.h",
         "thread_annotations.h",
         ":base_hdrs",
-        # copybara:uncomment(GoogleFileSystem) "//tensorflow/core/platform/google:env.h",
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
         "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
+        # copybara:uncomment(GoogleFileSystem) "//tensorflow/tsl/platform/google:env.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -1846,7 +1846,7 @@ filegroup(
     ] + selects.with_or({
         "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
-            "//tensorflow/core/platform/default:mobile_srcs_no_runtime",
+            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
             "threadpool.cc",
             "tracing.cc",
@@ -1880,7 +1880,7 @@ filegroup(
         "test_benchmark.h",
         "threadpool_options.h",
         "unbounded_work_queue.h",
-        "//tensorflow/core/platform/default:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/platform/default:mobile_srcs_only_runtime",
     ] + tf_google_mobile_srcs_only_runtime(),
     visibility = ["//tensorflow/core:__pkg__"],
 )

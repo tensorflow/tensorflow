@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/windows/error_windows.h"
+#include "tensorflow/tsl/platform/windows/error_windows.h"
 
 #include <Windows.h>
 #include <Winsock2.h>

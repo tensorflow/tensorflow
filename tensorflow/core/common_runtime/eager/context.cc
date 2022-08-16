@@ -177,7 +177,7 @@ EagerContext::EagerContext(
             &func_lib_def_, opts.config.graph_options().optimizer_options(),
             thread_pool_.get(), cluster_flr);
   // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/core/platform/default", this is
+  // provided). For builds using "tensorflow/tsl/platform/default", this is
   // currently a no-op.
   eager_context_created->GetCell()->Set(true);
   InitPrioritizedDeviceTypeList();

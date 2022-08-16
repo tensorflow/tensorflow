@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/windows/windows_file_system.h"
+#include "tensorflow/tsl/platform/windows/windows_file_system.h"
 
 #include <Shlwapi.h>
 #include <Windows.h>
@@ -32,9 +32,9 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/platform/windows/error_windows.h"
-#include "tensorflow/core/platform/windows/wide_char.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/windows/error_windows.h"
+#include "tensorflow/tsl/platform/windows/wide_char.h"
 
 // TODO(mrry): Prevent this Windows.h #define from leaking out of our headers.
 #undef DeleteFile

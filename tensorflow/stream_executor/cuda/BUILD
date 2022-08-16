@@ -8,7 +8,7 @@ load(
     "tf_additional_cudnn_plugin_copts",
 )
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
@@ -382,7 +382,7 @@ cc_library(
 
 # To avoid duplication, check that the C++ or python library does not depend on
 # the stream executor cuda plugins. Targets that want to use cuda APIs should
-# instead depend on the dummy plugins in //tensorflow/core/platform/default/build_config
+# instead depend on the dummy plugins in //tensorflow/tsl/platform/default/build_config
 # and use header only targets.
 check_deps(
     name = "cuda_plugins_check_deps",

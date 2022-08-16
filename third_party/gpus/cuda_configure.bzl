@@ -813,7 +813,7 @@ filegroup(name="cudnn-include")
     )
 
     # Create dummy files for the CUDA toolkit since they are still required by
-    # tensorflow/core/platform/default/build_config:cuda.
+    # tensorflow/tsl/platform/default/build_config:cuda.
     repository_ctx.file("cuda/cuda/include/cuda.h")
     repository_ctx.file("cuda/cuda/include/cublas.h")
     repository_ctx.file("cuda/cuda/include/cudnn.h")

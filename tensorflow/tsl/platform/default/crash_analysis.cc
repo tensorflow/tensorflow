@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/default/crash_analysis.h"
+#include "tensorflow/tsl/platform/default/crash_analysis.h"
 
 #include <string>
 

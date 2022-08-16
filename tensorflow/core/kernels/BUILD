@@ -3619,7 +3619,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
         ":matmul_util",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
     ]),
@@ -3635,7 +3635,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/util:env_var",
         "//tensorflow/stream_executor/cuda:cublas_lt_header",
     ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
@@ -3727,7 +3727,7 @@ tf_kernel_library(
     prefix = "fft_ops",
     deps = MATH_DEPS + [
     ] + if_cuda([
-        "//tensorflow/core/platform/default/build_config:cufft_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cufft_plugin",
     ]),
 )
 
@@ -4159,8 +4159,8 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + if_cuda([
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
-        "//tensorflow/core/platform/default/build_config:cudnn_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cudnn_plugin",
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/core/platform:stream_executor",

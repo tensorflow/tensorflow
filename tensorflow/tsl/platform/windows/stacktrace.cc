@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/windows/stacktrace.h"
+#include "tensorflow/tsl/platform/windows/stacktrace.h"
 
 // clang-format off
 #include <windows.h>  // Windows.h must be declared above dgbhelp.

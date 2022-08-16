@@ -31,9 +31,9 @@ limitations under the License.
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/ram_file_system.h"
-#include "tensorflow/core/platform/windows/wide_char.h"
-#include "tensorflow/core/platform/windows/windows_file_system.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/windows/wide_char.h"
+#include "tensorflow/tsl/platform/windows/windows_file_system.h"
 
 #pragma comment(lib, "Shlwapi.lib")
 

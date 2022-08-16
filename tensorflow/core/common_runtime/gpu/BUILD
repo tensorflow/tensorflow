@@ -70,14 +70,14 @@ cc_library(
 cc_library(
     name = "cuda",
     deps = [
-        "//tensorflow/core/platform/default/build_config:cuda",
+        "//tensorflow/tsl/platform/default/build_config:cuda",
     ],
 )
 
 cc_library(
     name = "rocm",
     deps = [
-        "//tensorflow/core/platform/default/build_config:rocm",
+        "//tensorflow/tsl/platform/default/build_config:rocm",
     ],
 )
 

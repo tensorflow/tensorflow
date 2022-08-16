@@ -29,7 +29,6 @@ limitations under the License.
 #include <time.h>
 #include <unistd.h>
 
-#include "tensorflow/core/platform/default/posix_file_system.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system_helper.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/default/posix_file_system.h"
 
 namespace tensorflow {
 

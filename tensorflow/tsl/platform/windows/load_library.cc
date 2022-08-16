@@ -25,7 +25,7 @@ limitations under the License.
 #undef ERROR
 
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/windows/wide_char.h"
+#include "tensorflow/tsl/platform/windows/wide_char.h"
 
 #pragma comment(lib, "Shlwapi.lib")
 

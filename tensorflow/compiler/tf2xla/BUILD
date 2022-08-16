@@ -7,7 +7,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 # copybara:uncomment_end
 
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
@@ -300,17 +300,17 @@ cc_library(
 #     allowed_match_regexp = "|".join([
 #         ":xla_compiled_cpu_runtime_standalone",
 #         "//tensorflow/core/framework:numeric_types",
-#         "//tensorflow/core/platform/default:cord",
-#         "//tensorflow/core/platform/default:env_time",
-#         "//tensorflow/core/platform/default:logging",
-#         "//tensorflow/core/platform/default:mutex",
-#         "//tensorflow/core/platform/default:types",
-#         "//tensorflow/core/platform/google:cord",
-#         "//tensorflow/core/platform/google:env_time",
-#         "//tensorflow/core/platform/google:logging",
-#         "//tensorflow/core/platform/google:mutex",
-#         "//tensorflow/core/platform/google:types",
-#         "//tensorflow/core/platform/windows:env_time",
+#         "//tensorflow/tsl/platform/default:cord",
+#         "//tensorflow/tsl/platform/default:env_time",
+#         "//tensorflow/tsl/platform/default:logging",
+#         "//tensorflow/tsl/platform/default:mutex",
+#         "//tensorflow/tsl/platform/default:types",
+#         "//tensorflow/tsl/platform/google:cord",
+#         "//tensorflow/tsl/platform/google:env_time",
+#         "//tensorflow/tsl/platform/google:logging",
+#         "//tensorflow/tsl/platform/google:mutex",
+#         "//tensorflow/tsl/platform/google:types",
+#         "//tensorflow/tsl/platform/windows:env_time",
 #         "//tensorflow/core/platform:bfloat16",
 #         "//tensorflow/core/platform:blocking_counter",
 #         "//tensorflow/core/platform:byte_order",

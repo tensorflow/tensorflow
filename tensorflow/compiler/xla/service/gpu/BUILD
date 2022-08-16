@@ -27,7 +27,7 @@ load(
     "if_gpu_is_configured",
 )
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 
@@ -734,13 +734,13 @@ cc_library(
         ":triangular_solve_thunk",
     ]) + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cuda_stream",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
-        "//tensorflow/core/platform/default/build_config:cudnn_plugin",
-        "//tensorflow/core/platform/default/build_config:cufft_plugin",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cudnn_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cufft_plugin",
+        "//tensorflow/tsl/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
-        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
+        "//tensorflow/tsl/platform/default/build_config:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
     ]) + select({
         ":is_xlir_enabled": [
@@ -935,7 +935,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/cuda:cublas_lt_header",
@@ -964,7 +964,7 @@ cc_library(
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:blas",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/stream_executor/cuda:cublas_lt_header",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
@@ -995,7 +995,7 @@ cc_library(
         "//tensorflow/stream_executor:stream_header",
     ] + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cublas_lt_header",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/stream_executor:host_or_device_scalar",
         "//tensorflow/stream_executor:scratch_allocator",
     ]),
@@ -2192,7 +2192,7 @@ tf_cc_test(
         "//tensorflow/core:test",
     ] + if_cuda_is_configured([
         ":buffer_comparator",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
+        "//tensorflow/tsl/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
         "//tensorflow/stream_executor:device_memory",
     ]),
 )

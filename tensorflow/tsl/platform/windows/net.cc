@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/windows/error_windows.h"
+#include "tensorflow/tsl/platform/windows/error_windows.h"
 
 #undef ERROR
 

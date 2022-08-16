@@ -642,29 +642,29 @@ def tf_proto_library(
 
 def tf_additional_lib_hdrs():
     return [
-        "//tensorflow/core/platform/default:casts.h",
-        "//tensorflow/core/platform/default:context.h",
-        "//tensorflow/core/platform/default:cord.h",
-        "//tensorflow/core/platform/default:dynamic_annotations.h",
-        "//tensorflow/core/platform/default:integral_types.h",
-        "//tensorflow/core/platform/default:logging.h",
-        "//tensorflow/core/platform/default:mutex.h",
-        "//tensorflow/core/platform/default:mutex_data.h",
-        "//tensorflow/core/platform/default:notification.h",
-        "//tensorflow/core/platform/default:stacktrace.h",
-        "//tensorflow/core/platform/default:tracing_impl.h",
-        "//tensorflow/core/platform/default:unbounded_work_queue.h",
+        "//tensorflow/tsl/platform/default:casts.h",
+        "//tensorflow/tsl/platform/default:context.h",
+        "//tensorflow/tsl/platform/default:cord.h",
+        "//tensorflow/tsl/platform/default:dynamic_annotations.h",
+        "//tensorflow/tsl/platform/default:integral_types.h",
+        "//tensorflow/tsl/platform/default:logging.h",
+        "//tensorflow/tsl/platform/default:mutex.h",
+        "//tensorflow/tsl/platform/default:mutex_data.h",
+        "//tensorflow/tsl/platform/default:notification.h",
+        "//tensorflow/tsl/platform/default:stacktrace.h",
+        "//tensorflow/tsl/platform/default:tracing_impl.h",
+        "//tensorflow/tsl/platform/default:unbounded_work_queue.h",
     ] + select({
         "//tensorflow:windows": [
-            "//tensorflow/core/platform/windows:intrinsics_port.h",
-            "//tensorflow/core/platform/windows:stacktrace.h",
-            "//tensorflow/core/platform/windows:subprocess.h",
-            "//tensorflow/core/platform/windows:wide_char.h",
-            "//tensorflow/core/platform/windows:windows_file_system.h",
+            "//tensorflow/tsl/platform/windows:intrinsics_port.h",
+            "//tensorflow/tsl/platform/windows:stacktrace.h",
+            "//tensorflow/tsl/platform/windows:subprocess.h",
+            "//tensorflow/tsl/platform/windows:wide_char.h",
+            "//tensorflow/tsl/platform/windows:windows_file_system.h",
         ],
         "//conditions:default": [
-            "//tensorflow/core/platform/default:posix_file_system.h",
-            "//tensorflow/core/platform/default:subprocess.h",
+            "//tensorflow/tsl/platform/default:posix_file_system.h",
+            "//tensorflow/tsl/platform/default:subprocess.h",
         ],
     })
 
@@ -717,7 +717,7 @@ def tf_additional_test_deps():
 
 def tf_additional_test_srcs():
     return [
-        "//tensorflow/core/platform/default:test.cc",
+        "//tensorflow/tsl/platform/default:test.cc",
     ]
 
 def tf_kernel_tests_linkstatic():
@@ -749,7 +749,7 @@ def tf_lib_proto_parsing_deps():
     return [
         ":protos_all_cc",
         clean_dep("//third_party/eigen3"),
-        clean_dep("//tensorflow/core/platform/default/build_config:proto_parsing"),
+        clean_dep("//tensorflow/tsl/platform/default/build_config:proto_parsing"),
     ]
 
 def tf_py_clif_cc(name, visibility = None, **kwargs):
@@ -779,7 +779,7 @@ def tf_additional_binary_deps():
     ) + if_rocm(
         [
             clean_dep("//tensorflow/stream_executor:rocm_platform"),
-            clean_dep("//tensorflow/core/platform/default/build_config:rocm"),
+            clean_dep("//tensorflow/tsl/platform/default/build_config:rocm"),
         ],
     ) + if_mkl_ml(
         [
@@ -820,30 +820,30 @@ def tf_protobuf_compiler_deps():
 def tf_windows_aware_platform_deps(name):
     return select({
         "//tensorflow:windows": [
-            "//tensorflow/core/platform/windows:" + name,
+            "//tensorflow/tsl/platform/windows:" + name,
         ],
         "//conditions:default": [
-            "//tensorflow/core/platform/default:" + name,
+            "//tensorflow/tsl/platform/default:" + name,
         ],
     })
 
-def tf_platform_deps(name, platform_dir = "//tensorflow/core/platform/"):
+def tf_platform_deps(name, platform_dir = "//tensorflow/tsl/platform/"):
     return [platform_dir + "default:" + name]
 
-def tf_testing_deps(name, platform_dir = "//tensorflow/core/platform/"):
+def tf_testing_deps(name, platform_dir = "//tensorflow/tsl/platform/"):
     return tf_platform_deps(name, platform_dir)
 
-def tf_stream_executor_deps(name, platform_dir = "//tensorflow/core/platform/"):
+def tf_stream_executor_deps(name, platform_dir = "//tensorflow/tsl/platform/"):
     return tf_platform_deps(name, platform_dir)
 
-def tf_platform_alias(name, platform_dir = "//tensorflow/core/platform/"):
+def tf_platform_alias(name, platform_dir = "//tensorflow/tsl/platform/"):
     return [platform_dir + "default:" + name]
 
 def tf_logging_deps():
-    return ["//tensorflow/core/platform/default:logging"]
+    return ["//tensorflow/tsl/platform/default:logging"]
 
 def tf_resource_deps():
-    return ["//tensorflow/core/platform/default:resource"]
+    return ["//tensorflow/tsl/platform/default:resource"]
 
 def tf_portable_deps_no_runtime():
     return [
