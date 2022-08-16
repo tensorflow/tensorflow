@@ -978,14 +978,14 @@ class GPUCompatiblePaddingFIFOQueue(QueueBase):
   def enqueue_many(self, vals, name=None):
     """enqueue_many is not supported on GPUCompatiblePaddingFIFOQueue."""
     raise NotImplementedError(
-        "GPUCompatiblePaddingFIFOQueue does not support enqueue_many or dequeue_many, "
-        "only enqueue and dequeue.")
+        "GPUCompatiblePaddingFIFOQueue does not support enqueue_many or "
+        "dequeue_many, only enqueue and dequeue.")
 
   def dequeue_many(self, n, name=None):
     """dequeue_many is not supported on GPUCompatiblePaddingFIFOQueue."""
     raise NotImplementedError(
-        "GPUCompatiblePaddingFIFOQueue does not support enqueue_many or dequeue_many, "
-        "only enqueue and dequeue.")
+        "GPUCompatiblePaddingFIFOQueue does not support enqueue_many or "
+        "dequeue_many, only enqueue and dequeue.")
 
 
 @tf_export("queue.PriorityQueue",
