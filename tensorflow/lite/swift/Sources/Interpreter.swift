@@ -89,7 +89,7 @@ public final class Interpreter {
   /// Creates a new instance with the given values.
   ///
   /// - Parameters:
-  ///   - modelData: Binary data representing the TensorFlow Lite model.
+  ///   - modelData: Binary data representing a TensorFlow Lite model.
   ///   - options: Configurations for the `Interpreter`. The default is `nil` indicating that the
   ///       `Interpreter` will determine the configuration options.
   ///   - delegate: `Array` of `Delegate`s for the `Interpreter` to use to peform graph operations.

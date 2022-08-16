@@ -39,6 +39,11 @@ final class Model {
     self.cModel = cModel
   }
 
+  /// Creates a new instance with the given `modelData`.
+  ///
+  /// - Precondition: Initialization can fail if the given `modelData` is invalid.
+  /// - Parameters:
+  ///   - modelData: Binary data representing a TensorFlow Lite model.
   init?(modelData: Data) {
     self.data = modelData
     self.cModel = self.data.withUnsafeBytes { TfLiteModelCreate($0, self.data.count) }
