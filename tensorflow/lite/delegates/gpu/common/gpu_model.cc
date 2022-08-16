@@ -380,14 +380,6 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
 
   return absl::OkStatus();
 }
-// TYPE_0
-//    input       input
-//      |           |
-//    elem0         |
-//      |    -->  elem
-//  elem_root       |
-//      |           |
-//    output      output
 
 absl::Status MergeElementwiseNodes(const GpuInfo& gpu_info,
                                    GpuModel* gpu_model) {
@@ -410,7 +402,14 @@ absl::Status MergeElementwiseNodes(const GpuInfo& gpu_info,
         }
       }
     }
-    // check TYPE_0
+    // TYPE_0
+    //    input       input
+    //      |           |
+    //    elem0         |
+    //      |    -->  elem
+    //  elem_root       |
+    //      |           |
+    //    output      output
     if (prev_nodes.size() == 1) {
       if (elem_root.inputs.size() != 1) {
         continue;
@@ -439,6 +438,64 @@ absl::Status MergeElementwiseNodes(const GpuInfo& gpu_info,
       nodes.erase(nodes.begin() + elem_root_index);
       elem_root_index = prev_first_node_index;
       continue;
+    }
+
+    // check TYPE_1
+    if (prev_nodes.size() == 2) {
+      if (elem_root.inputs.size() != 2) {
+        continue;
+      }
+      const int prev_first_node_index = prev_nodes[0];
+      const int prev_second_node_index = prev_nodes[1];
+      auto& prev_first_node = nodes[prev_first_node_index];
+      auto& prev_second_node = nodes[prev_second_node_index];
+
+      // check TYPE_1
+      // TYPE_1
+      //      input           input
+      //     /    \             |
+      //   elem0   |            |
+      //     \    /      -->  elem
+      //   elem_root            |
+      //       |                |
+      //     output           output
+      if (prev_first_node.gpu_operation->IsLinkable() &&
+          !prev_second_node.gpu_operation->IsLinkable() &&
+          prev_second_node.outputs.size() == 1 &&
+          prev_first_node.inputs.size() == 1 &&
+          prev_first_node.outputs.size() == 1) {
+        int first_node_parent_index = -1;
+        for (int j = prev_first_node_index - 1; j >= 0; --j) {
+          if (nodes[j].outputs[0] == prev_first_node.inputs[0]) {
+            first_node_parent_index = j;
+            break;
+          }
+        }
+        if (first_node_parent_index == -1 ||
+            first_node_parent_index != prev_second_node_index) {
+          continue;
+        }
+        int consumers_count = 0;
+        for (const auto& node : nodes) {
+          for (const auto& input : node.inputs) {
+            if (input == elem_root.inputs[0]) {
+              consumers_count++;
+            }
+          }
+        }
+        if (consumers_count != 1) {
+          continue;
+        }
+
+        prev_first_node.outputs[0] = elem_root.outputs[0];
+        prev_first_node.name += " -> " + elem_root.name;
+        RETURN_IF_ERROR(prev_first_node.gpu_operation
+                            ->Fuse2InputElemWithSimpleElemAsFirstInput(
+                                gpu_info, elem_root.gpu_operation.get()));
+        nodes.erase(nodes.begin() + elem_root_index);
+        elem_root_index = prev_first_node_index;
+        continue;
+      }
     }
   }
   return absl::OkStatus();

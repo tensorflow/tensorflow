@@ -89,6 +89,18 @@ absl::Status TestLinkingConvolution2InputMul2InputBroadcastMul(
 absl::Status TestLinkingConvolution2InputMul2InputMulCos(
     TestExecutionEnvironment* env);
 
+//      input
+//        |
+//   convolution
+//     /     \
+//   tanh     |
+//     \     /
+//  substraction
+//        |
+//     output
+absl::Status TestLinkingConvolutionFirstTanh2InputDiff(
+    TestExecutionEnvironment* env);
+
 }  // namespace gpu
 }  // namespace tflite
 
