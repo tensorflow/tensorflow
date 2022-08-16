@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import queue
+import threading
+
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -190,30 +195,26 @@ class StageTest(test.TestCase):
 
     G.finalize()
 
-    from six.moves import queue as Queue
-    import threading
-
-    queue = Queue.Queue()
+    value_queue = queue.Queue()
     n = 8
 
     with self.session(graph=G) as sess:
-      # Stage data in a separate thread which will block
-      # when it hits the staging area's capacity and thus
-      # not fill the queue with n tokens
+      # Stage data in a separate thread which will block when it hits the
+      # staging area's capacity and thus not fill the value_queue with n tokens
       def thread_run():
         for i in range(n):
           sess.run(stage, feed_dict={x: i})
-          queue.put(0)
+          value_queue.put(0)
 
       t = threading.Thread(target=thread_run)
       t.daemon = True
       t.start()
 
-      # Get tokens from the queue until a timeout occurs
+      # Get tokens from the value_queue until a timeout occurs
       try:
         for i in range(n):
-          queue.get(timeout=TIMEOUT)
-      except Queue.Empty:
+          value_queue.get(timeout=TIMEOUT)
+      except queue.Empty:
         pass
 
       # Should've timed out on the iteration 'capacity'
@@ -254,31 +255,26 @@ class StageTest(test.TestCase):
 
     G.finalize()
 
-    from six.moves import queue as Queue
-    import threading
-    import numpy as np
-
-    queue = Queue.Queue()
+    value_queue = queue.Queue()
     n = 8
 
     with self.session(graph=G) as sess:
-      # Stage data in a separate thread which will block
-      # when it hits the staging area's capacity and thus
-      # not fill the queue with n tokens
+      # Stage data in a separate thread which will block when it hits the
+      # staging area's capacity and thus not fill the value_queue with n tokens
       def thread_run():
         for i in range(n):
           sess.run(stage, feed_dict={x: np.full(chunk, i, dtype=np.uint8)})
-          queue.put(0)
+          value_queue.put(0)
 
       t = threading.Thread(target=thread_run)
       t.daemon = True
       t.start()
 
-      # Get tokens from the queue until a timeout occurs
+      # Get tokens from the value_queue until a timeout occurs
       try:
         for i in range(n):
-          queue.get(timeout=TIMEOUT)
-      except Queue.Empty:
+          value_queue.get(timeout=TIMEOUT)
+      except queue.Empty:
         pass
 
       # Should've timed out on the iteration 'capacity'
