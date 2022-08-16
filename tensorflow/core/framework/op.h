@@ -224,13 +224,22 @@ class OpDefBuilderWrapper {
     builder_.Attr(std::move(spec));
     return *this;
   }
+  OpDefBuilderWrapper& Attr(const char* spec) TF_ATTRIBUTE_NOINLINE {
+    return Attr(std::string(spec));
+  }
   OpDefBuilderWrapper& Input(std::string spec) {
     builder_.Input(std::move(spec));
     return *this;
   }
+  OpDefBuilderWrapper& Input(const char* spec) TF_ATTRIBUTE_NOINLINE {
+    return Input(std::string(spec));
+  }
   OpDefBuilderWrapper& Output(std::string spec) {
     builder_.Output(std::move(spec));
     return *this;
+  }
+  OpDefBuilderWrapper& Output(const char* spec) TF_ATTRIBUTE_NOINLINE {
+    return Output(std::string(spec));
   }
   OpDefBuilderWrapper& SetIsCommutative() {
     builder_.SetIsCommutative();
