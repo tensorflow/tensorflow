@@ -755,10 +755,10 @@ Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
   shape_.set_data_type(dtype);
   if (buf_ != other.buf_) {
     UnrefIfNonNull(buf_);
+    Tensor ts_ = tensor::DeepCopy(other);
     if (port::kLittleEndian) {
       buf_ = other.buf_;
     } else {
-      Tensor ts_ = tensor::DeepCopy(other);
       buf_ = ts_.buf_;
       ByteSwapArray((char*)(buf_->root_buffer()->data()), in_size, other.shape().num_elements());
       ByteSwapArray((char*)(buf_->root_buffer()->data()), out_size, shape.num_elements());
