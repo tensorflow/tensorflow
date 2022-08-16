@@ -78,6 +78,7 @@ add_mlir_library(MhloPasses
   MLIRMhloUtils
   MLIRPass
   MLIRTransformUtils
+  THLODialect
 )
 
 add_mlir_library(MhloToLhloConversion

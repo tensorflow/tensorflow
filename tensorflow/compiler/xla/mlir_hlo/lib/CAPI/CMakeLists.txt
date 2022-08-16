@@ -6,6 +6,7 @@ add_mlir_public_c_api_library(MLIRHLOCAPIDialects
   LINK_LIBS PUBLIC
   ChloDialect
   MhloDialect
+  THLODialect
   # For AllMhLoPasses:
   ChloPasses
   MhloPasses
