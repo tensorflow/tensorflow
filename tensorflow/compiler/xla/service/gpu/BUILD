@@ -607,7 +607,7 @@ config_setting(
 #         "@tf_runtime//:support",
 #         "//tensorflow/compiler/xla/runtime:custom_call",
 #         "//tensorflow/compiler/xla/runtime:type_id",
-#         "@tf_runtime//backends/jitrt:custom_call_to_llvm",
+#         "//tensorflow/compiler/xla/mlir/transforms/runtime:custom_call_encoding",
 #     ] + if_gpu_is_configured([
 #         ":cholesky_thunk",
 #         ":triangular_solve_thunk",

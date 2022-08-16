@@ -29,18 +29,29 @@ gentbl_cc_library(
 
 cc_library(
     name = "passes",
-    srcs = ["convert_to_entrypoint.cc"],
+    srcs = [
+        "convert_to_entrypoint.cc",
+        "rt_to_llvm.cc",
+    ],
     hdrs = ["passes.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":custom_call_encoding",
         ":passes_inc_gen",
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ControlFlowDialect",
+        "@llvm-project//mlir:ConversionPasses",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncToLLVM",
+        "@llvm-project//mlir:FuncTransforms",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
+        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -54,6 +65,23 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "custom_call_encoding",
+    srcs = ["custom_call_encoding.cc"],
+    hdrs = ["custom_call_encoding.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:type_id",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Support",
     ],
 )
 
