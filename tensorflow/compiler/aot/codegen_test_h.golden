@@ -402,7 +402,7 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   static const ::xla::ProgramShapeProto* StaticProgramShape() {
     static const ::xla::ProgramShapeProto* kShape = []() {
     ::xla::ProgramShapeProto* proto = new ::xla::ProgramShapeProto;
-    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 149);
+    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 133);
     return proto;
   }();
     return kShape;

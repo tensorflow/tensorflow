@@ -608,6 +608,7 @@ typedef struct {
   int element_type;             // out
   Int64List dimensions;         // out
   BoolList dynamic_dimensions;  // out
+  bool has_layout;
   XLA_Layout layout;            // out
 } PJRT_Buffer_OnDeviceTrimmedShape_Args;
 const size_t PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE =

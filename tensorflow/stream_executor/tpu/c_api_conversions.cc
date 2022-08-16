@@ -234,9 +234,10 @@ void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape) {
   }
 
   if (xla_shape.has_layout()) {
+    c_shape->has_layout = true;
     ToC(xla_shape.layout(), &c_shape->layout);
   } else {
-    c_shape->layout.format = xla::INVALID_FORMAT;
+    c_shape->has_layout = false;
   }
 }
 
@@ -252,7 +253,7 @@ xla::Shape FromC(const XLA_Shape* c_shape) {
 
   xla::Shape result(static_cast<xla::PrimitiveType>(c_shape->element_type),
                     dims, dynamic_dims, std::move(tuple_shapes));
-  if (c_shape->layout.format != xla::INVALID_FORMAT) {
+  if (c_shape->has_layout) {
     *result.mutable_layout() = FromC(&c_shape->layout);
   }
   return result;
@@ -271,13 +272,12 @@ void Destroy(XLA_Shape* c_shape) {
     }
     delete[] c_shape->tuple_shapes;
   }
-  if (c_shape->layout.format != xla::INVALID_FORMAT) {
+  if (c_shape->has_layout) {
     Destroy(&c_shape->layout);
   }
 }
 
 void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
-  c_layout->format = layout.format();
   CreateVector(layout.minor_to_major(), &c_layout->minor_to_major);
   c_layout->element_size_in_bits = layout.element_size_in_bits();
   c_layout->memory_space = layout.memory_space();

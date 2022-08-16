@@ -217,7 +217,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
           auto allocated_buffer,
           allocator->Allocate(executor->device_ordinal(), allocation_bytes,
                               /*retry_on_failure=*/true,
-                              on_device_subshape.layout().memory_space()));
+                              LayoutUtil::MemorySpace(on_device_subshape)));
       result_buffer = allocated_buffer.Release();
     }
     TF_RET_CHECK(allocation_bytes == 0 || result_buffer != nullptr);

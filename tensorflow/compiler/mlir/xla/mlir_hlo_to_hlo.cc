@@ -2419,7 +2419,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   } else {
     if (ensure_single_arg) {
       // Applicable for mhlo.IfOp or mhlo.CaseOp or mhlo.WhileOp.
-      llvm::SmallVector<xla::Shape> arg_shapes;
+      llvm::SmallVector<xla::Shape, 4> arg_shapes;
 
       auto args_size = block->getNumArguments();
       if (implicit_operands) args_size = implicit_operands->size();

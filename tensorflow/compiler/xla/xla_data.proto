@@ -109,15 +109,16 @@ message PaddingConfig {
   repeated PaddingConfigDimension dimensions = 1;
 }
 
-// A format specifies the method used by a layout to store an array in memory.
-enum Format {
-  // TODO(b/120869032): Rename this to FORMAT_NONE or something else which
-  // better corresponds to its meaning.
-  INVALID_FORMAT = 0;
-  // The default layout, with exactly one storage location per element.
-  DENSE = 1;
-  reserved 2;
-  reserved "SPARSE";
+// A DimLevelType indicates the encoding method for a dimension in an array.
+// The semantics of this field are identical to those of the MLIR SparseTensor
+// dialect.
+// This should be kept in sync with the SparseTensor DimLevelType enum:
+// https://github.com/llvm/llvm-project/blob/5674a3c88088e668b684326c2194a6282e8270ff/mlir/include/mlir/Dialect/SparseTensor/IR/SparseTensorAttrDefs.td#L86
+enum DimLevelType {
+  // The corresponding dimension is Dense, every entry is stored.
+  DIM_DENSE = 0;
+  // TODO(b/238453885): Add compressed, singleton, etc. as required for
+  // SparseTensor.
 }
 
 // Describes a tile used in tiling-based layout. Refer to
@@ -142,22 +143,14 @@ message TileProto {
 //
 // LINT.IfChange
 message LayoutProto {
-  // The method used to store the data in memory. The format determines which of
-  // the other fields are used by the layout.
-  Format format = 4;
+  // The dimension level type list for this array, specifying the way in which
+  // each array dimension is represented in memory. If this list is empty, the
+  // array is assumed to be dense.
+  repeated DimLevelType dim_level_types = 9;
 
   // Sequence of dimension numbers, from minor (fastest varying index) to major
   // (slowest varying index). This field is required.
   repeated int64 minor_to_major = 1;
-
-  reserved 2;
-  reserved "padded_dimensions";
-
-  reserved 3;
-  reserved "padding_value";
-
-  reserved 5;
-  reserved "max_sparse_elements";
 
   // A sequence of tiles, starting from the tile that's applied first to the
   // Shape.
@@ -179,6 +172,15 @@ message LayoutProto {
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.
+
+  reserved 2;
+  reserved "padded_dimensions";
+  reserved 3;
+  reserved "padding_value";
+  reserved 4;
+  reserved "format";
+  reserved 5;
+  reserved "max_sparse_elements";
 }
 // LINT.ThenChange( \
 //     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,      \

@@ -216,12 +216,11 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   }
 
   void CheckRootInDefaultMemory(const HloModule* module) {
-    EXPECT_EQ(module->entry_computation()
-                  ->root_instruction()
-                  ->shape()
-                  .layout()
-                  .memory_space(),
-              kDefaultMemorySpace);
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    if (root->shape().IsArray()) {
+      EXPECT_EQ(root->shape().layout().memory_space(), kDefaultMemorySpace);
+    }
   }
 
   struct OutstandingAsyncCopies {

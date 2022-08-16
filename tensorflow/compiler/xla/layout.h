@@ -86,15 +86,13 @@ class Layout {
 
   // Constructs a dense layout with the given minor-to-major order.
   explicit Layout(absl::Span<const int64_t> minor_to_major)
-      : format_(DENSE),
-        minor_to_major_(minor_to_major.begin(), minor_to_major.end()) {}
+      : minor_to_major_(minor_to_major.begin(), minor_to_major.end()) {}
 
   // Constructs a dense tiled layout with the given minor-to-major order and
   // tiles.
   Layout(absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
          int64_t element_size_in_bits = 0, int64_t memory_space = 0)
-      : format_(DENSE),
-        minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
+      : minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
         tiles_(tiles.begin(), tiles.end()),
         element_size_in_bits_(element_size_in_bits),
         memory_space_(memory_space) {}
@@ -162,12 +160,27 @@ class Layout {
   // TODO(b/29771030): Replace or augment these methods with a more ergonomic
   // interface.
 
-  // Methods for accessing the format.
-  Format format() const { return format_; }
-  Layout& set_format(Format value) {
-    format_ = value;
+  // Methods for accessing the DimLevelType array.
+  int dim_level_types_size() const { return dim_level_types_.size(); }
+  DimLevelType dim_level_type(int index) const {
+    return dim_level_types_.at(index);
+  }
+  Layout& set_dim_level_type(int index, DimLevelType dim_level_type) {
+    dim_level_types_.at(index) = dim_level_type;
     return *this;
   }
+  Layout& add_dim_level_type(DimLevelType dim_level_type) {
+    dim_level_types_.push_back(dim_level_type);
+    return *this;
+  }
+  Layout& clear_dim_level_types() {
+    dim_level_types_.clear();
+    return *this;
+  }
+  absl::Span<const DimLevelType> dim_level_types() const {
+    return dim_level_types_;
+  }
+  DimLevelTypeVector* mutable_dim_level_types() { return &dim_level_types_; }
 
   // Methods for accessing the minor-to-major array.
   int minor_to_major_size() const { return minor_to_major_.size(); }
@@ -220,20 +233,18 @@ class Layout {
     swap(*this, *other);
   }
 
-  void Clear() {
-    *this = Layout();
-    format_ = INVALID_FORMAT;
-  }
+  void Clear() { *this = Layout(); }
 
   template <typename H>
   friend H AbslHashValue(H h, const Layout& l) {
-    return H::combine(std::move(h), l.format_, l.minor_to_major_, l.tiles_,
+    return H::combine(std::move(h), l.minor_to_major_, l.tiles_,
                       l.element_size_in_bits_, l.memory_space_);
   }
 
  private:
-  // The format of this layout.
-  Format format_ = INVALID_FORMAT;
+  // The list of dimension level types, indicating the method that will be used
+  // to represent each dimension of the array.
+  DimLevelTypeVector dim_level_types_;
 
   // A map from physical dimension numbers to logical dimension numbers.
   // The first element is the most minor physical dimension (fastest varying

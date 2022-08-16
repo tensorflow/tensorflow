@@ -104,7 +104,8 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
                            dimensions.size(), minor_to_major.size());
   }
-  if (element_type == OPAQUE_TYPE || element_type == TUPLE) {
+  if (element_type == OPAQUE_TYPE || element_type == TUPLE ||
+      element_type == TOKEN) {
     return InvalidArgument("Unsupported element type: %s",
                            PrimitiveType_Name(element_type));
   }
@@ -117,9 +118,6 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   }
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
       minor_to_major, tiles, element_size_in_bits, memory_space);
-  if (!shape.has_layout()) {
-    return InvalidArgument("Shape has no layout.");
-  }
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
@@ -224,7 +222,6 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   shape->set_element_type(element_type);
   const int ndims = dimensions.size();
   auto layout = shape->mutable_layout();
-  layout->set_format(DENSE);
   auto* minor_to_major = layout->mutable_minor_to_major();
   for (int i = 0; i < ndims; i++) {
     const int64_t d = dimensions[i];
@@ -358,15 +355,21 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     const Shape& shape) {
   std::vector<int64_t> dims(shape.dimensions_size());
   for (int i = 0; i < shape.dimensions_size(); ++i) {
-    dims[i] = shape.dimensions(LayoutUtil::Major(shape.layout(), i));
+    int dim = i;
+    if (shape.has_layout()) {
+      dim = LayoutUtil::Major(shape.layout(), dim);
+    }
+    dims[i] = shape.dimensions(dim);
   }
   Shape new_shape = MakeShapeWithDescendingLayout(shape.element_type(), dims);
   // Since the physical layout is kept the same, the tiles and element size are
   // the same also.
-  new_shape.mutable_layout()->mutable_tiles()->assign(
-      shape.layout().tiles().begin(), shape.layout().tiles().end());
-  new_shape.mutable_layout()->set_element_size_in_bits(
-      shape.layout().element_size_in_bits());
+  if (shape.has_layout()) {
+    new_shape.mutable_layout()->mutable_tiles()->assign(
+        shape.layout().tiles().begin(), shape.layout().tiles().end());
+    new_shape.mutable_layout()->set_element_size_in_bits(
+        shape.layout().element_size_in_bits());
+  }
   for (int i = 0; i < shape.dimensions_size(); ++i) {
     new_shape.set_dynamic_dimension(i, shape.is_dynamic_dimension(i));
   }
@@ -450,7 +453,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ void ShapeUtil::AppendMajorDimension(int bound, Shape* shape) {
   CHECK(LayoutUtil::IsDenseArray(*shape));
-  shape->mutable_layout()->add_minor_to_major(shape->rank());
+  if (shape->has_layout()) {
+    shape->mutable_layout()->add_minor_to_major(shape->rank());
+  }
   shape->add_dimensions(bound);
   TF_DCHECK_OK(ValidateShape(*shape));
 }
@@ -458,14 +463,16 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ void ShapeUtil::AppendMinorDimension(int bound, Shape* shape) {
   CHECK(LayoutUtil::IsDenseArray(*shape));
 
-  // Bump up all values in the layout by one.
-  for (int dim_idx = 0; dim_idx < shape->layout().minor_to_major_size();
-       dim_idx++) {
-    int layout_idx = shape->layout().minor_to_major(dim_idx);
-    shape->mutable_layout()->set_minor_to_major(dim_idx, layout_idx + 1);
+  if (shape->has_layout()) {
+    // Bump up all values in the layout by one.
+    for (int dim_idx = 0; dim_idx < shape->layout().minor_to_major_size();
+         dim_idx++) {
+      int layout_idx = shape->layout().minor_to_major(dim_idx);
+      shape->mutable_layout()->set_minor_to_major(dim_idx, layout_idx + 1);
+    }
+    // Then we can safely add zero.
+    shape->mutable_layout()->add_minor_to_major(0);
   }
-  // Then we can safely add zero.
-  shape->mutable_layout()->add_minor_to_major(0);
   shape->add_dimensions(bound);
   TF_DCHECK_OK(ValidateShape(*shape));
 }
@@ -677,14 +684,16 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     return text;
   }
   std::string result = HumanString(shape);
-  if (IsScalar(shape)) {
-    std::string layout_str = LayoutUtil::HumanString(shape.layout());
-    // Don't print "{}" as layout for scalars.
-    if (layout_str != "{}") {
-      StrAppend(&result, layout_str);
+  if (shape.has_layout()) {
+    if (IsScalar(shape)) {
+      std::string layout_str = LayoutUtil::HumanString(shape.layout());
+      // Don't print "{}" as layout for scalars.
+      if (layout_str != "{}") {
+        StrAppend(&result, layout_str);
+      }
+    } else if (shape.IsArray()) {
+      StrAppend(&result, LayoutUtil::HumanString(shape.layout()));
     }
-  } else if (shape.IsArray() && LayoutUtil::HasLayout(shape)) {
-    StrAppend(&result, LayoutUtil::HumanString(shape.layout()));
   }
   return result;
 }
@@ -833,7 +842,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ int64_t ShapeUtil::ByteSizeOfElements(const Shape& shape) {
   TF_DCHECK_OK(ValidateShape(shape));
-  CHECK(shape.IsArray());
   int64_t allocated_element_count;
 
   CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();
@@ -1164,7 +1172,6 @@ Status ForEachMutableSubshapeHelper(
   if (shape.has_layout()) {
     CHECK(LayoutUtil::IsDenseArray(shape));
     Layout* new_layout = new_shape.mutable_layout();
-    new_layout->set_format(DENSE);
     new_layout->clear_minor_to_major();
     for (auto index : ComposePermutations(inv_permutation,
                                           shape.layout().minor_to_major())) {
@@ -1292,8 +1299,10 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
 /* static */ bool ShapeUtil::TransposeIsBitcast(
     const Shape& input_shape, const Shape& output_shape,
     absl::Span<const int64_t> dimension_mapping) {
-  CHECK(LayoutUtil::HasLayout(input_shape) &&
-        LayoutUtil::HasLayout(output_shape));
+  CHECK(LayoutUtil::IsDenseArray(input_shape)) << input_shape.ToString(true);
+  CHECK(LayoutUtil::IsDenseArray(output_shape)) << output_shape.ToString(true);
+  CHECK(input_shape.has_layout()) << input_shape.ToString(true);
+  CHECK(output_shape.has_layout()) << output_shape.ToString(true);
 
   if (!SameElementType(input_shape, output_shape)) {
     return false;
@@ -1321,10 +1330,10 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
 
 /* static */ bool ShapeUtil::ReshapeIsBitcast(const Shape& input_shape,
                                               const Shape& output_shape) {
-  CHECK(input_shape.IsArray());
-  CHECK(output_shape.IsArray());
-  CHECK(LayoutUtil::HasLayout(input_shape));
-  CHECK(LayoutUtil::HasLayout(output_shape));
+  CHECK(LayoutUtil::IsDenseArray(input_shape)) << input_shape.ToString(true);
+  CHECK(LayoutUtil::IsDenseArray(output_shape)) << output_shape.ToString(true);
+  CHECK(input_shape.has_layout()) << input_shape.ToString(true);
+  CHECK(output_shape.has_layout()) << output_shape.ToString(true);
 
   if (!SameElementType(input_shape, output_shape)) {
     return false;

@@ -228,7 +228,6 @@ struct TileList {
 };
 
 typedef struct XLA_Layout {
-  int format;
   Int64List minor_to_major;
   TileList tiles;
   int64_t element_size_in_bits;
@@ -242,6 +241,7 @@ typedef struct XLA_Shape {
   BoolList dynamic_dimensions;
   XLA_Shape* tuple_shapes;  // owned
   int ntuple_shapes;
+  bool has_layout;
   XLA_Layout layout;
 } XLA_Shape;
 

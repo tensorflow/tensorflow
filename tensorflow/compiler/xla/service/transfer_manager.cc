@@ -405,7 +405,7 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
                         allocator->Allocate(shaped_buffer.device_ordinal(),
                                             GetByteSizeRequirement(subshape),
                                             /*retry_on_failure=*/true,
-                                            subshape.layout().memory_space()));
+                                            LayoutUtil::MemorySpace(subshape)));
     // Move the allocated buffer into the ScopedShapedBuffer, which owns it.
     memory_base = memory.Release();
   }

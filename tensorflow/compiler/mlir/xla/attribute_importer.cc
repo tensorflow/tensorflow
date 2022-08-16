@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -163,11 +164,9 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     if (shape_and_layout.IsTuple())
       return tensorflow::errors::Unimplemented(
           "Layout support for nested tuples is not implemented.");
-    const xla::Layout& xla_layout = shape_and_layout.layout();
-
     // XLA can have invalid layout for certain values (such as token types).
     // These are imported as empty layout in MHLO.
-    if (xla_layout.format() == xla::Format::INVALID_FORMAT) {
+    if (!shape_and_layout.IsArray()) {
       layouts.push_back(builder->getIndexTensorAttr({}));
       continue;
     }
@@ -176,8 +175,12 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     // currently. The layout has to be dense, and only specify the order of
     // dimensions. Sparse, tiled layout or non-default memory space fields
     // cannot be expressed in MHLO layout yet.
-    if (xla_layout.format() != xla::Format::DENSE)
-      return tensorflow::errors::Unimplemented("Unexpected layout format");
+    if (!xla::LayoutUtil::IsDenseArray(shape_and_layout)) {
+      return tensorflow::errors::Unimplemented(
+          "Only dense arrays are supported.");
+    }
+
+    const xla::Layout& xla_layout = shape_and_layout.layout();
     if (!xla_layout.tiles().empty())
       return tensorflow::errors::Unimplemented(
           "Tiled layout is not supported yet");

@@ -176,7 +176,7 @@ bool HasOnlyRowMajorLayout(const HloInstruction& instr) {
 
   auto fused_instrs = instr.fused_instructions_computation()->instructions();
   for (HloInstruction* i : fused_instrs) {
-    if (i->shape().layout().format() != DENSE) {
+    if (!LayoutUtil::IsDenseArray(i->shape())) {
       continue;
     }
     if (!LayoutUtil::IsMonotonicWithDim0Major(i->shape().layout())) {

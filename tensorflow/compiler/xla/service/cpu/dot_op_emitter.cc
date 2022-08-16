@@ -1113,7 +1113,7 @@ namespace {
 bool IsRank2(const Shape& shape) { return shape.rank() == 2; }
 
 bool IsSimpleLayout(const Layout& layout) {
-  return layout.tiles().empty() && layout.format() == DENSE;
+  return layout.tiles().empty() && LayoutUtil::IsDense(layout);
 }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes

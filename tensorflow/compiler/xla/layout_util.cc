@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -56,7 +57,6 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
     absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
     int64_t element_size_in_bits, int64_t memory_space) {
   Layout layout;
-  layout.set_format(DENSE);
   for (int64_t dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
   }
@@ -91,7 +91,6 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 /* static */ Layout LayoutUtil::MakeLayoutFromMajorToMinor(
     absl::Span<const int64_t> major_to_minor) {
   Layout layout;
-  layout.set_format(DENSE);
   for (int i = major_to_minor.size() - 1; i >= 0; i--) {
     layout.add_minor_to_major(major_to_minor[i]);
   }
@@ -103,7 +102,6 @@ namespace {
 // Internal helper that creates a default layout for an array of the given rank.
 Layout CreateDefaultLayoutForRank(int64_t rank) {
   Layout layout;
-  layout.set_format(DENSE);
   auto* minor_to_major = layout.mutable_minor_to_major();
   minor_to_major->resize(rank, 0);
   SetDefaultLayoutToContainer(minor_to_major);
@@ -147,7 +145,6 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     }
     shape->clear_layout();
   } else if (shape->IsArray()) {
-    shape->mutable_layout()->set_format(DENSE);
     auto* minor_to_major = shape->mutable_layout()->mutable_minor_to_major();
     minor_to_major->resize(shape->dimensions_size(), 0);
     SetDefaultLayoutToContainer(minor_to_major);
@@ -217,39 +214,42 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     return OkStatus();
   }
 
-  if (layout.format() == INVALID_FORMAT || !Format_IsValid(layout.format())) {
-    return InvalidArgument("Layout has an invalid format (%d)",
-                           layout.format());
+  if (layout.minor_to_major_size() != shape.rank()) {
+    return InvalidArgument(
+        "layout minor_to_major field contains %d elements, "
+        "but shape is rank %d: {%s}; shape: %s",
+        layout.minor_to_major_size(), shape.rank(),
+        absl::StrJoin(layout.minor_to_major(), ", "), shape.ShortDebugString());
   }
 
-  if (layout.format() == DENSE) {
-    if (layout.minor_to_major_size() != shape.rank()) {
+  std::vector<bool> dimensions_in_layout(shape.rank(), false);
+  for (int64_t i = 0; i < shape.rank(); ++i) {
+    int64_t dim = layout.minor_to_major(i);
+    if (dim < 0 || dim >= shape.rank()) {
       return InvalidArgument(
-          "layout minor_to_major field contains %d elements, "
-          "but shape is rank %d: {%s}; shape: %s",
-          layout.minor_to_major_size(), shape.rank(),
-          absl::StrJoin(layout.minor_to_major(), ", "),
-          shape.ShortDebugString());
+          "layout minor_to_major field has out-of-bounds value: %s",
+          HumanString(layout));
     }
+    if (dimensions_in_layout[dim]) {
+      return InvalidArgument(
+          "layout minor_to_major field has duplicate values: {%s}",
+          HumanString(layout));
+    }
+    dimensions_in_layout[dim] = true;
+  }
 
-    std::vector<bool> dimensions_in_layout(shape.rank(), false);
-    for (int64_t i = 0; i < shape.rank(); ++i) {
-      int64_t dim = layout.minor_to_major(i);
-      if (dim < 0 || dim >= shape.rank()) {
-        return InvalidArgument(
-            "layout minor_to_major field has out-of-bounds value: %s",
-            HumanString(layout));
-      }
-      if (dimensions_in_layout[dim]) {
-        return InvalidArgument(
-            "layout minor_to_major field has duplicate values: {%s}",
-            HumanString(layout));
-      }
-      dimensions_in_layout[dim] = true;
-    }
-  } else {
-    if (layout.tiles_size() != 0) {
-      return InvalidArgument("Only dense layouts can be tiled.");
+  if (!layout.dim_level_types().empty()) {
+    if (layout.dim_level_types().size() != shape.rank()) {
+      return InvalidArgument(
+          "layout dim_level_types field contains %d elements, but shape is "
+          "rank %d: {%s}; shape: %s",
+          layout.dim_level_types_size(), shape.rank(),
+          absl::StrJoin(layout.dim_level_types(), ", ",
+                        [](std::string* out, DimLevelType dim_level_type) {
+                          absl::StrAppend(out,
+                                          DimLevelType_Name(dim_level_type));
+                        }),
+          shape.ShortDebugString());
     }
   }
 
@@ -270,22 +270,33 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   LayoutUtil::ClearLayout(program_shape->mutable_result());
 }
 
+/* static */ void LayoutUtil::ClearTiles(Shape* shape) {
+  ShapeUtil::ForEachMutableSubshape(
+      shape, [](Shape* subshape, const ShapeIndex&) {
+        if (subshape->has_layout()) {
+          if (subshape->has_layout()) {
+            subshape->mutable_layout()->clear_tiles();
+          }
+        }
+      });
+}
+
 /* static */ bool LayoutUtil::IsDenseArray(const Shape& shape) {
-  return shape.IsArray() && shape.has_layout() && IsDense(shape.layout());
+  return shape.IsArray() && (!shape.has_layout() || IsDense(shape.layout()));
 }
 
 /* static */ bool LayoutUtil::IsDense(const Layout& layout) {
-  return layout.format() == DENSE;
+  return absl::c_all_of(
+      layout.dim_level_types(),
+      [](DimLevelType dim_level_type) { return dim_level_type == DIM_DENSE; });
 }
 
 /* static */ bool LayoutUtil::IsMonotonicWithDim0Minor(const Layout& layout) {
-  CHECK(layout.format() == DENSE);
   return std::is_sorted(layout.minor_to_major().begin(),
                         layout.minor_to_major().end());
 }
 
 /* static */ bool LayoutUtil::IsMonotonicWithDim0Major(const Layout& layout) {
-  CHECK(layout.format() == DENSE);
   return std::is_sorted(layout.minor_to_major().begin(),
                         layout.minor_to_major().end(), std::greater<int64_t>());
 }
@@ -299,7 +310,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     // Opaque, token types etc. ignore layout.
     return true;
   }
-  return shape.has_layout() && shape.layout().format() != INVALID_FORMAT;
+  return shape.has_layout();
 }
 
 /* static */ bool LayoutUtil::HasLayout(const ProgramShape& program_shape) {
@@ -317,13 +328,12 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 
 /* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
     const Shape& shape) {
-  CHECK(IsDenseArray(shape));
+  CHECK(shape.IsArray());
   return shape.layout().minor_to_major();
 }
 
 /* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
     const Layout& layout) {
-  CHECK(layout.format() == DENSE);
   return layout.minor_to_major();
 }
 
@@ -337,7 +347,6 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 
 /* static */ int64_t LayoutUtil::Minor(const Layout& layout,
                                        int64_t physical_dimension_number) {
-  CHECK_EQ(layout.format(), DENSE);
   CHECK_LE(0, physical_dimension_number);
   CHECK_LT(physical_dimension_number, layout.minor_to_major_size());
   return layout.minor_to_major(physical_dimension_number);
@@ -411,18 +420,25 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
       }
     }
     return true;
-  } else if (lhs.IsArray()) {
-    return lhs.rank() == rhs.rank() &&
-           LayoutUtil::Equal(lhs.layout(), rhs.layout());
-  } else {
-    // Layouts of non-array and non-tuple shapes is ignored.
-    return true;
   }
+  if (lhs.IsArray()) {
+    if (lhs.rank() != rhs.rank()) {
+      return false;
+    }
+    if (!lhs.has_layout() && !rhs.has_layout()) {
+      return true;
+    }
+    if (!lhs.has_layout() || !rhs.has_layout()) {
+      return false;
+    }
+    return LayoutUtil::Equal(lhs.layout(), rhs.layout());
+  }
+  // Layouts of non-array and non-tuple shapes is ignored.
+  return true;
 }
 
 /* static */ bool LayoutUtil::AreDimensionsConsecutive(
     const Layout& layout, absl::Span<const int64_t> dims) {
-  CHECK(IsDense(layout));
   absl::InlinedVector<int64_t, 8> positions_in_layout;
   for (int64_t dim : dims) {
     positions_in_layout.push_back(
@@ -497,6 +513,11 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
     }
   }
   return linear_index;
+}
+
+/*static*/ int64_t LayoutUtil::MemorySpace(const Shape& shape) {
+  return shape.has_layout() ? shape.layout().memory_space()
+                            : Layout::kDefaultMemorySpace;
 }
 
 }  // namespace xla

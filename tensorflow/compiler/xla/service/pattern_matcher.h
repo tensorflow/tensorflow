@@ -85,7 +85,6 @@ namespace xla {
 //     - IsScalar/IsEffectiveScalar/IsArray/IsTuple
 //     - IsDenseArray
 //     - WithLayout: layout shape's layout matches the given pattern (e.g.
-//       Layout().WithDenseFormat())
 //     - WithLayoutEqualTo: shape's layout equals the argument (i.e. another
 //       Layout, but not the result of Layout().foo())
 //     - WithSubshape: shape is a tuple whose subshape matches the given pattern
@@ -97,7 +96,6 @@ namespace xla {
 //
 //  Layout():
 //     - EqualTo
-//     - WithDenseFormat
 //
 // Op(), Shape(), and Layout() may be passed an argument of type
 // HloInstruction**, Shape**, or Layout**, respectively, or const versions of
@@ -432,29 +430,6 @@ class LayoutPatternEqualImpl {
   const ::xla::Layout* layout_;
 };
 
-// A LayoutPattern implementation that matches only if the layout has a given
-// format.
-class LayoutPatternFormatImpl {
- public:
-  explicit constexpr LayoutPatternFormatImpl(Format format) : format_(format) {}
-
-  bool Match(const ::xla::Layout* layout, MatchOption option) const {
-    if (layout->format() != format_) {
-      EXPLAIN << "Layout has format " << Format_Name(layout->format())
-              << " but expected " << Format_Name(format_);
-      return false;
-    }
-    return true;
-  }
-
-  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
-    *os << "with format " << Format_Name(format_);
-  }
-
- private:
-  Format format_;
-};
-
 // A pattern that matches Layouts.
 template <typename LayoutType, typename Impl>
 class LayoutPattern {
@@ -501,11 +476,6 @@ class LayoutPattern {
   // The layout must outlive the returned pattern.
   constexpr auto EqualTo(const ::xla::Layout* layout) const {
     return AppendImpl(LayoutPatternEqualImpl(layout));
-  }
-
-  // Modifies the pattern to match only if the layout has a dense format.
-  constexpr auto WithDenseFormat() const {
-    return AppendImpl(LayoutPatternFormatImpl(DENSE));
   }
 
  private:
@@ -803,6 +773,24 @@ class ShapePatternIsArrayImpl {
   }
 };
 
+// A ShapePattern implementation that matches only if the shape is an array
+class ShapePatternIsDenseArrayImpl {
+ public:
+  explicit constexpr ShapePatternIsDenseArrayImpl() {}
+
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
+    if (!LayoutUtil::IsDenseArray(*shape)) {
+      EXPLAIN << "Shape is not a dense array";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "that represents a dense array";
+  }
+};
+
 // A ShapePattern implementation that matches only if the shape is a tuple.
 class ShapePatternIsTupleImpl {
  public:
@@ -1060,8 +1048,9 @@ class ShapePattern {
     return WithLayout(Layout().EqualTo(layout));
   }
 
+  // Modifies the pattern to match only if the shape is a dense array.
   constexpr auto IsDenseArray() const {
-    return WithLayout(Layout().WithDenseFormat());
+    return AppendImpl(ShapePatternIsDenseArrayImpl());
   }
 
   // Modifies the pattern to match only if the shape has a subshape that matches

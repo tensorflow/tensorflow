@@ -461,9 +461,10 @@ PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
                              &args->dynamic_dimensions);
 
   if (shape.has_layout()) {
+    args->has_layout = true;
     ApiConverter::ToC(shape.layout(), &args->layout);
   } else {
-    args->layout.format = xla::INVALID_FORMAT;
+    args->has_layout = false;
   }
 
   return nullptr;

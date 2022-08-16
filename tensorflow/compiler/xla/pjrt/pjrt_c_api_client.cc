@@ -661,7 +661,7 @@ void PjRtCApiBuffer::set_shape() {
 
   Shape trimmed_shape = Shape(element_type, dims, dynamic_dims, {});
 
-  if (args.layout.format != xla::INVALID_FORMAT) {
+  if (args.has_layout) {
     *(trimmed_shape.mutable_layout()) = ApiConverter::FromC(&args.layout);
   }
 
@@ -676,7 +676,7 @@ void PjRtCApiBuffer::set_shape() {
     delete[] args.dynamic_dimensions.heap;
   }
 
-  if (args.layout.format != xla::INVALID_FORMAT) {
+  if (args.has_layout) {
     if (args.layout.minor_to_major.size > TPU_C_API_MAX_INLINED) {
       delete[] args.layout.minor_to_major.heap;
     }
