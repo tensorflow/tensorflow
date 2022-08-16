@@ -191,26 +191,6 @@ static bool hasCanonicalDimensionNumbers(
   return true;
 }
 
-llvm::Optional<Value> scalarToTensor(OpBuilder& builder, Type /*type*/,
-                                     ValueRange inputs, Location loc) {
-  assert(inputs.size() == 1);
-  if (inputs.front().getType().isa<ShapedType>()) {
-    return llvm::None;
-  }
-  return builder
-      .create<tensor::FromElementsOp>(
-          loc, RankedTensorType::get({}, inputs.front().getType()),
-          inputs.front())
-      .getResult();
-}
-
-class HloTypeConverter : public mhlo::RemoveSignTypeConverter {
- public:
-  HloTypeConverter() : mhlo::RemoveSignTypeConverter() {
-    addArgumentMaterialization(scalarToTensor);
-  }
-};
-
 //===----------------------------------------------------------------------===//
 // mhlo.RngOp conversion patterns.
 //===----------------------------------------------------------------------===//
@@ -3412,9 +3392,9 @@ struct HloLegalizeToLinalgPass
 
     target.addLegalOp<UnrealizedConversionCastOp>();
 
-    HloTypeConverter typeConverter;
+    auto typeConverter = createHloToLinalgTypeConverter();
     auto func = getOperation();
-    mhlo::populateHloToLinalgConversionPattern(&ctx, typeConverter, &patterns);
+    mhlo::populateHloToLinalgConversionPattern(&ctx, *typeConverter, &patterns);
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
@@ -3518,8 +3498,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass() {
   return std::make_unique<HloLegalizeToLinalgPass>();
 }
 
-std::unique_ptr<TypeConverter> createHloToLinalgSignedIntegerConverter() {
-  return std::make_unique<RemoveSignTypeConverter>();
+std::unique_ptr<TypeConverter> createHloToLinalgTypeConverter() {
+  return std::make_unique<LinalgTypeConverter>();
 }
 
 }  // namespace mhlo

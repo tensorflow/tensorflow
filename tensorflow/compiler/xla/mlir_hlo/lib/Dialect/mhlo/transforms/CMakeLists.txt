@@ -129,6 +129,7 @@ add_mlir_library(MhloTypeConversion
 
   LINK_LIBS PUBLIC
   MLIRIR
+  MLIRTensorDialect
 )
 
 add_mlir_library(MhloToMemrefConversion
