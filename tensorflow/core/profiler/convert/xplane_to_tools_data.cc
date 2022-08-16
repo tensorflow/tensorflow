@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
@@ -268,6 +269,8 @@ std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
     return std::make_pair("", true);
   } else if (tool_name == "op_profile") {
     return ConvertMultiXSpacesToOpProfileViewer(xspaces);
+  } else if (tool_name == "memory_viewer") {
+    return ConvertHloProtoToToolData(filenames, tool_name, options);
   } else {
     LOG(WARNING) << "Can not find tool: " << tool_name << ". Please update to "
                  << "the latest version of Tensorflow.";

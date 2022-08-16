@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_oss", "tf_cc_test")
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts", "tf_profiler_xla_proto_header")
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts", "tf_profiler_pybind_cc_library_wrapper", "tf_profiler_xla_proto_header")
 
 package(
     default_visibility = ["//tensorflow/core/profiler:internal"],
@@ -712,6 +712,7 @@ cc_library(
     hdrs = ["xplane_to_tools_data.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":hlo_to_tools_data_headers_only",
         ":op_stats_to_input_pipeline_analysis",
         ":op_stats_to_op_profile",
         ":op_stats_to_overview_page",
@@ -805,6 +806,32 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "hlo_to_tools_data_impl",
+    srcs = ["hlo_to_tools_data.cc"],
+    hdrs = ["hlo_to_tools_data.h"],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        ":hlo_proto_to_memory_visualization_utils",
+        ":xplane_to_hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,
+)
+
+tf_profiler_pybind_cc_library_wrapper(
+    name = "hlo_to_tools_data_headers_only",
+    actual = ":hlo_to_tools_data_impl",
 )
 
 cc_library(
