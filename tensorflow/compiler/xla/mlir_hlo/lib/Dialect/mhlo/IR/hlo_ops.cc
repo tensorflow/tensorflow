@@ -887,8 +887,8 @@ LogicalResult CustomCallOp::verify() {
   };
 
   // At this point both `operand_layouts` and `result_layouts` are defined.
-  ArrayAttr operandLayouts = this->operand_layouts().getValue();
-  ArrayAttr resultLayouts = this->result_layouts().getValue();
+  ArrayAttr operandLayouts = this->operand_layouts().value();
+  ArrayAttr resultLayouts = this->result_layouts().value();
 
   // Full support for layouts for arbitrary nesting of tuples is not
   // supported yet.
@@ -5126,7 +5126,7 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
     for (auto argAndLoc :
          llvm::zip(result.regions.front()->front().getArguments(), reducerLocs))
       if (std::get<1>(argAndLoc))
-        std::get<0>(argAndLoc).setLoc(std::get<1>(argAndLoc).getValue());
+        std::get<0>(argAndLoc).setLoc(std::get<1>(argAndLoc).value());
     result.location = trailingLoc.value_or(currLocation);
     return success();
   }
@@ -9376,7 +9376,7 @@ static void buildSortComparisonBody(llvm::ArrayRef<Type> elementTypes,
 
   ComparisonType typeAttr;
   if (compareType)
-    typeAttr = symbolizeComparisonType(*compareType).getValue();
+    typeAttr = symbolizeComparisonType(*compareType).value();
   else
     typeAttr = ComparisonType::NOTYPE;
   Value compare = builder->create<mhlo::CompareOp>(

@@ -2045,10 +2045,10 @@ struct ConvolutionOpGeneralConversion
 
     // Decompose the reversal dims into its own step
     auto reversals = op.window_reversal();
-    if (reversals.hasValue()) {
+    if (reversals.value()) {
       llvm::SmallVector<int64_t> reversedDims;
       for (auto& idxAndBool :
-           llvm::enumerate(reversals.getValue().getValues<bool>()))
+           llvm::enumerate(reversals.value().getValues<bool>()))
         if (idxAndBool.value())
           reversedDims.push_back(
               op.dimension_numbers()
@@ -2220,9 +2220,8 @@ struct ConvolutionOpGeneralConversion
       auto dim1 = mlir::getAffineDimExpr(nextDim++, ctx);
 
       auto stride = dim0;
-      if (op.window_strides().hasValue())
-        stride =
-            stride * op.window_strides().getValue().getValues<int64_t>()[i];
+      if (op.window_strides().value())
+        stride = stride * op.window_strides().value().getValues<int64_t>()[i];
       AffineExpr srcExpr = stride + dim1;
 
       srcExprs[lhsIndexMapping[inputSpatialDimensions[i]]] = srcExpr;
@@ -2308,7 +2307,7 @@ struct DepthwiseConvolutionOpConversion
 
     Attribute windowStrides;
     if (op.window_strides()) {
-      windowStrides = op.window_strides().getValue();
+      windowStrides = op.window_strides().value();
     } else {
       windowStrides = SplatElementsAttr::get(
           VectorType::get({spatialRank}, rewriter.getI64Type()),
@@ -2317,7 +2316,7 @@ struct DepthwiseConvolutionOpConversion
 
     Attribute rhsDilation;
     if (op.rhs_dilation()) {
-      rhsDilation = op.rhs_dilation().getValue();
+      rhsDilation = op.rhs_dilation().value();
     } else {
       rhsDilation = SplatElementsAttr::get(
           VectorType::get({spatialRank}, rewriter.getI64Type()),
@@ -2704,8 +2703,8 @@ struct ReduceWindowOpConversion
     }
 
     if (op.window_strides() &&
-        (op.window_strides().getValue().getValues<int64_t>()[0] != 1 ||
-         op.window_strides().getValue().getValues<int64_t>()[lastDim] != 1)) {
+        (op.window_strides().value().getValues<int64_t>()[0] != 1 ||
+         op.window_strides().value().getValues<int64_t>()[lastDim] != 1)) {
       return rewriter.notifyMatchFailure(
           op, "expected window_strides to be [1,x,y,(z),1]");
     }
@@ -2720,7 +2719,7 @@ struct ReduceWindowOpConversion
     SmallVector<int64_t> vec;
     if (op.window_stridesAttr()) {
       for (int i = 1; i < lastDim; ++i) {
-        vec.push_back(op.window_strides().getValue().getValues<int64_t>()[i]);
+        vec.push_back(op.window_strides().value().getValues<int64_t>()[i]);
       }
     } else {
       vec.assign(rank - 2, 1);
@@ -2731,7 +2730,7 @@ struct ReduceWindowOpConversion
     vec.clear();
     if (op.window_dilations()) {
       for (int i = 1; i < lastDim; ++i) {
-        vec.push_back(op.window_dilations().getValue().getValues<int64_t>()[i]);
+        vec.push_back(op.window_dilations().value().getValues<int64_t>()[i]);
       }
     } else {
       vec.assign(rank - 2, 1);

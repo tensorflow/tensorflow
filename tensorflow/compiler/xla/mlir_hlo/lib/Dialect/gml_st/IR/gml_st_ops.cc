@@ -202,7 +202,7 @@ void LoopOp::build(OpBuilder &builder, OperationState &result,
 
   if (distributionTypes.has_value())
     result.addAttribute(getDistributionTypesAttrName(),
-                        distributionTypes.getValue());
+                        distributionTypes.value());
 
   // Add output types for `RankedTensorType` output arguments.
   for (Value output : outputs) {
@@ -265,7 +265,7 @@ void LoopOp::print(OpAsmPrinter &p) {
     p << " iterators" << iterator_types();
 
   if (distribution_types().has_value())
-    p << " distribution" << distribution_types().getValue();
+    p << " distribution" << distribution_types().value();
 
   p << ' ';
   p.printRegion(region(), /*printEntryBlockArgs=*/false);

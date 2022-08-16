@@ -376,7 +376,7 @@ LogicalResult ConstantLikeOp::inferReturnTypeComponents(
     RegionRange /*regions*/,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   ConstantLikeOp::Adaptor op(operands, attributes);
-  if (failed(op.verify(location.getValue()))) return failure();
+  if (failed(op.verify(location.value()))) return failure();
   Type elementType = op.value().getType();
   Type operandType = op.operand().getType();
   if (operandType.isa<UnrankedTensorType>()) {
