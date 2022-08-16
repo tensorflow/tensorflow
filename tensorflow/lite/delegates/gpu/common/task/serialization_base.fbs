@@ -124,6 +124,7 @@ enum Layout : byte {
   HWDC = 3,
   BHWDC = 4,
   LINEAR = 5,
+  HW = 6,
 }
 
 table BHWDC {

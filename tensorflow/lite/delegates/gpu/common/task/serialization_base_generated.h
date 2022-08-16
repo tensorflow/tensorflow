@@ -262,25 +262,26 @@ enum class Layout : int8_t {
   HWDC = 3,
   BHWDC = 4,
   LINEAR = 5,
+  HW = 6,
   MIN = UNKNOWN,
-  MAX = LINEAR
+  MAX = HW
 };
 
-inline const Layout (&EnumValuesLayout())[6] {
-  static const Layout values[] = {Layout::UNKNOWN, Layout::HWC,
-                                  Layout::BHWC,    Layout::HWDC,
-                                  Layout::BHWDC,   Layout::LINEAR};
+inline const Layout (&EnumValuesLayout())[7] {
+  static const Layout values[] = {
+      Layout::UNKNOWN, Layout::HWC,    Layout::BHWC, Layout::HWDC,
+      Layout::BHWDC,   Layout::LINEAR, Layout::HW};
   return values;
 }
 
 inline const char * const *EnumNamesLayout() {
-  static const char *const names[7] = {"UNKNOWN", "HWC",    "BHWC", "HWDC",
-                                       "BHWDC",   "LINEAR", nullptr};
+  static const char *const names[8] = {"UNKNOWN", "HWC",    "BHWC", "HWDC",
+                                       "BHWDC",   "LINEAR", "HW",   nullptr};
   return names;
 }
 
 inline const char *EnumNameLayout(Layout e) {
-  if (flatbuffers::IsOutRange(e, Layout::UNKNOWN, Layout::LINEAR)) return "";
+  if (flatbuffers::IsOutRange(e, Layout::UNKNOWN, Layout::HW)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesLayout()[index];
 }
