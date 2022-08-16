@@ -22,7 +22,6 @@
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -61,10 +60,12 @@ static const char* entrypoint = "compute";
 
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
-using ::tfrt::jitrt::JitExecutableCache;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 
+using ::xla::runtime::AsyncValuesCache;
 using ::xla::runtime::JitExecutable;
+
+using JitExecutableCache = AsyncValuesCache<size_t, JitExecutable>;
 
 static void BM_InstantiateExecutable(::testing::benchmark::State& state) {
   // Options for the default JitRt compilation pipeline (lowering to LLVM).

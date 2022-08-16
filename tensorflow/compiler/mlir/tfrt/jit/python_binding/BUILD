@@ -55,7 +55,6 @@ pybind_extension(
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
-        "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
         "@tf_runtime//backends/jitrt:results",
     ],

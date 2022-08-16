@@ -62,7 +62,6 @@ cc_library(
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
-        "@tf_runtime//backends/jitrt",
     ],
 )
 

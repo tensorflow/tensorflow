@@ -36,7 +36,6 @@ tfrt_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BufferizationTransforms",
         "@tf_runtime//:dtype",
-        "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
     ],
 )

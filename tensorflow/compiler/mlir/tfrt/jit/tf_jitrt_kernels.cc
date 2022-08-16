@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/jitrt/results.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
@@ -107,7 +106,6 @@ using ::tfrt::TaskFunction;
 
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
-using ::tfrt::jitrt::JitExecutableCache;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnErrors;
 using ::tfrt::jitrt::ReturnStridedMemref;
@@ -116,6 +114,7 @@ using ::tfrt::jitrt::StaticRemainingResultsConverter;
 
 using ::xla::runtime::ArgumentConstraint;
 using ::xla::runtime::ArgumentsRef;
+using ::xla::runtime::AsyncValuesCache;
 using ::xla::runtime::EigenThreadPoolAsyncTaskRunner;
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
@@ -130,6 +129,8 @@ using ::tensorflow::thread::ThreadPool;
 
 template <typename T>
 using KernelArgument = ::tfrt::Argument<T>;
+
+using JitExecutableCache = AsyncValuesCache<size_t, JitExecutable>;
 
 // -------------------------------------------------------------------------- //
 // Dedicated thread pool for running compilation tasks.

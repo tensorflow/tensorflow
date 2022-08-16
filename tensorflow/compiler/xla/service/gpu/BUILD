@@ -605,7 +605,6 @@ config_setting(
 #         "//tensorflow/stream_executor/gpu:gpu_types_header",
 #         "@tf_runtime//:dtype",
 #         "@tf_runtime//:support",
-#         "@tf_runtime//backends/jitrt",
 #         "//tensorflow/compiler/xla/runtime:custom_call",
 #         "//tensorflow/compiler/xla/runtime:type_id",
 #         "@tf_runtime//backends/jitrt:custom_call_to_llvm",
@@ -746,7 +745,8 @@ cc_library(
     ]) + select({
         ":is_xlir_enabled": [
             ":jitrt_custom_calls",
-            # copybara:uncomment "@tf_runtime//backends/jitrt",
+            "//tensorflow/compiler/xla/runtime:jit_executable",
+            "//tensorflow/compiler/xla/runtime:executable",
             "//tensorflow/compiler/xla/runtime:diagnostics",
             # copybara:uncomment "@tf_runtime//backends/jitrt:jitrt_compiler",
             # copybara:uncomment "@tf_runtime//:init_tfrt_dialects",
@@ -1739,8 +1739,8 @@ cc_library(
     ] + select({
         ":is_xlir_enabled": [
             ":jitrt_custom_calls",
+            "//tensorflow/compiler/xla/runtime:jit_executable",
             "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:pass_utils",
-            "@tf_runtime//backends/jitrt",
             "@tf_runtime//backends/jitrt:jitrt_compiler",
         ],
         "//conditions:default": [],

@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 #include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs_registration.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/jitrt/results.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime

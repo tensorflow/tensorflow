@@ -160,7 +160,6 @@ tfrt_cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",
-        "@tf_runtime//backends/jitrt",
     ],
 )
 
@@ -174,7 +173,6 @@ tfrt_cc_library(
 #         "//tensorflow/compiler/xla/runtime:types",
 #         "@com_google_googletest//:gtest_main",
 #         "@llvm-project//mlir:mlir_c_runner_utils",
-#         "@tf_runtime//backends/jitrt",
 #         "@tf_runtime//backends/jitrt:results",
 #     ],
 # )
@@ -229,7 +227,6 @@ tfrt_cc_library(
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
         "@tf_runtime//:tracing",
-        "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
         "@tf_runtime//backends/jitrt:results",
     ],
@@ -241,9 +238,10 @@ tfrt_cc_library(
     hdrs = ["jit/tf_jitrt_request_context.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     deps = [
+        "//tensorflow/compiler/xla/runtime:async_values_cache",
+        "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/core/platform:status",
         "@tf_runtime//:hostcontext",
-        "@tf_runtime//backends/jitrt",
     ],
 )
 
