@@ -64,8 +64,8 @@ namespace xla {
 //     - WithElementType: instr.shape().element_type() matches the given type
 //     - WithNumOperands
 //     - WithOperand: operand at the given index matches the given pattern
-//     - WithOperandIfPresent: instr has > i operands, and the i'th one matches
-//       the given pattern
+//     - WithOperandIfPresent: instr has fewer than i operands or the i'th one
+//       matches the given pattern
 //     - IsConstant
 //     - IsNonConstant
 //     - IsConstantScalar/IsEffectiveConstantScalar: Optionally accepts a value,
