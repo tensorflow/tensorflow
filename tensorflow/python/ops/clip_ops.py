@@ -19,6 +19,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -103,7 +104,10 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     values = ops.convert_to_tensor(
         t.values if isinstance(t, indexed_slices.IndexedSlices) else t,
         name="t")
-
+    
+    check_ops.assert_greater_equal_v2(clip_value_max, clip_value_min, message=
+                                      "'clip_value_max' needs to be greater or"
+                                      " equal to 'clip_value_min'.")
     # Go through list of tensors, for each value in each tensor clip
     t_min = math_ops.minimum(values, clip_value_max)
     # Assert that the shape is compatible with the initial shape,
