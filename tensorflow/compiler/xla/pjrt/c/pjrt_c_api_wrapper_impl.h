@@ -82,6 +82,7 @@ namespace pjrt {
 
 void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
 void PJRT_Error_Message(PJRT_Error_Message_Args* args);
+PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
 
 PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args);
 PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args);

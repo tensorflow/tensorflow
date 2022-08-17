@@ -64,6 +64,37 @@ const size_t PJRT_Error_Message_Args_STRUCT_SIZE =
 // `error`.
 typedef void PJRT_Error_Message(PJRT_Error_Message_Args* args);
 
+// Codes are based on https://abseil.io/docs/cpp/guides/status-codes
+typedef enum {
+  PJRT_Error_Code_CANCELLED = 1,
+  PJRT_Error_Code_UNKNOWN = 2,
+  PJRT_Error_Code_INVALID_ARGUMENT = 3,
+  PJRT_Error_Code_DEADLINE_EXCEEDED = 4,
+  PJRT_Error_Code_NOT_FOUND = 5,
+  PJRT_Error_Code_ALREADY_EXISTS = 6,
+  PJRT_Error_Code_PERMISSION_DENIED = 7,
+  PJRT_Error_Code_RESOURCE_EXHAUSTED = 8,
+  PJRT_Error_Code_FAILED_PRECONDITION = 9,
+  PJRT_Error_Code_ABORTED = 10,
+  PJRT_Error_Code_OUT_OF_RANGE = 11,
+  PJRT_Error_Code_UNIMPLEMENTED = 12,
+  PJRT_Error_Code_INTERNAL = 13,
+  PJRT_Error_Code_UNAVAILABLE = 14,
+  PJRT_Error_Code_DATA_LOSS = 15,
+  PJRT_Error_Code_UNAUTHENTICATED = 16
+} PJRT_Error_Code;
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  const PJRT_Error* error;
+  PJRT_Error_Code code;  // out
+} PJRT_Error_GetCode_Args;
+const size_t PJRT_Error_GetCode_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Error_GetCode_Args, error);
+
+typedef PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
+
 // ---------------------------------- Events -----------------------------------
 
 // Represents a notifying event that is returned by PJRT APIs that enqueue
@@ -732,6 +763,7 @@ typedef struct {
 
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Message);
+  _PJRT_API_STRUCT_FIELD(PJRT_Error_GetCode);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_IsReady);

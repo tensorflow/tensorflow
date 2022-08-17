@@ -82,6 +82,16 @@ void PJRT_Error_Message(PJRT_Error_Message_Args* args) {
   }
 }
 
+PJRT_Error_Code StatusCodeToPjrtErrorCode(tensorflow::error::Code code);
+
+PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Error_GetCode_Args", PJRT_Error_GetCode_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->code = StatusCodeToPjrtErrorCode(args->error->status.code());
+  return nullptr;
+}
+
 // ---------------------------------- Client -----------------------------------
 
 PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args) {
