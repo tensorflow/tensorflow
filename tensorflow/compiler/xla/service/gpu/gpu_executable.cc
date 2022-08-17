@@ -115,14 +115,9 @@ class GpuExecutable::JitRtExecutable {
       registry.insert<mlir::lmhlo_gpu::LmhloGpuDialect>();
     };
 
-    // Register types supported at run time.
-    runtime::TypeIDNameRegistry registry;
-    runtime::PopulateCustomCallTypeIdNames(registry);
-    PopulateXlaTypeIdNames(registry);
-
     // Register JitRt Gpu runtime custom calls with the linker.
-    opts.compiler.symbols_binding =
-        runtime::GetSymbolsBinding(JitRtGpuCustomCalls(), std::move(registry));
+    opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
+        JitRtGpuCustomCalls(), PopulateXlaTypeIdNames);
 
     // We just use the default compilation pipeline provided by the JitRt.
     // Alternatively instead of having a separate JitRtProgram (LMHLO lowered to
@@ -1123,13 +1118,8 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   runtime::FunctionType signature(std::move(args), /*results=*/{});
   runtime::FunctionType rt_signature(std::move(rt_args), /*results=*/{});
 
-  // Register types supported at run time.
-  runtime::TypeIDNameRegistry type_registry;
-  runtime::PopulateCustomCallTypeIdNames(type_registry);
-  PopulateXlaTypeIdNames(type_registry);
-
-  auto symbol_map = runtime::GetSymbolsBinding(JitRtGpuCustomCalls(),
-                                               std::move(type_registry));
+  auto symbol_map =
+      runtime::ToSymbolsBinding(JitRtGpuCustomCalls(), PopulateXlaTypeIdNames);
 
   // Load JitRt executable from an object file, and link it with Gpu runtime
   // intrinsics implementing Gpu custom calls.

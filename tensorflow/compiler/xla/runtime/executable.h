@@ -44,15 +44,12 @@ class JitCompiler;
 ExecutionEngine::SymbolsBinding RuntimeSymbolsBinding(
     ExecutionEngine::SymbolsBinding custom_binding);
 
-// Converts a custom call library into the execution engine symbols binding.
-ExecutionEngine::SymbolsBinding GetSymbolsBinding(DirectCustomCallLibrary lib);
-
-// Converts TypeID name registry into the execution engine symbols binding
-ExecutionEngine::SymbolsBinding GetSymbolsBinding(TypeIDNameRegistry registry);
-
-// Converts custom call library and type id registry to the symbols binding.
-ExecutionEngine::SymbolsBinding GetSymbolsBinding(DirectCustomCallLibrary lib,
-                                                  TypeIDNameRegistry registry);
+// Converts a custom call library and custom type id name registration function
+// (types required by the library) to the execution engine symbols binding. This
+// function automatically registeres type id symbols for all canonical types
+// supported by the XLA runtime custom calls.
+ExecutionEngine::SymbolsBinding ToSymbolsBinding(
+    DirectCustomCallLibrary lib, TypeIDNameRegistry::RegistrationFn types = {});
 
 class Executable {
  public:

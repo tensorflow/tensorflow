@@ -31,6 +31,8 @@ using ::mlir::TypeID;  // NOLINT
 
 class TypeIDNameRegistry {
  public:
+  using RegistrationFn = std::function<void(TypeIDNameRegistry&)>;
+
   TypeIDNameRegistry() = default;
   ~TypeIDNameRegistry() = default;
 
