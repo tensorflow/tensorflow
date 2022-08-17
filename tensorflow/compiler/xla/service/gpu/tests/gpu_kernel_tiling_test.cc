@@ -581,11 +581,13 @@ TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {
           .ValueOrDie();
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @reduce
-; CHECK: %[[TID_X:.*]] = tail call i32 llvm.amdgcn.workitem.id.x()
+; CHECK: %[[TID_X:.*]] = tail call i32 @llvm.amdgcn.workitem.id.x()
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 15
 ; CHECK: call i32 @llvm.amdgcn.ds.bpermute
 ; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
-; CHECK: br i1 %[[LOGICAL_T0]],
+; CHECK: %[[LOGICAL_T1:.*]] = call { i1, i64 } @llvm.amdgcn.if.i64(i1 %[[LOGICAL_T0]])
+; CHECK: %[[LOGICAL_T2:.*]] = extractvalue { i1, i64 } %[[LOGICAL_T1]], 0
+; CHECK: br i1 %[[LOGICAL_T2]],
 )"
                                          : R"(
 ; CHECK-LABEL: define void @reduce
@@ -625,11 +627,13 @@ TEST_F(GpuKernelTilingTest, RowReductionFourRowsPerWarp) {
           .ValueOrDie();
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @reduce
-; CHECK: %[[TID_X:.*]] = tail call i32 llvm.amdgcn.workitem.id.x()
+; CHECK: %[[TID_X:.*]] = tail call i32 @llvm.amdgcn.workitem.id.x()
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 7
 ; CHECK: call i32 @llvm.amdgcn.ds.bpermute
 ; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
-; CHECK: br i1 %[[LOGICAL_T0]],
+; CHECK: %[[LOGICAL_T1:.*]] = call { i1, i64 } @llvm.amdgcn.if.i64(i1 %[[LOGICAL_T0]])
+; CHECK: %[[LOGICAL_T2:.*]] = extractvalue { i1, i64 } %[[LOGICAL_T1]], 0
+; CHECK: br i1 %[[LOGICAL_T2]],
 )"
                                          : R"(
 ; CHECK-LABEL: define void @reduce
