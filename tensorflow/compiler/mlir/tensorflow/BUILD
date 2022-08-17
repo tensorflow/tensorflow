@@ -2124,6 +2124,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/core/tpu:tpu_defs",
     "//tensorflow/stream_executor/lib",
     "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
+    "@llvm-project//mlir:TensorDialect",
 ]
 
 cc_library(

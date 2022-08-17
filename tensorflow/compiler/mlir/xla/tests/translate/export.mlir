@@ -1474,6 +1474,21 @@ func.func @main(%arg0: tensor<4xi32>) -> tensor<*xi32> {
 
 // -----
 
+// CHECK:  HloModule
+func.func @main(%arg: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf32> {
+  %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 0 : i64} : (tensor<4xf32>, tensor<i32>) -> tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>
+  %1 = tensor.cast %0 : tensor<?xf32, #mhlo.type_extensions<bounds = [4]>> to tensor<?xf32>
+  func.return %1 : tensor<?xf32>
+}
+
+// CHECK: ENTRY
+// CHECK: %[[ARG0:.*]] = f32[4] parameter(0)
+// CHECK: %[[ARG1:.*]] = s32[] parameter(1)
+// CHECK: ROOT %[[RESULT:.*]] = f32[<=4] set-dimension-size
+
+// -----
+
+
 // Tests ops with different frontend attributes have such attributes set
 // correctly in HloModule as frontend_attributes.
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -33,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -153,6 +155,27 @@ Status GetXlaInputShapes(
   return OkStatus();
 }
 
+// Returns a static ranked tensor type corresponding to the given static or
+// bounded type by using the bounds as dimension sizes. Returns null if is
+// neither.
+mlir::RankedTensorType GetBufferType(mlir::Type ty) {
+  auto ranked_ty = ty.dyn_cast_or_null<mlir::RankedTensorType>();
+  if (!ranked_ty) return {};
+
+  int64_t rank = ranked_ty.getRank();
+  llvm::SmallVector<int64_t, 4> dims = llvm::to_vector<4>(ranked_ty.getShape());
+  auto encoding = ranked_ty.getEncoding()
+                      .dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>();
+  if (encoding && !encoding.getBounds().empty()) {
+    for (int64_t dim = 0; dim < rank; ++dim) {
+      if (dims[dim] == mlir::ShapedType::kDynamicSize) {
+        dims[dim] = encoding.getBounds()[dim];
+      }
+    }
+  }
+  return mlir::RankedTensorType::get(dims, ranked_ty.getElementType());
+}
+
 // Calculates computation output shape and build OutputDescription for each
 // output based on static shapes in MLIR module. If an output is a resource
 // write, `resource_updates` is populated insead of `outputs` for that output.
@@ -187,11 +210,41 @@ Status GetOutputInfo(
             i, "tf.aliasing_output"))
       output_to_input_alias[aliasing_output.getInt()] = i;
 
+  auto return_op = main_func.begin()->getTerminator();
   for (const auto& type_and_idx : llvm::enumerate(func_type.getResults())) {
+    size_t idx = type_and_idx.index();
+    auto result_ty = type_and_idx.value().cast<mlir::RankedTensorType>();
+
+    // If the result type isn't static, then the owner of the result may be a
+    // cast op from a more specific bounded type to an unbounded dynamic type.
+    // Use the bounded type to get the buffer size.
+    mlir::RankedTensorType buffer_ty = result_ty;
+    if (!buffer_ty.hasStaticShape()) {
+      mlir::Value return_val = return_op->getOperand(idx);
+      if (auto owner = mlir::dyn_cast_or_null<mlir::tensor::CastOp>(
+              return_val.getDefiningOp())) {
+        // For bounded dynamic type, get a static size by taking bounds as the
+        // dimensions. These dimensions are marked as dynamic in xla::Shape
+        // below.
+        buffer_ty = GetBufferType(owner.getOperand().getType());
+        if (!buffer_ty || !buffer_ty.hasStaticShape()) {
+          return errors::InvalidArgument(
+              "results needs to be static or bounded");
+        }
+      }
+    }
     TF_ASSIGN_OR_RETURN(
         xla::Shape shape,
-        xla::TypeToShape(type_and_idx.value(),
-                         shape_representation_fn_no_fast_memory));
+        xla::TypeToShape(buffer_ty, shape_representation_fn_no_fast_memory));
+
+    if (!result_ty.hasStaticShape()) {
+      int64_t rank = result_ty.getRank();
+      for (int64_t dim = 0; dim < rank; ++dim) {
+        if (result_ty.isDynamicDim(dim)) {
+          shape.set_dynamic_dimension(dim, true);
+        }
+      }
+    }
 
     auto sharding = main_func.getResultAttrOfType<mlir::StringAttr>(
         type_and_idx.index(), "mhlo.sharding");
