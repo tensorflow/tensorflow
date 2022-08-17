@@ -41,6 +41,11 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
+#if GOOGLE_CUDA
+#define PLATFORM "CUDA"
+#else
+#define PLATFORM "ROCM"
+#endif
 #endif
 
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -408,7 +413,7 @@ class FakeDeviceContext : public DeviceContext {
 Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
                     int opaque_len) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      se::MultiPlatformManager::PlatformWithName("CUDA"));
+                      se::MultiPlatformManager::PlatformWithName(PLATFORM));
   se::StreamExecutorConfig config;
   config.gpu_stream = stream_handle;
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
@@ -516,13 +521,9 @@ void GenericTfCallback(void* stream_handle, void** buffers, const char* opaque,
                                   s.error_message().size());
   }
 }
-#if GOOGLE_CUDA
+
 XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(kTfCallbackCustomCall,
-                                         GenericTfCallback, "CUDA");
-#else
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(kTfCallbackCustomCall,
-                                         GenericTfCallback, "ROCM");
-#endif
+                                         GenericTfCallback, PLATFORM);
 }  // namespace
 
 LightOutsideCompilationOp::LightOutsideCompilationOp(

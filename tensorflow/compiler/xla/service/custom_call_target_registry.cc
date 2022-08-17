@@ -27,10 +27,6 @@ void CustomCallTargetRegistry::Register(const std::string& symbol,
                                         const std::string& platform) {
   std::lock_guard<std::mutex> lock(mu_);
   std::string s = platform;
-#if TENSORFLOW_USE_ROCM
-  if(s == "CUDA")
-    s = "ROCM";
-#endif
   registered_symbols_[std::make_pair(symbol, s)] = address;
 }
 
@@ -38,10 +34,6 @@ void* CustomCallTargetRegistry::Lookup(const std::string& symbol,
                                        const std::string& platform) const {
   std::lock_guard<std::mutex> lock(mu_);
   std::string s = platform;
-#if TENSORFLOW_USE_ROCM
-  if(s == "CUDA")
-    s = "ROCM";
-#endif
   auto it = registered_symbols_.find(std::make_pair(symbol, s));
   return it == registered_symbols_.end() ? nullptr : it->second;
 }
