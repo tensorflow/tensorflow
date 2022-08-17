@@ -362,7 +362,7 @@ Error Executable::ReturnResults(const ResultConverter& results,
     llvm::StringRef name, std::unique_ptr<llvm::MemoryBuffer> obj_file,
     llvm::StringRef entrypoint, FunctionType signature,
     FunctionType runtime_signature,
-    ExecutionEngine::SymbolsBinding runtime_symbol_map,
+    ExecutionEngine::SymbolsBinding symbols_binding,
     llvm::StringRef memory_region_name) {
   // Memory region name to mmap executable code.
   std::string mapper_name = llvm::formatv(
@@ -373,14 +373,10 @@ Error Executable::ReturnResults(const ResultConverter& results,
   std::unique_ptr<XlaRuntimeMemoryMapper> memory_mapper =
       XlaRuntimeMemoryMapper::Create(std::move(mapper_name));
 
-  // Register symbols required for running XLA executable.
-  ExecutionEngine::SymbolsBinding symbols =
-      RuntimeSymbolsBinding(std::move(runtime_symbol_map));
-
   // Construct options for the XLA execution engine.
   ExecutionEngine::AotOptions options;
   options.section_memory_mapper = memory_mapper.get();
-  options.symbols_binding = std::move(symbols);
+  options.symbols_binding = RuntimeSymbolsBinding(std::move(symbols_binding));
 
   auto engine = ExecutionEngine::CreateFromObjFile(std::move(obj_file),
                                                    entrypoint, options);

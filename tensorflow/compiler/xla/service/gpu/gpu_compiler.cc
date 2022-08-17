@@ -1445,7 +1445,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     PopulateXlaTypeIdNames(type_registry);
 
     // Register JitRt Gpu runtime custom calls with the linker.
-    opts.compiler.runtime_symbol_map =
+    opts.compiler.symbols_binding =
         runtime::GetSymbolsBinding(JitRtGpuCustomCalls(), type_registry);
 
     opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {

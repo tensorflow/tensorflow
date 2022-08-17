@@ -199,7 +199,7 @@ class Executable {
       llvm::StringRef name, std::unique_ptr<llvm::MemoryBuffer> obj_file,
       llvm::StringRef entrypoint, FunctionType signature,
       FunctionType runtime_signature,
-      ExecutionEngine::SymbolsBinding runtime_symbol_map = {},
+      ExecutionEngine::SymbolsBinding symbols_binding = {},
       llvm::StringRef memory_region_name = "");
 
   // Verifies that all operands types in the entrypoint function signature are

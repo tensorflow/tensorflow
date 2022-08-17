@@ -78,9 +78,9 @@ class JitCompiler {
     llvm::CodeGenOpt::Level jit_code_opt_level =
         llvm::CodeGenOpt::Level::Default;
 
-    // Runtime symbol map allows to pass user-defined bindings for symbols at
-    // JIT compilation time (e.g. to implement custom C APIs).
-    ExecutionEngine::SymbolsBinding runtime_symbol_map;
+    // Runtime symbols binding allows to pass user-defined bindings for symbols
+    // at JIT compilation time, e.g. to bind type ids or custom calls.
+    ExecutionEngine::SymbolsBinding symbols_binding;
 
     // Calling convention defines an ABI for XLA runtime to call an executable.
     // See `CallingConvention` documentation for details.

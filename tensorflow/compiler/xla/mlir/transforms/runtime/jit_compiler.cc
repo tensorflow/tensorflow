@@ -210,7 +210,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   // Mark entry function with an attribute, so it can be converted to an Xla
   // entrypoint (see `rt-convert-to-entrypoint` pass).
   auto unit_attr = UnitAttr::get(entry_func.getContext());
-  entry_func->setAttr(xla::runtime::kEntrypointAttrName, unit_attr);
+  entry_func->setAttr(kEntrypointAttrName, unit_attr);
 
   // Run the compilation pipeline to lower the module to LLVM dialect.
   if (failed(RunCompilationPipeline(compiler->module(), opts)))
@@ -239,8 +239,8 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
       XlaRuntimeMemoryMapper::Create(std::move(mapper_name));
 
   // Register symbols required for running XLA Executable.
-  ExecutionEngine::SymbolsBinding symbols = xla::runtime::RuntimeSymbolsBinding(
-      compiler->options().runtime_symbol_map);
+  ExecutionEngine::SymbolsBinding symbols =
+      RuntimeSymbolsBinding(compiler->options().symbols_binding);
 
   // Construct options for the XLA runtime execution engine.
   ExecutionEngine::JitOptions engine_options;

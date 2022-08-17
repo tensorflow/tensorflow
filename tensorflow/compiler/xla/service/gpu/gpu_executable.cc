@@ -121,7 +121,7 @@ class GpuExecutable::JitRtExecutable {
     PopulateXlaTypeIdNames(registry);
 
     // Register JitRt Gpu runtime custom calls with the linker.
-    opts.compiler.runtime_symbol_map =
+    opts.compiler.symbols_binding =
         runtime::GetSymbolsBinding(JitRtGpuCustomCalls(), std::move(registry));
 
     // We just use the default compilation pipeline provided by the JitRt.
