@@ -26,6 +26,7 @@ import types
 import unittest
 
 from absl import app
+import six
 
 
 from tensorflow.python.client import session
@@ -272,7 +273,7 @@ class TPUCombination(combinations_lib.TestCombination):
     ]
 
 
-class NamedDistribution:
+class NamedDistribution(object):
   """Wraps a `tf.distribute.Strategy` and adds a name for test titles."""
 
   def __init__(self,
@@ -392,7 +393,7 @@ def generate(combinations, test_combinations=()):
       # If it's a test class.
       class_object = test_method_or_class
       # Decorate each test method with _multi_worker_test.
-      for name, test_method in class_object.__dict__.copy().items():
+      for name, test_method in six.iteritems(class_object.__dict__.copy()):
         if (name.startswith(unittest.TestLoader.testMethodPrefix) and
             isinstance(test_method, types.FunctionType)):
           setattr(class_object, name, _multi_worker_test(test_method))
@@ -427,7 +428,7 @@ def in_main_process():
   return not _running_in_worker
 
 
-class TestEnvironment:
+class TestEnvironment(object):
   """Holds the test environment information.
 
   Tests should modify the attributes of the instance returned by `env()` in the

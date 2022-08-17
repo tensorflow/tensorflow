@@ -31,6 +31,7 @@ py_library(
         "//tensorflow/python/eager:executor",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:remote",
+        "@six_archive//:six",
     ],
 )
 

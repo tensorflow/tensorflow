@@ -15,7 +15,10 @@
 """Various classes representing distributed inputs."""
 
 import functools
+import sys
 import time
+
+import six
 
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import cardinality as cardinality_lib
@@ -432,7 +435,7 @@ class DistributedDatasetInterface(collections_abc.Iterable,
         "DistributedDataset.reduce must be implemented in descendants.")
 
 
-class InputWorkers:
+class InputWorkers(object):
   """A 1-to-many mapping from input worker devices to compute devices."""
 
   # TODO(ishark): Remove option canonicalize_devices and make all the callers
@@ -886,8 +889,9 @@ class DistributedIterator(DistributedIteratorBase,
       if (components is not None and element_spec is not None):
         raise ValueError(error_message)
 
-      super().__init__(input_workers, iterators, strategy, cardinality,
-                       enable_get_next_as_optional)
+      super(DistributedIterator,
+            self).__init__(input_workers, iterators, strategy, cardinality,
+                           enable_get_next_as_optional)
 
   @property
   def element_spec(self):
@@ -1040,7 +1044,7 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
       options: `tf.distribute.InputOptions` used to control options on how this
         dataset is distributed.
     """
-    super().__init__(input_workers=input_workers)
+    super(DistributedDataset, self).__init__(input_workers=input_workers)
     if input_workers is None or strategy is None:
       raise ValueError("input_workers and strategy are required arguments")
     if dataset is not None and components is not None:
@@ -1196,11 +1200,14 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
               false_fn=apply_legacy_rebatch)
       except errors.InvalidArgumentError as e:
         if "without encountering a batch" in str(e):
-          raise ValueError(
-              "Call the `batch` method on the input Dataset in order to be "
-              "able to split your input across {} replicas.\n Please see "
-              "the tf.distribute.Strategy guide".format(
-                  num_replicas_in_sync)) from e
+          six.reraise(
+              ValueError,
+              ValueError(
+                  "Call the `batch` method on the input Dataset in order to be "
+                  "able to split your input across {} replicas.\n Please see "
+                  "the tf.distribute.Strategy guide. {}".format(
+                      num_replicas_in_sync, e)),
+              sys.exc_info()[2])
         else:
           raise
 
@@ -1342,7 +1349,8 @@ class DistributedDatasetsFromFunction(_IterableInput,
       build: whether to build underlying datasets when this object is created.
         This is only useful for `ParameterServerStrategy` now.
     """
-    super().__init__(input_workers=input_workers)
+    super(DistributedDatasetsFromFunction, self).__init__(
+        input_workers=input_workers)
     self._input_workers = input_workers
     self._strategy = strategy
     self._options = options
@@ -1554,7 +1562,7 @@ def _get_value_or_dummy(input_workers, optional_list, produce_dummy):
   return value_list
 
 
-class _SingleWorkerDatasetIteratorBase:
+class _SingleWorkerDatasetIteratorBase(object):
   """Iterator for a single `tf.data.Dataset`."""
 
   def __init__(self, dataset, worker, devices, options=None):
@@ -1750,7 +1758,8 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(error_message)
-      super().__init__(dataset, worker, devices, self._options)
+      super(_SingleWorkerOwnedDatasetIterator,
+            self).__init__(dataset, worker, devices, self._options)
 
   def _create_owned_multi_device_iterator(self):
     # If the worker devices are already canonicalized, canonicalizing again
@@ -1942,7 +1951,7 @@ def _should_use_multi_device_iterator(options):
   return False
 
 
-class MultiStepContext:
+class MultiStepContext(object):
   """A context object that can be used to capture things when running steps.
 
   This context object is useful when running multiple steps at a time using the

@@ -15,7 +15,10 @@
 """Cluster Resolvers are used for dynamic cluster IP/hostname resolution."""
 
 import abc
+
 import collections
+
+import six
 
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -50,7 +53,8 @@ def get_accelerator_devices(master, config_proto):
 
 
 @tf_export('distribute.cluster_resolver.ClusterResolver')
-class ClusterResolver(metaclass=abc.ABCMeta):
+@six.add_metaclass(abc.ABCMeta)
+class ClusterResolver(object):
   """Abstract class for all implementations of ClusterResolvers.
 
   This defines the skeleton for all implementations of ClusterResolvers.
@@ -317,7 +321,7 @@ class SimpleClusterResolver(ClusterResolver):
                environment='', num_accelerators=None,
                rpc_layer=None):
     """Creates a SimpleClusterResolver from a ClusterSpec."""
-    super().__init__()
+    super(SimpleClusterResolver, self).__init__()
 
     self._task_type = task_type
     self._task_id = task_id
@@ -470,7 +474,7 @@ class UnionClusterResolver(ClusterResolver):
       TypeError: If any argument is not a subclass of `ClusterResolvers`.
       ValueError: If there are no arguments passed.
     """
-    super().__init__()
+    super(UnionClusterResolver, self).__init__()
 
     self._rpc_layer = kwargs.pop('rpc_layer', None)
     self._task_type = kwargs.pop('task_type', None)
