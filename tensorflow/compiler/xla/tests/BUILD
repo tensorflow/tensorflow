@@ -989,6 +989,7 @@ xla_test(
 # Run dot tests with dot canonicalization after the layout assignment pass.
 xla_test(
     name = "dot_operation_test_canonicalization_after_layout",
+    timeout = "long",
     srcs = ["dot_operation_test.cc"],
     args = [
         "--xla_tpu_order_dot_after_layout=true",
