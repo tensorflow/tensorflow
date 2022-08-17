@@ -2616,6 +2616,7 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:gemm_rewrite_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_alignment_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_atomic_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_comilation_parallelism_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_convolution_regression_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_copy_alone_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_copy_test",

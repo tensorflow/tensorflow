@@ -1178,7 +1178,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 
   // Record the name of some constant global variables and their initializers.
   // We'll change the linkage type of these variables from external to internal
-  // to ensuare constant-folding works properly after calling llvm::SplitModule.
+  // to ensure constant-folding works properly after calling llvm::SplitModule.
   llvm::DenseMap<llvm::StringRef, llvm::Constant*> const_initializer_map;
   for (llvm::GlobalVariable& gv : llvm_module->globals()) {
     if (gv.hasName() && gv.isConstant() && gv.hasInitializer() &&
@@ -1189,7 +1189,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
               llvm::dyn_cast<llvm::ConstantAggregateZero>(initializer)) {
         num_elements = caz->getElementCount().getFixedValue();
       }
-      if (auto* cds =
+      else if (auto* cds =
               llvm::dyn_cast<llvm::ConstantDataSequential>(initializer)) {
         num_elements = cds->getNumElements();
       }
