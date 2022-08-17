@@ -44,7 +44,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass();
 
 // Lifts the dynamic range quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsDRQPass();
+CreateLiftQuantizableSpotsAsFunctionsDRQPass(int min_num_elements_for_weights);
 
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.

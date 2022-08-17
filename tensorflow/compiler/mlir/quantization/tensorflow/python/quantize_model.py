@@ -19,6 +19,7 @@ import tempfile
 from typing import Callable, Collection, Dict, Mapping, Optional, Sequence
 import uuid
 import warnings
+from absl import logging
 
 import numpy as np
 
@@ -577,6 +578,11 @@ def _static_range_quantize(
     raise ValueError(
         'When `representative_dataset` is not provided, the model should be '
         'trained with quantization-aware training (QAT).')
+  if quantization_options.min_num_elements_for_weights > 0:
+    logging.warn(
+        'min_num_elements_for_weights is set but is not supported for the '
+        'Post-training static range quantization. '
+        'The flag is ignored.')
 
   if is_qat_saved_model:
     # Handle QAT models are supported.
@@ -704,6 +710,17 @@ def _dynamic_range_quantize(
   Raises:
     ValueError: when the model is QAT model.
   """
+
+  # Check default quantization option values for Post-training dynamic range
+  # quantization case
+  # TODO(b/242805842): Find good minimum_elements_for_weights number for server
+  if quantization_options.min_num_elements_for_weights == 0:
+    quantization_options.min_num_elements_for_weights = 1024
+    logging.warn(
+        'min_num_elements_for_weights is unset so is set to the default value'
+        '(1024).'
+    )
+
   is_qat_saved_model = _is_qat_saved_model(saved_model_path)
   signatures = _get_signatures_from_saved_model(saved_model_path,
                                                 signature_keys, tags)

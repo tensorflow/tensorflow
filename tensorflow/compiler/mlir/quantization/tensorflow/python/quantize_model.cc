@@ -402,7 +402,8 @@ absl::StatusOr<GraphDef> QuantizePtqDynamicRange(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass());
+  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
+      quantization_options.min_num_elements_for_weights()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
       mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
       quantization_options.op_set()));

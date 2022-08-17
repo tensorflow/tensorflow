@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Base test class for quantize_model Tests."""
-from typing import Iterable, Mapping, Sequence, Set, Tuple
+from typing import Iterable, Mapping, Sequence, Set, Tuple, Optional
 
 from absl.testing import parameterized
 import numpy as np
@@ -28,7 +28,9 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -305,6 +307,93 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         return {'output': out}
 
     return GatherModel(use_variable)
+
+  def _create_conv2d_model(self):
+
+    class ConvModel(module.Module):
+      """A simple model with a single conv2d, bias and relu."""
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 3, 4, 512], dtype=dtypes.float32)
+      ])
+      def conv(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs a 2D convolution operation.
+
+        Args:
+          input_tensor: Input tensor to perform convolution on.
+
+        Returns:
+          A map of: output key -> output result.
+        """
+        filters = np.random.uniform(
+            low=-10, high=10, size=(2, 3, 512, 2)).astype('f4')
+        bias = np.random.uniform(low=0, high=10, size=(2)).astype('f4')
+        out = nn_ops.conv2d(
+            input_tensor,
+            filters,
+            strides=[1, 1, 2, 1],
+            dilations=[1, 1, 1, 1],
+            padding='SAME',
+            data_format='NHWC')
+        out = nn_ops.bias_add(out, bias, data_format='NHWC')
+        out = nn_ops.relu6(out)
+        return {'output': out}
+
+    return ConvModel()
+
+  def _create_matmul_model(self,
+                           has_bias: bool = False,
+                           activation_fn: Optional[ops.Operation] = None) ->...:
+
+    class MatmulModel(module.Module):
+      """A simple model with a single matmul.
+
+      Bias and activation function are optional.
+      """
+
+      def __init__(self,
+                   has_bias: bool = False,
+                   activation_fn: Optional[ops.Operation] = None) -> None:
+        """Initializes a MatmulModel.
+
+        Args:
+          has_bias: If True, creates and adds a bias term.
+          activation_fn: The activation function to be used. No activation
+            function if None.
+        """
+        self.has_bias = has_bias
+        self.activation_fn = activation_fn
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(
+              shape=(1, 1024), dtype=dtypes.float32, name='input_tensor')
+      ])
+      def matmul(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs a matrix multiplication.
+
+        Depending on self.has_bias and self.activation_fn, it may add a bias
+        term or
+        go through the activaction function.
+
+        Args:
+          input_tensor: Input tensor to matmul with the filter.
+
+        Returns:
+          A map of: output key -> output result.
+        """
+        filters = np.random.uniform(low=-1.0, high=1.0, size=(1024, 3))
+        bias = np.random.uniform(low=-1.0, high=1.0, size=(3,))
+        out = math_ops.matmul(input_tensor, filters)
+
+        if self.has_bias:
+          out = nn_ops.bias_add(out, bias)
+
+        if self.activation_fn is not None:
+          out = self.activation_fn(out)
+
+        return {'output': out}
+
+    return MatmulModel(has_bias, activation_fn)
 
   def _create_and_save_tf1_conv_model(self,
                                       saved_model_path: str,
