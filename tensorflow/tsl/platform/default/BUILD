@@ -376,6 +376,7 @@ cc_library(
 cc_library(
     name = "stacktrace",
     hdrs = ["stacktrace.h"],
+    linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
