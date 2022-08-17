@@ -49,10 +49,12 @@ class TupleUtil {
   }
 
   // Descend to the shape_index element of the tuple and replace that with
-  // new_instruction.
+  // new_instruction. If the replacement instruction has a different shape than
+  // the old one, we insert a bitcast if insert_bitcast_if_different_shape is
+  // set to true.
   static StatusOr<HloInstruction*> ReplaceTupleWith(
       HloInstruction* new_instruction, HloInstruction* tuple,
-      ShapeIndex shape_index);
+      ShapeIndex shape_index, bool insert_bitcast_if_different_shape = true);
 
   // Recursively create kGetTupleElement instructions if the defining position
   // shape is not an array. Returns the new instruction that has array shape.
