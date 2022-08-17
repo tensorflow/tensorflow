@@ -20,12 +20,12 @@ This is currently under development and the API is subject to change.
 import collections
 import contextlib
 import os
+import queue
 import re
 import threading
 import time
 import weakref
 
-from six.moves import queue
 
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import coordinator_context
@@ -186,7 +186,7 @@ def _disallow_remote_value_as_input(structured):
   nest.map_structure(_raise_if_remote_value, structured)
 
 
-class Closure(object):
+class Closure:
   """Hold a function to be scheduled and its arguments."""
 
   def __init__(self, function, cancellation_mgr, args=None, kwargs=None):
@@ -298,7 +298,7 @@ class ResourceClosure(Closure):
       return self._output_remote_value_ref()
 
 
-class _CoordinatedClosureQueue(object):
+class _CoordinatedClosureQueue:
   """Manage a queue of closures, inflight count and errors from execution.
 
   This class is thread-safe.
@@ -542,7 +542,7 @@ class _CoordinatedClosureQueue(object):
     self._tagged_queue[tag] = queue.Queue()
 
 
-class WorkerPreemptionHandler(object):
+class WorkerPreemptionHandler:
   """Handles worker preemptions."""
 
   def __init__(self, server_def, cluster):
@@ -726,7 +726,7 @@ class WorkerPreemptionHandler(object):
           logging.error("Cluster update failed with error: %s. Retrying...", e)
 
 
-class Worker(object):
+class Worker:
   """A worker in a cluster.
 
   Attributes:
@@ -932,7 +932,7 @@ class Worker(object):
     self._resource_remote_value_refs.append(weakref.ref(resource_remote_value))
 
 
-class Cluster(object):
+class Cluster:
   """A cluster with workers.
 
   We assume all function errors are fatal and based on this assumption our
@@ -1075,7 +1075,7 @@ class Cluster(object):
 
 @tf_export("distribute.experimental.coordinator.ClusterCoordinator",
            "distribute.coordinator.ClusterCoordinator", v1=[])
-class ClusterCoordinator(object):
+class ClusterCoordinator:
   """An object to schedule and coordinate remote function execution.
 
   This class is used to create fault-tolerant resources and dispatch functions
@@ -1134,8 +1134,7 @@ class ClusterCoordinator(object):
     # `ClusterCoordinator` is kept as a single instance to a given `Strategy`.
     # TODO(rchao): Needs a lock for thread-safety
     if strategy._cluster_coordinator is None:
-      strategy._cluster_coordinator = super(
-          ClusterCoordinator, cls).__new__(cls)
+      strategy._cluster_coordinator = super().__new__(cls)
     return strategy._cluster_coordinator
 
   def __init__(self, strategy):

@@ -55,7 +55,6 @@ py_library(
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "@six_archive//:six",
     ],
 )
 
@@ -413,7 +412,6 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
-        "@six_archive//:six",
     ],
 )
 
@@ -567,7 +565,6 @@ py_library(
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "@six_archive//:six",
     ],
 )
 
@@ -991,7 +988,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
@@ -2040,7 +2036,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "@absl_py//absl/logging",
         "@dill_archive//:dill",
-        "@six_archive//:six",
         "@tblib_archive//:tblib",
     ],
 )

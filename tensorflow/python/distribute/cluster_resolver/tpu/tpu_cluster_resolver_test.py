@@ -15,9 +15,7 @@
 """Tests for TPUClusterResolver."""
 
 import os
-
-import six
-from six.moves.urllib.error import URLError
+import urllib
 
 from tensorflow.core.protobuf.tpu import topology_pb2
 from tensorflow.python import framework
@@ -92,7 +90,7 @@ def mock_running_in_gce_urlopen(cls, *args, **kwargs):
 
 def mock_not_running_in_gce_urlopen(cls, *args, **kwargs):
   del cls, args, kwargs  # Unused.
-  raise URLError(reason='Host does not exist.')
+  raise urllib.error.URLError(reason='Host does not exist.')
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -142,8 +140,7 @@ class TPUClusterResolverTest(test.TestCase):
                                 'Please provide a TPU Name to connect to.*'):
       resolver.TPUClusterResolver(tpu='')
 
-  @mock.patch.object(six.moves.urllib.request, 'urlopen',
-                     mock_running_in_gce_urlopen)
+  @mock.patch.object(urllib.request, 'urlopen', mock_running_in_gce_urlopen)
   def testIsRunningInGce(self):
     self.assertTrue(resolver.is_running_in_gce())
 

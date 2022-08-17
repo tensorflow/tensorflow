@@ -16,10 +16,10 @@
 import enum
 import os
 import sys
+from urllib import request
 
 import requests
 
-from six.moves.urllib import request
 from tensorflow.python.eager import context
 
 

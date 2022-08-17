@@ -23,10 +23,7 @@ import sys
 import threading
 import unittest
 
-import six
 
-
-# pylint: disable=g-import-not-at-top
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
@@ -806,7 +803,7 @@ class MultiWorkerMultiProcessTest(test.TestCase):
           sys.stdout.flush()
 
     stream_threads = []
-    for process_type, process_list in six.iteritems(processes):
+    for process_type, process_list in processes.items():
       for i in range(len(process_list)):
         print_to_stdout = (not print_only_first) or (i == 0)
         thread = threading.Thread(

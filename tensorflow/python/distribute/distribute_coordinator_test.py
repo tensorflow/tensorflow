@@ -22,9 +22,7 @@ import sys
 import threading
 import time
 
-import six
 
-# pylint: disable=g-import-not-at-top
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator
@@ -57,7 +55,7 @@ original_sys_exit = sys.exit
 
 
 def _bytes_to_str(maybe_bytes):
-  if isinstance(maybe_bytes, six.string_types):
+  if isinstance(maybe_bytes, str):
     return maybe_bytes
   else:
     return str(maybe_bytes, "utf-8")
@@ -71,7 +69,7 @@ def _strip_protocol(target):
     return target
 
 
-class MockExtended(object):
+class MockExtended:
 
   def __init__(self,
                between_graph=False,
@@ -84,7 +82,7 @@ class MockExtended(object):
     self.should_save_summary = should_save_summary
 
 
-class MockStrategy(object):
+class MockStrategy:
 
   def __init__(self,
                between_graph=False,
@@ -127,7 +125,7 @@ class MockStrategy(object):
         session_config.device_filters.append("/job:somejob")
 
 
-class MockServer(object):
+class MockServer:
 
   def __init__(self):
     self._joined = False
@@ -814,7 +812,7 @@ class StrategyConfigureTest(test.TestCase):
     self._device_filters = []
     self._intra_op_parallelism_threads = None
     self._inter_op_parallelism_threads = None
-    super(StrategyConfigureTest, self).setUp()
+    super().setUp()
 
   def _dump_device_filters(self, *args, **kwargs):
     session_config = kwargs.get("session_config", None)

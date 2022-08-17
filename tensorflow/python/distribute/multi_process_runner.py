@@ -18,6 +18,7 @@ import collections
 import contextlib
 import json
 import os
+import queue
 import signal
 import sys
 import threading
@@ -26,8 +27,6 @@ import unittest
 import weakref
 
 from absl import logging
-import six
-from six.moves import queue as Queue
 
 from tensorflow.python import tf2
 from tensorflow.python.compat import v2_compat
@@ -104,7 +103,7 @@ _DEFAULT_TIMEOUT_SEC = 200
 _FORCE_KILL_WAIT_SEC = 30
 
 
-class MultiProcessRunner(object):
+class MultiProcessRunner:
   """A utility class to start multiple processes to simulate a cluster.
 
   We need to use multiple processes to simulate a cluster in TF 2.0 tests
@@ -463,7 +462,7 @@ class MultiProcessRunner(object):
     while True:
       try:
         list_to_return.append(queue_to_convert.get(block=False))
-      except Queue.Empty:
+      except queue.Empty:
         break
     return list_to_return
 
@@ -562,7 +561,7 @@ class MultiProcessRunner(object):
       if not process_status.is_successful:
         process_status.exc_info[1].mpr_result = self._get_mpr_result(
             process_statuses)
-        six.reraise(*process_status.exc_info)
+        raise process_status.exc_info[1] from None
 
   def join(self, timeout=_DEFAULT_TIMEOUT_SEC):
     """Joins all the processes with timeout.
@@ -736,7 +735,7 @@ class _Process(multi_process_lib.Process):
   # TODO(crccw): consider moving other logics in _ProcFunc to _Process.
 
   def __init__(self, test_env, **kwargs):
-    super(_Process, self).__init__(**kwargs)
+    super().__init__(**kwargs)
     self._test_env = test_env
     self._actual_run = getattr(self, 'run')
     self.run = self._run_with_setenv
@@ -755,7 +754,7 @@ class _Process(multi_process_lib.Process):
     return self._actual_run()
 
 
-class _ProcFunc(object):
+class _ProcFunc:
   """Represents a callable to run in a subprocess."""
 
   @contextlib.contextmanager
@@ -785,7 +784,7 @@ class _ProcFunc(object):
           # queue.
           self._resources.parent_to_sub_queue.put(message)
           time.sleep(1)
-      except Queue.Empty:
+      except queue.Empty:
         time.sleep(0.1)
     self._resources.process_status_queue.put(
         _ProcessStatusInfo(
@@ -863,7 +862,7 @@ class _ProcFunc(object):
       # timeout. Raising an error in the subprocess produces stack trace in
       # the log, but the program continues running.
       if not info.is_successful:
-        six.reraise(*info.exc_info)
+        raise info.exc_info[1] from None
 
       self._close_streaming()
 
@@ -887,7 +886,7 @@ def is_oss():
   return len(sys.argv) >= 1 and 'bazel' in sys.argv[0]
 
 
-class MultiProcessPoolRunner(object):
+class MultiProcessPoolRunner:
   """A utility class to start a process pool to simulate a cluster.
 
   It's similar to MultiProcessRunner, but uses a pool of processes to avoid the
@@ -1000,7 +999,7 @@ class MultiProcessPoolRunner(object):
     for process_status in process_statuses:
       assert isinstance(process_status, _ProcessStatusInfo)
       if not process_status.is_successful:
-        six.reraise(*process_status.exc_info)
+        raise process_status.exc_info[1] from None
       if process_status.return_value is not None:
         return_values.append(process_status.return_value)
 
@@ -1092,7 +1091,7 @@ class SubprocessTimeoutError(RuntimeError):
   """
 
   def __init__(self, msg, mpr_result):
-    super(SubprocessTimeoutError, self).__init__(msg)
+    super().__init__(msg)
     self.mpr_result = mpr_result
 
 
@@ -1111,7 +1110,7 @@ class UnexpectedSubprocessExitError(RuntimeError):
   """
 
   def __init__(self, msg, mpr_result):
-    super(UnexpectedSubprocessExitError, self).__init__(msg)
+    super().__init__(msg)
     self.mpr_result = mpr_result
 
 

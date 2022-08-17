@@ -20,8 +20,6 @@ import multiprocessing.dummy
 import multiprocessing.pool
 import threading
 
-import six
-
 from tensorflow.python.client import device_lib
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import cross_device_utils
@@ -68,8 +66,7 @@ def validate_destinations(destinations):
   if not isinstance(
       destinations,
       (value_lib.DistributedValues, ops.Tensor, indexed_slices.IndexedSlices,
-       ps_values.AggregatingVariable, six.string_types,
-       tpu_values.TPUMirroredVariable
+       ps_values.AggregatingVariable, str, tpu_values.TPUMirroredVariable
       )) and not resource_variable_ops.is_resource_variable(destinations):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, or a device string.")
@@ -167,12 +164,12 @@ def get_devices_from(destinations, canonicalize_devices=True):
   if isinstance(destinations, value_lib.DistributedValues):
     return destinations._devices  # pylint: disable=protected-access
   if canonicalize_devices:
-    if isinstance(destinations, six.string_types):
+    if isinstance(destinations, str):
       return (device_util.resolve(destinations),)
     return (device_util.resolve(destinations.device),)
 
   # Let placer canonicalize and resolve destination devices.
-  if isinstance(destinations, six.string_types):
+  if isinstance(destinations, str):
     return (device_util.canonicalize_without_job_and_task(destinations),)
   return (device_util.canonicalize_without_job_and_task(destinations.device),)
 
@@ -246,7 +243,7 @@ def _simple_gather(per_replica_value, reduce_to_device, axis):
 
 
 @tf_export("distribute.CrossDeviceOps")
-class CrossDeviceOps(object):
+class CrossDeviceOps:
   """Base class for cross-device reduction and broadcasting algorithms.
 
   The main purpose of this class is to be passed to
@@ -603,7 +600,7 @@ class ReductionToOneDevice(CrossDeviceOps):
     """
     self.reduce_to_device = reduce_to_device
     self.accumulation_fn = accumulation_fn or math_ops.add_n
-    super(ReductionToOneDevice, self).__init__()
+    super().__init__()
 
   def reduce_implementation(self, reduce_op, per_replica_value, destinations,
                             options):
@@ -706,7 +703,7 @@ def _ungroup_and_make_mirrored(grouped_reduced,
       v, wrap_class=value_lib.Mirrored) for v in index]
 
 
-class _ConcatAndSplitPacker(object):
+class _ConcatAndSplitPacker:
   """Concatenate and split tensors for reduction."""
 
   def __init__(self, num_packs=1):
@@ -851,7 +848,7 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
     self._all_reduce_alg = all_reduce_alg
     self._num_packs = num_packs
     self._simple_cross_replica_ops = ReductionToOneDevice()
-    super(AllReduceCrossDeviceOps, self).__init__()
+    super().__init__()
 
   def reduce_implementation(self, reduce_op, per_replica_value, destinations,
                             options):
@@ -986,8 +983,7 @@ class NcclAllReduce(AllReduceCrossDeviceOps):
       raise ValueError(
           "NCCL all-reduce requires num_packs >= 0, but {} is specified".format(
               num_packs))
-    super(NcclAllReduce, self).__init__(
-        all_reduce_alg="nccl", num_packs=num_packs)
+    super().__init__(all_reduce_alg="nccl", num_packs=num_packs)
 
 
 @tf_export("distribute.HierarchicalCopyAllReduce")
@@ -1028,9 +1024,7 @@ class HierarchicalCopyAllReduce(AllReduceCrossDeviceOps):
       raise ValueError(
           "HierarchicalCopy requires num_packs >= 0, but {} is specified"
           .format(num_packs))
-    super(HierarchicalCopyAllReduce, self).__init__(
-        all_reduce_alg="hierarchical_copy",
-        num_packs=num_packs)
+    super().__init__(all_reduce_alg="hierarchical_copy", num_packs=num_packs)
 
 
 # TODO(crccw): remove after migrating all callers.
@@ -1102,7 +1096,7 @@ class CollectiveAllReduce(CrossDeviceOps):
       if not launcher.can_order_nccl():
         self._limited_nccl = True
 
-    super(CollectiveAllReduce, self).__init__()
+    super().__init__()
     self._canonicalize_devices = canonicalize_devices
 
   @property

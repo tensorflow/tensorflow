@@ -16,8 +16,6 @@
 
 import copy
 
-import six
-
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import multi_worker_util
@@ -181,7 +179,7 @@ def should_run_distribute_coordinator(config):
       config._distribute_coordinator_mode is None):
     logging.info('Not using Distribute Coordinator.')
     return False
-  if (not isinstance(config._distribute_coordinator_mode, six.string_types) or
+  if (not isinstance(config._distribute_coordinator_mode, str) or
       config._distribute_coordinator_mode not in [
           dc.CoordinatorMode.STANDALONE_CLIENT,
           dc.CoordinatorMode.INDEPENDENT_WORKER

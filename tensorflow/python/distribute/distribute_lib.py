@@ -195,8 +195,6 @@ import functools
 import threading
 import weakref
 
-import six
-
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.data.ops import dataset_ops
@@ -247,7 +245,7 @@ def get_update_replica_id():
     return None
 
 
-class UpdateContext(object):
+class UpdateContext:
   """Context manager when you are in `update()` or `update_non_slot()`."""
 
   __slots__ = ["_replica_id", "_old_replica_id"]
@@ -363,7 +361,7 @@ def _require_strategy_scope_extended(extended):
 # base class
 
 
-class _CurrentDistributionContext(object):
+class _CurrentDistributionContext:
   """Context manager setting the current `tf.distribute.Strategy`.
 
   Also: overrides the variable creator and optionally the current device.
@@ -412,19 +410,17 @@ class _CurrentDistributionContext(object):
       try:
         self._device_scope.__exit__(exception_type, exception_value, traceback)
       except RuntimeError as e:
-        six.raise_from(
-            RuntimeError("Device scope nesting error: move call to "
-                         "tf.distribute.set_strategy() out of `with` scope."),
-            e)
+        raise RuntimeError(
+            "Device scope nesting error: move call to "
+            "tf.distribute.set_strategy() out of `with` scope.") from e
 
     try:
       self._var_creator_scope.__exit__(
           exception_type, exception_value, traceback)
     except RuntimeError as e:
-      six.raise_from(
-          RuntimeError("Variable creator scope nesting error: move call to "
-                       "tf.distribute.set_strategy() out of `with` scope."),
-          e)
+      raise RuntimeError(
+          "Variable creator scope nesting error: move call to "
+          "tf.distribute.set_strategy() out of `with` scope.") from e
 
     if self._resource_creator_scope:
       try:
@@ -439,19 +435,17 @@ class _CurrentDistributionContext(object):
           self._resource_creator_scope.__exit__(exception_type, exception_value,
                                                 traceback)
       except RuntimeError as e:
-        six.raise_from(
-            RuntimeError("Resource creator scope nesting error: move call "
-                         "to tf.distribute.set_strategy() out of `with` "
-                         "scope."), e)
+        raise RuntimeError("Resource creator scope nesting error: move call "
+                           "to tf.distribute.set_strategy() out of `with` "
+                           "scope.") from e
 
     if self._var_scope:
       try:
         self._var_scope.__exit__(exception_type, exception_value, traceback)
       except RuntimeError as e:
-        six.raise_from(
-            RuntimeError("Variable scope nesting error: move call to "
-                         "tf.distribute.set_strategy() out of `with` scope."),
-            e)
+        raise RuntimeError(
+            "Variable scope nesting error: move call to "
+            "tf.distribute.set_strategy() out of `with` scope.") from e
     _pop_per_thread_mode()
 
 
@@ -474,7 +468,7 @@ class InputReplicationMode(enum.Enum):
 
 
 @tf_export("distribute.InputContext")
-class InputContext(object):
+class InputContext:
   """A class wrapping information needed by an input function.
 
   This is a context class that is passed to the user's input function and
@@ -547,7 +541,7 @@ class InputContext(object):
 
 
 @tf_export("distribute.experimental.ValueContext", v1=[])
-class ValueContext(object):
+class ValueContext:
   """A class wrapping information needed by a distribute function.
 
   This is a context class that is passed to the `value_fn` in
@@ -641,10 +635,9 @@ class RunOptions(
               experimental_enable_dynamic_batch_size=True,
               experimental_bucketizing_dynamic_shape=False,
               experimental_xla_options=None):
-    return super(RunOptions,
-                 cls).__new__(cls, experimental_enable_dynamic_batch_size,
-                              experimental_bucketizing_dynamic_shape,
-                              experimental_xla_options)
+    return super().__new__(cls, experimental_enable_dynamic_batch_size,
+                           experimental_bucketizing_dynamic_shape,
+                           experimental_xla_options)
 
 
 @tf_export("distribute.InputOptions", v1=[])
@@ -708,11 +701,10 @@ class InputOptions(
     if experimental_fetch_to_device is None:
       experimental_fetch_to_device = True
 
-    return super(InputOptions,
-                 cls).__new__(cls, experimental_fetch_to_device,
-                              experimental_replication_mode,
-                              experimental_place_dataset_on_device,
-                              experimental_per_replica_buffer_size)
+    return super().__new__(cls, experimental_fetch_to_device,
+                           experimental_replication_mode,
+                           experimental_place_dataset_on_device,
+                           experimental_per_replica_buffer_size)
 
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.
@@ -721,7 +713,7 @@ class InputOptions(
 # Base class for v1 Strategy and v2 Strategy classes. For API's specific to
 # v1/v2 Strategy, add to implementing classes of StrategyBase.
 # pylint: disable=line-too-long
-class StrategyBase(object):
+class StrategyBase:
   """A state & compute distribution policy on a list of devices.
 
   See [the guide](https://www.tensorflow.org/guide/distributed_training)
@@ -1421,7 +1413,7 @@ class StrategyBase(object):
     """
     # TODO(josh11b): support `value` being a nest.
     _require_cross_replica_or_default_context_extended(self._extended)
-    if isinstance(reduce_op, six.string_types):
+    if isinstance(reduce_op, str):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     if axis is None:
       return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
@@ -1485,7 +1477,8 @@ class StrategyBase(object):
         # simple reduction if inputs are all on CPU.
         return array_ops.identity(
             array_ops.shape_v2(v, out_type=dtypes.int64)[axis])
-      if isinstance(axis, six.integer_types):
+
+      if isinstance(axis, int):
         denom = dimension(axis)
       elif isinstance(axis, (tuple, list)):
         denom = math_ops.reduce_prod([dimension(a) for a in axes])
@@ -1939,8 +1932,7 @@ class StrategyV1(StrategyBase):
       `iterator.get_next()` to get the next value to pass to
       `strategy.extended.call_for_each_replica()`.
     """
-    return super(StrategyV1, self).make_input_fn_iterator(
-        input_fn, replication_mode)
+    return super().make_input_fn_iterator(input_fn, replication_mode)
 
   def experimental_make_numpy_dataset(self, numpy_input, session=None):
     """Makes a tf.data.Dataset for input provided via a numpy array.
@@ -2009,11 +2001,10 @@ class StrategyV1(StrategyBase):
       `Mirrored` (if the values are kept in sync), or `Tensor` (if running on a
       single replica).
     """
-    return super(StrategyV1, self).experimental_run(
-        fn, input_iterator)
+    return super().experimental_run(fn, input_iterator)
 
   def reduce(self, reduce_op, value, axis=None):
-    return super(StrategyV1, self).reduce(reduce_op, value, axis)
+    return super().reduce(reduce_op, value, axis)
 
   reduce.__doc__ = StrategyBase.reduce.__doc__
 
@@ -2038,7 +2029,7 @@ class StrategyV1(StrategyBase):
 # NOTE(josh11b): For any strategy that needs to support tf.compat.v1,
 # instead descend from StrategyExtendedV1.
 @tf_export("distribute.StrategyExtended", v1=[])
-class StrategyExtendedV2(object):
+class StrategyExtendedV2:
   """Additional APIs for algorithms that need to be distribution-aware.
 
   Note: For most usage of `tf.distribute.Strategy`, there should be no need to
@@ -2377,7 +2368,7 @@ class StrategyExtendedV2(object):
     _require_cross_replica_or_default_context_extended(self)
     assert not isinstance(destinations, (list, tuple))
     assert not isinstance(reduce_op, variable_scope.VariableAggregation)
-    if isinstance(reduce_op, six.string_types):
+    if isinstance(reduce_op, str):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     assert (reduce_op == reduce_util.ReduceOp.SUM or
             reduce_op == reduce_util.ReduceOp.MEAN)
@@ -2454,7 +2445,7 @@ class StrategyExtendedV2(object):
       options = collective_util.Options()
     _require_cross_replica_or_default_context_extended(self)
     assert not isinstance(reduce_op, variable_scope.VariableAggregation)
-    if isinstance(reduce_op, six.string_types):
+    if isinstance(reduce_op, str):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     return self._batch_reduce_to(reduce_op, value_destination_pairs, options)
 
@@ -3007,7 +2998,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
 #   It sets the current Strategy for purposes of
 #   `get_strategy()` and `has_strategy()`
 #   and switches the thread mode to a "cross-replica context".
-class ReplicaContextBase(object):
+class ReplicaContextBase:
   """A class with a collection of APIs that can be called in a replica context.
 
   You can use `tf.distribute.get_replica_context` to get an instance of
@@ -3241,7 +3232,7 @@ class ReplicaContextBase(object):
       if isinstance(v, indexed_slices.IndexedSlices):
         has_indexed_slices = True
 
-    if isinstance(reduce_op, six.string_types):
+    if isinstance(reduce_op, str):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     if options is None:
       options = collective_util.Options()
@@ -3570,8 +3561,7 @@ class _DefaultDistributionStrategyV1(StrategyV1):
     if not _creating_default_strategy_singleton:
       raise RuntimeError("Should only create a single instance of "
                          "_DefaultDistributionStrategy")
-    super(_DefaultDistributionStrategyV1,
-          self).__init__(_DefaultDistributionExtended(self))
+    super().__init__(_DefaultDistributionExtended(self))
 
   def __deepcopy__(self, memo):
     del memo
@@ -3586,8 +3576,7 @@ class _DefaultDistributionStrategy(Strategy):
     if not _creating_default_strategy_singleton:
       raise RuntimeError("Should only create a single instance of "
                          "_DefaultDistributionStrategy")
-    super(_DefaultDistributionStrategy, self).__init__(
-        _DefaultDistributionExtended(self))
+    super().__init__(_DefaultDistributionExtended(self))
 
   def __deepcopy__(self, memo):
     del memo
@@ -3595,7 +3584,7 @@ class _DefaultDistributionStrategy(Strategy):
                        "_DefaultDistributionStrategy")
 
 
-class _DefaultDistributionContext(object):
+class _DefaultDistributionContext:
   """Context manager setting the default `tf.distribute.Strategy`."""
 
   __slots__ = ["_var_creator_scope", "_strategy", "_nested_count"]
@@ -3626,17 +3615,16 @@ class _DefaultDistributionContext(object):
         self._var_creator_scope.__exit__(
             exception_type, exception_value, traceback)
       except RuntimeError as e:
-        six.raise_from(
-            RuntimeError("Variable creator scope nesting error: move call to "
-                         "tf.distribute.set_strategy() out of `with` scope."),
-            e)
+        raise RuntimeError(
+            "Variable creator scope nesting error: move call to "
+            "tf.distribute.set_strategy() out of `with` scope.") from e
 
 
 class _DefaultDistributionExtended(StrategyExtendedV1):
   """Implementation of _DefaultDistributionStrategy."""
 
   def __init__(self, container_strategy):
-    super(_DefaultDistributionExtended, self).__init__(container_strategy)
+    super().__init__(container_strategy)
     self._retrace_functions_for_each_device = False
 
   def _scope(self, strategy):
@@ -3762,7 +3750,7 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
 
   # TODO(priyag): This should inherit from `InputIterator`, once dependency
   # issues have been resolved.
-  class DefaultInputIterator(object):
+  class DefaultInputIterator:
     """Default implementation of `InputIterator` for default strategy."""
 
     def __init__(self, dataset):
