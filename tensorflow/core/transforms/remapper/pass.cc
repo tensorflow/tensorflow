@@ -327,9 +327,8 @@ class Remapper : public RemapperBase<Remapper> {
   }
 
   LogicalResult initialize(MLIRContext *context) override {
-    helper_ =
-        OpPropertyHelper(context->getOrLoadDialect<TFGraphDialect>(),
-                         tensorflow::IsMKLEnabled(), xla_auto_clustering_);
+    helper_ = OpPropertyHelper(context->getOrLoadDialect<TFGraphDialect>(),
+                               enable_onednn_patterns_, xla_auto_clustering_);
     RewritePatternSet patterns(context);
     populateRemapperPatterns(context, patterns);
     RegisterPDLLUtils(patterns);

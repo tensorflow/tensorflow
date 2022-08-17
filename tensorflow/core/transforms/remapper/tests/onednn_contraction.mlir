@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt --tfg-remapper %s | FileCheck %s
+// RUN: tfg-transforms-opt --tfg-remapper=enable-onednn-patterns %s | FileCheck %s
 
 // -----
 
@@ -24,6 +24,44 @@ tfg.func @conv2d_test() {
   %Elu, %ctl_11 = Elu(%BiasAdd_8) device("/device:CPU:0") name("Elu") {T = f32} : (tensor<*xf32>) -> (tensor<*xf32>)
   // CHECK: Sigmoid(%[[BIAS_ADD]]) {{.*}} name("Sigmoid")
   %Sigmoid, %ctl_12 = Sigmoid(%BiasAdd_8) device("/device:CPU:0") name("Sigmoid") {T = f32} : (tensor<*xf32>) -> (tensor<*xf32>)
+  return
+}
+
+// -----
+
+// CHECK-LABEL: tfg.func @conv3d_test
+tfg.func @conv3d_test() {
+  // CHECK: %[[PLACEHOLDER:.*]], {{.*}} name("input_tensor")
+  %Placeholder, %ctl = Placeholder device("/device:CPU:0") name("input_tensor") {dtype = f32, shape = #tf_type.shape<1x1x3x3x1>} : () -> (tensor<*xf32>)
+  // CHECK: %[[FILTER:.*]], {{.*}} name("Const")
+  %Const, %ctl_0 = Const device("/device:CPU:0") name("Const") {dtype = f32, value = dense<[[[[[2.08520603, 0.201729089]]]]]> : tensor<1x1x1x1x2xf32>} : () -> (tensor<*xf32>)
+  // CHECK: %[[BIAS:.*]], {{.*}} name("Const_1")
+  %Const_1, %ctl_2 = Const device("/device:CPU:0") name("Const_1") {dtype = f32, value = dense<[0.00119970727, 0.199058324]> : tensor<2xf32>} : () -> (tensor<*xf32>)
+  %Conv3D, %ctl_3 = Conv3D(%Placeholder, %Const) device("/device:CPU:0") name("Conv3D") {T = f32, data_format = "NDHWC", dilations = [1, 1, 1, 1, 1], padding = "VALID", strides = [1, 1, 1, 1, 1]} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
+  // CHECK: _FusedConv3D(%[[PLACEHOLDER]], %[[FILTER]], %[[BIAS]]) {{.*}} name("BiasAdd") {{.*}} fused_ops = ["BiasAdd"]
+  %BiasAdd, %ctl_4 = BiasAdd(%Conv3D, %Const_1) device("/device:CPU:0") name("BiasAdd") {T = f32, data_format = "NHWC"} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
+  // CHECK: _FusedConv3D(%[[PLACEHOLDER]], %[[FILTER]], %[[BIAS]]) {{.*}} name("Relu") {{.*}} fused_ops = ["BiasAdd", "Relu"]
+  %Relu, %ctl_5 = Relu(%BiasAdd) device("/device:CPU:0") name("Relu") {T = f32} : (tensor<*xf32>) -> (tensor<*xf32>)
+  return
+}
+
+// -----
+
+// CHECK-LABEL: tfg.func @depthwise_conv2d_test
+tfg.func @depthwise_conv2d_test() {
+  // CHECK: %[[PLACEHOLDER:.*]], {{.*}} name("input_tensor")
+  %Placeholder, %ctl = Placeholder device("/device:CPU:0") name("input_tensor") {dtype = f32, shape = #tf_type.shape<1x2x3x2>} : () -> (tensor<*xf32>)
+  // CHECK: %[[FILTER:.*]], {{.*}} name("Const")
+  %Const, %ctl_0 = Const device("/device:CPU:0") name("Const") {dtype = f32, value = dense<[[[[-0.595111072, -1.49551904], [0.151230454, 0.00520740356]], [[-0.626356721, 0.508778572], [0.209191799, 0.146687463]]], [[[0.0205380265, -2.10263419], [0.10162171, 1.73773324]], [[0.723617255, -0.600047112], [-0.812727749, 0.183114871]]]]> : tensor<2x2x2x2xf32>} : () -> (tensor<*xf32>)
+  %Const_1, %ctl_2 = Const device("/device:CPU:0") name("depthwise/Shape") {dtype = i32, value = dense<2> : tensor<4xi32>} : () -> (tensor<*xi32>)
+  %Const_3, %ctl_4 = Const device("/device:CPU:0") name("depthwise/dilation_rate") {dtype = i32, value = dense<1> : tensor<2xi32>} : () -> (tensor<*xi32>)
+  %DepthwiseConv2dNative, %ctl_5 = DepthwiseConv2dNative(%Placeholder, %Const) device("/device:CPU:0") name("depthwise") {T = f32, data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
+  // CHECK: %[[BIAS:.*]], {{.*}} name("Const_1")
+  %Const_6, %ctl_7 = Const device("/device:CPU:0") name("Const_1") {dtype = f32, value = dense<[-0.777153254, -0.696344554, 0.0879275202, -1.49649549]> : tensor<4xf32>} : () -> (tensor<*xf32>)
+  // CHECK: _FusedDepthwiseConv2dNative(%[[PLACEHOLDER]], %[[FILTER]], %[[BIAS]]) {{.*}} name("BiasAdd") {{.*}} fused_ops = ["BiasAdd"]
+  %BiasAdd, %ctl_8 = BiasAdd(%DepthwiseConv2dNative, %Const_6) device("/device:CPU:0") name("BiasAdd") {T = f32, data_format = "NHWC"} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
+  // CHECK: _FusedDepthwiseConv2dNative(%[[PLACEHOLDER]], %[[FILTER]], %[[BIAS]]) {{.*}} name("Relu") {{.*}} fused_ops = ["BiasAdd", "Relu"]
+  %Relu, %ctl_9 = Relu(%BiasAdd) device("/device:CPU:0") name("Relu") {T = f32} : (tensor<*xf32>) -> (tensor<*xf32>)
   return
 }
 
