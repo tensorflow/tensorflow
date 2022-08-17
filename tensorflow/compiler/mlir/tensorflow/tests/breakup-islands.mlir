@@ -491,3 +491,42 @@ func.func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type
   }
   func.return
 }
+
+
+func.func @then_function() {
+  tf_executor.graph {
+    tf_executor.island {
+      "tf.OpA"() : () -> ()
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  func.return
+}
+
+func.func @else_function() {
+  tf_executor.graph {
+    tf_executor.island {
+      "tf.OpB"() : () -> ()
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// Check that stateful control-flow ops always have an outgoing control
+// dependency to `tf_executor.fetch`.
+func.func @stateful_control_flow_has_outgoing_control(%arg : tensor<i1>) {
+  tf_executor.graph {
+    tf_executor.island {
+      "tf.OpC"() {is_stateless = true} : () -> ()
+      // CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.If"
+      "tf.If"(%arg) {then_branch = @then_function, else_branch = @else_function, is_stateless = false} : (tensor<i1>) -> ()
+      tf_executor.yield
+    }
+    // CHECK: tf_executor.fetch %[[CONTROL]]
+    tf_executor.fetch
+  }
+  func.return
+}
