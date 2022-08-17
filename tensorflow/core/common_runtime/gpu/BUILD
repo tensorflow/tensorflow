@@ -244,6 +244,10 @@ tf_cuda_library(
         "gpu_virtual_mem_allocator.h",
     ],
     copts = tf_copts(),
+    cuda_deps = [
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
+    ],
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
