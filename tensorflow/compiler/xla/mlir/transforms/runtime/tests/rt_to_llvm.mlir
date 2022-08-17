@@ -124,7 +124,8 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 // CHECK: )
 func.func @custom_call(%arg0: !rt.kernel_context) {
   // CHECK: call @runtimeCustomCall
-  rt.custom_call %arg0["target"] () { attr_name = array<i64: 1, 2, 3> } : () -> ()
+  rt.custom_call %arg0["target"] ()
+    { attr_name = array<i64: 1, 2, 3> } : () -> ()
   func.return
 }
 
@@ -316,13 +317,14 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 // CHECK:   %[[ARG:.*]]: f32
 // CHECK: )
 func.func @custom_call(%arg0: !rt.kernel_context, %arg1 : f32) {
-  // CHECK: %[[TYPE_ID:.*]] = llvm.mlir.addressof @__type_id_float
+  // CHECK-DAG: %[[MEM:.*]] = llvm.alloca {{.*}} x f32
+  // CHECK-DAG: %[[ARGS:.*]] = llvm.alloca {{.*}} x !llvm.array<3 x ptr<i8>
 
-  // CHECK: %[[C1:.*]] = arith.constant 1 : i32
-  // CHECK: %[[MEM:.*]] = llvm.alloca %[[C1]] x f32
-  // CHECK: llvm.store %[[ARG]], %[[MEM]]
+  // CHECK-DAG: %[[TYPE_ID:.*]] = llvm.mlir.addressof @__type_id_float
+  // CHECK-DAG: %[[N_ARGS:.*]] = llvm.mlir.addressof @__rt_num_args
 
-  // CHECK: %[[N_ARGS:.*]] = llvm.mlir.addressof @__rt_num_args
+  // CHECK-DAG: llvm.store %[[ARG]], %[[MEM]]
+  // CHECK-DAG: llvm.store {{.*}}, %[[ARGS]] : !llvm.ptr<array<3 x ptr<i8>>>
 
   // CHECK: call @runtimeCustomCall
   rt.custom_call %arg0["target"] (%arg1) : (f32) -> ()

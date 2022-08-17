@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -39,6 +40,7 @@ namespace runtime {
 
 using namespace mlir;  // NOLINT
 using arith::ConstantOp;
+using func::FuncOp;
 
 using llvm::ArrayRef;
 using llvm::StringRef;
@@ -368,11 +370,29 @@ static Value PackEmptyArrayAttribute(Globals &g, ImplicitLocOpBuilder &b,
 // Packing primitive values on the stack.
 //===----------------------------------------------------------------------===//
 
+// Returns the parent function operation for the given value.
+static FuncOp GetParentFunc(Value value) {
+  Block *parent_block = value.getParentBlock();
+  Operation *parent_op = parent_block->getParentOp();
+
+  return isa<FuncOp>(parent_op) ? cast<FuncOp>(parent_op)
+                                : parent_op->getParentOfType<FuncOp>();
+}
+
 // Packs value on the stack. Returns `!llvm.ptr<ValueType>`.
 static Value PackValue(ImplicitLocOpBuilder &b, Value value) {
   Type ptr = LLVM::LLVMPointerType::get(value.getType());
-  Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-  Value mem = b.create<LLVM::AllocaOp>(ptr, one, 0);
+
+  // Always create an `alloca` in the parent function entry block.
+  // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
+  Value mem = [&]() -> Value {
+    Block &block = GetParentFunc(value).getBody().front();
+    OpBuilder::InsertionGuard guard(b);
+    b.setInsertionPointToStart(&block);
+    Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
+    return b.create<LLVM::AllocaOp>(ptr, one, 0);
+  }();
+
   b.create<LLVM::StoreOp>(value, mem);
 
   return mem;

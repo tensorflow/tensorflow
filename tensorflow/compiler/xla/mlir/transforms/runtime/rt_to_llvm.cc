@@ -217,7 +217,7 @@ class IsOkOpLowering : public OpConversionPattern<IsOkOp> {
 //===----------------------------------------------------------------------===//
 
 static FailureOr<Value> EncodeArguments(
-    CustomCallArgEncodingSet &encodings, Globals &g,
+    CustomCallOp op, CustomCallArgEncodingSet &encodings, Globals &g,
     DenseMap<Value, CustomCallArgEncoding::Encoded> &encoded_args,
     ImplicitLocOpBuilder &b, ValueRange operands, ValueRange converted) {
   llvm::SmallVector<CustomCallArgEncoding::Encoded> encoded;
@@ -270,9 +270,17 @@ static FailureOr<Value> EncodeArguments(
     insert_value(encoded.value, offset + 1);
   }
 
+  // Always create an `alloca` in the parent function entry block.
+  // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
+  Value mem = [&]() -> Value {
+    Block &block = op->getParentOfType<FuncOp>().getBody().front();
+    OpBuilder::InsertionGuard guard(b);
+    b.setInsertionPointToStart(&block);
+    Value c1 = b.create<ConstantOp>(b.getI32IntegerAttr(1));
+    return b.create<LLVM::AllocaOp>(LLVM::LLVMPointerType::get(type), c1, 0);
+  }();
+
   // Store constructed arguments array on the stack and return a pointer to it.
-  Value c1 = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-  Value mem = b.create<LLVM::AllocaOp>(LLVM::LLVMPointerType::get(type), c1, 0);
   b.create<LLVM::StoreOp>(arr, mem);
 
   // Return a pointer to the first element of the arguments array.
@@ -326,7 +334,7 @@ class CustomCallOpLowering : public OpConversionPattern<CustomCallOp> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     // Encode operation arguments as a runtime API arguments.
-    auto args = EncodeArguments(arg_encoding_, globals_, encoded_args_, b,
+    auto args = EncodeArguments(op, arg_encoding_, globals_, encoded_args_, b,
                                 op->getOperands(), adaptor.getOperands());
     if (failed(args)) return op.emitOpError() << "failed to encode arguments";
 
