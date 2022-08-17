@@ -312,7 +312,6 @@ class PoolingTest(test.TestCase):
           ksize = test_util.NHWCToNCHW(ksize)
           strides_a = test_util.NHWCToNCHW(strides_a)
           t = test_util.NHWCToNCHW(t)
-          output_sizes = test_util.NHWCToNCHW(output_sizes)
 
         t_p = pool_func(
             t,
@@ -321,8 +320,8 @@ class PoolingTest(test.TestCase):
             padding=padding,
             data_format=data_format,
             name=func_name)
-        t_g = gradients_impl.gradients(t_p**2, t)[0]
-        t_gg = gradients_impl.gradients(t_g**2, t_p)[0]
+        if data_format == "NCDHW":
+          t_p = test_util.NCHWToNHWC(t_p)
 
         err_g = gradient_checker.compute_gradient_error(
             input_tensor,
@@ -331,25 +330,29 @@ class PoolingTest(test.TestCase):
             output_sizes,
             x_init_value=x_init_value,
             delta=1e-2)
-        err_gg = gradient_checker.compute_gradient_error(
+        t_g = gradients_impl.gradients(t_p**2, input_tensor)[0]
+        jacob_t, jacob_n = gradient_checker.compute_gradient(
             input_tensor,
             input_sizes,
             t_g,
             input_sizes,
             x_init_value=x_init_value,
             delta=1e-2)
-        if (dtype == dtypes.float32):
-          ref_t_g = t_g
-          ref_t_gg = t_gg
+        if dtype != dtypes.bfloat16:
+          ref_t_g_val = self.evaluate(t_g)
+          reference_jacob_t = jacob_t
+          err_gg = np.fabs(jacob_t - jacob_n).max()
           print("%s gradient error = " % func_name, err_g)
           self.assertLess(err_g, err_g_margin)
           print("%s second-order gradient error = " % func_name, err_gg)
           self.assertLess(err_gg, err_gg_margin)
-        elif (dtype == dtypes.bfloat16):
+        else:
           # Compare bf16 gradients to fp32 gradients, since bf16 numerical
           # gradients are too imprecise.
-          self.assertAllClose(t_g, ref_t_g, err_g_margin, err_g_margin)
-          self.assertAllClose(t_gg, ref_t_gg, err_gg_margin, err_gg_margin)
+          t_g_val = self.evaluate(t_g)
+          self.assertAllClose(t_g_val, ref_t_g_val, err_g_margin, err_g_margin)
+          err_gg = np.fabs(jacob_t - reference_jacob_t).max()
+          self.assertLess(err_gg, err_gg_margin)
 
   def _ConstructAndTestGradient(self,
                                 pool_func,
