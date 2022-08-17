@@ -15,22 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
 
+#include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/hlo_proto_to_memory_visualization_utils.h"
+#include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
 
 namespace tensorflow {
@@ -71,21 +70,15 @@ StatusOr<std::string> ConvertHloProtoToMemoryViewer(
 
 StatusOr<std::string> ConvertHloProtoToToolData(
     const std::vector<std::string>& xspace_paths,
-    const absl::string_view tool_name,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options) {
+    const absl::string_view tool_name, const ToolOptions& options) {
   if (xspace_paths.empty()) {
     return std::string();
   }
 
   // <options> must provide a hlo_module_name field to identify the HLO module.
-  auto* result = gtl::FindOrNull(options, "hlo_module_name");
-  if (!result) {
-    return errors::InvalidArgument(
-        "Can not find HLO module name from options.");
-  }
-  const std::string* hlo_module_name = std::get_if<std::string>(result);
-  if (!hlo_module_name || hlo_module_name->empty()) {
+  std::optional<std::string> hlo_module_name =
+      GetParam<std::string>(options, "hlo_module_name");
+  if (!hlo_module_name.has_value() || hlo_module_name->empty()) {
     return errors::InvalidArgument(
         "Can not find HLO module name from options.");
   }

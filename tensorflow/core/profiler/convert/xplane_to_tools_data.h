@@ -18,12 +18,11 @@ limitations under the License.
 
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -36,9 +35,7 @@ namespace profiler {
 StatusOr<std::string> ConvertMultiXSpacesToToolData(
     const std::vector<XSpace>& xspaces,
     const std::vector<std::string>& filenames,
-    const absl::string_view tool_name,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options);
+    const absl::string_view tool_name, const ToolOptions& options);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/strings/str_format.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
+#include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
@@ -202,9 +202,7 @@ StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
 StatusOr<std::string> ConvertMultiXSpacesToToolData(
     const std::vector<XSpace>& xspaces,
     const std::vector<std::string>& filenames,
-    const absl::string_view tool_name,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options) {
+    const absl::string_view tool_name, const ToolOptions& options) {
   if (tool_name == "trace_viewer") {
     return ConvertXSpaceToTraceEvents(xspaces);
   } else if (tool_name == "overview_page") {

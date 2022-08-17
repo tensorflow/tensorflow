@@ -718,6 +718,7 @@ cc_library(
         ":op_stats_to_overview_page",
         ":op_stats_to_pod_viewer",
         ":op_stats_to_tf_stats",
+        ":tool_options",
         ":xplane_to_hlo",
         ":xplane_to_memory_profile",
         ":xplane_to_op_stats",
@@ -737,7 +738,6 @@ cc_library(
         "//tensorflow/core/profiler/utils:hardware_type_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -817,11 +817,11 @@ cc_library(
     ],
     deps = [
         ":hlo_proto_to_memory_visualization_utils",
+        ":tool_options",
         ":xplane_to_hlo",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
@@ -923,5 +923,13 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/profiler/utils:hlo_proto_to_module",
+    ],
+)
+
+cc_library(
+    name = "tool_options",
+    hdrs = ["tool_options.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
