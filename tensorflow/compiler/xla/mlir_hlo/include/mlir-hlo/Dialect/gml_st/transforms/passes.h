@@ -34,6 +34,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
 /// Pass to compose set operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createComposeSetOpsPass();
 
+/// Pass to collapse (or uncollapse) materialize operations.
+std::unique_ptr<OperationPass<func::FuncOp>> createCollapseMaterializeOpsPass(
+    bool reverse = false);
+
 /// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
 /// loops and memref.load/memref.store accesses.
 std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToScfPass();
