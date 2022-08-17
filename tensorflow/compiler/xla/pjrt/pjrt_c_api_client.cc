@@ -155,11 +155,7 @@ absl::string_view PjRtCApiClient::platform_version() const {
 
 StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
     const PjRtLoadedExecutable& executable) const {
-#ifdef PJRT_C_API_BYPASS
-  return wrapped_->ExecutableFingerprint(
-      *PjRtCApiExecutable::GetWrapped(&executable));
-#endif  // PJRT_C_API_BYPASS
-  return Unimplemented("PJRT C API does not support ExecutableFingerprint");
+  return {std::nullopt};
 }
 
 StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
