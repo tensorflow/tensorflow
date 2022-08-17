@@ -351,7 +351,7 @@ cc_library(
         "windows_compatibility.h",
     ],
     hdrs = ["simple_orc_jit.h"],
-    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]),
+    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]),
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
@@ -603,7 +603,6 @@ cc_library(
     hdrs = [
         "dot_op_emitter.h",
     ],
-    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]),
     deps = [
         ":cpu_options",
         ":cpu_runtime",
