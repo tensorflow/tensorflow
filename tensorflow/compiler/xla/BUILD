@@ -8,6 +8,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -962,7 +963,7 @@ cc_library(
         "debug_options_parsers.h",
     ],
     hdrs = ["debug_options_flags.h"],
-    copts = tf_copts(),
+    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]),
     visibility = [":friends"],
     deps =
         [
