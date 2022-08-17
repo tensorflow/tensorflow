@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -546,6 +547,66 @@ GPUOperation CreateGpuOperation(const OperationDef& definition,
   }
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
   return op;
+}
+
+absl::Status Fuse2InputElemWith2SimpleElem(const GpuInfo& gpu_info,
+                                           GPUOperation&& elem0,
+                                           GPUOperation&& elem1,
+                                           GPUOperation&& elem_root,
+                                           GPUOperation* result) {
+  int linkable_count = std::max(elem0.linkable_count_, elem1.linkable_count_);
+  linkable_count = std::max(linkable_count, elem_root.linkable_count_);
+  linkable_count += 1;
+
+  std::string unique_postfix = absl::StrCat("_link", linkable_count);
+  elem0.args_.RenameArgs(unique_postfix + "l", &elem0.elementwise_code_);
+  elem1.args_.RenameArgs(unique_postfix + "r", &elem1.elementwise_code_);
+  elem_root.args_.RenameArgs(unique_postfix, &elem_root.elementwise_code_);
+  const std::string link_left_value_name = "interm_value_left" + unique_postfix;
+  const std::string link_right_value_name =
+      "interm_value_right" + unique_postfix;
+  const auto link_left_value_type =
+      elem0.definition_.dst_tensors[0].GetDataType();
+  const std::string left_value_declaration =
+      "\n" + GetTypeDeclaration(gpu_info, link_left_value_type, 4) + " " +
+      link_left_value_name + ";\n";
+  const auto link_right_value_type =
+      elem1.definition_.dst_tensors[0].GetDataType();
+  const std::string right_value_declaration =
+      "\n" + GetTypeDeclaration(gpu_info, link_right_value_type, 4) + " " +
+      link_right_value_name + ";\n";
+  elem0.elementwise_code_ = absl::StrReplaceAll(
+      elem0.elementwise_code_, {{"out_value", link_left_value_name}});
+  elem1.elementwise_code_ = absl::StrReplaceAll(
+      elem1.elementwise_code_, {{"out_value", link_right_value_name}});
+  elem0.elementwise_code_ =
+      absl::Substitute(elem0.elementwise_code_, left_value_declaration);
+  elem1.elementwise_code_ =
+      absl::Substitute(elem1.elementwise_code_, right_value_declaration);
+  elem_root.elementwise_code_ = absl::StrReplaceAll(
+      elem_root.elementwise_code_, {{"in_value", link_left_value_name},
+                                    {"READ_SECOND_VALUE", ""},
+                                    {"in2_value", link_right_value_name}});
+
+  OperationDef new_definition = elem0.definition_;
+  new_definition.dst_tensors[0] = elem_root.definition_.dst_tensors[0];
+
+  *result = GPUOperation(new_definition);
+  result->elementwise_ = true;
+  result->elementwise_inputs_ = 1;
+  result->tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  result->elementwise_code_ = elem0.elementwise_code_ + "\n" +
+                              elem1.elementwise_code_ + "\n" +
+                              elem_root.elementwise_code_;
+  result->linkable_count_ = linkable_count;
+  RETURN_IF_ERROR(
+      result->args_.Merge(std::move(elem0.args_), unique_postfix + "l"));
+  RETURN_IF_ERROR(
+      result->args_.Merge(std::move(elem1.args_), unique_postfix + "r"));
+  RETURN_IF_ERROR(
+      result->args_.Merge(std::move(elem_root.args_), unique_postfix,
+                          {elem_root.second_elementwise_tensor_name_}));
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

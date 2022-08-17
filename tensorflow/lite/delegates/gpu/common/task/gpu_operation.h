@@ -198,6 +198,12 @@ class GPUOperation {
                                          ElementwiseDescriptor&& descriptor,
                                          const BHWC& second_shape);
 
+  friend absl::Status Fuse2InputElemWith2SimpleElem(const GpuInfo& gpu_info,
+                                                    GPUOperation&& elem0,
+                                                    GPUOperation&& elem1,
+                                                    GPUOperation&& elem_root,
+                                                    GPUOperation* result);
+
   virtual int3 GetGridSize() const;
   virtual void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
@@ -233,6 +239,19 @@ GPUOperation CreateGpuOperation(const OperationDef& definition,
 GPUOperation CreateGpuOperation(const OperationDef& definition,
                                 ElementwiseDescriptor&& descriptor,
                                 const BHWC& second_shape);
+
+//      input           input
+//     /    \             |
+//  elem0  elem1          |
+//     \    /      -->  elem
+//   elem_root            |
+//       |                |
+//     output           output
+absl::Status Fuse2InputElemWith2SimpleElem(const GpuInfo& gpu_info,
+                                           GPUOperation&& elem0,
+                                           GPUOperation&& elem1,
+                                           GPUOperation&& elem_root,
+                                           GPUOperation* result);
 }  // namespace gpu
 }  // namespace tflite
 
