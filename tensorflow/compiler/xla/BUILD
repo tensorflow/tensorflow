@@ -386,8 +386,8 @@ cc_library(
     hdrs = ["sharding_op_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":status",
         ":status_macros",
-        ":util",
         "//tensorflow/compiler/xla/service:hlo_lexer",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
