@@ -20,7 +20,7 @@ limitations under the License.
 #include <stdint.h>
 
 // TODO(b/238999986): Remove this.
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 
 #define PJRT_STRUCT_SIZE(struct_type, last_field) \
   offsetof(struct_type, last_field) + sizeof(((struct_type*)0)->last_field)

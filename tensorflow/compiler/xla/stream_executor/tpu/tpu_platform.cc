@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -136,18 +136,18 @@ TpuRuntimeVersion TpuPlatform::version() const {
 
 void TpuPlatform::InsertEvent(stream_executor::internal::EventInterface* key,
                               SE_Event* val) {
-  tensorflow::mutex_lock lock(event_map_mu_);
+  absl::MutexLock lock(&event_map_mu_);
   event_map_[key] = val;
 }
 
 SE_Event* TpuPlatform::LookupEvent(
     stream_executor::internal::EventInterface* key) {
-  tensorflow::tf_shared_lock lock(event_map_mu_);
+  absl::ReaderMutexLock lock(&event_map_mu_);
   return event_map_.at(key);
 }
 
 void TpuPlatform::EraseEvent(stream_executor::internal::EventInterface* key) {
-  tensorflow::mutex_lock lock(event_map_mu_);
+  absl::MutexLock lock(&event_map_mu_);
   event_map_.erase(key);
 }
 

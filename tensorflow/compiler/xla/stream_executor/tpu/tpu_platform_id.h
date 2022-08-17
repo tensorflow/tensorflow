@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/tpu/proto_helper.h"
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_PLATFORM_ID_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_PLATFORM_ID_H_
 
-extern "C" {
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 
-void StreamExecutor_Tpu_FreeSerializedProto(const TpuSerializedProto* proto) {
-  CHECK_NE(proto, nullptr);
-  CHECK_NE(proto->bytes, nullptr);
-  CHECK_GT(proto->size, 0);
-  delete[] proto->bytes;
-}
+namespace tensorflow {
+namespace tpu {
 
-}  // extern "C"
+::stream_executor::Platform::Id GetTpuPlatformId();
+
+}  // namespace tpu
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_PLATFORM_ID_H_

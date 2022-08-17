@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/tpu/tpu_transfer_manager_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
 
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace xla {
 

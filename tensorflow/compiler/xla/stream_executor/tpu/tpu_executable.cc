@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/tpu/tpu_executable.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable.h"
 
 #include "absl/cleanup/cleanup.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/core/tpu/tpu_executor_api.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_stream.h"
 
 namespace ApiConverter {
 static SE_ExecutableRunOptions ToC(
@@ -206,7 +206,7 @@ StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
   };
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       ApiConverter::FromC(c_module));
-  return absl::make_unique<TpuExecutable>(se_executable, std::move(hlo_module));
+  return std::make_unique<TpuExecutable>(se_executable, std::move(hlo_module));
 }
 
 }  // namespace xla

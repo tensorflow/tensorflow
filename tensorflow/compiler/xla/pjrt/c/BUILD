@@ -5,7 +5,7 @@ cc_library(
     hdrs = ["pjrt_c_api.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/stream_executor/tpu:c_api_decl",  # TODO(b/238999986): Remove this.
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",  # TODO(b/238999986): Remove this.
     ],
 )
 

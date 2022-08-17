@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/tpu/tpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
 
 #include "absl/cleanup/cleanup.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_event.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_timer.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_event.h"
-#include "tensorflow/stream_executor/tpu/tpu_stream.h"
-#include "tensorflow/stream_executor/tpu/tpu_timer.h"
 
 using stream_executor::DeviceMemoryBase;
 
@@ -94,9 +94,9 @@ bool TpuExecutor::AllocateStream(Stream* stream) {
 void TpuExecutor::DeallocateStream(Stream* stream) {
   tpu::ExecutorApiFn()->TpuExecutor_DeallocateStreamFn(
       executor_, get_stream(stream->implementation()));
-  tpu_platform().mutex().lock();
+  tpu_platform().mutex().Lock();
   stream_map().erase(stream->implementation());
-  tpu_platform().mutex().unlock();
+  tpu_platform().mutex().Unlock();
 }
 
 bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
@@ -167,7 +167,7 @@ Status TpuExecutor::WaitForEvent(Stream* stream,
 std::unique_ptr<::stream_executor::internal::TimerInterface>
 TpuExecutor::GetTimerImplementation() {
   SE_Timer* tpu_timer = tpu::ExecutorApiFn()->TpuTimer_NewFn(executor_);
-  auto ptr = absl::make_unique<TpuTimer>(tpu_timer);
+  auto ptr = std::make_unique<TpuTimer>(tpu_timer);
   timer_map_[ptr.get()] = tpu_timer;
   return ptr;
 }
@@ -176,10 +176,10 @@ TpuExecutor::GetTimerImplementation() {
 std::unique_ptr<::stream_executor::internal::StreamInterface>
 TpuExecutor::GetStreamImplementation() {
   SE_Stream* tpu_stream = tpu::ExecutorApiFn()->TpuStream_NewFn(executor_);
-  auto ptr = absl::make_unique<tpu::TpuStream>(tpu_stream);
-  tpu_platform().mutex().lock();
+  auto ptr = std::make_unique<tpu::TpuStream>(tpu_stream);
+  tpu_platform().mutex().Lock();
   stream_map()[ptr.get()] = tpu_stream;
-  tpu_platform().mutex().unlock();
+  tpu_platform().mutex().Unlock();
   return ptr;
 }
 
@@ -187,7 +187,7 @@ TpuExecutor::GetStreamImplementation() {
 std::unique_ptr<::stream_executor::internal::EventInterface>
 TpuExecutor::CreateEventImplementation() {
   SE_Event* tpu_event = tpu::ExecutorApiFn()->TpuEvent_NewFn(executor_);
-  auto ptr = absl::make_unique<TpuEvent>(tpu_event);
+  auto ptr = std::make_unique<TpuEvent>(tpu_event);
   tpu_platform().InsertEvent(ptr.get(), tpu_event);
   return ptr;
 }

@@ -16,9 +16,9 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
-#include "tensorflow/stream_executor/tpu/tpu_transfer_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager.h"
 
 namespace tensorflow {
 namespace tpu {

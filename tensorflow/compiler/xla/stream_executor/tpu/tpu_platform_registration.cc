@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/platform/initialize.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 
 #if defined(PLATFORM_GOOGLE)
 REGISTER_MODULE_INITIALIZER(tpu_platform,

@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/c_api_defn.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace ApiConverter {
 

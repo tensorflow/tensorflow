@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_PLATFORM_INTERFACE_H_
-#define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_PLATFORM_INTERFACE_H_
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
 
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+namespace tensorflow {
+namespace tpu {
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_PLATFORM_INTERFACE_H_
+::stream_executor::Platform::Id GetTpuPlatformId() {
+  // We can't use the PLATFORM_DEFINE_ID macro because of potential
+  // initialization-order-fiasco errors.
+  static int plugin_id_value = 42;
+  const ::stream_executor::Platform::Id platform_id = &plugin_id_value;
+  return platform_id;
+}
+
+}  // namespace tpu
+}  // namespace tensorflow

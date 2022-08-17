@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 
 #include <atomic>
 
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
 
 namespace tensorflow {
 namespace tpu {
