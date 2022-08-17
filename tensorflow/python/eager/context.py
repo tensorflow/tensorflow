@@ -78,41 +78,11 @@ is_tfrt_enabled = tfrt_utils.enabled
 
 # This flag and the associated environment var are transient and will eventually
 # be removed, once this experiment is enabled by default.
-_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv("TF_RUN_EAGER_OP_AS_FUNCTION",
-                                              "1") == "1"
-
-# This flag and the associated environment var are transient and will eventually
-# be removed, once this experiment is enabled by default.
 _JIT_COMPILE_REWRITE_ENABLED = os.getenv("TF_JIT_COMPILE_REWRITE") == "1"
 
 
-# This method should only be called after the context has beein initialized.
-def enable_run_eager_op_as_function():
-  """Execute elementary eager ops (non-function) wrapped in a call op.
-
-  This should be functionally equivalent to running the eager op's kernel
-  directly (the default) but reduces the number of codepaths for executing
-  TF2 programs in the runtime, thereby improving consistency (in terms of
-  optimizations and rewrites for instance) and maintainability.
-  """
-  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
-  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = True
-  if context_safe() is not None:
-    context_safe().run_eager_op_as_function = True
-
-
-# This method should only be called after the context has been initialized.
-def disable_run_eager_op_as_function():
-  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
-  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
-  if context_safe() is not None:
-    context_safe().run_eager_op_as_function = False
-
-
 def run_eager_op_as_function_enabled():
-  if context_safe() is not None:
-    return context_safe().run_eager_op_as_function
-  return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  return True
 
 
 # This method should only be called after the context has beein initialized.
@@ -495,7 +465,6 @@ class Context(object):
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
     self._use_tfrt_distributed_runtime = None
-    self._run_eager_op_as_function = run_eager_op_as_function_enabled()
     self._jit_compile_rewrite = jit_compile_rewrite_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
@@ -615,8 +584,7 @@ class Context(object):
             self._use_tfrt_distributed_runtime is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrtDistributedRuntime(
               opts, self._use_tfrt_distributed_runtime)
-        pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(
-            opts, self._run_eager_op_as_function)
+        pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(opts, True)
         pywrap_tfe.TFE_ContextOptionsSetJitCompileRewrite(
             opts, self._jit_compile_rewrite)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
@@ -1887,16 +1855,6 @@ class Context(object):
 
     self._log_device_placement = enable
     self._thread_local_data.function_call_options = None
-
-  @property
-  def run_eager_op_as_function(self):
-    return self._run_eager_op_as_function
-
-  @run_eager_op_as_function.setter
-  def run_eager_op_as_function(self, enable):
-    if self._context_handle is not None:
-      pywrap_tfe.TFE_ContextSetRunEagerOpAsFunction(self._handle, enable)
-    self._run_eager_op_as_function = enable
 
   @property
   def jit_compile_rewrite(self):

@@ -1131,20 +1131,7 @@ def enable_nested_function_shape_inference(fn):
 
 
 def enable_eager_op_as_function(fn):
-  """Decorator for enabling eager_op_as_function on a test.
-
-  This function returns a decorator intended to be applied to test methods in
-  a `tf.test.TestCase` class. Doing so will enable run_eager_op_as_function,
-  reset the context, execute the test, then reset the context to the state
-  it was in prior to this test.
-
-  Example:
-
-  class MyTest(test.TestCase):
-
-    @enable_eager_op_as_function
-    def testFoo(self):
-      ...
+  """Returns the same fn. This will be removed once all usages are removed.
 
   Args:
     fn: the function to be wrapped.
@@ -1154,74 +1141,24 @@ def enable_eager_op_as_function(fn):
   """
 
   def wrapper(*args, **kwargs):
-    # If `run_eager_op_as_function` is already enabled do nothing.
-    if context.run_eager_op_as_function_enabled():
-      return fn(*args, **kwargs)
-
-    context.enable_run_eager_op_as_function()
-    try:
-      return fn(*args, **kwargs)
-    finally:
-      context.disable_run_eager_op_as_function()
+    return fn(*args, **kwargs)
 
   return wrapper
 
 
 @tf_export("test.with_eager_op_as_function")
-def with_eager_op_as_function(cls=None, only_as_function=False):
-  """Adds methods that call original methods with eager_op_as_function enabled.
-
-  Example:
-
-  @test_util.with_eager_op_as_function
-  class SessionTest(test.TestCase):
-
-    def testEnabledForEagerOpAsFunction(self):
-      ...
-
-    @disable_eager_op_as_function("b/xyzabc")
-    def testDisabledForEagerOpAsFunction(self):
-      ...
-
-  Generated class:
-  class SessionTest(test.TestCase):
-
-    def testEnabledForEagerOpAsFunction(self):
-      ...
-
-    def testEnabledForEagerOpAsFunctionWithEagerOpAsFunctionEnabled(self):
-      // Enable run_eager_op_as_function
-      // Reset context
-      testEnabledForEagerOpAsFunction(self)
-      // Disable run_eager_op_as_function
-      // Reset context
-
-    def testDisabledForEagerOpAsFunction(self):
-      ...
+def with_eager_op_as_function(cls=None, only_as_function=False):  # pylint: disable=unused-argument
+  """Returns the same class. This will be removed once all usages are removed.
 
   Args:
     cls: class to decorate.
-    only_as_function: whether to run all the tests in the TestCase in eager mode
-      and in eager_op_as_function mode. By default it will run all tests in both
-      modes. When `only_as_function=True` tests will not be run in eager mode.
+    only_as_function: unused argument.
 
   Returns:
-    cls with new test methods added.
+    cls
   """
 
   def decorator(cls):
-    if context.run_eager_op_as_function_enabled():
-      return cls
-
-    for name, value in cls.__dict__.copy().items():
-      if (callable(value) and
-          (name.startswith(unittest.TestLoader.testMethodPrefix) or
-           name.startswith("benchmark")) and
-          not getattr(value, "_disable_eager_op_as_function", False)):
-        setattr(cls, name + "WithEagerOpAsFunctionEnabled",
-                enable_eager_op_as_function(value))
-        if only_as_function:
-          delattr(cls, name)
     return cls
 
   if cls is not None:
@@ -1324,19 +1261,7 @@ def disable_eager_op_as_function(unused_msg):
   Returns:
     The wrapped function with _disable_eager_op_as_function attr set to True.
   """
-
-  def wrapper(func):
-    func._disable_eager_op_as_function = True
-    return func
-
-  # Once the environment flag is flipped and `run_eager_op_as_function_enabled`
-  # is True by default, the `with_eager_op_as_function` wrapper will not add a
-  # separate test for eager_op_as_function execution. In that case the test with
-  # the original name needs to be disabled.
-  if context.run_eager_op_as_function_enabled():
-    return _disable_test(execute_func=False)
-
-  return wrapper
+  return _disable_test(execute_func=False)
 
 
 def set_xla_env_flag(func=None, flag=""):
