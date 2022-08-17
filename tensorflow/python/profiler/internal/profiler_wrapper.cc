@@ -166,11 +166,15 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
         std::string tool_name = std::string(py_tool_name);
         absl::flat_hash_map<std::string, std::variant<int, std::string>>
             cxx_options = ConvertDictToMap(options);
-        auto tool_data_and_success =
+        auto status_or_tool_data =
             tensorflow::profiler::ConvertMultiXSpacesToToolData(
                 xspaces, filenames, tool_name, cxx_options);
-        return py::make_tuple(py::bytes(tool_data_and_success.first),
-                              py::bool_(tool_data_and_success.second));
+        if (!status_or_tool_data.ok()) {
+          LOG(ERROR) << status_or_tool_data.status().error_message();
+          return py::make_tuple(py::bytes(""), py::bool_(false));
+        }
+        return py::make_tuple(py::bytes(status_or_tool_data.value()),
+                              py::bool_(true));
       },
       // TODO: consider defaulting `xspace_path_list` to empty list, since
       // this parameter is only used for two of the tools...
@@ -202,10 +206,14 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
             filenames.push_back(std::string(py::cast<py::str>(obj)));
           }
           std::string tool_name = std::string(py_tool_name);
-          auto tool_data_and_success =
+          auto status_or_tool_data =
               tensorflow::profiler::ConvertMultiXSpacesToToolData(
                   xspaces, filenames, tool_name, {});
-          return py::make_tuple(py::bytes(tool_data_and_success.first),
-                                py::bool_(tool_data_and_success.second));
+          if (!status_or_tool_data.ok()) {
+            LOG(ERROR) << status_or_tool_data.status().error_message();
+            return py::make_tuple(py::bytes(""), py::bool_(false));
+          }
+          return py::make_tuple(py::bytes(status_or_tool_data.value()),
+                                py::bool_(true));
         });
 };

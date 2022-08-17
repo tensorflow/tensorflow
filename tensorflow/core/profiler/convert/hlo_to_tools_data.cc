@@ -26,9 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/hlo_proto_to_memory_visualization_utils.h"
 #include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
 
@@ -37,7 +38,7 @@ namespace profiler {
 
 namespace {
 
-std::pair<std::string, bool> ConvertHloProtoToMemoryViewer(
+StatusOr<std::string> ConvertHloProtoToMemoryViewer(
     const xla::HloProto& hlo_proto) {
   static constexpr int kSmallBufferSize = 16 * 1024;  // 16KB
   static constexpr int kMemorySpaceColor = 0;         // HBM
@@ -46,9 +47,9 @@ std::pair<std::string, bool> ConvertHloProtoToMemoryViewer(
       hlo_proto, kSmallBufferSize,
       GetHeapSimulatorTraceId(hlo_proto, kMemorySpaceColor), kMemorySpaceColor);
   if (!result_or.ok()) {
-    LOG(ERROR) << "Failed to convert HLO proto to memory viewer result: "
-               << result_or.status().message();
-    return std::make_pair("", false);
+    return errors::Internal(
+        "Failed to convert HLO proto to memory viewer result: ",
+        result_or.status().message());
   }
 
   std::string json_output;
@@ -57,35 +58,36 @@ std::pair<std::string, bool> ConvertHloProtoToMemoryViewer(
   auto encoded_status = tensorflow::protobuf::util::MessageToJsonString(
       result_or.value(), &json_output, options);
   if (!encoded_status.ok()) {
-    LOG(ERROR) << "Failed to convert memory viewer result to JSON format: "
-               << encoded_status.message();
-    return std::make_pair("", false);
+    const auto& error_message = encoded_status.message();
+    return errors::InvalidArgument(
+        "Failed to convert memory viewer result to JSON format: ",
+        absl::string_view(error_message.data(), error_message.length()));
   }
 
-  return std::make_pair(json_output, true);
+  return json_output;
 }
 
 }  // namespace
 
-std::pair<std::string, bool> ConvertHloProtoToToolData(
+StatusOr<std::string> ConvertHloProtoToToolData(
     const std::vector<std::string>& xspace_paths,
     const absl::string_view tool_name,
     const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
         options) {
   if (xspace_paths.empty()) {
-    return std::make_pair("", false);
+    return std::string();
   }
 
   // <options> must provide a hlo_module_name field to identify the HLO module.
   auto* result = gtl::FindOrNull(options, "hlo_module_name");
   if (!result) {
-    LOG(ERROR) << "Can not find HLO module name from options.";
-    return std::make_pair("", false);
+    return errors::InvalidArgument(
+        "Can not find HLO module name from options.");
   }
   const std::string* hlo_module_name = std::get_if<std::string>(result);
   if (!hlo_module_name || hlo_module_name->empty()) {
-    LOG(ERROR) << "Can not find HLO module name from options.";
-    return std::make_pair("", false);
+    return errors::InvalidArgument(
+        "Can not find HLO module name from options.");
   }
 
   // Load HLO module from file.
@@ -93,20 +95,16 @@ std::pair<std::string, bool> ConvertHloProtoToToolData(
   std::string hlo_proto_file_name =
       GetHloProtoFileName(base_dir, *hlo_module_name);
   xla::HloProto hlo_proto;
-  tensorflow::Status status = tensorflow::ReadBinaryProto(
-      tensorflow::Env::Default(), hlo_proto_file_name, &hlo_proto);
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to read HLO proto: " << status.error_message();
-    return std::make_pair("", false);
-  }
+  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(
+      tensorflow::Env::Default(), hlo_proto_file_name, &hlo_proto));
 
   // Convert from HLO proto to tools data.
   if (tool_name == "memory_viewer") {
     return ConvertHloProtoToMemoryViewer(hlo_proto);
   } else {
-    LOG(ERROR) << "Can not find tool: " << tool_name
-               << ". Please update to the latest version of Tensorflow.";
-    return std::make_pair("", false);
+    return errors::InvalidArgument(
+        "Can not find tool: ", tool_name,
+        ". Please update to the latest version of Tensorflow.");
   }
 }
 

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -32,9 +33,9 @@ namespace profiler {
 // is used for the conversion.
 // The file path of the HLO proto is automatically inferred from <xspace_paths>
 // and <options>.
-// Return the serialized string of tool specific data and whether the conversion
-// is successful.
-std::pair<std::string, bool> ConvertHloProtoToToolData(
+// Return the serialized string of tool specific data when the conversion is
+// successful, else return an error status.
+StatusOr<std::string> ConvertHloProtoToToolData(
     const std::vector<std::string>& xspace_paths,
     const absl::string_view tool_name,
     const absl::flat_hash_map<std::string, std::variant<int, std::string>>&

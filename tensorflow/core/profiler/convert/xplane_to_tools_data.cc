@@ -15,14 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 
+#include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
@@ -53,33 +55,28 @@ namespace profiler {
 
 namespace {
 
-std::pair<std::string, bool> ConvertXSpaceToTraceEvents(
+StatusOr<std::string> ConvertXSpaceToTraceEvents(
     const std::vector<XSpace>& xspaces) {
   if (xspaces.size() != 1) {
-    LOG(WARNING) << "Trace events tool expects only 1 XSpace path but gets "
-                 << xspaces.size();
-    return std::make_pair("", false);
+    return errors::InvalidArgument(
+        "Trace events tool expects only 1 XSpace path but gets ",
+        xspaces.size());
   }
 
   std::string content;
   ConvertXSpaceToTraceEventsString(xspaces[0], &content);
-  return std::make_pair(content, true);
+  return content;
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToOverviewPage(
+StatusOr<std::string> ConvertMultiXSpacesToOverviewPage(
     const std::vector<XSpace>& xspaces) {
   OpStatsOptions options;
   options.generate_kernel_stats_db = true;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
-  Status status = ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                       &combined_op_stats);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate OpStats for overview page. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
+                                                          &combined_op_stats));
   OverviewPage overview_page_db;
   if (xspaces.size() == 1) {
     overview_page_db =
@@ -88,91 +85,63 @@ std::pair<std::string, bool> ConvertMultiXSpacesToOverviewPage(
     // TODO(profiler): xspace should tell whether this is sampling mode.
     overview_page_db = ConvertOpStatsToOverviewPage(combined_op_stats);
   }
-  return std::make_pair(overview_page_db.SerializeAsString(), true);
+  return overview_page_db.SerializeAsString();
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToInputPipeline(
+StatusOr<std::string> ConvertMultiXSpacesToInputPipeline(
     const std::vector<XSpace>& xspaces) {
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
-  Status status = ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                       &combined_op_stats);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate OpStats for input pipeline. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
-  return std::make_pair(ConvertOpStatsToInputPipelineAnalysis(combined_op_stats)
-                            .SerializeAsString(),
-                        true);
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
+                                                          &combined_op_stats));
+  return ConvertOpStatsToInputPipelineAnalysis(combined_op_stats)
+      .SerializeAsString();
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToTfStats(
+StatusOr<std::string> ConvertMultiXSpacesToTfStats(
     const std::vector<XSpace>& xspaces) {
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_kernel_stats_db = true;
   OpStats combined_op_stats;
-  Status status = ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                       &combined_op_stats);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate OpStats for tensorflow stats. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
-  return std::make_pair(
-      ConvertOpStatsToTfStats(combined_op_stats).SerializeAsString(), true);
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
+                                                          &combined_op_stats));
+  return ConvertOpStatsToTfStats(combined_op_stats).SerializeAsString();
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToKernelStats(
+StatusOr<std::string> ConvertMultiXSpacesToKernelStats(
     const std::vector<XSpace>& xspaces) {
   OpStatsOptions options;
   options.generate_kernel_stats_db = true;
   OpStats combined_op_stats;
-  Status status = ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                       &combined_op_stats);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate OpStats for kernel stats. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
-  return std::make_pair(combined_op_stats.kernel_stats_db().SerializeAsString(),
-                        true);
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
+                                                          &combined_op_stats));
+  return combined_op_stats.kernel_stats_db().SerializeAsString();
 }
 
-std::pair<std::string, bool> ConvertXSpaceToMemoryProfile(
+StatusOr<std::string> ConvertXSpaceToMemoryProfile(
     const std::vector<XSpace>& xspaces) {
   if (xspaces.size() != 1) {
-    LOG(WARNING) << "Memory profile tool expects only 1 XSpace path but gets "
-                 << xspaces.size();
-    return std::make_pair("", false);
+    return errors::InvalidArgument(
+        "Memory profile tool expects only 1 XSpace path but gets ",
+        xspaces.size());
   }
   std::string json_output;
-  Status status;
-  status = ConvertXSpaceToMemoryProfileJson(xspaces[0], &json_output);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate memory profile. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
-  return std::make_pair(json_output, true);
+  TF_RETURN_IF_ERROR(
+      ConvertXSpaceToMemoryProfileJson(xspaces[0], &json_output));
+  return json_output;
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToPodViewer(
+StatusOr<std::string> ConvertMultiXSpacesToPodViewer(
     const std::vector<XSpace>& xspaces) {
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
-  Status status = ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                       &combined_op_stats);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate OpStats for pod_viewer. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
+                                                          &combined_op_stats));
 
   std::string json_output;
   protobuf::util::JsonPrintOptions opts;
@@ -180,14 +149,15 @@ std::pair<std::string, bool> ConvertMultiXSpacesToPodViewer(
   auto encode_status = protobuf::util::MessageToJsonString(
       ConvertOpStatsToPodViewer(combined_op_stats), &json_output, opts);
   if (!encode_status.ok()) {
-    LOG(WARNING) << "Could not convert pod viewer proto to json. Error: "
-                 << encode_status.message();
-    return std::make_pair("", false);
+    const auto& error_message = encode_status.message();
+    return errors::Internal(
+        "Could not convert pod viewer proto to json. Error: ",
+        absl::string_view(error_message.data(), error_message.length()));
   }
-  return std::make_pair(json_output, true);
+  return json_output;
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
+StatusOr<std::string> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
     const std::vector<XSpace>& xspaces,
     const std::vector<std::string>& filenames) {
   CombinedTfDataStats combined_tf_data_stats;
@@ -199,8 +169,8 @@ std::pair<std::string, bool> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
     XPlane* host_plane =
         FindMutablePlaneWithName(&mutable_xspaces[idx], kHostThreadsPlaneName);
     if (host_plane == nullptr) {
-      LOG(WARNING) << "Could not find host XPlane for tf data stats: ";
-      return std::make_pair("", false);
+      return errors::InvalidArgument(
+          "Could not find host XPlane for tf data stats: ", filenames[idx]);
     }
     absl::string_view host_name = mutable_xspaces[idx].hostnames_size()
                                       ? mutable_xspaces[idx].hostnames(0)
@@ -208,21 +178,16 @@ std::pair<std::string, bool> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
     builder.Add(host_name, host_plane);
   }
   builder.Finalize();
-  return std::make_pair(combined_tf_data_stats.SerializeAsString(), true);
+  return combined_tf_data_stats.SerializeAsString();
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToOpProfileViewer(
+StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
     const std::vector<XSpace>& xspaces) {
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   OpStats combined_op_stats;
-  Status status = ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                       &combined_op_stats);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate OpStats for op_profile. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
+                                                          &combined_op_stats));
 
   tensorflow::profiler::op_profile::Profile profile;
   ConvertOpStatsToOpProfile(
@@ -230,11 +195,11 @@ std::pair<std::string, bool> ConvertMultiXSpacesToOpProfileViewer(
       ParseHardwareType(combined_op_stats.run_environment().device_type()),
       profile);
 
-  return std::make_pair(profile.SerializeAsString(), true);
+  return profile.SerializeAsString();
 }
 }  // namespace
 
-std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
+StatusOr<std::string> ConvertMultiXSpacesToToolData(
     const std::vector<XSpace>& xspaces,
     const std::vector<std::string>& filenames,
     const absl::string_view tool_name,
@@ -260,21 +225,17 @@ std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
     // <hlo_proto> is a special tool name to generate HLO proto files from
     // XSpace and store them in profile repository, this method does not return
     // actual tool data.
-    auto status = GetHloProtoFromMultiXSpaceAndSaveToFile(xspaces, filenames);
-    if (!status.ok()) {
-      LOG(ERROR) << "Failed to convert XSpace to HLO proto: "
-                 << status.error_message();
-      return std::make_pair("", false);
-    }
-    return std::make_pair("", true);
+    TF_RETURN_IF_ERROR(
+        GetHloProtoFromMultiXSpaceAndSaveToFile(xspaces, filenames));
+    return std::string();
   } else if (tool_name == "op_profile") {
     return ConvertMultiXSpacesToOpProfileViewer(xspaces);
   } else if (tool_name == "memory_viewer") {
     return ConvertHloProtoToToolData(filenames, tool_name, options);
   } else {
-    LOG(WARNING) << "Can not find tool: " << tool_name << ". Please update to "
-                 << "the latest version of Tensorflow.";
-    return std::make_pair("", false);
+    return errors::InvalidArgument(
+        "Can not find tool: ", tool_name,
+        ". Please update to the latest version of Tensorflow.");
   }
 }
 
