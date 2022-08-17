@@ -73,10 +73,14 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
   """Tests the Grappler remapper optimizer."""
 
   def setUp(self):
+    super(RemapperTest, self).setUp()
     # Gelu fusion on GPU requires cublasLt
     os.environ['TF_USE_CUBLASLT'] = '1'
+    # Conv runtime fusion on GPU requires cuDNN frontend APIs.
+    os.environ['TF_CUDNN_USE_FRONTEND'] = '1'
+    os.environ['TF_CUDNN_USE_RUNTIME_FUSION'] = '1'
 
-  def _maybe_skip(self, mode):
+  def maybe_skip_test(self, mode):
     if mode == 'cuda':
       # It seems the windows os cannot correctly query the cuda_version.
       # TODO(kaixih@nvidia): Remove this when it works.
@@ -136,7 +140,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
   @test_util.disable_xla('This test does not pass with XLA')
   def test_matmul_biasadd_gelu_fusion(self, mode):
     """Test MatMul+BiasAdd+Gelu fusion."""
-    self._maybe_skip(mode)
+    self.maybe_skip_test(mode)
     data_types = [dtypes.float32]
     if mode == 'cuda':
       data_types.append(dtypes.float16)
@@ -183,42 +187,91 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
-  def test_conv2d_biasadd_relu_fusion(self):
+  def test_conv2d_biasadd_act_fusion(self):
     """Test Conv2D+BiasAdd+Relu fusion."""
     if not test_util.is_gpu_available():
       self.skipTest('No GPU available')
 
-    N, H, W, C = (5, 3, 3, 4)
+    N, H, W, C = (5, 3, 3, 8)  # pylint: disable=invalid-name
+    # The runtime fusion requires the output dims to be 32-bit aligned.
+    self.assertEqual(C % 2, 0)
+
+    act_fns = [nn.relu]
+    act_names = [b'Relu']
+
+    if test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      act_fns += [nn.elu, nn.relu6, nn.leaky_relu]
+      act_names += [b'Elu', b'Relu6', b'LeakyRelu']
 
     for precision in ('float16', 'float32'):
-      ops.reset_default_graph()
-      x_shape = [N, C, H, W]
-      x_format = 'NCHW'
-      b_format = 'NC..'
-      use_fp16 = precision == 'float16'
-      if use_fp16:
-        x_shape = [N, H, W, C]
-        x_format = 'NHWC'
-        b_format = 'N..C'
+      for act_fn, act_name in zip(act_fns, act_names):
+        use_fp16 = precision == 'float16'
+        # The runtime fusion (when the activation is not relu) only supports
+        # fp16 at this moment.
+        if not use_fp16 and act_name != b'Relu':
+          continue
 
-      x = _input(x_shape)
-      w = _weight([2, 2, C, C])
-      b = _bias([C])
+        ops.reset_default_graph()
+        x_shape = [N, C, H, W]
+        x_format, b_format = ('NCHW', 'NC..')
+        if use_fp16:
+          x_shape = [N, H, W, C]
+          x_format, b_format = ('NHWC', 'N..C')
 
-      if use_fp16:
-        x = math_ops.cast(x, dtypes.float16)
-        w = math_ops.cast(w, dtypes.float16)
-        b = math_ops.cast(b, dtypes.float16)
+        x = _input(x_shape)
+        w = _weight([2, 2, C, C])
+        b = _bias([C])
 
-      y = nn_ops.conv2d(
-          x, w, strides=(1, 1), padding='SAME', data_format=x_format)
-      z = nn.bias_add(y, b, data_format=b_format)
-      out = nn.relu(z)
-      out = array_ops.identity(out)
+        if use_fp16:
+          x = math_ops.cast(x, dtypes.float16)
+          w = math_ops.cast(w, dtypes.float16)
+          b = math_ops.cast(b, dtypes.float16)
 
-      epilog_ops = [b'BiasAdd', b'Relu']
-      fused_op = ['_FusedConv2D']
-      graph = self._VerifyValues(out, use_fp16, fused_op, epilog_ops)
+        y = nn_ops.conv2d(
+            x, w, strides=(1, 1), padding='SAME', data_format=x_format)
+        z = nn.bias_add(y, b, data_format=b_format)
+        out = act_fn(z)
+        out = array_ops.identity(out)
+
+        epilog_ops = [b'BiasAdd', act_name]
+        fused_op = ['_FusedConv2D']
+        graph = self._VerifyValues(out, use_fp16, fused_op, epilog_ops)
+
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
+  def test_two_conv2d_fusions(self):
+    """Test two Conv2D patterns and only the second is fusable."""
+    if not test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest('No GPU with compute compatibility >= 8.0 available')
+
+    N, H, W, C = (5, 3, 3, 8)  # pylint: disable=invalid-name
+
+    ops.reset_default_graph()
+    x_shape = [N, C, H, W]
+    x_format, b_format = ('NCHW', 'NC..')
+
+    x = _input(x_shape)
+    w = _weight([2, 2, C, C])
+    b = _bias([C])
+
+    y = nn_ops.conv2d(
+        x, w, strides=(1, 1), padding='SAME', data_format=x_format)
+    y = nn.bias_add(y, b, data_format=b_format)
+    y = nn.leaky_relu(y)
+    y = nn_ops.conv2d(
+        y, w, strides=(1, 1), padding='SAME', data_format=x_format)
+    y = nn.bias_add(y, b, data_format=b_format)
+    y = nn.relu(y)
+    out = array_ops.identity(y)
+
+    # The first Conv-BiasAdd-LeakyRelu is not fusable because cuDNN requires
+    # fp16 for this pattern. The second Conv-BiasAdd-Relu is fusable.
+    epilog_ops = [b'BiasAdd', b'Relu']
+    fused_op = ['_FusedConv2D']
+    self._VerifyValues(out, False, fused_op, epilog_ops)
+
 
 if __name__ == '__main__':
   test.main()

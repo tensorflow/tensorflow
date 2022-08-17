@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/util.h"
 
 #if GOOGLE_CUDA
@@ -397,9 +398,61 @@ bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
   }
 }
 
+bool IsSupportedActivation(const NodeDef& node) {
+  bool is_default_supported =
+      IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
+  bool is_mkl_specific = IsMKLEnabled() && (IsTanh(node) || IsSigmoid(node));
+  return (is_default_supported || is_mkl_specific);
+}
+
+bool RuntimeFusionEnabled(const Cluster* cluster) {
+  static bool is_enabled = [&] {
+#if CUDNN_VERSION >= 8400
+    // Cudnn runtime fusion feature is recommended for Ampere GPUs or later.
+    // For pre-Ampere GPUs, the overhead of runtime compilation would be very
+    // large and there are more limitations of supported cases.
+    if (!cluster) return false;
+    auto devices = cluster->GetDevices();
+    int num_gpus = 0;
+    int num_ampere = 0;
+    for (const auto& d : devices) {
+      if (d.second.type() == "GPU") {
+        num_gpus++;
+        auto cc_it = d.second.environment().find("architecture");
+        if (cc_it != d.second.environment().end()) {
+          double compute_capability = 0.0;
+          if (absl::SimpleAtod(cc_it->second, &compute_capability) &&
+              compute_capability >= 8.0) {
+            num_ampere++;
+          }
+        }
+      }
+    }
+    bool runtime_fusion_enabled = CudnnUseRuntimeFusion() &&
+                                  CudnnUseFrontend() && num_gpus > 0 &&
+                                  num_gpus == num_ampere;
+
+    if (CudnnUseRuntimeFusion() && !runtime_fusion_enabled) {
+      VLOG(1) << "Enabling Cudnn with runtime compilation requires the "
+              << "Cudnn frontend and Ampere GPUs or later, but we got "
+              << "Cudnn frontend is "
+              << (CudnnUseFrontend() ? "enabled" : "disabled") << " and "
+              << num_ampere << " Ampere GPU(s) out of total " << num_gpus
+              << " GPU(s)";
+    }
+
+    return runtime_fusion_enabled;
+#else
+    return false;
+#endif
+  }();
+  return is_enabled;
+}
+
 // Checks if we can rewrite a pattern to the `_FusedConv2D` on GPU device.
 bool IsGpuCompatible(const RemapperContext& ctx,
-                     const ContractionWithBiasAddAndActivation& matched) {
+                     const ContractionWithBiasAddAndActivation& matched,
+                     const Cluster* cluster) {
 #if TENSORFLOW_USE_ROCM
   // ROCm does not support _FusedConv2D
   return false;
@@ -414,7 +467,7 @@ bool IsGpuCompatible(const RemapperContext& ctx,
 
   // We rely on cuDNN for fused convolution and cublasLt for fused matmul.
   const NodeDef& activation_node = graph->node(matched.activation);
-  if (!IsRelu(activation_node)) return false;
+  if (!IsSupportedActivation(activation_node)) return false;
 
   const NodeDef& contraction_node = graph->node(matched.contraction);
   if (IsConv2D(contraction_node)) {
@@ -432,7 +485,25 @@ bool IsGpuCompatible(const RemapperContext& ctx,
                            filter_shape.dim(0).size() != 1 &&  //
                            filter_shape.dim(1).size() != 1;
 
-    return is_spatial_conv && IsGpuCompatibleConv2D(ctx, &contraction_node);
+    // The CuDNN runtime compiled kernels support the activations of relu6,
+    // elu, leakrelu but require the in_channels and out_channels to be even and
+    // fp16 dtype.
+    bool act_requires_fp16 = IsRelu6(activation_node) ||
+                             IsElu(activation_node) ||
+                             IsLeakyRelu(activation_node);
+    DataType dtype = GetDataTypeFromAttr(activation_node, "T");
+    bool is_fp16 = dtype == DT_HALF;
+    bool valid_channels = Rank(filter_shape) == 4 &&              //
+                          IsKnown(filter_shape.dim(2)) &&         //
+                          IsKnown(filter_shape.dim(3)) &&         //
+                          filter_shape.dim(2).size() % 2 == 0 &&  //
+                          filter_shape.dim(3).size() % 2 == 0;
+    bool is_supported_conv =
+        is_spatial_conv &&
+        (!act_requires_fp16 ||
+         (is_fp16 && valid_channels && RuntimeFusionEnabled(cluster)));
+
+    return is_supported_conv && IsGpuCompatibleConv2D(ctx, &contraction_node);
   } else if (IsMatMul(contraction_node)) {
     return IsGpuCompatibleMatMul(ctx, &contraction_node);
   }
@@ -442,7 +513,8 @@ bool IsGpuCompatible(const RemapperContext& ctx,
 
 // Checks if we can rewrite a pattern to the `_FusedMatMul` on GPU device.
 bool IsGpuCompatible(const RemapperContext& ctx,
-                     const ContractionWithBiasAdd& matched) {
+                     const ContractionWithBiasAdd& matched,
+                     const Cluster* cluster) {
 #if TENSORFLOW_USE_ROCM
   // ROCm does not support _FusedMatMul
   return false;
@@ -461,21 +533,17 @@ bool IsGpuCompatible(const RemapperContext& ctx,
 }
 
 bool IsGpuCompatible(const RemapperContext& ctx,
-                     const ContractionWithSqueezeAndBiasAdd& matched) {
+                     const ContractionWithSqueezeAndBiasAdd& matched,
+                     const Cluster* cluster) {
   return false;
 }
 
 // Returns true if the given pattern is supported on the assigned device.
 template <typename Pattern>
-bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
-  return IsCpuCompatible(ctx, matched) || IsGpuCompatible(ctx, matched);
-}
-
-bool IsSupportedActivation(const NodeDef& node) {
-  bool is_default_supported =
-      IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
-  bool is_mkl_specific = IsMKLEnabled() && (IsTanh(node) || IsSigmoid(node));
-  return (is_default_supported || is_mkl_specific);
+bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched,
+                        Cluster* cluster = nullptr) {
+  return IsCpuCompatible(ctx, matched) ||
+         IsGpuCompatible(ctx, matched, cluster);
 }
 
 inline bool HasControlFaninOrFanout(const utils::MutableNodeView& node_view) {
@@ -631,7 +699,7 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
 }
 
 bool FindContractionWithBiasAndActivation(
-    const RemapperContext& ctx, int node_index,
+    const RemapperContext& ctx, Cluster* cluster, int node_index,
     ContractionWithBiasAddAndActivation* matched) {
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // Root of the pattern must be an activation node.
@@ -674,7 +742,7 @@ bool FindContractionWithBiasAndActivation(
   // Check that data type and data format are supported on assigned device.
   const ContractionWithBiasAddAndActivation pattern{
       base.contraction, base.bias_add, node_index, base.bias_port};
-  if (!IsDeviceCompatible(ctx, pattern)) return false;
+  if (!IsDeviceCompatible(ctx, pattern, cluster)) return false;
 
   // We successfully found a {Conv2D, MatMul}+BiasAdd+Activation pattern.
   *matched = pattern;
@@ -3273,7 +3341,8 @@ Status ReplaceSoftplusTanhAndMulWithMish(
 //   (3) Fusing Conv2D biasadd and relu on GPU
 //   (4) INTEL_MKL specific: Conv2D -> Add or Conv2D -> BiasAdd -> Add.
 //   (5) Fusing side output and/or activation into FusedBatchNormGrad.
-bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
+bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
+                            const Cluster* cluster) {
   // Candidate for a FusedBatchNorm splitting.
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   const auto* node_def = node_view->node();
@@ -3288,10 +3357,20 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return true;
   };
 
-  const auto is_relu_biasadd_conv_candidate = [&]() -> bool {
-    if (!IsRelu(*node_def)) return false;
-    DataType act_dtype = GetDataTypeFromAttr(*node_def, "T");
-    if (act_dtype != DT_FLOAT && act_dtype != DT_HALF) return false;
+  const auto is_act_biasadd_conv_candidate = [&]() -> bool {
+    if (!IsSupportedActivation(*node_def)) return false;
+
+    if (!RuntimeFusionEnabled(cluster) && !IsRelu(*node_def)) return false;
+
+    const auto is_compatible_dtype = [&](const NodeDef& node) -> bool {
+      // The cuDNN fusion with relu6, elu, leakyrelu is realized by the runtime
+      // compiled kernels which only support fp16.
+      bool fp16_only =
+          IsRelu6(*node_def) || IsElu(*node_def) || IsLeakyRelu(*node_def);
+      DataType dtype = GetDataTypeFromAttr(node, "T");
+      return dtype == DT_HALF || (!fp16_only && dtype == DT_FLOAT);
+    };
+    if (!is_compatible_dtype(*node_def)) return false;
 
     if (node_view->NumRegularFanins() < 1) return false;
     const auto& relu_fanin_0 = node_view->GetRegularFanin(0);
@@ -3300,8 +3379,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
 
     if (!IsBiasAdd(*relu_fanin_0_node_def) && !IsAdd(*relu_fanin_0_node_def))
       return false;
-    DataType biasadd_dtype = GetDataTypeFromAttr(*relu_fanin_0_node_def, "T");
-    if (biasadd_dtype != DT_FLOAT && biasadd_dtype != DT_HALF) return false;
+    if (!is_compatible_dtype(*relu_fanin_0_node_def)) return false;
 
     if (relu_fanin_0_node_view->NumRegularFanins() < 1) return false;
 
@@ -3311,8 +3389,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     if (!IsConv2D(*biasadd_fanin_0_node_def) &&
         !IsConv3D(*biasadd_fanin_0_node_def))
       return false;
-    DataType conv_dtype = GetDataTypeFromAttr(*biasadd_fanin_0_node_def, "T");
-    if (conv_dtype != DT_FLOAT && conv_dtype != DT_HALF) return false;
+    if (!is_compatible_dtype(*biasadd_fanin_0_node_def)) return false;
     return true;
   };
 
@@ -3366,9 +3443,9 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
   if (IsMKLEnabled())
     return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
            IsContractionWithAdd(ctx, node_index) ||
-           is_relu_biasadd_conv_candidate();
+           is_act_biasadd_conv_candidate();
 
-  return is_relu_biasadd_conv_candidate() || is_batch_norm_candidate() ||
+  return is_act_biasadd_conv_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate() ||
          is_batch_norm_grad_fusion_candidate();
 }
@@ -3404,7 +3481,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
 
     // Infer properties lazily in case they are not needed.
-    if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
+    if (!ctx.inferred_graph_properties &&
+        RequiresInferredShapes(ctx, i, cluster)) {
       const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
       TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
           assume_valid_feeds,
@@ -3530,7 +3608,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     ContractionWithBiasAddAndActivation contract_with_bias_and_activation;
     if (allow_non_differentiable_rewrites &&
         FindContractionWithBiasAndActivation(
-            ctx, i, &contract_with_bias_and_activation)) {
+            ctx, cluster, i, &contract_with_bias_and_activation)) {
       TF_RETURN_IF_ERROR(
           AddFusedContractionNode(&ctx, contract_with_bias_and_activation,
                                   &invalidated_nodes, &nodes_to_delete));
