@@ -37,21 +37,6 @@ namespace {
 
 namespace m = match;
 
-// If VLOG is on and `instr` matches `filter_pattern`, prints out why it doesn't
-// match `log_pattern`.  You can use this to explain "near-hits".
-template <typename FilterPattern, typename LogPattern>
-void VlogIfFailureToMatch(HloInstruction* instr, const LogPattern& log_pattern,
-                          absl::string_view desc,
-                          const FilterPattern& filter_pattern) {
-  if (!VLOG_IS_ON(3) || !Match(instr, filter_pattern)) {
-    return;
-  }
-  std::stringstream os;
-  if (!Match(instr, log_pattern, {/*capture=*/false, /*explain_os=*/&os})) {
-    VLOG(3) << "Failed to match " << desc << ":\n" << os.str();
-  }
-}
-
 bool IsConvCustomCall(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kCustomCall &&
          (instr->custom_call_target() == kCudnnConvForwardCallTarget ||
@@ -508,27 +493,26 @@ StatusOr<bool> FuseConvertToF16(HloComputation* comp) {
     HloInstruction* gte = nullptr;
     HloInstruction* conv = nullptr;
 
-    auto f32_convertible_to_f16_pattern =
+    auto f32_convertible_to_f16_pat =
         m::Op().WithElementType(F32).WithPredicate(
             IsLosslesslyConvertibleToF16);
-    auto pattern =
-        m::Convert(
-            m::GetTupleElement(
-                &gte,
-                m::Op(&conv)
-                    .WithPredicate(IsConvCustomCall)
-                    .WithOperand(0, f32_convertible_to_f16_pattern)
-                    .WithOperand(1, f32_convertible_to_f16_pattern)
-                    .WithOperandIfPresent(2, f32_convertible_to_f16_pattern)
-                    .WithOperandIfPresent(3, f32_convertible_to_f16_pattern),
-                0)
-                .WithOneUse())
-            .WithElementType(F16);
-    if (!Match(instr, pattern)) {
-      VlogIfFailureToMatch(
-          instr, pattern, "fp16 conv",
-          m::Op().WithOperand(
-              0, m::GetTupleElement(m::Op().WithPredicate(IsConvCustomCall))));
+    if (!MatchAndLogIfFailed(
+            instr, "f16 conv",
+            m::Convert(
+                m::GetTupleElement(
+                    &gte,
+                    m::Op(&conv)
+                        .WithPredicate(IsConvCustomCall)
+                        .WithOperand(0, f32_convertible_to_f16_pat)
+                        .WithOperand(1, f32_convertible_to_f16_pat)
+                        .WithOperandIfPresent(2, f32_convertible_to_f16_pat)
+                        .WithOperandIfPresent(3, f32_convertible_to_f16_pat),
+                    0)
+                    .WithOneUse())
+                .WithElementType(F16),
+            VLOG_IS_ON(3),
+            m::Op().WithOperand(0, m::GetTupleElement(m::Op().WithPredicate(
+                                       IsConvCustomCall))))) {
       continue;
     }
     if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
@@ -574,44 +558,36 @@ StatusOr<bool> FuseConvertToS8(HloComputation* comp) {
             .WithOperand(0, m::Op().WithPredicate(IsLosslesslyConvertibleToS8))
             .WithOperand(1, m::Op().WithPredicate(IsLosslesslyConvertibleToS8));
 
-    // int8 -> int8 conv
-    auto s8_pattern =
-        m::Convert(
-            m::Clamp(
-                m::Broadcast(m::ConstantEffectiveScalar(-128)),
-                m::GetTupleElement(
-                    &gte,
-                    conv_pattern.WithOperandIfPresent(
-                        3, m::Op().WithPredicate(IsLosslesslyConvertibleToS8)),
-                    0)
-                    .WithOneUse(),
-                m::Broadcast(m::ConstantEffectiveScalar(127))))
-            .WithElementType(S8);
-
-    // int8 -> fp32 conv
-    auto f32_pattern = m::GetTupleElement(&gte,
-                                          conv_pattern.WithOperandIfPresent(
-                                              3, m::Op().WithElementType(F32)),
-                                          0)
-                           .WithElementType(F32);
-
-    VlogIfFailureToMatch(
-        instr, s8_pattern, "s8->s8 conv",
-        m::Convert(m::Clamp(m::Op(),  //
-                            m::GetTupleElement(
-                                m::Op().WithPredicate(IsConvCustomCall)),  //
-                            m::Op()))
-            .WithElementType(S8));
-
-    VlogIfFailureToMatch(
-        instr, f32_pattern, "s8->f32 conv",
-        m::GetTupleElement(m::Op().WithPredicate(IsConvCustomCall))
-            .WithElementType(F32));
-
     PrimitiveType conv_output_ty;
-    if (Match(instr, s8_pattern)) {
+    if (MatchAndLogIfFailed(
+            instr, "s8->s8 conv",
+            m::Convert(m::Clamp(m::Broadcast(m::ConstantEffectiveScalar(-128)),
+                                m::GetTupleElement(
+                                    &gte,
+                                    conv_pattern.WithOperandIfPresent(
+                                        3, m::Op().WithPredicate(
+                                               IsLosslesslyConvertibleToS8)),
+                                    0)
+                                    .WithOneUse(),
+                                m::Broadcast(m::ConstantEffectiveScalar(127))))
+                .WithElementType(S8),
+            VLOG_IS_ON(3),
+            m::Convert(m::Clamp(m::Op(),
+                                m::GetTupleElement(
+                                    m::Op().WithPredicate(IsConvCustomCall)),
+                                m::Op()))
+                .WithElementType(S8))) {
       conv_output_ty = S8;
-    } else if (Match(instr, f32_pattern)) {
+    } else if (MatchAndLogIfFailed(
+                   instr, "s8->f32 conv",
+                   m::GetTupleElement(&gte,
+                                      conv_pattern.WithOperandIfPresent(
+                                          3, m::Op().WithElementType(F32)),
+                                      0)
+                       .WithElementType(F32),
+                   VLOG_IS_ON(3),
+                   m::GetTupleElement(m::Op().WithPredicate(IsConvCustomCall))
+                       .WithElementType(F32))) {
       conv_output_ty = F32;
     } else {
       continue;

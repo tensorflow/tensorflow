@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 
 #include <functional>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -165,6 +166,37 @@ bool Match(Value* value, const Pattern& pattern,
     }
   }
   return pattern.Match(value, option);
+}
+
+// If `enable_logging` is false, this is identical to Match(instr, pattern).
+//
+// If `enable_logging` is true and the match fails, we try to
+// Match(instr, filter_pattern). If this is true, then we log an explanation for
+// why the original Match(instr, pattern) failed.
+//
+// This function can be used aid in debugging passes with complex matchers.
+// For example, in the following snippet we're trying to match
+// m::Slice(m::Reshape(m::Pad())). Every time we encounter a slice that
+// doesn't match the larger pattern, we will log an explanation for why it
+// didn't match the larger pattern.
+//
+// if (MatchAndLogIfFailed(instr, "slice of reshape of pad",
+//                         m::Slice(m::Reshape(m::Pad())),
+//                         VLOG_IS_ON(3), m::Slice())
+//
+// TODO(jlebar): Log the caller's absl::SourceLocation once that's in OSS.
+template <typename FilterPattern, typename Pattern>
+bool MatchAndLogIfFailed(HloInstruction* instr, absl::string_view desc,
+                         const Pattern& pattern, bool enable_logging,
+                         const FilterPattern& filter_pattern) {
+  bool matched = Match(instr, pattern);
+  if (matched || !enable_logging || !Match(instr, filter_pattern)) {
+    return matched;
+  }
+  std::stringstream os;
+  CHECK(!Match(instr, pattern, {/*capture=*/false, /*explain_os=*/&os}));
+  LOG(ERROR) << "Failed to match " << desc << ":\n" << os.str();
+  return false;
 }
 
 namespace match {
