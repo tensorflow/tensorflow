@@ -311,6 +311,23 @@ void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
   }
 }
 
+TF_Tensor* TF_GetMutableOutput(TF_OpKernelContext* ctx, int i,
+                               TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (i < 0 || i >= cc_ctx->num_outputs()) {
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "output index out of range");
+    return nullptr;
+  }
+  const ::tensorflow::Tensor& cc_tensor = *(cc_ctx->mutable_output(i));
+  TF_Tensor* result =
+      ::tensorflow::TF_TensorFromTensor(cc_tensor, &status->status);
+  if (TF_GetCode(status) == TF_OK) {
+    return result;
+  } else {
+    return nullptr;
+  }
+}
+
 void TF_GetSerializedFunctionDefLibrary(
     TF_OpKernelContext* ctx, TF_Buffer* serialized_function_def_library,
     TF_Status* status) {
