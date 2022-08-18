@@ -15,14 +15,14 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 
 namespace stream_executor {
 namespace cuda {

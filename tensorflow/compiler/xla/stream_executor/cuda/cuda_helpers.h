@@ -20,6 +20,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_HELPERS_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_HELPERS_H_
 
-#include "tensorflow/stream_executor/gpu/gpu_helpers.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_helpers.h"
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_HELPERS_H_

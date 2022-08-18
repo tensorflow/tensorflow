@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
 #endif  // GOOGLE_CUDA
 
 namespace stream_executor {

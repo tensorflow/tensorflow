@@ -23,7 +23,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_ACTIVATION_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_ACTIVATION_H_
 
-#include "tensorflow/stream_executor/gpu/gpu_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 
 namespace stream_executor {
 

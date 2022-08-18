@@ -29,12 +29,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_helpers.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
-#include "tensorflow/stream_executor/gpu/gpu_activation.h"
-#include "tensorflow/stream_executor/gpu/gpu_helpers.h"
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/stream_executor/gpu/gpu_timer.h"
 
 #define SET_ATTR(setter, handle, attr, value) \
   ToStatus(setter(handle, attr, &value, sizeof(decltype(value))), #setter)

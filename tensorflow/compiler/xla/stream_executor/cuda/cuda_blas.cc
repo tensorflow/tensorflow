@@ -57,6 +57,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_helpers.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
@@ -65,11 +70,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/stream_executor/gpu/gpu_helpers.h"
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/stream_executor/gpu/gpu_timer.h"
-#include "tensorflow/stream_executor/gpu/gpu_types.h"
 
 namespace stream_executor {
 namespace cuda {

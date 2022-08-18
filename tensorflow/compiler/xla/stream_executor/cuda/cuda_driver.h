@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 
 namespace stream_executor {
 namespace gpu {

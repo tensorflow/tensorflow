@@ -18,7 +18,6 @@ package(
 )
 
 # The stream_executor_headers target does not prescribe an implementation.
-# TODO(rdzhabarov): Keep populating this based on the tensorflow/stream_executor:stream_executor_headers.
 cc_library(
     name = "stream_executor_headers",
     textual_hdrs = [
@@ -357,11 +356,18 @@ tf_cuda_library(
         ":kernel",
         ":launch_dim",
         ":platform",
+        ":plugin_registry",
         ":rng",
         ":stream_executor_headers",
         ":stream_executor_internal",
+        ":temporary_device_memory",
         ":temporary_memory_manager",
         ":timer",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:logging",
+        "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -369,16 +375,6 @@ tf_cuda_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "//third_party/eigen3",
-        "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/compiler/xla/stream_executor/platform",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:logging",
-        # TODO(rdzhabarov): dependencies below only needed until stream_executor/cuda is migrated to xla/compiler.
-        "//tensorflow/stream_executor:dnn",
-        "//tensorflow/stream_executor:plugin_registry",
-        "//tensorflow/stream_executor:temporary_device_memory",
-        "//tensorflow/stream_executor/lib",
     ],
 )
 

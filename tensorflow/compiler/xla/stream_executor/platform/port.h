@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// IWYU pragma: private, include "third_party/tensorflow/stream_executor/stream_executor.h"
+// IWYU pragma: private, include "third_party/tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_PORT_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_PORT_H_

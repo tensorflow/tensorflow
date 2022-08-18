@@ -20,6 +20,7 @@ package(
     default_visibility = [
         "//tensorflow/compiler/tf2xla:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/common_runtime/gpu:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
@@ -213,6 +214,7 @@ cc_library(
     hdrs = ["gpu_asm_opts.h"],
     visibility = [
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
@@ -230,6 +232,7 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
@@ -255,11 +258,11 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/container:flat_hash_map",
     ]) + if_cuda_is_configured([
-        "//tensorflow/stream_executor/cuda:cuda_driver",
-        "//tensorflow/stream_executor/cuda:ptxas_wrapper",
-        "//tensorflow/stream_executor/cuda:fatbinary_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
+        "//tensorflow/compiler/xla/stream_executor/cuda:ptxas_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/cuda:fatbinary_wrapper",
     ]) + if_rocm_is_configured([
-        "//tensorflow/stream_executor/rocm:rocm_driver",
+        "//tensorflow/stream_executor/rocm:rocm_driver",  # TODO(ddunleavy) update once cl/468101393 lands
     ]) + ["@com_google_absl//absl/container:flat_hash_set"],
 )
 
@@ -270,6 +273,7 @@ cc_library(
     copts = tf_copts(),
     visibility = [
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
