@@ -456,9 +456,7 @@ StatusOr<std::string> GetSavedModelDirFromMlaDir(absl::string_view mla_dir) {
     return saved_model_dir;
   }();
 
-  if (!dir.ok()) {
-    return tfrt::TfStatusFromAbslStatus(dir.status());
-  }
+  if (!dir.ok()) return tensorflow::FromAbslStatus(dir.status());
   return *dir;
 }
 
