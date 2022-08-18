@@ -1,10 +1,12 @@
 // TODO(jreiffers): Remove -cse below once the duplicate init_tensor instruction
 // is fixed.
 
-// RUN: mlir-hlo-opt %s -split-input-file --gml-tiling="tile-sizes=256,512" --gml-fusion -cse | \
+// RUN: mlir-hlo-opt %s --split-input-file --gml-tiling=tile-sizes=[256,512] \
+// RUN:     --gml-fusion --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-TILE
 
-// RUN: mlir-hlo-opt %s -split-input-file --gml-tiling="tile-sizes=1,1" --gml-fusion -cse | \
+// RUN: mlir-hlo-opt %s --split-input-file --gml-tiling=tile-sizes=[1,1] \
+// RUN:     --gml-fusion --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-POINT
 
 func.func @pointwise(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {

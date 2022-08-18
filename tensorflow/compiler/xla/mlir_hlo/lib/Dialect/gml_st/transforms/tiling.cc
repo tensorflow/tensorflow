@@ -14,192 +14,296 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <sstream>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace gml_st {
 namespace {
 
-Value createPointSet(OpBuilder &b, Location loc, Value space, ValueRange ivs) {
-  size_t rank = ivs.size();
-  SmallVector<int64_t> allDynamicOffsets(rank,
-                                         ShapedType::kDynamicStrideOrOffset);
-  ArrayAttr allDynamicOffsetsAttr = b.getI64ArrayAttr(allDynamicOffsets);
-  return b.create<PointOp>(loc, space, ivs, allDynamicOffsetsAttr);
+Value createPoint(OpBuilder &b, Location loc, Value superset, ValueRange ivs) {
+  ArrayAttr allDynamicOffsetsAttr = b.getI64ArrayAttr(
+      SmallVector<int64_t>(ivs.size(), ShapedType::kDynamicStrideOrOffset));
+  return b.create<PointOp>(loc, superset, ivs, allDynamicOffsetsAttr);
 }
 
-Value createTileSet(OpBuilder &b, Location loc, Value space, ValueRange ivs,
-                    ValueRange upperBounds, ValueRange steps,
-                    ArrayRef<int64_t> tileSizes) {
-  // Compute the actual sizes of the tile.
-  ArrayRef<int64_t> spaceShape = space.getType().cast<TileType>().getShape();
-  size_t rank = ivs.size();
+Value createTile(OpBuilder &b, Location loc, Value superset, ValueRange ivs,
+                 ValueRange upperBounds, ValueRange steps,
+                 ArrayRef<int64_t> tileSizes) {
+  // Compute the actual size of the tile.
+  ArrayRef<int64_t> supersetShape =
+      superset.getType().cast<TileType>().getShape();
+  uint64_t rank = supersetShape.size();
   SmallVector<int64_t> staticSizes;
   SmallVector<Value> dynamicSizes;
   staticSizes.reserve(rank);
-  for (int64_t i = 0; i < static_cast<int64_t>(rank); ++i) {
-    // Check if this dimension can be perfectly tiled.
-    if (tileSizes[i] == 1 || (spaceShape[i] != ShapedType::kDynamicSize &&
-                              spaceShape[i] % tileSizes[i] == 0)) {
+  for (int64_t i = 0; i < rank; ++i) {
+    // If the dimension is perfectly tiled, use the statically known tile size.
+    if (tileSizes[i] == 1 || (supersetShape[i] != ShapedType::kDynamicSize &&
+                              supersetShape[i] % tileSizes[i] == 0)) {
       staticSizes.push_back(tileSizes[i]);
       continue;
     }
 
-    auto nextIv = b.create<arith::AddIOp>(loc, ivs[i], steps[i]);
-    auto isPartialTile = b.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt,
-                                                 nextIv, upperBounds[i]);
-    auto remainder = b.create<arith::SubIOp>(loc, upperBounds[i], ivs[i]);
-    auto size =
-        b.create<arith::SelectOp>(loc, isPartialTile, remainder, steps[i]);
+    // Otherwise, compute the tile size dynamically.
+    auto ivNext = b.create<arith::AddIOp>(loc, ivs[i], steps[i]);
+    auto isPartialTileInDim = b.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::sgt, ivNext, upperBounds[i]);
+    auto remainderInDim = b.create<arith::SubIOp>(loc, upperBounds[i], ivs[i]);
+    auto tileSizeInDim = b.create<arith::SelectOp>(loc, isPartialTileInDim,
+                                                   remainderInDim, steps[i]);
     staticSizes.push_back(ShapedType::kDynamicSize);
-    dynamicSizes.push_back(size);
+    dynamicSizes.push_back(tileSizeInDim);
   }
 
-  SmallVector<int64_t> allDynamicOffsets(rank,
-                                         ShapedType::kDynamicStrideOrOffset);
-  SmallVector<int64_t> allUnitStrides(rank, 1);
-  auto staticSizesAttr = b.getI64ArrayAttr(staticSizes);
-  auto staticOffsetsAttr = b.getI64ArrayAttr(allDynamicOffsets);
-  auto staticStridesAttr = b.getI64ArrayAttr(allUnitStrides);
   auto tileTy = b.getType<TileType>(staticSizes);
-  return b.create<TileOp>(loc, tileTy, space, ivs, dynamicSizes, ValueRange{},
-                          staticOffsetsAttr, staticSizesAttr,
-                          staticStridesAttr);
+  auto allDynamicOffsetsAttr = b.getI64ArrayAttr(
+      SmallVector<int64_t>(rank, ShapedType::kDynamicStrideOrOffset));
+  auto staticSizesAttr = b.getI64ArrayAttr(staticSizes);
+  auto unitStridesAttr = b.getI64ArrayAttr(SmallVector<int64_t>(rank, 1));
+  return b.create<TileOp>(loc, tileTy, superset, ivs, dynamicSizes,
+                          ValueRange{}, allDynamicOffsetsAttr, staticSizesAttr,
+                          unitStridesAttr);
 }
 
-Value createSet(OpBuilder &b, Location loc, Value space, ValueRange ivs,
-                ValueRange upperBounds, ValueRange steps,
-                ArrayRef<int64_t> tileSizes) {
-  if (llvm::all_of(tileSizes, [](int64_t s) { return s == 1; })) {
-    return createPointSet(b, loc, space, ivs);
+Value createTileOrPoint(OpBuilder &b, Location loc, Value space, ValueRange ivs,
+                        ValueRange upperBounds, ValueRange steps,
+                        ArrayRef<int64_t> tileSizes) {
+  if (llvm::all_of(tileSizes, [](int64_t d) { return d == 1; })) {
+    return createPoint(b, loc, space, ivs);
   }
-  return createTileSet(b, loc, space, ivs, upperBounds, steps, tileSizes);
+  return createTile(b, loc, space, ivs, upperBounds, steps, tileSizes);
 }
 
-Value createParallelLoopTiling(OpBuilder &b, Location loc, Value target,
-                               ArrayRef<int64_t> tileSizes) {
-  auto ty = target.getType().cast<RankedTensorType>();
-  assert(ty.getRank() == static_cast<int64_t>(tileSizes.size()) &&
-         "expect tile sizes to match rank of target value");
+Value createNestedPloopTilingRecursively(
+    OpBuilder &b, Location loc, Value init, Value source,
+    ArrayRef<SmallVector<int64_t>> nestedTileSizes) {
+  assert(!nestedTileSizes.empty() && "expect tile sizes");
 
-  // Create space.
-  SmallVector<Value> dynamicDims =
-      tensor::createDynamicDimValues(b, loc, target);
-  auto spaceTy = b.getType<TileType>(ty.getShape());
-  Value space = b.create<SpaceOp>(loc, spaceTy, dynamicDims,
-                                  b.getI64ArrayAttr(ty.getShape()));
-
-  // Create init tensor.
-  auto init = b.create<linalg::InitTensorOp>(loc, dynamicDims, ty.getShape(),
-                                             ty.getElementType());
+  // Create root space.
+  auto sourceTy = source.getType().cast<RankedTensorType>();
+  SmallVector<Value> sourceDynamicDims =
+      tensor::createDynamicDimValues(b, loc, source);
+  auto sourceSpaceTy = b.getType<TileType>(sourceTy.getShape());
+  Value sourceSpace = b.create<SpaceOp>(loc, sourceSpaceTy, sourceDynamicDims,
+                                        b.getI64ArrayAttr(sourceTy.getShape()));
 
   // Create loop bounds.
-  Value zero = b.create<arith::ConstantIndexOp>(loc, 0);
-  SmallVector<Value> lowerBounds(ty.getRank(), zero);
-  SmallVector<Value> upperBounds = tensor::createDimValues(b, loc, target);
-  auto steps =
-      llvm::to_vector(llvm::map_range(tileSizes, [&](int64_t s) -> Value {
-        return b.create<arith::ConstantIndexOp>(loc, s).getResult();
+  SmallVector<Value> lowerBounds(sourceTy.getRank(),
+                                 b.create<arith::ConstantIndexOp>(loc, 0));
+  SmallVector<Value> upperBounds = tensor::createDimValues(b, loc, source);
+  SmallVector<Value> steps = llvm::to_vector(
+      llvm::map_range(nestedTileSizes.front(), [&](int64_t s) -> Value {
+        return b.create<arith::ConstantIndexOp>(loc, s);
       }));
 
   // Create ploop.
   auto ploop = b.create<ParallelOp>(
-      loc, ty, lowerBounds, upperBounds, steps,
+      loc, sourceTy, lowerBounds, upperBounds, steps,
       [&](OpBuilder &b, Location loc, ValueRange ivs) {
-        Value set =
-            createSet(b, loc, space, ivs, upperBounds, steps, tileSizes);
-        auto materialized = b.create<MaterializeOp>(loc, target, set);
-        b.create<SetYieldOp>(loc, ValueRange{materialized}, ValueRange{init},
-                             ValueRange{set});
+        Value subset = createTileOrPoint(b, loc, sourceSpace, ivs, upperBounds,
+                                         steps, nestedTileSizes.front());
+        Value innerResult = b.create<MaterializeOp>(loc, source, subset);
+
+        // Recur if needed.
+        if (nestedTileSizes.size() >= 2) {
+          auto materializedInitSubset =
+              b.create<MaterializeOp>(loc, init, subset);
+          innerResult = createNestedPloopTilingRecursively(
+              b, loc, materializedInitSubset, innerResult,
+              nestedTileSizes.drop_front());
+        }
+
+        b.create<SetYieldOp>(loc, ValueRange{innerResult}, ValueRange{init},
+                             ValueRange{subset});
       });
   return ploop.getResults().front();
 }
 
-const llvm::StringLiteral kHasTiledOperandsAttrName = "__has_tiled_operands";
+Value createNestedPloopTiling(OpBuilder &b, Location loc, Value source,
+                              ArrayRef<SmallVector<int64_t>> &nestedTileSizes) {
+  // Create init tensor.
+  auto sourceTy = source.getType().cast<RankedTensorType>();
+  SmallVector<Value> sourceDynamicDims =
+      tensor::createDynamicDimValues(b, loc, source);
+  auto init = b.create<linalg::InitTensorOp>(
+      loc, sourceDynamicDims, sourceTy.getShape(), sourceTy.getElementType());
 
-template <typename OpTy>
-struct AllOperandsTilingPattern : public OpRewritePattern<OpTy> {
-  AllOperandsTilingPattern(ArrayRef<int64_t> tileSizes, MLIRContext *context,
-                           PatternBenefit benefit = 1)
-      : OpRewritePattern<OpTy>(context, benefit),
-        tileSizes(tileSizes.begin(), tileSizes.end()) {}
+  return createNestedPloopTilingRecursively(b, loc, init, source,
+                                            nestedTileSizes);
+}
 
-  LogicalResult matchAndRewrite(OpTy rootOp,
-                                PatternRewriter &rewriter) const override {
-    // Avoid infinite rewrites.
-    if (rootOp->hasAttr(kHasTiledOperandsAttrName)) return failure();
+LogicalResult tileUniqueFunctionResult(
+    func::FuncOp f, ArrayRef<SmallVector<int64_t>> nestedTileSizes) {
+  assert(!nestedTileSizes.empty() && "expect tile sizes");
 
-    // Fail if any of the operands is not a tensor of the expected rank.
-    int64_t rank = tileSizes.size();
-    if (!llvm::all_of(rootOp->getOperandTypes(), [&](Type ty) {
-          auto rankedTy = ty.dyn_cast<RankedTensorType>();
-          return rankedTy && rankedTy.getRank() == rank;
-        })) {
-      return failure();
-    }
+  // Apply to functions that return a single ranked tensor.
+  FunctionType funcTy = f.getFunctionType();
+  if (funcTy.getNumResults() != 1) return failure();
+  auto resultTy = funcTy.getResults().front().dyn_cast<RankedTensorType>();
+  if (!resultTy) return failure();
 
-    // Tile all operands.
-    auto tiledOperands = llvm::to_vector(
-        llvm::map_range(rootOp->getOperands(), [&](auto operand) {
-          return createParallelLoopTiling(rewriter, operand.getLoc(), operand,
-                                          tileSizes);
-        }));
+  // Only apply to single-block functions.
+  llvm::iplist<Block> &allBlocks = f.getBody().getBlocks();
+  if (allBlocks.size() != 1) return failure();
+  Block &block = allBlocks.front();
 
-    // Replace root op and mark it as tiled.
-    auto res = rewriter.replaceOpWithNewOp<func::ReturnOp>(
-        rootOp, rootOp->getResultTypes(), tiledOperands, rootOp->getAttrs());
-    res->setAttr(kHasTiledOperandsAttrName, rewriter.getUnitAttr());
+  // Find return op and the unique source value to be tiled.
+  auto returnOp = llvm::dyn_cast<func::ReturnOp>(block.getTerminator());
+  Value source = returnOp.getOperands().front();
+  auto sourceTy = source.getType().cast<RankedTensorType>();
 
-    return success();
+  // All nested tiles must be of the same rank as the source value.
+  int64_t rank = sourceTy.getRank();
+  if (llvm::any_of(nestedTileSizes,
+                   [&](auto it) { return it.size() != rank; })) {
+    return failure();
   }
 
- private:
+  // Create tiled implementation right before the return op.
+  OpBuilder b(f.getContext());
+  b.setInsertionPoint(returnOp);
+  Value tiledSource =
+      createNestedPloopTiling(b, source.getLoc(), source, nestedTileSizes);
+
+  // Return the tiled value.
+  b.create<func::ReturnOp>(returnOp.getLoc(), tiledSource);
+  returnOp.erase();
+  return success();
+}
+
+// Parse comma-separated integeres as tile sizes:
+//   <tile-sizes> ::== `[` <int> ( `,` <int> )* `]`
+llvm::Optional<SmallVector<int64_t>> parseTileSizes(
+    std::istringstream &istream) {
   SmallVector<int64_t> tileSizes;
-};
+
+  // Parse opening bracket `[`.
+  if (istream.peek() != '[') return llvm::None;
+  istream.get();
+
+  // Parse leading extent.
+  int64_t value;
+  istream >> value;
+  tileSizes.push_back(value);
+
+  // Parse trailing extents.
+  while (istream.peek() == ',') {
+    istream.get();
+    istream >> value;
+    tileSizes.push_back(value);
+  }
+
+  // Parse closing bracket `]`.
+  if (istream.peek() != ']') return llvm::None;
+  istream.get();
+
+  return tileSizes;
+}
+
+// Parse comma-sepatated nested tile sizes:
+//   <nested-tile-sizes> ::== <tile-sizes> ( `,` <tile-sizes> )*
+llvm::Optional<SmallVector<SmallVector<int64_t>>> parseNestedTileSizes(
+    std::istringstream &istream) {
+  SmallVector<SmallVector<int64_t>> nestedTileSizes;
+
+  // Parse leading tile sizes.
+  llvm::Optional<SmallVector<int64_t>> tileSizes = parseTileSizes(istream);
+  if (!tileSizes) return llvm::None;
+  nestedTileSizes.push_back(*tileSizes);
+
+  // Parse trailing tile sizes.
+  while (istream.peek() == ',') {
+    istream.get();
+    tileSizes = parseTileSizes(istream);
+    if (!tileSizes) return llvm::None;
+    nestedTileSizes.push_back(*tileSizes);
+  }
+
+  // Ensure to fully parse the argument.
+  if (!istream.eof()) return llvm::None;
+
+  return nestedTileSizes;
+}
+
+llvm::Optional<SmallVector<SmallVector<int64_t>>> parseNestedTileSizes(
+    const std::string &str) {
+  std::istringstream istream(str);
+  return parseNestedTileSizes(istream);
+}
 
 struct TilingPass : public TilingPassBase<TilingPass> {
-  TilingPass() = default;
-  explicit TilingPass(llvm::ArrayRef<int64_t> sizes) { tileSizes = sizes; }
+  TilingPass() : TilingPassBase<TilingPass>() {
+    tileSizesOpt.setCallback(
+        [&](const std::string &str) { tileSizes = parseNestedTileSizes(str); });
+  }
+  explicit TilingPass(const std::string &tileSizesStr)
+      : TilingPassBase<TilingPass>() {
+    tileSizes = parseNestedTileSizes(tileSizesStr);
+  }
+  explicit TilingPass(const SmallVector<SmallVector<int64_t>> &tileSizes)
+      : TilingPassBase<TilingPass>(), tileSizes(tileSizes) {}
 
   void getDependentDialects(DialectRegistry &registry) const final {
-    registry.insert<GmlStDialect>();
+    registry
+        .insert<linalg::LinalgDialect, tensor::TensorDialect, GmlStDialect>();
   }
 
   void runOnOperation() override {
     func::FuncOp f = getOperation();
-    MLIRContext *ctx = &getContext();
 
-    RewritePatternSet patterns(ctx);
-    patterns.add<AllOperandsTilingPattern<func::ReturnOp>>(tileSizes, ctx);
-
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+    // If tile sizes were provided in string form, e.g. in lit tests, we might
+    // fail to parse them.
+    if (!tileSizes) {
+      f.emitError()
+          << "Unknown tiling sizes (not provided or failed to parse them from '"
+          << tileSizesOpt << "'";
       return signalPassFailure();
     }
 
-    // Clean up by removing temporary attributes.
-    f.walk([](Operation *op) { op->removeAttr(kHasTiledOperandsAttrName); });
+    // Assert our expectation to tile functions with unique ranked tensor
+    // results. This is important for the e2e tests to make sure that we
+    // actually test a tiled implementation.
+    FunctionType funcTy = f.getFunctionType();
+    bool isTilingTarget = funcTy.getNumResults() == 1 &&
+                          funcTy.getResults().front().isa<RankedTensorType>();
+    if (isTilingTarget) {
+      if (failed(tileUniqueFunctionResult(f, *tileSizes))) {
+        return signalPassFailure();
+      }
+    }
   }
+
+  llvm::Optional<SmallVector<SmallVector<int64_t>>> tileSizes;
 };
 
 }  // namespace
 
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass() {
+  return std::make_unique<TilingPass>();
+}
+
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
-    ArrayRef<int64_t> tileSizes) {
+    const SmallVector<SmallVector<int64_t>> &tileSizes) {
+  return std::make_unique<TilingPass>(tileSizes);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
+    const std::string &tileSizes) {
   return std::make_unique<TilingPass>(tileSizes);
 }
 
