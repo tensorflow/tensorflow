@@ -1668,8 +1668,8 @@ func.func @test_leaky_relu_qi8(%arg0: tensor<14x19x!quant.uniform<i8:f32, 0.0155
 // -----
 
 // CHECK-LABEL: test_resize_bilinear_qi8
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.resize"(%arg0) {mode = "BILINEAR", offset = [-448, -448], offset_fp = [0.000000e+00 : f32, 0.000000e+00 : f32], output_size = [640, 640], shift = 10 : i32, stride = [128, 128], stride_fp = [0.000000e+00 : f32, 0.000000e+00 : f32]}
-// CHECK: %[[VAR2:.*]] = "tosa.rescale"(%[[VAR1]]) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [50 : i32]}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.resize"(%arg0) {border = [7, 7], mode = "BILINEAR", offset = [-7, -7], scale = [16, 2, 16, 2]}
+// CHECK: %[[VAR2:.*]] = "tosa.rescale"(%[[VAR1]]) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [38 : i32]}
 func.func @test_resize_bilinear_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
   %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = false, half_pixel_centers = true} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
