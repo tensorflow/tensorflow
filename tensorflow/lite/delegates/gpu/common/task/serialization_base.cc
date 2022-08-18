@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
@@ -30,7 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 
 namespace tflite {
 namespace gpu {
@@ -390,36 +388,6 @@ void Decode(const data::BufferDescriptor* fb_desc, BufferDescriptor* desc) {
                            fb_desc->data()->data() + fb_desc->data()->size());
 }
 
-flatbuffers::Offset<data::Texture2DDescriptor> Encode(
-    const Texture2DDescriptor& desc, flatbuffers::FlatBufferBuilder* builder) {
-  auto obj_fb =
-      Encode(*static_cast<const GPUObjectDescriptor*>(&desc), builder);
-
-  auto data_fb = builder->CreateVector(desc.data);
-  auto size_fb = Encode(desc.size, builder);
-  data::Texture2DDescriptorBuilder tex_builder(*builder);
-  tex_builder.add_base_obj(obj_fb);
-  tex_builder.add_element_type(ToFB(desc.element_type));
-  tex_builder.add_normalized(desc.normalized);
-  tex_builder.add_normalized_type(ToFB(desc.normalized_type));
-  tex_builder.add_size(size_fb);
-  tex_builder.add_data(data_fb);
-  return tex_builder.Finish();
-}
-
-void Decode(const data::Texture2DDescriptor* fb_desc,
-            Texture2DDescriptor* desc) {
-  Decode(fb_desc->base_obj(), desc);
-  desc->element_type = ToEnum(fb_desc->element_type());
-  desc->normalized = fb_desc->normalized();
-  desc->normalized_type = ToEnum(fb_desc->normalized_type());
-  desc->size.x = fb_desc->size()->x();
-  desc->size.y = fb_desc->size()->y();
-  desc->data =
-      std::vector<uint8_t>(fb_desc->data()->data(),
-                           fb_desc->data()->data() + fb_desc->data()->size());
-}
-
 flatbuffers::Offset<data::TensorDescriptor> Encode(
     const TensorDescriptor& desc, flatbuffers::FlatBufferBuilder* builder) {
   auto obj_fb =
@@ -504,15 +472,6 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     args->AddObject(key, std::make_unique<BufferDescriptor>(std::move(desc)));
   }
 
-  for (auto texture_pair_fb : *fb_args->texture2d_objects()) {
-    std::string key(texture_pair_fb->key()->c_str(),
-                    texture_pair_fb->key()->size());
-    Texture2DDescriptor desc;
-    Decode(texture_pair_fb->value(), &desc);
-    args->AddObject(key,
-                    std::make_unique<Texture2DDescriptor>(std::move(desc)));
-  }
-
   for (auto tensor_pair_fb : *fb_args->tensor_objects()) {
     std::string key(tensor_pair_fb->key()->c_str(),
                     tensor_pair_fb->key()->size());
@@ -529,16 +488,6 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     auto access_type = desc.GetAccess();
     args->AddObjectRef(key, access_type,
                        std::make_unique<BufferDescriptor>(std::move(desc)));
-  }
-
-  for (auto texture_pair_fb : *fb_args->texture2d_refs()) {
-    std::string key(texture_pair_fb->key()->c_str(),
-                    texture_pair_fb->key()->size());
-    Texture2DDescriptor desc;
-    Decode(texture_pair_fb->value(), &desc);
-    auto access_type = desc.GetAccess();
-    args->AddObjectRef(key, access_type,
-                       std::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 
   for (auto tensor_pair_fb : *fb_args->tensor_refs()) {
@@ -598,19 +547,6 @@ flatbuffers::Offset<data::Arguments> Encode(
     buf_map_builder.add_value(desc_fb);
     buffer_objs_fb.push_back(buf_map_builder.Finish());
   }
-  std::vector<flatbuffers::Offset<data::Texture2DDescriptorMapValue>>
-      texture2d_objs_fb;
-  for (auto& value : args.objects_) {
-    const auto* texture_desc =
-        dynamic_cast<const Texture2DDescriptor*>(value.second.get());
-    if (!texture_desc) continue;
-    auto desc_fb = Encode(*texture_desc, builder);
-    auto key_fb = builder->CreateString(value.first);
-    data::Texture2DDescriptorMapValueBuilder tex_map_builder(*builder);
-    tex_map_builder.add_key(key_fb);
-    tex_map_builder.add_value(desc_fb);
-    texture2d_objs_fb.push_back(tex_map_builder.Finish());
-  }
   std::vector<flatbuffers::Offset<data::TensorDescriptorMapValue>>
       tensor_objs_fb;
   for (auto& value : args.objects_) {
@@ -638,19 +574,6 @@ flatbuffers::Offset<data::Arguments> Encode(
     buf_map_builder.add_value(desc_fb);
     buffer_refs_fb.push_back(buf_map_builder.Finish());
   }
-  std::vector<flatbuffers::Offset<data::Texture2DDescriptorMapValue>>
-      texture2d_refs_fb;
-  for (auto& value : args.object_refs_) {
-    const auto* texture_desc =
-        dynamic_cast<const Texture2DDescriptor*>(value.second.get());
-    if (!texture_desc) continue;
-    auto desc_fb = Encode(*texture_desc, builder);
-    auto key_fb = builder->CreateString(value.first);
-    data::Texture2DDescriptorMapValueBuilder tex_map_builder(*builder);
-    tex_map_builder.add_key(key_fb);
-    tex_map_builder.add_value(desc_fb);
-    texture2d_refs_fb.push_back(tex_map_builder.Finish());
-  }
   std::vector<flatbuffers::Offset<data::TensorDescriptorMapValue>>
       tensor_refs_fb;
   for (auto& value : args.object_refs_) {
@@ -669,20 +592,16 @@ flatbuffers::Offset<data::Arguments> Encode(
   auto float_values_fb_vec = builder->CreateVector(float_values_fb);
   auto half_values_fb_vec = builder->CreateVector(half_values_fb);
   auto buffer_objs_fb_vec = builder->CreateVector(buffer_objs_fb);
-  auto texture2d_objs_fb_vec = builder->CreateVector(texture2d_objs_fb);
   auto tensor_objs_fb_vec = builder->CreateVector(tensor_objs_fb);
   auto buffer_refs_fb_vec = builder->CreateVector(buffer_refs_fb);
-  auto texture2d_refs_fb_vec = builder->CreateVector(texture2d_refs_fb);
   auto tensor_refs_fb_vec = builder->CreateVector(tensor_refs_fb);
   data::ArgumentsBuilder arguments_builder(*builder);
   arguments_builder.add_int_values(int_values_fb_vec);
   arguments_builder.add_float_values(float_values_fb_vec);
   arguments_builder.add_half_values(half_values_fb_vec);
   arguments_builder.add_buffer_objects(buffer_objs_fb_vec);
-  arguments_builder.add_texture2d_objects(texture2d_objs_fb_vec);
   arguments_builder.add_tensor_objects(tensor_objs_fb_vec);
   arguments_builder.add_buffer_refs(buffer_refs_fb_vec);
-  arguments_builder.add_texture2d_refs(texture2d_refs_fb_vec);
   arguments_builder.add_tensor_refs(tensor_refs_fb_vec);
   return arguments_builder.Finish();
 }
