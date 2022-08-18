@@ -2611,7 +2611,7 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:dynamic_update_slice_inplace.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:element_wise_row_vectorization.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:element_wise_row_vectorization_test",
-        "//tensorflow/compiler/xla/service/gpu/tests:fused_scatter.hlo.test",
+        # "//tensorflow/compiler/xla/service/gpu/tests:fused_scatter.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:fused_slice.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:fused_slice_different_operands.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:fusion.hlo.test",
