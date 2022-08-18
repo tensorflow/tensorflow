@@ -71,6 +71,30 @@ cc_library(
 )
 
 cc_library(
+    name = "compilation_pipeline",
+    srcs = ["compilation_pipeline.cc"],
+    hdrs = ["compilation_pipeline.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":custom_call_encoding",
+        ":passes",
+        "//tensorflow/compiler/xla/runtime:type_id",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncToLLVM",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:MemRefToLLVM",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,  # has pipeline registration
+)
+
+cc_library(
     name = "custom_call_encoding",
     srcs = ["custom_call_encoding.cc"],
     hdrs = ["custom_call_encoding.h"],

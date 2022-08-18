@@ -188,10 +188,9 @@ limitations under the License.
 
 #if XLA_ENABLE_XLIR
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
-#include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
-namespace jitrt = ::tfrt::jitrt;
 #endif  // XLA_ENABLE_XLIR
 
 namespace xla {
@@ -1431,20 +1430,20 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     const auto& program = std::get<OwnedJitRtProgram>(compiled_executable);
 
     // Options for the default JitRt compilation pipeline.
-    jitrt::CompilationPipelineOptions copts;
-    copts.num_worker_threads = 1;
+    runtime::CompilationPipelineOptions copts;
 
     // Options for constructing JitRt JitExecutable.
     runtime::JitExecutable::Options opts;
     opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
-    opts.compiler.register_dialects = jitrt::RegisterDefaultJitRtDialects;
+    opts.compiler.register_dialects =
+        runtime::RegisterDefaultXlaRuntimeDialects;
 
     // Register JitRt Gpu runtime custom calls with the linker.
     opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
         JitRtGpuCustomCalls(), PopulateXlaTypeIdNames);
 
     opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
-      jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
+      runtime::CreateDefaultXlaRuntimeCompilationPipeline(pm, copts);
     };
 
     // Instantiate new JitExecutable from the MLIR source.

@@ -17,6 +17,7 @@ tf_native_cc_binary(
         "//tensorflow/compiler/xla/mlir/ir/runtime/tests:testlib",
         "//tensorflow/compiler/xla/mlir/transforms/math:passes",
         "//tensorflow/compiler/xla/mlir/transforms/memref:passes",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
