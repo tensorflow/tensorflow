@@ -24,7 +24,6 @@ import threading
 
 from absl import logging
 import numpy as np
-import six
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -142,7 +141,7 @@ class _EagerTensorCache(object):
     self._data.clear()
 
 
-class FunctionCallOptions(object):
+class FunctionCallOptions:
   """Options applied at call sites of eager functions.
 
   Eager functions are functions decorated with tf.contrib.eager.defun.
@@ -206,7 +205,7 @@ class _TensorCaches(threading.local):
   __slots__ = ["_ones_rank_cache", "_zeros_cache"]
 
   def __init__(self):
-    super(_TensorCaches, self).__init__()
+    super().__init__()
     self._ones_rank_cache = None
     self._zeros_cache = None
 
@@ -234,7 +233,7 @@ class _ContextSwitchStack(threading.local):
   """A thread-local stack of context switches."""
 
   def __init__(self, eager):
-    super(_ContextSwitchStack, self).__init__()
+    super().__init__()
     self.stack = []
     if eager:
       # Initialize the stack with a pointer to enter the eager context; this
@@ -324,9 +323,8 @@ class LogicalDeviceConfiguration(
               memory_limit=None,
               experimental_priority=None,
               experimental_device_ordinal=0):
-    return super(LogicalDeviceConfiguration,
-                 cls).__new__(cls, memory_limit, experimental_priority,
-                              experimental_device_ordinal)
+    return super().__new__(cls, memory_limit, experimental_priority,
+                           experimental_device_ordinal)
 
 
 @tf_export("config.PhysicalDevice")
@@ -389,7 +387,7 @@ class _TensorCacheDeleter(object):
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
 # TODO(agarwal): consider keeping the corresponding Graph here.
-class Context(object):
+class Context:
   """Environment in which eager operations execute."""
 
   # TODO(agarwal): create and link in some documentation for `execution_mode`.
@@ -2020,7 +2018,7 @@ class _EagerDeviceContext(object):
     except KeyError:
       # Handle a cache miss.
       if new_device_name is not None:
-        if not isinstance(new_device_name, six.string_types):
+        if not isinstance(new_device_name, str):
           raise ValueError("Expecting a string device name. Got %s(%s)" %
                            (type(new_device_name), new_device_name))
         device_spec = pydev.DeviceSpec.from_string(new_device_name)
