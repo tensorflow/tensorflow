@@ -719,7 +719,10 @@ class MaterializeShapeOp : public FolderPatternBase<MaterializeShapeOp> {
     if (!input_shape.getShape().empty() && input_shape.getShape()[0] == 0)
       return failure();
 
-    ElementsAttr const_attr = ConvertShapeToAttr(input_shape);
+    Type output_dtype =
+        op->getResult(0).getType().cast<ShapedType>().getElementType();
+    ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
+        output_dtype, {input_shape.getRank()}, input_shape.getShape());
 
     // Add the control edge to `input` to ensure that the constant value will
     // only be run in the cases where Shape would have been run in the original
