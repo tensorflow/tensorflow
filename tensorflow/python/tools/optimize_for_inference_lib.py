@@ -648,18 +648,6 @@ def fuse_decomposed_batch_norm(input_graph_def):
     else:
       raise ValueError("Duplicate node names detected for ", node.name)
 
-  # Check format and only proceed if graph is in NHWC or has no format set.
-  data_format = None
-  for node in input_graph_def.node:
-    if "data_format" in node.attr.keys():
-      data_format = node.attr["data_format"]
-      if data_format is not None and data_format.s != b"NHWC":
-        tf_logging.warn("%s in %s format, not candidate for batchnorm fusion."
-                        % (node.name, data_format.s))
-        return input_graph_def
-    else:
-      continue
-
   nodes_to_skip = {}
   new_ops = []
   for node in input_graph_def.node:
@@ -682,6 +670,23 @@ def fuse_decomposed_batch_norm(input_graph_def):
     # Mul (input, Mul)
     input_data_op = node_from_map(input_node_map, data_scale_mul_op.input[0])
     scale_op = node_from_map(input_node_map, data_scale_mul_op.input[1])
+
+    # Check input to batchnorm and only proceed fusion if input is
+    # Conv2D or DepthwiseConv2dNative and data format is NHWC.
+    data_format = None
+    if input_data_op.op in ["Conv2D", "DepthwiseConv2dNative"]:
+      data_format = input_data_op.attr["data_format"]
+    else:
+      for in_node_name in input_data_op.input:
+        in_node = node_from_map(input_node_map, in_node_name)
+        if in_node is None:
+          raise ValueError("The node map has no entry for ", in_node_name)
+        if in_node.op in ["Conv2D", "DepthwiseConv2dNative"]:
+          data_format = in_node.attr["data_format"]
+          break
+
+    if data_format is None or data_format.s != b"NHWC":
+      continue
 
     if scale_op.op == "Rsqrt":
       gamma_op = None
@@ -764,8 +769,7 @@ def fuse_decomposed_batch_norm(input_graph_def):
         attr_value_pb2.AttrValue(b=False))
     new_fused_batchnorm_op.attr["epsilon"].CopyFrom(
         attr_value_pb2.AttrValue(f=epsilon.tolist()))
-    if data_format is not None:
-      new_fused_batchnorm_op.attr["data_format"].CopyFrom(data_format)
+    new_fused_batchnorm_op.attr["data_format"].CopyFrom(data_format)
     new_fused_batchnorm_op.input.extend([input_data_op.name, gamma_op.name,
                                          beta_op.name, mean_op.name,
                                          variance_op.name])
