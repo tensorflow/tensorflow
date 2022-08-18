@@ -70,7 +70,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   # Use a small max_workspace_size for tests so they don't consume too much GPU
   # memory.
-  _TRT_MAX_WORKSPACE_SIZE_BYTES = trt_convert.DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES
+  _TRT_MAX_WORKSPACE_SIZE_BYTES = (
+      trt_convert.DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES)
 
   def mkdtemp(self):
     return tempfile.mkdtemp(dir=self.get_temp_dir())
