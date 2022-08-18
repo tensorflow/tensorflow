@@ -24,9 +24,23 @@ cusolverStatus_t CUSOLVERAPI cusolverDnCreate(cusolverDnHandle_t *handle) {
   return func_ptr(handle);
 }
 
+cusolverStatus_t CUSOLVERAPI cusolverSpCreate(cusolverSpHandle_t *handle) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(cusolverSpHandle_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverSpCreate");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle);
+}
+
 cusolverStatus_t CUSOLVERAPI cusolverDnDestroy(cusolverDnHandle_t handle) {
   using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(cusolverDnHandle_t);
   static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnDestroy");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverSpDestroy(cusolverSpHandle_t handle) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(cusolverSpHandle_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverSpDestroy");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(handle);
 }
@@ -36,6 +50,15 @@ cusolverStatus_t CUSOLVERAPI cusolverDnSetStream(cusolverDnHandle_t handle,
   using FuncPtr =
       cusolverStatus_t(CUSOLVERAPI *)(cusolverDnHandle_t, cudaStream_t);
   static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnSetStream");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, streamId);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverSpSetStream(cusolverSpHandle_t handle,
+                                                 cudaStream_t streamId) {
+  using FuncPtr =
+      cusolverStatus_t(CUSOLVERAPI *)(cusolverSpHandle_t, cudaStream_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverSpSetStream");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(handle, streamId);
 }
@@ -2173,6 +2196,82 @@ cusolverStatus_t CUSOLVERAPI cusolverDnZgeqrf(cusolverDnHandle_t handle, int m,
   static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnZgeqrf");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(handle, m, n, A, lda, TAU, Workspace, Lwork, devInfo);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverSpScsrlsvqr(cusolverSpHandle_t handle,
+    int m, int nnz,
+    const cusparseMatDescr_t descrA,
+    const float *csrValA,
+    const int *csrRowPtrA,
+    const int *csrColIndA,
+    const float *b, float tol,
+    int reorder, float *x,
+    int *singularity) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+    cusolverSpHandle_t, int, int, const cusparseMatDescr_t, const float *,
+    const int *, const int *, const float *, float, int, float *, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverSpScsrlsvqr");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, m, nnz, descrA, csrValA, csrRowPtrA, csrColIndA,
+                  b, tol, reorder, x, singularity);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverSpDcsrlsvqr(cusolverSpHandle_t handle,
+    int m, int nnz,
+    const cusparseMatDescr_t descrA,
+    const double *csrValA,
+    const int *csrRowPtrA,
+    const int *csrColIndA,
+    const double *b, double tol,
+    int reorder, double *x,
+    int *singularity) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+    cusolverSpHandle_t, int, int, const cusparseMatDescr_t, const double *,
+    const int *, const int *, const double *, double, int, double *, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverSpDcsrlsvqr");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, m, nnz, descrA, csrValA, csrRowPtrA, csrColIndA,
+                  b, tol, reorder, x, singularity);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverSpCcsrlsvqr(cusolverSpHandle_t handle,
+    int m, int nnz,
+    const cusparseMatDescr_t descrA,
+    const cuComplex *csrValA,
+    const int *csrRowPtrA,
+    const int *csrColIndA,
+    const cuComplex *b, float tol,
+    int reorder, cuComplex *x,
+    int *singularity) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+    cusolverSpHandle_t, int, int, const cusparseMatDescr_t, const cuComplex *,
+    const int *, const int *, const cuComplex *, float, int,
+    cuComplex *, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverSpCcsrlsvqr");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, m, nnz, descrA, csrValA, csrRowPtrA, csrColIndA,
+                  b, tol, reorder, x, singularity);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverSpZcsrlsvqr(cusolverSpHandle_t handle,
+    int m, int nnz,
+    const cusparseMatDescr_t descrA,
+    const cuDoubleComplex *csrValA,
+    const int *csrRowPtrA,
+    const int *csrColIndA,
+    const cuDoubleComplex *b,
+    double tol,
+    int reorder,
+    cuDoubleComplex *x,
+    int *singularity) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+    cusolverSpHandle_t, int, int, const cusparseMatDescr_t,
+    const cuDoubleComplex *, const int *, const int *, const cuDoubleComplex *,
+    double, int, cuDoubleComplex *, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverSpZcsrlsvqr");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, m, nnz, descrA, csrValA, csrRowPtrA, csrColIndA,
+                  b, tol, reorder, x, singularity);
 }
 
 cusolverStatus_t CUSOLVERAPI cusolverDnSorgqr_bufferSize(
