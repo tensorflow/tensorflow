@@ -11,6 +11,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_copts", "t
 load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
+    "if_enable_acl",
 )
 
 # buildifier: disable=same-origin-load
@@ -350,7 +351,7 @@ cc_library(
         "windows_compatibility.h",
     ],
     hdrs = ["simple_orc_jit.h"],
-    copts = tf_copts(),
+    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]),
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
@@ -602,7 +603,6 @@ cc_library(
     hdrs = [
         "dot_op_emitter.h",
     ],
-    copts = tf_copts(),
     deps = [
         ":cpu_options",
         ":cpu_runtime",
