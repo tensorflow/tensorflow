@@ -432,11 +432,8 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   }
 
   // Make a tuple of output_slices.
-  HloInstruction* tuple =
-      comp->AddInstruction(HloInstruction::CreateTuple(output_slices));
-  if (metadata != nullptr) {
-    tuple->set_metadata(*metadata);
-  }
+  HloInstruction* tuple = comp->AddInstruction(
+      HloInstruction::CreateTuple(output_slices), metadata);
   comp->set_root_instruction(tuple, /*accept_different_shape=*/true);
   TF_RETURN_IF_ERROR(comp->RemoveInstruction(dummy_root));
 
@@ -452,11 +449,11 @@ Status HorizontalLoopFusionImpl::Fuse(
       fused_fusion_instrs, &uniq_computation, &bound_operands));
   HloComputation* fused_comp = computation_->parent()->AddEmbeddedComputation(
       std::move(uniq_computation));
-  HloInstruction* hori_fusion_instr =
-      computation_->AddInstruction(HloInstruction::CreateFusion(
-          fused_comp->root_instruction()->shape(),
-          HloInstruction::FusionKind::kInput, bound_operands, fused_comp));
-  hori_fusion_instr->set_metadata(fused_comp->root_instruction()->metadata());
+  HloInstruction* hori_fusion_instr = computation_->AddInstruction(
+      HloInstruction::CreateFusion(fused_comp->root_instruction()->shape(),
+                                   HloInstruction::FusionKind::kInput,
+                                   bound_operands, fused_comp),
+      &fused_comp->root_instruction()->metadata());
   fused_comp->SetFusionInstruction(hori_fusion_instr);
 
   // Insert bitcasts and replace corresponding users. Note that we do not insert
