@@ -816,6 +816,7 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     deps = [
+        ":hlo_proto_to_graph_view",
         ":hlo_proto_to_memory_visualization_utils",
         ":tool_options",
         ":xplane_to_hlo",
@@ -917,12 +918,28 @@ cc_library(
     srcs = ["hlo_proto_to_graph_view.cc"],
     hdrs = ["hlo_proto_to_graph_view.h"],
     deps = [
+        ":tool_options",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/profiler/utils:hlo_proto_to_module",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_proto_to_graph_view_test",
+    size = "small",
+    srcs = ["hlo_proto_to_graph_view_test.cc"],
+    deps = [
+        ":hlo_proto_to_graph_view",
+        ":tool_options",
+        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

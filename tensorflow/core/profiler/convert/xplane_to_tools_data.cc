@@ -228,7 +228,7 @@ StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return std::string();
   } else if (tool_name == "op_profile") {
     return ConvertMultiXSpacesToOpProfileViewer(xspaces);
-  } else if (tool_name == "memory_viewer") {
+  } else if (tool_name == "memory_viewer" || tool_name == "graph_viewer") {
     return ConvertHloProtoToToolData(filenames, tool_name, options);
   } else {
     return errors::InvalidArgument(

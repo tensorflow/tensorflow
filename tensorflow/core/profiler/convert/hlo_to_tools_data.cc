@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/profiler/convert/hlo_proto_to_graph_view.h"
 #include "tensorflow/core/profiler/convert/hlo_proto_to_memory_visualization_utils.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
@@ -66,6 +67,20 @@ StatusOr<std::string> ConvertHloProtoToMemoryViewer(
   return json_output;
 }
 
+StatusOr<std::string> ConvertHloProtoToGraphViewer(
+    const xla::HloProto& hlo_proto, const ToolOptions& options) {
+  TF_ASSIGN_OR_RETURN(GraphViewerParams params,
+                      ParseGraphViewerParams(options));
+  if (params.type == "graph") {
+    return ConvertHloProtoToGraph(hlo_proto, params.node_name,
+                                  params.graph_width, params.render_options,
+                                  params.format);
+  } else {
+    return ConvertHloProtoToStringView(hlo_proto, params.verbose,
+                                       params.show_metadata);
+  }
+}
+
 }  // namespace
 
 StatusOr<std::string> ConvertHloProtoToToolData(
@@ -94,6 +109,8 @@ StatusOr<std::string> ConvertHloProtoToToolData(
   // Convert from HLO proto to tools data.
   if (tool_name == "memory_viewer") {
     return ConvertHloProtoToMemoryViewer(hlo_proto);
+  } else if (tool_name == "graph_viewer") {
+    return ConvertHloProtoToGraphViewer(hlo_proto, options);
   } else {
     return errors::InvalidArgument(
         "Can not find tool: ", tool_name,

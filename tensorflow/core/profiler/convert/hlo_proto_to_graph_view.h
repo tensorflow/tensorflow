@@ -22,9 +22,31 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/profiler/convert/tool_options.h"
 
 namespace tensorflow {
 namespace profiler {
+
+// All the parameters for graph viewer.
+struct GraphViewerParams {
+  // Whether to use GraphView or TxtView.
+  std::string type;
+  // Parameters for GraphView.
+  std::string node_name;
+  int graph_width;
+  xla::HloRenderOptions render_options;
+  xla::RenderedGraphFormat format;
+  // Parameters for TxtView.
+  bool verbose;
+  bool show_metadata;
+};
+
+// Parse tool options to get the parameters for graph viewer.
+StatusOr<GraphViewerParams> ParseGraphViewerParams(const ToolOptions& options);
+
+// Get graph render format.
+xla::RenderedGraphFormat GetRenderFormat(const std::string& format_string);
 
 // Convert `hlo_proto` to GraphView with the provided render options.
 tensorflow::StatusOr<std::string> ConvertHloProtoToGraph(
