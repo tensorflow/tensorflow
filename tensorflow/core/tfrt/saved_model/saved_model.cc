@@ -26,11 +26,6 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "third_party/mira/mlarchive/env.h"
-#include "third_party/mira/mlarchive/mla.h"
-#include "third_party/mira/mlarchive/posix_env.h"
-#include "third_party/mira/mlarchive/status_macro.h"
-#include "tensorflow/cc/experimental/tfa/saved_model_converter.h"
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
@@ -59,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
+#include "tensorflow/core/tfrt/mla/mla_utils.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/tpu/tpu_resources.h"
@@ -443,23 +439,6 @@ void UpdateCompileOptions(SavedModel::Options& options) {
   }
 }
 
-StatusOr<std::string> GetSavedModelDirFromMlaDir(absl::string_view mla_dir) {
-  auto dir = [&]() -> absl::StatusOr<std::string> {
-    ASSIGN_OR_RETURN(const auto mla, mlarchive::Mla::FromArchiveRoot(
-                                         mla_dir, mlarchive::GetPosixEnv()));
-    ASSIGN_OR_RETURN(const auto* saved_model_module,
-                     mla.GetModule("saved_model"));
-    ASSIGN_OR_RETURN(const auto saved_model_path,
-                     tfa::GetSavedModelProtoPath(mla, *saved_model_module));
-    const auto saved_model_dir =
-        std::string(tensorflow::io::Dirname(saved_model_path));
-    return saved_model_dir;
-  }();
-
-  if (!dir.ok()) return tensorflow::FromAbslStatus(dir.status());
-  return *dir;
-}
-
 StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags) {
@@ -487,8 +466,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
   std::string saved_model_dir_str = "unused";
   if (options.maybe_load_from_mla) {
     const auto mla_check_start_time = absl::Now();
-    const bool is_mla =
-        mlarchive::Mla::IsMlarchive(saved_model_dir, mlarchive::GetPosixEnv());
+    const bool is_mla = IsMlarchive(saved_model_dir);
     const auto mla_check_duration = absl::Now() - mla_check_start_time;
     saved_model_mla_check_time_milli_seconds
         ->GetCell(std::string(saved_model_dir))

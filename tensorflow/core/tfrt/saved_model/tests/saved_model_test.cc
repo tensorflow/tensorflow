@@ -19,17 +19,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "third_party/mira/mlarchive/env.h"
-#include "third_party/mira/mlarchive/mla_builder.h"
-#include "third_party/mira/mlarchive/posix_env.h"
-#include "tensorflow/cc/experimental/tfa/saved_model_converter.h"
-#include "tensorflow/cc/experimental/tfa/test_utils.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tensorflow/core/tfrt/mla/mla_test_utils.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 
@@ -578,18 +574,14 @@ TEST(SavedModelTest, RunOptionsWorkQueue) {
 
 TEST(SavedModelTest, UseMla) {
   // Copy the model dir so that we can write to it.
-  const std::string mla_dir = tfa::CopySavedModelFromTestDataToTempDir(
+  const std::string mla_dir = CopySavedModelFromTestDataToTempDir(
       "tensorflow/core/tfrt/saved_model/tests", "toy_v1");
 
   // Build an MLA at the copied dir.
-  mlarchive::Env& env = mlarchive::GetPosixEnv();
-  mlarchive::MlaBuilder mla_builder(&env);
-  ASSERT_OK(tfa::ConvertSavedModelAndAddToMla(
+  TF_ASSERT_OK(ConvertSavedModelAndAddToMla(
       mla_dir,
       /*saved_model_version=*/1, /*tags=*/{"serve"},
-      /*entry_points=*/{"toy"}, /*mla_module_name=*/"saved_model",
-      mla_builder));
-  ASSERT_OK(mla_builder.Export(mla_dir));
+      /*entry_points=*/{"toy"}, /*mla_module_name=*/"saved_model"));
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
