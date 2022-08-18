@@ -22,7 +22,7 @@ def GmlSt_Dialect : Dialect {
   let name = "gml_st";
   let cppNamespace = "::mlir::gml_st";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
   let useDefaultTypePrinterParser = 1;
   let hasConstantMaterializer = 1;
 }

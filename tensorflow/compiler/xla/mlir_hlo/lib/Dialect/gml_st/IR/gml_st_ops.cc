@@ -198,10 +198,10 @@ void LoopOp::build(OpBuilder &builder, OperationState &result,
                                 static_cast<int32_t>(steps.size()),
                                 static_cast<int32_t>(inputs.size()),
                                 static_cast<int32_t>(outputs.size())}));
-  result.addAttribute(getIteratorTypesAttrName(), iteratorTypes);
+  result.addAttribute(getIteratorTypesAttrStrName(), iteratorTypes);
 
   if (distributionTypes.has_value())
-    result.addAttribute(getDistributionTypesAttrName(),
+    result.addAttribute(getDistributionTypesAttrStrName(),
                         distributionTypes.value());
 
   // Add output types for `RankedTensorType` output arguments.
@@ -272,8 +272,8 @@ void LoopOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDict(
       getOperation()->getAttrs(),
       /*elidedAttrs=*/{LoopOp::getOperandSegmentSizeAttr(),
-                       LoopOp::getIteratorTypesAttrName(),
-                       LoopOp::getDistributionTypesAttrName()});
+                       LoopOp::getIteratorTypesAttrStrName(),
+                       LoopOp::getDistributionTypesAttrStrName()});
 }
 
 ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -367,10 +367,10 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
         builder.getStringAttr(LoopOp::getParallelIteratorTypeName());
     iterTypes = SmallVector<Attribute, 4>(ivs.size(), parallelIter);
   }
-  result.addAttribute(LoopOp::getIteratorTypesAttrName(),
+  result.addAttribute(LoopOp::getIteratorTypesAttrStrName(),
                       builder.getArrayAttr(iterTypes));
   if (!distributionTypes.empty())
-    result.addAttribute(LoopOp::getDistributionTypesAttrName(),
+    result.addAttribute(LoopOp::getDistributionTypesAttrStrName(),
                         builder.getArrayAttr(distributionTypes));
   result.addAttribute(
       LoopOp::getOperandSegmentSizeAttr(),

@@ -296,10 +296,10 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
     static constexpr StringRef getParallelIteratorTypeName() {
       return "parallel";
     }
-    static constexpr StringRef getDistributionTypesAttrName() {
+    static constexpr StringRef getDistributionTypesAttrStrName() {
       return "distribution_types";
     }
-    static constexpr StringRef getIteratorTypesAttrName() {
+    static constexpr StringRef getIteratorTypesAttrStrName() {
       return "iterator_types";
     }
 
