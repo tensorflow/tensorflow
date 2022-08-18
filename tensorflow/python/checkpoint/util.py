@@ -14,19 +14,12 @@
 # ==============================================================================
 """Utilities for extracting and writing checkpoint info`."""
 
-import collections
-
 from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.util import object_identity
-
-# Factory and related info used to build a SaveableObject that saves a Trackable
-# to checkpoint.
-_CheckpointFactoryData = collections.namedtuple(
-    "_CheckpointFactoryData", ["factory", "name", "checkpoint_key"])
 
 
 def serialize_slot_variables(trackable_objects, node_ids, object_names):
@@ -85,21 +78,6 @@ def get_mapped_trackable(trackable, object_map):
     return trackable
   else:
     return object_map.get(trackable, trackable)
-
-
-def add_attributes_to_object_graph_for_registered_savers(
-    unmapped_registered_savers, object_graph_proto, node_ids, object_map):
-  """Fills the object graph proto with data about the registered savers."""
-  registered_savers = collections.defaultdict(dict)
-  for saver_name, trackables in unmapped_registered_savers.items():
-    for object_name, trackable in trackables.items():
-      object_proto = object_graph_proto.nodes[node_ids[trackable]]
-      object_proto.registered_saver.name = saver_name
-      object_proto.registered_saver.object_name = object_name
-
-      object_to_save = get_mapped_trackable(trackable, object_map)
-      registered_savers[saver_name][object_name] = object_to_save
-  return registered_savers
 
 
 def get_full_name(var):
@@ -162,25 +140,6 @@ def add_checkpoint_values_check(trackable_objects, object_graph_proto):
   for node_id, trackable in enumerate(trackable_objects):
     object_graph_proto.nodes[node_id].has_checkpoint_values.value = bool(
         trackable in checkpointed_trackables)
-
-
-def fill_object_graph_proto(graph_view,
-                            trackable_objects,
-                            node_ids,
-                            slot_variables,
-                            object_graph_proto=None):
-  """Name non-slot `Trackable`s and add them to `object_graph_proto`."""
-  if object_graph_proto is None:
-    object_graph_proto = (trackable_object_graph_pb2.TrackableObjectGraph())
-  for checkpoint_id, trackable in enumerate(trackable_objects):
-    assert node_ids[trackable] == checkpoint_id
-    object_proto = object_graph_proto.nodes.add()
-    object_proto.slot_variables.extend(slot_variables.get(trackable, ()))
-    for child in graph_view.list_children(trackable):
-      child_proto = object_proto.children.add()
-      child_proto.node_id = node_ids[child.ref]
-      child_proto.local_name = child.name
-  return object_graph_proto
 
 
 def objects_ids_and_slot_variables_and_paths(graph_view):
