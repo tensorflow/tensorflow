@@ -108,7 +108,7 @@ PyExecutable::ExecuteInternal(
 
       for (const py::capsule& host_callback : host_callbacks_) {
         contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
-            host_callback.get_pointer<HostCallback>(),
+            *host_callback.get_pointer<HostCallback>(),
             host_memory_for_device_manager, send_callbacks, recv_callbacks));
       }
       options.send_callbacks = host_callback_states->send_callbacks;
@@ -208,7 +208,7 @@ PyExecutable::ExecuteShardedOnLocalDevicesInternal(
 
         for (const py::capsule& host_callback : host_callbacks_) {
           contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
-              host_callback.get_pointer<HostCallback>(),
+              *host_callback.get_pointer<HostCallback>(),
               host_memory_for_device_manager, send_callbacks, recv_callbacks));
         }
       }
