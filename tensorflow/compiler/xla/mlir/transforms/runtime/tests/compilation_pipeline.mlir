@@ -10,7 +10,7 @@
 // CHECK-SAME:    %[[ARG3:arg[0-9]+]]: i64,
 // CHECK-SAME:    %[[ARG4:arg[0-9]+]]: i64,
 // CHECK-SAME:    %[[ARG5:arg[0-9]+]]: i64
-// CHECK-SA<E:  )
+// CHECK-SAME:  )
 func.func @main(%arg0: memref<?xf32>) attributes { rt.entrypoint } {
   call @custom_call(%arg0) : (memref<?xf32>) -> ()
   return
