@@ -13,12 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the static tf.data optimizations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
-import os
 
 from absl.testing import parameterized
 import numpy as np
@@ -185,33 +180,6 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=[[0]])
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(autotune=[False, True]),
-                         combinations.combine(set_env=[False, True])))
-  def testOptimizationEnableGradientDescent(self, autotune, set_env):
-    if set_env:
-      os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "enable_gradient_descent"
-      os.environ["TF_JOB_NAME"] = "test_job"
-
-    dataset = dataset_ops.Dataset.range(5)
-    dataset = dataset.prefetch(buffer_size=-1)
-    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=2)
-    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=-1)
-    dataset = dataset.prefetch(buffer_size=3)
-    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=-1)
-    dataset = dataset.prefetch(buffer_size=1)
-
-    options = options_lib.Options()
-    options.autotune.enabled = autotune
-    dataset = dataset.with_options(options)
-
-    self.assertDatasetProduces(dataset, expected_output=list(range(3, 8)))
-
-    if set_env:
-      del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
-      del os.environ["TF_JOB_NAME"]
-
-  @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(autotune=[True, False, None]),
@@ -235,28 +203,32 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=list(range(1, 6)))
 
   @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(),
-          combinations.combine(autotune=[False, True]),
-          combinations.combine(first_buffer_sizes=[(1, -1, -1,
-                                                    4), (2, -1, 3,
-                                                         -1), (2, 1, -1, -1)]),
-          combinations.combine(second_buffer_sizes=[(1, -1, -1,
-                                                     4), (2, -1, 3,
-                                                          -1), (2, 1, -1, -1)]))
-  )
-  def testOptimizationAutotuneBuffers(self, autotune, first_buffer_sizes,
-                                      second_buffer_sizes):
-    dataset = dataset_ops.Dataset.range(10)
-    for buffer_size in first_buffer_sizes:
-      dataset = dataset.prefetch(buffer_size=buffer_size)
-    dataset = dataset.map(lambda x: x + 1)
-    for buffer_size in second_buffer_sizes:
-      dataset = dataset.prefetch(buffer_size=buffer_size)
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(existing_prefetch=[True, False]),
+                         combinations.combine(autotune=[True, False]),
+                         combinations.combine(inject_prefetch=[True, False])))
+  def testOptimizationInjectPrefetch(self, existing_prefetch, autotune,
+                                     inject_prefetch):
+    dataset = dataset_ops.Dataset.range(5)
+    dataset = dataset.map(
+        lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.batch(1)
+    if existing_prefetch:
+      dataset = dataset.prefetch(1)
+    if autotune and inject_prefetch and not existing_prefetch:
+      dataset = dataset.apply(testing.assert_next(["Prefetch", "Root"]))
+    else:
+      dataset = dataset.apply(testing.assert_next(["Root"]))
+
     options = options_lib.Options()
     options.autotune.enabled = autotune
+    options.experimental_optimization.map_and_batch_fusion = False
+    if inject_prefetch:
+      options.experimental_optimization.inject_prefetch = True
     dataset = dataset.with_options(options)
-    self.assertDatasetProduces(dataset, expected_output=list(range(1, 11)))
+
+    self.assertDatasetProduces(dataset, expected_output=[np.array([x]) for x in
+                                                         range(1, 6)])
 
   # Reference variables are not supported in eager mode.
   @combinations.generate(

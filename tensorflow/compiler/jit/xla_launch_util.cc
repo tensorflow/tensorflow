@@ -18,12 +18,14 @@ limitations under the License.
 #include <memory>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -59,7 +61,7 @@ se::Platform::Id XlaPlatformInfoFromDevice(DeviceBase* device_base) {
 
 VariableInfo::VariableInfo(
     int index, absl::string_view name, Var* var,
-    const absl::optional<ManagedStackTrace>& definition_stack_trace)
+    const std::optional<ManagedStackTrace>& definition_stack_trace)
     : index_(index),
       name_(name),
       var_(var),
@@ -112,21 +114,24 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
     if (handle.device() != dev->attributes().name()) {
       std::string definition_location =
           DefinitionLocationMsg(handle.definition_stack_trace());
-      return errors::InvalidArgument("Trying to access resource ",
-                                     handle.name(), definition_location,
-                                     " located in device ", handle.device(),
-                                     " from device ", dev->attributes().name());
+      return errors::InvalidArgument(
+          "Trying to access resource ", handle.name(), definition_location,
+          " located in device ", handle.device(), " from device ",
+          dev->attributes().name(),
+          "\n Cf. "
+          "https://www.tensorflow.org/xla/"
+          "known_issues#tfvariable_on_a_different_device");
     }
     TF_RETURN_IF_ERROR(rm->LookupOrCreate<Var>(
         handle.container(), handle.name(), &variable, [](Var** ptr) {
           // This var is uninitialized for now.
           *ptr = new Var(DT_INVALID);
-          return Status::OK();
+          return OkStatus();
         }));
     result->emplace_back(var_idx, handle.name(), variable,
                          handle.definition_stack_trace());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx) {
@@ -138,7 +143,7 @@ std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx) {
   return inputs;
 }
 
-Status LockVariables(absl::Span<VariableInfo> variables) {
+Status LockVariables(absl::Span<VariableInfo*> variables) {
   std::vector<int> lock_order(variables.size());
   std::iota(lock_order.begin(), lock_order.end(), 0);
 
@@ -148,17 +153,17 @@ Status LockVariables(absl::Span<VariableInfo> variables) {
   // since we're sorting by pointer value the sort is pretty non-deterministic
   // anyway so we don't bother using std::stable_sort for now.
   absl::c_sort(lock_order, [&](int a, int b) {
-    if (variables[a].var() && variables[b].var()) {
-      return variables[a].var()->mu() < variables[b].var()->mu();
+    if (variables[a]->var() && variables[b]->var()) {
+      return variables[a]->var()->mu() < variables[b]->var()->mu();
     }
 
     // Move all the empty VariableInfo instances to the end.
-    return variables[a].var() != nullptr;
+    return variables[a]->var() != nullptr;
   });
 
   mutex* prev = nullptr;
   for (int i : lock_order) {
-    Var* variable = variables[i].var();
+    Var* variable = variables[i]->var();
     if (variable == nullptr) {
       // All empty VariableInfo instances are at the end of the order
       // so we're done.
@@ -176,11 +181,20 @@ Status LockVariables(absl::Span<VariableInfo> variables) {
     VLOG(4) << "Acquiring lock for variable "
             << reinterpret_cast<void*>(variable);
     mu->lock();
-    variables[i].set_lock_held();
+    variables[i]->set_lock_held();
     prev = mu;
   }
   VLOG(4) << "Finished acquiring variable locks.";
-  return Status::OK();
+  return OkStatus();
+}
+
+Status LockVariables(absl::Span<VariableInfo> variables) {
+  std::vector<VariableInfo*> variable_ptrs;
+  variable_ptrs.reserve(variables.size());
+  for (auto& var : variables) {
+    variable_ptrs.push_back(&var);
+  }
+  return LockVariables(absl::MakeSpan(variable_ptrs));
 }
 
 Status SnapshotResourceVariables(OpKernelContext* ctx,
@@ -190,9 +204,9 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
   for (int i = 0, end = variable_indices.size(); i < end; i++) {
     Var* var = variable_infos[i].var();
     (*result)[variable_indices[i]] =
-        var ? absl::make_optional(*var->tensor()) : absl::nullopt;
+        var ? absl::make_optional(*var->tensor()) : std::nullopt;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 XlaComputationLaunchContext::XlaComputationLaunchContext(
@@ -239,22 +253,23 @@ XlaComputationLaunchContext::PopulateInputs(
   std::vector<xla::ExecutionInput> arguments;
   arguments.reserve(compilation_result->xla_input_shapes.size());
 
-  xla::TransferManager* transfer_manager =
-      client_->backend().transfer_manager();
   for (int i = 0, end = compilation_result->xla_input_shapes.size(); i < end;
        ++i) {
     int arg_num = compilation_result->input_mapping[i];
     CHECK_GE(arg_num, missing_ctx_input_prefix);
-    const xla::Shape& shape = compilation_result->xla_input_shapes[i];
-    const xla::Shape& device_shape =
-        transfer_manager->HostShapeToDeviceShape(shape);
+    const xla::Shape& device_shape = compilation_result->xla_input_shapes[i];
+    const xla::Shape& host_shape =
+        xla::ShapeUtil::DeviceShapeToHostShape(device_shape);
 
     bool is_resource_variable = resource_vars.count(arg_num);
     bool is_updated_resource_variable =
         is_resource_variable &&
         absl::c_any_of(compilation_result->resource_updates,
                        [&](const XlaCompiler::ResourceUpdate& update) {
-                         return update.input_index == i && update.modified;
+                         // XlaCompiler records `arg_num` (instead of kernel
+                         // parameters) in `resource_updates`.
+                         return update.input_index == arg_num &&
+                                update.modified;
                        });
 
     const Tensor* t = is_resource_variable
@@ -278,23 +293,12 @@ XlaComputationLaunchContext::PopulateInputs(
           ctx->op_device_context()->stream());
     }
 
-    arguments.emplace_back(device_shape, shape);
+    arguments.emplace_back(device_shape, host_shape);
     xla::ExecutionInput& execution_input = arguments.back();
-    if (xla::Shape::Equal().MinorToMajorOnlyInLayout()(shape, device_shape)) {
-      se::DeviceMemoryBase dmem = XlaTensor::DeviceMemoryFromTensor(*t);
-      PopulateExecutionInputBuffer(execution_input, xla::ShapeIndex{}, dmem,
-                                   donate_buffer, device_ordinal_,
-                                   xla_allocator_);
-    } else {
-      XlaTensor* xla_tensor = XlaTensor::FromTensor(t);
-      CHECK(xla_tensor && xla_tensor->has_shaped_buffer());
-      xla_tensor->shaped_buffer().buffers().ForEachMutableElement(
-          [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
-            PopulateExecutionInputBuffer(execution_input, index, *buffer,
-                                         donate_buffer, device_ordinal_,
-                                         xla_allocator_);
-          });
-    }
+    se::DeviceMemoryBase dmem = XlaTensor::DeviceMemoryFromTensor(*t);
+    PopulateExecutionInputBuffer(execution_input, xla::ShapeIndex{}, dmem,
+                                 donate_buffer, device_ordinal_,
+                                 xla_allocator_);
   }
   return std::move(arguments);
 }
@@ -326,7 +330,7 @@ static StatusOr<Tensor> GetOrCreateTensorForOutput(
                                      ? xla::ShapeIndex({output_num})
                                      : xla::ShapeIndex({});
   CHECK(input_output_alias.shape().IsTuple() || output_num == 0);
-  if (absl::optional<xla::HloInputOutputAliasConfig::Alias> alias =
+  if (std::optional<xla::HloInputOutputAliasConfig::Alias> alias =
           input_output_alias.GetAliasedParameter(output_index)) {
     VLOG(3) << "Found alias: " << alias->ToString();
     int tf_param =
@@ -411,7 +415,7 @@ static Status SetOutputForConstant(
     ctx->set_output(output_num, const_tensor);
     output_tensor = ctx->mutable_output(output_num);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static StatusOr<Var*> GetOrCreateResourceVar(
@@ -421,7 +425,7 @@ static StatusOr<Var*> GetOrCreateResourceVar(
   TF_RETURN_IF_ERROR(
       LookupOrCreateResource<Var>(ctx, handle, &variable, [&write](Var** ptr) {
         *ptr = new Var(write.type);
-        return Status::OK();
+        return OkStatus();
       }));
   return variable;
 }
@@ -600,7 +604,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     *var->tensor() = output_tensor;
     ++output_num;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::vector<XlaCompiler::Argument>>
@@ -619,14 +623,14 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   DeviceContext* device_context = nullptr;
   TF_RETURN_IF_ERROR(device->TryGetDeviceContext(&device_context));
   bool using_default_context = false;
-  auto cleanup = xla::MakeCleanup([&] {
+  auto cleanup = absl::MakeCleanup([&] {
     if (device_context != nullptr && !using_default_context) {
       device_context->Unref();
     }
   });
   if (device_context == nullptr) {
     using_default_context = true;
-    auto* dev_info = device->tensorflow_gpu_device_info();
+    auto* dev_info = device->tensorflow_accelerator_device_info();
     if (dev_info) device_context = dev_info->default_context;
   }
 

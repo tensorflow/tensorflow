@@ -154,7 +154,7 @@ class Block::Iter : public Iterator {
     uint32 left = 0;
     uint32 right = num_restarts_ - 1;
     while (left < right) {
-      uint32 mid = (left + right + 1) / 2;
+      uint32 mid = left + (right - left + 1) / 2;
       uint32 region_offset = GetRestartPoint(mid);
       uint32 shared, non_shared, value_length;
       const char* key_ptr =

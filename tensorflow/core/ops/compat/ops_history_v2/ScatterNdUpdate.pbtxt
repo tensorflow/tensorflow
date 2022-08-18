@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ScatterNdUpdate"
   input_arg {
     name: "ref"

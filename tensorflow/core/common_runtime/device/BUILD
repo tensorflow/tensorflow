@@ -120,6 +120,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "device_utils",
+    srcs = ["device_utils.cc"],
+    hdrs = ["device_utils.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Tests
 

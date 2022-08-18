@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client.h"
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -90,7 +89,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
         "TransferToServer request");
   }
 
-  return absl::make_unique<GlobalData>(stub_, response.data());
+  return std::make_unique<GlobalData>(stub_, response.data());
 }
 
 Status Client::TransferToInfeed(const LiteralSlice& literal, int64_t replica_id,
@@ -112,7 +111,7 @@ Status Client::TransferToInfeed(const LiteralSlice& literal, int64_t replica_id,
     return s;
   }
   VLOG(3) << "TransferToInfeedResponse: {" << response.DebugString() << "}";
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<Literal> Client::TransferFromOutfeed(
@@ -160,7 +159,7 @@ Status Client::ResetDevice() {
     return s;
   }
   VLOG(3) << "ResetDeviceResponse: {" << response.DebugString() << "}";
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<Literal> Client::ExecuteAndTransfer(
@@ -171,7 +170,7 @@ StatusOr<Literal> Client::ExecuteAndTransfer(
       std::unique_ptr<GlobalData> data,
       Execute(computation, arguments, execution_options, execution_profile));
 
-  absl::optional<Shape> shape_with_output_layout;
+  std::optional<Shape> shape_with_output_layout;
   if (execution_options && execution_options->has_shape_with_output_layout()) {
     shape_with_output_layout =
         Shape(execution_options->shape_with_output_layout());
@@ -271,7 +270,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     *execution_profile = response.profile();
   }
 
-  return absl::make_unique<GlobalData>(stub_, response.output());
+  return std::make_unique<GlobalData>(stub_, response.output());
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
@@ -279,7 +278,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
   // Create an ExecutionOptions if necessary, or set its DeviceHandles.
-  absl::optional<ExecutionOptions> options_storage;
+  std::optional<ExecutionOptions> options_storage;
   if (!execution_options || execution_options->device_handles().empty()) {
     if (execution_options) {
       options_storage.emplace(*execution_options);
@@ -352,7 +351,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   std::vector<std::unique_ptr<GlobalData>> outputs;
   for (size_t i = 0, end = response.responses_size(); i < end; ++i) {
     outputs.push_back(
-        absl::make_unique<GlobalData>(stub_, response.responses(i).output()));
+        std::make_unique<GlobalData>(stub_, response.responses(i).output()));
     if (i < computations.size() &&
         computations[i].execution_profile != nullptr) {
       *computations[i].execution_profile = response.responses(i).profile();
@@ -380,7 +379,9 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
   }
 
   std::vector<DeviceHandle> device_handles;
-  for (const DeviceHandle& device_handle : response.device_handles()) {
+  const auto& response_device_handles = response.device_handles();
+  device_handles.reserve(response_device_handles.size());
+  for (const DeviceHandle& device_handle : response_device_handles) {
     device_handles.push_back(device_handle);
   }
 
@@ -415,7 +416,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::DeconstructTuple(
 
   std::vector<std::unique_ptr<GlobalData>> handles;
   for (auto& handle : response.element_handles()) {
-    handles.push_back(absl::make_unique<GlobalData>(stub_, handle));
+    handles.push_back(std::make_unique<GlobalData>(stub_, handle));
   }
   return std::move(handles);
 }
@@ -444,7 +445,7 @@ StatusOr<ComputationStats> Client::GetComputationStats(
 StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const auto& result, computation.GetProgramShape());
-  return absl::make_unique<ProgramShape>(result);
+  return std::make_unique<ProgramShape>(result);
 }
 
 StatusOr<Shape> Client::GetShape(const GlobalData& data) {
@@ -463,7 +464,7 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
   return Shape(response.shape());
 }
 
-StatusOr<string> Client::ExecutionStatsAsString(
+StatusOr<std::string> Client::ExecutionStatsAsString(
     const XlaComputation& computation, const ExecutionProfile& profile) {
   TF_ASSIGN_OR_RETURN(
       auto computation_stats,
@@ -481,7 +482,7 @@ StatusOr<string> Client::ExecutionStatsAsString(
         ", compute cycles: ", cycle_count, ", performance: ", gflops,
         "gflop/s");
   }
-  return string("[Execution Statistics] not available.");
+  return std::string("[Execution Statistics] not available.");
 }
 
 StatusOr<ChannelHandle> Client::CreateChannelHandleByType(

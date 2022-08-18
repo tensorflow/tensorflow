@@ -26,6 +26,7 @@ limitations under the License.
 #include "fp16.h"  // from @FP16
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -68,6 +69,10 @@ void Conv2DTester::Test(TfLiteDelegate* delegate) const {
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
+
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
@@ -131,7 +136,7 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
         CreateOperatorCode(builder, BuiltinOperator_DENSIFY));
     const std::array<int32_t, 1> densify_filter_inputs{{0}};
     const std::array<int32_t, 1> densify_filter_outputs{
-        {(FP16Weights() || INT8Weights()) ? 1 : 2}};
+        {(FP16Weights() || INT8Weights() || INT8ChannelWiseWeights()) ? 1 : 2}};
     operators.emplace_back(CreateOperator(
         builder, /*opcode_index=*/operator_codes.size() - 1,
         builder.CreateVector<int32_t>(densify_filter_inputs.data(),
@@ -140,13 +145,18 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
                                       densify_filter_outputs.size())));
   }
 
-  float filter_scale = 0;
+  const std::vector<int32_t> filter_shape = {
+      OutputChannels(), KernelHeight(), KernelWidth(), KernelInputChannels()};
+  const std::vector<int32_t> bias_shape = {OutputChannels()};
+  std::vector<float> filter_scales;
+  std::vector<int64_t> filter_zero_points;
+  int32_t filter_quantized_dimension = 0;
   if (FP16Weights()) {
     operator_codes.emplace_back(
         CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
 
     std::vector<uint16_t> filter_data(OutputChannels() * KernelHeight() *
-                                      KernelWidth() * InputChannels());
+                                      KernelWidth() * KernelInputChannels());
     std::vector<uint16_t> bias_data(OutputChannels());
     for (int32_t oc = 0; oc < OutputChannels(); oc++) {
       // Use the same range of all-positive or all-negative values to generate
@@ -160,12 +170,12 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
                                   std::min(range, 0.0f), std::max(range, 0.0f)),
                               std::ref(rng)));
       bias_data[oc] = value_rng();
-      for (int32_t ic = 0; ic < InputChannels(); ic++) {
+      for (int32_t ic = 0; ic < KernelInputChannels(); ic++) {
         for (int32_t y = 0; y < KernelHeight(); y++) {
           for (int32_t x = 0; x < KernelWidth(); x++) {
             const int32_t index =
                 ((oc * KernelHeight() + y) * KernelWidth() + x) *
-                    InputChannels() +
+                    KernelInputChannels() +
                 ic;
             filter_data[index] = value_rng();
           }
@@ -204,7 +214,7 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
                                       dequantize_bias_outputs.size())));
   } else {
     std::vector<float> filter_data(OutputChannels() * KernelHeight() *
-                                   KernelWidth() * InputChannels());
+                                   KernelWidth() * KernelInputChannels());
     std::vector<float> bias_data(OutputChannels());
     for (int32_t oc = 0; oc < OutputChannels(); oc++) {
       // Use the same range of all-positive or all-negative values to generate
@@ -217,12 +227,12 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
                         std::min(range, 0.0f), std::max(range, 0.0f)),
                     std::ref(rng));
       bias_data[oc] = value_rng();
-      for (int32_t ic = 0; ic < InputChannels(); ic++) {
+      for (int32_t ic = 0; ic < KernelInputChannels(); ic++) {
         for (int32_t y = 0; y < KernelHeight(); y++) {
           for (int32_t x = 0; x < KernelWidth(); x++) {
             const int32_t index =
                 ((oc * KernelHeight() + y) * KernelWidth() + x) *
-                    InputChannels() +
+                    KernelInputChannels() +
                 ic;
             filter_data[index] = value_rng();
           }
@@ -230,15 +240,29 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
       }
     }
 
-    if (INT8Weights()) {
+    if (INT8Weights() || INT8ChannelWiseWeights()) {
       operator_codes.emplace_back(
           CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
 
-      filter_scale = GetInt8QuantizationScale(filter_data);
       std::vector<int8_t> quantized_filter_data(filter_data.size());
-      std::transform(
-          filter_data.begin(), filter_data.end(), quantized_filter_data.begin(),
-          std::bind(QuantizeInt8, std::placeholders::_1, 0, filter_scale));
+      if (INT8Weights()) {
+        filter_scales.resize(1, GetInt8QuantizationScale(filter_data));
+        filter_zero_points.resize(1, 0);
+        std::transform(filter_data.begin(), filter_data.end(),
+                       quantized_filter_data.begin(),
+                       std::bind(QuantizeInt8, std::placeholders::_1, 0,
+                                 filter_scales[0]));
+      } else {
+        filter_quantized_dimension =
+            static_cast<int32_t>(filter_shape.size()) - 1;
+        const int32_t num_scales = filter_shape[filter_quantized_dimension];
+        filter_scales = GetInt8QuantizationScalePerChannel(
+            filter_data.data(), filter_quantized_dimension, filter_shape);
+        filter_zero_points.resize(num_scales, 0);
+        QuantizeInt8PerChannel(filter_scales.data(), filter_zero_points.data(),
+                               filter_quantized_dimension, filter_data.data(),
+                               quantized_filter_data.data(), filter_shape);
+      }
       buffers.emplace_back(CreateBuffer(
           builder,
           builder.CreateVector(
@@ -273,9 +297,6 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
       {BatchSize(), InputHeight(), InputWidth(), InputChannels()}};
   const std::array<int32_t, 4> output_shape{
       {BatchSize(), OutputHeight(), OutputWidth(), OutputChannels()}};
-  const std::array<int32_t, 4> filter_shape{
-      {OutputChannels(), KernelHeight(), KernelWidth(), InputChannels()}};
-  const std::array<int32_t, 1> bias_shape{{OutputChannels()}};
 
   std::vector<flatbuffers::Offset<tflite::Tensor>> tensors;
   if (SparseWeights()) {
@@ -296,7 +317,7 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
     flatbuffers::Offset<SparsityParameters> sparsity_param =
         CreateSparsityParameters(builder, builder.CreateVector(traversal_order),
                                  0, builder.CreateVector(dim_metadata));
-    if (INT8Weights()) {
+    if (INT8Weights() || INT8ChannelWiseWeights()) {
       tensors.emplace_back(
           CreateTensor(builder,
                        builder.CreateVector<int32_t>(filter_shape.data(),
@@ -305,8 +326,10 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
                        /*buffer=*/1, /*name=*/0,
                        CreateQuantizationParameters(
                            builder, /*min=*/0, /*max=*/0,
-                           builder.CreateVector<float>({filter_scale}),
-                           builder.CreateVector<int64_t>({0})),
+                           builder.CreateVector<float>(filter_scales),
+                           builder.CreateVector<int64_t>(filter_zero_points),
+                           /*details_type=*/QuantizationDetails_NONE,
+                           /*details=*/0, filter_quantized_dimension),
                        /*is_variable=*/false, /*sparsity=*/sparsity_param));
     } else {
       tensors.emplace_back(CreateTensor(
@@ -327,15 +350,17 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
         builder,
         builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
         TensorType_FLOAT16, /*buffer=*/2));
-  } else if (INT8Weights()) {
+  } else if (INT8Weights() || INT8ChannelWiseWeights()) {
     tensors.emplace_back(CreateTensor(
         builder,
         builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
         TensorType_INT8, /*buffer=*/SparseWeights() ? 0 : 1, /*name=*/0,
         CreateQuantizationParameters(
             builder, /*min=*/0, /*max=*/0,
-            builder.CreateVector<float>({static_cast<float>(filter_scale)}),
-            builder.CreateVector<int64_t>({0}))));
+            builder.CreateVector<float>(filter_scales),
+            builder.CreateVector<int64_t>(filter_zero_points),
+            /*details_type=*/QuantizationDetails_NONE,
+            /*details=*/0, filter_quantized_dimension)));
   }
   tensors.emplace_back(CreateTensor(
       builder,
@@ -345,7 +370,11 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
       builder,
       builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
       TensorType_FLOAT32,
-      /*buffer=*/(FP16Weights() || INT8Weights() || SparseWeights()) ? 0 : 1));
+      /*buffer=*/
+      (FP16Weights() || INT8Weights() || INT8ChannelWiseWeights() ||
+       SparseWeights())
+          ? 0
+          : 1));
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),

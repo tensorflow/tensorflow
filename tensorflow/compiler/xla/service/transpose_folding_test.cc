@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 
 #include <memory>
-#include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -34,32 +35,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-
-namespace op = xla::testing::opcode_matchers;
+#include "tensorflow/core/platform/status_matchers.h"
 
 namespace xla {
 namespace {
 
-class TransposeFoldingTest : public HloTestBase {
- protected:
-  bool FoldTranspose(HloModule* module) {
-    TransposeFolding transpose_folding(
-        [](const HloInstruction& dot,
-           const TransposeFolding::OperandIndices& candidate_operands) {
-          return candidate_operands;
-        },
-        [](const HloInstruction& convolution,
-           const TransposeFolding::OperandIndices& candidate_operands) {
-          return candidate_operands;
-        });
-    auto folded = transpose_folding.Run(module);
-    EXPECT_IS_OK(folded.status());
-    return *folded;
-  }
-};
+namespace op = xla::testing::opcode_matchers;
+using ::tensorflow::testing::IsOkAndHolds;
+
+using TransposeFoldingTest = HloTestBase;
 
 TEST_F(TransposeFoldingTest, FoldDotTranspose) {
-  string hlo_string = R"(
+  constexpr absl::string_view kHloString = R"(
 HloModule FoldDotTranspose
 
 ENTRY entry_computation {
@@ -69,18 +56,17 @@ ENTRY entry_computation {
   ROOT dot = f32[2,2]{1,0} dot(x, transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
 
-  FoldTranspose(module.get());
-
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Parameter(0), op::Parameter(1),
                       /*lhs_contracting_dim=*/1, /*rhs_contracting_dim=*/1));
 }
 
-TEST_F(TransposeFoldingTest, DontFoldTransposeOfBatchDim) {
-  string hlo_string = R"(
+TEST_F(TransposeFoldingTest, DontFoldTransposeOfBatchDimByDefault) {
+  constexpr absl::string_view kHloString = R"(
 HloModule FoldDotTranspose
 
 ENTRY entry_computation {
@@ -90,25 +76,39 @@ ENTRY entry_computation {
   ROOT dot = f32[2] dot(x, transpose), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(TransposeFoldingTest, FoldTransposeOfBatchWhenPermitted) {
+  constexpr absl::string_view kHloString = R"(
+HloModule FoldDotTranspose
+
+ENTRY entry_computation {
+  x = f32[5,2,3] parameter(0)
+  y = f32[3,5,4] parameter(1)
+  transpose = f32[5,3,4] transpose(y), dimensions={1,0,2}
+  ROOT dot = f32[5,2,4] dot(x, transpose), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
 
   TransposeFolding transpose_folding(
-      [](const HloInstruction& dot,
-         const TransposeFolding::OperandIndices& candidate_operands) {
-        return candidate_operands;
-      },
-      [](const HloInstruction& convolution,
-         const TransposeFolding::OperandIndices& candidate_operands) {
-        return candidate_operands;
+      /*dot_can_fold_transpose_operand=*/[](const HloInstruction&, int64_t) {
+        return true;
       });
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, transpose_folding.Run(module.get()));
-  EXPECT_FALSE(changed);
+  EXPECT_THAT(transpose_folding.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Dot(op::Parameter(0), op::Parameter(1),
+                      /*lhs_contracting_dim=*/2, /*rhs_contracting_dim=*/0));
 }
 
 TEST_F(TransposeFoldingTest, DontFoldTransposeOfRank1Dot) {
-  string hlo_string = R"(
+  constexpr absl::string_view kHloString = R"(
 HloModule FoldDotTranspose
 
 ENTRY entry_computation {
@@ -118,25 +118,31 @@ ENTRY entry_computation {
   ROOT dot = f32[2] dot(x, transpose), lhs_batch_dims={}, rhs_batch_dims={}, lhs_contracting_dims={0}, rhs_contracting_dims={1}
 }
 )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
+}
 
-  TransposeFolding transpose_folding(
-      [](const HloInstruction& dot,
-         const TransposeFolding::OperandIndices& candidate_operands) {
-        return candidate_operands;
-      },
-      [](const HloInstruction& convolution,
-         const TransposeFolding::OperandIndices& candidate_operands) {
-        return candidate_operands;
-      });
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, transpose_folding.Run(module.get()));
-  EXPECT_FALSE(changed);
+TEST_F(TransposeFoldingTest, DontFoldTransposeOfDotWithoutContractingDims) {
+  constexpr absl::string_view kHloString = R"(
+HloModule FoldDotTranspose
+
+ENTRY entry_computation {
+  x = f32[3,4] parameter(0)
+  y = f32[3,4,6,7] parameter(1)
+  transpose = f32[3,4,7,6] transpose(y), dimensions={0,1,3,2}
+  ROOT dot = f32[3,4,7,6] dot(x, transpose), lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={}, rhs_contracting_dims={}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(TransposeFoldingTest, FoldDotTransposeConstant) {
-  string hlo_string = R"(
+  constexpr absl::string_view kHloString = R"(
 HloModule FoldDotTransposeConstant
 
 ENTRY entry_computation {
@@ -147,11 +153,10 @@ ENTRY entry_computation {
   ROOT dot = f32[1,3]{1,0} dot(transpose, transpose.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
 
-  FoldTranspose(module.get());
-
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Constant(), op::Constant(),
                       /*lhs_contracting_dim=*/0, /*rhs_contracting_dim=*/1));
@@ -189,7 +194,7 @@ TEST_F(TransposeFoldingTest, FuseDotWithConstantOperands) {
 }
 
 TEST_F(TransposeFoldingTest, FoldDotTransposeInCall) {
-  string hlo_string = R"(
+  constexpr absl::string_view kHloString = R"(
 HloModule FoldDotTransposeInCall
 
 callee {
@@ -205,9 +210,10 @@ ENTRY entry_computation {
   ROOT call = f32[2,2]{1,0} call(y, x), to_apply=callee
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  FoldTranspose(module.get());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
 
   const HloComputation* callee = module->GetComputationWithName("callee");
   ASSERT_NE(callee, nullptr);
@@ -243,7 +249,7 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       x->shape(), transpose_y->shape(), /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
-      /*preferred_element_type=*/absl::nullopt);
+      /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), x, transpose_y,
@@ -253,10 +259,11 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
   auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(conv));
-  FoldTranspose(module.get());
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set(
+  absl::flat_hash_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
   CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
@@ -300,7 +307,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       x->shape(), transpose_y->shape(), /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
-      /*preferred_element_type=*/absl::nullopt);
+      /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), x, transpose_y,
@@ -310,10 +317,11 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
   auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(conv));
-  FoldTranspose(module.get());
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set(
+  absl::flat_hash_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
   CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
@@ -362,7 +370,7 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       transpose_x->shape(), y->shape(), /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
-      /*preferred_element_type=*/absl::nullopt);
+      /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), transpose_x, y,
@@ -372,10 +380,11 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(conv));
-  FoldTranspose(module.get());
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set(
+  absl::flat_hash_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
   EXPECT_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
@@ -430,7 +439,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       transpose_x->shape(), y->shape(), /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
-      /*preferred_element_type=*/absl::nullopt);
+      /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), transpose_x, y,
@@ -440,10 +449,11 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
   auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(conv));
-  FoldTranspose(module.get());
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set(
+  absl::flat_hash_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
   EXPECT_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
@@ -472,7 +482,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
 }
 
 TEST_F(TransposeFoldingTest, FoldBatchDotTranspose) {
-  string hlo_string = R"(
+  constexpr absl::string_view kHloString = R"(
 HloModule FoldBatchDotTranspose
 
 ENTRY entry_computation {
@@ -483,17 +493,17 @@ ENTRY entry_computation {
             rhs_contracting_dims={2}, lhs_batch_dims={0,1}, rhs_batch_dims={0,1}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_TRUE(FoldTranspose(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
 
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Parameter(0), op::Parameter(1),
                       /*lhs_contracting_dim=*/3, /*rhs_contracting_dim=*/3));
 }
 
 TEST_F(TransposeFoldingTest, NoFoldBatchDotTransposeBatch) {
-  string hlo_string = R"(
+  constexpr absl::string_view kHloString = R"(
 HloModule NoFoldBatchDotTransposeBatch
 
 ENTRY entry_computation {
@@ -504,13 +514,14 @@ ENTRY entry_computation {
             rhs_contracting_dims={2}, lhs_batch_dims={0,1}, rhs_batch_dims={0,1}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_FALSE(FoldTranspose(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(TransposeFoldingTest, FoldBatchDotTransposeNonContiguousBatch) {
-  string hlo_string = R"(
+  constexpr absl::string_view kHloString = R"(
 HloModule FoldBatchDotTransposeNonContiguousBatch
 
 ENTRY entry_computation {
@@ -521,17 +532,17 @@ ENTRY entry_computation {
             rhs_contracting_dims={1}, lhs_batch_dims={0,2}, rhs_batch_dims={0,2}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_TRUE(FoldTranspose(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
 
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Parameter(0), op::Parameter(1),
                       /*lhs_contracting_dim=*/3, /*rhs_contracting_dim=*/3));
 }
 
 TEST_F(TransposeFoldingTest, NoFoldBatchDotTransposeIdentity) {
-  string hlo_string = R"(
+  constexpr absl::string_view kHloString = R"(
 HloModule NoFoldBatchDotTransposeIdentity
 
 ENTRY entry_computation {
@@ -542,9 +553,10 @@ ENTRY entry_computation {
             rhs_contracting_dims={2}, lhs_batch_dims={0,1}, rhs_batch_dims={0,1}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_FALSE(FoldTranspose(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
 }
 
 }  // namespace

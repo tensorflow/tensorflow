@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 
 #include <algorithm>
+#include <numeric>
+#include <string>
+#include <utility>
 
-#include "tensorflow/c/eager/abstract_tensor_handle.h"
-#include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/casts.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/device_filters.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/remote_device.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #endif  // !IS_MOBILE_PLATFORM
@@ -58,169 +60,6 @@ limitations under the License.
 namespace tensorflow {
 #if !defined(IS_MOBILE_PLATFORM)
 namespace {
-
-// A dummy collective is run using this group key during the setup of a cluster.
-// Must ensure that this group key is never re-used anywhere else later in the
-// application to prevent collisions.
-constexpr int kDummyHostCollectiveGroupKey = INT_MAX;
-
-int GetClusterSize(const ServerDef& server_def) {
-  int cluster_size = 0;
-  for (const auto& job : server_def.cluster().job()) {
-    cluster_size += job.tasks_size();
-  }
-  return cluster_size;
-}
-
-Status IsLocalDevice(const std::string& device_name,
-                     const ServerDef& server_def, bool* is_local) {
-  DeviceNameUtils::ParsedName parsed_name;
-  if (!DeviceNameUtils::ParseFullOrLocalName(device_name, &parsed_name)) {
-    return errors::InvalidArgument(
-        "Invalid device name ", device_name,
-        " while parsing local devices in TFE_EnableCollectiveOps.");
-  }
-
-  *is_local = (parsed_name.job == server_def.job_name() ||
-               parsed_name.job == "localhost") &&
-              parsed_name.task == server_def.task_index();
-  return Status::OK();
-}
-
-Status ExecuteCollectiveForIncarnationIds(EagerContext* context,
-                                          const ServerDef& server_def,
-                                          tensorflow::Tensor input_tensor,
-                                          AbstractTensorPtr* output_tensor,
-                                          int group_size) {
-  auto op = std::make_unique<EagerOperation>(context);
-  auto executor = absl::make_unique<EagerExecutor>(false);
-  context->SetExecutorForThread(executor.get());
-
-  TensorHandle* tensor_handle = TensorHandle::CreateLocalHandle(input_tensor);
-  TF_RETURN_IF_ERROR(
-      op->Reset("CollectiveGather", context->HostCPUName().c_str()));
-  TF_RETURN_IF_ERROR(op->AddInput(tensor_handle));
-  TF_RETURN_IF_ERROR(op->SetAttrType("T", tensor_handle->DataType()));
-  TF_RETURN_IF_ERROR(op->SetAttrInt("group_size", group_size));
-  TF_RETURN_IF_ERROR(op->SetAttrInt("group_key", kDummyHostCollectiveGroupKey));
-  TF_RETURN_IF_ERROR(op->SetAttrInt("instance_key", 1));
-  tensorflow::TensorShape shape;
-  TF_RETURN_IF_ERROR(tensor_handle->Shape(&shape));
-  int num_dims;
-  TF_RETURN_IF_ERROR(tensor_handle->NumDims(&num_dims));
-
-  std::unique_ptr<int64_t[]> shape_list;
-  shape_list.reset(new int64_t[num_dims]);
-  auto dim_sizes = shape.dim_sizes();
-  for (int i = 0; i < num_dims; ++i) {
-    shape_list[i] = static_cast<int64_t>(dim_sizes[i]);
-  }
-  TF_RETURN_IF_ERROR(op->SetAttrFloat("timeout_seconds", 300));
-  TF_RETURN_IF_ERROR(op->SetAttrShape("shape", shape_list.get(), num_dims));
-
-  int num_retvals = 1;
-  std::vector<AbstractTensorHandle*> retvals(1);
-  TF_RETURN_IF_ERROR(
-      op->Execute(absl::Span<AbstractTensorHandle*>(retvals), &num_retvals));
-  Status status;
-  output_tensor->reset(
-      reinterpret_cast<ImmediateExecutionTensorHandle*>(retvals[0])
-          ->Resolve(&status));
-
-  tensor_handle->Unref();
-  retvals[0]->Unref();
-  return status;
-}
-
-tensorflow::Tensor GenerateIncarnationIdTensor(
-    int32 worker_id, std::vector<DeviceAttributes> local_devices) {
-  tensorflow::Tensor tensor(
-      tensorflow::DT_INT64,
-      tensorflow::TensorShape({static_cast<int64_t>(local_devices.size()), 2}));
-  std::vector<int64_t> incarnation_vec;
-  for (const auto& local_device : local_devices) {
-    incarnation_vec.push_back(worker_id);
-    incarnation_vec.push_back(local_device.incarnation());
-  }
-  memcpy(tensor.flat<int64_t>().data(), incarnation_vec.data(),
-         incarnation_vec.size() * sizeof(int64_t));
-  return tensor;
-}
-
-// Runs dummy collectives on every device to force the CompleteGroup RPCs to
-// gather the DeviceAttributes of all the devices in the cluster.
-// Returns the first error obtained from a collective op, if any.
-Status FetchAllDeviceAttributes(
-    EagerContext* context, const ServerDef& server_def,
-    std::vector<DeviceAttributes> local_devices,
-    std::vector<DeviceAttributes>* cluster_devices) {
-  // Execute an AllGather collective on the cluster to exchange device
-  // incarnations and learn about all the remote devices in the cluster.
-  // An AllGather collective op is started on the host device of each worker,
-  // and the incarnation IDs of each of the devices is shares with all the
-  // workers.
-  // This method assumes that all workers will have the same distribution of
-  // devices and the order of the incarnation IDs in each of the input tensors
-  // is fixed i.e CPU devices followed by GPU/TPU devices in ascending order of
-  // device_id.
-  const int cluster_size = GetClusterSize(server_def);
-  std::sort(local_devices.begin(), local_devices.end(),
-            [](const DeviceAttributes& lhs, const DeviceAttributes& rhs) {
-              return lhs.name() < rhs.name();
-            });
-  const tensorflow::Tensor& tensor =
-      GenerateIncarnationIdTensor(server_def.task_index(), local_devices);
-  AbstractTensorPtr output_tensor;
-  TF_RETURN_IF_ERROR(ExecuteCollectiveForIncarnationIds(
-      context, server_def, tensor, &output_tensor, cluster_size));
-
-  DCHECK_EQ(output_tensor->NumDims(), 2);
-  int64_t* data = reinterpret_cast<int64_t*>(output_tensor->Data());
-  int device_type_tracker = 0;
-  for (int i = 0; i < output_tensor->NumElements(); i += 2) {
-    // Since the order of the devices is the same on all workers, we use the
-    // local devices list to infer the device_type and number.
-    DeviceNameUtils::ParsedName parsed_name;
-    const std::string& local_device_name =
-        local_devices[device_type_tracker].name();
-    if (!DeviceNameUtils::ParseFullName(local_device_name, &parsed_name)) {
-      return errors::InvalidArgument("Failed to parse device name: ",
-                                     local_device_name);
-    }
-    parsed_name.task = data[i];
-    auto name = DeviceNameUtils::ParsedNameToString(parsed_name);
-
-    DeviceAttributes dev_attr;
-    dev_attr.set_name(name);
-    dev_attr.set_incarnation(data[i + 1]);
-    dev_attr.set_device_type(parsed_name.type);
-    cluster_devices->push_back(dev_attr);
-    device_type_tracker = (device_type_tracker + 1) % local_devices.size();
-  }
-
-  return Status::OK();
-}
-
-// Fetch the device attributes of remote devices in the cluster.
-Status UpdateDeviceManager(EagerContext* context, const ServerDef& server_def,
-                           std::vector<DeviceAttributes> local_devices) {
-  std::vector<DeviceAttributes> device_attrs;
-  TF_RETURN_IF_ERROR(FetchAllDeviceAttributes(context, server_def,
-                                              local_devices, &device_attrs));
-
-  std::vector<std::unique_ptr<Device>> remote_devices;
-  for (const auto& device_attr : device_attrs) {
-    bool is_local;
-    auto status = IsLocalDevice(device_attr.name(), server_def, &is_local);
-    if (!status.ok()) return status;
-    if (!is_local) {
-      remote_devices.emplace_back(
-          NewRemoteDevice(context->TFEnv(), device_attr));
-    }
-  }
-
-  return context->AddDevices(std::move(remote_devices));
-}
 
 bool AreLocalDevicesCompatible(const EagerContext* context,
                                const ServerDef& server_def) {
@@ -260,7 +99,7 @@ Status AddRemoteDevicesToMgr(const std::vector<string>& added_remote_workers,
   }
 
   TF_RETURN_IF_ERROR(remote_device_mgr->AddDevices(std::move(remote_devices)));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetAllRemoteDevices(const std::vector<string>& remote_workers,
@@ -270,7 +109,7 @@ Status GetAllRemoteDevices(const std::vector<string>& remote_workers,
   TF_RETURN_IF_ERROR(AddRemoteDevicesToMgr(remote_workers, worker_cache,
                                            remote_device_mgr.get()));
   *device_mgr = std::move(remote_device_mgr);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoveRemoteDevicesFromMgr(
@@ -288,7 +127,7 @@ Status RemoveRemoteDevicesFromMgr(
     }
   }
   TF_RETURN_IF_ERROR(remote_device_mgr->RemoveDevices(devices_to_remove));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ListRemoteWorkers(ServerInterface* server, const string& local_worker,
@@ -297,7 +136,7 @@ Status ListRemoteWorkers(ServerInterface* server, const string& local_worker,
   remote_workers->erase(
       std::remove(remote_workers->begin(), remote_workers->end(), local_worker),
       remote_workers->end());
-  return Status::OK();
+  return OkStatus();
 }
 
 void DifferentiateWorkerLists(const std::vector<string>* current_list,
@@ -368,7 +207,7 @@ Status GetReplacedFromExistingWorkers(
       replaced_workers->emplace_back(existing_workers->at(i));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateRemoteContexts(EagerContext* context,
@@ -548,7 +387,7 @@ Status UpdateRemoteContexts(EagerContext* context,
   for (int i = 0; i < num_remote_workers; i++) {
     TF_RETURN_IF_ERROR(statuses[i]);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status UpdateContextWithServerDef(EagerContext* context,
@@ -758,17 +597,19 @@ Status UpdateContextWithServerDef(EagerContext* context,
   }
 
   auto session_name = strings::StrCat("eager_", context_id);
+  auto* session_mgr = server->worker_env()->session_mgr;
   if (reset_context) {
     RemoteRendezvous* r =
         server->worker_env()->rendezvous_mgr->Find(context_id);
     auto* device_mgr = server->worker_env()->device_mgr;
     std::shared_ptr<WorkerSession> worker_session;
-    LOG_AND_RETURN_IF_ERROR(server->worker_env()->session_mgr->CreateSession(
+    LOG_AND_RETURN_IF_ERROR(session_mgr->CreateSession(
         session_name, server_def, base_request.cluster_device_attributes(),
-        true));
+        context->session_options().config.isolate_session_state()));
+    LOG_AND_RETURN_IF_ERROR(server->SetCoordinationServiceAgentInstance(
+        session_mgr->GetCoordinationServiceAgent()));
     LOG_AND_RETURN_IF_ERROR(
-        server->worker_env()->session_mgr->WorkerSessionForSession(
-            session_name, &worker_session));
+        session_mgr->WorkerSessionForSession(session_name, &worker_session));
 
     // Initialize remote tensor communication based on worker session.
     LOG_AND_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
@@ -788,9 +629,8 @@ Status UpdateContextWithServerDef(EagerContext* context,
     // GrpcServer cannot be destroyed after it is started.
     LOG_AND_RETURN_IF_ERROR(server->Start());
   } else {
-    sg.Update(server->worker_env()->session_mgr->UpdateSession(
-        session_name, server_def, base_request.cluster_device_attributes(),
-        /*isolate_session_state=*/true));
+    sg.Update(session_mgr->UpdateSession(
+        session_name, server_def, base_request.cluster_device_attributes()));
     sg.Update(context->UpdateRemoteMaster(context_id,
                                           std::move(remote_eager_workers),
                                           added_workers, removed_workers));
@@ -798,7 +638,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
   }
 #undef LOG_AND_RETURN_IF_ERROR
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -827,8 +667,14 @@ Status EagerContextDistributedManager::SetOrUpdateServerDef(
                       "when updating the server def.";
     }
   }
-  return UpdateContextWithServerDef(context_, server_def, reset_context,
-                                    keep_alive_secs);
+  Status s = UpdateContextWithServerDef(context_, server_def, reset_context,
+                                        keep_alive_secs);
+  // If context is reset, make sure pointer is set to the new agent.
+  coordination_service_agent_ =
+      context_->GetServer()
+          ->worker_env()
+          ->session_mgr->GetCoordinationServiceAgent();
+  return s;
 }
 
 Status EagerContextDistributedManager::EnableCollectiveOps(
@@ -855,67 +701,50 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       LOG_AND_RETURN_IF_ERROR(errors::Internal(
           "Currently, TF eager runtime only supports GrpcServer."));
     }
-    auto worker_cache =
-        server->worker_env()->session_mgr->LegacySession()->worker_cache();
     const auto& config = server_def.default_session_config();
     const bool enable_coordination =
-        !config.experimental().coordination_service().empty();
-    const bool fetch_remote_devices =
-        config.experimental().fetch_remote_devices_in_multi_client();
-    // TODO(haoyuzhang): Consider unify the two solutions for fetching remote
-    // devices in multi-client cluster setup
-    assert(!(enable_coordination && fetch_remote_devices) &&
-           "Use one of the coordination service or all-gather solutions to "
-           "fetch remote device attributes.");
+        !config.experimental().coordination_config().service_type().empty();
     if (enable_coordination) {
-      // For coordination leader: start the service instance
-      const std::string& leader =
-          config.experimental().collective_group_leader();
-      DeviceNameUtils::ParsedName parsed;
-      DeviceNameUtils::ParseFullName(leader, &parsed);
-      if (parsed.job == server_def.job_name() &&
-          parsed.task == server_def.task_index()) {
-        LOG_AND_RETURN_IF_ERROR(EnableCoordinationService(
-            config.experimental().coordination_service(), server->worker_env(),
-            server_def, worker_cache));
-      }
-      LOG_AND_RETURN_IF_ERROR(server->SetCoordinationServiceAgentInstance(
-          coordination_service_agent_.get()));
-    }
-    LOG_AND_RETURN_IF_ERROR(server->Start());
-    if (fetch_remote_devices || enable_coordination) {
       auto session_name = strings::StrCat("eager_", context_->GetContextId());
       std::shared_ptr<WorkerSession> worker_session;
-      LOG_AND_RETURN_IF_ERROR(server->worker_env()->session_mgr->CreateSession(
-          session_name, server_def, true));
-      LOG_AND_RETURN_IF_ERROR(
-          server->worker_env()->session_mgr->WorkerSessionForSession(
-              session_name, &worker_session));
-      context_->SetWorkerEnv(server->worker_env(), worker_session);
-    }
-
-    if (enable_coordination) {
-      // Coordination agent: initialize, connect, wait for all tasks
-      std::unique_ptr<CoordinationClientCache> agent_cache;
-      LOG_AND_RETURN_IF_ERROR(
-          worker_cache->GetCoordinationClientCache(&agent_cache));
-      LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
-          server->worker_env(), server_def, std::move(agent_cache),
+      auto* session_mgr = server->worker_env()->session_mgr;
+      // Start coordination service within session if this is the leader.
+      // Initialize coordination service agent.
+      LOG_AND_RETURN_IF_ERROR(session_mgr->CreateSession(
+          session_name, server_def,
+          context_->session_options().config.isolate_session_state(),
           [this](Status s) {
             context_->GetCollectiveExecutorHandle()->get()->StartAbort(s);
           }));
+      LOG_AND_RETURN_IF_ERROR(
+          session_mgr->WorkerSessionForSession(session_name, &worker_session));
+      context_->SetWorkerEnv(server->worker_env(), worker_session);
+      coordination_service_agent_ = session_mgr->GetCoordinationServiceAgent();
+      LOG_AND_RETURN_IF_ERROR(server->SetCoordinationServiceAgentInstance(
+          coordination_service_agent_));
+    }
+
+    LOG_AND_RETURN_IF_ERROR(server->Start());
+
+    if (enable_coordination) {
+      // Coordination agent: connect and wait for all tasks
+      std::vector<DeviceAttributes> local_devices;
+      server->worker_env()->device_mgr->ListDeviceAttributes(&local_devices);
+      CoordinationServiceDeviceInfo devices;
+      *devices.mutable_tf()->mutable_devices() = {
+          std::make_move_iterator(local_devices.begin()),
+          std::make_move_iterator(local_devices.end())};
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Connect());
-      LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->WaitForAllTasks());
+      LOG_AND_RETURN_IF_ERROR(
+          coordination_service_agent_->WaitForAllTasks(devices));
 
       // Add remote devices to eager context.
       std::vector<std::unique_ptr<Device>> remote_devices;
       for (const auto& d :
-           coordination_service_agent_->GetClusterDeviceAttributes()) {
-        bool is_local;
-        LOG_AND_RETURN_IF_ERROR(IsLocalDevice(d.name(), server_def, &is_local));
-        if (!is_local) {
-          remote_devices.emplace_back(NewRemoteDevice(context_->TFEnv(), d));
-        }
+           coordination_service_agent_->GetClusterDeviceInfo().tf().devices()) {
+        // Treat all devices as remote so that EagerContext::remote_device_mgr
+        // maintains all the devices, including both local and remote.
+        remote_devices.emplace_back(NewRemoteDevice(context_->TFEnv(), d));
       }
       LOG_AND_RETURN_IF_ERROR(context_->AddDevices(std::move(remote_devices)));
     }
@@ -923,11 +752,13 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
     LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
         std::move(new_server), server->worker_env()->device_mgr,
         server->worker_env()->collective_executor_mgr.get()));
-    if (fetch_remote_devices) {
-      std::vector<DeviceAttributes> local_devices;
-      context_->ListDevices(&local_devices);
-      LOG_AND_RETURN_IF_ERROR(
-          UpdateDeviceManager(context_, server_def, local_devices));
+    if (enable_coordination) {
+      // Update cluster_flr and remote device list
+      eager::EagerClusterFunctionLibraryRuntime* cluster_flr =
+          new eager::EagerClusterFunctionLibraryRuntime(
+              context_->GetContextId(), context_,
+              context_->GetOwnedRemoteDeviceMgr());
+      context_->UpdateClusterFLRAndInitDevices(cluster_flr);
     }
   } else {
     LOG_AND_RETURN_IF_ERROR(server->UpdateServerDef(server_def));
@@ -936,19 +767,9 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
         server->worker_env()->collective_executor_mgr.get()));
   }
 #undef LOG_AND_RETURN_IF_ERROR
-  return Status::OK();
+  return OkStatus();
 }
 
-Status EagerContextDistributedManager::EnableCoordinationService(
-    const std::string& service_type, const WorkerEnv* worker_env,
-    const ServerDef& server_def, WorkerCacheInterface* worker_cache) {
-  std::unique_ptr<CoordinationClientCache> client_cache;
-  TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&client_cache));
-  coordination_service_ =
-      CoordinationServiceInterface::EnableCoordinationService(
-          service_type, worker_env, server_def, std::move(client_cache));
-  return Status::OK();
-}
 
 Status EagerContextDistributedManager::CheckRemoteAlive(
     const std::string& remote_task_name, bool* is_alive) {
@@ -979,7 +800,7 @@ Status EagerContextDistributedManager::CheckRemoteAlive(
     LOG(INFO) << "Remote worker " << remote_task_name
               << " is not alive: " << remote_status.error_message();
   }
-  return Status::OK();
+  return OkStatus();
 }
 #endif  // !IS_MOBILE_PLATFORM
 }  // namespace tensorflow

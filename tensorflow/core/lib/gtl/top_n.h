@@ -73,16 +73,16 @@ class TopN {
   //    UNORDERED and a peek_bottom() function call is invoked.
   //
   //  o HEAP_SORTED: in this state, the array is kept as a heap and
-  //    there are exactly (limit_+1) elements in the array. This
+  //    there are exactly limit_ elements in the array. This
   //    state is reached when at least (limit_+1) elements are
   //    pushed in.
   //
   //  The state transition graph is at follows:
   //
-  //             peek_bottom()                (limit_+1) elements
+  //             peek_bottom()                (limit_+1) elements pushed
   //  UNORDERED --------------> BOTTOM_KNOWN --------------------> HEAP_SORTED
   //      |                                                           ^
-  //      |                      (limit_+1) elements                  |
+  //      |                (limit_+1) elements pushed                 |
   //      +-----------------------------------------------------------+
 
   enum State { UNORDERED, BOTTOM_KNOWN, HEAP_SORTED };
@@ -96,14 +96,18 @@ class TopN {
 
   // Number of elements currently held by this TopN object.  This
   // will be no greater than 'limit' passed to the constructor.
-  size_t size() const { return std::min(elements_.size(), limit_); }
+  size_t size() const { return elements_.size(); }
 
   bool empty() const { return size() == 0; }
 
   // If you know how many elements you will push at the time you create the
   // TopN object, you can call reserve to preallocate the memory that TopN
   // will need to process all 'n' pushes.  Calling this method is optional.
-  void reserve(size_t n) { elements_.reserve(std::min(n, limit_ + 1)); }
+  void reserve(size_t n) {
+    // We may need limit_+1 for the case where we transition from an unsorted
+    // set of limit_ elements to a heap.
+    elements_.reserve(std::min(n, limit_ + 1));
+  }
 
   // Push 'v'.  If the maximum number of elements was exceeded, drop the
   // lowest element and return it in 'dropped' (if given). If the maximum is not
@@ -175,7 +179,7 @@ class TopN {
   // with no guarantees about the order of iteration. These iterators are
   // invalidated by mutation of the data structure.
   UnsortedIterator unsorted_begin() const { return elements_.begin(); }
-  UnsortedIterator unsorted_end() const { return elements_.begin() + size(); }
+  UnsortedIterator unsorted_end() const { return elements_.end(); }
 
   // Accessor for comparator template argument.
   Cmp *comparator() { return &cmp_; }
@@ -189,13 +193,10 @@ class TopN {
   void PushInternal(U &&v, T *dropped);  // NOLINT(build/c++11)
 
   // elements_ can be in one of two states:
-  //   elements_.size() <= limit_:  elements_ is an unsorted vector of elements
-  //      pushed so far.
-  //   elements_.size() > limit_:  The last element of elements_ is unused;
-  //      the other elements of elements_ are an stl heap whose size is exactly
-  //      limit_.  In this case elements_.size() is exactly one greater than
-  //      limit_, but don't use "elements_.size() == limit_ + 1" to check for
-  //      that because you'll get a false positive if limit_ == size_t(-1).
+  //   elements_.size() <= limit_ && state_ != HEAP_SORTED:
+  //      elements_ is an unsorted vector of elements pushed so far.
+  //   elements_.size() == limit_ && state_ == HEAP_SORTED:
+  //      elements_ is an stl heap.
   std::vector<T> elements_;
   size_t limit_;  // Maximum number of elements to find
   Cmp cmp_;       // Greater-than comparison function
@@ -213,9 +214,19 @@ void TopN<T, Cmp>::PushInternal(U &&v, T *dropped) {  // NOLINT(build/c++11)
     return;
   }
   if (state_ != HEAP_SORTED) {
+    // We may temporarily extend one beyond limit_ elements here.  This is
+    // necessary for finding and removing the smallest element.
     elements_.push_back(std::forward<U>(v));  // NOLINT(build/c++11)
-    if (state_ == UNORDERED || cmp_(elements_.back(), elements_.front())) {
-      // Easy case: we just pushed the new element back
+    if (elements_.size() == limit_ + 1) {
+      // Transition from unsorted vector to a heap.
+      std::make_heap(elements_.begin(), elements_.end(), cmp_);
+      std::pop_heap(elements_.begin(), elements_.end(), cmp_);
+      if (dropped) *dropped = std::move(elements_.back());
+      elements_.pop_back();  // Restore to size limit_.
+      state_ = HEAP_SORTED;
+    } else if (state_ == UNORDERED ||
+               cmp_(elements_.back(), elements_.front())) {
+      // Easy case: we just push the new element back
     } else {
       // To maintain the BOTTOM_KNOWN state, we need to make sure that
       // the element at position 0 is always the smallest. So we put
@@ -225,28 +236,16 @@ void TopN<T, Cmp>::PushInternal(U &&v, T *dropped) {  // NOLINT(build/c++11)
       using std::swap;
       swap(elements_.front(), elements_.back());
     }
-    if (elements_.size() == limit_ + 1) {
-      // Transition from unsorted vector to a heap.
-      std::make_heap(elements_.begin(), elements_.end(), cmp_);
-      if (dropped) *dropped = std::move(elements_.front());
-      std::pop_heap(elements_.begin(), elements_.end(), cmp_);
-      state_ = HEAP_SORTED;
-    }
+
   } else {
     // Only insert the new element if it is greater than the least element.
     if (cmp_(v, elements_.front())) {
-      // Store new element in the last slot of elements_.  Remember from the
-      // comments on elements_ that this last slot is unused, so we don't
-      // overwrite anything useful.
-      elements_.back() = std::forward<U>(v);  // NOLINT(build/c++11)
-
-      // stp::pop_heap() swaps elements_.front() and elements_.back() and
-      // rearranges elements from [elements_.begin(), elements_.end() - 1) such
-      // that they are a heap according to cmp_.  Net effect: remove
-      // elements_.front() from the heap, and add the new element instead.  For
-      // more info, see https://en.cppreference.com/w/cpp/algorithm/pop_heap.
+      // Remove the top (smallest) element of the min heap, then push the new
+      // value in.
       std::pop_heap(elements_.begin(), elements_.end(), cmp_);
       if (dropped) *dropped = std::move(elements_.back());
+      elements_.back() = std::forward<U>(v);
+      std::push_heap(elements_.begin(), elements_.end(), cmp_);
     } else {
       if (dropped) *dropped = std::forward<U>(v);  // NOLINT(build/c++11)
     }
@@ -282,7 +281,6 @@ std::vector<T> *TopN<T, Cmp>::Extract() {
   if (state_ != HEAP_SORTED) {
     std::sort(out->begin(), out->end(), cmp_);
   } else {
-    out->pop_back();
     std::sort_heap(out->begin(), out->end(), cmp_);
   }
   return out;
@@ -292,10 +290,6 @@ template <class T, class Cmp>
 std::vector<T> *TopN<T, Cmp>::ExtractUnsorted() {
   auto out = new std::vector<T>;
   out->swap(elements_);
-  if (state_ == HEAP_SORTED) {
-    // Remove the limit_+1'th element.
-    out->pop_back();
-  }
   return out;
 }
 
@@ -313,7 +307,6 @@ void TopN<T, Cmp>::ExtractNondestructive(std::vector<T> *output) const {
   if (state_ != HEAP_SORTED) {
     std::sort(output->begin(), output->end(), cmp_);
   } else {
-    output->pop_back();
     std::sort_heap(output->begin(), output->end(), cmp_);
   }
 }
@@ -329,10 +322,6 @@ template <class T, class Cmp>
 void TopN<T, Cmp>::ExtractUnsortedNondestructive(std::vector<T> *output) const {
   CHECK(output);
   *output = elements_;
-  if (state_ == HEAP_SORTED) {
-    // Remove the limit_+1'th element.
-    output->pop_back();
-  }
 }
 
 template <class T, class Cmp>

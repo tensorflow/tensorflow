@@ -63,9 +63,9 @@ static inline uint32_t TF_swap32(uint32_t host_int) {
 #endif
 
 #if TF_TSTRING_LITTLE_ENDIAN
-#define TF_le32toh(x) TF_swap32(x)
-#else  // TF_TSTRING_LITTLE_ENDIAN
 #define TF_le32toh(x) x
+#else  // TF_TSTRING_LITTLE_ENDIAN
+#define TF_le32toh(x) TF_swap32(x)
 #endif  // TF_TSTRING_LITTLE_ENDIAN
 
 static inline size_t TF_align16(size_t i) { return (i + 0xF) & ~0xF; }
@@ -215,7 +215,7 @@ static inline const char *TF_TString_GetDataPointer(const TF_TString *str) {
     case TF_TSTR_LARGE:
       return str->u.large.ptr;
     case TF_TSTR_OFFSET:
-      return (const char *)str + str->u.offset.offset;  // NOLINT
+      return (const char *)str + TF_le32toh(str->u.offset.offset);  // NOLINT
     case TF_TSTR_VIEW:
       return str->u.view.ptr;
     default:

@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -55,7 +55,7 @@ Status ValidateCSRSparseMatrix(const CSRSparseMatrix& csr_sparse_matrix,
     return errors::InvalidArgument("CSR SparseMatrix must have rank 2 or 3; ",
                                    "but dense_shape has size ", rank);
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

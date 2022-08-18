@@ -2,9 +2,12 @@ syntax = "proto3";
 
 package tensorflow.data.experimental;
 
+import "tensorflow/core/protobuf/data_service.proto";
+
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // Configuration for a tf.data service DispatchServer.
+// Next id: 10
 message DispatcherConfig {
   // The port for the dispatcher to bind to. A value of 0 indicates that the
   // dispatcher may bind to any available port.
@@ -21,18 +24,27 @@ message DispatcherConfig {
   // of worker addresses that will register with the dispatcher. The worker
   // addresses should be in the format "host" or "host:port", where "port" is an
   // integer, named port, or %port% to match any port.
-  // TODO(yangchen): Also add a deployment mode flag. Auto-sharding will only be
-  // allowed in the "COLOCATED" mode.
   repeated string worker_addresses = 7;
-  // How often the dispatcher should scan through to delete old and unused jobs.
+  // (Optional.) tf.data service deployment mode. Supported values are "REMOTE",
+  // "COLOCATED", and "HYBRID". If unspecified, it is assumed to be "REMOTE".
+  DeploymentMode deployment_mode = 9;
+  // How often the dispatcher should scan through to delete old and unused
+  // jobs. A value of 0 indicates that the decision should be left up to the
+  // runtime.
   int64 job_gc_check_interval_ms = 5;
   // How long a job needs to be unused before it becomes a candidate for garbage
   // collection. A value of -1 indicates that jobs should never be garbage
-  // collected.
+  // collected. A value of 0 indicates that the decision should be left up to
+  // the runtime.
   int64 job_gc_timeout_ms = 6;
+  // How long to wait before garbage-collecting a client that hasn't
+  // heartbeated to the dispatcher. A value of 0 indicates that the timeout
+  // should be left to the runtime.
+  int64 client_timeout_ms = 8;
 }
 
 // Configuration for a tf.data service WorkerServer.
+// Next id: 12
 message WorkerConfig {
   // The port for the worker to bind to. A value of 0 indicates that the
   // worker may bind to any available port.
@@ -45,10 +57,17 @@ message WorkerConfig {
   // will be replaced with the worker's bound port. This is useful when the port
   // is set to `0`.
   string worker_address = 4;
-  // How often the worker should heartbeat to the master.
+  // Tags attached to the worker. This allows reading from selected workers.
+  // For example, by applying a "COLOCATED" tag, tf.data service is able to read
+  // from the local tf.data worker if one exists, then from off-TF-host workers,
+  // to avoid cross-TF-host reads.
+  repeated string worker_tags = 10;
+  // How often the worker should heartbeat to the master. A value of 0 indicates
+  // that the decision should be left up to the runtime.
   int64 heartbeat_interval_ms = 5;
   // How long to retry requests to the dispatcher before giving up and reporting
-  // an error.
+  // an error. A value of 0 indicates that the decision should be left up to the
+  // runtime.
   int64 dispatcher_timeout_ms = 6;
   // The protocol for the worker to use when transferring data to clients.
   string data_transfer_protocol = 7;
@@ -56,6 +75,9 @@ message WorkerConfig {
   // specified, will be replaced with the worker's bound port. This is useful
   // when the port is set to `0`.
   string data_transfer_address = 8;
+  // Maximum size of the cross-trainer cache in bytes. If enabled, make sure
+  // your training job provides sufficient memory resources.
+  int64 cross_trainer_cache_size_bytes = 11;
   // When shutting down a worker, how long to wait for the gRPC server to
   // process the final requests. This is used to achieve clean shutdown in unit
   // tests.

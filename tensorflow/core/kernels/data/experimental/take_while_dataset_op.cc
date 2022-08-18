@@ -80,12 +80,12 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
       return "TakeWhileDatasetOp::Dataset";
     }
 
-    int64_t Cardinality() const override { return kUnknownCardinality; }
+    int64_t CardinalityInternal() const override { return kUnknownCardinality; }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -116,7 +116,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           {std::make_pair("predicate", f_attr),
            std::make_pair("Targuments", other_arguments_types_attr)},
           output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -139,7 +139,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
-            return Status::OK();
+            return OkStatus();
           }
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -147,7 +147,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         if (*end_of_sequence) {
           mutex_lock l(mu_);
           input_impl_.reset();
-          return Status::OK();
+          return OkStatus();
         }
         std::vector<Tensor> result;
         TF_RETURN_IF_ERROR(instantiated_captured_func_->RunWithBorrowedArgs(
@@ -160,9 +160,11 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         }
         *end_of_sequence = !result[0].scalar<bool>()();
         if (*end_of_sequence) {
+          mutex_lock l(mu_);
+          input_impl_.reset();
           out_tensors->clear();
         }
-        return Status::OK();
+        return OkStatus();
       }
 
      protected:
@@ -177,22 +179,24 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
             dataset()->captured_func_->CheckExternalState()));
         mutex_lock l(mu_);
-        if (input_impl_)
+        if (input_impl_) {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-        else
+        } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
-        return Status::OK();
+        }
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        if (reader->Contains(full_name("input_impls_empty")))
+        if (reader->Contains(full_name("input_impls_empty"))) {
           input_impl_.reset();
-        else
+        } else {
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-        return Status::OK();
+        }
+        return OkStatus();
       }
 
      private:

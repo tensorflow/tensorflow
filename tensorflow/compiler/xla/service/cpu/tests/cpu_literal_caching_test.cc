@@ -26,7 +26,7 @@ class CpuDuplicateConstantsTest : public CpuCodegenTest {};
 TEST_F(CpuDuplicateConstantsTest, RepeatedArrayConstants) {
   // We use a while loop here to force the two constant HloInstructions to be in
   // different computations.  Otherwise the HLO optimizer itself CSEs them.
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule RepeatedConstants
 
 while_body {
@@ -56,7 +56,7 @@ ENTRY main {
 }
 )";
 
-  string filecheck_pattern = R"(
+  std::string filecheck_pattern = R"(
 CHECK: private unnamed_addr constant [48 x i8]
 CHECK-NOT: private unnamed_addr constant [48 x i8]
 )";
@@ -77,7 +77,7 @@ CHECK-NOT: private unnamed_addr constant [48 x i8]
 TEST_F(CpuDuplicateConstantsTest, RepeatedTupleConstants) {
   // We use a while loop here to force the two constant HloInstructions to be in
   // different computations.  Otherwise the HLO optimizer itself CSEs them.
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule RepeatedConstants
 
 while_body {
@@ -103,7 +103,7 @@ ENTRY main {
 }
 )";
 
-  string filecheck_pattern = R"(
+  std::string filecheck_pattern = R"(
 CHECK-DAG: private unnamed_addr constant [4 x i8]
 CHECK-DAG: private unnamed_addr constant [8 x i8]
 CHECK-NOT: private unnamed_addr constant [4 x i8]

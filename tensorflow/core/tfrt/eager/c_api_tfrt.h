@@ -136,6 +136,10 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
     return context_.GetEagerContext()->local_device_mgr()->ListDevices();
   }
 
+  std::vector<tensorflow::Device*> ListAllTfDevices() override {
+    return context_.GetEagerContext()->ListAllTfDevices();
+  }
+
   tensorflow::Status AddDevices(
       std::vector<std::unique_ptr<tensorflow::Device>> devices) override;
 
@@ -144,8 +148,9 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   void EndStep() override;
 
   tensorflow::Status AsyncWait() override {
+    TF_RETURN_IF_ERROR(GetEagerContext()->AsyncWait());
     GetHostContext()->Quiesce();
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   tensorflow::Status AddFunctionDef(
@@ -185,6 +190,18 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
     GetEagerContext()->SetLogDevicePlacement(enable);
   }
 
+  void SetRunEagerOpAsFunction(bool enable) override {
+    // TODO(tfrt-devs): Move this flag to a common place that can be shared
+    // by current TF and TFRT.
+    GetEagerContext()->SetRunEagerOpAsFunction(enable);
+  }
+
+  void SetJitCompileRewrite(bool enable) override {
+    // TODO(tfrt-devs): Move this flag to a common place that can be shared
+    // by current TF and TFRT.
+    GetEagerContext()->SetJitCompileRewrite(enable);
+  }
+
   tensorflow::EagerExecutor& Executor() override {
     return GetEagerContext()->Executor();
   }
@@ -205,12 +222,13 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
 
   CoreRuntime* GetCoreRuntime();
   tensorflow::Status BuildFunctionRequestContext(
-      tensorflow::tfd::OpKernelRunnerTable* runner_table,
+      tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
       RCReference<tfrt::RequestContext>* request_context);
   tensorflow::Status BuildOpRequestContext(
       RCReference<tfrt::RequestContext>* request_context);
   tensorflow::EagerContext* GetEagerContext();
   const tensorflow::EagerContext* GetEagerContext() const;
+  TfrtContext* GetTfrtContext();
 
   // Selects the op handler to execute the op based on the arguments. This
   // op handler selection is cheap. But it can be nullptr even it return OK
@@ -230,7 +248,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   AsyncValueRef<Chain>* GetChain();
 
   // Indicates sync or async execution.
-  bool is_async() { return GetEagerContext()->Executor().Async(); }
+  bool IsAsync() const { return context_.IsAsync(); }
 
   // For LLVM style RTTI.
   static bool classof(const AbstractContext* op) {
@@ -335,14 +353,15 @@ class TensorInterface : public tensorflow::AbstractTensorInterface {
 class TensorHandleInterface
     : public tensorflow::ImmediateExecutionTensorHandle {
  public:
-  explicit TensorHandleInterface(Value&& v, CoreRuntime* corert);
+  explicit TensorHandleInterface(Value&& v, TfrtContext* context);
 
   explicit TensorHandleInterface(tensorflow::DataType dtype, Value&& v,
-                                 CoreRuntime* corert);
+                                 TfrtContext* context);
 
   void Release() override { Unref(); }
 
   tensorflow::DataType DataType() const override;
+  tensorflow::Status TensorHandleStatus() const override;
   tensorflow::Status Shape(
       tensorflow::PartialTensorShape* shape) const override;
   tensorflow::Status NumDims(int* num_dims) const override;
@@ -387,13 +406,16 @@ class TensorHandleInterface
  private:
   llvm::Optional<const TensorMetadata*> Metadata() const;
 
+  tensorflow::StatusOr<tensorflow::DataType> ObtainDataTypeFromMetaData(
+      const TensorMetadata*) const;
+
   // If the tensor handle is generated as the result of a function, the datatype
   // is known from the function output signature.
   // Therefore, we can obtain the datatype earlier, before the function
   // execution completes.
   llvm::Optional<tensorflow::DataType> dtype_;
 
-  CoreRuntime& corert_;
+  TfrtContext& context_;
 
   // Value of tfrt::TensorHandle.
   Value value_;
@@ -550,6 +572,9 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
     return stack_trace_;
   }
 
+  // Currently not supported.
+  void SetStepId(int64_t step_id) override {}
+
   // For LLVM style RTTI.
   static bool classof(const AbstractOperation* ptr) {
     return ptr->getKind() == kTfrt;
@@ -579,7 +604,7 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
   const tensorflow::OpDef* op_def_;  // op definition from protobuf
   OpAttrs attrs_;
   OpAttrsInterface op_attrs_;
-  SmallVector<
+  llvm::SmallVector<
       tensorflow::core::RefCountPtr<tensorflow::ImmediateExecutionTensorHandle>,
       8>
       args_;

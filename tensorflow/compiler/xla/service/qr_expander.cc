@@ -169,7 +169,7 @@ Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
   // Form v as [0, 0, ..., 1] ++ x[k+1:] / divisor
   // If sigma is zero, x[k+1:] is zero, so use any non-zero divisor.
   *v = e_k + Div(x_after_k, divisor, /*broadcast_dimensions=*/batch_dim_ids);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -511,7 +511,7 @@ bool QrExpander::InstructionMatchesPattern(HloInstruction* instruction) {
 
 StatusOr<HloInstruction*> QrExpander::ExpandInstruction(
     HloInstruction* instruction) {
-  const string name =
+  const std::string name =
       absl::StrFormat("xla.%s_%s", instruction->custom_call_target(),
                       instruction->operand(0)->shape().ToString());
 

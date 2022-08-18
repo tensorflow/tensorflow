@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_IM2COL_UTILS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_IM2COL_UTILS_H_
 
+#include <algorithm>
 #include <cassert>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
@@ -51,7 +52,7 @@ inline void ExtractPatchIntoBufferColumn(const RuntimeShape& input_shape, int w,
   const int ih_start = std::max(0, ih_ungated_start);
   const int iw_start = std::max(0, iw_ungated_start);
   const int single_row_num =
-      std::min(kwidth - w_offset, in_width - iw_start) * in_depth;
+      std::max(0, std::min(kwidth - w_offset, in_width - iw_start)) * in_depth;
   const int output_row_offset = (buffer_id * single_buffer_length);
   int out_offset =
       output_row_offset + (h_offset * kwidth + w_offset) * in_depth;

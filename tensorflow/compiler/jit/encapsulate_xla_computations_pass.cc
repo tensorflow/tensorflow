@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/encapsulate_xla_computations_pass.h"
 
+#include <functional>
+#include <string>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
@@ -22,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -31,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -72,7 +77,7 @@ Status GetIndexAttr(const Node& n, int num_args, int* index) {
     return errors::InvalidArgument("Invalid ", n.type_string(), " number ",
                                    *index);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns the data type of the destination of an edge.
@@ -178,26 +183,13 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   AddNodeAttr(kXlaClusterIdAttr, call_def->name(), call_def);
   AddNodeAttr("_variable_start_index", variable_start_index, call_def);
 
-  // Uniquify the function name.
-  GraphDef gdef;
-  graph->ToGraphDef(&gdef);
-
-  // Before serialization, sort each node's control inputs to achieve
-  // determinism. Sorting control inputs could help (but not necessarily) create
-  // a deterministic serialization and fingerprint. Other sources of
-  // nondeterminism include unstable node ordering.
-  SortControlInputs(&gdef);
-  // Fingerprint the function.
+  // Uniquify the function name by computing a fingerprint of the function.
   // Nondeterminism in serialization would not lead to incorrect results, but
-  // may cause spurious cache misses. DeterministicSerialization is a
-  // best-effort deterministic serialization.
-  const size_t size = gdef.ByteSizeLong();
-  auto serialized = absl::make_unique<char[]>(size);
-  TF_RET_CHECK(SerializeToBufferDeterministic(gdef, serialized.get(), size));
-  uint64 fingerprint = Fingerprint64(absl::string_view(serialized.get(), size));
+  // may cause spurious cache misses.
+  TF_ASSIGN_OR_RETURN(uint64 fingerprint, FingerprintGraph(*graph));
   VLOG(1) << "Subgraph fingerprint:" << fingerprint;
   call_def->set_op(absl::StrCat(call_def->op(), "_", fingerprint));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -224,39 +216,41 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     }
   }
 
-  auto output = absl::make_unique<Graph>((*graph)->op_registry());
+  auto output = std::make_unique<Graph>((*graph)->op_registry());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       EncapsulateSubgraphsInFunctions(
           kXlaClusterIdAttr, **graph, RewriteSubgraph,
           /*reuse_existing_functions=*/true, &output, flib_def),
       "EncapsulateXlaComputationsPass failed");
   graph->swap(output);
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
-    Graph* graph) {
+    Graph* graph,
+    const std::function<StatusOr<bool>(const Node&)>& is_xla_launch_node,
+    const std::function<StatusOr<XlaFunctionInfo>(const Node&)>&
+        get_xla_function_info,
+    const bool add_edges_to_output_of_downstream_nodes) {
   // Finds all of the XlaLaunch function calls, to avoid mutating the graph
   // while iterating.
   std::vector<Node*> launch_nodes;
   for (Node* n : graph->nodes()) {
-    const string& name = GetNodeAttrString(n->attrs(), kXlaClusterIdAttr);
-    if (!name.empty()) {
-      launch_nodes.push_back(n);
-    }
+    TF_ASSIGN_OR_RETURN(const bool is_xla_launch_node, is_xla_launch_node(*n));
+    if (is_xla_launch_node) launch_nodes.push_back(n);
   }
 
   // Replaces each launch function call together with its neighboring
   // XlaClusterOutput nodes with a XlaLaunch node.
   for (Node* launch : launch_nodes) {
-    int variable_start_index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(launch->attrs(), "_variable_start_index",
-                                   &variable_start_index));
+    TF_ASSIGN_OR_RETURN(const XlaFunctionInfo xla_function_info,
+                        get_xla_function_info(*launch));
 
     std::vector<const Edge*> in_edges;
     TF_RETURN_IF_ERROR(launch->input_edges(&in_edges));
 
     const int num_inputs = in_edges.size();
+    const int variable_start_index = xla_function_info.variable_start_index;
     const int num_variables = num_inputs - variable_start_index;
     const int num_args = variable_start_index;
 
@@ -299,18 +293,23 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
         TF_RET_CHECK(le->src_output() < num_outputs);
         Node* output_node = le->dst();
 
-        TF_RET_CHECK(output_node->type_string() == kXlaClusterOutput)
-            << le->DebugString();
-        nodes_to_remove.push_back(output_node);
+        if (add_edges_to_output_of_downstream_nodes) {
+          TF_RET_CHECK(output_node->type_string() == kXlaClusterOutput)
+              << le->DebugString();
+          nodes_to_remove.push_back(output_node);
 
-        for (const Edge* oe : output_node->out_edges()) {
-          TF_RET_CHECK(!oe->IsControlEdge());
+          for (const Edge* oe : output_node->out_edges()) {
+            TF_RET_CHECK(!oe->IsControlEdge());
+            data_outputs[le->src_output()].push_back(
+                {oe->dst(), oe->dst_input()});
+          }
+
+          AddControlOutputs(*output_node, &control_outputs);
+        } else {
           data_outputs[le->src_output()].push_back(
-              {oe->dst(), oe->dst_input()});
+              {le->dst(), le->dst_input()});
         }
         output_types[le->src_output()] = output_node->input_type(0);
-
-        AddControlOutputs(*output_node, &control_outputs);
       }
     }
 
@@ -328,7 +327,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     AddNodeAttr("Nresources", num_variables, &def);
     AddNodeAttr("Tresults", output_types, &def);
     NameAttrList function;
-    function.set_name(launch->type_string());
+    function.set_name(xla_function_info.function_name);
     AddNodeAttr("function", function, &def);
 
     for (Node* node : nodes_to_remove) {
@@ -340,11 +339,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
       graph->RemoveNode(node);
     }
 
-    Status status;
-    Node* xla_launch = graph->AddNode(def, &status);
-    if (!status.ok()) {
-      return status;
-    }
+    TF_ASSIGN_OR_RETURN(Node * xla_launch, graph->AddNode(def));
     for (int i = 0, end = data_inputs.size(); i < end; ++i) {
       graph->AddEdge(data_inputs[i].first, data_inputs[i].second, xla_launch,
                      i);
@@ -361,7 +356,26 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
       graph->AddControlEdge(xla_launch, n);
     }
   }
-  return Status::OK();
+  return OkStatus();
+}
+
+/*static*/ Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
+    Graph* graph) {
+  const auto is_xla_launch_node = [](const Node& node) -> StatusOr<bool> {
+    const string& name = GetNodeAttrString(node.attrs(), kXlaClusterIdAttr);
+    return !name.empty();
+  };
+
+  const auto get_xla_function_info =
+      [](const Node& node) -> StatusOr<XlaFunctionInfo> {
+    XlaFunctionInfo result;
+    TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "_variable_start_index",
+                                   &result.variable_start_index));
+    result.function_name = node.type_string();
+    return result;
+  };
+  return BuildXlaLaunchOps(graph, is_xla_launch_node, get_xla_function_info,
+                           /*add_edges_to_output_of_downstream_nodes=*/true);
 }
 
 Status EncapsulateXlaComputationsPass::Run(
@@ -386,7 +400,7 @@ Status EncapsulateXlaComputationsPass::Run(
   VLOG(1) << "EncapsulateXlaComputations() finished: "
           << DumpGraphToFile("encapsulate_xla_computations_after",
                              **options.graph, options.flib_def);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

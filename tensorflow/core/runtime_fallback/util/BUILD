@@ -9,6 +9,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package_group(
     name = "internal",
     packages = [
+        "//learning/brain/experimental/tfrt/native_lowering/kernels/...",
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/eager/backends/tpu/...",
         "//tensorflow/core/tfrt/utils/...",
@@ -80,7 +81,7 @@ cc_library(
     hdrs = ["fallback_test_util.h"],
     tags = ["no_oss"],
     deps = [
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_request_context",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_request_context",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",

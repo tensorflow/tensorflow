@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_ADD_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_ADD_H_
 
+#include <algorithm>
 #include <type_traits>
 
 #include "fixedpoint/fixedpoint.h"

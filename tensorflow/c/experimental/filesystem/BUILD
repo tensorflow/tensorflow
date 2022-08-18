@@ -31,7 +31,7 @@ cc_library(
         "modular_filesystem.h",
         "modular_filesystem_registration.h",
     ],
-    # TODO(mihaimaruseac): Visibility should be more restrictive once we
+    # TODO(b/139060984): Visibility should be more restrictive once we
     # convert to modular filesystems everywhere
     visibility = ["//visibility:public"],
     deps = [
@@ -60,7 +60,7 @@ tf_cc_test(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/lib/io:path",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:error",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:test",
     ],

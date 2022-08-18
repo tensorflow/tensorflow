@@ -69,7 +69,7 @@ index cfd4a47..50994b6 100644
  }
  
 +#ifndef DEVICE_MODIFIER
- #if defined(_MSC_VER) && defined(FARMHASH_ROTR)
+ #if defined(_WIN32) && defined(FARMHASH_ROTR)
  
  STATIC_INLINE uint32_t Rotate32(uint32_t val, int shift) {
 @@ -240,12 +261,18 @@ STATIC_INLINE uint64_t Rotate64(uint64_t val, int shift) {

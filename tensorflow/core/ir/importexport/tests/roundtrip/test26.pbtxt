@@ -1,0 +1,97 @@
+node {
+  name: "cond_1_false_5"
+  op: "cond_1_false_5"
+}
+
+library {
+  function {
+    signature {
+      name: "cond_1_false_5"
+      output_arg {
+        name: "cond_1_identity"
+        type: DT_BOOL
+      }
+    }
+    node_def {
+      name: "cond_1/Const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+            }
+            float_val: 2
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Greater"
+      op: "Greater"
+      input: "cond_1/Const:output:0"
+      input: "cond_1/Const:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+    }
+    node_def {
+      name: "cond/Switch"
+      op: "Switch"
+      input: "Greater:z:0"
+      input: "Greater:z:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_BOOL
+        }
+      }
+    }
+    node_def {
+      name: "cond/switch_t"
+      op: "Identity"
+      input: "cond/Switch:output_true:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_BOOL
+        }
+      }
+    }
+    node_def {
+      name: "cond/switch_f"
+      op: "Identity"
+      input: "cond/Switch:output_false:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_BOOL
+        }
+      }
+    }
+
+    ret {
+      key: "cond_1_identity"
+      value: "cond/switch_f:output:0"
+    }
+    attr {
+      key: "_construction_context"
+      value {
+        s: "kEagerRuntime"
+      }
+    }
+  }
+}
+versions {
+  producer: 749
+}

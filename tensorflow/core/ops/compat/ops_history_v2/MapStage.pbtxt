@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "MapStage"
   input_arg {
     name: "key"

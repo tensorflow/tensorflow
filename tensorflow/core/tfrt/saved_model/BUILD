@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "if_google")
+
 package(
     default_visibility = [":friends"],
     licenses = ["notice"],
@@ -9,10 +11,15 @@ package_group(
         # Authorized users go here.
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        # copybara:uncomment "//learning/infra/mira/...",
         # copybara:uncomment "//learning/serving/...",
+        # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/saved_model/tests/...",
+        "//tensorflow/core/tfrt/graph_executor/...",
+        "//tensorflow/core/tfrt/tfrt_session/...",
         "//tensorflow_serving/...",
+        "//platforms/xla/tests/saved_models/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",
     ],
 )
@@ -27,20 +34,35 @@ cc_library(
     hdrs = ["saved_model.h"],
     tags = ["no_oss"],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "//third_party/mira/mlarchive:env",
+        "//third_party/mira/mlarchive:mla",
+        "//third_party/mira/mlarchive:posix_env",
+        "//third_party/mira/mlarchive:status_macro",
+        "//tensorflow/cc/experimental/tfa:saved_model_converter",
+        "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:reader",
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:saved_model",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_kernels_alwayslink",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_request_context",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_request_context",
+        "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:session_options",
         "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/platform:enable_tf2_utils",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/profiler/lib:connected_traceme",
@@ -53,31 +75,24 @@ cc_library(
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/tfrt/fallback:fallback_state",
-        "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
+        "//tensorflow/core/tfrt/graph_executor",
+        "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
+        "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/tpu:tpu_resources",
         "//tensorflow/core/tfrt/utils",
         "//tensorflow/core/tfrt/utils:error_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
-        "//tensorflow/core/tfrt/utils:model_metadata",
-        "//tensorflow/core/tfrt/utils:statusor",
         "//tensorflow/core/tfrt/utils:tensor_util",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:metrics",
         "@tf_runtime//:support",
-    ],
-)
-
-alias(
-    name = "saved_model_fallback_only",
-    actual = ":saved_model",
-    tags = ["no_oss"],
+    ] + if_google([
+        "//third_party/tf_runtime_google:streamz_metrics_registry_alwayslink",
+    ]),
 )
 
 cc_library(
@@ -89,18 +104,18 @@ cc_library(
     deps = [
         ":saved_model",
         "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
-        "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/tfrt/runtime",
+        "//tensorflow_serving/apis:model_cc_proto",
+        "//tensorflow_serving/apis:predict_cc_proto",
+        "//tensorflow_serving/apis:prediction_log_cc_proto",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
     ],
-)
-
-alias(
-    name = "saved_model_testutil_fallback_only",
-    actual = ":saved_model_testutil",
-    tags = ["no_oss"],
 )
 
 cc_library(
@@ -108,11 +123,12 @@ cc_library(
     srcs = ["saved_model_import_input.cc"],
     hdrs = ["saved_model_import_input.h"],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
+        "@com_google_absl//absl/synchronization",
     ],
 )

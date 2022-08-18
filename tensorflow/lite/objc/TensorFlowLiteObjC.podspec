@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteObjC'
-  s.version          = '2.6.0'
+  s.version          = '2.9.1'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :tag => "v#{s.version}" }
+  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => 'd8ce9f9c301d021a69953134185ab728c1c248d3' }
   s.summary          = 'TensorFlow Lite for Objective-C'
   s.description      = <<-DESC
 
@@ -14,7 +14,8 @@ Pod::Spec.new do |s|
   acceleration.
                        DESC
 
-  s.ios.deployment_target = '9.0'
+  s.cocoapods_version = '>= 1.9.0'
+  s.ios.deployment_target = '11.0'
 
   s.module_name = 'TFLTensorFlowLite'
   s.static_framework = true
@@ -26,7 +27,11 @@ Pod::Spec.new do |s|
     'HEADER_SEARCH_PATHS' =>
       '"${PODS_TARGET_SRCROOT}" ' +
       '"${PODS_TARGET_SRCROOT}/' + objc_dir  + 'apis"',
-    'VALID_ARCHS' => 'i386 x86_64 armv7 arm64',
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386'
+  }
+
+  s.user_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386'
   }
 
   s.default_subspec = 'Core'
@@ -35,7 +40,9 @@ Pod::Spec.new do |s|
     core.public_header_files = objc_dir + 'apis/*.h'
     core.source_files = [
       objc_dir + '{apis,sources}/*.{h,m,mm}',
+      tfl_dir + 'builtin_ops.h',
       tfl_dir + 'c/c_api.h',
+      tfl_dir + 'c/c_api_experimental.h',
       tfl_dir + 'c/c_api_types.h',
       tfl_dir + 'c/common.h',
       tfl_dir + 'delegates/xnnpack/xnnpack_delegate.h',
@@ -51,6 +58,7 @@ Pod::Spec.new do |s|
       ts.resources = [
         tfl_dir + 'testdata/add.bin',
         tfl_dir + 'testdata/add_quantized.bin',
+        tfl_dir + 'testdata/multi_signatures.bin',
       ]
     end
   end

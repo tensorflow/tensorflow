@@ -14,10 +14,6 @@
 # ==============================================================================
 """Test cases for XLA devices."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes

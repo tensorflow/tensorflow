@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -143,9 +144,6 @@ Status RewriteAssociatedFunction(
     const AssociatedFunctionInfo& associated_function,
     const string& rewritten_function_name);
 
-// Attribute to mark nodes to be executed on host.
-extern const char kXlaOutsideCompilationAttrName[];
-
 // Class to act as cache for FunctionLibraryRuntime::Handle objects.
 class CachedFunctionHandles {
  public:
@@ -182,7 +180,7 @@ StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def);
 // Helper function that builds an Identity node.
 StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
                                   DataType dtype, const Node* input,
-                                  absl::optional<string> requested_device);
+                                  std::optional<string> requested_device);
 
 // For "If"/"While" nodes, if some of their inputs are Const nodes, rewrite
 // body functions to use the Const nodes instead of original _Arg nodes.
@@ -211,8 +209,6 @@ Status PruneUnreachableFunctionsFromGraph(const Graph& g,
 // TODO(b/128633174) remove the TensorList and related TensorList ops.
 Status RewriteTensorListWithConstElement(Graph* g,
                                          FunctionLibraryDefinition* fld);
-
-extern const char kTpuReplicateAttrName[];
 
 inline bool IsConstTraversableOpType(const Node* node) {
   return node->type_string() == "Identity" ||

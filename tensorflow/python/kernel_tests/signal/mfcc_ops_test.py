@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for mfcc_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.eager import context

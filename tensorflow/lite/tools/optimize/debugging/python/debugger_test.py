@@ -17,31 +17,24 @@
 import csv
 import io
 import re
-
 from unittest import mock
-from absl.testing import parameterized
 
+from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
+from tensorflow.lite.python.metrics import metrics
 from tensorflow.lite.tools.optimize.debugging.python import debugger
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
-from tensorflow.python.training.tracking import tracking
-
-# pylint: disable=g-import-not-at-top
-try:
-  from tensorflow.lite.python import metrics_portable as metrics
-except ImportError:
-  from tensorflow.lite.python import metrics_nonportable as metrics
-# pylint: enable=g-import-not-at-top
+from tensorflow.python.trackable import autotrackable
 
 
 def _get_model():
   """Returns somple model with Conv2D and representative dataset gen."""
-  root = tracking.AutoTrackable()
+  root = autotrackable.AutoTrackable()
   kernel_in = np.array([-2, -1, 1, 2], dtype=np.float32).reshape((2, 2, 1, 1))
 
   @tf.function(
@@ -180,7 +173,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
 
     quant_debugger.run()
 
-    expected_metrics = {
+    expected_quant_io_metrics = {
         'num_elements': 9,
         'stddev': 0.03850026,
         'mean_error': 0.01673192,
@@ -188,6 +181,17 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
         'mean_squared_error': 0.0027558778,
         'l1_norm': 0.023704167,
     }
+    expected_float_io_metrics = {
+        'num_elements': 9,
+        'stddev': 0.050998904,
+        'mean_error': 0.007843441,
+        'max_abs_error': 0.105881885,
+        'mean_squared_error': 0.004357292,
+        'l1_norm': 0.035729896,
+    }
+    expected_metrics = (
+        expected_quant_io_metrics
+        if quantized_io else expected_float_io_metrics)
     self.assertLen(quant_debugger.layer_statistics, 1)
     actual_metrics = next(iter(quant_debugger.layer_statistics.values()))
 
@@ -203,7 +207,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
     expected_values = expected_metrics.copy()
     expected_values.update({
         'op_name': 'CONV_2D',
-        'tensor_idx': 7 if quantized_io else 8,
+        'tensor_idx': 7,
         'scale': 0.15686275,
         'zero_point': -128,
         'tensor_name': r'Identity[1-9]?$'
@@ -252,6 +256,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
   )
   @test_util.run_v2_only
   def test_layer_direct_compare_metrics(self, quantized_io):
+
     def _corr(float_values, quant_values, scale, zero_point):
       dequant_values = (quant_values.astype(np.int32) - zero_point) * scale
       return np.corrcoef(float_values.flatten(), dequant_values.flatten())[0, 1]
@@ -276,7 +281,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
     actual_metrics = next(iter(quant_debugger.layer_statistics.values()))
 
     for key, value in expected_metrics.items():
-      self.assertAlmostEqual(value, actual_metrics[key], places=5)
+      self.assertAlmostEqual(value, actual_metrics[key], places=4)
 
   @test_util.run_v2_only
   def test_wrong_input_raises_ValueError(self):
@@ -337,7 +342,8 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
 
   @parameterized.named_parameters(
       ('float_io', False),
-      ('quantized_io', True))
+      ('quantized_io', True),
+  )
   @test_util.run_v2_only
   def test_denylisted_ops_from_option_setter(self, quantized_io):
     options = debugger.QuantizationDebugOptions(
@@ -361,7 +367,8 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
 
   @parameterized.named_parameters(
       ('float_io', False),
-      ('quantized_io', True))
+      ('quantized_io', True),
+  )
   @test_util.run_v2_only
   def test_denylisted_ops_from_option_constructor(self, quantized_io):
     options = debugger.QuantizationDebugOptions(
@@ -377,7 +384,10 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
           debug_dataset=_calibration_gen,
           debug_options=options)
 
-  @parameterized.named_parameters(('float_io', False), ('quantized_io', True))
+  @parameterized.named_parameters(
+      ('float_io', False),
+      ('quantized_io', True),
+  )
   @test_util.run_v2_only
   def test_denylisted_nodes_from_option_setter(self, quantized_io):
     options = debugger.QuantizationDebugOptions(
@@ -395,7 +405,10 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
         ValueError, 'Please check if the quantized model is in debug mode'):
       quant_debugger.options = options
 
-  @parameterized.named_parameters(('float_io', False), ('quantized_io', True))
+  @parameterized.named_parameters(
+      ('float_io', False),
+      ('quantized_io', True),
+  )
   @test_util.run_v2_only
   def test_denylisted_nodes_from_option_constructor(self, quantized_io):
     options = debugger.QuantizationDebugOptions(

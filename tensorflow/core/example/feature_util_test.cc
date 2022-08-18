@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/example/feature_util.h"
 
+#include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -179,7 +181,7 @@ TEST(GetFeatureValuesStringTest, ReadsASingleValueFromFeature) {
   Feature feature;
   feature.mutable_bytes_list()->add_value("FOO");
 
-  auto values = GetFeatureValues<string>(feature);
+  auto values = GetFeatureValues<std::string>(feature);
 
   ASSERT_EQ(1, values.size());
   EXPECT_EQ("FOO", values.Get(0));
@@ -191,7 +193,7 @@ TEST(GetFeatureValuesStringTest, ReadsASingleValue) {
       .mutable_bytes_list()
       ->add_value("FOO");
 
-  auto tag = GetFeatureValues<string>("tag", example);
+  auto tag = GetFeatureValues<std::string>("tag", example);
 
   ASSERT_EQ(1, tag.size());
   EXPECT_EQ("FOO", tag.Get(0));
@@ -200,7 +202,7 @@ TEST(GetFeatureValuesStringTest, ReadsASingleValue) {
 TEST(GetFeatureValuesStringTest, WritesASingleValueToFeature) {
   Feature feature;
 
-  *GetFeatureValues<string>(&feature)->Add() = "FOO";
+  *GetFeatureValues<std::string>(&feature)->Add() = "FOO";
 
   ASSERT_EQ(1, feature.bytes_list().value_size());
   EXPECT_EQ("FOO", feature.bytes_list().value(0));
@@ -209,7 +211,7 @@ TEST(GetFeatureValuesStringTest, WritesASingleValueToFeature) {
 TEST(GetFeatureValuesStringTest, WritesASingleValue) {
   Example example;
 
-  *GetFeatureValues<string>("tag", &example)->Add() = "FOO";
+  *GetFeatureValues<std::string>("tag", &example)->Add() = "FOO";
 
   ASSERT_EQ(1,
             example.features().feature().at("tag").bytes_list().value_size());
@@ -221,12 +223,12 @@ TEST(GetFeatureValuesStringTest, CheckTypedFieldExistence) {
   Example example;
 
   GetFeatureValues<protobuf_int64>("tag", &example)->Add(42);
-  ASSERT_FALSE(HasFeature<string>("tag", example));
+  ASSERT_FALSE(HasFeature<std::string>("tag", example));
 
-  *GetFeatureValues<string>("tag", &example)->Add() = "FOO";
+  *GetFeatureValues<std::string>("tag", &example)->Add() = "FOO";
 
-  EXPECT_TRUE(HasFeature<string>("tag", example));
-  auto tag_ro = GetFeatureValues<string>("tag", example);
+  EXPECT_TRUE(HasFeature<std::string>("tag", example));
+  auto tag_ro = GetFeatureValues<std::string>("tag", example);
   ASSERT_EQ(1, tag_ro.size());
   EXPECT_EQ("FOO", tag_ro.Get(0));
 }
@@ -244,10 +246,62 @@ TEST(AppendFeatureValuesTest, FloatValuesFromContainer) {
   EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
 }
 
+TEST(AppendFeatureValuesTest, FloatValuesFromContainerWithStringViewKey) {
+  Example example;
+
+  std::vector<double> values{1.1, 2.2, 3.3};
+  absl::string_view key("tag");
+  AppendFeatureValues(values, key, &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
 TEST(AppendFeatureValuesTest, FloatValuesUsingInitializerList) {
   Example example;
 
   AppendFeatureValues({1.1, 2.2, 3.3}, "tag", &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
+TEST(AppendFeatureValuesTest,
+     FloatValuesUsingInitializerListWithStringViewKey) {
+  Example example;
+  absl::string_view key("tag");
+  AppendFeatureValues({1.1, 2.2, 3.3}, key, &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
+TEST(AppendFeatureValuesTest, FloatValuesUsingIterators) {
+  Example example;
+  std::vector<double> values{1.1, 2.2, 3.3};
+  AppendFeatureValues(values.begin(), values.end(), "tag", &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
+TEST(AppendFeatureValuesTest, FloatValuesUsingIteratorsWithStringViewKey) {
+  Example example;
+  absl::string_view key("tag");
+  std::vector<double> values{1.1, 2.2, 3.3};
+  AppendFeatureValues(values.begin(), values.end(), key, &example);
 
   auto tag_ro = GetFeatureValues<float>("tag", example);
   ASSERT_EQ(3, tag_ro.size());
@@ -270,6 +324,21 @@ TEST(SetFeatureValuesTest, FloatValuesUsingInitializerList) {
   EXPECT_NEAR(30.3, tag_ro.Get(2), kTolerance);
 }
 
+TEST(SetFeatureValuesTest, ContainerOfStringView) {
+  Example example;
+
+  std::vector<std::string> values = {"hello", "world"};
+  std::vector<absl::string_view> values_string_view(values.begin(),
+                                                    values.end());
+
+  SetFeatureValues(values_string_view, "tag", &example);
+
+  auto tag_ro = GetFeatureValues<std::string>("tag", example);
+  ASSERT_EQ(tag_ro.size(), 2);
+  EXPECT_EQ(tag_ro.Get(0), "hello");
+  EXPECT_EQ(tag_ro.Get(1), "world");
+}
+
 TEST(AppendFeatureValuesTest, Int64ValuesUsingInitializerList) {
   Example example;
 
@@ -288,7 +357,7 @@ TEST(AppendFeatureValuesTest, StringValuesUsingInitializerList) {
 
   AppendFeatureValues({"FOO", "BAR", "BAZ"}, "tag", &example);
 
-  auto tag_ro = GetFeatureValues<string>("tag", example);
+  auto tag_ro = GetFeatureValues<std::string>("tag", example);
   ASSERT_EQ(3, tag_ro.size());
   EXPECT_EQ("FOO", tag_ro.Get(0));
   EXPECT_EQ("BAR", tag_ro.Get(1));
@@ -304,7 +373,38 @@ TEST(AppendFeatureValuesTest, StringVariablesUsingInitializerList) {
 
   AppendFeatureValues({string1, string2, string3}, "tag", &example);
 
-  auto tag_ro = GetFeatureValues<string>("tag", example);
+  auto tag_ro = GetFeatureValues<std::string>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_EQ("FOO", tag_ro.Get(0));
+  EXPECT_EQ("BAR", tag_ro.Get(1));
+  EXPECT_EQ("BAZ", tag_ro.Get(2));
+}
+
+TEST(AppendFeatureValuesTest, StringViewVariablesUsingInitializerList) {
+  Example example;
+
+  AppendFeatureValues({absl::string_view("FOO"), absl::string_view("BAR"),
+                       absl::string_view("BAZ")},
+                      "tag", &example);
+
+  auto tag_ro = GetFeatureValues<std::string>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_EQ("FOO", tag_ro.Get(0));
+  EXPECT_EQ("BAR", tag_ro.Get(1));
+  EXPECT_EQ("BAZ", tag_ro.Get(2));
+}
+
+TEST(AppendFeatureValuesTest, StringViewVariablesUsingIterators) {
+  Example example;
+
+  std::vector<absl::string_view> strings;
+  strings.push_back("FOO");
+  strings.push_back("BAR");
+  strings.push_back("BAZ");
+
+  AppendFeatureValues(strings.begin(), strings.end(), "tag", &example);
+
+  auto tag_ro = GetFeatureValues<std::string>("tag", example);
   ASSERT_EQ(3, tag_ro.size());
   EXPECT_EQ("FOO", tag_ro.Get(0));
   EXPECT_EQ("BAR", tag_ro.Get(1));
@@ -422,39 +522,41 @@ TEST(SequenceExampleTest, AppendFeatureValuesWithInitializerList) {
                       GetFeatureList("images", &se)->Add());
   AppendFeatureValues({"cam1-1", "cam2-2"},
                       GetFeatureList("images", &se)->Add());
-
-  EXPECT_EQ(se.DebugString(),
-            "context {\n"
-            "  feature {\n"
-            "    key: \"ids\"\n"
-            "    value {\n"
-            "      int64_list {\n"
-            "        value: 1\n"
-            "        value: 2\n"
-            "        value: 3\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "}\n"
-            "feature_lists {\n"
-            "  feature_list {\n"
-            "    key: \"images\"\n"
-            "    value {\n"
-            "      feature {\n"
-            "        bytes_list {\n"
-            "          value: \"cam1-0\"\n"
-            "          value: \"cam2-0\"\n"
-            "        }\n"
-            "      }\n"
-            "      feature {\n"
-            "        bytes_list {\n"
-            "          value: \"cam1-1\"\n"
-            "          value: \"cam2-2\"\n"
-            "        }\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "}\n");
+  SequenceExample expected_proto;
+  protobuf::TextFormat::ParseFromString(
+      "context {\n"
+      "  feature {\n"
+      "    key: \"ids\"\n"
+      "    value {\n"
+      "      int64_list {\n"
+      "        value: 1\n"
+      "        value: 2\n"
+      "        value: 3\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n"
+      "feature_lists {\n"
+      "  feature_list {\n"
+      "    key: \"images\"\n"
+      "    value {\n"
+      "      feature {\n"
+      "        bytes_list {\n"
+      "          value: \"cam1-0\"\n"
+      "          value: \"cam2-0\"\n"
+      "        }\n"
+      "      }\n"
+      "      feature {\n"
+      "        bytes_list {\n"
+      "          value: \"cam1-1\"\n"
+      "          value: \"cam2-2\"\n"
+      "        }\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n",
+      &expected_proto);
+  EXPECT_EQ(se.DebugString(), expected_proto.DebugString());
 }
 
 TEST(SequenceExampleTest, AppendFeatureValuesWithVectors) {
@@ -463,21 +565,24 @@ TEST(SequenceExampleTest, AppendFeatureValuesWithVectors) {
   std::vector<float> readings{1.0, 2.5, 5.0};
   AppendFeatureValues(readings, GetFeatureList("movie_ratings", &se)->Add());
 
-  EXPECT_EQ(se.DebugString(),
-            "feature_lists {\n"
-            "  feature_list {\n"
-            "    key: \"movie_ratings\"\n"
-            "    value {\n"
-            "      feature {\n"
-            "        float_list {\n"
-            "          value: 1\n"
-            "          value: 2.5\n"
-            "          value: 5\n"
-            "        }\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "}\n");
+  SequenceExample expected_proto;
+  protobuf::TextFormat::ParseFromString(
+      "feature_lists {\n"
+      "  feature_list {\n"
+      "    key: \"movie_ratings\"\n"
+      "    value {\n"
+      "      feature {\n"
+      "        float_list {\n"
+      "          value: 1\n"
+      "          value: 2.5\n"
+      "          value: 5\n"
+      "        }\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n",
+      &expected_proto);
+  EXPECT_EQ(se.DebugString(), expected_proto.DebugString());
 }
 
 TEST(SequenceExampleTest, SetContextFeatureValuesWithInitializerList) {
@@ -490,22 +595,25 @@ TEST(SequenceExampleTest, SetContextFeatureValuesWithInitializerList) {
   // These values should be appended without overwriting.
   AppendFeatureValues({4, 5, 6}, "ids", se.mutable_context());
 
-  EXPECT_EQ(se.DebugString(),
-            "context {\n"
-            "  feature {\n"
-            "    key: \"ids\"\n"
-            "    value {\n"
-            "      int64_list {\n"
-            "        value: 1\n"
-            "        value: 2\n"
-            "        value: 3\n"
-            "        value: 4\n"
-            "        value: 5\n"
-            "        value: 6\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "}\n");
+  SequenceExample expected_proto;
+  protobuf::TextFormat::ParseFromString(
+      "context {\n"
+      "  feature {\n"
+      "    key: \"ids\"\n"
+      "    value {\n"
+      "      int64_list {\n"
+      "        value: 1\n"
+      "        value: 2\n"
+      "        value: 3\n"
+      "        value: 4\n"
+      "        value: 5\n"
+      "        value: 6\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n",
+      &expected_proto);
+  EXPECT_EQ(se.DebugString(), expected_proto.DebugString());
 }
 
 TEST(SequenceExampleTest, SetFeatureValuesWithInitializerList) {
@@ -527,49 +635,52 @@ TEST(SequenceExampleTest, SetFeatureValuesWithInitializerList) {
   SetFeatureValues({"cam1-1", "cam2-1"},
                    GetFeatureList("more-images", &se)->Mutable(0));
 
-  EXPECT_EQ(se.DebugString(),
-            "context {\n"
-            "  feature {\n"
-            "    key: \"ids\"\n"
-            "    value {\n"
-            "      int64_list {\n"
-            "        value: 4\n"
-            "        value: 5\n"
-            "        value: 6\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "}\n"
-            "feature_lists {\n"
-            "  feature_list {\n"
-            "    key: \"images\"\n"
-            "    value {\n"
-            "      feature {\n"
-            "        bytes_list {\n"
-            "          value: \"cam1-0\"\n"
-            "          value: \"cam2-0\"\n"
-            "        }\n"
-            "      }\n"
-            "      feature {\n"
-            "        bytes_list {\n"
-            "          value: \"cam1-1\"\n"
-            "          value: \"cam2-1\"\n"
-            "        }\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "  feature_list {\n"
-            "    key: \"more-images\"\n"
-            "    value {\n"
-            "      feature {\n"
-            "        bytes_list {\n"
-            "          value: \"cam1-1\"\n"
-            "          value: \"cam2-1\"\n"
-            "        }\n"
-            "      }\n"
-            "    }\n"
-            "  }\n"
-            "}\n");
+  SequenceExample expected_proto;
+  protobuf::TextFormat::ParseFromString(
+      "context {\n"
+      "  feature {\n"
+      "    key: \"ids\"\n"
+      "    value {\n"
+      "      int64_list {\n"
+      "        value: 4\n"
+      "        value: 5\n"
+      "        value: 6\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n"
+      "feature_lists {\n"
+      "  feature_list {\n"
+      "    key: \"images\"\n"
+      "    value {\n"
+      "      feature {\n"
+      "        bytes_list {\n"
+      "          value: \"cam1-0\"\n"
+      "          value: \"cam2-0\"\n"
+      "        }\n"
+      "      }\n"
+      "      feature {\n"
+      "        bytes_list {\n"
+      "          value: \"cam1-1\"\n"
+      "          value: \"cam2-1\"\n"
+      "        }\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "  feature_list {\n"
+      "    key: \"more-images\"\n"
+      "    value {\n"
+      "      feature {\n"
+      "        bytes_list {\n"
+      "          value: \"cam1-1\"\n"
+      "          value: \"cam2-1\"\n"
+      "        }\n"
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n",
+      &expected_proto);
+  EXPECT_EQ(se.DebugString(), expected_proto.DebugString());
 }
 
 }  // namespace

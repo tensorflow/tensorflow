@@ -14,10 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/kernel_test/input_generator.h"
 
+#include <cstdio>
 #include <fstream>
 #include <limits>
 #include <random>
+#include <string>
+#include <unordered_map>
+#include <utility>
 
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/testing/join.h"
@@ -27,6 +32,7 @@ namespace tflite {
 namespace testing {
 
 namespace {
+static constexpr char kDefaultServingSignatureDefKey[] = "serving_default";
 
 template <typename T>
 std::vector<T> GenerateRandomTensor(TfLiteIntArray* dims,
@@ -84,6 +90,11 @@ std::vector<T> GenerateGaussian(TfLiteIntArray* dims, float min, float max) {
 }  // namespace
 
 TfLiteStatus InputGenerator::LoadModel(const string& model_dir) {
+  return LoadModel(model_dir, kDefaultServingSignatureDefKey);
+}
+
+TfLiteStatus InputGenerator::LoadModel(const string& model_dir,
+                                       const string& signature) {
   model_ = FlatBufferModel::BuildFromFile(model_dir.c_str());
   if (!model_) {
     fprintf(stderr, "Cannot load model %s", model_dir.c_str());
@@ -94,6 +105,11 @@ TfLiteStatus InputGenerator::LoadModel(const string& model_dir) {
   InterpreterBuilder(*model_, builtin_ops)(&interpreter_);
   if (!interpreter_) {
     fprintf(stderr, "Failed to build interpreter.");
+    return kTfLiteError;
+  }
+  signature_runner_ = interpreter_->GetSignatureRunner(signature.c_str());
+  if (!signature_runner_) {
+    fprintf(stderr, "Failed to get SignatureRunner.\n");
     return kTfLiteError;
   }
 
@@ -109,7 +125,12 @@ TfLiteStatus InputGenerator::ReadInputsFromFile(const string& filename) {
   std::ifstream input_file(filename);
   string input;
   while (std::getline(input_file, input, '\n')) {
-    inputs_.push_back(input);
+    std::vector<string> parts = Split<string>(input, ":");
+    if (parts.size() != 2) {
+      fprintf(stderr, "Expected <name>:<value>, got %s", input.c_str());
+      return kTfLiteError;
+    }
+    inputs_.push_back(std::make_pair(parts[0], parts[1]));
   }
   input_file.close();
   return kTfLiteOk;
@@ -129,7 +150,7 @@ TfLiteStatus InputGenerator::WriteInputsToFile(const string& filename) {
   }
 
   for (const auto& input : inputs_) {
-    output_file << input << "\n";
+    output_file << input.first << ":" << input.second << "\n";
   }
   output_file.close();
 
@@ -138,28 +159,31 @@ TfLiteStatus InputGenerator::WriteInputsToFile(const string& filename) {
 
 // TODO(yunluli): Support more tensor types when needed.
 TfLiteStatus InputGenerator::GenerateInput(const string& distribution) {
-  auto input_tensor_ids = interpreter_->inputs();
-  for (auto id : input_tensor_ids) {
-    auto* tensor = interpreter_->tensor(id);
+  auto input_tensor_names = signature_runner_->input_names();
+  for (const char* name : input_tensor_names) {
+    auto* tensor = signature_runner_->input_tensor(name);
     if (distribution == "UNIFORM") {
       switch (tensor->type) {
         case kTfLiteInt8: {
           auto data = GenerateUniform<int8_t>(
               tensor->dims, std::numeric_limits<int8_t>::min(),
               std::numeric_limits<int8_t>::max());
-          inputs_.push_back(Join(data.data(), data.size(), ","));
+          inputs_.push_back(
+              std::make_pair(name, Join(data.data(), data.size(), ",")));
           break;
         }
         case kTfLiteUInt8: {
           auto data = GenerateUniform<uint8_t>(
               tensor->dims, std::numeric_limits<uint8_t>::min(),
               std::numeric_limits<uint8_t>::max());
-          inputs_.push_back(Join(data.data(), data.size(), ","));
+          inputs_.push_back(
+              std::make_pair(name, Join(data.data(), data.size(), ",")));
           break;
         }
         case kTfLiteFloat32: {
           auto data = GenerateUniform<float>(tensor->dims, -1, 1);
-          inputs_.push_back(JoinDefault(data.data(), data.size(), ","));
+          inputs_.push_back(
+              std::make_pair(name, Join(data.data(), data.size(), ",")));
           break;
         }
         default:
@@ -173,19 +197,22 @@ TfLiteStatus InputGenerator::GenerateInput(const string& distribution) {
           auto data = GenerateGaussian<int8_t>(
               tensor->dims, std::numeric_limits<int8_t>::min(),
               std::numeric_limits<int8_t>::max());
-          inputs_.push_back(Join(data.data(), data.size(), ","));
+          inputs_.push_back(
+              std::make_pair(name, Join(data.data(), data.size(), ",")));
           break;
         }
         case kTfLiteUInt8: {
           auto data = GenerateGaussian<uint8_t>(
               tensor->dims, std::numeric_limits<uint8_t>::min(),
               std::numeric_limits<uint8_t>::max());
-          inputs_.push_back(Join(data.data(), data.size(), ","));
+          inputs_.push_back(
+              std::make_pair(name, Join(data.data(), data.size(), ",")));
           break;
         }
         case kTfLiteFloat32: {
           auto data = GenerateGaussian<float>(tensor->dims, -1, 1);
-          inputs_.push_back(JoinDefault(data.data(), data.size(), ","));
+          inputs_.push_back(
+              std::make_pair(name, Join(data.data(), data.size(), ",")));
           break;
         }
         default:
@@ -201,8 +228,6 @@ TfLiteStatus InputGenerator::GenerateInput(const string& distribution) {
 
   return kTfLiteOk;
 }
-
-std::vector<string> InputGenerator::GetInputs() { return inputs_; }
 
 }  // namespace testing
 }  // namespace tflite

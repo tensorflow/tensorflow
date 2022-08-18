@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -46,11 +45,11 @@ TEST_F(SelectTest, SelectScalarF32True) {
 TEST_F(SelectTest, SelectScalarS32True) {
   XlaBuilder builder(TestName());
   auto pred = ConstantR0<bool>(&builder, true);
-  auto on_true = ConstantR0<int32>(&builder, -42);
-  auto on_false = ConstantR0<int32>(&builder, 42);
+  auto on_true = ConstantR0<int32_t>(&builder, -42);
+  auto on_false = ConstantR0<int32_t>(&builder, 42);
   Select(pred, on_true, on_false);
 
-  ComputeAndCompareR0<int32>(&builder, -42, {});
+  ComputeAndCompareR0<int32_t>(&builder, -42, {});
 }
 
 TEST_F(SelectTest, SelectScalarF32False) {
@@ -90,8 +89,8 @@ XLA_TEST_F(SelectTest, SelectR1S0F32WithCmpR1S0S32s) {
   // Similar to SelectR1S0F32WithConstantR1S0PRED, except that the pred vector
   // is not a constant, but rather the result of comparing two other vectors.
   XlaBuilder builder(TestName());
-  auto v1 = ConstantR1<int32>(&builder, {});
-  auto v2 = ConstantR1<int32>(&builder, {});
+  auto v1 = ConstantR1<int32_t>(&builder, {});
+  auto v2 = ConstantR1<int32_t>(&builder, {});
   auto cmp = Eq(v1, v2);
   auto on_true = ConstantR1<float>(&builder, {});
   auto on_false = ConstantR1<float>(&builder, {});
@@ -104,8 +103,8 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1S32s) {
   // Similar to SelectR1F32WithConstantR1PRED, except that the pred vector is
   // not a constant, but rather the result of comparing two other vectors.
   XlaBuilder builder(TestName());
-  auto v1 = ConstantR1<int32>(&builder, {1, 2, 3, 4, 5});
-  auto v2 = ConstantR1<int32>(&builder, {9, 2, 9, 4, 9});
+  auto v1 = ConstantR1<int32_t>(&builder, {1, 2, 3, 4, 5});
+  auto v2 = ConstantR1<int32_t>(&builder, {9, 2, 9, 4, 9});
   auto cmp = Eq(v1, v2);
   auto on_true =
       ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
@@ -166,6 +165,9 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsLarge) {
   std::vector<float> v1vec;
   std::vector<float> v2vec;
   std::vector<float> expected_vec;
+  v1vec.reserve(datalen);
+  v2vec.reserve(datalen);
+  expected_vec.reserve(datalen);
   for (int i = 0; i < datalen; ++i) {
     float smaller = i;
     float larger = i * 2;
@@ -198,8 +200,8 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1S32ToScalar) {
   // "gt"-compares a R1S32 with a S32 scalar, and uses the resulting R1PRED to
   // select between two R1F32s.
   XlaBuilder builder(TestName());
-  auto v = ConstantR1<int32>(&builder, {1, -1, 2, -2});
-  auto s = ConstantR0<int32>(&builder, 0);
+  auto v = ConstantR1<int32_t>(&builder, {1, -1, 2, -2});
+  auto s = ConstantR0<int32_t>(&builder, 0);
   auto cmp = Gt(v, s);
 
   auto on_true = ConstantR1<float>(&builder, {11.0f, 22.0f, 33.0f, 44.0f});

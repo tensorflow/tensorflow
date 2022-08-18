@@ -85,7 +85,7 @@ Status AllToAll::InitializeCollectiveContext(
   }
   DCHECK(col_ctx->dev_mgr);
   col_ctx_ = col_ctx;
-  col_params_ = col_ctx->col_params;
+  col_params_ = col_ctx->col_params.get();
   return collective_util::InitializeDeviceAndLocality(
       col_ctx->dev_mgr, col_ctx->device_name, &col_ctx->device,
       &col_ctx->device_locality);
@@ -105,12 +105,17 @@ void AllToAll::Run(StatusCallback done) {
   }
   for (int i = 0; i < col_params_->group.group_size; ++i) {
     input_chunks_.push_back(col_ctx_->input->SubSlice(i));
-    output_chunks_.push_back(output_buffer_.SubSlice(i));
+    // Select output index based on user specified rank, if available.
+    int output_index = col_params_->group.members[i].rank;
+    output_chunks_.push_back(output_buffer_.SubSlice(output_index));
   }
+
   for (int i = 0; i < col_params_->group.group_size; ++i) {
-    DispatchSend(col_params_->default_rank, i, &input_chunks_[i],
-                 CheckCounterAndCallDone());
-    DispatchRecv(i, col_params_->default_rank, &output_chunks_[i],
+    auto default_rank = col_params_->default_rank;
+    // Issue send request from current device to all devices in group.
+    DispatchSend(default_rank, i, &input_chunks_[i], CheckCounterAndCallDone());
+    // Issue receive requests from all devices to current device.
+    DispatchRecv(i, default_rank, &output_chunks_[i],
                  CheckCounterAndCallDone());
   }
 }
@@ -120,8 +125,8 @@ void AllToAll::DispatchSend(int src_rank, int target_rank, const Tensor* tensor,
   string send_buf_key =
       strings::StrCat(col_ctx_->exec_key, src_rank, target_rank);
   col_ctx_->col_exec->remote_access()->PostToPeer(
-      col_params_->group.devices[target_rank].name(),
-      col_params_->group.task_names[target_rank], send_buf_key,
+      col_params_->group.members[target_rank].device.name(),
+      col_params_->group.members[target_rank].task, send_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), tensor, col_ctx_->device_locality,
       col_ctx_->op_ctx->cancellation_manager(), done);
@@ -132,10 +137,10 @@ void AllToAll::DispatchRecv(int src_rank, int target_rank, Tensor* tensor,
   string recv_buf_key =
       strings::StrCat(col_ctx_->exec_key, src_rank, target_rank);
   col_ctx_->col_exec->remote_access()->RecvFromPeer(
-      col_params_->group.devices[src_rank].name(),
-      col_params_->group.task_names[src_rank],
-      col_params_->task.is_local[src_rank], recv_buf_key, col_ctx_->device,
-      col_ctx_->op_ctx->op_device_context(),
+      col_params_->group.members[src_rank].device.name(),
+      col_params_->group.members[src_rank].task,
+      col_params_->group.members[src_rank].is_local, recv_buf_key,
+      col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), tensor, col_ctx_->device_locality,
       0, col_ctx_->op_ctx->cancellation_manager(), done);
 }

@@ -19,13 +19,18 @@ limitations under the License.
 #include <functional>
 #include <iosfwd>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stack_frame.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -36,6 +41,38 @@ namespace tensorflow {
 class TF_MUST_USE_RESULT Status;
 #endif
 
+#if ABSL_HAVE_BUILTIN(__builtin_LINE) && ABSL_HAVE_BUILTIN(__builtin_FILE)
+#define TF_INTERNAL_HAVE_BUILTIN_LINE_FILE 1
+#endif
+
+struct SourceLocation {
+  uint32_t line;
+  const char* file_name;
+
+#ifdef TF_INTERNAL_HAVE_BUILTIN_LINE_FILE
+  static SourceLocation current(uint32_t line = __builtin_LINE(),
+                                const char* file_name = __builtin_FILE()) {
+    SourceLocation loc;
+    loc.line = line;
+    loc.file_name = file_name;
+    return loc;
+  }
+#else
+  static SourceLocation current(uint32_t line = 0,
+                                const char* file_name = nullptr) {
+    SourceLocation loc;
+    loc.line = line;
+    loc.file_name = file_name;
+    return loc;
+  }
+#endif
+};
+
+namespace errors {
+
+typedef ::tensorflow::error::Code Code;
+
+}  // namespace errors
 /// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.
 class Status {
@@ -45,24 +82,18 @@ class Status {
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
-  Status(tensorflow::error::Code code, tensorflow::StringPiece msg)
-      : Status(code, msg, {}) {}
-
-  /// \brief Create a status with the specified error code, msg, and stack trace
-  /// as a human-readable string containing more detailed information.
-#ifndef SWIG
-  Status(tensorflow::error::Code code, tensorflow::StringPiece msg,
-         std::vector<StackFrame>&& stack_trace);
-#endif
+  Status(tensorflow::error::Code code, absl::string_view msg,
+         SourceLocation loc = SourceLocation::current());
 
   /// Copy the specified status.
   Status(const Status& s);
   Status& operator=(const Status& s);
 #ifndef SWIG
-  Status(Status&& s) noexcept;
+  Status(Status&& s, SourceLocation loc = SourceLocation::current()) noexcept;
   Status& operator=(Status&& s) noexcept;
 #endif  // SWIG
 
+  // Prefer using OkStatus().
   static Status OK() { return Status(); }
 
   /// Returns true iff the status indicates success.
@@ -74,10 +105,6 @@ class Status {
 
   const std::string& error_message() const {
     return ok() ? empty_string() : state_->msg;
-  }
-
-  const std::vector<StackFrame>& stack_trace() const {
-    return ok() ? empty_stack_trace() : state_->stack_trace;
   }
 
   bool operator==(const Status& x) const;
@@ -109,41 +136,81 @@ class Status {
   // the floor.
   void IgnoreError() const;
 
+  //----------------------------------------------------------------------------
+  // Payload Management APIs (Cloned from absl::Status)
+  //----------------------------------------------------------------------------
+  // A payload may be attached to a status to provide additional context to an
+  // error that may not be satisfied by an existing `tensorflow::error::Code`.
+  // Typically, this payload serves one of several purposes:
+  //
+  //   * It may provide more fine-grained semantic information about the error
+  //     to facilitate actionable remedies.
+  //   * It may provide human-readable contexual information that is more
+  //     appropriate to display to an end user.
+  //
+  // A payload consists of a [key,value] pair, where the key is a string
+  // referring to a unique "type URL" and the value is an object of type
+  // `absl::Cord` to hold the contextual data.
+  //
+  // The "type URL" should be unique and follow the format of a URL
+  // (https://en.wikipedia.org/wiki/URL) and, ideally, provide some
+  // documentation or schema on how to interpret its associated data. For
+  // example, the default type URL for a protobuf message type is
+  // "type.googleapis.com/packagename.messagename". Other custom wire formats
+  // should define the format of type URL in a similar practice so as to
+  // minimize the chance of conflict between type URLs.
+  // Users should ensure that the type URL can be mapped to a concrete
+  // C++ type if they want to deserialize the payload and read it effectively.
+  //
+  // To attach a payload to a status object, call `Status::SetPayload()`,
+  // passing it the type URL and an `absl::Cord` of associated data. Similarly,
+  // to extract the payload from a status, call `Status::GetPayload()`. You
+  // may attach multiple payloads (with differing type URLs) to any given
+  // status object, provided that the status is currently exhibiting an error
+  // code (i.e. is not OK).
+  // TODO(b/197552541): Use absl::Cord for payload value type.
+
   // The Payload-related APIs are cloned from absl::Status.
   //
   // Returns the payload of a status given its unique `type_url` key, if
-  // present. Returns an empty StringPiece if the status is ok, or if the key is
-  // not present.
-  tensorflow::StringPiece GetPayload(tensorflow::StringPiece type_url) const;
+  // present.
+  absl::optional<absl::Cord> GetPayload(absl::string_view type_url) const;
 
   // Sets the payload for a non-ok status using a `type_url` key, overwriting
   // any existing payload for that `type_url`.
   //
   // This function does nothing if the Status is ok.
-  void SetPayload(tensorflow::StringPiece type_url,
-                  tensorflow::StringPiece payload);
+  void SetPayload(absl::string_view type_url, absl::string_view payload);
 
   // Erases the payload corresponding to the `type_url` key.  Returns `true` if
   // the payload was present.
-  bool ErasePayload(tensorflow::StringPiece type_url);
+  bool ErasePayload(absl::string_view type_url);
 
-  // Returns all the payload information.
-  // Returns an empty result if status is ok.
-  const std::unordered_map<std::string, std::string> GetAllPayloads() const;
+  // Iterates over the stored payloads and calls the
+  // `visitor(type_key, payload)` callable for each one.
+  //
+  // The order of calls to `visitor()` is not specified and may change at
+  // any time and any mutation on the same Status object during visitation is
+  // forbidden and could result in undefined behavior.
+  void ForEachPayload(
+      const std::function<void(absl::string_view, absl::string_view)>& visitor)
+      const;
 
-  // Copies all the payloads using the input and discards existing payloads.
-  // Does nothing if status is ok or 'payloads' is empty.
-  void ReplaceAllPayloads(
-      const std::unordered_map<std::string, std::string>& payloads);
+  void SetStackTrace(std::vector<StackFrame>);
+  std::vector<StackFrame> GetStackTrace() const;
+
+  absl::Span<const SourceLocation> GetSourceLocations() const;
 
  private:
+  void MaybeAddSourceLocation(SourceLocation loc);
+
   static const std::string& empty_string();
-  static const std::vector<StackFrame>& empty_stack_trace();
+  std::vector<StackFrame> stack_trace_;
   struct State {
     tensorflow::error::Code code;
     std::string msg;
-    std::vector<StackFrame> stack_trace;
     std::unordered_map<std::string, std::string> payloads;
+    absl::InlinedVector<SourceLocation, 4> source_locations;
   };
 
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
@@ -153,9 +220,32 @@ class Status {
   void SlowCopyFrom(const State* src);
 };
 
+// OkStatus()
+//
+// Returns an OK status, equivalent to a default constructed instance. Prefer
+// usage of `OkStatus()` when constructing such an OK status.
+Status OkStatus();
+
+Status FromAbslStatus(const absl::Status& s);
+absl::Status ToAbslStatus(const ::tensorflow::Status& s);
+
+// TODO(b/197552541) Move this namespace to errors.h.
+namespace errors {
+
+void SetStackTrace(::tensorflow::Status& status,
+                   std::vector<StackFrame> stack_trace);
+
+std::vector<StackFrame> GetStackTrace(const ::tensorflow::Status& status);
+}  // namespace errors
+
 // Helper class to manage multiple child status values.
 class StatusGroup {
  public:
+  StatusGroup();
+  // Constructor to form a StatusGroup from any N set of Status arguments.
+  // Usage: StatusGroup({status_a, status_b, status_c});
+  StatusGroup(std::initializer_list<Status> statuses);
+
   // Utility function to mark a Status as derived. By marking derived status,
   // Derived status messages are ignored when reporting errors to end users.
   static Status MakeDerived(const Status& s);
@@ -164,6 +254,13 @@ class StatusGroup {
   // Enable warning and error log collection for appending to the aggregated
   // status. This function may be called more than once.
   static void ConfigureLogHistory();
+
+  // Returns merged payloads of all statuses. In case multiple statuses have the
+  // same payload key, non-derived statuses have priority over derived ones,
+  // otherwise one payload value will be chosen in an unspecified but
+  // deterministic order.
+  // NOTE: The payload marking derived statuses as derived will not be returned.
+  std::unordered_map<std::string, std::string> GetPayloads() const;
 
   // Return a merged status with combined child status messages with a summary.
   Status as_summary_status() const;
@@ -183,7 +280,18 @@ class StatusGroup {
  private:
   bool ok_ = true;
   size_t num_ok_ = 0;
-  std::vector<Status> children_;
+
+  // Maintain a sorted collection of statuses.
+  struct CompareStatus {
+    bool operator()(const Status& a, const Status& b) const {
+      return a.ToString() > b.ToString();
+    }
+  };
+  // Using std::set instead of absl::btree_set to keep size for certain
+  // dependent libraries under the limit.
+  std::set<Status, CompareStatus> derived_;
+  std::set<Status, CompareStatus> non_derived_;
+
   std::vector<std::string> recent_logs_;  // recent warning and error logs
 };
 
@@ -200,7 +308,10 @@ inline Status& Status::operator=(const Status& s) {
 }
 
 #ifndef SWIG
-inline Status::Status(Status&& s) noexcept : state_(std::move(s.state_)) {}
+inline Status::Status(Status&& s, SourceLocation loc) noexcept
+    : state_(std::move(s.state_)) {
+  MaybeAddSourceLocation(loc);
+}
 
 inline Status& Status::operator=(Status&& s) noexcept {
   if (state_ != s.state_) {
@@ -224,6 +335,8 @@ typedef std::function<void(const Status&)> StatusCallback;
 extern tensorflow::string* TfCheckOpHelperOutOfLine(
     const ::tensorflow::Status& v, const char* msg);
 
+std::string error_name(error::Code code);
+
 inline tensorflow::string* TfCheckOpHelper(::tensorflow::Status v,
                                            const char* msg) {
   if (v.ok()) return nullptr;
@@ -243,7 +356,7 @@ inline tensorflow::string* TfCheckOpHelper(::tensorflow::Status v,
 #define TF_DCHECK_OK(val) TF_CHECK_OK(val)
 #else
 #define TF_DCHECK_OK(val) \
-  while (false && (::tensorflow::Status::OK() == (val))) LOG(FATAL)
+  while (false && (::tensorflow::OkStatus() == (val))) LOG(FATAL)
 #endif
 
 }  // namespace tensorflow

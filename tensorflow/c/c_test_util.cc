@@ -443,7 +443,9 @@ std::vector<std::pair<string, string>> GetGradDefs(
 
 std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def) {
   std::vector<string> names;
-  for (const tensorflow::FunctionDef& func : graph_def.library().function()) {
+  auto functions = graph_def.library().function();
+  names.reserve(functions.size());
+  for (const tensorflow::FunctionDef& func : functions) {
     names.push_back(func.signature().name());
   }
   std::sort(names.begin(), names.end());

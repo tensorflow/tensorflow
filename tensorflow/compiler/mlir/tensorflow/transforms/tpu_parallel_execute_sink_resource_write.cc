@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -37,17 +39,9 @@ namespace {
 // TPUMergeVariablesWithExecute to merge resource writes without special
 // handling for `tf_device.parallel_execute`.
 struct TPUParallelExecuteSinkResourceWrite
-    : public PassWrapper<TPUParallelExecuteSinkResourceWrite, FunctionPass> {
-  void runOnFunction() override;
-
-  StringRef getArgument() const final {
-    return "tf-tpu-parallel-execute-sink-resource-write";
-  }
-
-  StringRef getDescription() const final {
-    return "Moves tf.AssignVariableOp consumers of tf_device.parallel_execute "
-           "into tf_device.parallel_execute regions";
-  }
+    : public TF::TPUParallelExecuteSinkResourceWritePassBase<
+          TPUParallelExecuteSinkResourceWrite> {
+  void runOnOperation() override;
 };
 
 // Finds an AssignVariableOp that can be moved into the parallel_execute region.
@@ -149,9 +143,9 @@ void SinkResourceWritesIntoParallelExecute(
   parallel_execute.erase();
 }
 
-void TPUParallelExecuteSinkResourceWrite::runOnFunction() {
+void TPUParallelExecuteSinkResourceWrite::runOnOperation() {
   llvm::SmallVector<tf_device::ParallelExecuteOp, 4> parallel_executes;
-  getFunction().walk([&](tf_device::ParallelExecuteOp parallel_execute) {
+  getOperation().walk([&](tf_device::ParallelExecuteOp parallel_execute) {
     parallel_executes.push_back(parallel_execute);
   });
 
@@ -161,12 +155,10 @@ void TPUParallelExecuteSinkResourceWrite::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUParallelExecuteSinkResourceWritePass() {
   return std::make_unique<TPUParallelExecuteSinkResourceWrite>();
 }
-
-static PassRegistration<TPUParallelExecuteSinkResourceWrite> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

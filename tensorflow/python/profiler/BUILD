@@ -70,6 +70,19 @@ cuda_py_test(
     ],
 )
 
+py_test(
+    name = "profiler_wrapper_test",
+    srcs = ["profiler_wrapper_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+    ],
+)
+
 py_library(
     name = "option_builder",
     srcs = ["option_builder.py"],
@@ -230,14 +243,5 @@ py_library(
     deps = [
         "//tensorflow/python/profiler/internal:_pywrap_traceme",
         "//tensorflow/python/util:tf_export",
-    ],
-)
-
-py_library(
-    name = "traceme",
-    srcs = ["traceme.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":trace",
     ],
 )

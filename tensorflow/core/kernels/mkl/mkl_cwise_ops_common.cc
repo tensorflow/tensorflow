@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/kernels/cwise_ops_common.h"
-
 #include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {

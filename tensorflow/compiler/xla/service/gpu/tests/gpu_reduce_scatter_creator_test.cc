@@ -444,6 +444,39 @@ ENTRY %AllReduce {
                                                /*expect_change=*/false));
 }
 
+TEST_F(GpuReduceScatterCreatorTest, NonUniformSplit) {
+  absl::string_view hlo_string = R"(
+HloModule AllReduce
+
+%sum {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %add = f32[] add(%a, %b)
+}
+
+ENTRY %AllReduce {
+  %param = f32[1,7]{1,0} parameter(0)
+  %all-reduce = f32[1,7]{1,0} all-reduce(%param),
+    replica_groups={{0,1},{2,3},{4,5},{6,7}}, to_apply=%sum, channel_id=1, use_global_device_ids=true
+  %pid = u32[] partition-id()
+  %pid_table = s32[8]{0} constant({0, 1, 0, 1, 0, 1, 0, 1})
+  %offset = s32[1] dynamic-slice(%pid_table, %pid), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(%offset)
+  %shard_size = s32[] constant(3)
+  %mul = s32[] multiply(%reshape, %shard_size)
+  %zero = s32[] constant(0)
+  ROOT %dynamic-slice = f32[1,3] dynamic-slice(%all-reduce, %zero, %mul),
+    dynamic_slice_sizes={1,3}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                               /*num_replicas=*/1,
+                                               /*num_partitions=*/8,
+                                               /*expect_change=*/true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::ReduceScatter(op::Slice(op::Parameter(0))));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

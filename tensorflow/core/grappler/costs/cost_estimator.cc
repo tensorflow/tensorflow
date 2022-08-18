@@ -54,7 +54,7 @@ Costs CombineCosts(const Costs& left, const Costs& right) {
 
 // Multiplies Costs by a scalar.
 // Equivalent to applying CombineCosts "multiplier" times.
-// Note the field regarding num_ops are not multiplied.
+// Note the field regarding num_ops and max_memory are not multiplied.
 Costs MultiplyCosts(const Costs& costs, int multiplier) {
   CHECK_GE(multiplier, 0);
   if (multiplier == 0) {
@@ -71,9 +71,6 @@ Costs MultiplyCosts(const Costs& costs, int multiplier) {
   result.intermediate_memory_time *= multiplier;
   result.intermediate_memory_read_time *= multiplier;
   result.intermediate_memory_write_time *= multiplier;
-  if (result.max_memory != kMemoryUnknown) {
-    result.max_memory *= multiplier;
-  }
   return result;
 }
 

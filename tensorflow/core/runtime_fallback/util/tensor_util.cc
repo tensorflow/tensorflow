@@ -31,7 +31,7 @@ using tfrt::TensorShape;
 tensorflow::Tensor MoveHostBufferToTfTensor(RCReference<HostBuffer> host_buffer,
                                             DType dtype,
                                             const tfrt::TensorShape& shape) {
-  llvm::SmallVector<ssize_t, 4> dims;
+  llvm::SmallVector<tfrt::Index, 4> dims;
   shape.GetDimensions(&dims);
 
   auto deallocator = [](void* data, size_t len, void* arg) {
@@ -50,7 +50,7 @@ tensorflow::Tensor MoveHostBufferToTfTensor(RCReference<HostBuffer> host_buffer,
 }
 
 tensorflow::Tensor CopyShtToTfTensor(const StringHostTensor& sht) {
-  llvm::SmallVector<ssize_t, 4> dims;
+  llvm::SmallVector<tfrt::Index, 4> dims;
   sht.shape().GetDimensions(&dims);
 
   tensorflow::Tensor tensor(

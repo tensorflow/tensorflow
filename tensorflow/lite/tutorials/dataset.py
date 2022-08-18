@@ -18,17 +18,13 @@
  https://github.com/tensorflow/models/blob/master/official/r1/mnist/dataset.py
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gzip
 import os
 import shutil
 import tempfile
+import urllib
 
 import numpy as np
-from six.moves import urllib
 import tensorflow as tf
 
 

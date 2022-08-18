@@ -62,7 +62,7 @@ class BroadcastSimpleTest : public ClientLibraryTestBase {
     auto r3_data = LiteralUtil::CreateR3FromArray3D(*r3_array).Relayout(
         LayoutUtil::MakeLayout(minor_to_major));
     std::unique_ptr<GlobalData> r3_global_data =
-        client_->TransferToServer(r3_data).ConsumeValueOrDie();
+        client_->TransferToServer(r3_data).value();
     return r3_global_data;
   }
 
@@ -75,7 +75,7 @@ class BroadcastSimpleTest : public ClientLibraryTestBase {
     auto r2_data = LiteralUtil::CreateR2FromArray2D(*r2_array).Relayout(
         LayoutUtil::MakeLayout(minor_to_major));
     std::unique_ptr<GlobalData> r2_global_data =
-        client_->TransferToServer(r2_data).ConsumeValueOrDie();
+        client_->TransferToServer(r2_data).value();
     return r2_global_data;
   }
 

@@ -36,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -140,6 +142,25 @@ bool IsCompositeDevice(absl::string_view device_type) {
   return device_type == kCompositeDeviceType;
 }
 
+// TODO(mdan): This is still too coarse.
+// Host-memory constraints are specific to kernel registrations, so in theory
+// they depend on the assigned device.
+// So we need a constraint model of the kind: <<node device>>: <<output_device>>
+bool HasHostMemoryOutType(const Node& node) {
+  if (!node.def().has_experimental_type()) {
+    return false;
+  }
+  const FullTypeDef& ft = node.def().experimental_type();
+  DCHECK(ft.type_id() == TFT_PRODUCT) << ft.DebugString();
+
+  for (const auto& arg : ft.args()) {
+    if (full_type::IsHostMemoryType(arg)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 }  // namespace
 
 Status Member::SetParentAndSupportedDevices(
@@ -167,7 +188,7 @@ Status Member::SetAssignedDeviceName(const string& device_name) {
   // Set requested device to assigned_device to maintain the invariant that
   // requested is a specialization of assigned.
   requested_device_name_ = assigned_device_name_;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Member::SetResourceDeviceName(const Node& node) {
@@ -187,7 +208,7 @@ Status Member::SetResourceDeviceName(const Node& node) {
   // Set requested device to resource device to maintain the invariant that
   // requested is a specialization of resource.
   requested_device_name_ = resource_device_name_;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Member::SetRequestedDeviceName(const Node& node) {
@@ -207,7 +228,7 @@ Status Member::SetRequestedDeviceName(const Node& node) {
                                    node.requested_device(),
                                    "' in node: ", node.DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Member::FillPossibleDevices(PossibleDevices* possible_device) const {
@@ -221,7 +242,7 @@ Status Member::FillPossibleDevices(PossibleDevices* possible_device) const {
   possible_device->requested_device_name = requested_device_name_;
   possible_device->resource_device_name = resource_device_name_;
   possible_device->device_types = supported_device_types_;
-  return Status::OK();
+  return OkStatus();
 }
 
 bool Member::IsEdgeFromCompositeDeviceToPhysicalDevice(
@@ -255,8 +276,9 @@ Status Member::EnsureCompatibilityAcrossResourceEdge(
         "connects colocation groups with incompatible assigned devices: ",
         DeviceNameUtils::ParsedNameToString(src_root.assigned_device_name_),
         " vs ", DeviceNameUtils::ParsedNameToString(assigned_device_name_),
-        ". The edge src node is ", src.name(), " , and the dst node is ",
-        dst.name());
+        ". The edge src node is name='", src.name(), "' (op='", src.def().op(),
+        "'), and the dst node is name='", dst.name(), "' (op='", dst.def().op(),
+        "').");
   }
 
   if (!DeviceNameUtils::AreCompatibleDevNames(src_root.resource_device_name_,
@@ -266,13 +288,14 @@ Status Member::EnsureCompatibilityAcrossResourceEdge(
         "connects colocation groups with incompatible resource devices: ",
         DeviceNameUtils::ParsedNameToString(src_root.resource_device_name_),
         " vs ", DeviceNameUtils::ParsedNameToString(resource_device_name_),
-        ". The edge src node is ", src.name(), " , and the dst node is ",
-        dst.name());
+        ". The edge src node is name='", src.name(), "' (op='", src.def().op(),
+        "'), and the dst node is name='", dst.name(), "' (op='", dst.def().op(),
+        "').");
   }
 
   if (DeviceNameUtils::AreCompatibleDevNames(src_root.requested_device_name_,
                                              requested_device_name_)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // If we are here, assigned and resource devices are compatible but requested
@@ -294,7 +317,7 @@ Status Member::EnsureCompatibilityAcrossResourceEdge(
                                        assigned_device_name_);
   DeviceNameUtils::EnsureSpecification(&requested_device_name_,
                                        resource_device_name_);
-  return Status::OK();
+  return OkStatus();
 }
 
 void Member::Merge(std::vector<Member>* tree, int x_root, int y_root,
@@ -390,10 +413,10 @@ Status Member::MergeDeviceNames(const Member& other,
                                        resource_device_name_copy);
 
   // We checked for all errors, now change the devices.
-  assigned_device_name_ = assigned_device_name_copy;
-  resource_device_name_ = resource_device_name_copy;
-  requested_device_name_ = requested_device_name_copy;
-  return Status::OK();
+  assigned_device_name_ = std::move(assigned_device_name_copy);
+  resource_device_name_ = std::move(resource_device_name_copy);
+  requested_device_name_ = std::move(requested_device_name_copy);
+  return OkStatus();
 }
 
 // Updates this to contain the intersection of the device types in
@@ -466,7 +489,7 @@ bool Member::MergeSupportedDevices(
 
 Status Member::AssignDevice(const Node& node) {
   if (node.assigned_device_name_index() == assigned_device_name_index_) {
-    return Status::OK();
+    return OkStatus();
   }
 
   DeviceNameUtils::ParsedName parsed;
@@ -502,7 +525,7 @@ Status Member::AssignDevice(const Node& node) {
   assigned_device_name_index_ = node.assigned_device_name_index();
   // Clear cached possible_devices, if any.
   possible_devices_.clear();
-  return Status::OK();
+  return OkStatus();
 }
 
 void Member::MaybeExcludeXlaDevices() {
@@ -538,7 +561,7 @@ Status Member::LimitToPossibleDevices(const PossibleDevices& devices,
   TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
       &resource_device_name_, devices.resource_device_name));
   MergeSupportedDevices(devices.device_types);
-  return Status::OK();
+  return OkStatus();
 }
 
 string Member::DebugString() const {
@@ -678,7 +701,7 @@ Status ColocationGraph::ColocateAllNodes() {
         ColocateNodeToGroup(&colocation_group_root, node, node->name()));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
@@ -694,7 +717,7 @@ Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
     // If the src root is assigned to a composite device and the dst root is
     // assigned to a physical device, don't colocate the dst root with the src
     // root.
-    return Status::OK();
+    return OkStatus();
   }
   TF_RETURN_IF_ERROR(dst_root.EnsureCompatibilityAcrossResourceEdge(
       *src, src_root, *dst, log_device_placement_));
@@ -708,7 +731,7 @@ Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
             status.error_message()),
         *dst);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::ColocateResourceAndRefEdges(
@@ -740,8 +763,8 @@ Status ColocationGraph::ColocateResourceAndRefEdges(
     // Colocate two DatasetOp nodes connected by edge of dtype=DT_VARIANT.
     // This is needed to get around the issue in b/135705778.
     if (input_type == DT_VARIANT &&
-        data::DatasetOpKernel::IsDatasetOp(&src->op_def()) &&
-        data::DatasetOpKernel::IsDatasetOp(&dst->op_def())) {
+        data::DatasetOpKernel::IsDatasetOp(src->op_def()) &&
+        data::DatasetOpKernel::IsDatasetOp(dst->op_def())) {
       TF_RETURN_IF_ERROR(ColocateResourceOrRefEdge(src, dst));
       continue;
     }
@@ -758,12 +781,13 @@ Status ColocationGraph::ColocateResourceAndRefEdges(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
 // Returns tensor list element data type, if the node is one of the ops that
 // operate with TensorLists. Otherwise returns DT_INVALID.
+// TODO(b/199443424): Don't use op names, use FullType here.
 DataType GetElementDataType(const Node& node) {
   static absl::flat_hash_set<std::string>* tensor_list_ops =
       new absl::flat_hash_set<std::string>(
@@ -794,41 +818,86 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
 
   for (Node* node : graph_.nodes()) {
     // Skip nodes that do not have DT_VARIANT inputs.
-    if (absl::c_none_of(node->input_types(), is_variant)) continue;
+    if (absl::c_none_of(node->input_types(), is_variant)) {
+      continue;
+    }
 
     // Skip nodes that can't be placed on GPU anyway.
     Member& root = members_[FindAndUpdateRoot(node->id())];
-    if (absl::c_all_of(root.supported_device_types(), is_cpu_device)) continue;
+    if (absl::c_all_of(root.supported_device_types(), is_cpu_device)) {
+      continue;
+    }
 
-    // Stop DFS traversal when found the underlying data type of a variant.
-    absl::optional<bool> is_host_data_type;
+    absl::optional<bool> constrain_to_host;
 
-    auto edge_filter = [&](const Edge& edge) -> bool {
-      // We already found the underlying data type.
-      if (is_host_data_type.has_value()) return false;
+    // This is a list of special nodes that we know to have no HostMemory
+    // inputs, so if they receive a host-only data type, they must necessarily
+    // be constrained to the host.
+    // This is brittle. In general, this should be handled by accounting for
+    // HostMemory as a constraint when the node's device is known, not ahead of
+    // time.
+    // A less ideal, but still better alternative is to look for ops which
+    // have no HostMemory kernels for the corresponding input. Unfortunately,
+    // determining that is challenging because we lack a map from input names
+    // to node input indices.
+    // TODO(mdan): Fix this.
+    if (node->IsRetval() || node->IsIdentity() || node->IsControlFlow() ||
+        node->IsFunctionCall()) {
+      for (const auto& edge : node->in_edges()) {
+        if (HasHostMemoryOutType(*edge->src())) {
+          // Skip nodes in colocation groups that already have a device
+          // assignment
+          if (root.has_assigned_device_name()) {
+            VLOG(4) << "Special node has host-only data type input "
+                    << "but is in a colocation group that already has a device "
+                    << "assignment, so NOT adding constraint:\n"
+                    << node->def().DebugString() << "\nedge:\n"
+                    << edge->DebugString();
+            break;
+          } else {
+            VLOG(4) << "Special node has host-only data type input, "
+                    << "adding constraint:\n"
+                    << node->def().DebugString() << "\nedge:\n"
+                    << edge->DebugString();
+            constrain_to_host = true;
+            break;
+          }
+        }
+      }
+    }
 
-      // Otherwise follow only DT_VARIANT data edges.
-      auto edge_dtype = [&]() -> DataType {
-        return edge.src()->output_type(edge.src_output());
+    if (!constrain_to_host.has_value()) {
+      // Legacy slow path. This covers legacy data types and ops which have not
+      // been upgraded to FullType.
+      auto edge_filter = [&](const Edge& edge) -> bool {
+        // We already found the underlying data type.
+        if (constrain_to_host.has_value()) return false;
+
+        // Otherwise follow only DT_VARIANT data edges.
+        auto edge_dtype = [&]() -> DataType {
+          return edge.src()->output_type(edge.src_output());
+        };
+        return !edge.IsControlEdge() && edge_dtype() == DT_VARIANT;
       };
-      return !edge.IsControlEdge() && edge_dtype() == DT_VARIANT;
-    };
 
-    auto enter = [&](Node* n) -> void {
-      DataType element_type = GetElementDataType(*n);
-      // To handle nested lists continue traversal after finding a TensorList
-      // operation that uses DT_VARIANT for element type.
-      if (element_type == DT_INVALID || element_type == DT_VARIANT) return;
-      is_host_data_type = DataTypeAlwaysOnHost(element_type);
-    };
+      auto enter = [&](Node* n) -> void {
+        DataType element_type = GetElementDataType(*n);
+        // To handle nested lists continue traversal after finding a TensorList
+        // operation that uses DT_VARIANT for element type.
+        if (element_type == DT_INVALID || element_type == DT_VARIANT) {
+          return;
+        }
+        constrain_to_host = DataTypeAlwaysOnHost(element_type);
+      };
 
-    ReverseDFSFrom(graph_, {node}, enter, /*leave=*/nullptr,
-                   /*stable_comparator=*/nullptr, edge_filter);
+      ReverseDFSFrom(graph_, {node}, enter, /*leave=*/nullptr,
+                     /*stable_comparator=*/nullptr, edge_filter);
+    }
 
-    if (is_host_data_type.has_value() && *is_host_data_type) {
-      VLOG(2) << "Limit node possible devices to CPU only, because it has a "
-                 "DT_VARIANT input with host-only underlying data type: "
-              << "node=" << node->name();
+    if (constrain_to_host.has_value() && *constrain_to_host) {
+      VLOG(2) << "Constraining node " << node->name()
+              << " to CPU: it has an input with host-only "
+                 "underlying data type.";
 
       // Restrict possible device types to CPU only.
       PossibleDevices possible_devices;
@@ -841,7 +910,7 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::AddInspectionConstraints(
@@ -854,7 +923,7 @@ Status ColocationGraph::AddInspectionConstraints(
             << ":\n\t" << groups.DebugString();
     TF_RETURN_IF_ERROR(ApplyIOColocationGroups(groups, *node));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::Initialize() {
@@ -862,16 +931,16 @@ Status ColocationGraph::Initialize() {
 
   std::unordered_set<Node*> inspection_required;
   TF_RETURN_IF_ERROR(ColocateResourceAndRefEdges(&inspection_required));
-  TF_RETURN_IF_ERROR(AddHostOnlyDataTypesConstraints());
   TF_RETURN_IF_ERROR(AddInspectionConstraints(inspection_required));
   TF_RETURN_IF_ERROR(ColocateAllNodes());
+  TF_RETURN_IF_ERROR(AddHostOnlyDataTypesConstraints());
 
   for (Node* node : graph_.op_nodes()) {
     int root_id = FindAndUpdateRoot(node->id());
     members_[root_id].MaybeExcludeXlaDevices();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // pair containing a node and whether this node has a resource input
@@ -926,7 +995,7 @@ Status GetGroupNodes(const IOColocationGroups& groups, const Node& node,
               << "]";
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns whether the device_type in `device_attributes` is supported.
@@ -996,7 +1065,7 @@ Status ColocationGraph::ApplyIOColocationGroups(
     TF_RETURN_IF_ERROR(LimitToPossibleDevices(*group_node, possible_devices));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::ColocateNodeToGroup(
@@ -1025,7 +1094,7 @@ Status ColocationGraph::ColocateNodeToGroup(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Merge the (possibly disjoint) sets containing nodes "x" and
@@ -1046,7 +1115,7 @@ Status ColocationGraph::ColocateNodes(const Node& x, const Node& y) {
 Status ColocationGraph::ColocateNodes(const Node& x, int x_root, const Node& y,
                                       int y_root) {
   if (x_root == y_root) {
-    return Status::OK();
+    return OkStatus();
   }
 
   Member* new_root_member;
@@ -1087,7 +1156,7 @@ Status ColocationGraph::ColocateNodes(const Node& x, int x_root, const Node& y,
   // All error checks are done, merge the colocation graphs.
   Member::Merge(&members_, x_root, y_root, &new_root_member, &old_root_member,
                 /*dry_run=*/false);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::LimitToAssignedDevice(const Node& node) {
@@ -1166,7 +1235,7 @@ Status ColocationGraph::GetDevicesForNode(
   const int node_root = FindAndUpdateRoot(node->id());
   if (!members_[node_root].possible_devices().empty()) {
     *possible_devices = &members_[node_root].possible_devices();
-    return Status::OK();
+    return OkStatus();
   }
 
   Member& root_member = members_[node_root];
@@ -1293,7 +1362,7 @@ Status ColocationGraph::GetDevicesForNode(
   // Cache the result of the possible devices for this node group.
   root_member.set_possible_devices(std::move(devices));
   *possible_devices = &root_member.possible_devices();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ColocationGraph::InitializeMembers() {
@@ -1303,7 +1372,7 @@ Status ColocationGraph::InitializeMembers() {
       return AttachDef(status, *node);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string ColocationGraph::DebugString() const {
@@ -1413,7 +1482,7 @@ Status ColocationGraph::InitializeMemberWithAssignedDevice(
 
   for (const auto& d : member->supported_device_types()) {
     if (IsSupportedDeviceType(assigned_device->attributes(), d.first)) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -1469,7 +1538,7 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns a list of devices having type in supported_device_types.  The

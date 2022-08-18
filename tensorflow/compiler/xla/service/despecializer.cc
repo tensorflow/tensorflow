@@ -21,28 +21,6 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-
-// Pass which strips control dependencies from all instructions in the module.
-class ControlDepRemover : public HloModulePass {
- public:
-  ControlDepRemover() = default;
-  absl::string_view name() const override { return "control-dep-remover"; }
-
-  StatusOr<bool> Run(HloModule* module) override {
-    bool changed = false;
-    for (HloComputation* computation : module->computations()) {
-      for (HloInstruction* instruction : computation->instructions()) {
-        changed = changed || !instruction->control_predecessors().empty();
-        TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
-      }
-    }
-    return changed;
-  }
-};
-
-}  // namespace
-
 Despecializer::Despecializer() : pipeline_("despecializer") {
   // TODO(b/70588125): Also deal with window reversal in a fast way.
   pipeline_.AddPass<HloDescheduler>();
@@ -51,8 +29,10 @@ Despecializer::Despecializer() : pipeline_("despecializer") {
   pipeline_.AddPass<BFloat16MixedPrecisionRemoval>();
 }
 
-StatusOr<bool> Despecializer::Run(HloModule* module) {
-  return pipeline_.Run(module);
+StatusOr<bool> Despecializer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return pipeline_.Run(module, execution_threads);
 }
 
 }  // namespace xla

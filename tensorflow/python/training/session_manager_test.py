@@ -14,12 +14,8 @@
 # ==============================================================================
 """Tests for SessionManager."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
-
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -32,7 +28,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_manager

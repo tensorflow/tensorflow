@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/public/version.h"
 
@@ -34,7 +38,7 @@ REGISTER_OP("KernelLabelRequired")
       shape_inference::ShapeHandle out;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &out));
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("GraphDefVersion")
@@ -56,6 +60,21 @@ REGISTER_OP("Old")
     .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(8, "For reasons");
 
+REGISTER_OP("GetDeadline")
+    .Output("deadline_from_epoch_micros: int64")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("SleepOp")
+    .Input("sleep_seconds: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("SleepIdentityOp")
+    .Input("sleep_seconds: int32")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_RESOURCE_HANDLE_OP(StubResource);
 
 REGISTER_OP("ResourceInitializedOp")
@@ -70,6 +89,17 @@ REGISTER_OP("ResourceCreateOp")
 REGISTER_OP("ResourceUsingOp")
     .Input("resource: resource")
     .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("IsResourceHandleRefCounting")
+    .Input("handle: resource")
+    .Output("result: bool")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("MakeWeakResourceHandle")
+    .Input("handle: resource")
+    .Output("dup: resource")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
 REGISTER_OP("TestStringOutput")
     .Input("input: float")
@@ -118,14 +148,12 @@ class KernelLabelOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("KernelLabel").Device(DEVICE_CPU),
                         KernelLabelOp<DEFAULT_LABEL>);
-REGISTER_KERNEL_BUILDER(Name("KernelLabel")
-                            .Device(DEVICE_CPU)
-                            .Label("overload_1"),
-                        KernelLabelOp<OVERLOAD_1_LABEL>);
-REGISTER_KERNEL_BUILDER(Name("KernelLabel")
-                            .Device(DEVICE_CPU)
-                            .Label("overload_2"),
-                        KernelLabelOp<OVERLOAD_2_LABEL>);
+REGISTER_KERNEL_BUILDER(
+    Name("KernelLabel").Device(DEVICE_CPU).Label("overload_1"),
+    KernelLabelOp<OVERLOAD_1_LABEL>);
+REGISTER_KERNEL_BUILDER(
+    Name("KernelLabel").Device(DEVICE_CPU).Label("overload_2"),
+    KernelLabelOp<OVERLOAD_2_LABEL>);
 
 // All "KernelLabelRequired" kernels have labels
 REGISTER_KERNEL_BUILDER(
@@ -161,6 +189,46 @@ class OldOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Old").Device(DEVICE_CPU), OldOp);
+
+class GetDeadlineOp : public OpKernel {
+ public:
+  explicit GetDeadlineOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    if (!ctx->deadline()) {
+      ctx->SetStatus(errors::InvalidArgument("Deadline has not ben set."));
+    }
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    output->scalar<int64_t>()() = absl::ToUnixMicros(*ctx->deadline());
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("GetDeadline").Device(DEVICE_CPU), GetDeadlineOp);
+
+class SleepOp : public OpKernel {
+ public:
+  explicit SleepOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    absl::SleepFor(absl::Seconds(ctx->input(0).scalar<int>()()));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("SleepOp").Device(DEVICE_CPU), SleepOp);
+
+class SleepIdentityOp : public OpKernel {
+ public:
+  explicit SleepIdentityOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    absl::SleepFor(absl::Seconds(ctx->input(0).scalar<int>()()));
+    ctx->set_output(0, ctx->input(1));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("SleepIdentityOp").Device(DEVICE_CPU),
+                        SleepIdentityOp);
 
 // Stubbed-out resource to test resource handle ops.
 class StubResource : public ResourceBase {
@@ -200,6 +268,46 @@ class ResourceUsingOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ResourceUsingOp").Device(DEVICE_CPU),
                         ResourceUsingOp);
+
+class IsResourceHandleRefCountingOp : public OpKernel {
+ public:
+  explicit IsResourceHandleRefCountingOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const auto& handle = HandleFromInput(ctx, 0);
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &output));
+    output->flat<bool>()(0) = handle.IsRefCounting();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("IsResourceHandleRefCounting").Device(DEVICE_CPU),
+                        IsResourceHandleRefCountingOp);
+
+// Duplicates a ResourceHandle as a weak ResourceHandle.
+class MakeWeakResourceHandleOp : public OpKernel {
+ public:
+  explicit MakeWeakResourceHandleOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor tensor;
+    ResourceHandleProto proto;
+    HandleFromInput(ctx, 0).AsProto(&proto);
+
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &tensor, attr));
+    tensor.scalar<ResourceHandle>()() = ResourceHandle{proto};
+    ctx->set_output(0, tensor);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("MakeWeakResourceHandle").Device(DEVICE_CPU),
+                        MakeWeakResourceHandleOp);
+REGISTER_KERNEL_BUILDER(Name("MakeWeakResourceHandle").Device(DEVICE_DEFAULT),
+                        MakeWeakResourceHandleOp);
 
 class TestAttrOp : public OpKernel {
  public:
@@ -690,7 +798,7 @@ class DevicePlacementOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_CPU),
                         DevicePlacementOp);
-REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_DEFAULT),
                         DevicePlacementOp);
 
 // An op which returns the dtype of the tensor it was passed in. It expects

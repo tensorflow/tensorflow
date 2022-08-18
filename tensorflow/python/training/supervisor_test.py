@@ -14,22 +14,18 @@
 # ==============================================================================
 """Tests for supervisor.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import glob
 import os
 import shutil
 import time
 import uuid
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -45,7 +41,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import server_lib
@@ -100,7 +95,7 @@ class SupervisorTest(test.TestCase):
       my_op = constant_op.constant(1.0)
       sv = supervisor.Supervisor(logdir=logdir)
       sess = sv.prepare_or_wait_for_session("")
-      for _ in xrange(10):
+      for _ in range(10):
         self.evaluate(my_op)
       sess.close()
       sv.stop()
@@ -111,7 +106,7 @@ class SupervisorTest(test.TestCase):
       my_op = constant_op.constant(1.0)
       sv = supervisor.Supervisor(logdir=logdir)
       with sv.managed_session(""):
-        for _ in xrange(10):
+        for _ in range(10):
           self.evaluate(my_op)
       # Supervisor has been stopped.
       self.assertTrue(sv.should_stop())
@@ -124,7 +119,7 @@ class SupervisorTest(test.TestCase):
       last_step = None
       with self.assertRaisesRegex(RuntimeError, "failing here"):
         with sv.managed_session("") as sess:
-          for step in xrange(10):
+          for step in range(10):
             last_step = step
             if step == 1:
               raise RuntimeError("failing here")
@@ -141,7 +136,7 @@ class SupervisorTest(test.TestCase):
       sv = supervisor.Supervisor(logdir=logdir)
       last_step = None
       with sv.managed_session("") as sess:
-        for step in xrange(10):
+        for step in range(10):
           last_step = step
           if step == 3:
             raise errors_impl.OutOfRangeError(my_op.op.node_def, my_op.op,
@@ -335,7 +330,7 @@ class SupervisorTest(test.TestCase):
       sv = supervisor.Supervisor(logdir=logdir)
       sess = sv.prepare_or_wait_for_session(
           "", config=config_pb2.ConfigProto(device_count={"CPU": 2}))
-      for _ in xrange(10):
+      for _ in range(10):
         self.evaluate(my_op)
       sess.close()
       sv.stop()

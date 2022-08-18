@@ -51,7 +51,7 @@ struct StridedDataReader {
 
 template <>
 Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
-    OpKernelContext* c, TTypes<int64>::ConstMatrix indices,
+    OpKernelContext* c, TTypes<int64_t>::ConstMatrix indices,
     TTypes<int32>::Vec nnz_per_batch) {
   const auto& cu_stream = GetGpuStream(c);
 
@@ -94,7 +94,7 @@ Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
 
   Tensor temp_storage;
   TF_RETURN_IF_ERROR(c->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+      DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
       &temp_storage));
   DCHECK_NE(temp_storage.flat<int8>().data(), nullptr);
   auto second_success = gpuprim::DeviceHistogram::HistogramEven(
@@ -145,8 +145,8 @@ __global__ void SparseTensorToCOOMatrixKernel(const int64* indices,
 
 template <>
 void SparseTensorToCOOSparseMatrix<GPUDevice>::operator()(
-    const GPUDevice& d, TTypes<int64>::ConstVec host_dense_shape,
-    TTypes<int64>::ConstMatrix indices, TTypes<int>::Vec coo_row_ind,
+    const GPUDevice& d, TTypes<int64_t>::ConstVec host_dense_shape,
+    TTypes<int64_t>::ConstMatrix indices, TTypes<int>::Vec coo_row_ind,
     TTypes<int>::Vec coo_col_ind) {
   const int stride = host_dense_shape.size();
   DCHECK(stride == 2 || stride == 3);
@@ -170,8 +170,8 @@ __global__ void COOMatrixToSparseTensorKernel2D(const int* coo_rows,
                                                 const int* coo_cols,
                                                 int64* indices_out, int size) {
   GPU_1D_KERNEL_LOOP(i, size) {
-    indices_out[i * 2] = static_cast<int64>(ldg(coo_rows + i));
-    indices_out[i * 2 + 1] = static_cast<int64>(ldg(coo_cols + i));
+    indices_out[i * 2] = static_cast<int64_t>(ldg(coo_rows + i));
+    indices_out[i * 2 + 1] = static_cast<int64_t>(ldg(coo_cols + i));
   }
 }
 
@@ -207,17 +207,17 @@ __global__ void COOMatrixToSparseTensorKernel3D(
     // alternatively doing linear instead of binary search.  Requires
     // some benchmarks.
     const int b = BinarySearchRange(local_batch_ptr, batch_size, i);
-    indices_out[i * 3] = static_cast<int64>(b);
-    indices_out[i * 3 + 1] = static_cast<int64>(ldg(coo_rows + i));
-    indices_out[i * 3 + 2] = static_cast<int64>(ldg(coo_cols + i));
+    indices_out[i * 3] = static_cast<int64_t>(b);
+    indices_out[i * 3 + 1] = static_cast<int64_t>(ldg(coo_rows + i));
+    indices_out[i * 3 + 2] = static_cast<int64_t>(ldg(coo_cols + i));
   }
 }
 
 template <>
 Status COOSparseMatrixToSparseTensor<GPUDevice>::operator()(
-    OpKernelContext* c, TTypes<int64>::ConstVec host_dense_shape,
+    OpKernelContext* c, TTypes<int64_t>::ConstVec host_dense_shape,
     TTypes<int>::ConstVec host_batch_ptr, TTypes<int>::Vec coo_row_ind,
-    TTypes<int>::ConstVec coo_col_ind, TTypes<int64>::Matrix indices) {
+    TTypes<int>::ConstVec coo_col_ind, TTypes<int64_t>::Matrix indices) {
   const int ndims = indices.dimension(1);
   DCHECK(ndims == 2 || ndims == 3);
   DCHECK_EQ(ndims, host_dense_shape.size());
@@ -297,7 +297,7 @@ Status CSRSparseMatrixBatchMulVecImpl(OpKernelContext* ctx,
   auto a_values = a.values().flat<T>();
   auto c_values = c_values_t.flat<T>();
 
-  auto host_dense_shape = a.dense_shape().vec<int64>();
+  auto host_dense_shape = a.dense_shape().vec<int64_t>();
   auto host_batch_ptr = a.batch_pointers().vec<int>();
 
   const GPUDevice& d = ctx->eigen_device<GPUDevice>();
@@ -419,7 +419,7 @@ template <typename T>
 Status CSRSparseMatrixSoftmaxGPUImpl(OpKernelContext* ctx,
                                      const CSRSparseMatrix& logits,
                                      typename TTypes<T>::Vec softmax_values) {
-  auto host_dense_shape = logits.dense_shape().vec<int64>();
+  auto host_dense_shape = logits.dense_shape().vec<int64_t>();
   auto host_batch_ptr = logits.batch_pointers().vec<int32>();
   auto row_ptr = logits.row_pointers().vec<int32>();
   auto logits_values = logits.values().vec<T>();
@@ -487,7 +487,7 @@ EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void CalculateRowSoftmaxGrad(
   //  grad_softmax_col_ind[grad_softmax_begin] to
   //  grad_softmax_col_ind[grad_softmax_end]
   //
-  // looking for for matching indices.  In the softmax indices only, perform:
+  // looking for matching indices.  In the softmax indices only, perform:
   //
   //   gradient = (grad_softmax - sum(grad_softmax * softmax)) * softmax
   //
@@ -608,7 +608,7 @@ Status CSRSparseMatrixSoftmaxGradGPUImpl(
     OpKernelContext* ctx, const CSRSparseMatrix& softmax,
     const CSRSparseMatrix& grad_softmax,
     typename TTypes<T>::Vec gradient_values) {
-  auto host_dense_shape = softmax.dense_shape().vec<int64>();
+  auto host_dense_shape = softmax.dense_shape().vec<int64_t>();
   auto softmax_host_batch_ptr = softmax.batch_pointers().vec<int32>();
   auto softmax_row_ptr = softmax.row_pointers().vec<int32>();
   auto softmax_col_ind = softmax.col_indices().vec<int32>();

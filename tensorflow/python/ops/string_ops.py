@@ -16,10 +16,6 @@
 
 """Operations for working with string Tensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -46,6 +42,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=redefined-builtin
 @tf_export("strings.regex_full_match")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def regex_full_match(input, pattern, name=None):
   r"""Match elements of `input` with regex `pattern`.
@@ -73,9 +70,9 @@ regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
 
 @tf_export(
     "strings.regex_replace", v1=["strings.regex_replace", "regex_replace"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("regex_replace")
-@dispatch.add_dispatch_support
 def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
   r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
 
@@ -380,6 +377,7 @@ reduce_join.__doc__ = reduce_join_v2.__doc__
 # This wrapper provides backwards compatibility for code that predates the
 # unit argument and that passed 'name' as a positional argument.
 @tf_export(v1=["strings.length"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def string_length(input, name=None, unit="BYTE"):
   """Computes the length of each string given in the input tensor.
@@ -409,6 +407,7 @@ def string_length(input, name=None, unit="BYTE"):
 
 
 @tf_export("strings.length", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def string_length_v2(input, unit="BYTE", name=None):
   return gen_string_ops.string_length(input, unit=unit, name=name)
@@ -418,6 +417,7 @@ string_length_v2.__doc__ = gen_string_ops.string_length.__doc__
 
 
 @tf_export(v1=["substr"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated(None, "Use `tf.strings.substr` instead of `tf.substr`.")
 def substr_deprecated(input, pos, len, name=None, unit="BYTE"):
@@ -427,6 +427,7 @@ substr_deprecated.__doc__ = gen_string_ops.substr.__doc__
 
 
 @tf_export(v1=["strings.substr"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def substr(input, pos, len, name=None, unit="BYTE"):
   return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
@@ -435,6 +436,7 @@ substr.__doc__ = gen_string_ops.substr.__doc__
 
 
 @tf_export("strings.substr", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def substr_v2(input, pos, len, unit="BYTE", name=None):
   return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
@@ -455,6 +457,7 @@ ops.NotDifferentiable("DecodeBase64")
 
 
 @tf_export("strings.to_number", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def string_to_number(input, out_type=dtypes.float32, name=None):
   r"""Converts each string in the input Tensor to the specified numeric type.
@@ -497,6 +500,7 @@ string_to_number_v1.__doc__ = gen_parsing_ops.string_to_number.__doc__
 
 
 @tf_export("strings.to_hash_bucket", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def string_to_hash_bucket(input, num_buckets, name=None):
   # pylint: disable=line-too-long
@@ -527,8 +531,9 @@ def string_to_hash_bucket(input, num_buckets, name=None):
 
 
 @tf_export(v1=["strings.to_hash_bucket", "string_to_hash_bucket"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
-def string_to_hash_bucket_v1(
+def string_to_hash_bucket_v1(  # pylint: disable=missing-function-docstring
     string_tensor=None,
     num_buckets=None,
     name=None,
@@ -543,7 +548,6 @@ string_to_hash_bucket_v1.__doc__ = gen_string_ops.string_to_hash_bucket.__doc__
 @tf_export("strings.join", v1=["strings.join", "string_join"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("string_join")
-@dispatch.add_dispatch_support
 def string_join(inputs, separator="", name=None):
   """Perform element-wise concatenation of a list of string tensors.
 
@@ -574,3 +578,75 @@ def string_join(inputs, separator="", name=None):
     A `tf.string` tensor.
   """
   return gen_string_ops.string_join(inputs, separator=separator, name=name)
+
+
+@tf_export("strings.unsorted_segment_join")
+@dispatch.add_dispatch_support
+def unsorted_segment_join(inputs,
+                          segment_ids,
+                          num_segments,
+                          separator="",
+                          name=None):
+  """Joins the elements of `inputs` based on `segment_ids`.
+
+  Computes the string join along segments of a tensor.
+
+  Given `segment_ids` with rank `N` and `data` with rank `N+M`:
+
+  ```
+  output[i, k1...kM] = strings.join([data[j1...jN, k1...kM])
+  ```
+
+  where the join is over all `[j1...jN]` such that `segment_ids[j1...jN] = i`.
+
+  Strings are joined in row-major order.
+
+  For example:
+
+  >>> inputs = ['this', 'a', 'test', 'is']
+  >>> segment_ids = [0, 1, 1, 0]
+  >>> num_segments = 2
+  >>> separator = ' '
+  >>> tf.strings.unsorted_segment_join(inputs, segment_ids, num_segments,
+  ...                                  separator).numpy()
+  array([b'this is', b'a test'], dtype=object)
+
+  >>> inputs = [['Y', 'q', 'c'], ['Y', '6', '6'], ['p', 'G', 'a']]
+  >>> segment_ids = [1, 0, 1]
+  >>> num_segments = 2
+  >>> tf.strings.unsorted_segment_join(inputs, segment_ids, num_segments,
+  ...                                  separator=':').numpy()
+  array([[b'Y', b'6', b'6'],
+         [b'Y:p', b'q:G', b'c:a']], dtype=object)
+
+  Args:
+    inputs: A list of `tf.Tensor` objects of type `tf.string`.
+    segment_ids: A tensor whose shape is a prefix of `inputs.shape` and whose
+      type must be `tf.int32` or `tf.int64`. Negative segment ids are not
+      supported.
+    num_segments: A scalar of type `tf.int32` or `tf.int64`. Must be
+      non-negative and larger than any segment id.
+    separator: The separator to use when joining. Defaults to `""`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.string` tensor representing the concatenated values, using the given
+    separator.
+  """
+  return gen_string_ops.unsorted_segment_join(
+      inputs, segment_ids, num_segments, separator=separator, name=name)
+
+
+# Register elementwise ops that don't have Python wrappers.
+dispatch.register_unary_elementwise_api(gen_string_ops.as_string)
+dispatch.register_unary_elementwise_api(gen_string_ops.decode_base64)
+dispatch.register_unary_elementwise_api(gen_string_ops.encode_base64)
+dispatch.register_unary_elementwise_api(gen_string_ops.string_lower)
+dispatch.register_unary_elementwise_api(gen_string_ops.string_upper)
+dispatch.register_unary_elementwise_api(gen_string_ops.unicode_transcode)
+dispatch.register_unary_elementwise_api(gen_string_ops.string_strip)
+dispatch.register_unary_elementwise_api(
+    gen_string_ops.string_to_hash_bucket_fast)
+dispatch.register_unary_elementwise_api(
+    gen_string_ops.string_to_hash_bucket_strong)
+dispatch.register_unary_elementwise_api(gen_string_ops.unicode_script)

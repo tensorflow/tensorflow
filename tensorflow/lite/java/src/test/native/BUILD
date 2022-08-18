@@ -12,25 +12,40 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "native_srcs",
+    srcs = [
+        "interpreter_test_jni.cc",
+        "nnapi_delegate_test_jni.cc",
+        "supported_features_jni.cc",
+        "test_init_jni.cc",
+    ],
+)
+
 cc_library_with_tflite(
     name = "native",
     testonly = 1,
     srcs = [
         "interpreter_test_jni.cc",
+        "nnapi_delegate_test_jni.cc",
         "supported_features_jni.cc",
         "test_init_jni.cc",
     ],
     tflite_deps = [
         "//tensorflow/lite/core/shims:c_shims_test_util",
+        "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/java/src/main/native",
+        "//tensorflow/lite/java/src/main/native:jni_utils",
         "//tensorflow/lite/java/src/main/native:native_framework_only",
     ],
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/delegates/nnapi/java/src/main/native",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/java/jni",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/nnapi:nnapi_lib",
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],
     alwayslink = 1,
 )
@@ -45,12 +60,13 @@ cc_library_with_tflite(
     ],
     tflite_deps = [
         "//tensorflow/lite/core/shims:c_shims_test_util",
+        "//tensorflow/lite/delegates/nnapi/java/src/main/native",
+        "//tensorflow/lite/java/src/main/native:jni_utils",
         "//tensorflow/lite/java/src/main/native:native_stable",
         "//tensorflow/lite/java/src/main/native:native_stable_framework_only",
     ],
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/java/jni",
         "//tensorflow/lite/kernels:kernel_util",

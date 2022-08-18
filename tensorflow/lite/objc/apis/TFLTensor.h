@@ -57,10 +57,10 @@ typedef NS_ENUM(NSUInteger, TFLTensorDataType) {
 /**
  * An input or output tensor in a TensorFlow Lite model.
  *
- * @warning Each `TFLTensor` instance is associated with a `TFLInterpreter` instance. Multiple
- *     `TFLTensor` instances of the same TensorFlow Lite model are associated with the same
- *     `TFLInterpreter` instance. As long as a `TFLTensor` instance is still in use, its associated
- *     `TFLInterpreter` instance will not be deallocated.
+ * @warning Each `TFLTensor` instance is associated with its provider, either a `TFLInterpreter` or
+ * a `TFLSignatureRunner` instance. Multiple `TFLTensor` instances of the same TensorFlow Lite model
+ * are associated with the same provider instance. As long as a `TFLTensor` instance is still in
+ * use, its associated provider instance will not be deallocated.
  */
 @interface TFLTensor : NSObject
 
@@ -78,7 +78,7 @@ typedef NS_ENUM(NSUInteger, TFLTensorDataType) {
 
 /**
  * Copies the given data into an input tensor. This is allowed only for an input tensor and only
- * before the interpreter is invoked; otherwise an error will be returned.
+ * before the interpreter or the signature runner is invoked; otherwise an error will be returned.
  *
  * @param data The data to set. The byte size of the data must match what's required by the input
  *     tensor.
@@ -91,7 +91,8 @@ typedef NS_ENUM(NSUInteger, TFLTensorDataType) {
 
 /**
  * Retrieves a copy of data in the tensor. For an output tensor, the data is only available after
- * the interpreter invocation has successfully completed; otherwise an error will be returned.
+ * the interpreter or signature runner invocation has successfully completed; otherwise an error
+ * will be returned.
  *
  * @param error An optional error parameter populated when there is an error in retrieving the data.
  *

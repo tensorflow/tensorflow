@@ -66,20 +66,15 @@ tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
 ```
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import builtins
 import numbers
 import numpy as np
-import six
-from six.moves import builtins
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -367,6 +362,7 @@ def argmin_v2(input, axis=None, output_type=dtypes.int64, name=None):
 # pylint: disable=anomalous-backslash-in-string,protected-access
 # pylint: disable=g-docstring-has-escape
 @tf_export("math.abs", "abs")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def abs(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the absolute value of a tensor.
@@ -423,7 +419,7 @@ def _bucketize(input, boundaries, name=None):
 # pylint: enable=redefined-builtin
 
 
-class DivideDelegateWithName(object):
+class DivideDelegateWithName:
   """Use Python2/Python3 division delegation to implement divide for tensors."""
 
   def __init__(self, x, name):
@@ -447,6 +443,7 @@ class DivideDelegateWithName(object):
 
 
 @tf_export("math.divide", "divide")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def divide(x, y, name=None):
   """Computes Python style division of `x` by `y`.
@@ -481,6 +478,7 @@ def divide(x, y, name=None):
 
 
 @tf_export("math.multiply", "multiply")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def multiply(x, y, name=None):
   """Returns an element-wise x * y.
@@ -544,6 +542,7 @@ _mul.__doc__ = (
 
 
 @tf_export("math.subtract", "subtract")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
   return gen_math_ops.sub(x, y, name)
@@ -590,6 +589,7 @@ def _neg(x, name=None):
 
 
 @tf_export(v1=["math.scalar_mul", "scalar_mul"])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def scalar_mul(scalar, x, name=None):
   """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
@@ -615,12 +615,13 @@ def scalar_mul(scalar, x, name=None):
   Raises:
     ValueError: if scalar is not a 0-D `scalar`.
   """
+  base_dtype = dtypes.as_dtype(x.dtype).base_dtype
   scalar = ops.convert_to_tensor(
-      scalar, dtype=x.dtype.base_dtype, name="scalar")
+      scalar, dtype=base_dtype, name="scalar")
   shape = scalar.get_shape()
   if shape.ndims == 0:
-    if isinstance(x, ops.IndexedSlices):
-      return ops.IndexedSlices(
+    if isinstance(x, indexed_slices.IndexedSlices):
+      return indexed_slices.IndexedSlices(
           gen_math_ops.mul(scalar, x.values, name), x.indices, x.dense_shape)
     else:
       return gen_math_ops.mul(scalar, x, name)
@@ -630,6 +631,7 @@ def scalar_mul(scalar, x, name=None):
 
 
 @tf_export("math.softplus", "nn.softplus", v1=["math.softplus", "nn.softplus"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def softplus(features, name=None):
   """Computes elementwise softplus: `softplus(x) = log(exp(x) + 1)`.
@@ -655,6 +657,7 @@ def softplus(features, name=None):
 
 
 @tf_export("math.scalar_mul", "scalar_mul", v1=[])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @_set_doc(scalar_mul.__doc__)
 def scalar_mul_v2(scalar, x, name=None):
@@ -663,6 +666,7 @@ def scalar_mul_v2(scalar, x, name=None):
 
 
 @tf_export("math.pow", "pow")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the power of one value to another.
@@ -692,6 +696,7 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
 
 # pylint: disable=redefined-builtin,redefined-outer-name
 @tf_export("dtypes.complex", "complex")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def complex(real, imag, name=None):
   r"""Converts two real numbers to a complex number.
@@ -739,6 +744,7 @@ def complex(real, imag, name=None):
 
 
 @tf_export("math.sign", "sign")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def sign(x, name=None):
   r"""Returns an element-wise indication of the sign of a number.
@@ -785,9 +791,9 @@ def sign(x, name=None):
 
 
 @tf_export("math.real", v1=["math.real", "real"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("real")
-@dispatch.add_dispatch_support
 def real(input, name=None):
   r"""Returns the real part of a complex (or real) tensor.
 
@@ -820,9 +826,9 @@ def real(input, name=None):
 
 
 @tf_export("math.imag", v1=["math.imag", "imag"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("imag")
-@dispatch.add_dispatch_support
 def imag(input, name=None):
   r"""Returns the imaginary part of a complex (or real) tensor.
 
@@ -854,9 +860,9 @@ def imag(input, name=None):
 
 
 @tf_export("math.angle", v1=["math.angle", "angle"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("angle")
-@dispatch.add_dispatch_support
 def angle(input, name=None):
   r"""Returns the element-wise argument of a complex (or real) tensor.
 
@@ -899,6 +905,7 @@ def angle(input, name=None):
 
 
 @tf_export("math.round", "round")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def round(x, name=None):  # pylint: disable=redefined-builtin
   """Rounds the values of a tensor to the nearest integer, element-wise.
@@ -926,7 +933,9 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
     return gen_math_ops.round(x, name=name)
 
 
+# TODO(mdan): Include a full_type argument to replace dtype.
 @tf_export("cast", "dtypes.cast")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
@@ -981,16 +990,16 @@ def cast(x, dtype, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
       x = sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
-    elif isinstance(x, ops.IndexedSlices):
+    elif isinstance(x, indexed_slices.IndexedSlices):
       values_cast = cast(x.values, base_type, name=name)
-      x = ops.IndexedSlices(values_cast, x.indices, x.dense_shape)
+      x = indexed_slices.IndexedSlices(values_cast, x.indices, x.dense_shape)
     else:
       # TODO(josh11b): If x is not already a Tensor, we could return
       # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
-      if x.dtype.base_dtype != base_type:
+      if x.dtype != base_type:
         x = gen_math_ops.cast(x, base_type, name=name)
     if x.dtype.is_complex and base_type.is_floating:
       logging.warn("Casting complex to real discards imaginary part.")
@@ -998,6 +1007,7 @@ def cast(x, dtype, name=None):
 
 
 @tf_export("dtypes.saturate_cast", "saturate_cast")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def saturate_cast(value, dtype, name=None):
   """Performs a safe saturating cast of `value` to `dtype`.
@@ -1030,9 +1040,10 @@ def saturate_cast(value, dtype, name=None):
     return cast(value, dtype, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_float"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_float(x, name="ToFloat"):
   """Casts a tensor to type `float32`.
 
@@ -1069,9 +1080,10 @@ def to_float(x, name="ToFloat"):
   return cast(x, dtypes.float32, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_double"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_double(x, name="ToDouble"):
   """Casts a tensor to type `float64`.
 
@@ -1108,9 +1120,10 @@ def to_double(x, name="ToDouble"):
   return cast(x, dtypes.float64, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_int32"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_int32(x, name="ToInt32"):
   """Casts a tensor to type `int32`.
 
@@ -1147,9 +1160,10 @@ def to_int32(x, name="ToInt32"):
   return cast(x, dtypes.int32, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_int64"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_int64(x, name="ToInt64"):
   """Casts a tensor to type `int64`.
 
@@ -1186,9 +1200,10 @@ def to_int64(x, name="ToInt64"):
   return cast(x, dtypes.int64, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_bfloat16"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_bfloat16(x, name="ToBFloat16"):
   """Casts a tensor to type `bfloat16`.
 
@@ -1225,9 +1240,10 @@ def to_bfloat16(x, name="ToBFloat16"):
   return cast(x, dtypes.bfloat16, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_complex64"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_complex64(x, name="ToComplex64"):
   """Casts a tensor to type `complex64`.
 
@@ -1264,9 +1280,10 @@ def to_complex64(x, name="ToComplex64"):
   return cast(x, dtypes.complex64, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_complex128"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_complex128(x, name="ToComplex128"):
   """Casts a tensor to type `complex128`.
 
@@ -1324,8 +1341,26 @@ def _maybe_get_dtype(x):
   return x
 
 
-def maybe_promote_tensors(*tensors, force_same_dtype=True):
-  """Promote tensors if numpy style promotion is enabled."""
+def maybe_promote_tensors(*tensors, force_same_dtype=False):
+  """Promotes tensors if numpy style promotion is enabled.
+
+  This function promotes `tensors` according to numpy promotion rules
+  if numpy style promotion is enabled.  Otherwise, if
+  `force_same_dtype` is `True`, it force-casts `tensors[1:]` to
+  `tensor[0]`'s dtype. Note that this force-cast can be problematic.
+  For example, when some `tensors[1:]` elements can be silently
+  downcasted.
+
+  Args:
+    *tensors: the list of tensors to promote.
+    force_same_dtype: bool (optional, default to `False`). When numpy
+      style promotion is disabled and `force_same_dtype` is `True`,
+      this function will force-casts `tensors[1:]` to `tensor[0]`'s
+      dtype (which could be problematic).
+
+  Returns:
+    The promoted list of tensors.
+  """
   if not tensors:
     return tensors
   if not ops._numpy_style_type_promotion:
@@ -1368,7 +1403,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
         # force_same_dtype=False to preserve existing TF behavior
         # TODO(b/178860388): Figure out why binary_op_wrapper and
         #   r_binary_op_wrapper use different force_same_dtype values.
-        x, y = maybe_promote_tensors(x, y, force_same_dtype=False)
+        x, y = maybe_promote_tensors(x, y)
         return func(x, y, name=name)
       except (TypeError, ValueError) as e:
         # Even if dispatching the op failed, the RHS may be a tensor aware
@@ -1403,7 +1438,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
     with ops.name_scope(None, op_name, [x, y]) as name:
       # TODO(b/178860388): Figure out why binary_op_wrapper and
       #   r_binary_op_wrapper use different force_same_dtype values.
-      y, x = maybe_promote_tensors(y, x)
+      y, x = maybe_promote_tensors(y, x, force_same_dtype=True)
       return func(x, y, name=name)
 
   # Propagate func.__doc__ to the wrappers
@@ -1522,6 +1557,7 @@ def _div_python2(x, y, name=None):
 
 
 @tf_export("math.truediv", "truediv")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def truediv(x, y, name=None):
   """Divides x / y elementwise (using Python 3 division operator semantics).
@@ -1554,11 +1590,12 @@ def truediv(x, y, name=None):
   return _truediv_python3(x, y, name)
 
 
+@tf_export(v1=["div"])
+@dispatch.register_binary_elementwise_api
+@dispatch.add_dispatch_support
 @deprecation.deprecated(
     date=None,
     instructions="Deprecated in favor of operator or tf.math.divide.")
-@tf_export(v1=["div"])
-@dispatch.add_dispatch_support
 def div(x, y, name=None):
   """Divides x / y elementwise (using Python 2 division operator semantics).
 
@@ -1586,9 +1623,9 @@ def div(x, y, name=None):
 
 
 @tf_export("math.divide_no_nan", v1=["math.divide_no_nan", "div_no_nan"])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("div_no_nan")
-@dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
   """Computes a safe divide which returns 0 if `y` (denominator) is zero.
 
@@ -1597,6 +1634,11 @@ def div_no_nan(x, y, name=None):
   >>> tf.constant(3.0) / 0.0
   <tf.Tensor: shape=(), dtype=float32, numpy=inf>
   >>> tf.math.divide_no_nan(3.0, 0.0)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
+
+  Note that 0 is returned if `y` is 0 even if `x` is nonfinite:
+
+  >>> tf.math.divide_no_nan(np.nan, 0.0)
   <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
   Args:
@@ -1615,9 +1657,13 @@ def div_no_nan(x, y, name=None):
 
 
 @tf_export("math.multiply_no_nan")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def multiply_no_nan(x, y, name=None):
   """Computes the product of x and y and returns 0 if the y is zero, even if x is NaN or infinite.
+
+  Note this is noncommutative: if y is NaN or infinite and x is 0, the result
+  will be NaN.
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
@@ -1643,23 +1689,20 @@ def multiply_no_nan(x, y, name=None):
 mod = gen_math_ops.floor_mod
 
 
-# TODO(aselle): Deprecate this once all internal functionality uses
-# tf.truncatediv
 @tf_export("math.floordiv", v1=["math.floordiv", "floordiv"])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("floordiv")
 def floordiv(x, y, name=None):
   """Divides `x / y` elementwise, rounding toward the most negative integer.
 
-  The same as `tf.compat.v1.div(x,y)` for integers, but uses
-  `tf.floor(tf.compat.v1.div(x,y))` for
-  floating point arguments so that the result is always an integer (though
-  possibly an integer represented as floating point).  This op is generated by
-  `x // y` floor division in Python 3 and in Python 2.7 with
-  `from __future__ import division`.
+  Mathematically, this is equivalent to floor(x / y). For example:
+    floor(8.4 / 4.0) = floor(2.1) = 2.0
+    floor(-8.4 / 4.0) = floor(-2.1) = -3.0
+  This is equivalent to the '//' operator in Python 3.0 and above.
 
-  `x` and `y` must have the same type, and the result will have the same type
-  as well.
+  Note: `x` and `y` must have the same type, and the result will have the same
+  type as well.
 
   Args:
     x: `Tensor` numerator of real numeric type.
@@ -1667,7 +1710,7 @@ def floordiv(x, y, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    `x / y` rounded down.
+    `x / y` rounded toward -infinity.
 
   Raises:
     TypeError: If the inputs are complex.
@@ -1678,7 +1721,6 @@ def floordiv(x, y, name=None):
 
 realdiv = gen_math_ops.real_div
 truncatediv = gen_math_ops.truncate_div
-# TODO(aselle): Rename this to floordiv when we can.
 floor_div = gen_math_ops.floor_div
 truncatemod = gen_math_ops.truncate_mod
 floormod = gen_math_ops.floor_mod
@@ -1689,14 +1731,14 @@ floormod = gen_math_ops.floor_mod
 def _add_dispatch(x, y, name=None):
   """The operation invoked by the `Tensor.__add__` operator.
 
-    Purpose in the API:
+  Purpose in the API:
 
-      This method is exposed in TensorFlow's API so that library developers
-      can register dispatching for `Tensor.__add__` to allow it to handle
-      custom composite tensors & other custom objects.
+    This method is exposed in TensorFlow's API so that library developers
+    can register dispatching for `Tensor.__add__` to allow it to handle
+    custom composite tensors & other custom objects.
 
-      The API symbol is not intended to be called by users directly and does
-      appear in TensorFlow's generated documentation.
+    The API symbol is not intended to be called by users directly and does
+    appear in TensorFlow's generated documentation.
 
   Args:
     x: The left-hand side of the `+` operator.
@@ -1746,6 +1788,7 @@ _OverrideBinaryOperatorHelper(pow, "pow")
 
 
 @tf_export("math.logical_xor", v1=["math.logical_xor", "logical_xor"])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("logical_xor")
 def logical_xor(x, y, name="LogicalXor"):
@@ -1828,7 +1871,7 @@ ops.Tensor._override_operator("__invert__", invert_)
 
 def _promote_dtypes_decorator(fn):
   def wrapper(x, y, *args, **kwargs):
-    x, y = maybe_promote_tensors(x, y, force_same_dtype=False)
+    x, y = maybe_promote_tensors(x, y)
     return fn(x, y, *args, **kwargs)
   return tf_decorator.make_decorator(fn, wrapper)
 
@@ -1844,6 +1887,7 @@ ops.Tensor._override_operator("__ge__", _promote_dtypes_decorator(
 
 
 @tf_export("math.equal", "equal")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def equal(x, y, name=None):
   """Returns the truth value of (x == y) element-wise.
@@ -1866,8 +1910,8 @@ def equal(x, y, name=None):
   <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  True])>
 
   Args:
-    x: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
-    y: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
+    x: A `tf.Tensor`.
+    y: A `tf.Tensor`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1880,6 +1924,7 @@ def equal(x, y, name=None):
 
 
 @tf_export("math.not_equal", "not_equal")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def not_equal(x, y, name=None):
   """Returns the truth value of (x != y) element-wise.
@@ -1902,8 +1947,8 @@ def not_equal(x, y, name=None):
   <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False,  False])>
 
   Args:
-    x: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
-    y: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
+    x: A `tf.Tensor`.
+    y: A `tf.Tensor`.
     name: A name for the operation (optional).
 
   Returns:
@@ -2085,9 +2130,9 @@ def _range_tensor_conversion_function(value, dtype=None, name=None,
   return range(value.start, value.stop, value.step, dtype=dtype, name=name)
 
 
-if not six.PY2:
-  ops.register_tensor_conversion_function(builtins.range,
-                                          _range_tensor_conversion_function)
+ops.register_tensor_conversion_function(builtins.range,
+                                        _range_tensor_conversion_function)
+
 
 # Reduction operations
 def _ReductionDims(x, axis):  # pylint: disable=invalid-name
@@ -2095,12 +2140,11 @@ def _ReductionDims(x, axis):  # pylint: disable=invalid-name
   if axis is not None:
     return axis
   else:
-    x_rank = None
-    if isinstance(x, ops.Tensor):
+    try:
       x_rank = x.shape.rank
-    elif (isinstance(x, sparse_tensor.SparseTensor) and
-          x.dense_shape.shape.is_fully_defined()):
-      x_rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
+    except AttributeError:
+      x_rank = None
+
     # Fast path: avoid creating Rank and Range ops if ndims is known.
     if x_rank:
       return constant_op.constant(np.arange(x_rank, dtype=np.int32))
@@ -3381,32 +3425,26 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor.
   """
-  keepdims = False if keepdims is None else keepdims
-  input_tensor = ops.convert_to_tensor(input_tensor)
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
-    reduce_dim = _ReductionDims(input_tensor, axis)
-    raw_max = reduce_max_with_dims(
-        input_tensor, axis=axis, keepdims=True, dims=reduce_dim)
+    raw_max = reduce_max(input_tensor, axis=axis, keepdims=True)
     my_max = array_ops.stop_gradient(
         gen_math_ops.select(
             gen_math_ops.is_finite(raw_max), raw_max,
             gen_array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
-        reduce_sum_with_dims(
-            gen_math_ops.exp(gen_math_ops.sub(input_tensor, my_max)),
+        reduce_sum(
+            exp(subtract(input_tensor, my_max)),
             axis=axis,
-            keepdims=keepdims,
-            dims=reduce_dim))
+            keepdims=keepdims))
     if not keepdims:
       my_max = array_ops.reshape(my_max, gen_array_ops.shape(result))
-    result = _add_dispatch(result, my_max, name=name)
+    result = add(result, my_max, name=name)
     return _may_reduce_to_scalar(keepdims, axis, result)
 
 
 @tf_export("linalg.trace", v1=["linalg.trace", "trace"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("trace")
-@dispatch.add_dispatch_support
 def trace(x, name=None):
   """Compute the trace of a tensor `x`.
 
@@ -3842,12 +3880,12 @@ def _as_indexed_slices(x, optimize=True):
     TypeError: If 'x' is not a Tensor or an IndexedSlices object.
   """
   # TODO(touts): op_scope
-  if not isinstance(x, (ops.Tensor, ops.IndexedSlices)):
+  if not isinstance(x, (ops.Tensor, indexed_slices.IndexedSlices)):
     raise TypeError(f"Not a Tensor or IndexedSlices: {type(x)}.")
-  if isinstance(x, ops.IndexedSlices):
+  if isinstance(x, indexed_slices.IndexedSlices):
     return x
   x_shape = array_ops.shape_internal(x, optimize=optimize)
-  return ops.IndexedSlices(x, range(0, x_shape[0]), x_shape)
+  return indexed_slices.IndexedSlices(x, range(0, x_shape[0]), x_shape)
 
 
 def _as_indexed_slices_list(inputs, optimize=True):
@@ -3878,14 +3916,15 @@ def _as_indexed_slices_list(inputs, optimize=True):
   for o in outputs:
     if o.indices.dtype == dtypes.int32:
       casted_outputs.append(
-          ops.IndexedSlices(o.values, cast(o.indices, dtypes.int64),
-                            o.dense_shape))
+          indexed_slices.IndexedSlices(o.values, cast(o.indices, dtypes.int64),
+                                       o.dense_shape))
     else:
       casted_outputs.append(o)
   return casted_outputs
 
 
 @tf_export("math.add", "add")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def add(x, y, name=None):
   """Returns x + y element-wise.
@@ -3966,18 +4005,12 @@ def add(x, y, name=None):
 
 
 @tf_export("math.add_n", "add_n")
-@dispatch.add_dispatch_support
+@dispatch.add_dispatch_support(iterable_parameters=["inputs"])
 def add_n(inputs, name=None):
-  """Adds all input tensors element-wise.
+  """Returns the element-wise sum of a list of tensors.
 
-  `tf.math.add_n` performs the same operation as `tf.math.accumulate_n`, but it
-  waits for all of its inputs to be ready before beginning to sum.
-  This buffering can result in higher memory consumption when inputs are ready
-  at different times, since the minimum temporary storage required is
-  proportional to the input size rather than the output size.
-
-  This op does not [broadcast](
-  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+  All inputs in the list must have the same shape. This op does not
+  [broadcast](https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
   its inputs. If you need broadcasting, use `tf.math.add` (or the `+` operator)
   instead.
 
@@ -3985,10 +4018,17 @@ def add_n(inputs, name=None):
 
   >>> a = tf.constant([[3, 5], [4, 8]])
   >>> b = tf.constant([[1, 6], [2, 9]])
-  >>> tf.math.add_n([a, b, a])
-  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  >>> tf.math.add_n([a, b, a]).numpy()
   array([[ 7, 16],
-         [10, 25]], dtype=int32)>
+         [10, 25]], dtype=int32)
+
+  See Also:
+
+  * `tf.reduce_sum(inputs, axis=0)` - This performe the same mathematical
+    operation, but `tf.add_n` may be more efficient because it sums the
+    tensors directly. `reduce_sum` on the other hand calls
+    `tf.convert_to_tensor` on the list of tensors, unncessairly stacking them
+    into a single tensor before summing.
 
   Args:
     inputs: A list of `tf.Tensor` or `tf.IndexedSlices` objects, each with the
@@ -4007,12 +4047,14 @@ def add_n(inputs, name=None):
     raise ValueError("Inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape.")
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
-  if not all(isinstance(x, (ops.Tensor, ops.IndexedSlices)) for x in inputs):
+  if not all(
+      isinstance(x, (ops.Tensor, indexed_slices.IndexedSlices))
+      for x in inputs):
     raise ValueError("Inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape.")
 
   if len(inputs) == 1:
-    if isinstance(inputs[0], ops.IndexedSlices):
+    if isinstance(inputs[0], indexed_slices.IndexedSlices):
       values = ops.convert_to_tensor(inputs[0])
     else:
       values = inputs[0]
@@ -4022,29 +4064,42 @@ def add_n(inputs, name=None):
   return gen_math_ops.add_n(inputs, name=name)
 
 
+
 @tf_export("math.accumulate_n", v1=["math.accumulate_n", "accumulate_n"])
 @dispatch.add_dispatch_support
-@deprecation.deprecated_endpoints("accumulate_n")
+@deprecation.deprecated(None, "Use `tf.math.add_n` Instead")
 def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   """Returns the element-wise sum of a list of tensors.
 
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
 
-  `accumulate_n` performs the same operation as `tf.math.add_n`.
-
   For example:
 
-  ```python
-  a = tf.constant([[1, 2], [3, 4]])
-  b = tf.constant([[5, 0], [0, 6]])
-  tf.math.accumulate_n([a, b, a])  # [[7, 4], [6, 14]]
+  >>> a = tf.constant([[1, 2], [3, 4]])
+  >>> b = tf.constant([[5, 0], [0, 6]])
+  >>> tf.math.accumulate_n([a, b, a]).numpy()
+  array([[ 7, 4],
+         [ 6, 14]], dtype=int32)
 
-  # Explicitly pass shape and type
-  tf.math.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
-                                                                 # [[7,  4],
-                                                                 #  [6, 14]]
-  ```
+  >>> # Explicitly pass shape and type
+  >>> tf.math.accumulate_n(
+  ...     [a, b, a], shape=[2, 2], tensor_dtype=tf.int32).numpy()
+  array([[ 7,  4],
+         [ 6, 14]], dtype=int32)
+
+  Note: The input must be a list or tuple. This function does not handle
+  `IndexedSlices`
+
+  See Also:
+
+  * `tf.reduce_sum(inputs, axis=0)` - This performe the same mathematical
+    operation, but `tf.add_n` may be more efficient because it sums the
+    tensors directly. `reduce_sum` on the other hand calls
+    `tf.convert_to_tensor` on the list of tensors, unncessairly stacking them
+    into a single tensor before summing.
+  * `tf.add_n` - This is another python wrapper for the same Op. It has
+    nearly identical functionality.
 
   Args:
     inputs: A list of `Tensor` objects, each with same shape and type.
@@ -4085,9 +4140,9 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   # tensor_dtype is for safety only; operator's output type computed in C++
   if tensor_dtype is not None and tensor_dtype != inputs[0].dtype:
     raise TypeError(
-        f"The `tensor_dtype` argument is {tensor_dtype}, but `input` is of type "
-        f"{inputs[0].dtype}. These must be equal. Try casting the input to the "
-        f"desired type.")
+        f"The `tensor_dtype` argument is {tensor_dtype}, but `input` is of "
+        f"type {inputs[0].dtype}. These must be equal. Try casting the input "
+        f"to the desired type.")
 
   if len(inputs) == 1 and name is None:
     return inputs[0]
@@ -4104,6 +4159,7 @@ def _accumulate_n_grad(op, grad):
 
 
 @tf_export("math.sigmoid", "nn.sigmoid", "sigmoid")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def sigmoid(x, name=None):
   r"""Computes sigmoid of `x` element-wise.
@@ -4120,7 +4176,7 @@ def sigmoid(x, name=None):
   >>> x = tf.constant([0.0, 1.0, 50.0, 100.0])
   >>> tf.math.sigmoid(x)
   <tf.Tensor: shape=(4,), dtype=float32,
-  numpy=array([0.5      , 0.7310586, 1.       , 1.       ], dtype=float32)>
+  numpy=array([0.5, 0.7310586, 1.0, 1.0], dtype=float32)>
 
   If a negative number is large, its sigmoid will approach to 0 since the
   formula will be `y = 1 / (1 + <large_num>)`
@@ -4156,6 +4212,7 @@ def sigmoid(x, name=None):
 
 
 @tf_export("math.log_sigmoid", v1=["math.log_sigmoid", "log_sigmoid"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("log_sigmoid")
 def log_sigmoid(x, name=None):
@@ -4382,6 +4439,7 @@ def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
 
 
 @tf_export("math.conj", v1=["math.conj", "conj"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("conj")
 def conj(x, name=None):
@@ -4508,7 +4566,6 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
     v1=["math.unsorted_segment_mean", "unsorted_segment_mean"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("unsorted_segment_mean")
-@dispatch.add_dispatch_support
 def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r"""Computes the mean along segments of a tensor.
 
@@ -4529,9 +4586,19 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   If the given segment ID `i` is negative, the value is dropped and will not
   be added to the sum of the segment.
 
+  Caution: On CPU, values in `segment_ids` are always validated to be less than
+  `num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+  does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+  result in safe but unspecified behavior, which may include ignoring
+  out-of-bound indices or outputting a tensor with a 0 stored in the first
+  dimension of its shape if `num_segments` is 0.
+
   Args:
     data: A `Tensor` with floating point or complex dtype.
     segment_ids: An integer tensor whose shape is a prefix of `data.shape`.
+      The values must be less than `num_segments`.
+      The values are always validated to be in range on CPU,
+      never validated on GPU.
     num_segments: An integer scalar `Tensor`.  The number of distinct segment
       IDs.
     name: A name for the operation (optional).
@@ -4554,7 +4621,6 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
     v1=["math.unsorted_segment_sqrt_n", "unsorted_segment_sqrt_n"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("unsorted_segment_sqrt_n")
-@dispatch.add_dispatch_support
 def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 
@@ -4578,9 +4644,19 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   If the given segment ID `i` is negative, the value is dropped and will not
   be added to the sum of the segment.
 
+  Caution: On CPU, values in `segment_ids` are always validated to be less than
+  `num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+  does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+  result in safe but unspecified behavior, which may include ignoring
+  out-of-bound indices or outputting a tensor with a 0 stored in the first
+  dimension of its shape if `num_segments` is 0.
+
   Args:
     data: A `Tensor` with floating point or complex dtype.
     segment_ids: An integer tensor whose shape is a prefix of `data.shape`.
+      The values must be in the range `[0, num_segments)`.
+      The values are always validated to be in range on CPU,
+      never validated on GPU.
     num_segments: An integer scalar `Tensor`.  The number of distinct segment
       IDs.
     name: A name for the operation (optional).
@@ -4976,7 +5052,7 @@ def tensordot(a, b, axes, name=None):
     if a.get_shape().is_fully_defined() and isinstance(axes, (list, tuple)):
       shape_a = a.get_shape().as_list()
       axes = [i if i >= 0 else i + len(shape_a) for i in axes]
-      free = [i for i in xrange(len(shape_a)) if i not in axes]
+      free = [i for i in builtins.range(len(shape_a)) if i not in axes]
       free_dims = [shape_a[i] for i in free]
       prod_free = int(np.prod([shape_a[i] for i in free]))
       prod_axes = int(np.prod([shape_a[i] for i in axes]))
@@ -4995,7 +5071,7 @@ def tensordot(a, b, axes, name=None):
       if a.get_shape().ndims is not None and isinstance(axes, (list, tuple)):
         shape_a = a.get_shape().as_list()
         axes = [i if i >= 0 else i + len(shape_a) for i in axes]
-        free = [i for i in xrange(len(shape_a)) if i not in axes]
+        free = [i for i in builtins.range(len(shape_a)) if i not in axes]
         axes_dims = [shape_a[i] for i in axes]
         free_dims = [shape_a[i] for i in free]
         free_dims_static = free_dims
@@ -5033,8 +5109,8 @@ def tensordot(a, b, axes, name=None):
           raise ValueError(f"`axes` must not be larger than the number of "
                            f"dimensions of tensor {a}.  Received {axes}, vs "
                            f"tensor dimensions {a_shape.ndims}.")
-        return (list(xrange(a_shape.ndims - axes,
-                            a_shape.ndims)), list(xrange(axes)))
+        return (list(builtins.range(a_shape.ndims - axes,
+                                    a_shape.ndims)), list(builtins.range(axes)))
       else:
         rank = array_ops.rank(a)
         return (range(rank - axes, rank,
@@ -5155,6 +5231,7 @@ def polyval(coeffs, x, name=None):
 
 
 @tf_export("math.reciprocal_no_nan")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def reciprocal_no_nan(x, name=None):
   """Performs a safe reciprocal operation, element wise.
@@ -5188,6 +5265,7 @@ def reciprocal_no_nan(x, name=None):
 
 
 @tf_export("math.xlog1py")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def xlog1py(x, y, name=None):
   r"""Compute x * log1p(y).
@@ -5225,6 +5303,7 @@ def xlog1py(x, y, name=None):
 
 
 @tf_export("math.erfinv")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def erfinv(x, name=None):
   """Compute inverse error function.
@@ -5243,6 +5322,7 @@ def erfinv(x, name=None):
 
 
 @tf_export("math.ndtri")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def ndtri(x, name=None):
   """Compute quantile of Standard Normal.
@@ -5258,6 +5338,7 @@ def ndtri(x, name=None):
 
 
 @tf_export("math.erfcinv")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def erfcinv(x, name=None):
   """Computes the inverse of complementary error function.
@@ -5287,9 +5368,9 @@ def erfcinv(x, name=None):
 
 
 @tf_export("math.ceil", v1=["math.ceil", "ceil"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("ceil")
-@dispatch.add_dispatch_support
 def ceil(x, name=None):
   """Return the ceiling of the input, element-wise.
 
@@ -5315,6 +5396,7 @@ def ceil(x, name=None):
 
 
 @tf_export("math.sqrt", "sqrt")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def sqrt(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes element-wise square root of the input tensor.
@@ -5353,6 +5435,7 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
 
 # pylint: disable=g-docstring-has-escape
 @tf_export("math.exp", "exp")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def exp(x, name=None):
   r"""Computes exponential of x element-wise.  \\(y = e^x\\).
@@ -5430,9 +5513,9 @@ def sobol_sample(dim, num_results, skip=0, dtype=dtypes.float32, name=None):
 
 
 @tf_export("math.rsqrt", v1=["math.rsqrt", "rsqrt"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("rsqrt")
-@dispatch.add_dispatch_support
 def rsqrt(x, name=None):
   """Computes reciprocal of square root of x element-wise.
 
@@ -5455,6 +5538,7 @@ def rsqrt(x, name=None):
 
 
 @tf_export("math.acos", "acos")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def acos(x, name=None):
   """Computes acos of x element-wise.
@@ -5476,7 +5560,7 @@ def acos(x, name=None):
   Args:
     x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
       `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`,
-      `complex64`, `complex128`, `string`.
+      `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -5486,6 +5570,7 @@ def acos(x, name=None):
 
 
 @tf_export("math.floor", "floor")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def floor(x, name=None):
   """Returns element-wise largest integer not greater than x.
@@ -5508,3 +5593,60 @@ def floor(x, name=None):
     A `Tensor`. Has the same type as x.
   """
   return gen_math_ops.floor(x, name)
+
+
+# Register elementwise ops that don't have Python wrappers.
+# Binary elementwise ops.
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_and)
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_or)
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_xor)
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.left_shift)
+dispatch.register_binary_elementwise_api(gen_bitwise_ops.right_shift)
+dispatch.register_unary_elementwise_api(gen_bitwise_ops.invert)
+dispatch.register_binary_elementwise_api(gen_math_ops.atan2)
+dispatch.register_binary_elementwise_api(gen_math_ops.floor_div)
+dispatch.register_binary_elementwise_api(gen_math_ops.floor_mod)
+dispatch.register_binary_elementwise_api(gen_math_ops.greater)
+dispatch.register_binary_elementwise_api(gen_math_ops.greater_equal)
+dispatch.register_binary_elementwise_api(gen_math_ops.less)
+dispatch.register_binary_elementwise_api(gen_math_ops.less_equal)
+dispatch.register_binary_elementwise_api(gen_math_ops.logical_and)
+dispatch.register_binary_elementwise_api(gen_math_ops.logical_or)
+dispatch.register_binary_elementwise_api(gen_math_ops.maximum)
+dispatch.register_binary_elementwise_api(gen_math_ops.minimum)
+dispatch.register_binary_elementwise_api(gen_math_ops.real_div)
+dispatch.register_binary_elementwise_api(gen_math_ops.squared_difference)
+dispatch.register_binary_elementwise_api(gen_math_ops.truncate_div)
+dispatch.register_binary_elementwise_api(gen_math_ops.truncate_mod)
+dispatch.register_binary_elementwise_api(gen_math_ops.xdivy)
+dispatch.register_binary_elementwise_api(gen_math_ops.xlogy)
+dispatch.register_binary_elementwise_api(gen_math_ops.zeta)
+
+# Unary elementwise ops.
+dispatch.register_unary_elementwise_api(gen_math_ops.acosh)
+dispatch.register_unary_elementwise_api(gen_math_ops.asin)
+dispatch.register_unary_elementwise_api(gen_math_ops.asinh)
+dispatch.register_unary_elementwise_api(gen_math_ops.atan)
+dispatch.register_unary_elementwise_api(gen_math_ops.atanh)
+dispatch.register_unary_elementwise_api(gen_math_ops.cos)
+dispatch.register_unary_elementwise_api(gen_math_ops.cosh)
+dispatch.register_unary_elementwise_api(gen_math_ops.digamma)
+dispatch.register_unary_elementwise_api(gen_math_ops.erf)
+dispatch.register_unary_elementwise_api(gen_math_ops.erfc)
+dispatch.register_unary_elementwise_api(gen_math_ops.expm1)
+dispatch.register_unary_elementwise_api(gen_math_ops.is_finite)
+dispatch.register_unary_elementwise_api(gen_math_ops.is_inf)
+dispatch.register_unary_elementwise_api(gen_math_ops.is_nan)
+dispatch.register_unary_elementwise_api(gen_math_ops.lgamma)
+dispatch.register_unary_elementwise_api(gen_math_ops.log)
+dispatch.register_unary_elementwise_api(gen_math_ops.log1p)
+dispatch.register_unary_elementwise_api(gen_math_ops.logical_not)
+dispatch.register_unary_elementwise_api(gen_math_ops.neg)
+dispatch.register_unary_elementwise_api(gen_math_ops.next_after)
+dispatch.register_unary_elementwise_api(gen_math_ops.reciprocal)
+dispatch.register_unary_elementwise_api(gen_math_ops.rint)
+dispatch.register_unary_elementwise_api(gen_math_ops.sin)
+dispatch.register_unary_elementwise_api(gen_math_ops.sinh)
+dispatch.register_unary_elementwise_api(gen_math_ops.square)
+dispatch.register_unary_elementwise_api(gen_math_ops.tan)
+dispatch.register_unary_elementwise_api(gen_math_ops.tanh)

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for ParameterServerStrategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import threading
 
@@ -30,7 +26,6 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
@@ -38,6 +33,7 @@ from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
@@ -788,7 +784,7 @@ class ParameterServerStrategyTest(
     dataset = distribution.experimental_distribute_dataset(  # pylint: disable=assignment-from-no-return
         dataset,
         options=input_options)
-    if isinstance(dataset, input_lib.DistributedDatasetV1):
+    if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
       item = dataset.make_initializable_iterator().get_next()
     else:
       self.skipTest('unsupported test combination')
@@ -811,7 +807,7 @@ class ParameterServerStrategyTest(
     dataset = distribution.experimental_distribute_dataset(  # pylint: disable=assignment-from-no-return
         dataset,
         options=input_options)
-    if isinstance(dataset, input_lib.DistributedDatasetV1):
+    if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
       item = dataset.make_initializable_iterator().get_next()
     else:
       self.skipTest('unsupported test combination')

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Extending CheckpointReader for TensorFlow."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.util import compat

@@ -13,14 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the experimental input pipeline ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -54,8 +49,8 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     input_datasets = [
         dataset_ops.Dataset.from_tensors(i).repeat(100) for i in range(10)
     ]
-    dataset = interleave_ops._DirectedInterleaveDataset(selector_dataset,
-                                                        input_datasets)
+    dataset = dataset_ops._DirectedInterleaveDataset(selector_dataset,
+                                                     input_datasets)
     next_element = self.getNext(dataset)
 
     for _ in range(100):
@@ -91,7 +86,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
 
       # Create a dataset that samples each integer in `[0, num_datasets)`
       # with probability given by `weights[i]`.
-      dataset = interleave_ops.sample_from_datasets([
+      dataset = dataset_ops.Dataset.sample_from_datasets([
           dataset_ops.Dataset.from_tensors(i).repeat() for i in range(classes)
       ], weights)
       dataset = dataset.take(num_samples)
@@ -116,7 +111,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
         dataset_ops.Dataset.from_tensors(np.int64(1)).repeat(),
         dataset_ops.Dataset.range(10).repeat()
     ]
-    sample_dataset = interleave_ops.sample_from_datasets(
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=True)
 
     samples_list = self.getIteratorOutput(self.getNext(sample_dataset))
@@ -133,7 +128,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
         dataset_ops.Dataset.from_tensors(np.int64(1)).repeat(),
         dataset_ops.Dataset.range(10).repeat()
     ]
-    sample_dataset = interleave_ops.sample_from_datasets(
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=False).take(100)
 
     samples_list = self.getIteratorOutput(self.getNext(sample_dataset))
@@ -150,7 +145,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
         dataset_ops.Dataset.from_tensors(-1).repeat(2),
         dataset_ops.Dataset.from_tensors(1).repeat(2)
     ]
-    sample_dataset = interleave_ops.sample_from_datasets(
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=True)
     self.assertDatasetProduces(sample_dataset, [1, 1])
 
@@ -163,7 +158,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
         dataset_ops.Dataset.range(0),
         dataset_ops.Dataset.range(1).repeat()
     ]
-    sample_dataset = interleave_ops.sample_from_datasets(
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=True)
     self.assertDatasetProduces(sample_dataset, [])
 
@@ -175,7 +170,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
         dataset_ops.Dataset.from_tensors(-1).repeat(),
         dataset_ops.Dataset.from_tensors(1)
     ]
-    sample_dataset = interleave_ops.sample_from_datasets(
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=False)
     self.assertDatasetProduces(sample_dataset, [1])
 
@@ -187,7 +182,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
         dataset_ops.Dataset.from_tensors(-1).repeat(),
         dataset_ops.Dataset.from_tensors(1).repeat()
     ]
-    sample_dataset = interleave_ops.sample_from_datasets(
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=False)
     self.assertDatasetProduces(sample_dataset, [])
 
@@ -195,14 +190,15 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
   def testSampleFromDatasetsCardinality(self):
     ds1 = dataset_ops.Dataset.from_tensors([1.0]).repeat()
     ds2 = dataset_ops.Dataset.from_tensors([2.0]).repeat()
-    ds = interleave_ops.sample_from_datasets([ds1, ds2])
+    ds = dataset_ops.Dataset.sample_from_datasets([ds1, ds2])
     self.assertEqual(self.evaluate(ds.cardinality()), dataset_ops.INFINITE)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsNested(self):
     ds1 = dataset_ops.Dataset.range(10).window(2)
     ds2 = dataset_ops.Dataset.range(10, 20).window(2)
-    ds = interleave_ops.sample_from_datasets([ds1, ds2], weights=[0.3, 0.7])
+    ds = dataset_ops.Dataset.sample_from_datasets([ds1, ds2],
+                                                  weights=[0.3, 0.7])
     ds = ds.flat_map(lambda x: x)
     next_element = self.getNext(ds)
     self.evaluate(next_element())
@@ -213,7 +209,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     datasets = [dataset_ops.Dataset.from_tensors(w).repeat() for w in words]
     choice_array = np.random.randint(3, size=(15,), dtype=np.int64)
     choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
-    dataset = interleave_ops.choose_from_datasets(datasets, choice_dataset)
+    dataset = dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset)
     next_element = self.getNext(dataset)
     for i in choice_array:
       self.assertEqual(words[i], self.evaluate(next_element()))
@@ -229,7 +225,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     ]
     choice_array = np.asarray([0, 0, 0, 1, 1, 1, 2, 2, 2], dtype=np.int64)
     choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
-    dataset = interleave_ops.choose_from_datasets(
+    dataset = dataset_ops.Dataset.choose_from_datasets(
         datasets, choice_dataset, stop_on_empty_dataset=True)
     self.assertDatasetProduces(dataset, [b"foo", b"foo"])
 
@@ -242,7 +238,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     ]
     choice_array = np.asarray([0, 0, 0, 1, 1, 1, 2, 2, 2], dtype=np.int64)
     choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
-    dataset = interleave_ops.choose_from_datasets(
+    dataset = dataset_ops.Dataset.choose_from_datasets(
         datasets, choice_dataset, stop_on_empty_dataset=False)
     # Chooses 2 elements from the first dataset while the selector specifies 3.
     self.assertDatasetProduces(
@@ -256,8 +252,9 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
         dataset_ops.Dataset.from_tensors(b"bar").repeat(),
         dataset_ops.Dataset.from_tensors(b"baz").repeat(),
     ]
-    dataset = interleave_ops.choose_from_datasets(
-        datasets, choice_dataset=dataset_ops.Dataset.range(0),
+    dataset = dataset_ops.Dataset.choose_from_datasets(
+        datasets,
+        choice_dataset=dataset_ops.Dataset.range(0),
         stop_on_empty_dataset=False)
     self.assertDatasetProduces(dataset, [])
 
@@ -266,7 +263,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     ds1 = dataset_ops.Dataset.range(10).window(2)
     ds2 = dataset_ops.Dataset.range(10, 20).window(2)
     choice_dataset = dataset_ops.Dataset.range(2).repeat(5)
-    ds = interleave_ops.choose_from_datasets([ds1, ds2], choice_dataset)
+    ds = dataset_ops.Dataset.choose_from_datasets([ds1, ds2], choice_dataset)
     ds = ds.flat_map(lambda x: x)
     expected = []
     for i in range(5):
@@ -276,42 +273,46 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testErrors(self):
-    with self.assertRaisesRegex(ValueError, r"must have the same length"):
-      interleave_ops.sample_from_datasets(
+    with self.assertRaisesRegex(ValueError, r"should have the same length"):
+      dataset_ops.Dataset.sample_from_datasets(
           [dataset_ops.Dataset.range(10),
            dataset_ops.Dataset.range(20)],
           weights=[0.25, 0.25, 0.25, 0.25])
 
     with self.assertRaisesRegex(TypeError, "`tf.float32` or `tf.float64`"):
-      interleave_ops.sample_from_datasets(
+      dataset_ops.Dataset.sample_from_datasets(
           [dataset_ops.Dataset.range(10),
            dataset_ops.Dataset.range(20)],
           weights=[1, 1])
 
-    with self.assertRaisesRegex(TypeError, "must have the same type"):
-      interleave_ops.sample_from_datasets([
+    with self.assertRaisesRegex(TypeError, "must have compatible"):
+      dataset_ops.Dataset.sample_from_datasets([
           dataset_ops.Dataset.from_tensors(0),
           dataset_ops.Dataset.from_tensors(0.0)
       ])
 
     with self.assertRaisesRegex(
-        ValueError, r"`datasets` must be a non-empty list of datasets."):
-      interleave_ops.sample_from_datasets(datasets=[], weights=[])
+        ValueError, r"Invalid `datasets`. `datasets` should not be empty."):
+      dataset_ops.Dataset.sample_from_datasets(datasets=[], weights=[])
 
     with self.assertRaisesRegex(TypeError, "tf.int64"):
-      interleave_ops.choose_from_datasets([
-          dataset_ops.Dataset.from_tensors(0),
-          dataset_ops.Dataset.from_tensors(1)
-      ], choice_dataset=dataset_ops.Dataset.from_tensors(1.0))
+      dataset_ops.Dataset.choose_from_datasets(
+          [
+              dataset_ops.Dataset.from_tensors(0),
+              dataset_ops.Dataset.from_tensors(1)
+          ],
+          choice_dataset=dataset_ops.Dataset.from_tensors(1.0))
 
     with self.assertRaisesRegex(TypeError, "scalar"):
-      interleave_ops.choose_from_datasets([
-          dataset_ops.Dataset.from_tensors(0),
-          dataset_ops.Dataset.from_tensors(1)
-      ], choice_dataset=dataset_ops.Dataset.from_tensors([1.0]))
+      dataset_ops.Dataset.choose_from_datasets(
+          [
+              dataset_ops.Dataset.from_tensors(0),
+              dataset_ops.Dataset.from_tensors(1)
+          ],
+          choice_dataset=dataset_ops.Dataset.from_tensors([1.0]))
 
     with self.assertRaisesRegex(errors.InvalidArgumentError, "out of range"):
-      dataset = interleave_ops.choose_from_datasets(
+      dataset = dataset_ops.Dataset.choose_from_datasets(
           [dataset_ops.Dataset.from_tensors(0)],
           choice_dataset=dataset_ops.Dataset.from_tensors(
               constant_op.constant(1, dtype=dtypes.int64)))
@@ -319,28 +320,26 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
       self.evaluate(next_element())
 
     with self.assertRaisesRegex(
-        ValueError, r"`datasets` must be a non-empty list of datasets."):
-      interleave_ops.choose_from_datasets(
+        ValueError, r"Invalid `datasets`. `datasets` should not be empty."):
+      dataset_ops.Dataset.choose_from_datasets(
           datasets=[], choice_dataset=dataset_ops.Dataset.from_tensors(1.0))
 
     with self.assertRaisesRegex(
-        TypeError, r"`choice_dataset` must be a dataset of scalar"):
-      interleave_ops.choose_from_datasets([
-          dataset_ops.Dataset.from_tensors(0),
-          dataset_ops.Dataset.from_tensors(1)
-      ], choice_dataset=None)
+        TypeError, r"`choice_dataset` should be a `tf.data.Dataset`"):
+      datasets = [dataset_ops.Dataset.range(42)]
+      dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset=None)
 
 
 class SampleFromDatasetsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                        parameterized.TestCase):
 
   def _build_dataset(self, probs, num_samples):
-    dataset = interleave_ops.sample_from_datasets([
+    datasets = [
         dataset_ops.Dataset.from_tensors(i).repeat(None)
         for i in range(len(probs))
-    ],
-                                                  probs,
-                                                  seed=1813)
+    ]
+    dataset = dataset_ops.Dataset.sample_from_datasets(
+        datasets, probs, seed=1813)
     return dataset.take(num_samples)
 
   @combinations.generate(

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/graph_optimization_pass.h"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -39,7 +40,7 @@ Status MlirGraphOptimizationPass::Run(
       ::tensorflow::MlirOptimizationPassState::Disabled) {
     VLOG(1) << "Skipping MLIR Graph Optimization Pass"
             << ", session flag not enabled";
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   VLOG(1) << "Run MLIR Graph Optimization Passes";
@@ -48,13 +49,14 @@ Status MlirGraphOptimizationPass::Run(
 
   // Run island coarsening before shape inference to allow more exact shape
   // inference using constant folding within islands.
-  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorIslandCoarseningPass());
+  pm.addNestedPass<func::FuncOp>(
+      tf_executor::CreateTFExecutorIslandCoarseningPass());
   pm.addPass(CreateTFShapeInferencePass());
 
   // Assign optimal data layout to layout sensitive operations and delete
   // redundant transposes from the IR.
   LayoutOptimizationPipelineOptions layout_optimization_options;
-  CreateLayoutOptimizationPipeline(pm.nest<FuncOp>(),
+  CreateLayoutOptimizationPipeline(pm.nest<func::FuncOp>(),
                                    layout_optimization_options);
 
   // Prepare IR for exporting.

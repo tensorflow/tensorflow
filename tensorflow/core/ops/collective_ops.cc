@@ -78,7 +78,7 @@ REGISTER_OP("CollectiveGather")
       TF_RETURN_IF_ERROR(
           c->Concatenate(output_first_dim_as_shape, in_subshape, &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CollectiveBcastSend")
@@ -107,6 +107,22 @@ REGISTER_OP("CollectiveBcastRecv")
     .SetIsStateful()
     .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::ExplicitShape);
+
+REGISTER_OP("CollectiveAssignGroupV2")
+    .Input("group_assignment: int32")
+    .Input("device_index: int32")
+    .Input("base_key: int32")
+    .Output("group_size: int32")
+    .Output("group_key: int32")
+    // To avoid tensorflow::constant_folding.
+    .SetDoNotOptimize()  // Also marked in auto_control_dep.py and
+                         // function_optimizer.cc
+    .SetIsDistributedCommunication()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->Scalar());
+      return OkStatus();
+    });
 
 REGISTER_OP("CollectiveReduceV2")
     .Input("input: T")
@@ -149,7 +165,7 @@ REGISTER_OP("CollectiveGatherV2")
       TF_RETURN_IF_ERROR(
           c->ReplaceDim(c->input(0), /*dim_index*/ 0, c->UnknownDim(), &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CollectiveBcastSendV2")
@@ -182,7 +198,42 @@ REGISTER_OP("CollectiveBcastRecvV2")
       shape_inference::ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(/*input_idx=*/3, &out));
       c->set_output(/*idx=*/0, out);
-      return Status::OK();
+      return OkStatus();
     });
+
+REGISTER_OP("CollectiveInitializeCommunicator")
+    .Input("group_key: int32")
+    .Input("rank: int32")
+    .Input("group_size: int32")
+    .Attr("communication_hint: string = 'auto'")
+    .Attr("timeout_seconds: float = 0")
+    .Output("communicator: resource")
+    .SetDoNotOptimize()  // Also marked in auto_control_dep.py and
+                         // function_optimizer.cc
+    .SetIsDistributedCommunication()
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("CollectiveReduceV3")
+    .Input("input: T")
+    .Input("communicator: resource")
+    .Input("group_assignment: int32")
+    .Output("data: T")
+    .Attr("T: {bfloat16, float, float16, float64, int32, int64}")
+    .Attr("reduction: {'Min', 'Max', 'Mul', 'Add'}")
+    .Attr("timeout_seconds: float = 0")
+    .SetIsStateful()
+    .SetIsDistributedCommunication()
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("CollectiveAllToAllV3")
+    .Input("input: T")
+    .Input("communicator: resource")
+    .Input("group_assignment: int32")
+    .Output("data: T")
+    .Attr("T: {bfloat16, float, float16, float64, int32, int64}")
+    .Attr("timeout_seconds: float = 0")
+    .SetIsStateful()
+    .SetIsDistributedCommunication()
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 }  // namespace tensorflow

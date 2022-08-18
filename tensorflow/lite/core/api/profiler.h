@@ -32,12 +32,12 @@ class Profiler {
 
     // The event is an operator invocation and the event_metadata field is the
     // index of operator node.
-    OPERATOR_INVOKE_EVENT = 2,
+    OPERATOR_INVOKE_EVENT = 1 << 1,
 
     // The event is an invocation for an internal operator of a TFLite delegate.
     // The event_metadata field is the index of operator node that's specific to
     // the delegate.
-    DELEGATE_OPERATOR_INVOKE_EVENT = 4,
+    DELEGATE_OPERATOR_INVOKE_EVENT = 1 << 2,
 
     // The event is a recording of runtime instrumentation such as the overall
     // TFLite runtime status, the TFLite delegate status (if a delegate
@@ -45,7 +45,20 @@ class Profiler {
     // Note, the delegate status and overall status are stored as separate
     // event_metadata fields. In particular, the delegate status is encoded
     // as DelegateStatus::full_status().
-    GENERAL_RUNTIME_INSTRUMENTATION_EVENT = 8,
+    GENERAL_RUNTIME_INSTRUMENTATION_EVENT = 1 << 3,
+
+    // Telemetry events. Users and code instrumentations should invoke Telemetry
+    // calls instead of using the following types directly.
+    // See experimental/telemetry:profiler for definition of each metadata.
+    //
+    // A telemetry event that reports model and interpreter level events.
+    TELEMETRY_EVENT = 1 << 4,
+    // A telemetry event that reports model and interpreter level settings.
+    TELEMETRY_REPORT_SETTINGS = 1 << 5,
+    // A telemetry event that reports delegate level events.
+    TELEMETRY_DELEGATE_EVENT = 1 << 6,
+    // A telemetry event that reports delegate settings.
+    TELEMETRY_DELEGATE_REPORT_SETTINGS = 1 << 7,
   };
 
   virtual ~Profiler() {}
@@ -71,26 +84,43 @@ class Profiler {
   // is useful when 'event_metadata's are not available when the event begins
   // or when one wants to overwrite the 'event_metadata's set at the beginning.
   virtual void EndEvent(uint32_t event_handle, int64_t event_metadata1,
-                        int64_t event_metadata2) {}
+                        int64_t event_metadata2) {
+    // By default discards the metadata.
+    EndEvent(event_handle);
+  }
   // Signals an end to the specified profile event.
   virtual void EndEvent(uint32_t event_handle) = 0;
 
   // Appends an event of type 'event_type' with 'tag' and 'event_metadata'
-  // which started at 'start' and ended at 'end'
+  // which ran for elapsed_time.
   // Note:
-  // In cases were ProfileSimmarizer and tensorflow::StatsCalculator are used
+  // In cases were ProfileSummarizer and tensorflow::StatsCalculator are used
   // they assume the value is in "usec", if in any case subclasses
   // didn't put usec, then the values are not meaningful.
-  // TODO karimnosseir: Revisit and make the function more clear.
-  void AddEvent(const char* tag, EventType event_type, uint64_t start,
-                uint64_t end, int64_t event_metadata) {
-    AddEvent(tag, event_type, start, end, event_metadata,
+  // TODO(karimnosseir): karimnosseir: Revisit and make the function more clear.
+  void AddEvent(const char* tag, EventType event_type, uint64_t elapsed_time,
+                int64_t event_metadata) {
+    AddEvent(tag, event_type, elapsed_time, event_metadata,
              /*event_metadata2*/ 0);
   }
 
-  virtual void AddEvent(const char* tag, EventType event_type, uint64_t start,
-                        uint64_t end, int64_t event_metadata1,
-                        int64_t event_metadata2) {}
+  // Adds a profiler event.
+  // `metric` field has different intreptation based on `event_type`.
+  // e.g. it means elapsed time for [DELEGATE_]OPERATOR_INVOKE_EVENT types,
+  // and interprets as source and status code for TELEMETRY_[DELEGATE_]EVENT
+  // event types. If the concrete profiler does not provide an implementation,
+  // does nothing.
+  // TODO(b/241982974): Clean up dependencies and make it pure virtual.
+  virtual void AddEvent(const char* tag, EventType event_type, uint64_t metric,
+                        int64_t event_metadata1, int64_t event_metadata2) {}
+
+  // Adds a profiler event with data.
+  // Data will be a const TelemetrySettings* for TELEMETRY_REPORT_SETTINGS
+  // and TELEMETRY_DELEGATE_REPORT_SETTINGS.
+  // If the concrete profiler does not provide an implementation, does nothing.
+  // TODO(b/241982974): Clean up dependencies and make it pure virtual.
+  virtual void AddEventWithData(const char* tag, EventType event_type,
+                                const void* data) {}
 
  protected:
   friend class ScopedProfile;
@@ -138,12 +168,17 @@ class ScopedDelegateOperatorProfile : public ScopedProfile {
                       static_cast<uint32_t>(node_index)) {}
 };
 
-class ScopedRuntimeInstrumentationProfile : public ScopedProfile {
+// Similar to ScopedProfile but has extra event metadata for EndEvent.
+class ScopedRuntimeInstrumentationProfile {
  public:
   ScopedRuntimeInstrumentationProfile(Profiler* profiler, const char* tag)
-      : ScopedProfile(
-            profiler, tag,
-            Profiler::EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT, -1) {}
+      : profiler_(profiler), event_handle_(0) {
+    if (profiler) {
+      event_handle_ = profiler_->BeginEvent(
+          tag, Profiler::EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT,
+          /*event_metadata=*/-1);
+    }
+  }
 
   void set_runtime_status(int64_t delegate_status, int64_t interpreter_status) {
     if (profiler_) {
@@ -159,8 +194,10 @@ class ScopedRuntimeInstrumentationProfile : public ScopedProfile {
   }
 
  private:
-  int64_t delegate_status_;
-  int64_t interpreter_status_;
+  Profiler* profiler_ = nullptr;
+  uint32_t event_handle_ = 0;
+  int64_t delegate_status_ = 0;
+  int64_t interpreter_status_ = 0;
 };
 
 }  // namespace tflite

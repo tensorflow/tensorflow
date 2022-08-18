@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
@@ -109,7 +110,8 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
 
   // This operation is cheap because we allocate the CPU context resources (i.e.
   // threads) lazily.
-  own_external_cpu_backend_context_.reset(new ExternalCpuBackendContext());
+  own_external_cpu_backend_context_ =
+      std::make_unique<ExternalCpuBackendContext>();
   external_contexts_[kTfLiteCpuBackendContext] =
       own_external_cpu_backend_context_.get();
 }
@@ -190,9 +192,9 @@ void Interpreter::AddSubgraphs(int subgraphs_to_add,
 
   subgraphs_.reserve(base_index + subgraphs_to_add);
   for (int i = 0; i < subgraphs_to_add; ++i) {
-    Subgraph* subgraph =
-        new Subgraph(error_reporter_, external_contexts_, &subgraphs_,
-                     &resources_, &resource_ids_, &initialization_status_map_);
+    Subgraph* subgraph = new Subgraph(
+        error_reporter_, external_contexts_, &subgraphs_, &resources_,
+        &resource_ids_, &initialization_status_map_, subgraphs_.size());
     subgraphs_.emplace_back(subgraph);
   }
 }
@@ -217,7 +219,7 @@ TfLiteStatus Interpreter::ResizeInputTensorStrict(
 }
 
 TfLiteStatus Interpreter::Invoke() {
-  ScopedRuntimeInstrumentationProfile scoped_runtime_event(installed_profiler_,
+  ScopedRuntimeInstrumentationProfile scoped_runtime_event(root_profiler_.get(),
                                                            "invoke");
 
   // Denormal floating point numbers could cause significant slowdown on
@@ -310,10 +312,10 @@ TfLiteStatus Interpreter::SetNumThreads(int num_threads) {
 }
 
 TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
-  if (lazy_delegate_providers_.empty()) return kTfLiteOk;
+  if (lazy_delegate_providers_.empty() || IsFullyDelegated()) return kTfLiteOk;
 
   // We only apply lazy delegate providers once.
-  std::vector<TfLiteDelegatePtr> delegate_providers;
+  TfLiteDelegateCreators delegate_providers;
   delegate_providers.swap(lazy_delegate_providers_);
 
   TFLITE_LOG(TFLITE_LOG_INFO,
@@ -323,13 +325,24 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
   // by default, in which case, the execution will fall back to default
   // implementation if the XNNPACK delegate fails to be applied.
   for (size_t i = 0; i < delegate_providers.size(); ++i) {
-    auto status = ModifyGraphWithDelegate(std::move(delegate_providers[i]));
+    auto delegate_ptr =
+        delegate_providers[i](context_->recommended_num_threads);
+    // Note when XNNPACK-by-default is disabled, the corresponding creator (i.e.
+    // tflite::MaybeCreateXNNPACKDelegate(...)) will return a nullptr.
+    // Therefore, we simply continue with the next one.
+    if (delegate_ptr == nullptr) continue;
+    auto status = ModifyGraphWithDelegateImpl(std::move(delegate_ptr));
     switch (status) {
       case kTfLiteOk:
-        TFLITE_LOG(TFLITE_LOG_INFO,
-                   "Successfully applied the default TensorFlow Lite "
-                   "delegate indexed at %zu.",
-                   i);
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
+            "Successfully applied the default TensorFlow Lite "
+            "delegate indexed at %zu.\n *NOTE*: because a delegate has been "
+            "applied, the precision of computations should be unchanged, but "
+            "the exact output tensor values may have changed. If such output "
+            "values are checked in your code, like in your tests etc., please "
+            "consider increasing error tolerance for the check.",
+            i);
         break;
       case kTfLiteError:
         TF_LITE_REPORT_ERROR(error_reporter_,
@@ -338,18 +351,28 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
                              i);
         return kTfLiteError;
       case kTfLiteDelegateError:
-        TF_LITE_REPORT_ERROR(
-            error_reporter_,
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
             "Error in applying the default TensorFlow Lite delegate indexed "
             "at %zu, and all previously applied delegates are reverted.",
             i);
         return kTfLiteDelegateError;
       case kTfLiteApplicationError:
-        TF_LITE_REPORT_ERROR(error_reporter_,
-                             "Ignoring failed application of the default "
-                             "TensorFlow Lite delegate indexed at %zu.",
-                             i);
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
+            "Failed to apply the default TensorFlow Lite delegate indexed at "
+            "%zu because of incompatibility between runtime and delegate. "
+            "Ignoring the error, and continuing anyway.",
+            i);
         return kTfLiteApplicationError;
+      case kTfLiteUnresolvedOps:
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
+            "Failed to apply the default TensorFlow Lite delegate indexed at "
+            "%zu because of unresolved ops (which could be resolved by "
+            "another delegate). Ignoring the error, and continuing anyway.",
+            i);
+        return kTfLiteUnresolvedOps;
       default:
         TF_LITE_REPORT_ERROR(error_reporter_,
                              "Unknown status (%d) after applying the default "
@@ -361,28 +384,31 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
   return kTfLiteOk;
 }
 
-SignatureRunner* Interpreter::GetSignatureRunner(const char* signature_key) {
-  auto iter = signature_runner_map_.find(signature_key);
-  if (iter != signature_runner_map_.end()) {
-    return &(iter->second);
-  }
-
-  // Default delegates are applied once for all subgraphs. Only returns error
-  // when the status is kTfLiteError. For other statuses, it will fall back to
-  // the default implementation.
-  if (ApplyLazyDelegateProviders() == kTfLiteError) {
-    return nullptr;
-  }
-
-  for (const auto& signature : signature_defs_) {
-    if (signature.signature_key == signature_key) {
-      auto status = signature_runner_map_.insert(
-          {signature_key,
-           SignatureRunner(&signature, subgraph(signature.subgraph_index))});
-      return &(status.first->second);
+TfLiteStatus Interpreter::ModifyGraphWithDelegateImpl(
+    TfLiteDelegate* delegate) {
+  TfLiteStatus status = kTfLiteOk;
+  for (auto& subgraph : subgraphs_) {
+    if (IsValidationSubgraph(subgraph->GetName().c_str())) {
+      continue;
+    }
+    status = subgraph->ModifyGraphWithDelegate(delegate);
+    if (status != kTfLiteOk) {
+      break;
     }
   }
-  return nullptr;
+  // Delegate-specific errors can be recovered from by restoring Interpreter to
+  // its original state.
+  if (status == kTfLiteDelegateError) {
+    TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
+  }
+  return status;
+}
+
+TfLiteStatus Interpreter::RemoveAllDelegates() {
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_STATUS(subgraph->RemoveAllDelegates());
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::SetMetadata(
@@ -391,6 +417,54 @@ TfLiteStatus Interpreter::SetMetadata(
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
     TF_LITE_ENSURE_STATUS(subgraphs_[subgraph_index]->SetMetadata(&metadata_));
+  }
+  return kTfLiteOk;
+}
+
+bool Interpreter::IsFullyDelegated() const {
+  return primary_subgraph().IsFullyDelegated();
+}
+
+void Interpreter::SetProfilerImpl(std::unique_ptr<Profiler> profiler) {
+  if (profiler == nullptr) {
+    root_profiler_ = nullptr;
+    return;
+  }
+  if (root_profiler_ == nullptr) {
+    root_profiler_ = std::make_unique<profiling::RootProfiler>();
+  } else {
+    // Removes all previously registered profilers.
+    root_profiler_->RemoveChildProfilers();
+  }
+  root_profiler_->AddProfiler(std::move(profiler));
+  SetSubgraphProfiler();
+}
+
+void Interpreter::SetSubgraphProfiler() {
+  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
+       ++subgraph_index) {
+    subgraphs_[subgraph_index]->SetProfiler(root_profiler_.get(),
+                                            subgraph_index);
+  }
+}
+
+TfLiteStatus Interpreter::ApplyOptionsImpl(InterpreterOptions* options) {
+  if (options == nullptr) {
+    return kTfLiteOk;
+  }
+  options_ = std::make_unique<InterpreterOptions>(*options);
+
+  // Set InterpreterOptions object to SubGraph.
+  for (auto& subgraph : subgraphs_) {
+    subgraph->SetOptions(options_.get());
+  }
+
+  // Handle `experimental_dynamic_allocation_for_large_tensors_`.
+  if (options->GetDynamicAllocationForLargeTensors() > 0) {
+    for (auto& subgraph : subgraphs_) {
+      subgraph->OptimizeMemoryForLargeTensors(
+          options->GetDynamicAllocationForLargeTensors());
+    }
   }
   return kTfLiteOk;
 }

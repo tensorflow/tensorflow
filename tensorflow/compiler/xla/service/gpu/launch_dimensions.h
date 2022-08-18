@@ -52,6 +52,12 @@ class LaunchDimensions {
 
   Dim3D thread_counts_per_block() const { return thread_counts_per_block_; }
 
+  // Returns the total number of threads in a block.
+  int64_t total_nb_threads() const {
+    return thread_counts_per_block_.x * thread_counts_per_block_.y *
+           thread_counts_per_block_.z;
+  }
+
   int64_t launch_bound() const {
     return block_counts_.x * thread_counts_per_block_.x * block_counts_.y *
            thread_counts_per_block_.y * block_counts_.z *
@@ -89,11 +95,14 @@ struct LaunchDimensionsConfig {
   // `hlo.shape().dimensions().back()/unroll_factor`.
   // Currently few_waves and row_vectorized do not work together.
   bool row_vectorized = false;
+  // If 'logical_order' is true, then adjacent threads will write to
+  // logically adjacent indices in output buffer.
+  bool logical_order = false;
 
   std::string ToString() {
-    return absl::StrCat("unroll_factor=", unroll_factor,
-                        ", few_waves=", few_waves,
-                        ", row_vectorized=", row_vectorized);
+    return absl::StrCat(
+        "unroll_factor=", unroll_factor, ", few_waves=", few_waves,
+        ", row_vectorized=", row_vectorized, ", logical_order", logical_order);
   }
 };
 

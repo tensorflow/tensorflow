@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_mkl.h"
+
 #include <iostream>
+
+#include "absl/base/dynamic_annotations.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 #ifdef ENABLE_MKL
 #include <omp.h>
-#include "mkldnn.hpp"
+
+#include "dnnl.hpp"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 
 namespace {
@@ -29,22 +31,22 @@ namespace {
 int ToInt(int64_t input) {
   int output = static_cast<int>(input);
   if (static_cast<int64_t>(output) != input) {
-    std::cerr << "Error occurred in downcasting int64_t to int32: Value "
-              << input << " is out-of-range for type int32. \n";
+    std::cerr << "Error occurred in downcasting int64_t to int32_t: Value "
+              << input << " is out-of-range for type int32_t. \n";
     exit(1);
   }
   return output;
 }
 
-using mkldnn::convolution_direct;
-using mkldnn::convolution_forward;
-using mkldnn::engine;
-using mkldnn::memory;
-using mkldnn::padding_kind;
-using mkldnn::primitive;
-using mkldnn::prop_kind;
-using mkldnn::reorder;
-using mkldnn::stream;
+using dnnl::convolution_direct;
+using dnnl::convolution_forward;
+using dnnl::engine;
+using dnnl::memory;
+using dnnl::padding_kind;
+using dnnl::primitive;
+using dnnl::prop_kind;
+using dnnl::reorder;
+using dnnl::stream;
 
 template <typename EigenDevice, typename ScalarType>
 void MKLConvImpl(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
@@ -63,7 +65,7 @@ void MKLConvImpl(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
   // Create a vector primitive to hold the network.
   std::vector<primitive> net;
 
-  // Since memory::dims takes int for each dimension, we downcast the int64
+  // Since memory::dims takes int for each dimension, we downcast the int64_t
   // values to int using the ToInt function defined above.
   memory::dims conv1_src_dim = {ToInt(input_batch), ToInt(input_channels),
                                 ToInt(input_rows), ToInt(input_cols)};
@@ -144,14 +146,12 @@ void MKLConvImpl(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
   if (need_output_conversion) {
     net.push_back(reorder(conv1_dst_memory, user_dst_memory));
   }
-#ifndef ENABLE_MKLDNN_V1
   stream(stream::kind::eager_nostore).submit(net).wait();
-#endif
 }
 }  // namespace
 #endif  // ENABLE_MKL
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLConvF32(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLConv2DF32(
     const void* run_options_ptr, float* out, float* lhs, float* rhs,
     int64_t input_batch, int64_t input_rows, int64_t input_cols,
     int64_t input_channels, int64_t kernel_rows, int64_t kernel_cols,

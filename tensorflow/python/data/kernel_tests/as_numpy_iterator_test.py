@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.numpy()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 from absl.testing import parameterized
@@ -73,7 +69,7 @@ class AsNumpyIteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   def _testInvalidElement(self, element):
     ds = dataset_ops.Dataset.from_tensors(element)
     with self.assertRaisesRegex(TypeError,
-                                '.*does not support datasets containing.*'):
+                                'is not supported for datasets that'):
       ds.as_numpy_iterator()
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -96,6 +92,11 @@ class AsNumpyIteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testNestedNonTensorElement(self):
     tuple_elem = (constant_op.constant([1, 2, 3]), dataset_ops.Dataset.range(3))
     self._testInvalidElement(tuple_elem)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testNoneElement(self):
+    ds = dataset_ops.Dataset.from_tensors((2, None))
+    self.assertDatasetProduces(ds, [(2, None)])
 
 
 if __name__ == '__main__':

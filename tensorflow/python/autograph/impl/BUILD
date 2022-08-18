@@ -13,7 +13,7 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
 )
 
 py_library(
@@ -23,6 +23,8 @@ py_library(
         "conversion.py",
     ],
     srcs_version = "PY3",
+    # TODO(mdan): fix the cyclic dependency issue when build_cleaner is applied on this library.
+    tags = ["nofixdeps"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python:platform",

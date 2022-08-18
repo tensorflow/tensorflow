@@ -57,6 +57,7 @@ class IntrusivePtr {
   bool operator==(const IntrusivePtr& o) const { return handle_ == o.handle_; }
   T* operator->() const { return handle_; }
   T& operator*() const { return *handle_; }
+  explicit operator bool() const noexcept { return get(); }
   T* get() const { return handle_; }
   // Releases ownership of the pointer without unreffing. Caller is responsible
   // for calling Unref on the returned pointer.

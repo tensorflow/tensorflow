@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tfrt/host_context/task_function.h"  // from @tf_runtime
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -148,6 +149,10 @@ class RunHandler {
   void ScheduleIntraOpClosure(TaskFunction fn);
 
   tensorflow::thread::ThreadPoolInterface* AsIntraThreadPoolInterface() const;
+
+  int NumThreads() const;
+
+  int64_t step_id() const;
 
   ~RunHandler();
 
@@ -403,6 +408,37 @@ class RunHandlerThreadPool {
 };
 
 }  // namespace internal
+
+class RunHandlerWorkQueue : public tensorflow::tfrt_stub::WorkQueueInterface {
+ public:
+  explicit RunHandlerWorkQueue(std::unique_ptr<RunHandler> run_handler)
+      : run_handler_(std::move(run_handler)) {
+    DCHECK(run_handler_);
+  }
+  ~RunHandlerWorkQueue() override = default;
+
+  std::string name() const override { return "run_handler"; }
+
+  int GetParallelismLevel() const override;
+
+  void AddTask(TaskFunction work) override;
+
+  Optional<TaskFunction> AddBlockingTask(TaskFunction work,
+                                         bool allow_queuing) override;
+
+  void Await(
+      llvm::ArrayRef<tfrt::RCReference<tfrt::AsyncValue>> values) override;
+
+  bool IsInWorkerThread() const override;
+
+  void Quiesce() override {
+    LOG(FATAL) << "RunHandlerWorkQueue::Quiesce() is not "  // Crash OK
+                  "implemented, and supposed to be removed.";
+  }
+
+ private:
+  std::unique_ptr<RunHandler> run_handler_;
+};
 
 }  // end namespace tf
 }  // end namespace tfrt

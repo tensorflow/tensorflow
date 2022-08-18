@@ -23,7 +23,9 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -37,7 +39,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -46,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -56,10 +57,9 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Interfaces/DecodeAttributesInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
@@ -67,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/common_runtime/lower_function_call_inline_policy.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -91,15 +92,6 @@ struct TFConstantFoldInterface : public DialectFoldInterface {
   }
 };
 
-struct TFDecodeAttributesInterface : public DialectDecodeAttributesInterface {
-  TFDecodeAttributesInterface(Dialect *dialect)
-      : DialectDecodeAttributesInterface(dialect) {}
-  LogicalResult decode(OpaqueElementsAttr input,
-                       ElementsAttr &output) const override {
-    return TensorFlowDialect::decode(input, output);
-  }
-};
-
 // Helper function that implements the multi-device inlining policy behavior
 // for the inliner hook. In particular, for all function body nodes set unset
 // placement attributes to match the function call node.
@@ -109,7 +101,7 @@ void MultiDeviceProcessInlinedCallBlocks(
 
   // Duplicate of the logic in MultiDeviceFunctionBodyPlacer::BodyNodeDevice
   // LINT.IfChange
-  auto device_id = Identifier::get("device", call->getContext());
+  auto device_id = StringAttr::get(call->getContext(), "device");
   auto caller_device = call->getAttrOfType<StringAttr>(device_id);
   if (!caller_device) return;
 
@@ -153,8 +145,15 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // a TF operation.
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
-    // Check that the TF call operation is one that is legal to inline.
-    return !isa<TPUPartitionedCallOp>(call);
+    // Skip inlining for TPUPartitionedCalls.
+    if (isa<TPUPartitionedCallOp>(call)) return false;
+    // Maintain inlining for  `tf.function`s with jit_compile option.
+    if (callable->hasAttr("tf._XlaMustCompile")) return true;
+    auto noinline_attr_name = absl::StrCat("tf.", tensorflow::kNoInlineAttr);
+    if (auto noinline_attr =
+            callable->getAttrOfType<BoolAttr>(noinline_attr_name))
+      return !noinline_attr.getValue();
+    return true;
   }
 
   // Returns if its legal to inline 'src' region into the 'dest' region
@@ -256,7 +255,7 @@ void *TensorFlowDialect::getRegisteredInterfaceForOp(
     mlir::TypeID interface, mlir::OperationName opName) {
   if (interface == TypeID::get<mlir::MemoryEffectOpInterface>()) {
     // Don't use fallback for modelled ops.
-    if (opName.getAbstractOperation()) return nullptr;
+    if (opName.isRegistered()) return nullptr;
 
     // Only use fallback interface for known not-stateful ops.
     const tensorflow::OpRegistrationData *op_reg_data = nullptr;
@@ -287,15 +286,21 @@ bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
   return true;
 }
 
-std::vector<TensorFlowDialect::AdditionalOpFunction>
-    *TensorFlowDialect::GetAdditionalOperationHooks() {
-  static auto *const additional_operation_hooks =
-      new std::vector<TensorFlowDialect::AdditionalOpFunction>();
-  return additional_operation_hooks;
+// Hook functions which may add additional operations to the dialect.
+// These are invoked at construction time.
+static DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction>
+    &GetAdditionalOperationHooks() {
+  static auto *additional_operation_hooks =
+      new DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction>();
+  return *additional_operation_hooks;
+}
+
+void TensorFlowDialect::RegisterAdditionalOperationHook(
+    TypeID id, AdditionalOpFunction fn) {
+  GetAdditionalOperationHooks().try_emplace(id, std::move(fn));
 }
 
 TensorFlowDialect::ConstantFoldHook TensorFlowDialect::constant_fold_hook_;
-TensorFlowDialect::DecodeConstantHook TensorFlowDialect::decode_constant_hook_;
 
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context, TypeID::get<TensorFlowDialect>()) {
@@ -308,8 +313,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
       >();
-  addInterfaces<TFInlinerInterface, TFDecodeAttributesInterface,
-                TFConstantFoldInterface>();
+  addInterfaces<TFInlinerInterface, TFConstantFoldInterface>();
   fallback_effect_op_interface_ =
       new TensorFlowRegistryEffectInterfaceFallback();
 
@@ -317,8 +321,8 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   // registered.
   allowUnknownOperations();
 
-  for (const auto &hook : *GetAdditionalOperationHooks()) {
-    hook(*this);
+  for (auto &hook : GetAdditionalOperationHooks()) {
+    hook.second(*this);
   }
 }
 

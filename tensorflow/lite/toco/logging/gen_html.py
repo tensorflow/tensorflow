@@ -14,10 +14,6 @@
 # ==============================================================================
 """A utility class to generate the report HTML based on a common template."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import io
 import os
 
@@ -84,7 +80,7 @@ def get_operator_type(op_name, conversion_log):
     return "SELECT OP"
 
 
-class HTMLGenerator(object):
+class HTMLGenerator:
   """Utility class to generate an HTML report."""
 
   def __init__(self, html_template_path, export_report_path):

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for initializers in init_ops_v2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -106,8 +102,8 @@ class ConstantInitializersTest(InitializersTest):
   @test_util.run_in_graph_and_eager_modes
   def testZerosInvalidKwargs(self):
     init = init_ops_v2.Zeros()
-    with self.assertRaisesWithLiteralMatch(TypeError,
-                                           r"Unknown keyword arguments: dtpye"):
+    with self.assertRaisesRegex(
+        TypeError, r"Keyword argument should be one of .* Received: dtpye"):
       init((2, 2), dtpye=dtypes.float32)
 
   @test_util.run_in_graph_and_eager_modes
@@ -385,8 +381,8 @@ class VarianceScalingInitializerTest(InitializersTest):
       self.assertTrue(mock_random_normal.called)
 
     self.assertEqual(x.shape, partition_shape)
-    self.assertNear(np.mean(x), expect_mean, err=1e-3)
-    self.assertNear(np.var(x), expect_var, err=1e-3)
+    self.assertNear(np.mean(x), expect_mean, err=2e-3)
+    self.assertNear(np.var(x), expect_var, err=2e-3)
 
 
 class OrthogonalInitializerTest(InitializersTest):

@@ -16,62 +16,53 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SHAPE_TREE_H_
 #define TENSORFLOW_COMPILER_XLA_SHAPE_TREE_H_
 
+#include <algorithm>
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/types/optional.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
 namespace internal {
 
-// Internal representation of each node in a ShapeTree.
-template <typename T>
-struct ShapeTreeNode {
-  // Data corresponding to this node.
-  std::pair<ShapeIndex, T> data;
+class IndexTable {
+ public:
+  // Use indices, rather than pointers, so index table can be copied between
+  // ShapeTrees.
+  struct Entry {
+    // Index of the node in the nodes vector.
+    size_t node_id;
+    // Index of the first child of this node in the index table (-1 for leaves).
+    std::make_signed_t<size_t> children_start_id = -1;
+  };
 
-  bool is_leaf = true;
+  IndexTable() = default;
+  explicit IndexTable(const Shape& shape);
 
-  explicit ShapeTreeNode(ShapeIndex index)
-      : ShapeTreeNode(std::move(index), T()) {}
-  ShapeTreeNode(ShapeIndex index, T data)
-      : data(std::move(index), std::move(data)) {}
-};
+  bool empty() const { return entries_.empty(); }
 
-// Internal representation of an index table entry.
-struct IndexTableEntry {
-  // Index of the node in the ShapeTreeNode vector.
-  uint32 index;
-  // Index of the first child in a IndexTableEntry vector. In the index
-  // table all children entries for a given node will be placed next to each
-  // other. This allows us to use a single field to index them.
-  uint32 children_start;
-#ifndef NDEBUG
-  // Number of children, used for bounds checking.
-  uint32 children_count;
-#endif
+  const Entry& operator[](ShapeIndexView index) const;
+
+ private:
+  void CreateEntry(Entry& entry, const Shape& shape, size_t& next_node_id);
+
+  absl::InlinedVector<Entry, 1> entries_;
 };
 
 }  // namespace internal
-
-template <typename ContainerType, typename IteratorType, typename ValueType>
-class ShapeTreeIterator;
-template <typename ContainerType, typename IteratorType, typename ValueType>
-class ShapeTreeLeafIterator;
 
 // A ShapeTree<T> is a recursive data structure which mirrors the structure of a
 // XLA shape and holds a value of type T for each subshape (i.e. tuple or array)
@@ -89,14 +80,22 @@ class ShapeTreeLeafIterator;
 //
 // Normally a ShapeTree owns its Shape, but for efficiency reasons, sometimes
 // it's helpful not to copy a Shape just to make a ShapeTree.  In these cases,
-// you can pass a Shape* instead of a Shape& to the ShapeTree constructor.  It's
-// then up to you to ensure that the pointed-to Shape doesn't die or mutate
-// before its ShapeTree goes away.
+// you can pass a Shape* instead of a Shape to the ShapeTree constructor.  It's
+// then up to you to ensure that the pointed-to Shape isn't freed, moved or
+// modified before its ShapeTree goes away.
 template <typename T>
 class ShapeTree {
+  template <typename U>
+  friend class ShapeTree;
+
  public:
-  using Node = internal::ShapeTreeNode<T>;
-  using Index = internal::IndexTableEntry;
+  // TODO(cjfj): Don't store ShapeIndex with data. Generate it or cache it?
+  using Node = std::pair<ShapeIndex, T>;
+  using Nodes = absl::InlinedVector<Node, 1>;
+  using IndexTable = internal::IndexTable;
+
+  template <typename Iterator, typename ValueType>
+  class LeafIterator;
 
   // Default constructor creates a tree with a nil shape (i.e. an empty tuple).
   ShapeTree() : ShapeTree(ShapeUtil::MakeNil()) {}
@@ -107,19 +106,23 @@ class ShapeTree {
   // The version that takes a pointer may be cheaper because it doesn't require
   // any Shape copies, but then it's up to you to ensure that the pointer stays
   // alive longer than this ShapeTree.
-  explicit ShapeTree(Shape shape);
-  explicit ShapeTree(const Shape* shape);
-  explicit ShapeTree(const std::shared_ptr<Shape>& shape);
+  explicit ShapeTree(Shape shape)
+      : ShapeTree(std::make_shared<Shape>(std::move(shape))) {}
+
+  explicit ShapeTree(const Shape* shape)
+      : ShapeTree(shape, CreateNodes(*shape)) {}
 
   // Create ShapeTree with the given shape, and init_value for all nodes.
-  ShapeTree(Shape shape, const T& init_value);
-  ShapeTree(const Shape* shape, const T& init_value);
-  ShapeTree(const std::shared_ptr<Shape>& shape, const T& init_value);
+  ShapeTree(Shape shape, const T& init_value)
+      : ShapeTree(std::make_shared<Shape>(std::move(shape)), init_value) {}
+
+  ShapeTree(const Shape* shape, const T& init_value)
+      : ShapeTree(shape, CreateNodes(*shape, init_value)) {}
 
   // Returns the data element associated with the array in the shape at the
   // given index (see ShapeUtil::GetSubshape for how indexes are defined).
-  const T& element(ShapeIndexView index) const;
-  T* mutable_element(ShapeIndexView index);
+  const T& element(ShapeIndexView index) const { return find(index)->second; }
+  T* mutable_element(ShapeIndexView index) { return &find(index)->second; }
 
   // Return the shape represented with this ShapeTree.
   const Shape& shape() const { return *shape_; }
@@ -129,76 +132,50 @@ class ShapeTree {
   // This API replaces the underlying Shape object to the one supplied by the
   // caller, whom must ensure the object remain valid for the whole lifetime of
   // this ShapeTree object, and also that the Shape is consistent with it.
-  void replace_shape_ptr(const Shape* shape) {
+  void replace_shape_ptr(const Shape& shape) {
     if (shape_storage_ != nullptr) {
-      DCHECK_EQ(*shape, *shape_storage_);
+      DCHECK_EQ(shape, *shape_storage_);
       shape_storage_ = nullptr;
     }
-    shape_ = shape;
+    shape_ = &shape;
   }
 
   // Returns true if the node at the given index is a leaf node (an array
   // shape).
-  bool IsLeaf(ShapeIndexView index) const { return Lookup(index)->is_leaf; }
+  bool IsLeaf(ShapeIndexView index) const {
+    return index_table_[index].children_start_id == -1;
+  }
 
-  ShapeTree(const ShapeTree&) = default;
-  ShapeTree& operator=(const ShapeTree&) = default;
-  ShapeTree(ShapeTree&&) = default;
-  ShapeTree& operator=(ShapeTree&& other) = default;
+  using iterator = typename Nodes::iterator;
+  using const_iterator = typename Nodes::const_iterator;
+  using reverse_iterator = typename Nodes::reverse_iterator;
+  using const_reverse_iterator = typename Nodes::const_reverse_iterator;
 
-  // iterator implements a bidirectional_iterator with
-  //  value_type = std::pair<ShapeIndex, T>.
-  //
-  // The iteration order is guaranteed to be a pre-order walk of the ShapeTree.
-  using iterator =
-      ShapeTreeIterator<std::vector<Node>, typename std::vector<Node>::iterator,
-                        std::pair<ShapeIndex, T>>;
-  using const_iterator =
-      ShapeTreeIterator<const std::vector<Node>,
-                        typename std::vector<Node>::const_iterator,
-                        const std::pair<ShapeIndex, T>>;
-  using reverse_iterator = std::reverse_iterator<iterator>;
-  using const_reverse_iterator = std::reverse_iterator<const_iterator>;
-
-  using leaf_iterator =
-      ShapeTreeLeafIterator<std::vector<Node>,
-                            typename std::vector<Node>::iterator,
-                            std::pair<ShapeIndex, T>>;
-  using const_leaf_iterator =
-      ShapeTreeLeafIterator<const std::vector<Node>,
-                            typename std::vector<Node>::const_iterator,
-                            const std::pair<ShapeIndex, T>>;
+  using leaf_iterator = LeafIterator<iterator, Node>;
+  using const_leaf_iterator = LeafIterator<const_iterator, const Node>;
   using reverse_leaf_iterator = std::reverse_iterator<leaf_iterator>;
   using const_reverse_leaf_iterator =
       std::reverse_iterator<const_leaf_iterator>;
 
-  // begin/end for iterating over all nodes.
-  iterator begin() { return iterator(&nodes_, nodes_.begin()); }
-  iterator end() { return iterator(&nodes_, nodes_.end()); }
-  const_iterator begin() const {
-    return const_iterator(&nodes_, nodes_.begin());
-  }
-  const_iterator end() const { return const_iterator(&nodes_, nodes_.end()); }
+  iterator begin() { return nodes_.begin(); }
+  iterator end() { return nodes_.end(); }
+  const_iterator begin() const { return nodes_.begin(); }
+  const_iterator end() const { return nodes_.end(); }
 
-  // rbegin/rend for iterating over all nodes in reverse.
-  reverse_iterator rbegin() { return reverse_iterator(end()); }
-  reverse_iterator rend() { return reverse_iterator(begin()); }
-  const_reverse_iterator rbegin() const {
-    return const_reverse_iterator(end());
-  }
-  const_reverse_iterator rend() const {
-    return const_reverse_iterator(begin());
-  }
+  reverse_iterator rbegin() { return nodes_.rbegin(); }
+  reverse_iterator rend() { return nodes_.rend(); }
+  const_reverse_iterator rbegin() const { return nodes_.rbegin(); }
+  const_reverse_iterator rend() const { return nodes_.rend(); }
 
   // leaf_begin()/leaf_end() iterates over all leaf nodes (nodes with no
   // children).
-  leaf_iterator leaf_begin() { return leaf_iterator(&nodes_, nodes_.begin()); }
-  leaf_iterator leaf_end() { return leaf_iterator(&nodes_, nodes_.end()); }
+  leaf_iterator leaf_begin() { return leaf_iterator(*this, nodes_.begin()); }
+  leaf_iterator leaf_end() { return leaf_iterator(*this, nodes_.end()); }
   const_leaf_iterator leaf_begin() const {
-    return const_leaf_iterator(&nodes_, nodes_.begin());
+    return const_leaf_iterator(*this, nodes_.begin());
   }
   const_leaf_iterator leaf_end() const {
-    return const_leaf_iterator(&nodes_, nodes_.end());
+    return const_leaf_iterator(*this, nodes_.end());
   }
   // range-based iterator for leaf_begin()/leaf_end().
   tensorflow::gtl::iterator_range<leaf_iterator> leaves() {
@@ -224,108 +201,145 @@ class ShapeTree {
   // Returns an iterator pointing to the given ShapeIndex.
   // REQUIRES: index must exist in the ShapeTree.
   iterator find(ShapeIndexView index) {
-    Node* element = Lookup(index);
-    auto element_iter = nodes_.begin() + (element - &nodes_[0]);
-    return iterator(&nodes_, element_iter);
+    return nodes_.begin() + index_table_[index].node_id;
   }
   const_iterator find(ShapeIndexView index) const {
-    const Node* element = Lookup(index);
-    auto element_iter = nodes_.cbegin() + (element - &nodes_[0]);
-    return const_iterator(&nodes_, element_iter);
+    return nodes_.begin() + index_table_[index].node_id;
   }
 
   // Returns the number of leaf nodes in the tree.
   int64_t leaf_count() const { return std::distance(leaf_begin(), leaf_end()); }
 
+  // TODO(cjfj): Remove the `ForEach...` methods. They are redundant.
   // Recursively traverses the shape and calls the given function at each
-  // element. The function has the following arguments:
-  //
-  //   Fn :    A callable of type void(const ShapeIndex& index, const T& data)
-  //           (or compatible).
-  //   index : the index of the element in the shape. See ShapeUtil::GetSubshape
-  //           for definition of index.
-  //   data : The data value at this element.
-  template <typename Fn>
-  void ForEachElement(const Fn& func) const;
+  // element.
+  void ForEachElement(
+      absl::FunctionRef<void(const ShapeIndex&, const T&)> func) const {
+    for (const Node& node : nodes_) {
+      func(node.first, node.second);
+    }
+  }
 
-  // Like ForEachElement, but the callable has type
-  //
-  //   void (const ShapeIndex& index, T* data).
-  //
-  template <typename Fn>
-  void ForEachMutableElement(const Fn& func);
+  void ForEachMutableElement(
+      absl::FunctionRef<void(const ShapeIndex&, T*)> func) {
+    for (Node& node : nodes_) {
+      func(node.first, &node.second);
+    }
+  }
 
   // Like ForEach(Mutable)Element, but the callable returns a Status instead of
   // void.  The first non-OK return value is returned by the ForEach* function.
-  template <typename Fn>
-  Status ForEachElementWithStatus(const Fn& func) const;
-  template <typename Fn>
-  Status ForEachMutableElementWithStatus(const Fn& func);
+  Status ForEachElementWithStatus(
+      absl::FunctionRef<Status(const ShapeIndex&, const T&)> func) const {
+    for (const Node& node : nodes_) {
+      TF_RETURN_IF_ERROR(func(node.first, node.second));
+    }
+    return OkStatus();
+  }
+
+  Status ForEachMutableElementWithStatus(
+      absl::FunctionRef<Status(const ShapeIndex&, T*)> func) {
+    for (Node& node : nodes_) {
+      TF_RETURN_IF_ERROR(func(node.first, &node.second));
+    }
+    return OkStatus();
+  }
 
   // Maps each element to generate a new tree with the same shape.
   template <typename U>
-  ShapeTree<U> Map(const std::function<U(const T&)>& func) {
-    ShapeTree<U> result(shape_storage_);
-    ForEachElement([&](const ShapeIndex& index, const T& t) {
-      *result.mutable_element(index) = func(t);
-    });
+  ShapeTree<U> Map(absl::FunctionRef<U(const T&)> func) {
+    typename ShapeTree<U>::Nodes result_nodes;
+    result_nodes.reserve(nodes_.size());
+    for (const Node& node : nodes_) {
+      result_nodes.push_back({node.first, func(node.second)});
+    }
+
+    ShapeTree<U> result(shape_, std::move(result_nodes));
+    result.index_table_ = index_table_;
+    result.shape_storage_ = shape_storage_;
     return result;
   }
 
-  template <typename U>
-  ShapeTree<U> Map(const std::function<U(T*)>& func) {
-    ShapeTree<U> result(shape_storage_);
-    ForEachMutableElement([&](const ShapeIndex& index, T* t) {
-      *result.mutable_element(index) = func(t);
-    });
-    return result;
-  }
-
-  // Copy the subtree of values from 'other' rooted at ShapeIndex
-  // 'source_base_index' into the subtree of value in this ShapeTree rooted at
-  // 'target_base_index'.
+  // Copy the subtree of values from 'other' rooted at ShapeIndex 'src_index'
+  // into the subtree of value in this ShapeTree rooted at 'dst_index'.
   //
-  // Precondition: The subshape of other.shape() at index source_base_index must
-  // be compatible with the subshape of shape() at index target_base_index.
-  void CopySubtreeFrom(const ShapeTree<T>& other,
-                       const ShapeIndex& source_base_index,
-                       const ShapeIndex& target_base_index);
+  // Precondition: The subshape of other.shape() at index src_index must be
+  // compatible with the subshape of shape() at index dst_index.
+  void CopySubtreeFrom(const ShapeTree<T>& other, const ShapeIndex& src_index,
+                       const ShapeIndex& dst_index) {
+    const Shape& src_shape = ShapeUtil::GetSubshape(other.shape(), src_index);
+    const Shape& dst_shape = ShapeUtil::GetSubshape(shape(), dst_index);
+    CHECK(ShapeUtil::Compatible(src_shape, dst_shape))
+        << src_shape << ", " << dst_shape;
 
-  StatusOr<ShapeTree<T>> SubShapeTree(const ShapeIndex& index) const;
+    // Replace the prefix `src_index` with `dst_index`.
+    auto replace_shape_index_prefix = [&](const ShapeIndex& index) {
+      auto without_prefix = ShapeIndexView(index).subspan(src_index.size());
+      ShapeIndex result;
+      result.reserve(dst_index.size() + without_prefix.size());
+      result.insert(result.end(), dst_index.begin(), dst_index.end());
+      result.insert(result.end(), without_prefix.begin(), without_prefix.end());
+      return result;
+    };
 
-  bool operator==(const ShapeTree<T>& other) const;
+    auto first = other.find(src_index);
+    auto last = first + ShapeUtil::SubshapeCount(src_shape);
+
+    std::transform(first, last, find(dst_index), [&](const Node& node) -> Node {
+      return {replace_shape_index_prefix(node.first), node.second};
+    });
+  }
+
+  StatusOr<ShapeTree<T>> SubShapeTree(const ShapeIndex& index) const {
+    TF_ASSIGN_OR_RETURN(const Shape* sub_shape,
+                        ShapeUtil::TryGetSubshape(shape(), index));
+    size_t count = ShapeUtil::SubshapeCount(*sub_shape);
+    Nodes sub_tree_nodes;
+    sub_tree_nodes.reserve(count);
+    for (auto it = find(index), end = it + count; it != end; ++it) {
+      // For each shape index, remove the prefix `index`.
+      auto without_prefix = ShapeIndexView(it->first).subspan(index.size());
+      sub_tree_nodes.push_back(Node{without_prefix, it->second});
+    }
+    return ShapeTree(sub_shape, std::move(sub_tree_nodes));
+  }
+
+  bool operator==(const ShapeTree<T>& other) const {
+    return nodes_ == other.nodes_;
+  }
   bool operator!=(const ShapeTree<T>& other) const { return !(*this == other); }
 
  private:
-  // Initialize node->children based on 'shape'. All children are assigned the
-  // the given 'init_value'.
-  void InitChildren(const Shape& shape, const T& init_value, Node* node,
-                    Index* index);
+  explicit ShapeTree(std::shared_ptr<Shape> shape) : ShapeTree(shape.get()) {
+    shape_storage_.swap(shape);
+  }
 
-  // Initialize node->children based on 'shape'. All children have
-  // default-constructed data values.
-  void InitChildren(const Shape& shape, Node* node, Index* index);
+  ShapeTree(std::shared_ptr<Shape> shape, const T& init_value)
+      : ShapeTree(shape.get(), init_value) {
+    shape_storage_.swap(shape);
+  }
 
-  // Returns the number of subshapes, including interior nodes, in shape.
-  int64_t CountSubshapes(const Shape& shape);
+  ShapeTree(const Shape* shape, Nodes nodes)
+      : nodes_(std::move(nodes)), index_table_(*shape), shape_(shape) {
+    DCHECK_EQ(nodes_.size(), ShapeUtil::SubshapeCount(*shape));
+  }
 
-  // Helpers for traversing the shape via ForEachElement. The helpers
-  // recursively traverse the subtree rooted at "index" (defined as in
-  // ShapeUtil::GetSubshape).
-  template <typename Fn>
-  static Status ForEachHelper(const Fn& func, const std::vector<Node>& nodes);
-  template <typename Fn>
-  static Status ForEachMutableHelper(const Fn& func, std::vector<Node>* nodes);
-
-  // Return the tree node at the given index.
-  Node* Lookup(ShapeIndexView index);
-  const Node* Lookup(ShapeIndexView index) const;
+  template <typename... Ts>
+  static Nodes CreateNodes(const Shape& shape, Ts&&... args) {
+    Nodes nodes;
+    ShapeUtil::ForEachSubshape(
+        shape, [&](const Shape&, const ShapeIndex& index) {
+          nodes.push_back({index, T(std::forward<Ts>(args)...)});
+        });
+    return nodes;
+  }
 
   // The nodes in this shape tree.
-  std::vector<Node> nodes_;
+  Nodes nodes_;
 
-  // Index table for node lookups.
-  std::vector<Index> index_table_;
+  // Index table for node lookups. Each entry contains the index of the first
+  // child of the node at that index, or -1 for leaf nodes. Evaluated lazily.
+  IndexTable index_table_;
 
   // If we own our Shape, this field contains it, and shape_ is a pointer into
   // here.  Otherwise if we don't own our shape, this is nullptr.
@@ -336,398 +350,60 @@ class ShapeTree {
   const Shape* shape_;
 };
 
-// Internal iterator that performs a pre-order walk. This is cheap to copy.
-// The iterator value_type is equivalent to a
-// std::pair<ShapeIndex,T>&, similar to std::map.
-template <typename ContainerType, typename IteratorType, typename ValueType>
-class ShapeTreeIterator
-    : public std::iterator<std::bidirectional_iterator_tag, ValueType> {
- public:
-  ShapeTreeIterator(ContainerType* nodes, IteratorType node)
-      : nodes_(nodes), node_(std::move(node)) {}
-
-  ShapeTreeIterator& operator++() {
-    ++node_;
-    return *this;
-  }
-  ShapeTreeIterator operator++(int) {
-    auto i = *this;
-    ++(*this);
-    return i;
-  }
-
-  ShapeTreeIterator& operator--() {
-    --node_;
-    return *this;
-  }
-  ShapeTreeIterator operator--(int) {
-    auto i = *this;
-    --(*this);
-    return i;
-  }
-
-  bool operator==(const ShapeTreeIterator& other) const {
-    return node_ == other.node_;
-  }
-  bool operator!=(const ShapeTreeIterator& other) const {
-    return node_ != other.node_;
-  }
-  ValueType& operator*() const { return node_->data; }
-  ValueType* operator->() const { return &node_->data; }
-
- private:
-  ContainerType* nodes_;
-  IteratorType node_;
-};
-
 // Internal iterator that performs a pre-order walk of the leaves. This is cheap
 // to copy. The iterator value_type is equivalent to a std::pair<ShapeIndex,T>&,
 // similar to std::map.
-template <typename ContainerType, typename IteratorType, typename ValueType>
-class ShapeTreeLeafIterator
-    : public std::iterator<std::bidirectional_iterator_tag, ValueType> {
+template <typename T>
+template <typename Iterator, typename ValueType>
+class ShapeTree<T>::LeafIterator {
  public:
-  ShapeTreeLeafIterator(ContainerType* nodes, IteratorType node)
-      : nodes_(nodes), node_(std::move(node)) {
-    while (node_ != nodes_->end() && !node_->is_leaf) {
-      ++node_;
-    }
+  using iterator_category = std::bidirectional_iterator_tag;
+  using value_type = ValueType;
+  using difference_type = ptrdiff_t;
+  using pointer = value_type*;
+  using reference = value_type&;
+
+  LeafIterator(const ShapeTree& tree, Iterator it) : tree_(tree), it_(it) {
+    while ((it_ != tree_.nodes_.end()) && !IsLeaf()) ++it_;
   }
 
-  ShapeTreeLeafIterator& operator++() {
-    ++node_;
-    while (node_ != nodes_->end() && !node_->is_leaf) {
-      ++node_;
-    }
+  LeafIterator& operator++() {
+    do {
+      ++it_;
+    } while ((it_ != tree_.nodes_.end()) && !IsLeaf());
     return *this;
   }
-  ShapeTreeLeafIterator operator++(int) {
-    auto i = *this;
+
+  LeafIterator operator++(int) {
+    auto prev = *this;
     ++(*this);
-    return i;
+    return prev;
   }
 
-  ShapeTreeLeafIterator& operator--() {
-    --node_;
-    while (node_ > nodes_->begin() && !node_->is_leaf) {
-      --node_;
-    }
+  LeafIterator& operator--() {
+    do {
+      --it_;
+    } while ((it_ != tree_.nodes_.begin()) && !IsLeaf());
     return *this;
   }
-  ShapeTreeLeafIterator operator--(int) {
-    auto i = *this;
+
+  LeafIterator operator--(int) {
+    auto prev = *this;
     --(*this);
-    return i;
+    return prev;
   }
 
-  bool operator==(const ShapeTreeLeafIterator& other) const {
-    return node_ == other.node_;
-  }
-  bool operator!=(const ShapeTreeLeafIterator& other) const {
-    return node_ != other.node_;
-  }
-  ValueType& operator*() const { return node_->data; }
-  ValueType* operator->() const { return &node_->data; }
+  bool operator==(const LeafIterator& other) const { return it_ == other.it_; }
+  bool operator!=(const LeafIterator& other) const { return !(*this == other); }
+  ValueType& operator*() const { return *it_; }
+  ValueType* operator->() const { return &*it_; }
 
  private:
-  ContainerType* nodes_;
-  IteratorType node_;
+  bool IsLeaf() const { return tree_.IsLeaf(it_->first); }
+
+  const ShapeTree<T>& tree_;
+  Iterator it_;
 };
-
-template <typename T>
-int64_t ShapeTree<T>::CountSubshapes(const Shape& shape) {
-  int64_t current_count = 1;
-  if (shape.IsTuple()) {
-    int64_t count = ShapeUtil::TupleElementCount(shape);
-    for (int i = 0; i < count; ++i) {
-      current_count += CountSubshapes(shape.tuple_shapes(i));
-    }
-  }
-  return current_count;
-}
-
-template <typename T>
-void ShapeTree<T>::InitChildren(const Shape& shape, const T& init_value,
-                                Node* node, Index* index) {
-  if (shape.IsTuple()) {
-    const int64_t size = ShapeUtil::TupleElementCount(shape);
-#ifndef NDEBUG
-    index->children_count = size;
-#endif
-    node->is_leaf = false;
-    ShapeIndex shape_index = node->data.first;
-    shape_index.push_back(0);
-
-    // At the end of the index_table, reserve a continuous space to hold the
-    // children of current node. In order to enforce the invariant that all
-    // children of a given node are placed together, we need to do the
-    // reservation before we recurse into any of its children.
-    int64_t children_start_position = index_table_.size();
-    index_table_.resize(index_table_.size() + size);
-
-    for (int i = 0; i < size; ++i) {
-      shape_index[shape_index.size() - 1] = i;
-      index_table_[children_start_position + i].index = nodes_.size();
-      // The first child of the node in the index table is placed at the end of
-      // the table.
-      index_table_[children_start_position + i].children_start =
-          index_table_.size();
-      nodes_.emplace_back(shape_index, init_value);
-      InitChildren(shape.tuple_shapes(i), init_value, &nodes_.back(),
-                   &index_table_[children_start_position + i]);
-    }
-  } else {
-#ifndef NDEBUG
-    index->children_count = 0;
-#endif
-  }
-}
-
-template <typename T>
-void ShapeTree<T>::InitChildren(const Shape& shape, Node* node, Index* index) {
-  if (shape.IsTuple()) {
-    const int64_t size = ShapeUtil::TupleElementCount(shape);
-#ifndef NDEBUG
-    index->children_count = size;
-#endif
-    node->is_leaf = false;
-    ShapeIndex shape_index = node->data.first;
-    shape_index.push_back(0);
-
-    // At the end of the index_table, reserve a continuous space to hold the
-    // children of current node. In order to enforce the invariant that all
-    // children of a given node are placed together, we need to do the
-    // reservation before we recurse into any of its children.
-    int64_t children_start_position = index_table_.size();
-    index_table_.resize(index_table_.size() + size);
-
-    for (int i = 0; i < size; ++i) {
-      shape_index[shape_index.size() - 1] = i;
-      index_table_[children_start_position + i].index = nodes_.size();
-      // The first child of the node in the index table is placed at the end of
-      // the table.
-      index_table_[children_start_position + i].children_start =
-          index_table_.size();
-      nodes_.emplace_back(shape_index);
-      InitChildren(shape.tuple_shapes(i), &nodes_.back(),
-                   &index_table_[children_start_position + i]);
-    }
-  } else {
-#ifndef NDEBUG
-    index->children_count = 0;
-#endif
-  }
-}
-
-template <typename T>
-ShapeTree<T>::ShapeTree(Shape shape)
-    : shape_storage_(std::make_shared<Shape>(std::move(shape))),
-      shape_(shape_storage_.get()) {
-  const int64_t count = CountSubshapes(*shape_);
-  nodes_.reserve(count);
-  nodes_.emplace_back(ShapeIndex{});
-
-  index_table_.reserve(count);
-  index_table_.emplace_back(Index{0, 1});
-  InitChildren(*shape_, &nodes_[0], &index_table_[0]);
-}
-
-template <typename T>
-ShapeTree<T>::ShapeTree(const Shape* shape) : shape_(shape) {
-  const int64_t count = CountSubshapes(*shape_);
-  nodes_.reserve(count);
-  nodes_.emplace_back(ShapeIndex{});
-
-  index_table_.reserve(count);
-  index_table_.emplace_back(Index{0, 1});
-  InitChildren(*shape_, &nodes_[0], &index_table_[0]);
-}
-
-template <typename T>
-ShapeTree<T>::ShapeTree(const std::shared_ptr<Shape>& shape)
-    : shape_storage_(shape), shape_(shape_storage_.get()) {
-  const int64_t count = CountSubshapes(*shape_);
-  nodes_.reserve(count);
-  nodes_.emplace_back(ShapeIndex{});
-
-  index_table_.reserve(count);
-  index_table_.emplace_back(Index{0, 1});
-  InitChildren(*shape_, &nodes_[0], &index_table_[0]);
-}
-
-template <typename T>
-ShapeTree<T>::ShapeTree(Shape shape, const T& init_value)
-    : shape_storage_(std::make_shared<Shape>(std::move(shape))),
-      shape_(shape_storage_.get()) {
-  const int64_t count = CountSubshapes(*shape_);
-  nodes_.reserve(count);
-  nodes_.emplace_back(ShapeIndex{}, init_value);
-
-  index_table_.reserve(count);
-  index_table_.emplace_back(Index{0, 1});
-  InitChildren(*shape_, init_value, &nodes_[0], &index_table_[0]);
-}
-
-template <typename T>
-ShapeTree<T>::ShapeTree(const Shape* shape, const T& init_value)
-    : shape_(shape) {
-  const int64_t count = CountSubshapes(*shape_);
-  nodes_.reserve(count);
-  nodes_.emplace_back(ShapeIndex{}, init_value);
-
-  index_table_.reserve(count);
-  index_table_.emplace_back(Index{0, 1});
-  InitChildren(*shape_, init_value, &nodes_[0], &index_table_[0]);
-}
-
-template <typename T>
-ShapeTree<T>::ShapeTree(const std::shared_ptr<Shape>& shape,
-                        const T& init_value)
-    : shape_storage_(shape), shape_(shape_storage_.get()) {
-  const int64_t count = CountSubshapes(*shape_);
-  nodes_.reserve(count);
-  nodes_.emplace_back(ShapeIndex{}, init_value);
-
-  index_table_.reserve(count);
-  index_table_.emplace_back(Index{0, 1});
-  InitChildren(*shape_, init_value, &nodes_[0], &index_table_[0]);
-}
-
-template <typename T>
-const T& ShapeTree<T>::element(ShapeIndexView index) const {
-  return Lookup(index)->data.second;
-}
-
-template <typename T>
-T* ShapeTree<T>::mutable_element(ShapeIndexView index) {
-  return &Lookup(index)->data.second;
-}
-
-template <typename T>
-internal::ShapeTreeNode<T>* ShapeTree<T>::Lookup(ShapeIndexView index) {
-  Index* iter = &index_table_[0];
-  for (const int64_t i : index) {
-    CHECK_GE(i, 0);
-#ifndef NDEBUG
-    CHECK_LT(i, iter->children_count);
-#endif
-    iter = &index_table_[iter->children_start + i];
-  }
-
-  return &nodes_[iter->index];
-}
-
-template <typename T>
-const internal::ShapeTreeNode<T>* ShapeTree<T>::Lookup(
-    ShapeIndexView index) const {
-  return const_cast<ShapeTree*>(this)->Lookup(index);
-}
-
-/* static */
-template <typename T>
-template <typename Fn>
-Status ShapeTree<T>::ForEachHelper(const Fn& func,
-                                   const std::vector<Node>& nodes) {
-  for (const auto& node : nodes) {
-    TF_RETURN_IF_ERROR(func(node.data.first, node.data.second));
-  }
-  return Status::OK();
-}
-
-/* static */
-template <typename T>
-template <typename Fn>
-Status ShapeTree<T>::ForEachMutableHelper(const Fn& func,
-                                          std::vector<Node>* nodes) {
-  for (auto& node : *nodes) {
-    TF_RETURN_IF_ERROR(func(node.data.first, &node.data.second));
-  }
-  return Status::OK();
-}
-
-template <typename T>
-template <typename Fn>
-Status ShapeTree<T>::ForEachElementWithStatus(const Fn& func) const {
-  return ForEachHelper(func, nodes_);
-}
-
-template <typename T>
-template <typename Fn>
-Status ShapeTree<T>::ForEachMutableElementWithStatus(const Fn& func) {
-  return ForEachMutableHelper(func, &nodes_);
-}
-
-template <typename T>
-template <typename Fn>
-void ShapeTree<T>::ForEachElement(const Fn& func) const {
-  return ForEachHelper(
-             [&func](const ShapeIndex& index, const T& data) {
-               func(index, data);
-               return Status::OK();
-             },
-             nodes_)
-      .IgnoreError();
-}
-
-template <typename T>
-template <typename Fn>
-void ShapeTree<T>::ForEachMutableElement(const Fn& func) {
-  return ForEachMutableHelper(
-             [&func](const ShapeIndex& index, T* data) {
-               func(index, data);
-               return Status::OK();
-             },
-             &nodes_)
-      .IgnoreError();
-}
-
-template <typename T>
-void ShapeTree<T>::CopySubtreeFrom(const ShapeTree<T>& other,
-                                   const ShapeIndex& source_base_index,
-                                   const ShapeIndex& target_base_index) {
-  CHECK(ShapeUtil::Compatible(
-      ShapeUtil::GetSubshape(shape(), target_base_index),
-      ShapeUtil::GetSubshape(other.shape(), source_base_index)))
-      << ShapeUtil::GetSubshape(shape(), target_base_index) << " vs "
-      << ShapeUtil::GetSubshape(other.shape(), source_base_index);
-  ForEachMutableElement([this, &other, &source_base_index, &target_base_index](
-                            const ShapeIndex& index, T* data) {
-    // Copy the data element only if index is in the
-    // subtree rooted at target_base_index.
-    for (int i = 0; i < target_base_index.size(); ++i) {
-      if (i >= index.size() || index[i] != target_base_index[i]) {
-        return;
-      }
-    }
-    // Construct source element index to copy from.
-    ShapeIndex source_index = source_base_index;
-    for (int i = target_base_index.size(); i < index.size(); ++i) {
-      source_index.push_back(index[i]);
-    }
-    *data = other.element(source_index);
-  });
-}
-
-template <typename T>
-StatusOr<ShapeTree<T>> ShapeTree<T>::SubShapeTree(
-    const ShapeIndex& index) const {
-  TF_ASSIGN_OR_RETURN(const Shape* sub_shape,
-                      ShapeUtil::TryGetSubshape(shape(), index));
-  ShapeTree<T> sub_shape_tree(*sub_shape);
-  sub_shape_tree.CopySubtreeFrom(*this, index, {});
-  return std::move(sub_shape_tree);
-}
-
-template <typename T>
-bool ShapeTree<T>::operator==(const ShapeTree<T>& other) const {
-  bool equal = true;
-  ForEachElement([&other, &equal](const ShapeIndex& index, const T& data) {
-    if (data != other.element(index)) {
-      equal = false;
-    }
-  });
-  return equal;
-}
 
 }  // namespace xla
 

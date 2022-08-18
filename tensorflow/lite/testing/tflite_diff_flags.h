@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TESTING_TFLITE_DIFF_FLAGS_H_
 
 #include <cstring>
+#include <string>
 
 #include "absl/strings/match.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -26,7 +27,7 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
-DiffOptions ParseTfliteDiffFlags(int* argc, char** argv) {
+inline DiffOptions ParseTfliteDiffFlags(int* argc, char** argv) {
   struct {
     string tensorflow_model;
     string tflite_model;

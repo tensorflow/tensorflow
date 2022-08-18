@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.kernels.logging_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 
 from tensorflow.python.framework import test_util

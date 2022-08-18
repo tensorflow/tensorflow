@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Operations for automatic batching and unbatching."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -104,7 +100,7 @@ def batch_function(num_batch_threads,
           if not isinstance(a, ops.Tensor):
             raise ValueError("All arguments to functions decorated with "
                              "`batch_function`  are supposed to be Tensors; "
-                             "found %s" % repr(a))
+                             f"found {a!r}.")
         outputs = gen_batch_ops.batch_function(
             num_batch_threads=num_batch_threads,
             max_batch_size=max_batch_size,

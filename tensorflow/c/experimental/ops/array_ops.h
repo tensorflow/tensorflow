@@ -24,27 +24,39 @@ limitations under the License.
 namespace tensorflow {
 namespace ops {
 
+// Return a tensor with the same shape and contents as the input tensor or
+// value.
 Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
-                AbstractTensorHandle** output, const char* name = nullptr);
+                AbstractTensorHandle** output, const char* name = nullptr,
+                const char* raw_device_name = nullptr);
 
+// Returns a list of tensors with the same shapes and contents as the input
 Status IdentityN(AbstractContext* ctx,
                  absl::Span<AbstractTensorHandle* const> input,
                  absl::Span<AbstractTensorHandle*> output,
-                 const char* name = nullptr);
+                 const char* name = nullptr,
+                 const char* raw_device_name = nullptr);
 
+// Returns a tensor of zeros with the same shape and type as x.
 Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
-                 AbstractTensorHandle** y, const char* name = nullptr);
+                 AbstractTensorHandle** y, const char* name = nullptr,
+                 const char* raw_device_name = nullptr);
 
+// Returns the shape of a tensor.
 Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
              AbstractTensorHandle** output, DataType out_type = DT_INT32,
-             const char* name = nullptr);
+             const char* name = nullptr, const char* raw_device_name = nullptr);
 
+// Inserts a dimension of 1 into a tensor's shape.
 Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
                   AbstractTensorHandle* const dim,
-                  AbstractTensorHandle** output, const char* name = nullptr);
+                  AbstractTensorHandle** output, const char* name = nullptr,
+                  const char* raw_device_name = nullptr);
 
+// Returns a tensor of ones with the same shape and type as x.
 Status OnesLike(AbstractContext* ctx, AbstractTensorHandle* const x,
-                AbstractTensorHandle** y, const char* name = nullptr);
+                AbstractTensorHandle** y, const char* name = nullptr,
+                const char* raw_device_name = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow

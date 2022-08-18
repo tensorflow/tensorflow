@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for batchmatmul."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
@@ -32,7 +28,9 @@ def make_batchmatmul_tests(options):
           "dtype": [tf.float32],
           "shapes": [((3, 4, 7), (7, 9), (3, 4, 7), (7, 9)),
                      ((None, 4, 5), (None, 5, 6), (3, 4, 5), (3, 5, 6)),
-                     ((None, 1, 3, 4), (None, 4, 2), (2, 1, 3, 4), (5, 4, 2))],
+                     ((None, 1, 3, 4), (None, 4, 2), (2, 1, 3, 4), (5, 4, 2)),
+                     ((None, None, None, 3, 4), (None, None, None, 4, 3),
+                      (2, 2, 2, 3, 4), (2, 2, 2, 4, 3))],
           "adjoint_b": [False, True],
           "adjoint_a": [False, True],
           "rhs_constant": [False],
@@ -100,7 +98,7 @@ def make_batchmatmul_tests(options):
           outputs, feed_dict=dict(zip(inputs, [input0_value, input1_value])))
       return [input0_value, input1_value], output_values
 
-  options.use_experimental_converter = True
+  options.disable_batchmatmul_unfold = True
   make_zip_of_tests(
       options,
       test_parameters,

@@ -126,11 +126,14 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "CudnnRNNV3",
         "Einsum",
         "FusedConv2DBiasActivation",
+        "FusedSparseConvGpuV2",
         "GRUBlockCell",
         "GRUBlockCellGrad",
         "LSTMBlockCell",
         "LSTMBlockCellGrad",
         "MatMul",
+        "Mha",
+        "Tmlp",
     };
 #if TENSORFLOW_USE_ROCM
     if (true) {

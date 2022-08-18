@@ -102,9 +102,8 @@ Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
   for (const auto& p : attrs) {
     (*function_node_def.mutable_attr())[p.first] = p.second;
   }
-  Status status;
-  Node* function_node = g.AddNode(std::move(function_node_def), &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * function_node,
+                      g.AddNode(std::move(function_node_def)));
   for (size_t i = 0; i < input_nodes.size(); ++i) {
     g.AddEdge(input_nodes[i], 0, function_node, i);
   }
@@ -168,7 +167,7 @@ Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
   // from the library.
   *(gdef->mutable_library()) = flib_def.ReachableDefinitions(*gdef).ToProto();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 ClusterFunctionLibraryRuntime::~ClusterFunctionLibraryRuntime() {
@@ -208,7 +207,7 @@ void ClusterFunctionLibraryRuntime::Instantiate(
     const OpDef& sig = fdef->signature();
     TF_RETURN_IF_ERROR(ConstructFunctionGraph(sig, attrs, options, *lib_def,
                                               &gdef, send_keys, recv_keys));
-    return Status::OK();
+    return OkStatus();
   };
   Status s;
   if (options.lib_def) {

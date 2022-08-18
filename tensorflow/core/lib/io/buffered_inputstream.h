@@ -107,7 +107,7 @@ class BufferedInputStream : public InputStreamInterface {
   bool owns_input_stream_ = false;
   // When EoF is reached, file_status_ contains the status to skip unnecessary
   // buffer allocations.
-  tensorflow::Status file_status_ = Status::OK();
+  tensorflow::Status file_status_ = OkStatus();
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferedInputStream);
 };

@@ -19,12 +19,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -182,7 +184,7 @@ Status AlgorithmFromInput(XlaOpKernelContext* ctx, int alg_input_idx,
     alg = DefaultRngAlgForDeviceType(device_type_string);
   }
   *xla_alg = TensorFlowRngAlgToXla(alg);
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::XlaOp MaybeSliceCounter(xla::RandomAlgorithm const& alg,
@@ -213,7 +215,8 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     xla::XlaBuilder* builder = ctx->builder();
 
     TensorShape shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(
+                            0, &shape, xla::ValueInferenceMode::kUpperBound));
 
     const int key_input_idx = 1;
     const int counter_input_idx = 2;
@@ -242,7 +245,20 @@ class StatelessRandomUniformOp : public XlaOpKernel {
         xla::ConstantR0WithType(builder, rng_primitive_type, 0.0),
         xla::ConstantR0WithType(builder, rng_primitive_type, 1.0));
     auto uniform = MaybeConvertF32ToBF16(result.value, dtype_);
-    ctx->SetOutput(0, uniform);
+
+    // If the input shape is constant, no need to set dimension sizes.
+    // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
+    TensorShape static_shape;
+    Status status = ctx->ConstantInputAsShape(0, &static_shape);
+    if (status.ok()) {
+      ctx->SetOutput(0, uniform);
+      return;
+    }
+
+    auto result_or = xla::SetAllDimensionSizes(&ctx->value_inference(), uniform,
+                                               ctx->Input(0));
+    OP_REQUIRES_OK(ctx, result_or.status());
+    ctx->SetOutput(0, result_or.ValueOrDie());
   }
 
  private:
@@ -382,7 +398,8 @@ class StatelessRandomNormalOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(
+                            0, &shape, xla::ValueInferenceMode::kUpperBound));
 
     const int key_input_idx = 1;
     const int counter_input_idx = 2;
@@ -412,7 +429,20 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     auto result = xla::NormalFloatingPointDistribution(key, counter, generator,
                                                        xla_shape);
     auto normal = MaybeConvertF32ToBF16(result.value, dtype_);
-    ctx->SetOutput(0, normal);
+
+    // If the input shape is constant, no need to set dimension sizes.
+    // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
+    TensorShape static_shape;
+    Status status = ctx->ConstantInputAsShape(0, &static_shape);
+    if (status.ok()) {
+      ctx->SetOutput(0, normal);
+      return;
+    }
+
+    auto result_or = xla::SetAllDimensionSizes(&ctx->value_inference(), normal,
+                                               ctx->Input(0));
+    OP_REQUIRES_OK(ctx, result_or.status());
+    ctx->SetOutput(0, result_or.ValueOrDie());
   }
 
  private:
@@ -575,43 +605,11 @@ class GetAlgOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("StatelessRandomGetAlg"), GetAlgOp);
 
-class XlaRngBitGeneratorOp : public XlaOpKernel {
- public:
-  explicit XlaRngBitGeneratorOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx),
-        device_type_string_(ctx->device_type().type_string()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
-  }
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::RandomAlgorithm algorithm;
-    OP_REQUIRES_OK(ctx,
-                   AlgorithmFromInput(ctx, 0, device_type_string_, &algorithm));
-    xla::XlaOp initial_state = ctx->Input(1);
-
-    TensorShape shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(2, &shape));
-    xla::Shape xla_shape;
-    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
-
-    xla::XlaOp result =
-        xla::RngBitGenerator(algorithm, initial_state, xla_shape);
-    ctx->SetOutput(0, xla::GetTupleElement(result, 0));
-    ctx->SetOutput(1, xla::GetTupleElement(result, 1));
-  }
-
- private:
-  DataType dtype_;
-  string device_type_string_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaRngBitGeneratorOp);
-};
-
 REGISTER_XLA_OP(Name("XlaRngBitGenerator")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
                     .TypeConstraint("dtype", {DT_UINT32, DT_UINT64}),
-                XlaRngBitGeneratorOp);
+                MlirXlaOpKernel);
 
 }  // namespace
 }  // namespace tensorflow

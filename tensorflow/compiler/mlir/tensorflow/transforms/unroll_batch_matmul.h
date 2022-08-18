@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -26,32 +27,11 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
-// Unroll tf.BatchMatMulV2 op into a sequence of TF ops. Since TFLite does not
-// support BatchMatMul operation, it unrolls a BatchMatMul op into tf.Reshape,
-// tf.Slice, tf.MatMul, tf.Pack, and tf.Reshape ops.
-template <typename BatchMatMulOpType>
-class ConvertTFBatchMatMulOp : public OpRewritePattern<BatchMatMulOpType> {
-  using OpRewritePattern<BatchMatMulOpType>::OpRewritePattern;
-
-  static TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
-                                       Type element_type, Location loc,
-                                       PatternRewriter& rewriter);
-
-  static std::vector<Value> sliceInput(Value value, int batch_size,
-                                       Location loc, PatternRewriter& rewriter);
-
-  static TF::TransposeOp createTransposeOp(Value value, Location loc,
-                                           PatternRewriter& rewriter);
-
-  static TF::PackOp createMatMulOps(const std::vector<Value>& sliced_lhs,
-                                    const std::vector<Value>& sliced_rhs,
-                                    const tensorflow::MatMulBCast& bcast,
-                                    int rows, int cols, Type element_type,
-                                    Location loc, PatternRewriter& rewriter);
-
-  LogicalResult matchAndRewrite(BatchMatMulOpType op,
-                                PatternRewriter& rewriter) const override;
-};
+// Populate patterns to unroll tf.BatchMatMulV2 op into a sequence of TF ops.
+// Since TFLite does not support BatchMatMul operation, it unrolls a BatchMatMul
+// op into tf.Reshape, tf.Slice, tf.MatMul, tf.Pack, and tf.Reshape ops.
+void PopulateUnrollTfBatchMatMul(MLIRContext* context,
+                                 RewritePatternSet& patterns);
 
 }  // namespace TF
 }  // namespace mlir

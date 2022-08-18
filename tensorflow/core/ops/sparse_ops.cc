@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -37,7 +38,7 @@ Status SparseSparseMinOrMaxShapeFn(InferenceContext* c) {
   c->set_output(0, c->Matrix(InferenceContext::kUnknownDim,
                              InferenceContext::kUnknownDim));
   c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -57,7 +58,7 @@ REGISTER_OP("SparseAddGrad")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &b_indices));
       c->set_output(0, c->Vector(c->Dim(a_indices, 0)));
       c->set_output(1, c->Vector(c->Dim(b_indices, 0)));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseAdd")
@@ -80,7 +81,7 @@ REGISTER_OP("SparseAdd")
           0, c->Matrix(InferenceContext::kUnknownDim, c->Dim(a_shape, 0)));
       c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(2, a_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseTensorDenseMatMul")
@@ -115,7 +116,7 @@ REGISTER_OP("SparseTensorDenseMatMul")
       DimensionHandle inner_right = c->Dim(b, adjoint_b ? 1 : 0);
       TF_RETURN_IF_ERROR(c->Merge(inner_left, inner_right, &unused_dim));
       c->set_output(0, c->Matrix(output_left, output_right));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SerializeSparse")
@@ -131,7 +132,7 @@ REGISTER_OP("SerializeSparse")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
       c->set_output(0, c->Vector(3));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SerializeManySparse")
@@ -147,7 +148,7 @@ REGISTER_OP("SerializeManySparse")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
       c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 3));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DeserializeSparse")
@@ -159,13 +160,15 @@ REGISTER_OP("DeserializeSparse")
     .Attr("Tserialized: {string, variant} = DT_STRING")
     .SetShapeFn([](InferenceContext* c) {
       // serialized sparse is [?, ..., ?, 3] vector.
+      ShapeHandle unused_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &unused_shape));
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), -1), 3, &unused));
       c->set_output(0, c->Matrix(InferenceContext::kUnknownDim,
                                  InferenceContext::kUnknownDim));
       c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DeserializeManySparse")
@@ -186,7 +189,7 @@ REGISTER_OP("DeserializeManySparse")
                                  InferenceContext::kUnknownDim));
       c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseToDense")
@@ -202,7 +205,7 @@ REGISTER_OP("SparseToDense")
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseConcat")
@@ -247,7 +250,7 @@ REGISTER_OP("SparseConcat")
       c->set_output(0, c->Matrix(output_row_count, output_ind_cols));
       c->set_output(1, c->Vector(output_row_count));
       c->set_output(2, output_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseCross")
@@ -270,7 +273,7 @@ REGISTER_OP("SparseCross")
       c->set_output(0, c->Matrix(c->UnknownDim(), 2));
       c->set_output(1, c->Vector(c->UnknownDim()));
       c->set_output(2, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseCrossV2")
@@ -289,7 +292,7 @@ REGISTER_OP("SparseCrossV2")
       c->set_output(0, c->Matrix(c->UnknownDim(), 2));
       c->set_output(1, c->Vector(c->UnknownDim()));
       c->set_output(2, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseCrossHashed")
@@ -310,7 +313,7 @@ REGISTER_OP("SparseCrossHashed")
       c->set_output(0, c->Matrix(c->UnknownDim(), 2));
       c->set_output(1, c->Vector(c->UnknownDim()));
       c->set_output(2, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseSplit")
@@ -339,7 +342,7 @@ REGISTER_OP("SparseSplit")
         c->set_output(out_idx++, output_values);
       for (int i = 0; i < num_splits; ++i)
         c->set_output(out_idx++, output_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseSliceGrad")
@@ -353,7 +356,7 @@ REGISTER_OP("SparseSliceGrad")
       ShapeHandle indices;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &indices));
       c->set_output(0, c->Vector(c->Dim(indices, 0)));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseSlice")
@@ -376,7 +379,7 @@ REGISTER_OP("SparseSlice")
       c->set_output(0, output_indices);
       c->set_output(1, output_values);
       c->set_output(2, output_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseReorder")
@@ -397,7 +400,7 @@ REGISTER_OP("SparseReorder")
 
       c->set_output(0, indices);
       c->set_output(1, values);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseReshape")
@@ -417,7 +420,7 @@ REGISTER_OP("SparseReshape")
 
       c->set_output(0, c->Matrix(c->Dim(indices, 0), c->Dim(new_shape, 0)));
       c->set_output(1, new_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseTensorDenseAdd")
@@ -430,7 +433,7 @@ REGISTER_OP("SparseTensorDenseAdd")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(3));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseReduceMax")
@@ -488,7 +491,7 @@ REGISTER_OP("SparseReduceSumSparse")
         ShapeHandle input;                                       \
         TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input)); \
         c->set_output(0, c->Vector(c->Dim(input, 0)));           \
-        return Status::OK();                                     \
+        return OkStatus();                                       \
       })
 
 REGISTER_OP("SparseDenseCwiseMul").SPARSE_DENSE_CWISE_SIGNATURE();
@@ -512,7 +515,7 @@ REGISTER_OP("SparseSoftmax")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &values));  // sp_values
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
       c->set_output(0, values);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseSparseMaximum")
@@ -554,7 +557,7 @@ REGISTER_OP("AddSparseToTensorsMap")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("AddManySparseToTensorsMap")
@@ -572,7 +575,7 @@ REGISTER_OP("AddManySparseToTensorsMap")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TakeManySparseFromTensorsMap")
@@ -593,7 +596,7 @@ REGISTER_OP("TakeManySparseFromTensorsMap")
                                  InferenceContext::kUnknownDim));
       c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseFillEmptyRows")
@@ -634,7 +637,7 @@ REGISTER_OP("SparseFillEmptyRows")
       c->set_output(1, output_values);
       c->set_output(2, empty_row_indicator);
       c->set_output(3, reverse_index_map);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseFillEmptyRowsGrad")
@@ -650,7 +653,7 @@ REGISTER_OP("SparseFillEmptyRowsGrad")
       TF_RETURN_IF_ERROR(c->WithRank(grad_values, 1, &grad_values));
       c->set_output(0, reverse_index_map);
       c->set_output(1, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

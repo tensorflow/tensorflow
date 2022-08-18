@@ -94,7 +94,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       const string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
   }
 
@@ -113,7 +113,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
@@ -123,7 +123,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -178,7 +178,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
          {kToutputTypes, output_types},
          {kNumPaddedShapes, N}},
         output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -201,7 +201,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         mutex_lock l(mu_);
         if (!input_impl_) {
           *end_of_sequence = true;
-          return Status::OK();
+          return OkStatus();
         } else {
           *end_of_sequence = false;
           batch_elements.reserve(dataset()->batch_size_);
@@ -222,18 +222,18 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
 
       if (batch_elements.empty()) {
         DCHECK(*end_of_sequence);
-        return Status::OK();
+        return OkStatus();
       }
 
       if (dataset()->drop_remainder_ &&
           batch_elements.size() < dataset()->batch_size_) {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
 
       TF_RETURN_IF_ERROR(CopyBatch(ctx, batch_elements, out_tensors));
       *end_of_sequence = false;
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -249,7 +249,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       else
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kExhausted), ""));
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -262,7 +262,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -280,8 +280,6 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     Status CopyBatch(IteratorContext* ctx,
                      const std::vector<std::vector<Tensor>>& batch_elements,
                      std::vector<Tensor>* out_tensors) {
-      static bool in_experiment =
-          GetExperiments().contains("parallelize_batch_copy");
       const size_t num_tuple_components = batch_elements[0].size();
       const int64_t num_batch_elements = batch_elements.size();
       for (size_t component_index = 0; component_index < num_tuple_components;
@@ -359,12 +357,11 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
                 batch_elements[index][component_index], &batch_component,
                 index));
           }
-          return Status::OK();
+          return OkStatus();
         };
 
-        if (dataset()->parallel_copy_ ||
-            (in_experiment && (batch_component.AllocatedBytes() /
-                               num_batch_elements) >= (1 << 15))) {
+        if (dataset()->parallel_copy_ && (batch_component.AllocatedBytes() /
+                                          num_batch_elements) >= (1 << 15)) {
           BlockingCounter counter(num_batch_elements);
           Status status;
           mutex status_mu;
@@ -398,7 +395,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
           }
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     mutex mu_;

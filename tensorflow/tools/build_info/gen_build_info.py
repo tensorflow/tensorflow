@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,13 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Generates a Python module containing information about the build."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
-
-import six
 
 # cuda.cuda is only valid in OSS
 try:
@@ -53,7 +46,7 @@ def write_build_info(filename, key_value_list):
     build_info.update(tensorrt_config.config)
 
   for arg in key_value_list:
-    key, value = six.ensure_str(arg).split("=")
+    key, value = arg.split("=")
     if value.lower() == "true":
       build_info[key] = True
     elif value.lower() == "false":
@@ -80,10 +73,6 @@ def write_build_info(filename, key_value_list):
 # limitations under the License.
 # ==============================================================================
 \"\"\"Auto-generated module providing information about the build.\"\"\"
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 build_info = collections.OrderedDict(%s)

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Ignore_errors dataset transformations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util.tf_export import tf_export

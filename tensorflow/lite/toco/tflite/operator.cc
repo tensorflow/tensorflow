@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/operator.h"
 
 #include <map>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -48,6 +51,7 @@ TfLiteType GetTensorType(const ArrayDataType type) {
       {ArrayDataType::kInt8, kTfLiteInt8},
       {ArrayDataType::kUint8, kTfLiteUInt8},
       {ArrayDataType::kInt16, kTfLiteInt16},
+      {ArrayDataType::kUint16, kTfLiteUInt16},
       {ArrayDataType::kInt32, kTfLiteInt32},
       {ArrayDataType::kUint32, kTfLiteUInt32},
       {ArrayDataType::kInt64, kTfLiteInt64},
@@ -1576,7 +1580,7 @@ class Where : public BuiltinOperator<WhereOperator, ::tflite::WhereOptions,
 
 std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
     const std::string& tensorflow_node_def) {
-  auto fbb = absl::make_unique<flexbuffers::Builder>();
+  auto fbb = std::make_unique<flexbuffers::Builder>();
 
   ::tensorflow::NodeDef node_def;
   if (!node_def.ParseFromString(tensorflow_node_def)) {
@@ -1616,7 +1620,7 @@ class TensorFlowUnsupported : public BaseOperator {
     // Deserializing Flex ops doesn't work now.
     // TODO(ycling): Revisit and decide if we should fix the flow for importing
     // TFLite models with Flex ops.
-    auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+    auto op = std::make_unique<TensorFlowUnsupportedOperator>();
     if (custom_options) {
       auto flexbuffer_map =
           flexbuffers::GetRoot(custom_options->data(), custom_options->size())
@@ -1631,7 +1635,7 @@ class TensorFlowUnsupported : public BaseOperator {
     if (enable_select_tf_ops_) {
       return WriteFlexOpOptions(op.tensorflow_node_def);
     }
-    auto fbb = absl::make_unique<flexbuffers::Builder>();
+    auto fbb = std::make_unique<flexbuffers::Builder>();
 
     ::tensorflow::NodeDef node_def;
     if (!node_def.ParseFromString(op.tensorflow_node_def)) {

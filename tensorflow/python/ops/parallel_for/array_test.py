@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for vectorization of array kernels."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -32,6 +28,7 @@ from tensorflow.python.ops.parallel_for.test_util import PForTestCase
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class ArrayTest(PForTestCase):
 
@@ -81,6 +78,15 @@ class ArrayTest(PForTestCase):
       return outputs
 
     self._test_loop_fn(loop_fn, 3)
+
+  @test_util.run_v2_only
+  def test_gather_pfor_grad(self):
+    x = array_ops.zeros([1, 2])
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      r = pfor_control_flow_ops.vectorized_map(
+          lambda t: array_ops.gather(x, t, axis=-1), math_ops.range(2))
+    self.assertAllClose([[1., 1.]], tape.gradient(r, x))
 
   def test_shape(self):
     x = random_ops.random_uniform([3, 2, 3])
@@ -202,8 +208,6 @@ class ArrayTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_slice_loop_variant_begin(self):
-    self.skipTest("TODO(b/191880259): re-enable once XLA compile times are "
-                  "addressed.")
     x = random_ops.random_uniform([3, 2, 5, 3])
 
     def loop_fn(i):
@@ -259,6 +263,16 @@ class ArrayTest(PForTestCase):
     def loop_fn(i):
       x1 = array_ops.gather(x, i)
       return array_ops.pad(x1, padding, mode="CONSTANT")
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_pad_v2(self):
+    x = random_ops.random_uniform([3, 2, 3])
+    padding = constant_op.constant([[1, 2], [3, 4]])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return array_ops.pad_v2(x1, padding, mode="CONSTANT")
 
     self._test_loop_fn(loop_fn, 3)
 

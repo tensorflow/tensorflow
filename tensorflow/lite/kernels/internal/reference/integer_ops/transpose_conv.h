@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_TRANSPOSE_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_TRANSPOSE_CONV_H_
 
+#include <algorithm>
+
 #include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
@@ -119,15 +121,16 @@ inline void TransposeConv(
   }
 }
 
-// int16_t input (zero_point=0), int8_t filter, int64 accumulator
+// int16_t input (zero_point=0), int8_t filter, int32 or int64 accumulator
+template <typename Scalar>
 inline void TransposeConv(
     const ConvParams& params, const int32_t* output_multiplier,
     const int32_t* output_shift, const RuntimeShape& input_shape,
     const int16_t* input_data, const RuntimeShape& filter_shape,
     const int8_t* filter_data, const RuntimeShape& bias_shape,
-    const std::int64_t* bias_data, const RuntimeShape& output_shape,
+    const Scalar* bias_data, const RuntimeShape& output_shape,
     int16_t* output_data, const RuntimeShape& im2col_shape, int8_t* im2col_data,
-    std::int64_t* scratch_buffer) {
+    Scalar* scratch_buffer) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -157,7 +160,7 @@ inline void TransposeConv(
   const int num_elements = output_shape.FlatSize();
   // We need to initialize scratch_buffer to all 0s, as we apply the same
   // 'scatter' based trick as in float version.
-  memset(scratch_buffer, 0, num_elements * sizeof(std::int64_t));
+  memset(scratch_buffer, 0, num_elements * sizeof(Scalar));
 
   // Loop through input elements one at a time.
   for (int batch = 0; batch < batches; ++batch) {
@@ -198,8 +201,8 @@ inline void TransposeConv(
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          std::int64_t acc = scratch_buffer[Offset(output_shape, batch, out_y,
-                                                   out_x, out_channel)];
+          Scalar acc = scratch_buffer[Offset(output_shape, batch, out_y, out_x,
+                                             out_channel)];
           if (bias_data) {
             acc += bias_data[out_channel];
           }

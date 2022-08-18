@@ -22,11 +22,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <numeric>
-// TODO(ptucker): Consider switching back to hash_set - I had trouble getting it
-// to work with string values.
-#include <set>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/container/btree_set.h"
+#include "absl/container/flat_hash_set.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -58,23 +60,31 @@ Status GroupShape(const VarDimArray& input_shape, ShapeArray* grouped_shape) {
   }
   // grouped_shape is input_shape[:-1]
   *grouped_shape = ShapeArray(input_shape.begin(), input_shape.end() - 1);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Build `SparseTensor` from indices, values, and shape in inputs
 // [base_index, base_index + 3), and validate its rank and indices.
 Status SparseTensorFromContext(OpKernelContext* ctx, const int32_t base_index,
-                               bool validate_indices,
+                               const bool validate_indices,
                                sparse::SparseTensor* tensor) {
   // Assume row-major order.
-  const TensorShape shape =
-      TensorShape(ctx->input(base_index + 2).vec<int64_t>());
+  TensorShape shape;
+  const Tensor& shape_tensor = ctx->input(base_index + 2);
+  if (shape_tensor.dims() != 1) {
+    return errors::InvalidArgument("Shape must be a 1D tensor.");
+  }
+  TF_RETURN_IF_ERROR(
+      TensorShape::BuildTensorShape(shape_tensor.vec<int64_t>(), &shape));
   CheckRankAtLeast2(ctx, shape);
   std::vector<int64_t> order(shape.dims());
   std::iota(order.begin(), order.end(), 0);
 
-  return sparse::SparseTensor::Create(
+  Status status = sparse::SparseTensor::Create(
       ctx->input(base_index), ctx->input(base_index + 1), shape, order, tensor);
+
+  if (!validate_indices || !status.ok()) return status;
+  return tensor->IndicesValid();
 }
 
 // TODO(ptucker): CheckGroup is just a sanity check on the result of
@@ -134,14 +144,16 @@ const ShapeArray Strides(const VarDimArray& shape) {
 // TODO(ptucker): Consider sharding work across multiple threads. See
 // SparseCrossOp for an example.
 
-// Output `SparseTensor` of shape `output_shape`. `sets` contains a map of
+// Output `SparseTensor` of shape `output_shape`. `sets` contains pairs of
 // group indices (i.e., values for all but the last dimension of `output_shape`)
-// to set values, each of which will occupy the last dimension of
-// `output_shape`.
+// and set values, each of which will occupy the last dimension of
+// `output_shape`. `sets` should be sorted in ascending order by group indices.
 template <typename T>
-void OutputSparseTensor(OpKernelContext* ctx, const TensorShape& output_shape,
-                        const int64_t num_values,
-                        const std::map<std::vector<int64>, std::set<T>>& sets) {
+void OutputSparseTensor(
+    OpKernelContext* ctx, const TensorShape& output_shape,
+    const int64_t num_values,
+    const std::vector<std::pair<std::vector<int64_t>, absl::btree_set<T>>>&
+        sets) {
   // Allocate 3 output tensors for sparse data.
   Tensor *out_indices_t, *out_values_t, *out_shape_t;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(
@@ -202,8 +214,8 @@ bool ValidateIndicesFromContext(OpKernelConstruction* ctx) {
 template <typename T>
 void PopulateFromDenseGroup(OpKernelContext* ctx, const Tensor& input_tensor,
                             const VarDimArray& input_strides,
-                            const std::vector<int64>& group_indices,
-                            std::set<T>* result) {
+                            const std::vector<int64_t>& group_indices,
+                            absl::flat_hash_set<T>* result) {
   OP_REQUIRES(ctx, group_indices.size() == input_strides.size() - 1,
               errors::Internal("group_indices.size ", group_indices.size(),
                                ", !=  input_strides.size-1 ",
@@ -225,7 +237,7 @@ void PopulateFromDenseGroup(OpKernelContext* ctx, const Tensor& input_tensor,
 template <typename T>
 void PopulateFromSparseGroup(OpKernelContext* ctx, const sparse::Group& group,
                              const VarDimArray& sparse_tensor_shape,
-                             std::set<T>* result) {
+                             absl::flat_hash_set<T>* result) {
   CheckGroup<T>(ctx, group, sparse_tensor_shape);
   result->clear();
   const auto& group_values = group.values<T>();
@@ -251,7 +263,6 @@ void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
   sparse::SparseTensor set_st;
   OP_REQUIRES_OK(ctx,
                  SparseTensorFromContext(ctx, 0, validate_indices_, &set_st));
-  OP_REQUIRES_OK(ctx, set_st.IndicesValid());
 
   // Output shape is same as input except for last dimension, which reduces
   // to the set size of values along that dimension.
@@ -270,7 +281,7 @@ void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
   // Group by all but last dimension, create a set of group values, and add set
   // size to output.
   VarDimArray group_ix = set_st.order().subspan(0, set_st.order().size() - 1);
-  std::set<T> group_set;
+  absl::flat_hash_set<T> group_set;
   for (const auto& group : set_st.group(group_ix)) {
     PopulateFromSparseGroup<T>(ctx, group, set_st.shape(), &group_set);
 
@@ -342,8 +353,9 @@ class SetOperationOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  void ApplySetOperation(const std::set<T>& set1, const std::set<T>& set2,
-                         std::set<T>* result) const;
+  void ApplySetOperation(const absl::flat_hash_set<T>& set1,
+                         const absl::flat_hash_set<T>& set2,
+                         absl::btree_set<T>* result) const;
   void ComputeDenseToDense(OpKernelContext* ctx) const;
   void ComputeDenseToSparse(OpKernelContext* ctx) const;
   void ComputeSparseToSparse(OpKernelContext* ctx) const;
@@ -353,25 +365,52 @@ class SetOperationOp : public OpKernel {
 };
 
 template <typename T>
-void SetOperationOp<T>::ApplySetOperation(const std::set<T>& set1,
-                                          const std::set<T>& set2,
-                                          std::set<T>* result) const {
+void SetDifference(const absl::flat_hash_set<T>& set1,
+                   const absl::flat_hash_set<T>& set2,
+                   absl::btree_set<T>* result) {
+  for (const T& elem : set1) {
+    if (!set2.contains(elem)) result->insert(elem);
+  }
+}
+
+template <typename T>
+void SetIntersection(const absl::flat_hash_set<T>& set1,
+                     const absl::flat_hash_set<T>& set2,
+                     absl::btree_set<T>* result) {
+  if (set1.size() <= set2.size()) {
+    for (const T& elem : set1) {
+      if (set2.contains(elem)) result->insert(elem);
+    }
+  } else {
+    for (const T& elem : set2) {
+      if (set1.contains(elem)) result->insert(elem);
+    }
+  }
+}
+
+template <typename T>
+void SetUnion(const absl::flat_hash_set<T>& set1,
+              const absl::flat_hash_set<T>& set2, absl::btree_set<T>* result) {
+  result->insert(set1.begin(), set1.end());
+  result->insert(set2.begin(), set2.end());
+}
+
+template <typename T>
+void SetOperationOp<T>::ApplySetOperation(const absl::flat_hash_set<T>& set1,
+                                          const absl::flat_hash_set<T>& set2,
+                                          absl::btree_set<T>* result) const {
   switch (set_operation_) {
     case A_MINUS_B:
-      std::set_difference(set1.begin(), set1.end(), set2.begin(), set2.end(),
-                          std::inserter(*result, result->begin()));
+      SetDifference<T>(set1, set2, result);
       break;
     case B_MINUS_A:
-      std::set_difference(set2.begin(), set2.end(), set1.begin(), set1.end(),
-                          std::inserter(*result, result->begin()));
+      SetDifference<T>(set2, set1, result);
       break;
     case INTERSECTION:
-      std::set_intersection(set1.begin(), set1.end(), set2.begin(), set2.end(),
-                            std::inserter(*result, result->begin()));
+      SetIntersection<T>(set1, set2, result);
       break;
     case UNION:
-      std::set_union(set1.begin(), set1.end(), set2.begin(), set2.end(),
-                     std::inserter(*result, result->begin()));
+      SetUnion<T>(set1, set2, result);
       break;
   }
 }
@@ -383,7 +422,7 @@ Status CheckShapesMatch(VarDimArray shape1, VarDimArray shape2) {
                                    absl::StrJoin(shape1, ","), "] vs [",
                                    absl::StrJoin(shape2, ","), "]");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validate ranks are the same, and all but last dimension are the same.
@@ -396,7 +435,7 @@ Status GroupShapeFromInputs(VarDimArray shape1, VarDimArray shape2,
   TF_RETURN_IF_ERROR(GroupShape(shape2, &group_shape_2));
   TF_RETURN_IF_ERROR(CheckShapesMatch(group_shape_1, group_shape_2));
   *group_shape = group_shape_1;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Split `flat_group_index` into separate dimensions based on `group_shape`.
@@ -418,11 +457,11 @@ ShapeArray TensorShapeToArray(const TensorShape& t) {
   ShapeArray vec(t.dims());
   for (int i = 0; i < t.dims(); ++i) vec[i] = t.dim_size(i);
   return vec;
-};
+}
 
 // `ctx` contains set1 and set2 dense tensors.
 // Iterate over groups in set1 and set2, applying `ApplySetOperation` to each,
-// and outputing the result `SparseTensor`. A "group" is a collection of values
+// and outputting the result `SparseTensor`. A "group" is a collection of values
 // with the same first n-1 dimensions in set1 and set2.
 template <typename T>
 void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
@@ -439,12 +478,12 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
   const auto set1_strides = Strides(shape1);
   const auto set2_strides = Strides(shape2);
 
-  std::map<std::vector<int64>, std::set<T>> group_sets;
+  std::vector<std::pair<std::vector<int64_t>, absl::btree_set<T>>> group_sets;
   int64_t num_result_values = 0;
   int64_t max_set_size = 0;
 
-  std::set<T> set1_group_set;
-  std::set<T> set2_group_set;
+  absl::flat_hash_set<T> set1_group_set;
+  absl::flat_hash_set<T> set2_group_set;
   std::vector<int64_t> group_indices;
   int64_t num_elements;
   OP_REQUIRES_OK(ctx,
@@ -457,15 +496,15 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
     PopulateFromDenseGroup<T>(ctx, set2_t, set2_strides, group_indices,
                               &set2_group_set);
 
-    std::set<T> group_set;
+    absl::btree_set<T> group_set;
     ApplySetOperation(set1_group_set, set2_group_set, &group_set);
     if (!group_set.empty()) {
-      group_sets[group_indices] = group_set;
       const auto set_size = group_set.size();
       if (set_size > max_set_size) {
         max_set_size = set_size;
       }
       num_result_values += set_size;
+      group_sets.push_back({group_indices, std::move(group_set)});
     }
   }
 
@@ -485,7 +524,6 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
   sparse::SparseTensor set2_st;
   OP_REQUIRES_OK(ctx,
                  SparseTensorFromContext(ctx, 1, validate_indices_, &set2_st));
-  OP_REQUIRES_OK(ctx, set2_st.IndicesValid());
   // The following should stay in sync with `_dense_to_sparse_shape` shape
   // assertions in python/ops/set_ops.py, and `SetShapeFn` for
   // `DenseToSparseSetOperation` in ops/set_ops.cc.
@@ -495,12 +533,12 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
 
   const ShapeArray set1_strides = Strides(TensorShapeToArray(set1_t.shape()));
 
-  std::map<std::vector<int64>, std::set<T>> group_sets;
+  std::vector<std::pair<std::vector<int64_t>, absl::btree_set<T>>> group_sets;
   int64_t num_result_values = 0;
   int64_t max_set_size = 0;
 
-  std::set<T> set1_group_set;
-  std::set<T> set2_group_set;
+  absl::flat_hash_set<T> set1_group_set;
+  absl::flat_hash_set<T> set2_group_set;
   auto set2_grouper =
       set2_st.group(set2_st.order().subspan(0, set2_st.order().size() - 1));
   auto set2_group_it = set2_grouper.begin();
@@ -539,15 +577,15 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
       }
     }
 
-    std::set<T> group_set;
+    absl::btree_set<T> group_set;
     ApplySetOperation(set1_group_set, set2_group_set, &group_set);
     if (!group_set.empty()) {
-      group_sets[group_indices] = group_set;
       const auto set_size = group_set.size();
       if (set_size > max_set_size) {
         max_set_size = set_size;
       }
       num_result_values += set_size;
+      group_sets.push_back({group_indices, std::move(group_set)});
     }
   }
 
@@ -588,9 +626,6 @@ void CompareGroups(OpKernelContext* ctx,
   }
 }
 
-// Empty indices vector represents iteration end in `CompareGroups`.
-const std::vector<int64_t> GROUP_ITER_END;
-
 // `ctx` contains set1 and set2 sparse tensors.
 // Iterate over groups in set1 and set2, applying `ApplySetOperation` to each,
 // and outputing the result `SparseTensor`. A "group" is a collection of values
@@ -600,7 +635,6 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
   sparse::SparseTensor set1_st;
   OP_REQUIRES_OK(ctx,
                  SparseTensorFromContext(ctx, 0, validate_indices_, &set1_st));
-  OP_REQUIRES_OK(ctx, set1_st.IndicesValid());
 
   sparse::SparseTensor set2_st;
   OP_REQUIRES_OK(ctx,
@@ -613,15 +647,12 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
   OP_REQUIRES_OK(ctx, GroupShapeFromInputs(set1_st.shape(), set2_st.shape(),
                                            &group_shape));
 
-  const ShapeArray set1_strides = Strides(set1_st.shape());
-  const ShapeArray set2_strides = Strides(set2_st.shape());
-
-  std::map<std::vector<int64>, std::set<T>> group_sets;
+  std::vector<std::pair<std::vector<int64_t>, absl::btree_set<T>>> group_sets;
   int64_t num_result_values = 0;
   int64_t max_set_size = 0;
 
-  std::set<T> set1_group_set;
-  std::set<T> set2_group_set;
+  absl::flat_hash_set<T> set1_group_set;
+  absl::flat_hash_set<T> set2_group_set;
   auto set1_grouper =
       set1_st.group(set1_st.order().subspan(0, set1_st.order().size() - 1));
   auto set1_group_it = set1_grouper.begin();
@@ -629,20 +660,22 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
       set2_st.group(set2_st.order().subspan(0, set2_st.order().size() - 1));
   auto set2_group_it = set2_grouper.begin();
 
+  // Empty indices vector represents iteration end in `CompareGroups`.
+  const std::vector<int64_t> group_iter_end;
   // Group by rows, and iterate over rows of both sets in parallel, creating a
   // set for each row.
   while ((set1_group_it != set1_grouper.end()) ||
          (set2_group_it != set2_grouper.end())) {
-    const std::vector<int64>& set1_group_indices =
-        (set1_group_it == set1_grouper.end()) ? GROUP_ITER_END
+    const std::vector<int64_t>& set1_group_indices =
+        (set1_group_it == set1_grouper.end()) ? group_iter_end
                                               : (*set1_group_it).group();
-    const std::vector<int64>& set2_group_indices =
-        (set2_group_it == set2_grouper.end()) ? GROUP_ITER_END
+    const std::vector<int64_t>& set2_group_indices =
+        (set2_group_it == set2_grouper.end()) ? group_iter_end
                                               : (*set2_group_it).group();
 
     int64_t compare_groups;
     CompareGroups(ctx, set1_group_indices, set2_group_indices, &compare_groups);
-    const std::vector<int64>* group_indices = nullptr;
+    const std::vector<int64_t>* group_indices = nullptr;
 
     // Get values from set1, if applicable.
     set1_group_set.clear();
@@ -662,15 +695,15 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
       group_indices = &set2_group_indices;
     }
 
-    std::set<T> group_set;
+    absl::btree_set<T> group_set;
     ApplySetOperation(set1_group_set, set2_group_set, &group_set);
     if (!group_set.empty()) {
-      group_sets[*group_indices] = group_set;
       const auto set_size = group_set.size();
       if (set_size > max_set_size) {
         max_set_size = set_size;
       }
       num_result_values += set_size;
+      group_sets.push_back({*group_indices, std::move(group_set)});
     }
   }
 

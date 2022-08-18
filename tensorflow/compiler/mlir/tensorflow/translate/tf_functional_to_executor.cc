@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 #define DEBUG_TYPE "tf-functional-to-executor"
 
@@ -40,32 +41,22 @@ namespace {
 //      return %graph_results#...
 //    }
 struct FunctionalToExecutorDialectConversion
-    : public PassWrapper<FunctionalToExecutorDialectConversion, FunctionPass> {
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tf-functional-to-executor-conversion";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Transform from func op to TF executor dialect.";
-  }
-  void runOnFunction() override;
-
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mlir::tf_executor::TensorFlowExecutorDialect>();
-  }
+    : public TF::FunctionalToExecutorDialectConversionPassBase<
+          FunctionalToExecutorDialectConversion> {
+  void runOnOperation() override;
 };
 }  // end anonymous namespace
 
-void FunctionalToExecutorDialectConversion::runOnFunction() {
-  if (!llvm::hasSingleElement(getFunction())) {
+void FunctionalToExecutorDialectConversion::runOnOperation() {
+  auto func = getOperation();
+  if (func.isExternal()) return;
+  if (!llvm::hasSingleElement(func)) {
     LLVM_DEBUG(llvm::dbgs() << "Expect single block function, skip conversion "
                                "to tf_executor dialect\n");
     return;
   }
-  auto loc = getFunction().getLoc();
-  mlir::Block& body = getFunction().front();
+  auto loc = func.getLoc();
+  mlir::Block& body = func.front();
   // Find region of interest and ReturnOp.
   auto copy_range = body.without_terminator();
   if (copy_range.begin() != copy_range.end() &&
@@ -75,7 +66,7 @@ void FunctionalToExecutorDialectConversion::runOnFunction() {
     return;
   }
 
-  auto return_op = dyn_cast<ReturnOp>(body.getTerminator());
+  auto return_op = dyn_cast<func::ReturnOp>(body.getTerminator());
   if (!return_op) {
     LLVM_DEBUG(llvm::dbgs() << "Expect function to end with return\n");
     return;
@@ -83,11 +74,11 @@ void FunctionalToExecutorDialectConversion::runOnFunction() {
   // Build GraphOp.
   OpBuilder builder(&body, body.begin());
   auto graph_op = builder.create<tf_executor::GraphOp>(
-      loc, getFunction().getType().getResults());
+      loc, func.getFunctionType().getResults());
   graph_op.body().push_back(new Block);
   builder.setInsertionPointToEnd(&graph_op.GetBody());
   auto island = builder.create<tf_executor::IslandOp>(
-      loc, getFunction().getType().getResults(),
+      loc, func.getFunctionType().getResults(),
       tf_executor::ControlType::get(&getContext()), ArrayRef<Value>());
   // Create Fetch.
   ValueRange to_fetch = island.getResults();
@@ -108,11 +99,9 @@ void FunctionalToExecutorDialectConversion::runOnFunction() {
   }
 }
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateFunctionalToExecutorDialectConversionPass() {
   return std::make_unique<FunctionalToExecutorDialectConversion>();
 }
 
 }  // namespace mlir
-
-static mlir::PassRegistration<mlir::FunctionalToExecutorDialectConversion> pass;

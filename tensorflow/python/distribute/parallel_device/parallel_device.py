@@ -14,16 +14,11 @@
 # ==============================================================================
 """Utility for eagerly executing operations in parallel on multiple devices."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 import weakref
 
 from tensorflow.python import _pywrap_parallel_device
 from tensorflow.python.distribute import device_util
-from tensorflow.python.distribute.parallel_device import saving
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -32,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import nest
+from tensorflow.python.util import variable_utils
 
 _next_device_number = 0
 _next_device_number_lock = threading.Lock()
@@ -82,7 +78,6 @@ class ParallelDevice(object):
     context.register_custom_device(device, self._name, device_info)
     self._device_ids = None
     self._device_scope = None
-    self._saving_scope = None
     _all_parallel_devices[self._name] = self
 
   def _pack_tensor(self, *tensors):
@@ -95,11 +90,6 @@ class ParallelDevice(object):
              "a tensor, got {}. Consider running `tf.constant` or "
              "`tf.convert_to_tensor` first on literal values.")
             .format(tensors))
-    with ops.device(None):
-      # Explicitly read variable values. This can not be done on the parallel
-      # device since the tensors are to be packed.
-      tensors = [t.read_value() if isinstance(t, variables.Variable)
-                 else t for t in tensors]
     with ops.device(self._name):
       return tpu_ops.tpu_replicated_input(inputs=tensors)
 
@@ -130,6 +120,10 @@ class ParallelDevice(object):
           ("Creating a parallel tensor requires one tensor per component. "
            "Got {} but was expecting {}.")
           .format(len(tensors), len(self.components)))
+    with ops.device(None):
+      # Explicitly read variable values. This can not be done on the parallel
+      # device since the tensors are to be packed.
+      tensors = variable_utils.convert_variables_to_tensors(tensors)
     return nest.map_structure(self._pack_tensor, *tensors,
                               expand_composites=True)
 
@@ -159,6 +153,9 @@ class ParallelDevice(object):
     """
     self._assert_eager()
     unpacked_components = [[] for _ in range(len(self.components))]
+    with ops.device(self._name):
+      parallel_tensor = variable_utils.convert_variables_to_tensors(
+          parallel_tensor)
     for tensor in nest.flatten(parallel_tensor, expand_composites=True):
       for accumulator, unpacked_tensor in zip(
           unpacked_components, self._unpack_tensor(tensor)):
@@ -210,22 +207,14 @@ class ParallelDevice(object):
 
   def __enter__(self):
     """Runs ops in parallel, makes variables which save independent buffers."""
-    if (self._device_scope is not None or self._saving_scope is not None):
+    if self._device_scope is not None:
       raise AssertionError(
           "Re-entered a ParallelDevice scope without first exiting it.")
     self._assert_eager()
     self._device_scope = ops.device(self._name)
-    self._saving_scope = saving.independent_buffers(self)
     self._device_scope.__enter__()
-    # TODO(allenl): Fixing saving in Python is a bit odd. One alternative would
-    # be to provide a hook for the custom device to create save specs/etc., then
-    # call that hook from the default variable implementation if the variable is
-    # on a custom device. We'll likely want similar hooks for repr() and such.
-    self._saving_scope.__enter__()
     return self
 
   def __exit__(self, typ, exc, tb):
     self._device_scope.__exit__(typ, exc, tb)
-    self._saving_scope.__exit__(typ, exc, tb)
     self._device_scope = None
-    self._saving_scope = None

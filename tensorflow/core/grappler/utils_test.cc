@@ -435,11 +435,10 @@ TEST(CheckAttrExists, All) {
   Status status = CheckAttrExists(node, "banana");
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(absl::StrContains(
-      status.error_message(),
-      "Node 'node' lacks 'banana' attr: name: \"node\" "
-      "attr { key: \"apple\" value { i: 7 } } attr { key: \"pear\" value "
-      "{ b: true } }"));
+  EXPECT_TRUE(
+      absl::StrContains(status.error_message(),
+                        absl::StrFormat("Node 'node' lacks 'banana' attr: %s",
+                                        node.ShortDebugString())));
   EXPECT_FALSE(CheckAttrsExist(node, {""}).ok());
   EXPECT_FALSE(CheckAttrsExist(node, {"pear", "cherry"}).ok());
   EXPECT_FALSE(CheckAttrsExist(node, {"banana", "apple"}).ok());

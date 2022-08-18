@@ -36,7 +36,7 @@ class FlatMapDatasetParams : public DatasetParams {
         func_(std::move(func)),
         func_lib_(std::move(func_lib)),
         type_arguments_(std::move(type_arguments)) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -52,15 +52,16 @@ class FlatMapDatasetParams : public DatasetParams {
       input_names->emplace_back(
           absl::StrCat(FlatMapDatasetOp::kOtherArguments, "_", i));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{FlatMapDatasetOp::kFunc, func_},
-                    {FlatMapDatasetOp::kTarguments, type_arguments_},
-                    {FlatMapDatasetOp::kOutputShapes, output_shapes_},
-                    {FlatMapDatasetOp::kOutputTypes, output_dtypes_}};
-    return Status::OK();
+    *attr_vector = {{"f", func_},
+                    {"Targuments", type_arguments_},
+                    {"output_shapes", output_shapes_},
+                    {"output_types", output_dtypes_},
+                    {"metadata", ""}};
+    return OkStatus();
   }
 
   string dataset_type() const override {

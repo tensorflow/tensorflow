@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <initializer_list>
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
@@ -42,7 +45,8 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
   SingleOpModelWithNNAPI() = default;
   void Init(const NnApi* nnapi) {
     options_.disallow_nnapi_cpu = false;
-    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options_));
+    stateful_delegate_ =
+        std::make_unique<StatefulNnApiDelegate>(nnapi, options_);
     SetDelegate(stateful_delegate_.get());
   }
 
@@ -89,7 +93,7 @@ class HybridFullyConnectedOpModel : public SingleOpModelWithNNAPI {
                        .Union();
     SetBuiltinOp(BuiltinOperator_FULLY_CONNECTED,
                  BuiltinOptions_FullyConnectedOptions, options);
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED,
         ops::builtin::Register_FULLY_CONNECTED_PIE());
     BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
@@ -169,7 +173,7 @@ TEST_F(NnApiSignedQuantizationTest,
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 3);
@@ -205,7 +209,7 @@ TEST_F(NnApiSignedQuantizationTest,
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 3);
@@ -294,8 +298,8 @@ class BaseConvolutionOpModel : public SingleOpModelWithNNAPI {
                      dilation_width_factor, dilation_height_factor)
                      .Union());
 
-    resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
-                                                    registration);
+    resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
+                                                   registration);
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
                      /*num_threads=*/-1,
                      /* allow_fp32_relax_to_fp16 */ false,
@@ -355,7 +359,7 @@ TEST_F(NnApiSignedQuantizationTest,
   });
   m.SetBias({1, 2, 3});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 3);
@@ -395,7 +399,7 @@ TEST_F(NnApiSignedQuantizationTest,
   });
   m.SetBias({1, 2, 3});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 3);
@@ -480,7 +484,7 @@ TEST_F(NnApiSignedQuantizationTest,
 
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 3);
@@ -541,7 +545,7 @@ TEST_F(NnApiSignedQuantizationTest,
 
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 3);
@@ -601,7 +605,7 @@ TEST_F(NnApiSignedQuantizationTest,
 
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 4);
@@ -665,7 +669,7 @@ TEST_F(NnApiSignedQuantizationTest, Conv2dSignedPerChannelMapsToSignedOnSdk30) {
 
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 4);
@@ -727,7 +731,7 @@ TEST_F(NnApiSignedQuantizationTest, QuantizeUint8MapsToUint8OnSdk29) {
                     {TensorType_UINT8, {2, 5}, 0, 0, 0.5, 127});
 
   m.SetInput({-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);
@@ -749,7 +753,7 @@ TEST_F(NnApiSignedQuantizationTest, QuantizeUint8MapsToUint8OnSdk30) {
                     {TensorType_UINT8, {2, 5}, 0, 0, 0.5, 127});
 
   m.SetInput({-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);
@@ -772,7 +776,7 @@ TEST_F(NnApiSignedQuantizationTest, QuantizeInt8MapsToInt8OnSdk30) {
                     {TensorType_INT8, {2, 5}, 0, 0, 0.5, -1});
 
   m.SetInput({-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);
@@ -799,7 +803,7 @@ class DequantizeOpModel : public SingleOpModelWithNNAPI {
     SetBuiltinOp(BuiltinOperator_DEQUANTIZE, BuiltinOptions_DequantizeOptions,
                  CreateDequantizeOptions(builder_).Union());
 
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_DEQUANTIZE, ops::builtin::Register_DEQUANTIZE(),
         version);
 
@@ -827,7 +831,7 @@ TEST_F(NnApiSignedQuantizationTest, DequantizeUint8MapsToUint8OnSdk29) {
                       127, 1);
 
   m.SetInput<uint8_t>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);
@@ -849,7 +853,7 @@ TEST_F(NnApiSignedQuantizationTest, DequantizeUint8MapsToUint8OnSdk30) {
                       127, 1);
 
   m.SetInput<uint8_t>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);
@@ -873,7 +877,7 @@ TEST_F(NnApiSignedQuantizationTest,
                       2);
 
   m.SetInput<int8_t>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);
@@ -896,7 +900,7 @@ TEST_F(NnApiSignedQuantizationTest, DequantizeTestInt8MapsToInt8OnSdk30) {
                       2);
 
   m.SetInput<int8_t>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);

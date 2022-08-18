@@ -27,8 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -112,7 +110,7 @@ class ShapeInference {
       const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
       int64_t batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      absl::optional<PrimitiveType> preferred_element_type);
+      std::optional<PrimitiveType> preferred_element_type);
 
   // Infers the shape produced by the given FFT type on the given operand.
   static StatusOr<Shape> InferFftShape(const Shape& in, FftType fft_type,
@@ -338,7 +336,7 @@ class ShapeInference {
   static StatusOr<Shape> InferDotOpShape(
       const Shape& lhs, const Shape& rhs,
       const DotDimensionNumbers& dimension_numbers,
-      absl::optional<PrimitiveType> preferred_element_type);
+      std::optional<PrimitiveType> preferred_element_type);
 
   // Helper that infers the shape of the tensor produced by a gather operation
   // with the given input shape, gather indices shape and gather dimension
@@ -352,8 +350,8 @@ class ShapeInference {
   // shape, and scatter dimension numbers that constitute a scatter operation,
   // and returns the result shape of the scatter operation.
   static StatusOr<Shape> InferScatterShape(
-      const Shape& operand_shape, const Shape& scatter_indices_shape,
-      const Shape& updates_shape, const ProgramShape& to_apply_shape,
+      absl::Span<const Shape* const> arg_shapes,
+      const ProgramShape& to_apply_shape,
       const ScatterDimensionNumbers& scatter_dim_numbers);
 
   // Helper that validates the given input shape to GetDimensionSize.
@@ -372,7 +370,8 @@ class ShapeInference {
       absl::Span<const int64_t> window_strides,
       absl::Span<const std::pair<int64_t, int64_t>> padding,
       absl::Span<const int64_t> lhs_dilation,
-      absl::Span<const int64_t> rhs_dilation);
+      absl::Span<const int64_t> rhs_dilation,
+      std::optional<std::vector<bool>> window_reversal = std::nullopt);
 
  private:
   // Helper that infers the shape produced by performing an element-wise binary
@@ -392,10 +391,6 @@ class ShapeInference {
   static StatusOr<Shape> InferSelectShape(const Shape& pred,
                                           const Shape& on_true,
                                           const Shape& on_false);
-  // Helper for inferring the shape of TupleSelect ops.
-  static StatusOr<Shape> InferTupleSelectShape(const Shape& pred,
-                                               const Shape& on_true,
-                                               const Shape& on_false);
 
   // Helper for inferring shapes of binary operations which use degenerate
   // dimension broadcasting (a dimension of size 1 in one operand is broadcast
@@ -412,7 +407,8 @@ class ShapeInference {
       const Shape& smaller_shape, const Shape& larger_shape,
       absl::Span<const int64_t> broadcast_dimensions);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ShapeInference);
+  ShapeInference(const ShapeInference&) = delete;
+  ShapeInference& operator=(const ShapeInference&) = delete;
 };
 
 }  // namespace xla

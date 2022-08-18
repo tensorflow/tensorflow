@@ -33,8 +33,6 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
-#include "tensorflow/core/tfrt/utils/statusor.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
@@ -51,6 +49,8 @@ limitations under the License.
 namespace tfrt {
 namespace {
 
+using ::tensorflow::StatusOr;
+
 llvm::Expected<tensorflow::Tensor> CopyScalarHostTensorToTFTensor(
     const AnyScalarHostTensor& tensor) {
   auto element_byte_size = GetHostSize(tensor.dtype());
@@ -61,7 +61,7 @@ llvm::Expected<tensorflow::Tensor> CopyScalarHostTensorToTFTensor(
         tensor.dtype());
   }
 
-  llvm::SmallVector<ssize_t, 4> dims;
+  llvm::SmallVector<Index, 4> dims;
   tensor.shape().GetDimensions(&dims);
 
   auto tf_dtype = tensorflow::tfd::GetTfDataType(tensor.dtype());
@@ -119,7 +119,7 @@ llvm::Expected<tensorflow::Tensor> TFRTTensorToTFTensor(const Tensor& tensor,
   // Tensor so we don't have to re-implement it.
   if (auto* dht = llvm::dyn_cast<DenseHostTensor>(&tensor)) {
     return tensorflow::tfd::MoveHostBufferToTfTensor(
-        dht->buffer().CopyRef(), dht->dtype(), dht->shape());
+        dht->buffer(), dht->dtype(), dht->shape());
   }
   if (auto* sht = llvm::dyn_cast<StringHostTensor>(&tensor)) {
     return tensorflow::tfd::CopyShtToTfTensor(*sht);
@@ -145,7 +145,7 @@ StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(
   // TODO(chky): Handle non-trivial types such as strings.
   TF_ASSIGN_OR_RETURN(auto dtype, ConvertTFDTypeToTFRTDType(tensor.dtype()));
   auto shape = tensor.shape().dim_sizes();
-  TensorMetadata metadata(dtype, TensorShape(llvm::SmallVector<ssize_t, 4>(
+  TensorMetadata metadata(dtype, TensorShape(llvm::SmallVector<Index, 4>(
                                      shape.begin(), shape.end())));
 
   if (dtype == DType::String) {
@@ -175,7 +175,7 @@ StatusOr<tensorflow::Tensor> CreateTFTensorFromTensorHandle(
     const TensorHandle& tensor_handle) {
   const auto& metadata = tensor_handle.GetAvailableMetadata();
   TF_ASSIGN_OR_RETURN(auto dtype, ConvertTFRTDTypeToTFDType(metadata.dtype));
-  llvm::SmallVector<ssize_t, 4> shape;
+  llvm::SmallVector<Index, 4> shape;
   metadata.shape.GetDimensions(&shape);
   const auto& host_tensor = tensor_handle.GetAsyncTensor()->get<HostTensor>();
 

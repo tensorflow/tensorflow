@@ -14,10 +14,6 @@
 # ==============================================================================
 """Testing utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 import sys
 import types
@@ -155,6 +151,9 @@ class AutoGraphTestCase(test.TestCase):
 
   def assertEqual(self, *args):
     self.assertions.append((super().assertEqual, list(args)))
+
+  def assertLess(self, *args):
+    self.assertions.append((super().assertLess, list(args)))
 
   def assertGreaterEqual(self, *args):
     self.assertions.append((super().assertGreaterEqual, list(args)))

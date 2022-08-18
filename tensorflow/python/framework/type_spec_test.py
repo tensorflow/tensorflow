@@ -15,30 +15,29 @@
 
 """Tests for the TypeSpec base class."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 from absl.testing import parameterized
 
 import numpy as np
-import six
 
+from tensorflow.core.framework import full_type_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 
 
-class TwoTensors(object):
+class TwoTensors:
   """A simple value type to test TypeSpec.
 
   Contains two tensors (x, y) and a string (color).  The color value is a
@@ -86,11 +85,29 @@ class TwoTensorsSpec(type_spec.TypeSpec):
                value.color)
 
 
+@type_spec.register("tf.TwoTensorsSpecTwin")
+class TwoTensorsSpecTwin(TwoTensorsSpec):
+  pass
+
+
+@type_spec.register("tf.TwoTensorsSpecVariableSerialize")
+class TwoTensorsSpecVariableSerialize(TwoTensorsSpec):
+
+  def _serialize(self):
+    if self.color == "smaller_tuple":
+      return (self.x_shape, self.x_dtype, self.y_shape, self.y_dtype)
+    elif self.color == "different_order":
+      return (self.y_shape, self.x_shape, self.y_dtype, self.color,
+              self.x_dtype)
+
+    return (self.x_shape, self.x_dtype, self.y_shape, self.y_dtype, self.color)
+
+
 type_spec.register_type_spec_from_value_converter(
     TwoTensors, TwoTensorsSpec.from_value)
 
 
-class TwoComposites(object):
+class TwoComposites:
   """A simple value type to test TypeSpec.
 
   Contains two composite tensorstensors (x, y) and a string (color).
@@ -104,7 +121,7 @@ class TwoComposites(object):
 
 
 @type_spec.register("tf.TwoCompositesSpec")
-class TwoCompositesSpec(type_spec.TypeSpec):
+class TwoCompositesSpec(type_spec.BatchableTypeSpec):
   """A TypeSpec for the TwoTensors value type."""
 
   def __init__(self, x_spec, y_spec, color="red"):
@@ -123,7 +140,7 @@ class TwoCompositesSpec(type_spec.TypeSpec):
 
   def _from_components(self, components):
     x, y = components
-    return TwoTensors(x, y, self.color)
+    return TwoComposites(x, y, self.color)
 
   def _serialize(self):
     return (self.x_spec, self.y_spec, self.color)
@@ -134,12 +151,21 @@ class TwoCompositesSpec(type_spec.TypeSpec):
                type_spec.type_spec_from_value(value.y),
                value.color)
 
+  def _batch(self, batch_size):
+    return TwoCompositesSpec(
+        self.x_spec._batch(batch_size), self.y_spec._batch(batch_size),
+        self.color)
+
+  def _unbatch(self):
+    return TwoCompositesSpec(self.x_spec._unbatch(), self.y_spec._unbatch(),
+                             self.color)
+
 
 type_spec.register_type_spec_from_value_converter(
     TwoComposites, TwoCompositesSpec.from_value)
 
 
-class NestOfTensors(object):
+class NestOfTensors:
   """CompositeTensor containing a nest of tensors."""
 
   def __init__(self, x):
@@ -168,9 +194,9 @@ class NestOfTensorsSpec(type_spec.TypeSpec):
   def __repr__(self):
     if hasattr(self.spec, "_fields") and isinstance(
         self.spec._fields, collections_abc.Sequence) and all(
-            isinstance(f, six.string_types) for f in self.spec._fields):
+            isinstance(f, str) for f in self.spec._fields):
       return "%s(%r)" % (type(self).__name__, self._serialize())
-    return super(type_spec.TypeSpec, self).__repr__()  # pylint: disable=bad-super-call
+    return super().__repr__()
 
   @classmethod
   def from_value(cls, value):
@@ -265,6 +291,133 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertFalse(v2 == v1)
 
   @parameterized.named_parameters(
+      ("SameValue", TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool)),
+      ("UnknownDim", TwoTensorsSpec([5, 3], dtypes.int32, [8], dtypes.bool),
+       TwoTensorsSpec([5, None], dtypes.int32, [None], dtypes.bool)),
+      ("UnknownRank", TwoTensorsSpec([5, 3], dtypes.int32, [8], dtypes.bool),
+       TwoTensorsSpec(None, dtypes.int32, None, dtypes.bool)),
+      ("NamedTuple",
+       NestOfTensorsSpec(
+           _TestNamedTuple(
+               a=tensor_spec.TensorSpec([8, 5], dtypes.int32),
+               b=tensor_spec.TensorSpec([8, 12], dtypes.int32))),
+       NestOfTensorsSpec(
+           _TestNamedTuple(
+               a=tensor_spec.TensorSpec([None, 5], dtypes.int32),
+               b=tensor_spec.TensorSpec([None, None], dtypes.int32)))),
+      (
+          "NamedTupleRedefined",
+          NestOfTensorsSpec(
+              _TestNamedTuple2(  # Separate but equivalent type.
+                  a=tensor_spec.TensorSpec([8, 5], dtypes.int32),
+                  b=tensor_spec.TensorSpec([8, 12], dtypes.int32))),
+          NestOfTensorsSpec(
+              _TestNamedTuple(
+                  a=tensor_spec.TensorSpec([None, 5], dtypes.int32),
+                  b=tensor_spec.TensorSpec([None, None], dtypes.int32)))),
+  )
+  def testIsSubtypeOf(self, v1, v2):
+    self.assertTrue(v1.is_subtype_of(v2))
+
+  @parameterized.named_parameters(
+      ("DifferentType",
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),
+       TwoTensorsSpecTwin([5, 3], dtypes.int32, [None], dtypes.bool),
+      ),
+      ("DifferentDtype",
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.float32)),
+      ("DifferentRank", TwoTensorsSpec([5, 3], dtypes.int32, [None],
+                                       dtypes.bool),
+       TwoTensorsSpec([5, 3], dtypes.int32, [None, None], dtypes.bool)),
+      ("DifferentDimSize",
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),
+       TwoTensorsSpec([5, 8], dtypes.int32, [None], dtypes.bool)),
+      ("DifferentMetadata",
+       TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool, "red"),
+       TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool, "blue")),
+      ("SwappedValues", TwoTensorsSpec([5, 3], dtypes.int32, [None],
+                                       dtypes.bool),
+       TwoTensorsSpec([None], dtypes.bool, [5, 3], dtypes.int32)),
+      ("SwappedDimensions",
+       TwoTensorsSpec([3, 5], dtypes.int32, [None], dtypes.int32),
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.int32)),
+      ("Supertype", TwoTensorsSpec([5, None], dtypes.int32, [None],
+                                   dtypes.bool),
+       TwoTensorsSpec([5, 3], dtypes.int32, [8], dtypes.bool)),
+      ("SerializeDifferentStructure",
+       TwoTensorsSpecVariableSerialize([5, None], dtypes.int32, [None],
+                                       dtypes.bool),
+       TwoTensorsSpecVariableSerialize([5, None], dtypes.int32, [None],
+                                       dtypes.bool, "smaller_tuple")),
+      ("SerializeDifferentOrder",
+       TwoTensorsSpecVariableSerialize([5, None], dtypes.int32, [None],
+                                       dtypes.bool),
+       TwoTensorsSpecVariableSerialize([5, None], dtypes.int32, [None],
+                                       dtypes.bool, "different_order")),
+  )
+  def testIsNotSubtypeOf(self, v1, v2):
+    self.assertFalse(v1.is_subtype_of(v2))
+
+  @parameterized.named_parameters(
+      ("SameValue", TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool)),
+      ("DifferentValue",
+       TwoTensorsSpec([2, 1], dtypes.int32, [None], dtypes.bool),
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),
+       TwoTensorsSpec([None, None], dtypes.int32, [None], dtypes.bool)),
+      ("DifferentRank",
+       TwoTensorsSpec([3, 2, 1], dtypes.int32, [None], dtypes.bool),
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),
+       TwoTensorsSpec(None, dtypes.int32, [None], dtypes.bool)),
+      (
+          "NamedTupleRedefined",
+          NestOfTensorsSpec(
+              _TestNamedTuple2(  # Separate but equivalent type.
+                  a=tensor_spec.TensorSpec([8, 3], dtypes.int32),
+                  b=tensor_spec.TensorSpec([8, 12], dtypes.int32))),
+          NestOfTensorsSpec(
+              _TestNamedTuple(
+                  a=tensor_spec.TensorSpec([None, 5], dtypes.int32),
+                  b=tensor_spec.TensorSpec([7, None], dtypes.int32))),
+          NestOfTensorsSpec(
+              _TestNamedTuple(
+                  a=tensor_spec.TensorSpec([None, None], dtypes.int32),
+                  b=tensor_spec.TensorSpec([None, None], dtypes.int32)))),
+  )
+  def testMostSpecificCommonSupertype(self, v1, v2, result):
+    self.assertEqual(v1.most_specific_common_supertype([v2]), result)
+    self.assertEqual(v2.most_specific_common_supertype([v1]), result)
+
+  @parameterized.named_parameters(
+      ("DifferentType",
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),
+       TwoTensorsSpecTwin([5, 3], dtypes.int32, [None], dtypes.bool),
+      ),
+      ("DifferentDtype",
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),
+       TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.float32)),
+      ("DifferentMetadata",
+       TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool, "red"),
+       TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool, "blue")),
+      ("SerializeDifferentStructure",
+       TwoTensorsSpecVariableSerialize([5, None], dtypes.int32, [None],
+                                       dtypes.bool),
+       TwoTensorsSpecVariableSerialize([5, None], dtypes.int32, [None],
+                                       dtypes.bool, "smaller_tuple")),
+      ("SerializeDifferentOrder",
+       TwoTensorsSpecVariableSerialize([5, None], dtypes.int32, [None],
+                                       dtypes.bool),
+       TwoTensorsSpecVariableSerialize([5, None], dtypes.int32, [None],
+                                       dtypes.bool, "different_order")),
+  )
+  def testNoCommonSupertype(self, v1, v2):
+    self.assertIsNone(v1.most_specific_common_supertype([v2]))
+    self.assertIsNone(v2.most_specific_common_supertype([v1]))
+
+  @parameterized.named_parameters(
       ("SameValue",
        TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),
        TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool)),
@@ -335,13 +488,6 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),
        TwoTensorsSpec([5, 8], dtypes.int32, [None], dtypes.bool),
        TwoTensorsSpec([5, None], dtypes.int32, [None], dtypes.bool)),
-      ("DiffMetadataTensorSpecName",
-       TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool,
-                      tensor_spec.TensorSpec([4], name="a")),
-       TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool,
-                      tensor_spec.TensorSpec([4], name="b")),
-       TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool,
-                      tensor_spec.TensorSpec([4], name=None))),
       ("NamedTuple",
        NestOfTensorsSpec(_TestNamedTuple(
            a=tensor_spec.TensorSpec((), dtypes.int32),
@@ -374,6 +520,11 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ("IncompatibleMetadata",
        TwoTensorsSpec([5, 3], dtypes.int32, None, dtypes.bool, "red"),
        TwoTensorsSpec([5, 3], dtypes.int32, None, dtypes.bool, "blue")),
+      ("IncompatibleTensorSpecName",
+       TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool,
+                      tensor_spec.TensorSpec([4], name="a")),
+       TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool,
+                      tensor_spec.TensorSpec([4], name="b"))),
       ("IncompatibleNestType",
        NestOfTensorsSpec(_TestNamedTuple(
            a=tensor_spec.TensorSpec((), dtypes.int32),
@@ -474,6 +625,16 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                      [tensor_spec.TensorSpec([5], dtypes.int32),
                       tensor_spec.TensorSpec([5, 8], dtypes.float32)])
 
+  def testFullTypesForFlatTensors(self):
+    spec = TwoTensorsSpec([5], dtypes.int32, [5, 8], dtypes.float32, "red")
+    full_type_list = fulltypes_for_flat_tensors(spec)
+    expect = [
+        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET),
+        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET)
+    ]
+    self.assertEqual(len(spec._flat_tensor_specs), len(full_type_list))
+    self.assertEqual(expect, full_type_list)
+
   def testRepr(self):
     spec = TwoTensorsSpec([5, 3], dtypes.int32, None, dtypes.bool)
     self.assertEqual(
@@ -560,6 +721,137 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, "TypeSpec __main__.Foo has not been registered."):
       type_spec.get_name(Foo)
+
+  def testSerialization(self):
+    spec = TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool)
+    self.assertEqual(spec, trace_type.deserialize(trace_type.serialize(spec)))
+
+
+class BatchableTypeSpecTest(test_util.TensorFlowTestCase,
+                            parameterized.TestCase):
+
+  @parameterized.parameters([
+      {
+          "unbatched":
+              TwoCompositesSpec(
+                  tensor_spec.TensorSpec([]), tensor_spec.TensorSpec([8])),
+          "batch_size":
+              5,
+          "batched":
+              TwoCompositesSpec(
+                  tensor_spec.TensorSpec([5]), tensor_spec.TensorSpec([5, 8]))
+      },
+      {
+          "unbatched":
+              TwoCompositesSpec(
+                  tensor_spec.TensorSpec(None), tensor_spec.TensorSpec([8])),
+          "batch_size":
+              None,
+          "batched":
+              TwoCompositesSpec(
+                  tensor_spec.TensorSpec(None),
+                  tensor_spec.TensorSpec([None, 8]))
+      },
+      {
+          "unbatched":
+              TwoCompositesSpec(
+                  tensor_spec.TensorSpec([3, None]),
+                  tensor_spec.TensorSpec([8])),
+          "batch_size":
+              12,
+          "batched":
+              TwoCompositesSpec(
+                  tensor_spec.TensorSpec([12, 3, None]),
+                  tensor_spec.TensorSpec([12, 8]))
+      },
+      {
+          "unbatched":
+              TwoCompositesSpec(
+                  ragged_tensor.RaggedTensorSpec([3, None]),
+                  tensor_spec.TensorSpec([8])),
+          "batch_size":
+              12,
+          "batched":
+              TwoCompositesSpec(
+                  ragged_tensor.RaggedTensorSpec([12, 3, None]),
+                  tensor_spec.TensorSpec([12, 8]))
+      },
+  ])
+  def testBatch(self, unbatched, batch_size, batched):
+    self.assertEqual(unbatched._batch(batch_size), batched)
+    self.assertEqual(batched._unbatch(), unbatched)
+
+  def testFlatTensorSpecs(self):
+    a = TwoComposites(
+        ragged_factory_ops.constant([[1, 2], [3]]),
+        ragged_factory_ops.constant([[5], [6, 7, 8]]))
+    a_spec = type_spec.type_spec_from_value(a)
+    flat_specs = a_spec._flat_tensor_specs
+    self.assertEqual(flat_specs, [
+        tensor_spec.TensorSpec(None, dtypes.variant),
+        tensor_spec.TensorSpec(None, dtypes.variant)
+    ])
+
+  def testFullTypesForFlatTensors(self):
+    a = TwoComposites(
+        ragged_factory_ops.constant([[1, 2], [3]]),
+        ragged_factory_ops.constant([[5], [6, 7, 8]]))
+    a_spec = type_spec.type_spec_from_value(a)
+    full_type_list = fulltypes_for_flat_tensors(a_spec)
+    expect = [
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
+    ]
+    self.assertEqual(len(a_spec._flat_tensor_specs), len(full_type_list))
+    self.assertEqual(expect, full_type_list)
+
+  def testToTensorList(self):
+    a = TwoComposites(
+        ragged_factory_ops.constant([[1, 2], [3]]),
+        ragged_factory_ops.constant([[5], [6, 7, 8]]))
+    a_spec = type_spec.type_spec_from_value(a)
+    tensor_list = a_spec._to_tensor_list(a)
+    self.assertLen(tensor_list, 2)
+    self.assertEqual(tensor_list[0].dtype, dtypes.variant)
+    self.assertEqual(tensor_list[1].dtype, dtypes.variant)
+    self.assertEqual(tensor_list[0].shape.rank, 0)
+    self.assertEqual(tensor_list[1].shape.rank, 0)
+
+    b = a_spec._from_tensor_list(tensor_list)
+    self.assertAllEqual(a.x, b.x)
+    self.assertAllEqual(a.y, b.y)
+    self.assertEqual(a.color, b.color)
+
+    c = a_spec._from_compatible_tensor_list(tensor_list)
+    self.assertAllEqual(a.x, c.x)
+    self.assertAllEqual(a.y, c.y)
+    self.assertEqual(a.color, c.color)
+
+  def testToBatchedTensorList(self):
+    a = TwoComposites(
+        ragged_factory_ops.constant([[1, 2], [3]]),
+        ragged_factory_ops.constant([[5], [6, 7, 8]]))
+    a_spec = type_spec.type_spec_from_value(a)
+    tensor_list = a_spec._to_batched_tensor_list(a)
+    self.assertLen(tensor_list, 2)
+    self.assertEqual(tensor_list[0].dtype, dtypes.variant)
+    self.assertEqual(tensor_list[1].dtype, dtypes.variant)
+    self.assertEqual(tensor_list[0].shape.rank, 1)
+    self.assertEqual(tensor_list[1].shape.rank, 1)
+
+    b = a_spec._from_tensor_list(tensor_list)
+    self.assertAllEqual(a.x, b.x)
+    self.assertAllEqual(a.y, b.y)
+    self.assertEqual(a.color, b.color)
+
+    c = a_spec._from_compatible_tensor_list(tensor_list)
+    self.assertAllEqual(a.x, c.x)
+    self.assertAllEqual(a.y, c.y)
+    self.assertEqual(a.color, c.color)
 
 
 if __name__ == "__main__":

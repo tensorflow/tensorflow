@@ -60,12 +60,10 @@ ops above and associated assignment operations), tf.function traces a second
 time if it sees variables on the first call.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
+import os
 import threading
+import types as types_lib
 import weakref
 import six
 
@@ -75,8 +73,10 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
+from tensorflow.python.eager import function_spec as function_spec_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -88,7 +88,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -152,9 +152,8 @@ class _FrequentTracingDetector(object):
           "a loop, (2) passing tensors with different shapes, (3) passing "
           "Python objects instead of tensors. For (1), please define your "
           "@tf.function outside of the loop. For (2), @tf.function has "
-          "experimental_relax_shapes=True option that relaxes argument "
-          "shapes that can avoid unnecessary retracing. For (3), please "
-          "refer to "
+          "reduce_retracing=True option that can avoid unnecessary "
+          "retracing. For (3), please refer to "
           "https://www.tensorflow.org/guide/function#controlling_retracing"
           " and https://www.tensorflow.org/api_docs/python/tf/function for "
           " more details.".format(
@@ -253,7 +252,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         initializer tensor will be added to this map in addition to adding the
         assignment to the function.
       lifted_initializer_graph: FuncGraph to try to lift initializers to.
-      synchronization: Indicates when a distributed a variable will be
+      synchronization: Indicates when a distributed variable will be
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
@@ -379,6 +378,10 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
             resource_variable_ops.var_is_initialized_op(self._handle),
             not_assign_fn, assign_fn)
 
+
+JIT_COMPILE_FUNCTIONS = (
+    os.getenv("TF_FUNCTION_JIT_COMPILE_DEFAULT", "false").lower()
+    in ("true", "1"))
 
 RUN_FUNCTIONS_EAGERLY = False
 
@@ -540,7 +543,7 @@ class OptionalXlaContext(object):
 
 # TODO(mdan): Consider expose this type for instance type checking.
 @tf_export("__internal__.function.Function", v1=[])
-class Function(core.GenericFunction):
+class Function(core.GenericFunction, trackable.Trackable):
   """A `tf.types.experimental.GenericFunction` created by `tf.function`.
 
   Currently, individual methods/attributes under this class are not guaranteed
@@ -553,9 +556,9 @@ class Function(core.GenericFunction):
                input_signature=None,
                autograph=True,
                jit_compile=None,
+               reduce_retracing=False,
                experimental_implements=None,
                experimental_autograph_options=None,
-               experimental_relax_shapes=False,
                experimental_follow_type_hints=None):
     """Initializes a `Function`.
 
@@ -565,18 +568,18 @@ class Function(core.GenericFunction):
       input_signature: See the documentation for `tf.function`.
       autograph: See the documentation for `tf.function`.
       jit_compile: See the documentation for `tf.function`.
+      reduce_retracing: See the documentation for `tf.function`.
       experimental_implements: See the documentation for `tf.function`.
       experimental_autograph_options: See the documentation for `tf.function`.
-      experimental_relax_shapes: See the documentation for `tf.function`.
       experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
     """
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._python_function = python_function
-    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+    self._function_spec = function_spec_lib.FunctionSpec.from_function_and_signature(
         python_function,
         input_signature,
         jit_compile=jit_compile,
@@ -589,7 +592,7 @@ class Function(core.GenericFunction):
     self._shared_rendezvous = None
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
-    self._experimental_relax_shapes = experimental_relax_shapes
+    self._reduce_retracing = reduce_retracing
     self._jit_compile = jit_compile
     if experimental_follow_type_hints is None:
       experimental_follow_type_hints = False
@@ -599,10 +602,13 @@ class Function(core.GenericFunction):
     self._stateless_fn = None  # GUARDED_BY(self._lock)
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
-    self._input_signature = input_signature
     self._key_for_call_stats = self._get_key_for_call_stats()
     self._omit_frequent_tracing_warning = False
     ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
+
+  @property
+  def name(self):
+    return self._name
 
   def __getstate__(self):
     """Custom pickling, to omit unpickleable objects."""
@@ -615,7 +621,7 @@ class Function(core.GenericFunction):
   def __setstate__(self, state):
     """Restore from pickled state."""
     self.__dict__ = state
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._key_for_call_stats = self._get_key_for_call_stats()
 
@@ -721,9 +727,9 @@ class Function(core.GenericFunction):
         attributes=attributes,
         autograph=self._autograph,
         jit_compile=self._jit_compile,
+        reduce_retracing=self._reduce_retracing,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_follow_type_hints=self._experimental_follow_type_hints,
-        experimental_relax_shapes=self._experimental_relax_shapes)
+        experimental_follow_type_hints=self._experimental_follow_type_hints)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
@@ -739,23 +745,7 @@ class Function(core.GenericFunction):
       kwds: Keyword arguments to the python callable.
       add_initializers_to: Where to collect variable initializers, if not None.
     """
-
-    if self._input_signature is not None:
-      arglen = len(self._input_signature)
-      arg_names_len = len(self.function_spec.arg_names)
-      default_arg_len = len(self.function_spec.fullargspec.defaults or ())
-      required_arg_len = arg_names_len - default_arg_len
-      # The input signature must cover all required function arguments.
-      if arglen < required_arg_len:
-        missing_tensor_specs = self.function_spec.arg_names[
-            arglen:required_arg_len]
-        raise TypeError(
-            f"The decorated function {self._name} has {required_arg_len} "
-            f"required argument(s), but tf.function was only passed an "
-            f"input_signature of length {arglen}. This covers {arglen} "
-            f"required argument(s): {self.function_spec.arg_names[:arglen]}, "
-            f"but TensorSpecs are still required for the remaining "
-            f"{len(missing_tensor_specs)} argument(s): {missing_tensor_specs}.")
+    self.function_spec.validate_input_signature_with_argspec()
 
     created_variables = []
     lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
@@ -781,8 +771,11 @@ class Function(core.GenericFunction):
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
       raise ValueError(
-          "tf.function-decorated function tried to create "
-          "variables on non-first call.")
+          "tf.function only supports singleton tf.Variables created on the "
+          "first call. Make sure the tf.Variable is only created once or "
+          "created outside tf.function. See "
+          "https://www.tensorflow.org/guide/function#creating_tfvariables "
+          "for more information.")
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
@@ -793,12 +786,12 @@ class Function(core.GenericFunction):
         python_function=(self._python_function
                          if python_function is None else python_function),
         name=self._name,
-        input_signature=self._input_signature,
+        input_signature=self.input_signature,
         autograph=self._autograph,
         jit_compile=self._jit_compile,
+        reduce_retracing=self._reduce_retracing,
         experimental_implements=self._implements,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_relax_shapes=self._experimental_relax_shapes,
         experimental_follow_type_hints=self._experimental_follow_type_hints)
 
     if self._shared_rendezvous:
@@ -829,7 +822,7 @@ class Function(core.GenericFunction):
           "Functions cannot be decorated after they have been traced.")
 
     self._python_function = decorator(self._python_function)
-    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+    self._function_spec = function_spec_lib.FunctionSpec.from_function_and_signature(
         self._python_function, self.input_signature)
 
   # TODO: Remove this private method after updating all its uses
@@ -969,9 +962,9 @@ class Function(core.GenericFunction):
         # stateless function.
         return self._stateless_fn(*args, **kwds)
     else:
-      _, _, _, filtered_flat_args = \
+      _, _, filtered_flat_args = (
           self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
-              *args, **kwds)
+              args, kwds))
       # If we did not create any variables the trace we have is good enough.
       return self._concrete_stateful_fn._call_flat(
           filtered_flat_args, self._concrete_stateful_fn.captured_inputs)  # pylint: disable=protected-access
@@ -979,46 +972,10 @@ class Function(core.GenericFunction):
     def fn_with_cond(inner_args, inner_kwds, inner_filtered_flat_args):
       """Conditionally runs initialization if it's needed."""
       condition = True
-      for wr in self._created_variables:
-        variable = wr()
-        if variable is None:
-          raise ValueError(
-              "A tf.Variable created inside your tf.function has been"
-              " garbage-collected. Your code needs to keep Python references"
-              " to variables created inside `tf.function`s.\n"
-              "\n"
-              "A common way to raise this error is to create and return a"
-              " variable only referenced inside your function:\n"
-              "\n"
-              "@tf.function\n"
-              "def f():\n"
-              "  v = tf.Variable(1.0)\n"
-              "  return v\n"
-              "\n"
-              "v = f()  # Crashes with this error message!\n"
-              "\n"
-              "The reason this crashes is that @tf.function annotated"
-              " function returns a **`tf.Tensor`** with the **value** of the"
-              " variable when the function is called rather than the"
-              " variable instance itself. As such there is no code holding a"
-              " reference to the `v` created inside the function and Python"
-              " garbage collects it.\n"
-              "\n"
-              "The simplest way to fix this issue is to create variables"
-              " outside the function and capture them:\n"
-              "\n"
-              "v = tf.Variable(1.0)\n"
-              "\n"
-              "@tf.function\n"
-              "def f():\n"
-              "  return v\n"
-              "\n"
-              "f()  # <tf.Tensor: numpy=1.>\n"
-              "v.assign_add(1.)\n"
-              "f()  # <tf.Tensor: numpy=2.>")
+      for v, _ in initializers:
         condition = math_ops.logical_and(
             condition, resource_variable_ops.var_is_initialized_op(
-                variable.handle))
+                v.handle))
       # We want to call stateless_fn if possible because it avoids recomputing
       # potentially expensive initializers.
       return control_flow_ops.cond(
@@ -1031,9 +988,9 @@ class Function(core.GenericFunction):
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
-    canon_args, canon_kwds, _, filtered_flat_args = \
+    canon_args, canon_kwds, filtered_flat_args = (
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
-            *args, **kwds)
+            args, kwds))
     return function_lib.defun(fn_with_cond)(canon_args, canon_kwds,
                                             filtered_flat_args)
 
@@ -1048,9 +1005,8 @@ class Function(core.GenericFunction):
     fn_name = concrete_fn.name
 
     # pylint: disable=protected-access
-    _, _, _, filtered_flat_args = \
-        concrete_fn._function_spec.canonicalize_function_inputs(
-            *args, **kwargs)
+    _, _, filtered_flat_args = (
+        concrete_fn._function_spec.canonicalize_function_inputs(args, kwargs))
 
     def compiler_ir_generator(stage="hlo", device_name=None):
       # TODO(cheshire): This is a hack to get the current "preferred" device,
@@ -1175,10 +1131,10 @@ class Function(core.GenericFunction):
     # pylint: disable=protected-access
     if self._stateful_fn:
       concrete_functions.extend(
-          self._stateful_fn._function_cache.all_values())
+          self._stateful_fn._list_all_concrete_functions())
     if self._stateless_fn:
       concrete_functions.extend(
-          self._stateless_fn._function_cache.all_values())
+          self._stateless_fn._list_all_concrete_functions())
     # pylint: enable=protected-access
     return concrete_functions
 
@@ -1199,7 +1155,7 @@ class Function(core.GenericFunction):
         logging.info("Unsupported signature for serialization: %s.", signature)
         continue
       equal_to_signature = functools.partial(
-          function_lib.is_same_structure, signature, check_values=True)
+          function_spec_lib.is_same_structure, signature, check_values=True)
       if not any(equal_to_signature(s) for s in seen_signatures):
         seen_signatures.append(signature)
 
@@ -1209,6 +1165,17 @@ class Function(core.GenericFunction):
     for args, kwargs in seen_signatures:
       concrete_functions.append(self.get_concrete_function(*args, **kwargs))
     return concrete_functions
+
+  def _trackable_children(self, save_type="checkpoint", **kwargs):
+    """For implementing `Trackable`."""
+    if save_type == "checkpoint":
+      return {}
+    return {f"trace_{n}": fn for n, fn in
+            enumerate(self._list_all_concrete_functions_for_serialization())}
+
+  def _deserialization_dependencies(self, children):
+    """Returns concrete functions which must be loaded before this object."""
+    return children
 
   def _get_concrete_function_garbage_collected(self, *args, **kwargs):
     """Returns a `ConcreteFunction` specialized to inputs and execution context.
@@ -1270,14 +1237,28 @@ class Function(core.GenericFunction):
     #   foo = Foo()
     #   foo.bar()  # `foo.bar` is a `Function` instance
     #
-    # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
-    # new instance of `Function` here to allow different instances each
-    # to create variables once, thereby allowing methods to be decorated with
-    # tf.function. Keeps a cache to avoid retracing the function every time the
-    # descriptor is accessed.
+    # then `instance` will be `foo` (and `owner` will be `Foo`).  For composite
+    # tensors, we can just treat `instance` as a normal parameter.  But for
+    # other types, we create a new instance of `Function` here to allow
+    # different instances each to create variables once, thereby allowing
+    # methods to be decorated with tf.function. Keeps a cache to avoid retracing
+    # the function every time the descriptor is accessed.
+    # TODO(mdan): Identify types which can just be parameters more generically.
+    #
+    # The check for instance._type_spec=None is used because certain classes
+    # (including subclasses of tf.linalg.LinearOperator) are subclasses of
+    # CompositeTensor but do not actually implement the required APIs.
+    # TODO(b/199278478): Fix those classes, then remove the check for
+    # `instance._type_spec is not None`.
+    if (isinstance(instance, composite_tensor.CompositeTensor) and
+        instance._type_spec is not None):  # pylint: disable=protected-access
+      return types_lib.MethodType(self, instance)
     if instance not in self._descriptor_cache:
       if instance is None:
         return self
+      # TODO(mdan): If the CompositeTensor path works, do the same here.
+      # It's unclear whether we need the tf-decorator, or could just call
+      # MethodType(self.clone(), instance)
       self._descriptor_cache[instance] = (
           function_lib.class_method_to_instance_method(self, instance))
     return self._descriptor_cache[instance]
@@ -1287,13 +1268,18 @@ class Function(core.GenericFunction):
 @deprecation.deprecated_args(None,
                              "experimental_compile is deprecated, use "
                              "jit_compile instead", "experimental_compile")
+@deprecation.deprecated_args(None,
+                             "experimental_relax_shapes is deprecated, use "
+                             "reduce_retracing instead",
+                             "experimental_relax_shapes")
 def function(func=None,
              input_signature=None,
              autograph=True,
              jit_compile=None,
+             reduce_retracing=False,
              experimental_implements=None,
              experimental_autograph_options=None,
-             experimental_relax_shapes=False,
+             experimental_relax_shapes=None,
              experimental_compile=None,
              experimental_follow_type_hints=None) -> core.GenericFunction:
   """Compiles a function into a callable TensorFlow graph.
@@ -1324,8 +1310,8 @@ def function(func=None,
 
   ## Features
 
-  `func` may use data-dependent control flow, including `if`, `for`, `while`
-  `break`, `continue` and `return` statements:
+  `func` may use data-dependent Python control flow statements, including `if`,
+  `for`, `while` `break`, `continue` and `return`:
 
   >>> @tf.function
   ... def f(x):
@@ -1516,7 +1502,7 @@ def function(func=None,
   `func` may contain TensorFlow operations mixed with pure Python operations.
   However, when the function is executed, only the TensorFlow operations will
   run. The Python operations run only once, at trace time. If TensorFlow
-  operations depend on results from Pyhton operations, those results will be
+  operations depend on results from Python operations, those results will be
   frozen into the graph.
 
   >>> @tf.function
@@ -1539,7 +1525,7 @@ def function(func=None,
 
   ## Using type annotations to improve performance
 
-  'experimental_follow_type_hints` can be used along with type annotations to
+  `experimental_follow_type_hints` can be used along with type annotations to
   reduce retracing by automatically casting any Python values to `tf.Tensor`
   (something that is not done by default, unless you use input signatures).
 
@@ -1564,7 +1550,7 @@ def function(func=None,
   <tf.Tensor: shape=(), dtype=int32, numpy=2>
 
   Args:
-    func: the function to be compiled. If `func` is None, `tf.function` returns
+    func: The function to be compiled. If `func` is None, `tf.function` returns
       a decorator that can be invoked with a single argument - `func`. In other
       words, `tf.function(input_signature=...)(func)` is equivalent to
       `tf.function(func, input_signature=...)`. The former can be used as
@@ -1575,8 +1561,9 @@ def function(func=None,
       inferred input signature.  If input_signature is specified, every input to
       `func` must be a `Tensor`, and `func` cannot accept `**kwargs`.
     autograph: Whether autograph should be applied on `func` before tracing a
-      graph. Data-dependent control flow requires `autograph=True`. For more
-      information, see the [tf.function and AutoGraph guide](
+      graph. Data-dependent Python control flow statements require
+      `autograph=True`. For more information, see the
+      [tf.function and AutoGraph guide](
       https://www.tensorflow.org/guide/function#autograph_transformations).
     jit_compile: If `True`, compiles the function using
       [XLA](https://tensorflow.org/xla). XLA performs compiler optimizations,
@@ -1592,6 +1579,10 @@ def function(func=None,
       TPU cores, one TPU core and its host CPU).
       Not all functions are compilable, see a list of
       [sharp corners](https://tensorflow.org/xla/known_issues).
+    reduce_retracing: When True, `tf.function` attempts to reduce the
+      amount of retracing, for example by using more generic shapes. This
+      can be controlled for user objects by customizing their associated
+      `tf.types.experimental.TraceType`.
     experimental_implements: If provided, contains a name of a "known" function
       this implements. For example "mycompany.my_recurrent_cell".
       This is stored as an attribute in inference function,
@@ -1614,8 +1605,8 @@ def function(func=None,
       project.
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
-    experimental_relax_shapes: When True, `tf.function` may generate fewer,
-      graphs that are less specialized on input shapes.
+    experimental_relax_shapes: Deprecated. Use `reduce_retracing`
+      instead.
     experimental_compile: Deprecated alias to 'jit_compile'.
     experimental_follow_type_hints: When True, the function may use type
       annotations from `func` to optimize the tracing performance. For example,
@@ -1631,12 +1622,15 @@ def function(func=None,
      `ValueError` when attempting to use `jit_compile=True`, but XLA support is
      not available.
   """
-  if func is not None:
-    function_lib.validate_python_function(func)
-  if input_signature is not None:
-    function_lib.validate_signature(input_signature)
   if experimental_follow_type_hints is None:
     experimental_follow_type_hints = False
+
+  if jit_compile is None and JIT_COMPILE_FUNCTIONS:
+    jit_compile = True
+
+  # TODO(b/224808187): Remove after renaming usages.
+  if experimental_relax_shapes:
+    reduce_retracing = True
 
   def decorated(inner_function):
     try:
@@ -1652,7 +1646,7 @@ def function(func=None,
             input_signature=input_signature,
             autograph=autograph,
             experimental_autograph_options=experimental_autograph_options,
-            experimental_relax_shapes=experimental_relax_shapes,
+            reduce_retracing=reduce_retracing,
 
             # TODO(b/171825496): Update once `experimental_compile` is removed
             # entirely in favor of 'jit_compile'.

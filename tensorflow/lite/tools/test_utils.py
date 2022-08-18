@@ -17,10 +17,6 @@
 All functions that can be commonly used by various tests.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
 

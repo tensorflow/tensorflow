@@ -24,7 +24,6 @@ namespace functor {
 
 template <typename T>
 struct nextafter_op {
-  EIGEN_EMPTY_STRUCT_CTOR(nextafter_op)
   // GPU kernels on ROCm may have issues including standard C++ APIs. Use
   // specialized member functions and invoke HIP runtime APIs instead.
 #if !TENSORFLOW_USE_ROCM

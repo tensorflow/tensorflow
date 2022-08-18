@@ -221,7 +221,7 @@ Node* CheckNumerics(Graph* g, Node* in, const string& message);
 Node* Arg(Graph* g, int64_t index, DataType type);
 
 // Add a _Retval node in "g".
-Node* Retval(Graph* g, int64_t index, Node* in);
+Node* Retval(Graph* g, int64_t index, Node* in, int64_t in_index = 0);
 
 }  // end namespace graph
 }  // end namespace test

@@ -14,10 +14,6 @@
 # =============================================================================
 """Implementation of Neural Net (NN) functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 from tensorflow.python.distribute import distribution_strategy_context as ds
@@ -26,6 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
@@ -91,8 +88,8 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
       targets.get_shape().assert_is_compatible_with(log_input.get_shape())
     except ValueError:
       raise ValueError(
-          "log_input and targets must have the same shape (%s vs %s)" %
-          (log_input.get_shape(), targets.get_shape()))
+          "`log_input` and `targets` must have the same shape, received "
+          f"({log_input.get_shape()} vs {targets.get_shape()}).")
 
     result = math_ops.exp(log_input) - log_input * targets
     if compute_full_loss:
@@ -129,8 +126,9 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
     try:
       labels.get_shape().assert_is_compatible_with(logits.get_shape())
     except ValueError:
-      raise ValueError("logits and labels must have the same shape (%s vs %s)" %
-                       (logits.get_shape(), labels.get_shape()))
+      raise ValueError("`logits` and `labels` must have the same shape, "
+                       f"received ({logits.get_shape()} vs "
+                       f"{labels.get_shape()}).")
 
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
@@ -153,6 +151,7 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
 # Note: intentionally calling this v2 to not allow existing code with indirect
 # imports to ignore the sentinel behavior.
 @tf_export("nn.sigmoid_cross_entropy_with_logits", v1=[])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def sigmoid_cross_entropy_with_logits_v2(  # pylint: disable=invalid-name
     labels=None,
@@ -324,8 +323,9 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
     try:
       labels.get_shape().assert_is_compatible_with(logits.get_shape())
     except ValueError:
-      raise ValueError("logits and labels must have the same shape (%s vs %s)" %
-                       (logits.get_shape(), labels.get_shape()))
+      raise ValueError("`logits` and `labels` must have the same shape, "
+                       f"received ({logits.get_shape()} vs "
+                       f"{labels.get_shape()}).")
 
     # The logistic loss formula from above is
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
@@ -460,6 +460,14 @@ def compute_average_loss(per_example_loss,
       per_replica_batch_size = array_ops.shape_v2(per_example_loss)[0]
       global_batch_size = per_replica_batch_size * num_replicas
 
+    check_ops.assert_scalar_v2(
+        global_batch_size, message="global_batch_size must be scalar.")
+    check_ops.assert_integer_v2(
+        global_batch_size,
+        message="global_batch_size must be an integer.")
+    check_ops.assert_positive_v2(
+        global_batch_size, message="global_batch_size must be positive.")
+
     global_batch_size = math_ops.cast(global_batch_size, input_dtype)
     return math_ops.reduce_sum(per_example_loss) / global_batch_size
 
@@ -528,11 +536,13 @@ def relu_layer(x, weights, biases, name=None):
 
 
 @tf_export("nn.silu", "nn.swish")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
-@custom_gradient.custom_gradient
-def swish(features):
+def swish(features, beta=1.0):
   # pylint: disable=g-doc-args
-  """Computes the SiLU or Swish activation function: `x * sigmoid(x)`.
+  """Computes the SiLU or Swish activation function: `x * sigmoid(beta * x)`.
+
+  beta : Hyperparameter for Swish activation function. Default value 1.0.
 
   The SiLU activation function was introduced in "Gaussian Error Linear Units
   (GELUs)" [Hendrycks et al. 2016](https://arxiv.org/abs/1606.08415) and
@@ -544,28 +554,37 @@ def swish(features):
 
   Args:
     features: A `Tensor` representing preactivation values.
+    beta: A 'Tensor' representing value of beta hyperparameter.
 
   Returns:
     The activation value.
   """
   # pylint: enable=g-doc-args
   features = ops.convert_to_tensor(features, name="features")
+  beta = ops.convert_to_tensor(beta, name="beta")
+  beta = math_ops.cast(beta, features.dtype)
 
-  def grad(dy):
-    """Gradient for the Swish activation function"""
-    # Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x)
-    # around for backprop, effectively doubling the tensor's memory consumption.
-    # We use a control dependency here so that sigmoid(features) is re-computed
-    # during backprop (the control dep prevents it being de-duped with the
-    # forward pass) and we can free the sigmoid(features) expression immediately
-    # after use during the forward pass.
-    with ops.control_dependencies([dy]):
-      sigmoid_features = math_ops.sigmoid(features)
-    activation_grad = (
-        sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
-    return dy * activation_grad
+  @custom_gradient.custom_gradient
+  def swish_impl(features):
 
-  return features * math_ops.sigmoid(features), grad
+    def grad(dy):
+      """Gradient for the Swish activation function."""
+      # Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x)
+      # around for backprop, effectively doubling the tensor's memory
+      # consumption. We use a control dependency here so that sigmoid(features)
+      # is re-computed during backprop (the control dep prevents it being
+      # de-duped with the forward pass) and we can free the sigmoid(features)
+      # expression immediately after use during the forward pass.
+      with ops.control_dependencies([dy]):
+        sigmoid_features = math_ops.sigmoid(beta * features)
+      activation_grad = (
+          sigmoid_features * (1.0 + (beta * features) *
+                              (1.0 - sigmoid_features)))
+      return dy * activation_grad
+
+    return features * math_ops.sigmoid(beta * features), grad
+
+  return swish_impl(features)
 
 
 # pylint: disable=redefined-builtin
@@ -895,13 +914,14 @@ def depthwise_conv2d_v2(input,
 
   In detail, with the default NHWC format,
 
-      output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
-           filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
-                                           strides[2] * j + rate[1] * dj, k]
+      output[b, i, j, k * channel_multiplier + q] =
+          sum_{di, dj} filter[di, dj, k, q] *
+                       input[b, strides[1] * i + dilations[0] * di,
+                                strides[2] * j + dilations[1] * dj, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the
   same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
-  If any value in `rate` is greater than 1, we perform atrous depthwise
+  If any value in `dilations` is greater than 1, we perform atrous depthwise
   convolution, in which case all values in the `strides` tensor must be equal
   to 1.
 
@@ -944,7 +964,9 @@ def depthwise_conv2d_v2(input,
     padding: Controls how to pad the image before applying the convolution. Can
       be the string `"SAME"` or `"VALID"` indicating the type of padding
       algorithm to use, or a list indicating the explicit paddings at the start
-      and end of each dimension. When explicit padding is used and data_format
+      and end of each dimension. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information. When explicit padding is used and data_format
       is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
       [pad_left, pad_right], [0, 0]]`. When explicit padding used and
       data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
@@ -1649,9 +1671,10 @@ def fused_batch_norm(
   """
   if (not is_training or exponential_avg_factor != 1.0) and (
       (mean is None) or (variance is None)):
-    raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
-                     "is_training is False or "
-                     "exponential_avg_factor != 1.0.")
+    raise ValueError("Both `mean` and `variance` must be a 1D tensor when "
+                     "`is_training` is False or `exponential_avg_factor` != "
+                     f"1.0. Received: `mean` {mean!r} and `variance` "
+                     f"{variance!r}")
   x = ops.convert_to_tensor(x, name="input")
   scale = ops.convert_to_tensor(scale, name="scale")
   offset = ops.convert_to_tensor(offset, name="offset")

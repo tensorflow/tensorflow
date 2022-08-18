@@ -18,15 +18,14 @@ Note: ragged support for tf.print is implemented by RaggedPrintV2Dispatcher in
 ragged_dispatch.py.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os.path
 import tempfile
+
 from absl.testing import parameterized
+
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import sparse_ops
@@ -180,8 +179,9 @@ class RaggedToStringTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testRaggedToStringUnknownRank(self):
 
-    @def_function.function(
-        input_signature=[ragged_tensor.RaggedTensorSpec(ragged_rank=1)])
+    @def_function.function(input_signature=[
+        ragged_tensor.RaggedTensorSpec(ragged_rank=1, dtype=dtypes.int32)
+    ])
     def f(rt):
       return ragged_string_ops.ragged_tensor_to_string(rt)
 

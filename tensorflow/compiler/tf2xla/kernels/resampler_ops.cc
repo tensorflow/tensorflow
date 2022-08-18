@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/kernels/resampler_ops.h"
+
 #include <numeric>
 #include <vector>
 
@@ -118,6 +120,7 @@ XlaOp ConcatenateIota(xla::XlaBuilder* b, XlaOp indices,
                       const TensorShape& warp_shape) {
   // We need to create an iota tensor with the same batch dimension.
   std::vector<int64_t> dimensions;
+  dimensions.reserve(warp_shape.dims());
   for (auto dim : warp_shape) {
     dimensions.push_back(dim.size);
   }
@@ -479,204 +482,197 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
   return xla::ConcatInDim(ctx->builder(), {reshaped_x, reshaped_y},
                           last_warp_dim);
 }
+}  // namespace
 
-class ResamplerOp : public XlaOpKernel {
- public:
-  explicit ResamplerOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+ResamplerOp::ResamplerOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
-  void Compile(XlaOpKernelContext* ctx) override {
-    TensorShape data_shape = ctx->InputShape("data");
-    OP_REQUIRES(ctx, data_shape.dims() == 4,
-                errors::InvalidArgument("data must be 4-dimensional",
-                                        data_shape.DebugString()));
-    const int64_t data_channels = data_shape.dim_size(3);
-    xla::PrimitiveType data_type = ctx->input_xla_type(0);
+void ResamplerOp::Compile(XlaOpKernelContext* ctx) {
+  TensorShape data_shape = ctx->InputShape("data");
+  OP_REQUIRES(ctx, data_shape.dims() == 4,
+              errors::InvalidArgument("data must be 4-dimensional",
+                                      data_shape.DebugString()));
+  const int64_t data_channels = data_shape.dim_size(3);
+  xla::PrimitiveType data_type = ctx->input_xla_type(0);
 
-    TensorShape warp_shape = ctx->InputShape("warp");
-    OP_REQUIRES(ctx, warp_shape.dims() >= 2,
-                errors::InvalidArgument("warp must be at least 2-dimensional",
-                                        warp_shape.DebugString()));
-    for (int size : warp_shape.dim_sizes()) {
-      OP_REQUIRES(ctx, size > 0,
-                  errors::InvalidArgument("warp sizes must be positive, got [",
-                                          size, "]"));
-    }
-    const int64_t last_warp_dim = warp_shape.dims() - 1;
-    // Last dimension of warp shape must be of size 2.
-    OP_REQUIRES(ctx, warp_shape.dim_size(last_warp_dim) == 2,
-                errors::InvalidArgument(
-                    "the last dimension of warp must be exactly size 2."));
-    xla::PrimitiveType warp_type = ctx->input_xla_type(1);
-
-    XlaOp data = ctx->Input("data");
-    XlaOp warp = ctx->Input("warp");
-
-    // Find the coordinates of the top left corner for the 2x2 region to be
-    // sampled from. The dimensions are [batch, dim_0, ... dim_n, 2] where the
-    // last dimension of size 2 in turn is [x, y].
-    XlaOp top_left = xla::ConvertElementType(warp, xla::S32);
-
-    auto gather_indices = ConcatenateIota(ctx->builder(), top_left, warp_shape);
-
-    // The dimension is [batch, dim_0, ... dim_n, 4, data_channels]
-    auto neighbors_data = Gather2by2Neighbors(
-        ctx->builder(), data, gather_indices, data_channels, warp_shape.dims());
-
-    // Dimensions are [batch, dim_0, ... dim_n, 2].
-    XlaOp ratio = warp - xla::ConvertElementType(top_left, data_type);
-
-    // Obtain the bilinear blending weights, the dimension is [batch, dim_0,
-    // ...dim_n, 4].
-    auto weights = BilinearWeights(ctx, ratio, warp_shape, data_type);
-
-    // Since we will be creating the dot product of:
-    //  lhs: [batch, dim_0, ...dim_n, 4]
-    // and
-    //  rhs: [batch, dim_0, ...dim_n, 4, data_channels]
-    // we choose the last dimension of lhs and the second last dimension of rhs,
-    // with size 4, as the contracting dimension.
-    xla::DotDimensionNumbers dot_dims;
-    for (int i = 0; i < warp_shape.dims() - 1; ++i) {
-      dot_dims.add_lhs_batch_dimensions(i);
-      dot_dims.add_rhs_batch_dimensions(i);
-    }
-    dot_dims.add_lhs_contracting_dimensions(warp_shape.dims() - 1);
-    dot_dims.add_rhs_contracting_dimensions(warp_shape.dims() - 1);
-
-    // The dimension is [batch, dim_0, ...dim_n, data_channels].
-    auto blended_pixels = xla::DotGeneral(weights, neighbors_data, dot_dims,
-                                          /*precision_config=*/nullptr);
-
-    // Handle out of boundary cases by constructing a predicate mask array based
-    // on the in-bound condition, and output 0 for the blended pixel value if
-    // out-bound. The dimension is the same as top_left: [batch, dim_0,
-    // ...dim_n, 2] where the last dimension of size 2 is the [x, y] coordinate.
-
-    auto is_ge_zero = xla::Ge(warp, xla::ZerosLike(warp));
-
-    auto is_lt_image_size = xla::Lt(
-        warp,
-        xla::ConvertElementType(
-            xla::ConstantR1<float>(
-                ctx->builder(),
-                {/*width=*/static_cast<float>(data_shape.dim_size(2) - 1),
-                 /*height=*/static_cast<float>(data_shape.dim_size(1) - 1)}),
-            warp_type),
-        /*broadcast_dimensions=*/{warp_shape.dims() - 1});
-
-    auto is_in_bound_x_y = xla::And(is_ge_zero, is_lt_image_size);
-    // Reduce along last dimension. The resulting dimension is:
-    // [batch, dim_0, ...dim_n].
-    auto is_in_bound = xla::Reduce(
-        is_in_bound_x_y, xla::ConstantR0<bool>(ctx->builder(), true),
-        xla::CreateScalarAndComputation(xla::PrimitiveType::PRED,
-                                        ctx->builder()),
-        {last_warp_dim});
-
-    // Broadcast 'is_in_bound' to the same dimension as 'blended_pixels', which
-    // is the dimension of the result:
-    //  [batch, dim_0, ...dim_n, data_channels].
-    auto warp_dims = warp_shape.dim_sizes();
-    std::vector<int64_t> result_dims(warp_dims.begin(), warp_dims.end() - 1);
-    result_dims.push_back(data_channels);
-
-    std::vector<int64_t> broadcasted_dims(warp_dims.size() - 1);
-    std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
-    auto broadcasted_is_in_bound =
-        xla::BroadcastInDim(is_in_bound, result_dims, broadcasted_dims);
-
-    // Set out of bound samples to zero.
-    auto zeros =
-        xla::Broadcast(xla::Zero(ctx->builder(), data_type), result_dims);
-    auto result = xla::Select(broadcasted_is_in_bound, blended_pixels, zeros);
-
-    ctx->SetOutput(0, result);
+  TensorShape warp_shape = ctx->InputShape("warp");
+  OP_REQUIRES(ctx, warp_shape.dims() >= 2,
+              errors::InvalidArgument("warp must be at least 2-dimensional",
+                                      warp_shape.DebugString()));
+  for (int size : warp_shape.dim_sizes()) {
+    OP_REQUIRES(ctx, size > 0,
+                errors::InvalidArgument("warp sizes must be positive, got [",
+                                        size, "]"));
   }
-};
+  const int64_t last_warp_dim = warp_shape.dims() - 1;
+  // Last dimension of warp shape must be of size 2.
+  OP_REQUIRES(ctx, warp_shape.dim_size(last_warp_dim) == 2,
+              errors::InvalidArgument(
+                  "the last dimension of warp must be exactly size 2."));
+  xla::PrimitiveType warp_type = ctx->input_xla_type(1);
+
+  XlaOp data = ctx->Input("data");
+  XlaOp warp = ctx->Input("warp");
+
+  // Find the coordinates of the top left corner for the 2x2 region to be
+  // sampled from. The dimensions are [batch, dim_0, ... dim_n, 2] where the
+  // last dimension of size 2 in turn is [x, y].
+  XlaOp top_left = xla::ConvertElementType(warp, xla::S32);
+
+  auto gather_indices = ConcatenateIota(ctx->builder(), top_left, warp_shape);
+
+  // The dimension is [batch, dim_0, ... dim_n, 4, data_channels]
+  auto neighbors_data = Gather2by2Neighbors(
+      ctx->builder(), data, gather_indices, data_channels, warp_shape.dims());
+
+  // Dimensions are [batch, dim_0, ... dim_n, 2].
+  XlaOp ratio = warp - xla::ConvertElementType(top_left, data_type);
+
+  // Obtain the bilinear blending weights, the dimension is [batch, dim_0,
+  // ...dim_n, 4].
+  auto weights = BilinearWeights(ctx, ratio, warp_shape, data_type);
+
+  // Since we will be creating the dot product of:
+  //  lhs: [batch, dim_0, ...dim_n, 4]
+  // and
+  //  rhs: [batch, dim_0, ...dim_n, 4, data_channels]
+  // we choose the last dimension of lhs and the second last dimension of rhs,
+  // with size 4, as the contracting dimension.
+  xla::DotDimensionNumbers dot_dims;
+  for (int i = 0; i < warp_shape.dims() - 1; ++i) {
+    dot_dims.add_lhs_batch_dimensions(i);
+    dot_dims.add_rhs_batch_dimensions(i);
+  }
+  dot_dims.add_lhs_contracting_dimensions(warp_shape.dims() - 1);
+  dot_dims.add_rhs_contracting_dimensions(warp_shape.dims() - 1);
+
+  // The dimension is [batch, dim_0, ...dim_n, data_channels].
+  auto blended_pixels = xla::DotGeneral(weights, neighbors_data, dot_dims,
+                                        /*precision_config=*/nullptr);
+
+  // Handle out of boundary cases by constructing a predicate mask array based
+  // on the in-bound condition, and output 0 for the blended pixel value if
+  // out-bound. The dimension is the same as top_left: [batch, dim_0,
+  // ...dim_n, 2] where the last dimension of size 2 is the [x, y] coordinate.
+
+  auto is_ge_zero = xla::Ge(warp, xla::ZerosLike(warp));
+
+  auto is_lt_image_size = xla::Lt(
+      warp,
+      xla::ConvertElementType(
+          xla::ConstantR1<float>(
+              ctx->builder(),
+              {/*width=*/static_cast<float>(data_shape.dim_size(2) - 1),
+               /*height=*/static_cast<float>(data_shape.dim_size(1) - 1)}),
+          warp_type),
+      /*broadcast_dimensions=*/{warp_shape.dims() - 1});
+
+  auto is_in_bound_x_y = xla::And(is_ge_zero, is_lt_image_size);
+  // Reduce along last dimension. The resulting dimension is:
+  // [batch, dim_0, ...dim_n].
+  auto is_in_bound = xla::Reduce(
+      is_in_bound_x_y, xla::ConstantR0<bool>(ctx->builder(), true),
+      xla::CreateScalarAndComputation(xla::PrimitiveType::PRED, ctx->builder()),
+      {last_warp_dim});
+
+  // Broadcast 'is_in_bound' to the same dimension as 'blended_pixels', which
+  // is the dimension of the result:
+  //  [batch, dim_0, ...dim_n, data_channels].
+  auto warp_dims = warp_shape.dim_sizes();
+  std::vector<int64_t> result_dims(warp_dims.begin(), warp_dims.end() - 1);
+  result_dims.push_back(data_channels);
+
+  std::vector<int64_t> broadcasted_dims(warp_dims.size() - 1);
+  std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
+  auto broadcasted_is_in_bound =
+      xla::BroadcastInDim(is_in_bound, result_dims, broadcasted_dims);
+
+  // Set out of bound samples to zero.
+  auto zeros =
+      xla::Broadcast(xla::Zero(ctx->builder(), data_type), result_dims);
+  auto result = xla::Select(broadcasted_is_in_bound, blended_pixels, zeros);
+
+  ctx->SetOutput(0, result);
+}
 
 REGISTER_XLA_OP(Name("Resampler"), ResamplerOp);
 
-class ResamplerGradOp : public XlaOpKernel {
- public:
-  explicit ResamplerGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    DataType output_dtype;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &output_dtype));
-  }
+ResamplerGradOp::ResamplerGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+  DataType output_dtype;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &output_dtype));
+}
 
   // TODO(b/112295522): note that sampling from image boundary is not currently
   // being handled properly.
-  void Compile(XlaOpKernelContext* ctx) override {
-    TensorShape data_shape_tf = ctx->InputShape("data");
-    OP_REQUIRES(ctx, data_shape_tf.dims() == 4,
-                errors::InvalidArgument("data must be 4-dimensional",
-                                        data_shape_tf.DebugString()));
-    const int64_t data_channels = data_shape_tf.dim_size(3);
-    xla::PrimitiveType data_type = ctx->input_xla_type(0);
+void ResamplerGradOp::Compile(XlaOpKernelContext* ctx) {
+  TensorShape data_shape_tf = ctx->InputShape("data");
+  OP_REQUIRES(ctx, data_shape_tf.dims() == 4,
+              errors::InvalidArgument("data must be 4-dimensional",
+                                      data_shape_tf.DebugString()));
+  const int64_t data_channels = data_shape_tf.dim_size(3);
+  xla::PrimitiveType data_type = ctx->input_xla_type(0);
 
-    TensorShape warp_shape = ctx->InputShape("warp");
-    OP_REQUIRES(ctx, warp_shape.dims() >= 2,
-                errors::InvalidArgument("warp must be at least 2-dimensional",
-                                        warp_shape.DebugString()));
-    for (int size : warp_shape.dim_sizes()) {
-      OP_REQUIRES(ctx, size > 0,
-                  errors::InvalidArgument("warp sizes must be positive, got [",
-                                          size, "]"));
-    }
-    // Last dimension of warp shape must be of size 2.
-    const int64_t last_warp_dim = warp_shape.dims() - 1;
-    OP_REQUIRES(ctx, warp_shape.dim_size(last_warp_dim) == 2,
-                errors::InvalidArgument(
-                    "the last dimension of warp must be exactly size 2."));
-    xla::PrimitiveType warp_type = ctx->input_xla_type(1);
-
-    TensorShape output_grad_shape = ctx->InputShape("grad_output");
-    OP_REQUIRES(
-        ctx, output_grad_shape.dims() >= 2,
-        errors::InvalidArgument("output_grad must be at least 2-dimensional",
-                                output_grad_shape.DebugString()));
-
-    // Dimensions are [batch, x, y, channel].
-    XlaOp data = ctx->Input("data");
-    xla::Shape data_shape = TensorShapeToXLAShape(data_type, data_shape_tf);
-
-    // Dimensions are [batch, dim_0, ...dim_n, 2].
-    XlaOp warp = ctx->Input("warp");
-    // Dimensions are [batch, dim_0, ...dim_n, channel].
-    XlaOp grad_output = ctx->Input("grad_output");
-
-    // Find the top left corner coordinate for the region to be sampled from.
-    // The dimensions are [batch, dim_0, ... dim_n, 2] where the last dimension
-    // of size 2 in turn is [x, y].
-    XlaOp top_left = xla::ConvertElementType(xla::Floor(warp), xla::S32);
-
-    // Dimensions are [batch, dim_0, ... dim_n, 2].
-    XlaOp ratio = warp - xla::ConvertElementType(top_left, warp_type);
-
-    // Indices for gathering neighboring pixels.
-    auto gather_indices = ConcatenateIota(ctx->builder(), top_left, warp_shape);
-
-    auto grad_data = CalculateGradData(
-        ctx, grad_output, ratio, gather_indices, warp, warp_type, warp_shape,
-        last_warp_dim, data_channels, data_shape);
-
-    auto grad_warp =
-        CalculateGradWarp(ctx, grad_output, ratio, gather_indices, data,
-                          warp_shape, data_channels, data_type, data_shape);
-    auto warp_dims = warp_shape.dim_sizes();
-    std::vector<int64_t> result_dims(warp_dims.begin(), warp_dims.end() - 1);
-    result_dims.push_back(2);
-    std::vector<int64_t> broadcasted_dims(warp_dims.size() - 1);
-    std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
-    auto grad_warp_bounded =
-        BoundSamples(ctx, warp, warp_type, warp_shape, result_dims,
-                     broadcasted_dims, last_warp_dim, data_shape, grad_warp);
-
-    ctx->SetOutput(0, grad_data);
-    ctx->SetOutput(1, grad_warp_bounded);
+  TensorShape warp_shape = ctx->InputShape("warp");
+  OP_REQUIRES(ctx, warp_shape.dims() >= 2,
+              errors::InvalidArgument("warp must be at least 2-dimensional",
+                                      warp_shape.DebugString()));
+  for (int size : warp_shape.dim_sizes()) {
+    OP_REQUIRES(ctx, size > 0,
+                errors::InvalidArgument("warp sizes must be positive, got [",
+                                        size, "]"));
   }
-};
+  // Last dimension of warp shape must be of size 2.
+  const int64_t last_warp_dim = warp_shape.dims() - 1;
+  OP_REQUIRES(ctx, warp_shape.dim_size(last_warp_dim) == 2,
+              errors::InvalidArgument(
+                  "the last dimension of warp must be exactly size 2."));
+  xla::PrimitiveType warp_type = ctx->input_xla_type(1);
+
+  TensorShape output_grad_shape = ctx->InputShape("grad_output");
+  OP_REQUIRES(
+      ctx, output_grad_shape.dims() >= 2,
+      errors::InvalidArgument("output_grad must be at least 2-dimensional",
+                              output_grad_shape.DebugString()));
+
+  // Dimensions are [batch, x, y, channel].
+  XlaOp data = ctx->Input("data");
+  xla::Shape data_shape = TensorShapeToXLAShape(data_type, data_shape_tf);
+
+  // Dimensions are [batch, dim_0, ...dim_n, 2].
+  XlaOp warp = ctx->Input("warp");
+  // Dimensions are [batch, dim_0, ...dim_n, channel].
+  XlaOp grad_output = ctx->Input("grad_output");
+
+  // Find the top left corner coordinate for the region to be sampled from.
+  // The dimensions are [batch, dim_0, ... dim_n, 2] where the last dimension
+  // of size 2 in turn is [x, y].
+  XlaOp top_left = xla::ConvertElementType(xla::Floor(warp), xla::S32);
+
+  // Dimensions are [batch, dim_0, ... dim_n, 2].
+  XlaOp ratio = warp - xla::ConvertElementType(top_left, warp_type);
+
+  // Indices for gathering neighboring pixels.
+  auto gather_indices = ConcatenateIota(ctx->builder(), top_left, warp_shape);
+
+  auto grad_data = CalculateGradData(ctx, grad_output, ratio, gather_indices,
+                                     warp, warp_type, warp_shape, last_warp_dim,
+                                     data_channels, data_shape);
+
+  auto grad_warp =
+      CalculateGradWarp(ctx, grad_output, ratio, gather_indices, data,
+                        warp_shape, data_channels, data_type, data_shape);
+  auto warp_dims = warp_shape.dim_sizes();
+  std::vector<int64_t> result_dims(warp_dims.begin(), warp_dims.end() - 1);
+  result_dims.push_back(2);
+  std::vector<int64_t> broadcasted_dims(warp_dims.size() - 1);
+  std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
+  auto grad_warp_bounded =
+      BoundSamples(ctx, warp, warp_type, warp_shape, result_dims,
+                   broadcasted_dims, last_warp_dim, data_shape, grad_warp);
+
+  ctx->SetOutput(0, grad_data);
+  ctx->SetOutput(1, grad_warp_bounded);
+}
 
 REGISTER_XLA_OP(Name("ResamplerGrad"), ResamplerGradOp);
 
-}  // namespace
 }  // namespace tensorflow

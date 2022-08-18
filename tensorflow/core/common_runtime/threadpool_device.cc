@@ -61,6 +61,17 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                name, DEVICE_CPU, memory_limit, locality)),
       allocator_(allocator),
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
+  auto s = NodeFileWriter::GetNodeFileWriterIfEnabled(name, env());
+  if (!s.ok()) {
+    LOG(ERROR) << s.status();
+  } else {
+    node_file_writer_ = *s;
+    if (node_file_writer_) {
+      LOG(INFO) << "Writing NodeDefs to file: "
+                << node_file_writer_->filename();
+    }
+  }
+
 #if defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
   // Early return when MKL is disabled
   if (!IsMKLEnabled()) return;
@@ -114,7 +125,7 @@ Status ThreadPoolDevice::MakeTensorFromProto(
     Tensor parsed(tensor_proto.dtype());
     if (parsed.FromProto(allocator_, tensor_proto)) {
       *tensor = std::move(parsed);
-      return Status::OK();
+      return OkStatus();
     }
   }
   return errors::InvalidArgument("Cannot parse tensor from proto: ",
@@ -131,7 +142,7 @@ void ThreadPoolDevice::CopyTensorInSameDevice(
     return;
   }
   tensor::DeepCopy(*input_tensor, output_tensor);
-  done(Status::OK());
+  done(OkStatus());
 }
 
 namespace {
@@ -155,6 +166,10 @@ const absl::flat_hash_set<std::string>* GetOpsToLogFromEnv() {
 bool ShouldLogInputsAndOutputs(OpKernel* op_kernel) {
   static const absl::flat_hash_set<std::string>& ops_to_log =
       *GetOpsToLogFromEnv();
+  static const bool is_empty = ops_to_log.empty();
+  if (is_empty) {
+    return false;
+  }
   return ops_to_log.count(op_kernel->type_string());
 }
 }  // namespace
@@ -167,6 +182,14 @@ void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   }
 
   op_kernel->Compute(context);
+
+  if (context->status().ok() && node_file_writer_) {
+    Status s = node_file_writer_->RecordNodeExecution(op_kernel, context);
+    if (!s.ok()) {
+      LOG(ERROR) << s;
+      context->SetStatus(s);
+    }
+  }
 
   if (should_log_inputs_and_outputs) {
     LogOutputs(op_kernel, context);

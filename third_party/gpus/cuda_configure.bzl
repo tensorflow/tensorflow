@@ -423,6 +423,11 @@ def compute_capabilities(repository_ctx):
     ).split(",")
 
     # Map old 'x.y' capabilities to 'compute_xy'.
+    if len(capabilities) > 0 and all([len(x.split(".")) == 2 for x in capabilities]):
+        # If all capabilities are in 'x.y' format, only include PTX for the
+        # highest capability.
+        cc_list = sorted([x.replace(".", "") for x in capabilities])
+        capabilities = ["sm_%s" % x for x in cc_list[:-1]] + ["compute_%s" % cc_list[-1]]
     for i, capability in enumerate(capabilities):
         parts = capability.split(".")
         if len(parts) != 2:
@@ -808,7 +813,7 @@ filegroup(name="cudnn-include")
     )
 
     # Create dummy files for the CUDA toolkit since they are still required by
-    # tensorflow/core/platform/default/build_config:cuda.
+    # tensorflow/tsl/platform/default/build_config:cuda.
     repository_ctx.file("cuda/cuda/include/cuda.h")
     repository_ctx.file("cuda/cuda/include/cublas.h")
     repository_ctx.file("cuda/cuda/include/cudnn.h")

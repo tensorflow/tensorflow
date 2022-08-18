@@ -17,6 +17,8 @@ limitations under the License.
 
 #import <Metal/Metal.h>
 
+#include <string>
+
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
@@ -88,11 +90,9 @@ using ::tflite::gpu::metal::CreateComputeProgram;
         }
       )";
     }
-    NSDictionary* macros = @{@"FLT4" : (isFloat16 ? @"half4" : @"float4")};
-    NSString* code = [NSString stringWithCString:shaderSource.c_str()
-                                        encoding:[NSString defaultCStringEncoding]];
+    const std::map<std::string, std::string> macros = {{"FLT4", isFloat16 ? "half4" : "float4"}};
     id<MTLComputePipelineState> program;
-    if (CreateComputeProgram(device, code, @"ComputeFunction", macros, &program).ok()) {
+    if (CreateComputeProgram(device, shaderSource, "ComputeFunction", macros, &program).ok()) {
       _program = program;
       return self;
     }

@@ -26,7 +26,7 @@ namespace {
 using CpuOutfeedTest = CpuCodegenTest;
 
 TEST_F(CpuOutfeedTest, OutfeedRoot) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule Outfeed
 
 ENTRY main {
@@ -40,7 +40,7 @@ ENTRY main {
 }
 )";
 
-  string filecheck_pattern = R"(
+  std::string filecheck_pattern = R"(
 CHECK: private unnamed_addr constant [48 x i8]
 )";
 
@@ -57,7 +57,7 @@ CHECK: private unnamed_addr constant [48 x i8]
 }
 
 TEST_F(CpuOutfeedTest, OutfeedEmpty) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule Outfeed
 
 ENTRY main {
@@ -68,7 +68,7 @@ ENTRY main {
 }
 )";
 
-  string filecheck_pattern = R"(
+  std::string filecheck_pattern = R"(
 CHECK: private unnamed_addr constant [0 x i8]
 )";
 
@@ -85,7 +85,7 @@ CHECK: private unnamed_addr constant [0 x i8]
 }
 
 TEST_F(CpuOutfeedTest, OutfeedTokenInTuple) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule OutfeedTokenInTuple
 
 ENTRY main {
@@ -96,7 +96,7 @@ ENTRY main {
 }
 )";
 
-  string filecheck_pattern = R"(
+  std::string filecheck_pattern = R"(
 CHECK: Outfeed
 )";
 

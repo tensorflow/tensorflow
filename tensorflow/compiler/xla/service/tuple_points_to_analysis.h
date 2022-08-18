@@ -38,8 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -150,7 +148,8 @@ class PointsToSet {
 
   // PointsToSet contains references (const LogicalBuffer*) to elements within
   // TuplePointsToAnalysis, so disable copying.
-  TF_DISALLOW_COPY_AND_ASSIGN(PointsToSet);
+  PointsToSet(const PointsToSet&) = delete;
+  PointsToSet& operator=(const PointsToSet&) = delete;
 };
 
 // This class describes a particular subshape in a computation (instruction and
@@ -170,7 +169,7 @@ class BufferAlias {
   }
   bool operator!=(const BufferAlias& other) const { return !(*this == other); }
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   HloInstruction* instruction_;
@@ -247,6 +246,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status DefaultAction(HloInstruction* hlo_instruction) override;
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+  Status HandleAsyncStart(HloInstruction* async_start) override;
+  Status HandleAsyncUpdate(HloInstruction* async_update) override;
+  Status HandleAsyncDone(HloInstruction* async_done) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleDomain(HloInstruction* domain) override;
   Status HandleCopy(HloInstruction* copy) override;
@@ -254,11 +256,11 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleCopyDone(HloInstruction* copy_done) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleSend(HloInstruction* send) override;
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleOptimizationBarrier(HloInstruction* barrier) override;
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Returns true if 'user' cannot possibly use the buffer at 'index' in
   // 'operand'. Returns false otherwise.
@@ -281,8 +283,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   // Populates instruction-defined buffers and aliases for each instruction
   // in 'instructions'.
-  Status PopulateDefinedBuffersAndAliases(const decltype(
-      std::declval<HloComputation>().instructions())& instructions);
+  Status PopulateDefinedBuffersAndAliases(
+      const decltype(std::declval<HloComputation>()
+                         .instructions())& instructions);
 
   // Creates an empty PointsToSet in the points_to_ map for the given
   // instruction.
@@ -299,7 +302,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   // Print points-to set for 'instruction' to 'output'.
   void InstructionToString(const HloInstruction* instruction,
-                           string* output) const;
+                           std::string* output) const;
 
   // Information kept per instruction
   struct PerInstruction {
@@ -324,7 +327,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     DCHECK_GE(id, 0);
     auto iter = per_instruction_.find(id);
     if (iter == per_instruction_.end()) {
-      return per_instruction_.emplace(id, absl::make_unique<PerInstruction>())
+      return per_instruction_.emplace(id, std::make_unique<PerInstruction>())
           .first->second.get();
     } else {
       return iter->second.get();
@@ -352,7 +355,8 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // buffer
   std::vector<BufferAliasVector> logical_buffer_aliases_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TuplePointsToAnalysis);
+  TuplePointsToAnalysis(const TuplePointsToAnalysis&) = delete;
+  TuplePointsToAnalysis& operator=(const TuplePointsToAnalysis&) = delete;
 };
 
 }  // namespace xla

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Maintain moving averages of parameters."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
@@ -30,6 +26,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 
 @tf_export("__internal__.train.assign_moving_average", v1=[])
@@ -70,7 +67,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   Args:
     variable: A Variable.
     value: A tensor with the same shape as 'variable'.
-    decay: A float Tensor or float value.  The moving average decay.
+    decay: A float `Tensor` or float value. The moving average decay.
     zero_debias: A python bool. If true, assume the variable is 0-initialized
       and unbias it, as in (Kingma et al., 2015). See docstring in
         `_zero_debias` for more details.
@@ -131,7 +128,7 @@ def weighted_moving_average(value,
 
   Args:
     value: A numeric `Tensor`.
-    decay: A float `Tensor` or float value.  The moving average decay.
+    decay: A float `Tensor` or float value. The moving average decay.
     weight:  `Tensor` that keeps the current value of a weight. Shape should be
       able to multiply `value`.
     truediv:  Boolean, if `True`, dividing by `moving_average(weight)` is
@@ -282,27 +279,38 @@ def _zero_debias(strategy, unbiased_var, value, decay):
 
 
 @tf_export("train.ExponentialMovingAverage")
-class ExponentialMovingAverage(object):
+class ExponentialMovingAverage:
   """Maintains moving averages of variables by employing an exponential decay.
 
   When training a model, it is often beneficial to maintain moving averages of
   the trained parameters.  Evaluations that use averaged parameters sometimes
   produce significantly better results than the final trained values.
 
-  The `apply()` method adds shadow copies of trained variables and add ops that
-  maintain a moving average of the trained variables in their shadow copies.
-  It is used when building the training model.  The ops that maintain moving
-  averages are typically run after each training step.
-  The `average()` and `average_name()` methods give access to the shadow
-  variables and their names.  They are useful when building an evaluation
-  model, or when restoring a model from a checkpoint file.  They help use the
-  moving averages in place of the last trained values for evaluations.
+  The `apply()` method adds shadow copies of trained variables the first time
+  it is called, and maintains a moving average of the trained variables in
+  their shadow copies at every additional invocation.
+  It should generally be called immediately after creating the model weights,
+  and then after each training step.
+
+  The `average()` method gives access to the shadow variables.
+  It allows you to use the moving averages in place of the last trained values
+  for evaluations, by loading the moving averages into your model via
+  `var.assign(ema.average(var))`.
+  Additionally, although `ExponentialMovingAverage`
+  objects are not directly trackable by checkpoints,
+  `average()` returns the moving average variables for your model weights,
+  which you can then checkpoint. (There is an example
+  of this near the bottom of this docstring).
+  So, `average()` is useful when
+  building an evaluation model, or when restoring a model from a checkpoint
+  file.
 
   The moving averages are computed using exponential decay.  You specify the
-  decay value when creating the `ExponentialMovingAverage` object.  The shadow
-  variables are initialized with the same initial values as the trained
-  variables.  When you run the ops to maintain the moving averages, each
-  shadow variable is updated with the formula:
+  decay value (as a scalar float value, `Tensor`, or `Variable`) when creating
+  the `ExponentialMovingAverage` object.  The shadow variables are initialized
+  with the same initial values as the trained variables.  When you run `apply`
+  to update the moving averages, each shadow variable is updated with the
+  formula:
 
     `shadow_variable -= (1 - decay) * (shadow_variable - variable)`
 
@@ -315,6 +323,10 @@ class ExponentialMovingAverage(object):
   Reasonable values for `decay` are close to 1.0, typically in the
   multiple-nines range: 0.999, 0.9999, etc.
 
+  To have fine-grained control over the value of the decay parameter during
+  training, pass a scalar `tf.Variable` as the `decay` value to the constructor,
+  and update the variable as needed.
+
   Example usage when creating a training model:
 
   ```python
@@ -322,43 +334,115 @@ class ExponentialMovingAverage(object):
   var0 = tf.Variable(...)
   var1 = tf.Variable(...)
   # ... use the variables to build a training model...
-  ...
-  # Create an op that applies the optimizer.  This is what we usually
-  # would use as a training op.
-  opt_op = opt.minimize(my_loss, [var0, var1])
 
   # Create an ExponentialMovingAverage object
   ema = tf.train.ExponentialMovingAverage(decay=0.9999)
 
-  with tf.control_dependencies([opt_op]):
-      # Create the shadow variables, and add ops to maintain moving averages
-      # of var0 and var1. This also creates an op that will update the moving
-      # averages after each training step.  This is what we will use in place
-      # of the usual training op.
-      training_op = ema.apply([var0, var1])
+  # The first `apply` creates the shadow variables that hold the moving averages
+  ema.apply([var0, var1])
 
-  ...train the model by running training_op...
+  # grab the moving averages for checkpointing purposes or to be able to
+  # load the moving averages into the model weights
+  averages = [ema.average(var0), ema.average(var1)]
+
+  ...
+  def train_step(...):
+  ...
+    # Apply the optimizer.
+    opt.minimize(my_loss, [var0, var1])
+
+    # Update the moving averages
+    # of var0 and var1 with additional calls to `apply`
+    ema.apply([var0, var1])
+
+  ...train the model by running train_step multiple times...
   ```
 
-  There are two ways to use the moving averages for evaluations:
+  There are several ways to use the moving averages for evaluations:
 
-  *  Build a model that uses the shadow variables instead of the variables.
-     For this, use the `average()` method which returns the shadow variable
-     for a given variable.
-  *  Build a model normally but load the checkpoint files to evaluate by using
-     the shadow variable names.  For this use the `average_name()` method.  See
-     the `tf.compat.v1.train.Saver` for more
-     information on restoring saved variables.
+  1. Assign the values of the shadow variables to your model variables with
+     `Variable.assign(...)` before evaluating your
+     model. You can use the `average()`
+     method to get the shadow variable for a given variable. To continue
+     training after using this approach, make sure to record the unaveraged
+     weights and restore them before continuing to train. You can see the
+     tensorflow-addons' MovingAverage optimizer's `swap_weights` method for
+     one example of how to swap variables efficiently in distributed settings:
+     https://github.com/tensorflow/addons/blob/v0.13.0/tensorflow_addons/optimizers/moving_average.py#L151
+  2. Make sure to checkpoint out your moving average variables in your
+     `tf.train.Checkpoint`. At evaluation time, create your shadow variables and
+     use `tf.train.Checkpoint` to restore the moving averages into the shadow
+     variables. Then, load the moving averages into the actual model weights via
+     `var.assign(moving_avg)`.
+  3. Checkpoint out your moving average variables in your `tf.train.Checkpoint`.
+     For evaluation, restore your model weights directly from the moving
+     averages instead of from the non-averaged weights.
+     Caution: If you choose this approach, include only the object-graph paths
+     to the averaged path in your checkpoint restore.
+     If you point both the unaveraged and averaged paths in a checkpoint
+     restore to the same variables, it is hard to reason about whether your
+     model will restore the averaged or non-averaged variables.
 
-  Example of restoring the shadow variable values:
+  Example of saving out then restoring the shadow variable values:
 
   ```python
-  # Create a Saver that loads variables from their saved shadow values.
-  shadow_var0_name = ema.average_name(var0)
-  shadow_var1_name = ema.average_name(var1)
-  saver = tf.compat.v1.train.Saver({shadow_var0_name: var0, shadow_var1_name:
-  var1})
-  saver.restore(...checkpoint filename...)
+  # Create variables.
+  var0 = tf.Variable(...)
+  var1 = tf.Variable(...)
+  # ... use the variables to build a training model...
+
+  # Create an ExponentialMovingAverage object, create the shadow variables,
+  # and grab the moving averages for checkpointing purposes.
+  # (The ExponentialMovingAverage object itself is not checkpointable)
+  ema = tf.train.ExponentialMovingAverage(decay=0.9999)
+  ema.apply([var0, var1])
+  avg_var0 = ema.average(var0)
+  avg_var1 = ema.average(var1)
+
+  # Create a Checkpoint that will manage the model weights and the averages,
+  checkpoint = tf.train.Checkpoint(model_weights=[var0, var1],
+                                   averaged_weights=[avg_var0, avg_var1])
+  ... # Do training
+
+  # Save out the checkpoint including the model weights and the moving averages
+  checkpoint.save(...)
+  ```
+
+  Restore option: restore all averaged & non-averaged weights, then load
+  moving averages into the model via `var.assign()`
+  ```python
+  # Create variables.
+  var0 = tf.Variable(...)
+  var1 = tf.Variable(...)
+  # ... use the variables to build a training model...
+
+  # Create an ExponentialMovingAverage object, create the shadow variables,
+  # and grab the moving averages for checkpoint restore purposes.
+  # (The ExponentialMovingAverage object itself is not checkpointable)
+  ema = tf.train.ExponentialMovingAverage(decay=0.9999)
+  ema.apply([var0, var1])
+  avg_var0 = ema.average(var0)
+  avg_var1 = ema.average(var1)
+
+  # Create a Checkpoint that will manage the model weights and the averages,
+  checkpoint = tf.train.Checkpoint(model_weights=[var0, var1],
+                                   averaged_weights=[avg_var0, avg_var1])
+  checkpoint.restore(...)
+  var0.assign(avg_var0)
+  var1.assign(avg_var1)
+  # var0 and var1 now hold the moving average values
+  ```
+
+  Restore option: Directly restore the moving averages into the model weights.
+  ```python
+  # Create variables.
+  var0 = tf.Variable(...)
+  var1 = tf.Variable(...)
+  # ... use the variables to build a training model...
+
+  # Create a Checkpoint that will manage two objects with trackable state,
+  checkpoint = tf.train.Checkpoint(averaged_weights=[var0, var1])
+  checkpoint.restore(...)
   # var0 and var1 now hold the moving average values
   ```
   """
@@ -370,8 +454,11 @@ class ExponentialMovingAverage(object):
                name="ExponentialMovingAverage"):
     """Creates a new ExponentialMovingAverage object.
 
-    The `apply()` method has to be called to create shadow variables and add
-    ops to maintain moving averages.
+    The `apply()` method has to be called to create shadow variables.
+    Follow-on calls to the `apply()` method will update the moving averages
+    in the shadow variables.
+    (In TF 1.x graphs `apply()` will return an update op to update
+    the moving averages which must be explicitly run).
 
     The optional `num_updates` parameter allows one to tweak the decay rate
     dynamically. It is typical to pass the count of training steps, usually
@@ -382,10 +469,11 @@ class ExponentialMovingAverage(object):
       `min(decay, (1 + num_updates) / (10 + num_updates))`
 
     Args:
-      decay: Float.  The decay to use.
+      decay: A scalar float value, `Tensor`, or `Variable`. The decay parameter.
       num_updates: Optional count of number of updates applied to variables.
       zero_debias: If `True`, zero debias moving-averages that are initialized
-        with tensors.
+        with tensors. (Note: moving averages may not be initialized with
+        non-variable tensors when eager execution is enabled).
       name: String. Optional prefix name to use for the name of ops added in
         `apply()`.
     """
@@ -403,27 +491,34 @@ class ExponentialMovingAverage(object):
   def apply(self, var_list=None):
     """Maintains moving averages of variables.
 
-    `var_list` must be a list of `Variable` or `Tensor` objects.  This method
-    creates shadow variables for all elements of `var_list`.  Shadow variables
-    for `Variable` objects are initialized to the variable's initial value.
-    They will be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
-    For `Tensor` objects, the shadow variables are initialized to 0 and zero
-    debiased (see docstring in `assign_moving_average` for more details).
+    `var_list` must be a list of `Variable` objects.  This method
+    creates shadow variables (holding the moving averages)
+    for all elements of `var_list`, and
+    updates the moving averages using the current `var_list` values. Shadow
+    variables for `Variable` objects are initialized to the variable's initial
+    value.
 
-    shadow variables are created with `trainable=False` and added to the
-    `GraphKeys.ALL_VARIABLES` collection.  They will be returned by calls to
-    `tf.compat.v1.global_variables()`.
-
-    Returns an op that updates all shadow variables from the current value of
-    their associated variables.
+    Shadow variables are created with `trainable=False`. To access them you
+    can use the EMA object's `average` method. Note that `EMA` objects are
+    not trackable by checkpoints, so if you want to checkpoint or restore the
+    moving variables you will need to manually grab the shadow
+    variables via `average()` and assign them as `tf.Module` properties or
+    directly pass them to your `tf.train.Checkpoint`.
 
     Note that `apply()` can be called multiple times. When eager execution is
     enabled each call to apply will update the variables once, so this needs to
     be called in a loop.
 
+    In legacy TF 1.x graphs, this method returns an op that updates all
+    shadow variables from the current value of their associated variables. In
+    TF 1.x graphs without automatically control dependencies this op needs to be
+    manually run.
+
     Args:
-      var_list: A list of Variable or Tensor objects. The variables and Tensors
+      var_list: A list of Variable objects. The variables
         must be of types bfloat16, float16, float32, or float64.
+        (In legacy TF 1.x graphs these may be tensors, but this is unsupported
+        when eager execution is enabled.)
 
     Returns:
       An Operation that updates the moving averages.
@@ -435,7 +530,8 @@ class ExponentialMovingAverage(object):
     if var_list is None:
       var_list = variables.trainable_variables()
     for v in var_list:
-      if isinstance(v, ops.EagerTensor):
+      if (isinstance(v, ops.Tensor)
+          and ops.executing_eagerly_outside_functions()):
         raise TypeError(
             "tf.train.ExponentialMovingAverage does not support non-Variable"
             " tensors when eager execution is enabled.")
@@ -503,8 +599,12 @@ class ExponentialMovingAverage(object):
     """
     return self._averages.get(var.ref(), None)
 
+  @doc_controls.do_not_generate_docs
   def average_name(self, var):
-    """Returns the name of the `Variable` holding the average for `var`.
+    """[Meant for TF1] Returns name of `Variable` holding the average for `var`.
+
+    (Designed to work with legacy `tf.compat.v1.train.Saver`, it is sensitive to
+    specific variable names and not recommended for TF2)
 
     The typical scenario for `ExponentialMovingAverage` is to compute moving
     averages of variables during training, and restore the variables from the
@@ -530,8 +630,12 @@ class ExponentialMovingAverage(object):
     return ops.get_default_graph().unique_name(
         var.name[:-len(":0")] + "/" + self.name, mark_as_used=False)
 
+  @doc_controls.do_not_generate_docs
   def variables_to_restore(self, moving_avg_variables=None):
-    """Returns a map of names to `Variables` to restore.
+    """[Designed for TF 1.x] Returns a map of names to `Variables` to restore.
+
+    (Designed to work with legacy `tf.compat.v1.train.Saver`, sensitive to
+    specific variable names and not recommended for TF2)
 
     If a variable has a moving average, use the moving average variable name as
     the restore name; otherwise, use the variable name.

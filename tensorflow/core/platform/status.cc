@@ -18,16 +18,22 @@ limitations under the License.
 #include <stdio.h>
 
 #include <deque>
-#include <map>
+#include <functional>
+#include <memory>
+#include <string>
 
 #include "absl/base/call_once.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/protobuf/status.pb.h"
 
 namespace tensorflow {
 
@@ -90,13 +96,56 @@ class StatusLogSink : public TFLogSink {
 
 }  // namespace
 
-Status::Status(tensorflow::error::Code code, tensorflow::StringPiece msg,
-               std::vector<StackFrame>&& stack_trace) {
+// TODO(b/197552541) Move this namespace to errors.h after absl migration.
+namespace errors {
+static constexpr const char kStackTraceProtoUrl[] =
+    "type.googleapis.com/tensorflow.StackTracePayload";
+
+void SetStackTrace(::tensorflow::Status& status,
+                   std::vector<StackFrame> stack_trace) {
+  status.SetStackTrace(stack_trace);
+}
+
+std::vector<StackFrame> GetStackTrace(const ::tensorflow::Status& status) {
+  return status.GetStackTrace();
+}
+
+}  // namespace errors
+
+void Status::SetStackTrace(std::vector<StackFrame> stack_trace) {
+  stack_trace_ = stack_trace;
+}
+
+std::vector<StackFrame> Status::GetStackTrace() const { return stack_trace_; }
+
+absl::Span<const SourceLocation> Status::GetSourceLocations() const {
+  return state_ != nullptr ? state_->source_locations
+                           : absl::Span<const SourceLocation>();
+}
+
+void Status::MaybeAddSourceLocation(SourceLocation loc) {
+  if (state_ == nullptr) {
+    return;
+  }
+  if (loc.line <= 0) {
+    return;
+  }
+  if (loc.file_name == nullptr) {
+    return;
+  }
+  if (loc.file_name[0] == '\0') {
+    return;
+  }
+  state_->source_locations.push_back(loc);
+}
+
+Status::Status(tensorflow::error::Code code, absl::string_view msg,
+               SourceLocation loc) {
   assert(code != tensorflow::error::OK);
-  state_ = std::unique_ptr<State>(new State);
+  state_ = std::make_unique<State>();
   state_->code = code;
-  state_->msg = string(msg);
-  state_->stack_trace = std::move(stack_trace);
+  state_->msg = std::string(msg);
+  MaybeAddSourceLocation(loc);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
           << CurrentStackTrace();
 }
@@ -111,86 +160,81 @@ void Status::SlowCopyFrom(const State* src) {
   if (src == nullptr) {
     state_ = nullptr;
   } else {
-    state_ = std::unique_ptr<State>(new State(*src));
+    state_ = std::make_unique<State>(*src);
   }
 }
 
-const string& Status::empty_string() {
+const std::string& Status::empty_string() {
   static string* empty = new string;
   return *empty;
 }
 
-const std::vector<StackFrame>& Status::empty_stack_trace() {
-  static std::vector<StackFrame>* empty = new std::vector<StackFrame>();
-  return *empty;
-}
-
-string error_name(error::Code code) {
+std::string error_name(error::Code code) {
   switch (code) {
     case tensorflow::error::OK:
       return "OK";
       break;
     case tensorflow::error::CANCELLED:
-      return "Cancelled";
+      return "CANCELLED";
       break;
     case tensorflow::error::UNKNOWN:
-      return "Unknown";
+      return "UNKNOWN";
       break;
     case tensorflow::error::INVALID_ARGUMENT:
-      return "Invalid argument";
+      return "INVALID_ARGUMENT";
       break;
     case tensorflow::error::DEADLINE_EXCEEDED:
-      return "Deadline exceeded";
+      return "DEADLINE_EXCEEDED";
       break;
     case tensorflow::error::NOT_FOUND:
-      return "Not found";
+      return "NOT_FOUND";
       break;
     case tensorflow::error::ALREADY_EXISTS:
-      return "Already exists";
+      return "ALREADY_EXISTS";
       break;
     case tensorflow::error::PERMISSION_DENIED:
-      return "Permission denied";
+      return "PERMISSION_DENIED";
       break;
     case tensorflow::error::UNAUTHENTICATED:
-      return "Unauthenticated";
+      return "UNAUTHENTICATED";
       break;
     case tensorflow::error::RESOURCE_EXHAUSTED:
-      return "Resource exhausted";
+      return "RESOURCE_EXHAUSTED";
       break;
     case tensorflow::error::FAILED_PRECONDITION:
-      return "Failed precondition";
+      return "FAILED_PRECONDITION";
       break;
     case tensorflow::error::ABORTED:
-      return "Aborted";
+      return "ABORTED";
       break;
     case tensorflow::error::OUT_OF_RANGE:
-      return "Out of range";
+      return "OUT_OF_RANGE";
       break;
     case tensorflow::error::UNIMPLEMENTED:
-      return "Unimplemented";
+      return "UNIMPLEMENTED";
       break;
     case tensorflow::error::INTERNAL:
-      return "Internal";
+      return "INTERNAL";
       break;
     case tensorflow::error::UNAVAILABLE:
-      return "Unavailable";
+      return "UNAVAILABLE";
       break;
     case tensorflow::error::DATA_LOSS:
-      return "Data loss";
+      return "DATA_LOSS";
       break;
     default:
       char tmp[30];
-      snprintf(tmp, sizeof(tmp), "Unknown code(%d)", static_cast<int>(code));
+      snprintf(tmp, sizeof(tmp), "UNKNOWN_CODE(%d)", static_cast<int>(code));
       return tmp;
       break;
   }
 }
 
-string Status::ToString() const {
+std::string Status::ToString() const {
   if (state_ == nullptr) {
     return "OK";
   } else {
-    string result(error_name(code()));
+    std::string result(error_name(state_->code));
     result += ": ";
     result += state_->msg;
 
@@ -208,21 +252,20 @@ void Status::IgnoreError() const {
   // no-op
 }
 
-void Status::SetPayload(tensorflow::StringPiece type_url,
-                        tensorflow::StringPiece payload) {
+void Status::SetPayload(absl::string_view type_url, absl::string_view payload) {
   if (ok()) return;
   state_->payloads[std::string(type_url)] = std::string(payload);
 }
 
-tensorflow::StringPiece Status::GetPayload(
-    tensorflow::StringPiece type_url) const {
-  if (ok()) return tensorflow::StringPiece();
+absl::optional<absl::Cord> Status::GetPayload(
+    absl::string_view type_url) const {
+  if (ok()) return absl::nullopt;
   auto payload_iter = state_->payloads.find(std::string(type_url));
-  if (payload_iter == state_->payloads.end()) return tensorflow::StringPiece();
-  return tensorflow::StringPiece(payload_iter->second);
+  if (payload_iter == state_->payloads.end()) return absl::nullopt;
+  return absl::Cord(payload_iter->second);
 }
 
-bool Status::ErasePayload(tensorflow::StringPiece type_url) {
+bool Status::ErasePayload(absl::string_view type_url) {
   if (ok()) return false;
   auto payload_iter = state_->payloads.find(std::string(type_url));
   if (payload_iter == state_->payloads.end()) return false;
@@ -230,17 +273,13 @@ bool Status::ErasePayload(tensorflow::StringPiece type_url) {
   return true;
 }
 
-const std::unordered_map<std::string, std::string> Status::GetAllPayloads()
+void Status::ForEachPayload(
+    const std::function<void(absl::string_view, absl::string_view)>& visitor)
     const {
-  if (ok()) return {};
-  return state_->payloads;
-}
-
-void Status::ReplaceAllPayloads(
-    const std::unordered_map<std::string, std::string>& payloads) {
-  if (ok() || payloads.empty()) return;
-  if (state_ == nullptr) state_ = std::make_unique<State>();
-  state_->payloads = payloads;
+  if (ok()) return;
+  for (const auto& payload : state_->payloads) {
+    visitor(payload.first, payload.second);
+  }
 }
 
 std::ostream& operator<<(std::ostream& os, const Status& x) {
@@ -248,31 +287,72 @@ std::ostream& operator<<(std::ostream& os, const Status& x) {
   return os;
 }
 
-string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
-                                 const char* msg) {
-  string r("Non-OK-status: ");
+Status OkStatus() { return Status(); }
+
+Status FromAbslStatus(const absl::Status& s) {
+  if (s.ok()) {
+    return Status();
+  }
+  Status converted(static_cast<tensorflow::error::Code>(s.code()), s.message());
+  s.ForEachPayload(
+      [&converted](absl::string_view key, const absl::Cord& value) {
+        converted.SetPayload(key, std::string(value));
+      });
+
+  return converted;
+}
+
+absl::Status ToAbslStatus(const ::tensorflow::Status& s) {
+  if (s.ok()) {
+    return absl::OkStatus();
+  }
+
+  absl::Status converted(static_cast<absl::StatusCode>(s.code()),
+                         s.error_message());
+  s.ForEachPayload(
+      [&converted](tensorflow::StringPiece key, tensorflow::StringPiece value) {
+        converted.SetPayload(key, absl::Cord(value));
+      });
+
+  return converted;
+}
+
+std::string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
+                                      const char* msg) {
+  std::string r("Non-OK-status: ");
   r += msg;
   r += " status: ";
   r += v.ToString();
   // Leaks string but this is only to be used in a fatal error message
-  return new string(r);
+  return new std::string(r);
 }
 
-// kDerivedMarker is appended to the Status message string to indicate whether a
-// Status object is the root cause of an error or if it has been triggered by
-// cancelling/aborting a step.
-static const char* kDerivedMarker = "[_Derived_]";
+StatusGroup::StatusGroup() {}
+
+StatusGroup::StatusGroup(std::initializer_list<Status> statuses) {
+  for (const Status& s : statuses) {
+    Update(s);
+  }
+}
+
+static constexpr const char kDerivedStatusProtoUrl[] =
+    "type.googleapis.com/tensorflow.DerivedStatus";
 
 Status StatusGroup::MakeDerived(const Status& s) {
   if (IsDerived(s)) {
     return s;
   } else {
-    return Status(s.code(), strings::StrCat(kDerivedMarker, s.error_message()));
+    Status derived(s);
+    // TODO(b/200167936): Serialize an instance of DerivedStatus proto instead
+    // of using the string directly. The string is never used so it is not
+    // causing any issues at the moment.
+    derived.SetPayload(kDerivedStatusProtoUrl, "");
+    return derived;
   }
 }
 
 bool StatusGroup::IsDerived(const Status& s) {
-  return s.error_message().find(kDerivedMarker) != std::string::npos;
+  return s.GetPayload(kDerivedStatusProtoUrl).has_value();
 }
 
 void StatusGroup::ConfigureLogHistory() {
@@ -284,29 +364,58 @@ void StatusGroup::Update(const Status& s) {
     ++num_ok_;
   } else {
     ok_ = false;
-    children_.push_back(s);
-  }
-}
-
-static std::vector<Status> GetNonDerivedStatuses(
-    const std::vector<Status>& status) {
-  std::vector<Status> nonderived_statuses;
-  for (auto& s : status) {
-    if (!StatusGroup::IsDerived(s)) {
-      nonderived_statuses.push_back(s);
+    if (IsDerived(s)) {
+      derived_.insert(s);
+    } else {
+      non_derived_.insert(s);
     }
   }
-  return nonderived_statuses;
 }
 
 static constexpr int kMaxAggregatedStatusMessageSize = 8 * 1024;
 static constexpr int kMaxAttachedLogMessageSize = 512;
 
+std::unordered_map<std::string, std::string> StatusGroup::GetPayloads() const {
+  std::unordered_map<std::string, std::string> payloads;
+  auto capture_payload = [&payloads](absl::string_view key,
+                                     absl::string_view value) {
+    payloads[std::string(key)] = std::string(value);
+  };
+
+  for (const auto& status : derived_) {
+    status.ForEachPayload(capture_payload);
+  }
+
+  // If a key appears in both derived_ and non_derived_ payloads, then the
+  // non_derived_ payload receives priority.
+  for (const auto& status : non_derived_) {
+    status.ForEachPayload(capture_payload);
+  }
+
+  payloads.erase(kDerivedStatusProtoUrl);
+
+  return payloads;
+}
+
+Status MakeStatus(
+    tensorflow::error::Code code, absl::string_view message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  Status status(code, message);
+  for (const auto& payload : payloads) {
+    status.SetPayload(payload.first, payload.second);
+  }
+  return status;
+}
+
+std::string MakeString(const Status& status) {
+  return absl::StrCat(error_name(status.code()), ": ", status.error_message());
+}
+
 // Summarize all the status objects in the StatusGroup. This is used when
 // individual Status objects in the StatusGroup are not already summarized.
 Status StatusGroup::as_summary_status() const {
   if (ok_) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Gather recent logs as a string
@@ -324,46 +433,47 @@ Status StatusGroup::as_summary_status() const {
     }
   };
 
-  std::vector<Status> nonderived_statuses = GetNonDerivedStatuses(children_);
-
   // If only one root status is found, do not add summary header and footer.
-  if (nonderived_statuses.size() == 1) {
-    return Status(nonderived_statuses[0].code(),
-                  strings::StrCat(nonderived_statuses[0].error_message(),
-                                  get_recent_logs()));
+  if (non_derived_.size() == 1) {
+    return MakeStatus(non_derived_.begin()->code(),
+                      strings::StrCat(non_derived_.begin()->error_message(),
+                                      get_recent_logs()),
+                      GetPayloads());
   }
 
-  if (!nonderived_statuses.empty()) {
+  if (!non_derived_.empty()) {
     std::vector<std::string> fmt;
 
-    fmt.push_back(strings::Printf("%zu root error(s) found.",
-                                  nonderived_statuses.size()));
+    fmt.push_back(
+        strings::Printf("%zu root error(s) found.", non_derived_.size()));
 
     int index = 0;
     auto code = tensorflow::error::CANCELLED;
-    for (auto& s : nonderived_statuses) {
+    for (const auto& s : non_derived_) {
       // NOTE: Avoid using CANCELLED as the code of summary status if the group
       // contains other error code.
       if (code == tensorflow::error::CANCELLED &&
           s.code() != tensorflow::error::CANCELLED) {
         code = s.code();
       }
-      fmt.emplace_back(strings::StrCat("  (", index, ") ", s.ToString()));
+      fmt.emplace_back(strings::StrCat("  (", index, ") ", MakeString(s)));
       ++index;
     }
 
     fmt.push_back(strings::Printf("%zu successful operations.", num_ok_));
     fmt.push_back(
-        strings::Printf("%zu derived errors ignored.",
-                        children_.size() - nonderived_statuses.size()));
+        strings::Printf("%zu derived errors ignored.", derived_.size()));
 
     std::string error_msg =
         absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize);
 
-    return Status(code, strings::StrCat(error_msg, get_recent_logs()));
+    return MakeStatus(code, strings::StrCat(error_msg, get_recent_logs()),
+                      GetPayloads());
   } else {
     // All statuses are derived. Pick the first available status to return.
-    return children_[0];
+    return MakeDerived(MakeStatus(derived_.begin()->code(),
+                                  derived_.begin()->error_message(),
+                                  GetPayloads()));
   }
 }
 
@@ -371,30 +481,32 @@ Status StatusGroup::as_summary_status() const {
 // individual Status objects in the StatusGroup are already summarized Status.
 Status StatusGroup::as_concatenated_status() const {
   if (ok_) {
-    return Status::OK();
+    return OkStatus();
   }
-
-  std::vector<Status> nonderived_statuses = GetNonDerivedStatuses(children_);
 
   // If only one root status is found, return it directly.
-  if (nonderived_statuses.size() == 1) {
-    return nonderived_statuses[0];
+  if (non_derived_.size() == 1) {
+    return MakeStatus(non_derived_.begin()->code(),
+                      non_derived_.begin()->error_message(), GetPayloads());
   }
 
-  if (!nonderived_statuses.empty()) {
+  if (!non_derived_.empty()) {
     std::vector<string> fmt;
     fmt.emplace_back("\n=====================");
-    for (auto& s : nonderived_statuses) {
-      fmt.emplace_back(s.ToString());
+    for (const auto& s : non_derived_) {
+      fmt.emplace_back(MakeString(s));
     }
     fmt.emplace_back("=====================\n");
-    return Status(
-        nonderived_statuses[0].code(),
-        absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize));
+    return MakeStatus(
+        non_derived_.begin()->code(),
+        absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize),
+        GetPayloads());
   } else {
     // All statuses are derived. Pick the first available status to return.
     // This should not happen in normal execution.
-    return children_[0];
+    return MakeDerived(MakeStatus(derived_.begin()->code(),
+                                  derived_.begin()->error_message(),
+                                  GetPayloads()));
   }
 }
 

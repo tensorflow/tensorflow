@@ -14,13 +14,8 @@
 # ==============================================================================
 """Memory leak detection utility."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework.python_memory_checker import _PythonMemoryChecker
-from tensorflow.python.profiler.traceme import TraceMe
-from tensorflow.python.profiler.traceme import traceme_wrapper
+from tensorflow.python.profiler import trace
 from tensorflow.python.util import tf_inspect
 
 try:
@@ -72,22 +67,20 @@ class MemoryChecker(object):
   is a leak, it's happening similarly on every snapshot.
   """
 
-  @traceme_wrapper
+  @trace.trace_wrapper
   def __enter__(self):
-    self._trace_me = TraceMe('with MemoryChecker():')
-    self._trace_me.__enter__()
     self._python_memory_checker = _PythonMemoryChecker()
     if CppMemoryChecker:
       self._cpp_memory_checker = CppMemoryChecker(_get_test_name_best_effort())
     return self
 
-  @traceme_wrapper
+  @trace.trace_wrapper
   def __exit__(self, exc_type, exc_value, traceback):
     if CppMemoryChecker:
       self._cpp_memory_checker.stop()
-    self._trace_me.__exit__(exc_type, exc_value, traceback)
 
-  @traceme_wrapper
+  # We do not enable trace_wrapper on this function to avoid contaminating
+  # the snapshot.
   def record_snapshot(self):
     """Take a memory snapshot for later analysis.
 
@@ -102,7 +95,7 @@ class MemoryChecker(object):
     if CppMemoryChecker:
       self._cpp_memory_checker.record_snapshot()
 
-  @traceme_wrapper
+  @trace.trace_wrapper
   def report(self):
     """Generates a html graph file showing allocations over snapshots.
 
@@ -114,7 +107,7 @@ class MemoryChecker(object):
     if CppMemoryChecker:
       self._cpp_memory_checker.report()
 
-  @traceme_wrapper
+  @trace.trace_wrapper
   def assert_no_leak_if_all_possibly_except_one(self):
     """Raises an exception if a leak is detected.
 
@@ -127,7 +120,7 @@ class MemoryChecker(object):
     if CppMemoryChecker:
       self._cpp_memory_checker.assert_no_leak_if_all_possibly_except_one()
 
-  @traceme_wrapper
+  @trace.trace_wrapper
   def assert_no_new_python_objects(self, threshold=None):
     """Raises an exception if there are new Python objects created.
 

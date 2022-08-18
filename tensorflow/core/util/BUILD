@@ -15,6 +15,7 @@ load(
     "tf_cuda_library",
     "tf_cuda_only_cc_test",
     "tf_kernel_library",
+    "tf_mkl_kernel_library",
 )
 
 # buildifier: disable=same-origin-load
@@ -168,6 +169,7 @@ filegroup(
         "mirror_pad_mode.h",
         "mkl_threadpool.h",
         "mkl_util.h",
+        "onednn_env_vars.h",
         "overflow.h",
         "padding.h",
         "permutation_input_iterator.h",
@@ -298,6 +300,7 @@ filegroup(
     srcs = [
         "mkl_threadpool.h",
         "mkl_util.h",
+        "onednn_env_vars.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -373,8 +376,14 @@ filegroup(
 # is written.
 tf_version_info_genrule(
     name = "version_info_gen",
-    out = "version_info.cc",
+    out = "version_info.h",
     compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "version_info",
+    hdrs = ["version_info.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -389,6 +398,19 @@ cc_library(
     copts = tf_copts(),
     visibility = [
         "//tensorflow:internal",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "onednn_env_vars",
+    srcs = ["onednn_env_vars.cc"],
+    hdrs = ["onednn_env_vars.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )
 
@@ -446,7 +468,10 @@ cc_library(
     name = "reporter",
     srcs = ["reporter.cc"],
     hdrs = ["reporter.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
+    ],
     deps = [
         ":test_log_proto_impl_cc",
         "//tensorflow/core/platform:env",
@@ -511,6 +536,9 @@ tf_cuda_library(
 cc_library(
     name = "overflow",
     hdrs = ["overflow.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -530,15 +558,6 @@ cc_library(
 cc_library(
     name = "ptr_util",
     hdrs = ["ptr_util.h"],
-)
-
-cc_library(
-    name = "version_info",
-    srcs = ["version_info.cc"],
-    hdrs = ["//tensorflow/core/public:version.h"],
-    compatible_with = get_compatible_with_portable(),
-    copts = tf_copts(),
-    alwayslink = if_static(0, 1),
 )
 
 cc_library(
@@ -574,6 +593,7 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:inlined_vector",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -647,10 +667,16 @@ alias(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+cc_library(
+    name = "determinism_test_util",
+    hdrs = [":determinism_test_util.h"],
+    deps = [":determinism"],
+)
+
 tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
-    hdrs = ["cuda_solvers.h"],
+    hdrs = ["gpu_solvers.h"],
     compatible_with = [],
     # @local_config_cuda//cuda:cusolver_static, //third_party/eigen3:blas,
     # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
@@ -665,16 +691,16 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/stream_executor/cuda:cublas_lib",
         "//tensorflow/stream_executor/cuda:cusolver_lib",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
     ],
 )
 
 tf_kernel_library(
     name = "rocm_solvers",
     srcs = ["rocm_solvers.cc"],
-    hdrs = ["rocm_solvers.h"],
+    hdrs = ["gpu_solvers.h"],
     compatible_with = [],
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
@@ -686,6 +712,7 @@ tf_kernel_library(
         "//tensorflow/stream_executor/rocm:rocblas_plugin",
         "//tensorflow/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
+        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -694,7 +721,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cuda_sparse",
     srcs = if_cuda(["cuda_sparse.cc"]) + if_rocm(["rocm_sparse.cc"]),
-    hdrs = ["cuda_sparse.h"],
+    hdrs = [
+        "cuda_sparse.h",
+        "gpu_solvers.h",
+    ],
     compatible_with = [],
     deps = [
         ":cuda_solvers",
@@ -704,6 +734,7 @@ tf_kernel_library(
         "//tensorflow/stream_executor/cuda:cusparse_lib",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
+        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
         "//tensorflow/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
@@ -779,6 +810,7 @@ tf_cc_tests(
         "saved_tensor_slice_util_test.cc",
         "semver_test.cc",
         "stat_summarizer_test.cc",
+        "strided_slice_op_test.cc",
         "tensor_format_test.cc",
         "tensor_slice_reader_test.cc",
         "tensor_slice_set_test.cc",
@@ -928,5 +960,9 @@ tf_proto_library(
     ],
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",
+    ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
     ],
 )

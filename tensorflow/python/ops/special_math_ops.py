@@ -17,10 +17,6 @@
 To avoid circular dependencies, some math_ops should go here.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import re
@@ -28,9 +24,7 @@ import string
 
 import numpy as np
 import opt_einsum
-import six
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.python.framework import ops
@@ -104,6 +98,7 @@ def lbeta(x, name=None):
 
 
 @tf_export('math.special.dawsn')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def dawsn(x, name=None):
   """Computes Dawson's integral of `x` element-wise.
@@ -134,6 +129,7 @@ def dawsn(x, name=None):
 
 
 @tf_export('math.special.expint')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def expint(x, name=None):
   """Computes the Exponential integral of `x` element-wise.
@@ -163,6 +159,7 @@ def expint(x, name=None):
 
 
 @tf_export('math.special.fresnel_cos')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def fresnel_cos(x, name=None):
   """Computes Fresnel's cosine integral of `x` element-wise.
@@ -193,6 +190,7 @@ def fresnel_cos(x, name=None):
 
 
 @tf_export('math.special.fresnel_sin')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def fresnel_sin(x, name=None):
   """Computes Fresnel's sine integral of `x` element-wise.
@@ -222,6 +220,7 @@ def fresnel_sin(x, name=None):
 
 
 @tf_export('math.special.spence')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def spence(x, name=None):
   """Computes Spence's integral of `x` element-wise.
@@ -251,6 +250,7 @@ def spence(x, name=None):
 
 
 @tf_export('math.bessel_i0', 'math.special.bessel_i0')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_i0(x, name=None):
   """Computes the Bessel i0 function of `x` element-wise.
@@ -279,6 +279,7 @@ def bessel_i0(x, name=None):
 
 
 @tf_export('math.bessel_i0e', 'math.special.bessel_i0e')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_i0e(x, name=None):
   """Computes the Bessel i0e function of `x` element-wise.
@@ -305,6 +306,7 @@ def bessel_i0e(x, name=None):
 
 
 @tf_export('math.bessel_i1', 'math.special.bessel_i1')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_i1(x, name=None):
   """Computes the Bessel i1 function of `x` element-wise.
@@ -333,6 +335,7 @@ def bessel_i1(x, name=None):
 
 
 @tf_export('math.bessel_i1e', 'math.special.bessel_i1e')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_i1e(x, name=None):
   """Computes the Bessel i1e function of `x` element-wise.
@@ -359,6 +362,7 @@ def bessel_i1e(x, name=None):
 
 
 @tf_export('math.special.bessel_k0')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_k0(x, name=None):
   """Computes the Bessel k0 function of `x` element-wise.
@@ -387,6 +391,7 @@ def bessel_k0(x, name=None):
 
 
 @tf_export('math.special.bessel_k0e')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_k0e(x, name=None):
   """Computes the Bessel k0e function of `x` element-wise.
@@ -413,6 +418,7 @@ def bessel_k0e(x, name=None):
 
 
 @tf_export('math.special.bessel_k1')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_k1(x, name=None):
   """Computes the Bessel k1 function of `x` element-wise.
@@ -441,6 +447,7 @@ def bessel_k1(x, name=None):
 
 
 @tf_export('math.special.bessel_k1e')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_k1e(x, name=None):
   """Computes the Bessel k1e function of `x` element-wise.
@@ -467,6 +474,7 @@ def bessel_k1e(x, name=None):
 
 
 @tf_export('math.special.bessel_j0')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_j0(x, name=None):
   """Computes the Bessel j0 function of `x` element-wise.
@@ -493,6 +501,7 @@ def bessel_j0(x, name=None):
 
 
 @tf_export('math.special.bessel_j1')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_j1(x, name=None):
   """Computes the Bessel j1 function of `x` element-wise.
@@ -519,6 +528,7 @@ def bessel_j1(x, name=None):
 
 
 @tf_export('math.special.bessel_y0')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_y0(x, name=None):
   """Computes the Bessel y0 function of `x` element-wise.
@@ -545,6 +555,7 @@ def bessel_y0(x, name=None):
 
 
 @tf_export('math.special.bessel_y1')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def bessel_y1(x, name=None):
   """Computes the Bessel y1 function of `x` element-wise.
@@ -706,7 +717,7 @@ def einsum(equation, *inputs, **kwargs):
 
   This method does not support broadcasting on named-axes. All axes with
   matching labels should have the same length. If you have length-1 axes,
-  use `tf.squeseze` or `tf.reshape` to eliminate them.
+  use `tf.squeeze` or `tf.reshape` to eliminate them.
 
   To write code that is agnostic to the number of indices in the input
   use an ellipsis. The ellipsis is a placeholder for "whatever other indices
@@ -792,7 +803,7 @@ def _einsum_v1(equation, *inputs, **kwargs):
           input_axis_labels[1] + '->' + output_axis_labels)
     temp = inputs[0]
     temp_axis_labels = input_axis_labels[0]
-    for i in xrange(len(inputs) - 1):
+    for i in range(len(inputs) - 1):
       axes_to_sum = (
           set(temp_axis_labels) &
           set(input_axis_labels[i + 1]) - set(output_axis_labels))
@@ -1226,9 +1237,8 @@ def _get_opt_einsum_contract_path(equation, shaped_inputs_tuple, optimize):
 
 # Cache the possibly expensive opt_einsum.contract_path call using lru_cache
 # from the Python3+ standard library.
-if not six.PY2:
-  _get_opt_einsum_contract_path = functools.lru_cache(maxsize=128)(
-      _get_opt_einsum_contract_path)
+_get_opt_einsum_contract_path = functools.lru_cache(maxsize=128)(
+    _get_opt_einsum_contract_path)
 
 
 def _einsum_v2_parse_and_resolve_equation(equation, input_shapes):

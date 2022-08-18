@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -60,7 +60,7 @@ class CSRSparseMatrixConjFunctor {
     functor::UnaryFunctor<Device, functor::conj<T>> func;
     func(d, b->values().flat<T>() /*out*/, a.values().flat<T>() /*in*/);
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -77,7 +77,7 @@ class CSRSparseMatrixConjFunctor {
       TF_RETURN_IF_ERROR(CSRSparseMatrix::CreateCSRSparseMatrix(         \
           DataTypeToEnum<T>::value, a.dense_shape(), a.batch_pointers(), \
           a.row_pointers(), a.col_indices(), a.values(), b));            \
-      return Status::OK();                                               \
+      return OkStatus();                                                 \
     }                                                                    \
   };
 

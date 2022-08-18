@@ -27,6 +27,9 @@ namespace xla {
 // Helper interface for making queries about the HLO IR.
 namespace hlo_query {
 
+// Returns whether the given opcode is a collective communications operation.
+bool IsCollectiveCommunicationOp(HloOpcode op);
+
 // Returns whether the instruction provided is a constant rank-0 float32, and
 // if so, places the constant value into out.
 // Precondition: out != nullptr
@@ -54,18 +57,17 @@ bool ContainsInstrWithOpcode(const HloComputation* comp,
 // Returns an operand of an instruction with the given opcode. If there are
 // multiple matching operands, then the first matching operand is returned. If
 // there are no matching operands then nullptr is returned.
-HloInstruction* GetMatchingOperand(
-    const std::function<bool(const HloInstruction*)>& matcher,
-    HloInstruction* instruction);
+HloInstruction* GetMatchingOperand(const HloPredicate& matcher,
+                                   HloInstruction* instruction);
 
 // Returns whether a binary instruction has a matching operand. Sets
 // matching_operand to the matching operand and the other operand to
 // other_operand. Note: in the case where both operands match, the first operand
 // of the instruction is returned.
-bool MatchBinaryInstructionOperand(
-    const std::function<bool(const HloInstruction*)>& matcher,
-    HloInstruction* instruction, HloInstruction** matching_operand,
-    HloInstruction** other_operand);
+bool MatchBinaryInstructionOperand(const HloPredicate& matcher,
+                                   HloInstruction* instruction,
+                                   HloInstruction** matching_operand,
+                                   HloInstruction** other_operand);
 
 // Returns whether a binary instruction has a operand with a given opcode.
 // This is a special case of MatchingBinaryInstructionOperand.

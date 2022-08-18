@@ -37,7 +37,7 @@ class MultiRunStatsRecorder : public BenchmarkListener {
     results_.emplace_back(EachRunResult());
     auto& current = results_.back();
     current.completed = false;
-    current.params = absl::make_unique<BenchmarkParams>();
+    current.params = std::make_unique<BenchmarkParams>();
     current.params->Merge(params, true /* overwrite*/);
   }
 
@@ -80,7 +80,7 @@ class BenchmarkPerformanceOptions {
   explicit BenchmarkPerformanceOptions(
       BenchmarkModel* single_option_run,
       std::unique_ptr<MultiRunStatsRecorder> all_run_stats =
-          absl::make_unique<MultiRunStatsRecorder>());
+          std::make_unique<MultiRunStatsRecorder>());
 
   virtual ~BenchmarkPerformanceOptions() {}
 

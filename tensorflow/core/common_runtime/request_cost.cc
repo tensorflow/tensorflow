@@ -31,7 +31,7 @@ void RequestCost::RecordCost(
   }
 }
 
-absl::flat_hash_map<std::string, absl::Duration> RequestCost::GetCosts() {
+absl::flat_hash_map<std::string, absl::Duration> RequestCost::GetCosts() const {
   absl::MutexLock lock(&mutex_);
   return cost_map_;
 }

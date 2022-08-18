@@ -63,7 +63,11 @@ cc_library(
         "transforms/passes.h.inc",
     ],
     compatible_with = get_compatible_with_cloud(),
-    deps = ["@llvm-project//mlir:Pass"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+    ],
 )
 
 cc_library(
@@ -79,16 +83,20 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -104,8 +112,9 @@ gentbl_cc_library(
     td_file = "transforms/tf_legalize_patterns.td",
     deps = [
         ":tosa_ops_td_files",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-        "@llvm-project//mlir:StdOpsTdFiles",
+        "@llvm-project//mlir:FuncTdFiles",
     ],
 )
 
@@ -113,6 +122,7 @@ cc_library(
     name = "tf_passes",
     srcs = [
         "tf_passes.cc",
+        "transforms/dequantize_tfl_softmax.cc",
         "transforms/fuse_bias_tf.cc",
         "transforms/legalize_tf.cc",
         "transforms/tf_legalize_patterns.inc",
@@ -126,18 +136,19 @@ cc_library(
     deps = [
         ":legalize_common",
         ":passes_header",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineTransforms",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -154,7 +165,8 @@ gentbl_cc_library(
     deps = [
         ":tosa_ops_td_files",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
-        "@llvm-project//mlir:StdOpsTdFiles",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
+        "@llvm-project//mlir:FuncTdFiles",
     ],
 )
 
@@ -164,6 +176,7 @@ cc_library(
         "tfl_passes.cc",
         "transforms/convert_tfl_uint8.cc",
         "transforms/legalize_tfl.cc",
+        "transforms/strip_quant_types.cc",
         "transforms/tfl_legalize_patterns.inc",
     ],
     hdrs = [
@@ -177,15 +190,45 @@ cc_library(
         ":passes_header",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineTransforms",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
+)
+
+cc_library(
+    name = "tf_tfl_passes",
+    srcs = [
+        "tf_tfl_passes.cc",
+        "transforms/legalize_tf_tfl.cc",
+    ],
+    hdrs = [
+        "tf_tfl_passes.h",
+        "transforms/passes.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    visibility = [":friends"],
+    deps = [
+        ":legalize_common",
+        ":passes_header",
+        ":tf_passes",
+        ":tfl_passes",
+        "//tensorflow/compiler/mlir/lite:lift_tflite_flex_ops",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//mlir:AffineTransforms",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
 )

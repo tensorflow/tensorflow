@@ -30,26 +30,28 @@ END
   }
   summary: "Scatters `updates` into a tensor of shape `shape` according to `indices`."
   description: <<END
-Update the input tensor by scattering sparse `updates` according to individual values at the specified `indices`.
-This op returns an `output` tensor with the `shape` you specify. This op is the
-inverse of the `tf.gather_nd` operator which extracts values or slices from a
-given tensor.
+Scatter sparse `updates` according to individual values at the specified
+`indices`. This op returns an output tensor with the `shape` you specify. This
+op is the inverse of the `tf.gather_nd` operator which extracts values or slices
+from a given tensor.
 
-This operation is similar to `tf.tensor_scatter_add`, except that the tensor is
-zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
+This operation is similar to `tf.tensor_scatter_nd_add`, except that the tensor
+is zero-initialized. Calling `tf.scatter_nd(indices, updates, shape)`
 is identical to calling
-`tf.tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`.
+`tf.tensor_scatter_nd_add(tf.zeros(shape, updates.dtype), indices, updates)`
 
-If `indices` contains duplicates, the duplicate `values` are accumulated
-(summed).
+If `indices` contains duplicates, the associated `updates` are accumulated
+(summed) into the output tensor.
 
-**WARNING**: The order in which updates are applied is nondeterministic, so the
-output will be nondeterministic if `indices` contains duplicates;
-numbers summed in different order may yield different results because of some
-numerical approximation issues.
+**WARNING**: For floating-point data types, the output may be nondeterministic.
+This is because the order in which the updates are applied is nondeterministic
+and when floating-point numbers are added in different orders the resulting
+numerical approximation error can be slightly different. However, the output
+will be deterministic if op determinism is enabled via
+`tf.config.experimental.enable_op_determinism`.
 
-`indices` is an integer tensor of shape `shape`. The last dimension
-of `indices` can be at most the rank of `shape`:
+`indices` is an integer tensor containing indices into the output tensor. The
+last dimension of `indices` can be at most the rank of `shape`:
 
     indices.shape[-1] <= shape.rank
 

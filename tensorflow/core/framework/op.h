@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/full_type_inference_util.h"
 #include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -223,13 +224,22 @@ class OpDefBuilderWrapper {
     builder_.Attr(std::move(spec));
     return *this;
   }
+  OpDefBuilderWrapper& Attr(const char* spec) TF_ATTRIBUTE_NOINLINE {
+    return Attr(std::string(spec));
+  }
   OpDefBuilderWrapper& Input(std::string spec) {
     builder_.Input(std::move(spec));
     return *this;
   }
+  OpDefBuilderWrapper& Input(const char* spec) TF_ATTRIBUTE_NOINLINE {
+    return Input(std::string(spec));
+  }
   OpDefBuilderWrapper& Output(std::string spec) {
     builder_.Output(std::move(spec));
     return *this;
+  }
+  OpDefBuilderWrapper& Output(const char* spec) TF_ATTRIBUTE_NOINLINE {
+    return Output(std::string(spec));
   }
   OpDefBuilderWrapper& SetIsCommutative() {
     builder_.SetIsCommutative();
@@ -270,12 +280,19 @@ class OpDefBuilderWrapper {
     return *this;
   }
 
-  // Type constructor to support type inference. Similar to SetShapeFn, it
-  // allows programmatic control over the output type of an op, including
-  // inferring it from the inputs.
-  // TODO(mdan): Merge with shape inference.
   OpDefBuilderWrapper& SetTypeConstructor(OpTypeConstructor fn) {
     builder_.SetTypeConstructor(std::move(fn));
+    return *this;
+  }
+
+  OpDefBuilderWrapper& SetForwardTypeFn(ForwardTypeInferenceFn fn) {
+    builder_.SetForwardTypeFn(std::move(fn));
+    return *this;
+  }
+
+  OpDefBuilderWrapper& SetReverseTypeFn(int input_number,
+                                        ForwardTypeInferenceFn fn) {
+    builder_.SetReverseTypeFn(input_number, std::move(fn));
     return *this;
   }
 

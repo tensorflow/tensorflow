@@ -1,6 +1,6 @@
 # XLA GPU Backend
 
-<!--* freshness: { owner: ['sanjoy', 'timshen'] reviewed: '2021-05-10' } *-->
+<!--* freshness: { owner: "cheshire" reviewed: "2022-08-04" } *-->
 
 ## Compile time
 
@@ -11,7 +11,6 @@ generates
 whose `ExecuteOnStream` interface will be called by the XLA service at runtime.
 The figure below shows the work flow of `GpuCompiler`.
 
-<!--*
 ```dot
 strict digraph {
   compound=true;
@@ -52,7 +51,6 @@ strict digraph {
   ir_emitter -> { thunk0 thunk1 }
 }
 ```
-*-->
 
 <center><img style="width:25%" src="./images/gpu_backend_chart.svg"></img></center>
 
@@ -84,7 +82,7 @@ allocate and deallocate buffers.
 
 `GpuCompiler` takes the optimized HLO and `BufferAssignment`, and convert them
 to the MLIR dialect
-[`LMHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td).
+[`LMHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.td).
 
 The `LMHLO` dialect is a graph consists of `LMHLO` ops. `LMHLO` ops are
 buffer-based and sequentially ordered. The sequential order reflects the
@@ -94,7 +92,7 @@ In `LMHLO`, direct operand-user information is stripped away, as each op is only
 connected with its buffers, not ops which generate those buffers.
 
 Notice that some `LMHLO` ops, e.g. `lmhlo.fusion` or `lmhlo.reduce`, contain
-[`MHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td)-based
+[`MHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td)-based
 regions. They are tensor-based `MHLO` regions because ops in them don't have
 buffers associated.
 

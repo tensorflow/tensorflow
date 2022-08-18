@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
@@ -93,9 +94,9 @@ using reference_ops::Less;
 using reference_ops::LessEqual;
 using reference_ops::LessEqualWithScaling;
 using reference_ops::LessWithScaling;
-using reference_ops::Mean;
 using reference_ops::ProcessBroadcastShapes;
 using reference_ops::RankOneSelect;
+using reference_ops::Relu0To1;  // NOLINT
 using reference_ops::Relu1;
 using reference_ops::Relu6;
 using reference_ops::ReluX;
@@ -111,69 +112,6 @@ using reference_ops::Sub16;
 //
 // Used to convert from old-style shifts (right) to new-style (left).
 static constexpr int kReverseShift = -1;
-
-// Make a local VectorMap typedef allowing to map a float array
-// as a Eigen vector expression. The std::conditional here is to
-// construct the suitable Eigen type for the constness of the
-// data. Indeed, for const data, we need to produce
-//    Eigen::Map<const Eigen::Matrix<float, ...>>
-// and not the more straightforward
-//    Eigen::Map<Eigen::Matrix<const float, ...>>
-template <typename Scalar>
-using VectorMap = typename std::conditional<
-    std::is_const<Scalar>::value,
-    Eigen::Map<const Eigen::Matrix<typename std::remove_const<Scalar>::type,
-                                   Eigen::Dynamic, 1>>,
-    Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, 1>>>::type;
-
-template <typename Scalar>
-VectorMap<Scalar> MapAsVector(Scalar* data, const RuntimeShape& shape) {
-  const int size = shape.FlatSize();
-  return VectorMap<Scalar>(data, size, 1);
-}
-
-// Make a local VectorMap typedef allowing to map a float array
-// as a Eigen matrix expression. The same explanation as for VectorMap
-// above also applies here.
-template <typename Scalar>
-using MatrixMap = typename std::conditional<
-    std::is_const<Scalar>::value,
-    Eigen::Map<const Eigen::Matrix<typename std::remove_const<Scalar>::type,
-                                   Eigen::Dynamic, Eigen::Dynamic>>,
-    Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>>>::type;
-
-template <typename Scalar>
-MatrixMap<Scalar> MapAsMatrixWithLastDimAsRows(Scalar* data,
-                                               const RuntimeShape& shape) {
-  const int dims_count = shape.DimensionsCount();
-  const int rows = shape.Dims(dims_count - 1);
-  const int cols = FlatSizeSkipDim(shape, dims_count - 1);
-  return MatrixMap<Scalar>(data, rows, cols);
-}
-
-template <typename Scalar>
-MatrixMap<Scalar> MapAsMatrixWithFirstDimAsCols(Scalar* data,
-                                                const RuntimeShape& shape) {
-  const int cols = shape.Dims(0);
-  const int rows = FlatSizeSkipDim(shape, 0);
-  return MatrixMap<Scalar>(data, rows, cols);
-}
-
-template <typename Scalar>
-using ArrayMap = typename std::conditional<
-    std::is_const<Scalar>::value,
-    Eigen::Map<const Eigen::Array<typename std::remove_const<Scalar>::type,
-                                  Eigen::Dynamic, Eigen::Dynamic>>,
-    Eigen::Map<Eigen::Array<Scalar, Eigen::Dynamic, Eigen::Dynamic>>>::type;
-
-template <typename Scalar>
-ArrayMap<Scalar> MapAsArrayWithLastDimAsRows(Scalar* data,
-                                             const RuntimeShape& shape) {
-  const int dims_count = shape.DimensionsCount();
-  const int rows = shape.Dims(dims_count - 1);
-  const int cols = FlatSizeSkipDim(shape, dims_count - 1);
-  return ArrayMap<Scalar>(data, rows, cols);
-}
 
 // Copied from tensorflow/core/framework/tensor_types.h
 template <typename T, int NDIMS = 1, typename IndexType = Eigen::DenseIndex>
@@ -965,273 +903,6 @@ inline uint32x4_t RoundToNearestUnsigned(const float32x4_t input) {
 }
 
 #endif  // USE_NEON
-
-inline void MeanImpl(const tflite::MeanParams& op_params,
-                     const RuntimeShape& input_shape, const uint8_t* input_data,
-                     int32 multiplier, int32 shift, int32 bias,
-                     const RuntimeShape& output_shape, uint8_t* output_data,
-                     int start_depth, int end_depth) {
-  ruy::profiler::ScopeLabel label("Mean4D/Uint8/MeanImpl");
-
-  // Current implementation only supports dimension equals 4 and simultaneous
-  // reduction over width and height.
-  const int output_batch = output_shape.Dims(0);
-  const int output_height = output_shape.Dims(2);
-  const int output_width = output_shape.Dims(2);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-
-  TFLITE_CHECK_EQ(op_params.axis_count, 2);
-  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_CHECK_EQ(output_height, 1);
-  TFLITE_CHECK_EQ(output_width, 1);
-
-  constexpr int32_t kMinValue = std::numeric_limits<uint8_t>::min();
-  constexpr int32_t kMaxValue = std::numeric_limits<uint8_t>::max();
-
-#ifdef USE_NEON
-  const int32x4_t bias_dup = vdupq_n_s32(bias);
-  const int32x4_t min_dup = vdupq_n_s32(kMinValue);
-  const int32x4_t max_dup = vdupq_n_s32(kMaxValue);
-#endif  // USE_NEON
-
-  for (int out_b = 0; out_b < output_batch; ++out_b) {
-    int out_d = start_depth;
-#ifdef USE_NEON
-
-    for (; out_d <= end_depth - 16; out_d += 16) {
-      int32x4x4_t temp_sum;
-      temp_sum.val[0] = vdupq_n_s32(0);
-      temp_sum.val[1] = vdupq_n_s32(0);
-      temp_sum.val[2] = vdupq_n_s32(0);
-      temp_sum.val[3] = vdupq_n_s32(0);
-      for (int in_h = 0; in_h < input_height; ++in_h) {
-        for (int in_w = 0; in_w < input_width; ++in_w) {
-          const uint8_t* input_data_ptr =
-              input_data + Offset(input_shape, out_b, in_h, in_w, out_d);
-          uint8x16_t input_data_val = vld1q_u8(input_data_ptr);
-
-          int16x8_t input_data_low_shift =
-              vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(input_data_val)));
-          int16x8_t input_data_high_shift =
-              vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(input_data_val)));
-
-          int32x4_t input_low_low =
-              vmovl_s16(vget_low_s16(input_data_low_shift));
-          int32x4_t input_high_low =
-              vmovl_s16(vget_high_s16(input_data_low_shift));
-          int32x4_t input_low_high =
-              vmovl_s16(vget_low_s16(input_data_high_shift));
-          int32x4_t input_high_high =
-              vmovl_s16(vget_high_s16(input_data_high_shift));
-
-          temp_sum.val[0] = vaddq_s32(temp_sum.val[0], input_low_low);
-          temp_sum.val[1] = vaddq_s32(temp_sum.val[1], input_high_low);
-          temp_sum.val[2] = vaddq_s32(temp_sum.val[2], input_low_high);
-          temp_sum.val[3] = vaddq_s32(temp_sum.val[3], input_high_high);
-        }
-      }
-
-      temp_sum =
-          MultiplyByQuantizedMultiplier4Rows(temp_sum, multiplier, shift);
-
-      temp_sum.val[0] = vaddq_s32(temp_sum.val[0], bias_dup);
-      temp_sum.val[1] = vaddq_s32(temp_sum.val[1], bias_dup);
-      temp_sum.val[2] = vaddq_s32(temp_sum.val[2], bias_dup);
-      temp_sum.val[3] = vaddq_s32(temp_sum.val[3], bias_dup);
-
-      temp_sum.val[0] = vminq_s32(vmaxq_s32(temp_sum.val[0], min_dup), max_dup);
-      temp_sum.val[1] = vminq_s32(vmaxq_s32(temp_sum.val[1], min_dup), max_dup);
-      temp_sum.val[2] = vminq_s32(vmaxq_s32(temp_sum.val[2], min_dup), max_dup);
-      temp_sum.val[3] = vminq_s32(vmaxq_s32(temp_sum.val[3], min_dup), max_dup);
-
-      uint16x4_t narrowed_low_low =
-          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[0]));
-      uint16x4_t narrowed_high_low =
-          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[1]));
-      uint16x4_t narrowed_low_high =
-          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[2]));
-      uint16x4_t narrowed_high_high =
-          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[3]));
-
-      uint16x8_t combined_low =
-          vcombine_u16(narrowed_low_low, narrowed_high_low);
-      uint16x8_t combined_high =
-          vcombine_u16(narrowed_low_high, narrowed_high_high);
-
-      uint8x8_t narrowed_low = vmovn_u16(combined_low);
-      uint8x8_t narrowed_high = vmovn_u16(combined_high);
-
-      uint8x16_t combined_output = vcombine_u8(narrowed_low, narrowed_high);
-
-      uint8_t* output_data_ptr =
-          output_data + Offset(output_shape, out_b, 0, 0, out_d);
-      vst1q_u8(output_data_ptr, combined_output);
-    }
-#endif  // USE_NEON
-
-    for (; out_d < end_depth; ++out_d) {
-      int acc = 0;
-      for (int in_h = 0; in_h < input_height; ++in_h) {
-        for (int in_w = 0; in_w < input_width; ++in_w) {
-          acc += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
-        }
-      }
-
-      acc = MultiplyByQuantizedMultiplier(acc, multiplier, shift);
-      acc += bias;
-      acc = std::min(std::max(acc, kMinValue), kMaxValue);
-      output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-          static_cast<uint8_t>(acc);
-    }
-  }
-}
-
-struct MeanWorkerTask : cpu_backend_threadpool::Task {
-  MeanWorkerTask(const tflite::MeanParams& op_params,
-                 const RuntimeShape& input_shape, const uint8_t* input_data,
-                 int32 multiplier, int32 shift, int32 bias,
-                 const RuntimeShape& output_shape, uint8_t* output_data,
-                 int start_height, int end_height)
-      : op_params(op_params),
-        input_shape(input_shape),
-        input_data(input_data),
-        multiplier(multiplier),
-        shift(shift),
-        bias(bias),
-        output_shape(output_shape),
-        output_data(output_data),
-        start_height(start_height),
-        end_height(end_height) {}
-
-  void Run() override {
-    MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
-             output_shape, output_data, start_height, end_height);
-  }
-
- private:
-  const tflite::MeanParams& op_params;
-  const RuntimeShape& input_shape;
-  const uint8_t* input_data;
-  int32 multiplier;
-  int32 shift;
-  int32 bias;
-  const RuntimeShape& output_shape;
-  uint8_t* output_data;
-  int start_height;
-  int end_height;
-};
-
-inline void Mean(const tflite::MeanParams& op_params,
-                 const RuntimeShape& unextended_input_shape,
-                 const uint8_t* input_data, int32 input_zero_point,
-                 float input_scale, const RuntimeShape& unextended_output_shape,
-                 uint8_t* output_data, int32 output_zero_point,
-                 float output_scale, CpuBackendContext* cpu_backend_context) {
-  ruy::profiler::ScopeLabel label("Mean4D/Uint8");
-  // Current implementation only supports dimension equals 4 and simultaneous
-  // reduction over width and height.
-  TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_CHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  const int output_depth = output_shape.Dims(3);
-
-  TFLITE_CHECK_EQ(op_params.axis_count, 2);
-  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_CHECK_EQ(output_height, 1);
-  TFLITE_CHECK_EQ(output_width, 1);
-
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const float num_elements_in_axis = input_width * input_height;
-
-  float temp = input_zero_point * input_scale / output_scale;
-  temp = temp > 0 ? temp + 0.5f : temp - 0.5f;
-  int32_t bias = output_zero_point - static_cast<int32_t>(temp);
-  float real_scale = input_scale / (num_elements_in_axis * output_scale);
-
-  int32 multiplier, shift;
-  QuantizeMultiplier(real_scale, &multiplier, &shift);
-
-  constexpr int kMinDepthPerThread = 8;
-  int thread_count = output_depth / kMinDepthPerThread;
-  thread_count = thread_count > 0 ? thread_count : 1;
-  const int capped_thread_count =
-      std::min(thread_count, cpu_backend_context->max_num_threads());
-
-  if (capped_thread_count == 1) {
-    MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
-             output_shape, output_data, 0, output_depth);
-  } else {
-    // Instead parallel for batch, we loop for the output_depth since batch
-    // is typical 1.
-    std::vector<MeanWorkerTask> tasks;
-    // TODO(b/131746020) don't create new heap allocations every time.
-    // At least we make it a single heap allocation by using reserve().
-    tasks.reserve(capped_thread_count);
-    int depth_start = 0;
-    for (int i = 0; i < capped_thread_count; ++i) {
-      // Try to distribute the tasks as even as possible.
-      int depth_end = depth_start +
-                      (output_depth - depth_start) / (capped_thread_count - i);
-      tasks.emplace_back(op_params, input_shape, input_data, multiplier, shift,
-                         bias, output_shape, output_data, depth_start,
-                         depth_end);
-      depth_start = depth_end;
-    }
-    cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
-                                    cpu_backend_context);
-  }
-}
-
-template <typename T, typename U>
-inline bool MeanGeneral(const T* input_data, const int* input_dims,
-                        const int input_num_dims, T* output_data,
-                        const int* output_dims, const int output_num_dims,
-                        const int* axis, const int num_axis_dimensions,
-                        bool keep_dims, int* temp_index, int* resolved_axis,
-                        U* temp_sum) {
-  return reference_ops::Mean(input_data, input_dims, input_num_dims,
-                             output_data, output_dims, output_num_dims, axis,
-                             num_axis_dimensions, keep_dims, temp_index,
-                             resolved_axis, temp_sum);
-}
-
-template <>
-inline bool MeanGeneral<float, float>(
-    const float* input_data, const int* input_dims, const int input_num_dims,
-    float* output_data, const int* output_dims, const int output_num_dims,
-    const int* axis, const int num_axis_dimensions, bool keep_dims,
-    int* temp_index, int* resolved_axis, float* temp_sum) {
-  // Handle reduce_mean for the last dimensions.
-  if (num_axis_dimensions == 1 && axis[0] == (input_num_dims - 1)) {
-    ruy::profiler::ScopeLabel label("MeanLastDim/Float");
-    int output_size = 1;
-    for (int i = 0; i < input_num_dims - 1; ++i) {
-      output_size *= input_dims[i];
-    }
-    const int last_input_dim = input_dims[axis[0]];
-
-    // TODO(b/152563685): Consider use eigen to cover more general cases.
-    const MatrixMap<const float> in_mat(input_data, last_input_dim,
-                                        output_size);
-    VectorMap<float> out(output_data, output_size, 1);
-    out = (in_mat.array().colwise().sum()) / static_cast<float>(last_input_dim);
-    return true;
-  }
-
-  return reference_ops::Mean(input_data, input_dims, input_num_dims,
-                             output_data, output_dims, output_num_dims, axis,
-                             num_axis_dimensions, keep_dims, temp_index,
-                             resolved_axis, temp_sum);
-}
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const float* input_data, const RuntimeShape& filter_shape,
@@ -2694,15 +2365,19 @@ inline void BroadcastDivSlow(const ArithmeticParams& params,
   TFLITE_DCHECK_LT(params.output_offset, 256);
 
   auto div_func = [&](int indexes[N]) {
-    const int32 input1_val =
+    int32 input1_val =
         params.input1_offset + input1_data[SubscriptToIndex(desc1, indexes)];
-    const int32 input2_val =
+    int32 input2_val =
         params.input2_offset + input2_data[SubscriptToIndex(desc2, indexes)];
     TFLITE_DCHECK_NE(input2_val, 0);
+    if (input2_val < 0) {
+      // Invert signs to avoid a negative input2_val as input2_inv needs to be
+      // positive to be used as multiplier of MultiplyByQuantizedMultiplier.
+      input1_val = -input1_val;
+      input2_val = -input2_val;
+    }
     int recip_shift;
-    const int32 input2_inv =
-        (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
-                         : -GetReciprocal(-input2_val, 31, &recip_shift);
+    const int32 input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
     const int headroom = CountLeadingSignBits(input1_val);
     const int32 unscaled_quotient = MultiplyByQuantizedMultiplierGreaterThanOne(
         input1_val, input2_inv, headroom);
@@ -3914,6 +3589,8 @@ inline void SoftmaxInt8LUT(const SoftmaxParams& params,
                            const RuntimeShape& input_shape,
                            const In* input_data,
                            const RuntimeShape& output_shape, Out* output_data) {
+  ruy::profiler::ScopeLabel label("SoftmaxInt8LUT");
+
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -5404,6 +5081,188 @@ inline void Quantize(int32_t multiplier, int32_t shift, int32_t total_size,
   }
 }
 
+// Single-rounding MultiplyByQuantizedMultiplier
+#if TFLITE_SINGLE_ROUNDING
+inline void Quantize(const int32_t* multiplier, const int32_t* shift,
+                     int32_t channel_size, int32_t total_size,
+                     int32_t output_zp, int32_t output_min, int32_t output_max,
+                     int32_t* scratch, int8_t* output) {
+  ruy::profiler::ScopeLabel label("Quantize/int8");
+
+  // Here we're trying to quantize the raw accumulators:
+  //        output_channels
+  //       data data data data data
+  // rows  data data data data data
+  //       data data data data data
+  //          ....
+  //
+  // In order to minimize the reload of the multipliers & shifts, once we load
+  // the multipliers & shifts, we load & quantize the raw accumulators for every
+  // row.
+#ifdef USE_NEON
+  const int32x4_t output_offset_vec = vdupq_n_s32(output_zp);
+  const int32x4_t output_activation_min_vec = vdupq_n_s32(output_min);
+  const int32x4_t output_activation_max_vec = vdupq_n_s32(output_max);
+  const int32x4_t minus_ones = vdupq_n_s32(-1);
+#endif
+
+  TFLITE_DCHECK_EQ(total_size % channel_size, 0);
+  const int32_t rows = total_size / channel_size;
+
+  int c = 0;
+
+#ifdef USE_NEON
+  for (; c <= channel_size - 8; c += 8) {
+    int32x4_t out_shift_1 = vld1q_s32(shift + c);
+    int32x4_t out_shift_2 = vld1q_s32(shift + c + 4);
+
+    int32x4_t right_shift_1 = vminq_s32(out_shift_1, minus_ones);
+    int32x4_t right_shift_2 = vminq_s32(out_shift_2, minus_ones);
+
+    int32x4_t left_shift_1 = vsubq_s32(out_shift_1, right_shift_1);
+    int32x4_t left_shift_2 = vsubq_s32(out_shift_2, right_shift_2);
+
+    int32x4_t out_mul_1 = vld1q_s32(multiplier + c);
+    int32x4_t out_mul_2 = vld1q_s32(multiplier + c + 4);
+    for (int n = 0; n < rows; ++n) {
+      int loc = n * channel_size + c;
+      int32x4_t acc_1 = vld1q_s32(scratch + loc);
+      int32x4_t acc_2 = vld1q_s32(scratch + loc + 4);
+
+      // Saturating Doubling High Mul.
+      acc_1 = vshlq_s32(acc_1, left_shift_1);
+      acc_1 = vqdmulhq_s32(acc_1, out_mul_1);
+      acc_2 = vshlq_s32(acc_2, left_shift_2);
+      acc_2 = vqdmulhq_s32(acc_2, out_mul_2);
+
+      // Rounding Dividing By POT.
+      acc_1 = vrshlq_s32(acc_1, right_shift_1);
+      acc_2 = vrshlq_s32(acc_2, right_shift_2);
+
+      // Add the output offset.
+      acc_1 = vaddq_s32(acc_1, output_offset_vec);
+      acc_2 = vaddq_s32(acc_2, output_offset_vec);
+
+      // Apply the activation function.
+      acc_1 = vmaxq_s32(acc_1, output_activation_min_vec);
+      acc_1 = vminq_s32(acc_1, output_activation_max_vec);
+      acc_2 = vmaxq_s32(acc_2, output_activation_min_vec);
+      acc_2 = vminq_s32(acc_2, output_activation_max_vec);
+
+      // Saturating cast to int8 and store to destination.
+      const int16x4_t acc_s16_1 = vqmovn_s32(acc_1);
+      const int16x4_t acc_s16_2 = vqmovn_s32(acc_2);
+      const int16x8_t res_s16 = vcombine_s16(acc_s16_1, acc_s16_2);
+      const int8x8_t res_s8 = vqmovn_s16(res_s16);
+      vst1_s8(output + loc, res_s8);
+    }
+  }
+
+#endif  // USE_NEON
+  // Handle leftover values, one by one. This is very slow.
+  for (; c < channel_size; c++) {
+    for (int n = 0; n < rows; ++n) {
+      int loc = n * channel_size + c;
+      int32 acc = scratch[loc];
+      acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);
+      acc += output_zp;
+      acc = std::max(acc, output_min);
+      acc = std::min(acc, output_max);
+      output[loc] = static_cast<int8>(acc);
+    }
+  }
+}
+
+inline void Quantize(const int32_t* multiplier, const int32_t* shift,
+                     int32_t channel_size, int32_t total_size,
+                     int32_t output_zp, int32_t output_min, int32_t output_max,
+                     int32_t* scratch, int16_t* output) {
+  ruy::profiler::ScopeLabel label("Quantize(Single-rounding)/int16");
+
+  // Here we're trying to quantize the raw accumulators:
+  //        output_channels
+  //       data data data data data
+  // rows  data data data data data
+  //       data data data data data
+  //          ....
+  //
+  // In order to minimize the reload of the multipliers & shifts, once we load
+  // the multipliers & shifts, we load & quantize the raw accumulators for every
+  // row.
+#ifdef USE_NEON
+  const int32x4_t output_offset_vec = vdupq_n_s32(output_zp);
+  const int32x4_t output_activation_min_vec = vdupq_n_s32(output_min);
+  const int32x4_t output_activation_max_vec = vdupq_n_s32(output_max);
+  const int32x4_t minus_ones = vdupq_n_s32(-1);
+#endif
+
+  TFLITE_DCHECK_EQ(total_size % channel_size, 0);
+  const int32_t rows = total_size / channel_size;
+
+  int c = 0;
+
+#ifdef USE_NEON
+  for (; c <= channel_size - 8; c += 8) {
+    int32x4_t out_shift_1 = vld1q_s32(shift + c);
+    int32x4_t out_shift_2 = vld1q_s32(shift + c + 4);
+
+    int32x4_t right_shift_1 = vminq_s32(out_shift_1, minus_ones);
+    int32x4_t right_shift_2 = vminq_s32(out_shift_2, minus_ones);
+
+    int32x4_t left_shift_1 = vsubq_s32(out_shift_1, right_shift_1);
+    int32x4_t left_shift_2 = vsubq_s32(out_shift_2, right_shift_2);
+
+    int32x4_t out_mul_1 = vld1q_s32(multiplier + c);
+    int32x4_t out_mul_2 = vld1q_s32(multiplier + c + 4);
+    for (int n = 0; n < rows; ++n) {
+      int loc = n * channel_size + c;
+      int32x4_t acc_1 = vld1q_s32(scratch + loc);
+      int32x4_t acc_2 = vld1q_s32(scratch + loc + 4);
+
+      // Saturating Doubling High Mul.
+      acc_1 = vshlq_s32(acc_1, left_shift_1);
+      acc_1 = vqdmulhq_s32(acc_1, out_mul_1);
+      acc_2 = vshlq_s32(acc_2, left_shift_2);
+      acc_2 = vqdmulhq_s32(acc_2, out_mul_2);
+
+      // Rounding Dividing By POT.
+      acc_1 = vrshlq_s32(acc_1, right_shift_1);
+      acc_2 = vrshlq_s32(acc_2, right_shift_2);
+
+      // Add the output offset.
+      acc_1 = vaddq_s32(acc_1, output_offset_vec);
+      acc_2 = vaddq_s32(acc_2, output_offset_vec);
+
+      // Apply the activation function.
+      acc_1 = vmaxq_s32(acc_1, output_activation_min_vec);
+      acc_1 = vminq_s32(acc_1, output_activation_max_vec);
+      acc_2 = vmaxq_s32(acc_2, output_activation_min_vec);
+      acc_2 = vminq_s32(acc_2, output_activation_max_vec);
+
+      // Saturating cast to int16 and store to destination.
+      const int16x4_t acc_s16_1 = vqmovn_s32(acc_1);
+      const int16x4_t acc_s16_2 = vqmovn_s32(acc_2);
+      vst1_s16(reinterpret_cast<int16_t*>(output) + loc, acc_s16_1);
+      vst1_s16(reinterpret_cast<int16_t*>(output) + loc + 4, acc_s16_2);
+    }
+  }
+
+#endif  // USE_NEON
+  // Handle leftover values, one by one. This is very slow.
+  for (; c < channel_size; c++) {
+    for (int n = 0; n < rows; ++n) {
+      int loc = n * channel_size + c;
+      int32 acc = scratch[loc];
+      acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);
+      acc += output_zp;
+      acc = std::max(acc, output_min);
+      acc = std::min(acc, output_max);
+      output[loc] = static_cast<int16>(acc);
+    }
+  }
+}
+// Double-rounding MultiplyByQuantizedMultiplier
+#else
 inline void Quantize(const int32_t* multiplier, const int32_t* shift,
                      int32_t channel_size, int32_t total_size,
                      int32_t output_zp, int32_t output_min, int32_t output_max,
@@ -5494,6 +5353,97 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
     }
   }
 }
+
+inline void Quantize(const int32_t* multiplier, const int32_t* shift,
+                     int32_t channel_size, int32_t total_size,
+                     int32_t output_zp, int32_t output_min, int32_t output_max,
+                     int32_t* scratch, int16_t* output) {
+  ruy::profiler::ScopeLabel label("Quantize(Double-rounding)/int16");
+
+  // Here we're trying to quantize the raw accumulators:
+  //        output_channels
+  //       data data data data data
+  // rows  data data data data data
+  //       data data data data data
+  //          ....
+  //
+  // In order to minimize the reload of the multipliers & shifts, once we load
+  // the multipliers & shifts, we load & quantize the raw accumulators for every
+  // row.
+#ifdef USE_NEON
+  const int32x4_t output_offset_vec = vdupq_n_s32(output_zp);
+  const int32x4_t output_activation_min_vec = vdupq_n_s32(output_min);
+  const int32x4_t output_activation_max_vec = vdupq_n_s32(output_max);
+  const int32x4_t zeros = vdupq_n_s32(0);
+#endif
+
+  TFLITE_DCHECK_EQ(total_size % channel_size, 0);
+  const int32_t rows = total_size / channel_size;
+
+  int c = 0;
+
+#ifdef USE_NEON
+  using gemmlowp::RoundingDivideByPOT;
+  for (; c <= channel_size - 8; c += 8) {
+    int32x4_t out_shift_1 = vld1q_s32(shift + c);
+    int32x4_t out_shift_2 = vld1q_s32(shift + c + 4);
+    int32x4_t left_shift_1 = vmaxq_s32(out_shift_1, zeros);
+    int32x4_t left_shift_2 = vmaxq_s32(out_shift_2, zeros);
+
+    // Right shift will be performed as left shift with negative values.
+    int32x4_t right_shift_1 = vminq_s32(out_shift_1, zeros);
+    int32x4_t right_shift_2 = vminq_s32(out_shift_2, zeros);
+
+    int32x4_t out_mul_1 = vld1q_s32(multiplier + c);
+    int32x4_t out_mul_2 = vld1q_s32(multiplier + c + 4);
+    for (int n = 0; n < rows; ++n) {
+      int loc = n * channel_size + c;
+      int32x4_t acc_1 = vld1q_s32(scratch + loc);
+      int32x4_t acc_2 = vld1q_s32(scratch + loc + 4);
+
+      // Saturating Rounding Doubling High Mul.
+      acc_1 = vshlq_s32(acc_1, left_shift_1);
+      acc_1 = vqrdmulhq_s32(acc_1, out_mul_1);
+      acc_2 = vshlq_s32(acc_2, left_shift_2);
+      acc_2 = vqrdmulhq_s32(acc_2, out_mul_2);
+
+      // Rounding Dividing By POT.
+      acc_1 = vrshlq_s32(acc_1, right_shift_1);
+      acc_2 = vrshlq_s32(acc_2, right_shift_2);
+
+      // Add the output offset.
+      acc_1 = vaddq_s32(acc_1, output_offset_vec);
+      acc_2 = vaddq_s32(acc_2, output_offset_vec);
+
+      // Apply the activation function.
+      acc_1 = vmaxq_s32(acc_1, output_activation_min_vec);
+      acc_1 = vminq_s32(acc_1, output_activation_max_vec);
+      acc_2 = vmaxq_s32(acc_2, output_activation_min_vec);
+      acc_2 = vminq_s32(acc_2, output_activation_max_vec);
+
+      // Saturating cast to int16 and store to destination.
+      const int16x4_t acc_s16_1 = vqmovn_s32(acc_1);
+      const int16x4_t acc_s16_2 = vqmovn_s32(acc_2);
+      vst1_s16(reinterpret_cast<int16_t*>(output) + loc, acc_s16_1);
+      vst1_s16(reinterpret_cast<int16_t*>(output) + loc + 4, acc_s16_2);
+    }
+  }
+
+#endif  // USE_NEON
+  // Handle leftover values, one by one. This is very slow.
+  for (; c < channel_size; c++) {
+    for (int n = 0; n < rows; ++n) {
+      int loc = n * channel_size + c;
+      int32 acc = scratch[loc];
+      acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);
+      acc += output_zp;
+      acc = std::max(acc, output_min);
+      acc = std::min(acc, output_max);
+      output[loc] = static_cast<int16>(acc);
+    }
+  }
+}
+#endif  // TFLITE_SINGLE_ROUNDING
 
 // TransposeConvV2 expect the weights in HWOI order.
 inline void TransposeConvV2(
@@ -8341,6 +8291,78 @@ inline void Conv3DTranspose(
   output_data_p = output_data;
   BiasAdd3D(output_data_p, bias_data, output_shape, params.float_activation_min,
             params.float_activation_max);
+}
+
+// Worker for summing up within a single interval. Interval is identified by
+// index from [start, end).
+template <typename T>
+struct AddNWorkerTask : cpu_backend_threadpool::Task {
+  AddNWorkerTask(const T* const* input_data, T* scratch_buffer, int start,
+                 int end, int num_elems, int split)
+      : input_data(input_data),
+        scratch_buffer(scratch_buffer),
+        start(start),
+        end(end),
+        num_elems(num_elems),
+        split(split) {}
+  void Run() override {
+    RuntimeShape shape(1);
+    shape.SetDim(0, num_elems);
+    ArithmeticParams params;
+    T output_activation_min = std::numeric_limits<T>::lowest(),
+      output_activation_max = std::numeric_limits<T>::max();
+    SetActivationParams(output_activation_min, output_activation_max, &params);
+    T* start_p = scratch_buffer + split * num_elems;
+    memcpy(start_p, input_data[start], sizeof(T) * num_elems);
+    for (int i = start + 1; i < end; i++) {
+      Add(params, shape, start_p, shape, input_data[i], shape, start_p);
+    }
+  }
+
+  const T* const* input_data;
+  T* scratch_buffer;
+  int start;
+  int end;
+  int num_elems;
+  int split;
+};
+
+// T is expected to be either float or int.
+template <typename T>
+inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
+                 const T* const* input_data, T* output_data, T* scratch_buffer,
+                 CpuBackendContext* cpu_backend_context) {
+  // All inputs and output should have the same shape, this is checked during
+  // Prepare stage.
+  const size_t num_elems = input_shape.FlatSize();
+  const int thread_count =
+      std::min(std::max(1, static_cast<int>(num_inputs) / 2),
+               cpu_backend_context->max_num_threads());
+  memset(scratch_buffer, 0, sizeof(T) * num_elems * thread_count);
+
+  std::vector<AddNWorkerTask<T>> tasks;
+  tasks.reserve(thread_count);
+  int start = 0;
+  for (int i = 0; i < thread_count; ++i) {
+    int end = start + (num_inputs - start) / (thread_count - i);
+    tasks.emplace_back(AddNWorkerTask<T>(input_data, scratch_buffer, start, end,
+                                         num_elems, i));
+    start = end;
+  }
+  // Run all tasks on the thread pool.
+  cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
+                                  cpu_backend_context);
+  RuntimeShape shape(1);
+  shape.SetDim(0, num_elems);
+  ArithmeticParams params;
+  T output_activation_min = std::numeric_limits<T>::lowest(),
+    output_activation_max = std::numeric_limits<T>::max();
+  SetActivationParams(output_activation_min, output_activation_max, &params);
+  memcpy(output_data, scratch_buffer, sizeof(T) * num_elems);
+  for (int i = 1; i < tasks.size(); i++) {
+    Add(params, shape, output_data, shape, scratch_buffer + i * num_elems,
+        shape, output_data);
+  }
 }
 
 }  // namespace optimized_ops

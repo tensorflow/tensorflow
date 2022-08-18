@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -66,6 +67,7 @@ void BuildComparatorAndComparisons(ComparatorsTest* test,
 
   // Do pairwise comparisons.
   std::vector<XlaOp> all_comparisons;
+  all_comparisons.reserve(std::pow(all_constants.size(), 2));
   for (const XlaOp& lhs_constant : all_constants) {
     for (const XlaOp& rhs_constant : all_constants) {
       all_comparisons.push_back(Broadcast(

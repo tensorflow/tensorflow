@@ -13,16 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for slice."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
+
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
+from tensorflow.lite.testing.zip_test_utils import MAP_TF_TO_NUMPY_TYPE
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
-from tensorflow.lite.testing.zip_test_utils import TF_TYPE_INFO
 
 
 @register_make_test_function()
@@ -130,7 +127,7 @@ def make_slice_tests(options):
         name="input",
         shape=parameters["input_shape"])
     if parameters["constant_indices"]:
-      index_type = TF_TYPE_INFO[parameters["index_type"]][0]
+      index_type = MAP_TF_TO_NUMPY_TYPE[parameters["index_type"]]
       begin_values = np.array(parameters["begin"]).astype(index_type)
       size_values = np.array(parameters["size"]).astype(index_type)
       out = tf.slice(input_tensor, begin_values, size_values)
@@ -159,7 +156,7 @@ def make_slice_tests(options):
       return [input_values], sess.run(
           outputs, feed_dict=dict(zip(inputs, [input_values])))
     else:
-      index_type = TF_TYPE_INFO[parameters["index_type"]][0]
+      index_type = MAP_TF_TO_NUMPY_TYPE[parameters["index_type"]]
       begin_values = np.array(parameters["begin"]).astype(index_type)
       size_values = np.array(parameters["size"]).astype(index_type)
       values = [input_values, begin_values, size_values]

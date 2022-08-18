@@ -13,16 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for strided_slice operators."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
+
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
+from tensorflow.lite.testing.zip_test_utils import MAP_TF_TO_NUMPY_TYPE
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
-from tensorflow.lite.testing.zip_test_utils import TF_TYPE_INFO
 
 
 def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
@@ -82,7 +79,7 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
         parameters["input_shape"],
         min_value=-1,
         max_value=1)
-    index_type = TF_TYPE_INFO[parameters["index_type"]][0]
+    index_type = MAP_TF_TO_NUMPY_TYPE[parameters["index_type"]]
     values = [input_values]
     if not parameters["constant_indices"]:
       begin_values = np.array(parameters["begin"]).astype(index_type)
@@ -209,98 +206,93 @@ def make_strided_slice_tests(options):
           "constant_indices": [True],
           "fully_quantize": [True],
       },
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[1, 1, 2]],
+          "begin": [[1]],
+          "end": [[0]],
+          "strides": [[1]],
+          "begin_mask": [0],
+          "end_mask": [1],
+          "shrink_axis_mask": [0],
+          "constant_indices": [True, False],
+          "fully_quantize": [False],
+      },
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[1, 1, 2]],
+          "begin": [[1, 0, 0]],
+          "end": [[0, -1, -1]],
+          "strides": [[1, 1, 1]],
+          "begin_mask": [6],
+          "end_mask": [7],
+          "shrink_axis_mask": [0],
+          "constant_indices": [True, False],
+          "fully_quantize": [False],
+      },
+      # String input.
+      {
+          "dtype": [tf.string],
+          "index_type": [tf.int32],
+          "input_shape": [[12, 2, 2, 5]],
+          "begin": [[0, 0, 0, 0]],
+          "end": [[8, 2, 2, 3]],
+          "strides": [[2, 1, 3, 1]],
+          "begin_mask": [8],
+          "end_mask": [3],
+          "shrink_axis_mask": [None],
+          "constant_indices": [True, False],
+          "fully_quantize": [False],
+      },
+      # ellipsis_mask and new_axis_mask.
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[5, 5, 7, 7]],
+          "begin": [[0, 0, 0, 0]],
+          "end": [[2, 3, 4, 5]],
+          "strides": [[1, 1, 1, 1]],
+          "begin_mask": [0, 8],
+          "end_mask": [0, 2],
+          "shrink_axis_mask": [0, 4],
+          "ellipsis_mask": [2, 4],
+          "new_axis_mask": [1, 6],
+          "constant_indices": [True],
+          "fully_quantize": [False],
+      },
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[5, 6, 7]],
+          "begin": [[0, 0, 0]],
+          "end": [[2, 3, 4]],
+          "strides": [[1, 1, 1]],
+          "begin_mask": [0],
+          "end_mask": [0],
+          "shrink_axis_mask": [0, 2],
+          "ellipsis_mask": [2],
+          "new_axis_mask": [1, 2, 3, 4, 5],
+          "constant_indices": [False],
+          "fully_quantize": [False],
+      },
+      # Shrink_axis and add_axis mask both set
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[6, 7, 8]],
+          "begin": [[0, 0, 0, 0]],
+          "end": [[2, 3, 4, 5]],
+          "strides": [[1, 1, 1, 1]],
+          "begin_mask": [0],
+          "end_mask": [0],
+          "new_axis_mask": [10],
+          "shrink_axis_mask": [1],
+          "constant_indices": [True],
+          "fully_quantize": [False],
+      },
   ]
-
-  if options.use_experimental_converter:
-    test_parameters = test_parameters + [
-        # Begin equal to input dim.
-        {
-            "dtype": [tf.float32],
-            "index_type": [tf.int32],
-            "input_shape": [[1, 1, 2]],
-            "begin": [[1]],
-            "end": [[0]],
-            "strides": [[1]],
-            "begin_mask": [0],
-            "end_mask": [1],
-            "shrink_axis_mask": [0],
-            "constant_indices": [True, False],
-            "fully_quantize": [False],
-        },
-        {
-            "dtype": [tf.float32],
-            "index_type": [tf.int32],
-            "input_shape": [[1, 1, 2]],
-            "begin": [[1, 0, 0]],
-            "end": [[0, -1, -1]],
-            "strides": [[1, 1, 1]],
-            "begin_mask": [6],
-            "end_mask": [7],
-            "shrink_axis_mask": [0],
-            "constant_indices": [True, False],
-            "fully_quantize": [False],
-        },
-        # String input.
-        {
-            "dtype": [tf.string],
-            "index_type": [tf.int32],
-            "input_shape": [[12, 2, 2, 5]],
-            "begin": [[0, 0, 0, 0]],
-            "end": [[8, 2, 2, 3]],
-            "strides": [[2, 1, 3, 1]],
-            "begin_mask": [8],
-            "end_mask": [3],
-            "shrink_axis_mask": [None],
-            "constant_indices": [True, False],
-            "fully_quantize": [False],
-        },
-        # ellipsis_mask and new_axis_mask.
-        {
-            "dtype": [tf.float32],
-            "index_type": [tf.int32],
-            "input_shape": [[5, 5, 7, 7]],
-            "begin": [[0, 0, 0, 0]],
-            "end": [[2, 3, 4, 5]],
-            "strides": [[1, 1, 1, 1]],
-            "begin_mask": [0, 8],
-            "end_mask": [0, 2],
-            "shrink_axis_mask": [0, 4],
-            "ellipsis_mask": [2, 4],
-            "new_axis_mask": [1, 6],
-            "constant_indices": [True],
-            "fully_quantize": [False],
-        },
-        {
-            "dtype": [tf.float32],
-            "index_type": [tf.int32],
-            "input_shape": [[5, 6, 7]],
-            "begin": [[0, 0, 0]],
-            "end": [[2, 3, 4]],
-            "strides": [[1, 1, 1]],
-            "begin_mask": [0],
-            "end_mask": [0],
-            "shrink_axis_mask": [0, 2],
-            "ellipsis_mask": [2],
-            "new_axis_mask": [1, 2, 3, 4, 5],
-            "constant_indices": [False],
-            "fully_quantize": [False],
-        },
-        # Shrink_axis and add_axis mask both set
-        {
-            "dtype": [tf.float32],
-            "index_type": [tf.int32],
-            "input_shape": [[6, 7, 8]],
-            "begin": [[0, 0, 0, 0]],
-            "end": [[2, 3, 4, 5]],
-            "strides": [[1, 1, 1, 1]],
-            "begin_mask": [0],
-            "end_mask": [0],
-            "new_axis_mask": [10],
-            "shrink_axis_mask": [1],
-            "constant_indices": [True],
-            "fully_quantize": [False],
-        },
-    ]
   _make_strided_slice_tests(options, test_parameters, expected_tf_failures=29)
 
 

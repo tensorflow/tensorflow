@@ -73,21 +73,6 @@ bool IsShapeConsumer(const NodeDef& node) {
 
 }  // namespace
 
-namespace internal {
-// Specialized template class method GetNodeDefFromGraph.
-template <>
-NodeDef* NodeMapInternal<GraphDef, NodeDef>::GetNodeDefFromGraph(
-    GraphDef* graph, int64_t i) const {
-  return graph->mutable_node(i);
-}
-
-template <>
-const NodeDef*
-NodeMapInternal<const GraphDef, const NodeDef>::GetNodeDefFromGraph(
-    const GraphDef* graph, int64_t i) const {
-  return &graph->node(i);
-}
-}  // namespace internal
 string TensorIdToString(const TensorId& tensor_id) {
   return tensor_id.index() == 0 ? string(tensor_id.node())
                                 : tensor_id.ToString();
@@ -104,7 +89,7 @@ bool IsSameInput(const string& name1, const string& name2) {
   return tensor1 == tensor2;
 }
 
-bool IsControlInput(const string& name) {
+bool IsControlInput(absl::string_view name) {
   return !name.empty() && name[0] == '^';
 }
 
@@ -469,7 +454,7 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
       return errors::InvalidArgument("Unsupported type ",
                                      DataTypeString(dtype));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 #undef HANDLE_CASE
@@ -479,14 +464,14 @@ Status CheckAttrExists(const NodeDef& node, const string& key) {
     return errors::InvalidArgument("Node '", node.name(), "' lacks '", key,
                                    "' attr: ", node.ShortDebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys) {
   for (const string& key : keys) {
     TF_RETURN_IF_ERROR(CheckAttrExists(node, key));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IsKernelRegisteredForNode(

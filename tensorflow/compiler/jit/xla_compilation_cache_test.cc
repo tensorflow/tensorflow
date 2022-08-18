@@ -24,6 +24,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using SignatureHash = XlaCompilationCache::Signature::Hash;
+
 TEST(XlaCompilationCacheTest, SignatureEquality) {
   NameAttrList fn;
   fn.set_name("afunction");
@@ -49,33 +51,45 @@ TEST(XlaCompilationCacheTest, SignatureEquality) {
   for (int i = 0; i < signatures.size(); ++i) {
     for (int j = 0; j < signatures.size(); ++j) {
       EXPECT_EQ(i == j, signatures[i] == signatures[j])
-          << signatures[i].HumanString() << " " << signatures[j].HumanString();
+          << "s1: " << signatures[i].HumanString() << "\n"
+          << "s2: " << signatures[j].HumanString();
+      EXPECT_EQ(i == j,
+                signatures[i].HumanString() == signatures[j].HumanString())
+          << "s1: " << signatures[i].HumanString() << "\n"
+          << "s2: " << signatures[j].HumanString();
+      EXPECT_EQ(i == j, SignatureHash()(signatures[i]) ==
+                            SignatureHash()(signatures[j]))
+          << "s1: " << signatures[i].HumanString() << "\n"
+          << "s1_hash: " << SignatureHash()(signatures[i]) << "\n"
+          << "s2: " << signatures[j].HumanString() << "\n"
+          << "s2_hash: " << SignatureHash()(signatures[j]);
     }
   }
 }
 
-TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
+TEST(XlaCompilationCacheTest, SignatureUniqueness) {
   NameAttrList fn;
   fn.set_name("afunction");
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kConstant;
+  args[0].type = DT_INT32;
+  args[0].constant_value = Tensor(DT_INT32, {4, 0});
 
-  DisableXlaCompilation();
+  args[1].kind = XlaCompiler::Argument::kParameter;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({4, 0});
 
-  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
-  DeviceType device_type = DeviceType(DEVICE_CPU_XLA_JIT);
+  TF_ASSERT_OK_AND_ASSIGN(XlaCompilationCache::Signature s1,
+                          XlaCompilationCache::BuildSignature(fn, args));
 
-  const XlaCompiler::CompilationResult* compilation_result;
-  xla::LocalExecutable* executable;
+  using std::swap;  // go/using-std-swap
+  swap(args[0], args[1]);
+  TF_ASSERT_OK_AND_ASSIGN(XlaCompilationCache::Signature s2,
+                          XlaCompilationCache::BuildSignature(fn, args));
 
-  auto cache = new XlaCompilationCache(client, device_type);
-  core::ScopedUnref cache_ref(cache);
-
-  Status status = cache->Compile(XlaCompiler::Options{}, fn, {},
-                                 XlaCompiler::CompileOptions{},
-                                 XlaCompilationCache::CompileMode::kStrict,
-                                 &compilation_result, &executable);
-  EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "XLA compilation disabled"));
+  EXPECT_NE(s1.HumanString(), s2.HumanString());
+  EXPECT_NE(SignatureHash()(s1), SignatureHash()(s2));
+  EXPECT_FALSE(s1 == s2);
 }
 
 void BM_BuildSignature(::testing::benchmark::State& state) {

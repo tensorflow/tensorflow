@@ -15,16 +15,11 @@
 """Common array methods."""
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import functools
 import math
 import numbers
 import numpy as np
-import six
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -66,13 +61,8 @@ def zeros(shape, dtype=float):  # pylint: disable=redefined-outer-name
 
 @np_utils.np_doc('zeros_like')
 def zeros_like(a, dtype=None):  # pylint: disable=missing-docstring
-  if dtype is None:
-    # We need to let np_utils.result_type decide the dtype, not tf.zeros_like
-    dtype = np_utils.result_type(a)
-  else:
-    # TF and numpy has different interpretations of Python types such as
-    # `float`, so we let `np_utils.result_type` decide.
-    dtype = np_utils.result_type(dtype)
+  dtype = np_utils.result_type_unary(a, dtype)
+
   dtype = dtypes.as_dtype(dtype)  # Work around b/149877262
   return array_ops.zeros_like(a, dtype)
 
@@ -86,10 +76,7 @@ def ones(shape, dtype=float):  # pylint: disable=redefined-outer-name
 
 @np_utils.np_doc('ones_like')
 def ones_like(a, dtype=None):
-  if dtype is None:
-    dtype = np_utils.result_type(a)
-  else:
-    dtype = np_utils.result_type(dtype)
+  dtype = np_utils.result_type_unary(a, dtype)
   return array_ops.ones_like(a, dtype)
 
 
@@ -161,8 +148,7 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
   result_t = val
 
   if not isinstance(result_t, ops.Tensor):
-    if not dtype:
-      dtype = np_utils.result_type(result_t)
+    dtype = np_utils.result_type_unary(result_t, dtype)
     # We can't call `convert_to_tensor(result_t, dtype=dtype)` here because
     # convert_to_tensor doesn't allow incompatible arguments such as (5.5, int)
     # while np.array allows them. We need to convert-then-cast.
@@ -182,6 +168,11 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
 
   if copy:
     result_t = array_ops.identity(result_t)
+
+  max_ndmin = 32
+  if ndmin > max_ndmin:
+    raise ValueError('ndmin bigger than allowable number of dimensions: '
+                     f'{max_ndmin}.')
 
   if ndmin == 0:
     return result_t
@@ -1015,7 +1006,7 @@ def _boundaries_to_sizes(a, boundaries, axis):
 @np_utils.np_doc('split')
 def split(ary, indices_or_sections, axis=0):
   ary = asarray(ary)
-  if not isinstance(indices_or_sections, six.integer_types):
+  if not isinstance(indices_or_sections, int):
     indices_or_sections = _boundaries_to_sizes(ary, indices_or_sections, axis)
   return array_ops.split(ary, indices_or_sections, axis=axis)
 
@@ -1024,6 +1015,11 @@ def _split_on_axis(np_fun_name, axis):
 
   @np_utils.np_doc(np_fun_name)
   def f(ary, indices_or_sections):
+    if isinstance(indices_or_sections, int):
+      ary_shape = ary.shape[axis]
+      if ary_shape is not None and ary_shape % indices_or_sections:
+        raise ValueError(
+            'array split does not result in an equal division')
     return split(ary, indices_or_sections, axis=axis)
 
   return f

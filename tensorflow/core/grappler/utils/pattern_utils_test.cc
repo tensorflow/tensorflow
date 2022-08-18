@@ -175,7 +175,7 @@ TEST_F(PatternMatcherTest, Tree) {
   std::map<string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
-      pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+      pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
 
   EXPECT_TRUE(found_match);
   EXPECT_FALSE(matched_nodes_map.empty());
@@ -254,10 +254,12 @@ TEST_F(PatternMatcherTest, DAG) {
   auto root_node_view = graph_view.GetNode("e");
 
   SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(&graph_view);
+  std::unordered_set<string> nodes_to_preserve = {"foo"};
   std::map<string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
-  bool found_match = graph_matcher.GetMatchedNodes(
-      pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+  bool found_match =
+      graph_matcher.GetMatchedNodes(pattern, nodes_to_preserve, root_node_view,
+                                    &matched_nodes_map, &remove_node_indices);
 
   EXPECT_TRUE(found_match);
   EXPECT_FALSE(matched_nodes_map.empty());
@@ -275,6 +277,18 @@ TEST_F(PatternMatcherTest, DAG) {
     }
   }
   EXPECT_TRUE(all_indices_matched);
+
+  // Pattern should not be matched when a node to be removed is one of nodes to
+  // be preserved.
+  nodes_to_preserve.insert({"c", "d"});
+  matched_nodes_map.clear();
+  remove_node_indices.clear();
+  found_match =
+      graph_matcher.GetMatchedNodes(pattern, nodes_to_preserve, root_node_view,
+                                    &matched_nodes_map, &remove_node_indices);
+  EXPECT_FALSE(found_match);
+  EXPECT_TRUE(matched_nodes_map.empty());
+  EXPECT_TRUE(remove_node_indices.empty());
 }
 
 // Pattern should not be matched if any of candidate remove nodes has external
@@ -343,7 +357,7 @@ TEST_F(PatternMatcherTest, DAGExternalDependent) {
   std::map<string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
-      pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+      pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
 
   EXPECT_FALSE(found_match);
   EXPECT_TRUE(matched_nodes_map.empty());
@@ -364,7 +378,7 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGelu) {
   std::map<string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
-      pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+      pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
 
   EXPECT_TRUE(found_match);
   EXPECT_FALSE(matched_nodes_map.empty());
@@ -400,7 +414,7 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGeluExternalDependent) {
   std::map<string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
-      pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+      pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
 
   EXPECT_FALSE(found_match);
   EXPECT_TRUE(matched_nodes_map.empty());
@@ -421,7 +435,7 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGeluMutation) {
   std::map<string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
-      pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+      pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
   EXPECT_TRUE(found_match);
   EXPECT_FALSE(matched_nodes_map.empty());
   EXPECT_FALSE(remove_node_indices.empty());
@@ -537,7 +551,8 @@ TEST_F(PatternMatcherTest, CommutativeInputs) {
       std::map<string, int> matched_nodes_map;  // label to node index map
       std::set<int> remove_node_indices;
       bool found_match = graph_matcher.GetMatchedNodes(
-          pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+          pattern, {}, root_node_view, &matched_nodes_map,
+          &remove_node_indices);
 
       EXPECT_TRUE(found_match);
       EXPECT_FALSE(matched_nodes_map.empty());

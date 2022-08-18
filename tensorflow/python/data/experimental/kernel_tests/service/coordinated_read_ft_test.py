@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Fault tolerance testst for tf.data service coordinated reads."""
+"""Fault tolerance tests for tf.data service coordinated reads."""
 
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
+from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
@@ -80,15 +81,22 @@ class CoordinatedReadFTTest(data_service_test_base.TestBase,
     self.checkCoordinatedReadGroups(results, num_consumers)
     cluster.stop_workers()
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testMultiStartStop(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.eager_only_combinations(),
+          combinations.combine(sharding_policy=[
+              data_service_ops.ShardingPolicy.OFF,
+              data_service_ops.ShardingPolicy.DYNAMIC
+          ])))
+  def testMultiStartStop(self, sharding_policy):
     num_workers = 3
     # Set a shutdown quiet period to prevent workers from shutting down partway
     # through a round.
     cluster = data_service_test_base.TestCluster(
         num_workers, worker_shutdown_quiet_period_ms=2000)
     num_consumers = 5
-    ds = self.make_coordinated_read_dataset(cluster, num_consumers)
+    ds = self.make_coordinated_read_dataset(cluster, num_consumers,
+                                            sharding_policy)
 
     get_next = self.getNext(ds, requires_initialization=True)
     results = []

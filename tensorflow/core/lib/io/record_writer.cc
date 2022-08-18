@@ -137,14 +137,14 @@ Status RecordWriter::WriteRecord(const absl::Cord& data) {
 #endif
 
 Status RecordWriter::Close() {
-  if (dest_ == nullptr) return Status::OK();
+  if (dest_ == nullptr) return OkStatus();
   if (IsZlibCompressed(options_) || IsSnappyCompressed(options_)) {
     Status s = dest_->Close();
     delete dest_;
     dest_ = nullptr;
     return s;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RecordWriter::Flush() {

@@ -16,14 +16,17 @@
 
 #include <vector>
 
+#import "TFLCommonUtil.h"
 #import "TFLErrorUtil.h"
 #import "TFLQuantizationParameters+Internal.h"
+#import "TFLSignatureRunner+Internal.h"
 #import "TFLTensor+Internal.h"
 #import "tensorflow/lite/objc/apis/TFLDelegate.h"
 #import "tensorflow/lite/objc/apis/TFLInterpreterOptions.h"
 #import "tensorflow/lite/objc/apis/TFLTensor.h"
 
 #include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/c/c_api_experimental.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -45,7 +48,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
 @interface TFLInterpreter ()
 
 /** TfLiteInterpreter backed by C API. */
-@property(nonatomic, nullable) TfLiteInterpreter *interpreter;
+@property(nonatomic) TfLiteInterpreter *interpreter;
 
 /** TfLiteDelegate backed by C API. */
 @property(nonatomic, nullable) TfLiteDelegate *xnnPackDelegate;
@@ -53,6 +56,8 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
 @end
 
 @implementation TFLInterpreter
+
+@synthesize signatureKeys = _signatureKeys;
 
 #pragma mark - NSObject
 
@@ -135,13 +140,14 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
         }
       }
 
-      _interpreter = TfLiteInterpreterCreate(model, cOptions);
-      if (_interpreter == nullptr) {
+      TfLiteInterpreter *interpreter = TfLiteInterpreterCreate(model, cOptions);
+      if (interpreter == nullptr) {
         [TFLErrorUtil saveInterpreterErrorWithCode:TFLInterpreterErrorCodeFailedToCreateInterpreter
                                        description:@"Failed to create the interpreter."
                                              error:error];
         return nil;
       }
+      _interpreter = interpreter;
 
       _inputTensorCount = (NSUInteger)TfLiteInterpreterGetInputTensorCount(_interpreter);
       _outputTensorCount = (NSUInteger)TfLiteInterpreterGetOutputTensorCount(_interpreter);
@@ -158,6 +164,24 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
   }
 
   return self;
+}
+
+- (NSArray<NSString *> *)signatureKeys {
+  if (_signatureKeys) return _signatureKeys;
+  NSUInteger signatureCount = TfLiteInterpreterGetSignatureCount(self.interpreter);
+  NSMutableArray<NSString *> *mutableKeyArray =
+      [[NSMutableArray alloc] initWithCapacity:signatureCount];
+  for (NSUInteger i = 0; i < signatureCount; i++) {
+    const char *signatureNameCString =
+        TfLiteInterpreterGetSignatureKey(self.interpreter, (int32_t)i);
+    NSString *signatureName = @"";
+    if (signatureNameCString != nullptr) {
+      signatureName = [NSString stringWithUTF8String:signatureNameCString] ?: @"";
+    }
+    [mutableKeyArray addObject:signatureName];
+  }
+  _signatureKeys = [mutableKeyArray copy];
+  return _signatureKeys;
 }
 
 - (BOOL)invokeWithError:(NSError **)error {
@@ -237,10 +261,33 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
   return YES;
 }
 
-#pragma mark - TFLInterpreter (Internal)
+- (nullable TFLSignatureRunner *)signatureRunnerWithKey:(NSString *)key error:(NSError **)error {
+  if (![self.signatureKeys containsObject:key]) {
+    NSString *errorDescription = [NSString
+        stringWithFormat:@"Failed to create a signature runner. Signature with key (%@) not found.",
+                         key];
+    [TFLErrorUtil setError:error
+                withDomain:TFLSignatureRunnerErrorDomain
+                      code:TFLSignatureRunnerErrorCodeFailedToCreateSignatureRunner
+               description:errorDescription];
+    return nil;
+  }
+  return [[TFLSignatureRunner alloc] initWithInterpreter:self signatureKey:key error:error];
+}
 
-- (BOOL)copyData:(NSData *)data toInputTensorAtIndex:(NSUInteger)index error:(NSError **)error {
-  const TfLiteTensor *cTensor = [self cTensorOfType:TFLTensorTypeInput atIndex:index error:error];
+#pragma mark - TFLTensorDataAccessor
+
+- (BOOL)copyData:(NSData *)data toInputTensor:(TFLTensor *)inputTensor error:(NSError **)error {
+  if (inputTensor.type == TFLTensorTypeOutput) {
+    [TFLErrorUtil
+        saveInterpreterErrorWithCode:TFLInterpreterErrorCodeCopyDataToOutputTensorNotAllowed
+                         description:@"Cannot copy data into an output tensor."
+                               error:error];
+    return NO;
+  }
+  const TfLiteTensor *cTensor = [self cTensorOfType:TFLTensorTypeInput
+                                            atIndex:inputTensor.index
+                                              error:error];
   if (cTensor == nullptr) {
     return NO;
   }
@@ -365,9 +412,9 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     return nil;
   }
 
-  NSString *tensorType = [TFLTensor stringForTensorType:type];
-  const char *cName = TfLiteTensorName(tensor);
-  if (cName == nullptr) {
+  NSString *name = TFLTensorNameFromCTensor(tensor);
+  if (!name) {
+    NSString *tensorType = [TFLTensor stringForTensorType:type];
     NSString *errorDescription =
         [NSString stringWithFormat:@"Failed to get name of %@ tensor at index (%lu).", tensorType,
                                    (unsigned long)index];
@@ -376,18 +423,8 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
                                          error:error];
     return nil;
   }
-  NSString *name = [NSString stringWithUTF8String:cName];
-
-  TFLTensorDataType dataType = [self tensorDataTypeFromCTensorType:TfLiteTensorType(tensor)];
-
-  TfLiteQuantizationParams cParams = TfLiteTensorQuantizationParams(tensor);
-  TFLQuantizationParameters *quantizationParams;
-
-  // TODO(b/119735362): Update this check once the TfLiteQuantizationParams struct has a mode.
-  if (cParams.scale != 0.0) {
-    quantizationParams = [[TFLQuantizationParameters alloc] initWithScale:cParams.scale
-                                                                zeroPoint:cParams.zero_point];
-  }
+  TFLTensorDataType dataType = TFLTensorDataTypeFromCTensor(tensor);
+  TFLQuantizationParameters *quantizationParams = TFLQuantizationParamsFromCTensor(tensor);
 
   return [[TFLTensor alloc] initWithInterpreter:self
                                            type:type
@@ -395,41 +432,6 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
                                            name:name
                                        dataType:dataType
                          quantizationParameters:quantizationParams];
-}
-
-- (TFLTensorDataType)tensorDataTypeFromCTensorType:(TfLiteType)cTensorType {
-  switch (cTensorType) {
-    case kTfLiteFloat32:
-      return TFLTensorDataTypeFloat32;
-    case kTfLiteFloat16:
-      return TFLTensorDataTypeFloat16;
-    case kTfLiteFloat64:
-      return TFLTensorDataTypeFloat64;
-    case kTfLiteInt32:
-      return TFLTensorDataTypeInt32;
-    case kTfLiteUInt8:
-      return TFLTensorDataTypeUInt8;
-    case kTfLiteInt8:
-      return TFLTensorDataTypeInt8;
-    case kTfLiteInt64:
-      return TFLTensorDataTypeInt64;
-    case kTfLiteBool:
-      return TFLTensorDataTypeBool;
-    case kTfLiteInt16:
-      return TFLTensorDataTypeInt16;
-    case kTfLiteNoType:
-    case kTfLiteString:
-    case kTfLiteComplex64:
-    case kTfLiteComplex128:
-    case kTfLiteUInt32:
-    case kTfLiteUInt64:
-    case kTfLiteResource:
-    case kTfLiteVariant:
-      // kTfLiteString, kTfLiteUInt64, kTfLiteComplex64, kTfLiteComplex128,
-      // kTfLiteResource and kTfLiteVariant are not supported in TensorFlow Lite
-      // Objc API.
-      return TFLTensorDataTypeNoType;
-  }
 }
 
 - (BOOL)isValidTensorIndex:(NSUInteger)index

@@ -13,32 +13,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 
 namespace tensorflow {
 namespace {
+
 
 class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
  public:
   explicit XlaSpmdFullToShardShapeOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("manual_sharding", &manual_sharding_str_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dim", &single_dim_));
+    std::vector<int32_t> unspecified_dims;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("unspecified_dims", &unspecified_dims));
+    for (int32_t i32 : unspecified_dims) {
+      unspecified_dims_.push_back(i32);
+    }
   }
 
   ~XlaSpmdFullToShardShapeOp() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaOp input = ctx->Input(0);
-    auto input_shape_or = ctx->InputXlaShape(0);
-    OP_REQUIRES_OK(ctx, input_shape_or.status());
+
     xla::OpSharding sharding;
     if (!sharding.ParseFromString(manual_sharding_str_)) {
       OP_REQUIRES_OK(ctx,
@@ -46,42 +54,19 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
                                           "valid encoded xla::OpSharding "
                                           "proto."));
     }
-    auto output_shape = input_shape_or.ValueOrDie();
-    int64_t rank = output_shape.rank();
-    if (sharding.type() == xla::OpSharding::OTHER) {
-      for (int64_t i = 0; i < rank; ++i) {
-        int64_t partitions_i = sharding.tile_assignment_dimensions(i);
-        if (partitions_i == 1) continue;
-        int64_t dim_size =
-            xla::CeilOfRatio(output_shape.dimensions(i), partitions_i);
-        output_shape.set_dimensions(i, dim_size);
-      }
-    }
-    xla::XlaOp input_annotation;
-    {
-      // Annotate the full-shape input with the sharding.
-      xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(),
-                                                       sharding);
-      input_annotation =
-          xla::CustomCall(ctx->builder(), /*call_target_name=*/"Sharding",
-                          {input}, input_shape_or.ValueOrDie());
-    }
 
-    {
-      // Annotate the shard-shape output with manual sharding, so that the
-      // partitioner will leave it as is.
-      xla::OpSharding manual;
-      manual.set_type(xla::OpSharding::MANUAL);
-      xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(), manual);
-      auto output = xla::CustomCall(ctx->builder(),
-                                    /*call_target_name=*/"SPMDFullToShardShape",
-                                    {input_annotation}, output_shape);
-      ctx->SetOutput(0, output);
-    }
+    auto status_or_output = ConvertSpmdFullToShardShape(
+        ctx->builder(),
+        /*input=*/input, /*single_dim=*/single_dim_,
+        /*manual_sharding=*/sharding, /*unspecified_dims=*/unspecified_dims_);
+    OP_REQUIRES_OK(ctx, status_or_output.status());
+    ctx->SetOutput(0, status_or_output.ValueOrDie());
   }
 
  private:
   string manual_sharding_str_;
+  int32 single_dim_;
+  std::vector<int64_t> unspecified_dims_;
   TF_DISALLOW_COPY_AND_ASSIGN(XlaSpmdFullToShardShapeOp);
 };
 
@@ -91,16 +76,23 @@ class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
       : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("full_shape", &full_shape_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("manual_sharding", &manual_sharding_str_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dim", &single_dim_));
+    std::vector<int32_t> unspecified_dims;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("unspecified_dims", &unspecified_dims));
+    for (int32_t i32 : unspecified_dims) {
+      unspecified_dims_.push_back(i32);
+    }
   }
 
   ~XlaSpmdShardToFullShapeOp() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaOp input = ctx->Input(0);
-    auto input_shape_or = ctx->InputXlaShape(0);
-    OP_REQUIRES_OK(ctx, input_shape_or.status());
-    auto output_shape = TensorShapeToXLAShape(
-        input_shape_or.ValueOrDie().element_type(), full_shape_);
+    auto status_or_input_shape = ctx->InputXlaShape(0);
+    OP_REQUIRES_OK(ctx, status_or_input_shape.status());
+    const xla::Shape output_shape = TensorShapeToXLAShape(
+        /*type=*/status_or_input_shape.ValueOrDie().element_type(),
+        /*tensor_shape=*/full_shape_);
 
     xla::OpSharding sharding;
     if (!sharding.ParseFromString(manual_sharding_str_)) {
@@ -109,32 +101,21 @@ class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
                                           "valid encoded xla::OpSharding "
                                           "proto."));
     }
-    xla::XlaOp input_annotation;
-    {
-      // Annotate the shard-shape input with manual sharding, so that the
-      // partitioner will leave it as is.
-      xla::OpSharding manual;
-      manual.set_type(xla::OpSharding::MANUAL);
-      xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(), manual);
-      input_annotation =
-          xla::CustomCall(ctx->builder(), /*call_target_name=*/"Sharding",
-                          {input}, input_shape_or.ValueOrDie());
-    }
 
-    {
-      // Annotate the full-shape output with the sharding.
-      xla::XlaScopedShardingAssignment assign_sharding(ctx->builder(),
-                                                       sharding);
-      ctx->SetOutput(
-          0, xla::CustomCall(ctx->builder(),
-                             /*call_target_name=*/"SPMDShardToFullShape",
-                             {input_annotation}, output_shape));
-    }
+    auto status_or_output = ConvertSpmdShardToFullShape(
+        ctx->builder(),
+        /*input=*/input, /*output_shape=*/output_shape,
+        /*single_dim=*/single_dim_,
+        /*manual_sharding=*/sharding, /*unspecified_dims=*/unspecified_dims_);
+    OP_REQUIRES_OK(ctx, status_or_output.status());
+    ctx->SetOutput(0, status_or_output.ValueOrDie());
   }
 
  private:
   TensorShape full_shape_;
   string manual_sharding_str_;
+  int32 single_dim_;
+  std::vector<int64_t> unspecified_dims_;
   TF_DISALLOW_COPY_AND_ASSIGN(XlaSpmdShardToFullShapeOp);
 };
 

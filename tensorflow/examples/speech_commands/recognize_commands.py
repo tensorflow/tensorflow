@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Stream accuracy recognize commands."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 import numpy as np
@@ -28,16 +24,27 @@ class RecognizeResult(object):
   Attributes:
     founded_command: A string indicating the word just founded. Default value
       is '_silence_'
-    score: An float representing the confidence of founded word. Default
+    score: A float representing the confidence of founded word. Default
       value is zero.
     is_new_command: A boolean indicating if the founded command is a new one
       against the last one. Default value is False.
   """
 
-  def __init__(self):
-    self._founded_command = "_silence_"
-    self._score = 0
-    self._is_new_command = False
+  def __init__(self,
+               founded_command="_silence_",
+               score=0.0,
+               is_new_command=False):
+    """Construct a recognition result.
+
+    Args:
+      founded_command: A string indicating the word just founded.
+      score: A float representing the confidence of founded word.
+      is_new_command: A boolean indicating if the founded command is a new one
+        against the last one.
+    """
+    self._founded_command = founded_command
+    self._score = score
+    self._is_new_command = is_new_command
 
   @property
   def founded_command(self):

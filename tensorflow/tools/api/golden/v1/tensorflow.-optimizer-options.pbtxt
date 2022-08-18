@@ -40,6 +40,12 @@ tf_proto {
       type: TYPE_ENUM
       type_name: ".tensorflow.OptimizerOptions.GlobalJitLevel"
     }
+    field {
+      name: "cpu_global_jit"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
     enum_type {
       name: "Level"
       value {

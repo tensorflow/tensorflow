@@ -1,4 +1,3 @@
-# python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for liveness module, that only run in Python 3."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.autograph.pyct.static_analysis import annos
 from tensorflow.python.autograph.pyct.static_analysis import liveness_test

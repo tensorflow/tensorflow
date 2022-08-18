@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 
 #include <algorithm>
-#include <unordered_set>
+#include <memory>
 
-#include "absl/memory/memory.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -40,8 +40,7 @@ class GpuHloScheduleTest : public HloTestBase {
 
   static std::unique_ptr<GpuHloSchedule> BuildGpuHloSchedule(
       HloModule* module, const StreamAssignment& streams) {
-    return GpuHloSchedule::Build(module, streams, /*pointer_size=*/8)
-        .ConsumeValueOrDie();
+    return GpuHloSchedule::Build(module, streams, /*pointer_size=*/8).value();
   }
 
   std::unique_ptr<HloModule> CreateNewVerifiedModule() {
@@ -49,11 +48,11 @@ class GpuHloScheduleTest : public HloTestBase {
     auto debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_disable_multi_streaming(false);
     config.set_debug_options(debug_options);
-    return absl::make_unique<HloModule>("test_module", config);
+    return std::make_unique<HloModule>("test_module", config);
   }
 
   HloVec RemoveHlo(const HloVec& input,
-                   const std::unordered_set<const HloInstruction*>& remove) {
+                   const absl::flat_hash_set<const HloInstruction*>& remove) {
     HloVec result(input);
     result.erase(std::remove_if(result.begin(), result.end(),
                                 [&remove](const HloInstruction* x) {
@@ -448,7 +447,7 @@ TEST_F(GpuHloScheduleTest, AsyncAllReduce) {
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           all_reduce_start_shape, {add0}, reduction_computation,
           /*replica_groups=*/{}, /*constrain_layout=*/false,
-          /*channel_id=*/absl::nullopt, /*use_global_device_ids=*/true));
+          /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
   // In addition, add control_dependency: add1->nonblocking_call.
   TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
   // Blocking call, which only add4 depends on.

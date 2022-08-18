@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
-#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
@@ -40,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
@@ -49,16 +47,17 @@ namespace xla {
 namespace {
 
 // Writes the given literal to a file in the test temporary directory.
-void WriteLiteralToTempFile(const LiteralSlice& literal, const string& name) {
+void WriteLiteralToTempFile(const LiteralSlice& literal,
+                            const std::string& name) {
   // Bazel likes for tests to write "debugging outputs" like these to
   // TEST_UNDECLARED_OUTPUTS_DIR.  This plays well with tools that inspect test
   // results, especially when they're run on remote machines.
   auto* env = tensorflow::Env::Default();
-  string binary_filename;
-  string text_filename;
-  string outdir;
+  std::string binary_filename;
+  std::string text_filename;
+  std::string outdir;
   if (tensorflow::io::GetTestUndeclaredOutputsDir(&outdir)) {
-    string filename = tensorflow::io::JoinPath(
+    std::string filename = tensorflow::io::JoinPath(
         outdir, absl::StrFormat("tempfile-%d-%s", env->NowMicros(), name));
     binary_filename = absl::StrCat(filename, ".pb");
     text_filename = absl::StrCat(filename, ".txt");
@@ -80,7 +79,8 @@ void WriteLiteralToTempFile(const LiteralSlice& literal, const string& name) {
 // miscomparison.
 void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
                   const LiteralSlice& mismatches,
-                  const ShapeIndex& /*shape_index*/) {
+                  const ShapeIndex& /*shape_index*/,
+                  const literal_comparison::ErrorBuckets& /*error_buckets*/) {
   LOG(INFO) << "expected: " << ShapeUtil::HumanString(expected.shape()) << " "
             << literal_comparison::ToStringTruncated(expected);
   LOG(INFO) << "actual:   " << ShapeUtil::HumanString(actual.shape()) << " "
@@ -91,60 +91,45 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   WriteLiteralToTempFile(mismatches, "mismatches");
 }
 
-Literal ExecuteOnPlatform(std::unique_ptr<HloModule> module,
+Literal ExecuteWithRunner(std::unique_ptr<HloModule> module,
                           absl::Span<const Literal> args,
-                          se::Platform* platform, bool run_hlo_passes) {
-  HloRunner runner(platform);
-
+                          HloRunnerInterface* runner, bool run_hlo_passes) {
   TF_QCHECK_OK(VerifyHloModule(module.get(), /*layout_sensitive=*/false,
                                /*allow_mixed_precision=*/true))
-      << " (on " << platform->Name() << ")";
+      << " (on " << runner->Name() << ")";
 
-  std::cerr << "Running HLO module on platform " << platform->Name() << "...\n";
+  std::cerr << "Running HLO module with runner " << runner->Name() << "...\n";
   XLA_VLOG_LINES(1, module->ToString());
   const auto start = std::chrono::high_resolution_clock::now();
-  auto result_status = runner.Execute(std::move(module), args, run_hlo_passes);
+  auto result_status = runner->Execute(std::move(module), args, run_hlo_passes);
   const auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> diff = end - start;
   std::cerr << "... compiled and ran in " << diff.count() << "s.\n";
 
   TF_QCHECK_OK(result_status.status())
-      << "Failed to execute on " << platform->Name() << "\n";
+      << "Failed to execute on " << runner->Name() << "\n";
 
-  return result_status.ConsumeValueOrDie();
+  return std::move(result_status).value();
 }
 }  // namespace
 
 Status RunAndCompare(
-    const std::string& hlo_filename, const std::string& test_platform_name,
-    const std::string& reference_platform_name, std::minstd_rand0* engine,
+    std::unique_ptr<HloModule> test_module, HloRunnerInterface* test_runner,
+    HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
     const RunHloModuleOptions& options,
     xla::RunHloModuleIterationLiterals* iteration_literals_proto,
-    std::function<Status(const HloModule&,
-                         const ::stream_executor::Platform::Id&, HloModule*)>
+    std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
         reference_module_modifier_hook,
     std::function<void(HloModuleConfig*)> config_modifier_hook) {
-  se::Platform* test_platform =
-      xla::PlatformUtil::GetPlatform(test_platform_name).ValueOrDie();
-  se::Platform* reference_platform =
-      reference_platform_name.empty()
-          ? nullptr
-          : xla::PlatformUtil::GetPlatform(reference_platform_name)
-                .ValueOrDie();
   if (!config_modifier_hook) {
     config_modifier_hook = [](HloModuleConfig* config) {
       config->set_seed(42);
     };
   }
 
-  std::unique_ptr<HloModule> test_module =
-      LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
-                         options.input_format, config_modifier_hook)
-          .ValueOrDie();
-
   if (options.flatten_control_flow) {
     HloControlFlowFlattening control_flow_flattening(
-        /*while_execution_count=*/1);
+        HloControlFlowFlattening::Options{/*while_execution_count=*/1});
     TF_RETURN_IF_ERROR(control_flow_flattening.Run(test_module.get()).status());
   }
 
@@ -152,7 +137,7 @@ Status RunAndCompare(
 
   std::vector<Literal> args = MakeFakeArguments(test_module.get(), engine,
                                                 options.use_large_float_range)
-                                  .ConsumeValueOrDie();
+                                  .value();
   // Use provided input literals as arguments, if any.
   if (iteration_literals_proto != nullptr &&
       iteration_literals_proto->arguments_size() != 0) {
@@ -191,19 +176,19 @@ Status RunAndCompare(
   }
 
   std::unique_ptr<HloModule> reference_module;
-  if (reference_platform != nullptr) {
-    // PrepareReferenceModule needs to know the *test* platform, in order to
-    // properly match the test platform's numerics.
-    reference_module = PrepareReferenceModule(*test_module, test_platform->id(),
-                                              config_modifier_hook,
-                                              reference_module_modifier_hook)
-                           .ConsumeValueOrDie();
+  if (reference_runner != nullptr) {
+    // PrepareReferenceModule needs to know the *test* runner, in order to
+    // properly match the test runner's numerics.
+    reference_module =
+        PrepareReferenceModule(*test_module, test_runner, config_modifier_hook,
+                               reference_module_modifier_hook)
+            .value();
   }
 
-  Literal test_result = ExecuteOnPlatform(
-      std::move(test_module), args, test_platform, options.run_test_hlo_passes);
+  Literal test_result = ExecuteWithRunner(
+      std::move(test_module), args, test_runner, options.run_test_hlo_passes);
   if (options.print_literals) {
-    std::cout << "\n** Result on test platform " << test_platform->Name()
+    std::cout << "\n** Result with test runner " << test_runner->Name()
               << " **\n"
               << test_result.ToString() << "\n";
   }
@@ -213,17 +198,17 @@ Status RunAndCompare(
   }
 
   if (reference_module == nullptr) {
-    std::cerr << "Skipping reference platform\n";
-    return Status::OK();
+    std::cerr << "Skipping reference runner\n";
+    return OkStatus();
   }
 
   Literal reference_result =
-      ExecuteOnPlatform(std::move(reference_module), args, reference_platform,
+      ExecuteWithRunner(std::move(reference_module), args, reference_runner,
                         options.run_reference_hlo_passes);
 
   if (options.print_literals) {
-    std::cout << "\n** Result on reference platform "
-              << reference_platform->Name() << " **\n"
+    std::cout << "\n** Result with reference runner "
+              << reference_runner->Name() << " **\n"
               << reference_result.ToString() << "\n";
   }
   if (iteration_literals_proto != nullptr) {
@@ -239,4 +224,20 @@ Status RunAndCompare(
                                   /*detailed_message=*/true, &OnMiscompare);
 }
 
+Status RunAndCompare(
+    const std::string& hlo_filename, HloRunnerInterface* test_runner,
+    HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
+    const RunHloModuleOptions& options,
+    xla::RunHloModuleIterationLiterals* iteration_literals_proto,
+    std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
+        reference_module_modifier_hook,
+    std::function<void(HloModuleConfig*)> config_modifier_hook) {
+  std::unique_ptr<HloModule> test_module =
+      LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
+                         options.input_format, config_modifier_hook)
+          .ValueOrDie();
+  return RunAndCompare(std::move(test_module), test_runner, reference_runner,
+                       engine, options, iteration_literals_proto,
+                       reference_module_modifier_hook, config_modifier_hook);
+}
 }  // namespace xla

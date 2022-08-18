@@ -13,15 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.random_ops.random_poisson."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util
@@ -44,7 +40,7 @@ class RandomPoissonTest(test.TestCase):
       with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
         rng = random_ops.random_poisson(lam, [num], dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 
@@ -175,6 +171,14 @@ class RandomPoissonTest(test.TestCase):
   def testInfRate(self):
     sample = random_ops.random_poisson(shape=[2], lam=np.inf)
     self.assertAllEqual([np.inf, np.inf], self.evaluate(sample))
+
+  def testSizeTooLarge(self):
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "overflow"):
+      rate = constant_op.constant(1.0, shape=(4, 4, 4, 4, 4))
+      self.evaluate(
+          random_ops.random_poisson(
+              shape=[46902, 51188, 34063, 59195], lam=rate))
 
 
 if __name__ == "__main__":

@@ -6,6 +6,6 @@ tf_module {
   }
   member_method {
     name: "defun_with_attributes"
-    argspec: "args=[\'func\', \'input_signature\', \'attributes\', \'autograph\', \'experimental_autograph_options\', \'jit_compile\', \'experimental_relax_shapes\', \'experimental_follow_type_hints\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'False\', \'False\'], "
+    argspec: "args=[\'func\', \'input_signature\', \'attributes\', \'autograph\', \'experimental_autograph_options\', \'jit_compile\', \'reduce_retracing\', \'experimental_follow_type_hints\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'False\', \'False\'], "
   }
 }

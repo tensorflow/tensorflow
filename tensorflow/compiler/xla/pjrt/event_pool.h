@@ -51,14 +51,14 @@ class EventPool {
     inline bool operator>=(const Handle& rhs) const { return !(*this < rhs); }
 
     se::Event* event() const { return event_.get(); }
-    uint64 sequence_number() const { return sequence_number_; }
+    uint64_t sequence_number() const { return sequence_number_; }
 
    private:
     friend class EventPool;
 
     EventPool* pool_ = nullptr;
     std::unique_ptr<se::Event> event_;
-    uint64 sequence_number_;
+    uint64_t sequence_number_;
   };
 
   // Initializes a new EventPool. If `allow_reuse` is true, then events will be
@@ -87,8 +87,8 @@ class EventPool {
   const bool allow_reuse_;
 
   absl::Mutex mu_;
-  std::stack<std::unique_ptr<se::Event>> free_events_ TF_GUARDED_BY(mu_);
-  uint64 next_sequence_number_ TF_GUARDED_BY(mu_);
+  std::stack<std::unique_ptr<se::Event>> free_events_ ABSL_GUARDED_BY(mu_);
+  uint64_t next_sequence_number_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla

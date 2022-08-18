@@ -45,10 +45,6 @@ PREREQUISITES:
          Only these commits are considered when running commands.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import csv
 import datetime
@@ -56,8 +52,8 @@ import os
 import os.path
 import pathlib
 import platform
+import re
 import subprocess
-
 
 parser = argparse.ArgumentParser(
     usage=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -118,14 +114,14 @@ size.add_argument(
     help="Manually set the recorded size instead of providing an artifact.")
 FLAGS = parser.parse_args()
 
-
 NOW = datetime.datetime.now(
     datetime.timezone.utc).replace(microsecond=0).isoformat()
 TABLE_NAME = "{}.{}".format(FLAGS.dataset, FLAGS.table)
 PROJECT_LEVEL_TABLE_NAME = "{}:{}".format(FLAGS.project, TABLE_NAME)
 CL_TRAILER = "PiperOrigin-RevId"
 PRETTY_COMMIT_DATE = "%cI"
-PRETTY_CL = "%(trailers:key={},valueonly)".format(CL_TRAILER)
+# \001 is a byte with value "1", in octal. We use this in git_pretty()
+PRETTY_CL = "\001%(trailers)\001"
 PRETTY_HEAD_INFO = "%h\t{cl}\t%s\t%ae\t%aI\t%ce\t%cI".format(cl=PRETTY_CL)
 PRETTY_EARLY = "%aI\t{cl}\t%cI".format(cl=PRETTY_CL)
 PRETTY_COMMIT = "%h"
@@ -203,8 +199,18 @@ def git_pretty(commit_range, pretty_format, n=None):
     print(e.stdout)
     raise e
   out = ret.stdout.replace("\n", "")
-  # Split by \0 and make list of text, extra whitespace and empty lines removed
-  return list(filter(None, map(str.strip, out.split("\0"))))
+  # Unique case: Old versions of git do not expand the special parts of the
+  # trailers formatter. In that case, the entire formatter remains, and we
+  # need to extract the information in another way. The %trailers general
+  # formatter is available, so we'll use that and regex over it.
+  cleaned = list(filter(None, map(str.strip, out.split("\0"))))
+  trailers_removed = []
+  for row in cleaned:
+    # Find: a chunk of text surrounded by \001, and extract the number after
+    # PiperOrigin-RevId.
+    row = re.sub("\001.*PiperOrigin-RevId: (?P<cl>[0-9]+).*\001", r"\g<1>", row)
+    trailers_removed.append(row)
+  return trailers_removed
 
 
 def gcloud(tool, args, stdin=None):
@@ -246,8 +252,7 @@ def bq(args, stdin=None):
   # bq prints extra messages to stdout if ~/.bigqueryrc doesn't exist
   pathlib.Path(pathlib.Path.home() / ".bigqueryrc").touch()
   return gcloud(
-      "bq", ["--project_id", FLAGS.project, "--headless", *args],
-      stdin=stdin)
+      "bq", ["--project_id", FLAGS.project, "--headless", *args], stdin=stdin)
 
 
 def get_all_tested_commits():
@@ -374,8 +379,11 @@ def main():
     print("\t".join(map(str, next_tsv_row)))
   else:
     with open("data.tsv", "w", newline="") as tsvfile:
-      writer = csv.writer(tsvfile, delimiter="\t", quoting=csv.QUOTE_MINIMAL,
-                          lineterminator=os.linesep)
+      writer = csv.writer(
+          tsvfile,
+          delimiter="\t",
+          quoting=csv.QUOTE_MINIMAL,
+          lineterminator=os.linesep)
       writer.writerow(next_tsv_row)
     bq([
         "load", "--source_format", "CSV", "--field_delimiter", "tab",

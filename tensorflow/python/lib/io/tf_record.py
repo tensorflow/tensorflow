@@ -15,10 +15,6 @@
 
 """For reading and writing TFRecords files."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.lib.io import _pywrap_record_io
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation

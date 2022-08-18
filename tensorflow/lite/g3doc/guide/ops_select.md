@@ -60,7 +60,7 @@ dependencies {
 ```
 
 To use nightly snapshots, make sure that you have added
-[Sonatype snapshot repository](./build_android#use_nightly_snapshots).
+[Sonatype snapshot repository](../android/lite_build.md#use_nightly_snapshots).
 
 Once you've added the dependency, the necessary delegate for handling the
 graph's TensorFlow ops should be automatically installed for graphs that require
@@ -83,8 +83,9 @@ android {
 #### Building the Android AAR
 
 For reducing the binary size or other advanced cases, you can also build the
-library manually. Assuming a <a href="android.md">working TensorFlow Lite build
-environment</a>, build the Android AAR with select TensorFlow ops as follows:
+library manually. Assuming a
+[working TensorFlow Lite build environment](../android/quickstart.md), build the
+Android AAR with select TensorFlow ops as follows:
 
 ```sh
 sh tensorflow/lite/tools/build_aar.sh \
@@ -122,7 +123,7 @@ allprojects {
         mavenCentral()
         maven {  // Only for snapshot artifacts
             name 'ossrh-snapshot'
-            url 'http://oss.sonatype.org/content/repositories/snapshots'
+            url 'https://oss.sonatype.org/content/repositories/snapshots'
         }
         mavenLocal()
     }
@@ -138,7 +139,7 @@ dependencies {
 
 #### Using CocoaPods
 
-We provide nightly prebuilt select TF ops CocoaPods for `armv7` and `arm64`,
+TensorFlow Lite provides nightly prebuilt select TF ops CocoaPods for `arm64`,
 which you can depend on alongside the `TensorFlowLiteSwift` or
 `TensorFlowLiteObjC` CocoaPods.
 
@@ -183,7 +184,7 @@ framework cannot be built for `i386` architecture, so you need to explicitly
 provide the list of target architectures excluding `i386`.
 
 ```sh
-bazel build -c opt --config=ios --ios_multi_cpus=armv7,arm64,x86_64 \
+bazel build -c opt --config=ios --ios_multi_cpus=arm64,x86_64 \
   //tensorflow/lite/ios:TensorFlowLiteSelectTfOps_framework
 ```
 
@@ -202,20 +203,32 @@ Flags`, and add:
 -force_load <path/to/your/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps>
 ```
 
-### C++
+### C/C++
 
-When building TensorFlow Lite libraries using the bazel pipeline, the additional
-TensorFlow ops library can be included and enabled as follows:
+If you're using Bazel or
+[CMake](https://www.tensorflow.org/lite/guide/build_cmake) to build TensorFlow
+Lite interpreter, you can enable Flex delegate by linking a TensorFlow Lite Flex
+delegate shared library. You can build it with Bazel as the following command.
 
-*   Enable monolithic builds if necessary by adding the `--config=monolithic`
-    build flag.
-*   Add the TensorFlow ops delegate library dependency to the build
-    dependencies: `tensorflow/lite/delegates/flex:delegate`.
+```
+bazel build -c opt --config=monolithic tensorflow/lite/delegates/flex:tensorflowlite_flex
+```
+
+This command generates the following shared library in
+`bazel-bin/tensorflow/lite/delegates/flex`.
+
+Platform | Library name
+-------- | ----------------------------
+Linux    | libtensorflowlite_flex.so
+macOS    | libtensorflowlite_flex.dylib
+Windows  | tensorflowlite_flex.dll
 
 Note that the necessary `TfLiteDelegate` will be installed automatically when
-creating the interpreter at runtime as long as the delegate is linked into the
-client library. It is not necessary to explicitly install the delegate instance
-as is typically required with other delegate types.
+creating the interpreter at runtime as long as the shared library is linked. It
+is not necessary to explicitly install the delegate instance as is typically
+required with other delegate types.
+
+**Note:** This feature is available since version 2.7.
 
 ### Python
 

@@ -14,10 +14,6 @@
 # ==============================================================================
 """State management for eager execution."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import contextlib
 import copy
@@ -32,6 +28,7 @@ import six
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import coordination_config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
@@ -79,24 +76,40 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
-_RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
-
-
-def enable_run_eager_op_as_function():
-  """Execute elementary eager ops (non-function) wrapped in a call op.
-
-  This should be functionally equivalent to running the eager op's kernel
-  directly (the default) but reduces the number of codepaths for executing
-  TF2 programs in the runtime, thereby improving consistency (in terms of
-  optimizations and rewrites for instance) and maintainability.
-  """
-  # Must be called before context is actually built.
-  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
-  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = True
+# This flag and the associated environment var are transient and will eventually
+# be removed, once this experiment is enabled by default.
+_JIT_COMPILE_REWRITE_ENABLED = os.getenv("TF_JIT_COMPILE_REWRITE") == "1"
 
 
 def run_eager_op_as_function_enabled():
-  return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  return True
+
+
+# This method should only be called after the context has beein initialized.
+def enable_jit_compile_rewrite():
+  """Run jit_compile functions through rewrite pass.
+
+  This runs jit_compile functions through all of the multidevice function
+  rewrite passes.
+  """
+  global _JIT_COMPILE_REWRITE_ENABLED
+  _JIT_COMPILE_REWRITE_ENABLED = True
+  if context_safe() is not None:
+    context_safe().jit_compile_rewrite = True
+
+
+# This method should only be called after the context has been initialized.
+def disable_jit_compile_rewrite():
+  global _JIT_COMPILE_REWRITE_ENABLED
+  _JIT_COMPILE_REWRITE_ENABLED = False
+  if context_safe() is not None:
+    context_safe().jit_compile_rewrite = False
+
+
+def jit_compile_rewrite_enabled():
+  if context_safe() is not None:
+    return context_safe().jit_compile_rewrite
+  return _JIT_COMPILE_REWRITE_ENABLED
 
 
 # Expose it as internally public APIs for Keras use cases in b/171080602.
@@ -281,8 +294,9 @@ class LogicalDevice(
 @tf_export("config.LogicalDeviceConfiguration",
            "config.experimental.VirtualDeviceConfiguration")
 class LogicalDeviceConfiguration(
-    collections.namedtuple("LogicalDeviceConfiguration",
-                           ["memory_limit", "experimental_priority"])):
+    collections.namedtuple("LogicalDeviceConfiguration", [
+        "memory_limit", "experimental_priority", "experimental_device_ordinal"
+    ])):
   """Configuration class for a logical devices.
 
   The class specifies the parameters to configure a `tf.config.PhysicalDevice`
@@ -299,11 +313,20 @@ class LogicalDeviceConfiguration(
       Lower values have higher priorities and 0 is the default.
       Within a physical GPU, the GPU scheduler will prioritize ops on virtual
       devices with higher priority. Currently only supported for Nvidia GPUs.
+    experimental_device_ordinal: (optional) Ordinal number to order the virtual
+    device.
+      LogicalDevice with lower ordinal number will receive a lower device id.
+      Physical device id and location in the list is used to break ties.
+      Currently only supported for Nvidia GPUs.
   """
 
-  def __new__(cls, memory_limit=None, experimental_priority=None):
+  def __new__(cls,
+              memory_limit=None,
+              experimental_priority=None,
+              experimental_device_ordinal=0):
     return super(LogicalDeviceConfiguration,
-                 cls).__new__(cls, memory_limit, experimental_priority)
+                 cls).__new__(cls, memory_limit, experimental_priority,
+                              experimental_device_ordinal)
 
 
 @tf_export("config.PhysicalDevice")
@@ -442,18 +465,19 @@ class Context(object):
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
     self._use_tfrt_distributed_runtime = None
-    self._run_eager_op_as_function = run_eager_op_as_function_enabled()
+    self._jit_compile_rewrite = jit_compile_rewrite_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
     self._collective_scoped_allocator_enabled_ops = None
     self._collective_use_nccl_communication = None
     self._collective_device_filters = None
-    self._coordination_service = None
+    self._coordination_service_config = None
 
     self._device_lock = threading.Lock()
     self._physical_devices = None
     self._physical_device_to_index = None
+    self._pluggable_devices = None
     self._visible_device_list = []
     self._memory_growth_map = None
     self._virtual_device_map = {}
@@ -464,10 +488,13 @@ class Context(object):
     self._inter_op_parallelism_threads = None
     self._soft_device_placement = None
     self._log_device_placement = None
+    self._operation_timeout_in_ms = None
     self._enable_mlir_graph_optimization = None
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
+
+    self._is_global_context = False
 
   # pylint: enable=redefined-outer-name
 
@@ -506,6 +533,10 @@ class Context(object):
     device_list = pywrap_tfe.TFE_ContextListDevices(self._context_handle)
     try:
       self._num_gpus = 0
+      current_job, current_task = None, None
+      server_def = self._server_def or self._collective_ops_server_def
+      if server_def is not None:
+        current_job, current_task = server_def.job_name, server_def.task_index
       for i in range(pywrap_tfe.TF_DeviceListCount(device_list)):
         dev_name = pywrap_tfe.TF_DeviceListName(device_list, i)
         context_devices.append(pydev.canonical_name(dev_name))
@@ -517,7 +548,8 @@ class Context(object):
         logical_devices.append(
             LogicalDevice(name=spec.to_string(), device_type=spec.device_type))
         dev_type = pywrap_tfe.TF_DeviceListType(device_list, i)
-        if dev_type == "GPU":
+        if (dev_type == "GPU" and spec.job == current_job and
+            spec.task == current_task):
           self._num_gpus += 1
 
     finally:
@@ -552,8 +584,9 @@ class Context(object):
             self._use_tfrt_distributed_runtime is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrtDistributedRuntime(
               opts, self._use_tfrt_distributed_runtime)
-        pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(
-            opts, self._run_eager_op_as_function)
+        pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(opts, True)
+        pywrap_tfe.TFE_ContextOptionsSetJitCompileRewrite(
+            opts, self._jit_compile_rewrite)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
       finally:
         pywrap_tfe.TFE_DeleteContextOptions(opts)
@@ -571,6 +604,16 @@ class Context(object):
       self._context_handle = context_handle
       self._initialize_logical_devices()
       self._initialized = True
+
+      if self._is_global_context:
+        pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
+
+  def mark_as_global_context(self):
+    # If the context was already initialized, publish it. Otherwise wait with
+    # publication until it's initialized.
+    if self._initialized:
+      pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
+    self._is_global_context = True
 
   def _clear_caches(self):
     self.ones_rank_cache().flush()
@@ -693,15 +736,35 @@ class Context(object):
     else:
       raise ValueError("Context is not initialized.")
 
-  def enable_coordination_service(self, service_type):
+  def configure_coordination_service(self,
+                                     service_type,
+                                     service_leader="",
+                                     enable_health_check=True,
+                                     cluster_register_timeout_in_ms=0,
+                                     heartbeat_timeout_in_ms=0,
+                                     coordinated_jobs=None):
+    """Enable distributed coordination service with specified configs."""
     if self._context_handle:
       logging.warning("Configuring coordination service type may not be "
                       "effective because the context is already initialized.")
-    self._coordination_service = service_type
+    config = coordination_config_pb2.CoordinationServiceConfig()
+    config.service_type = service_type
+    if service_leader:
+      config.service_leader = pydev.canonical_name(service_leader)
+    config.enable_health_check = enable_health_check
+    config.cluster_register_timeout_in_ms = cluster_register_timeout_in_ms
+    config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
+    if coordinated_jobs is not None:
+      if isinstance(coordinated_jobs, list):
+        config.coordinated_jobs.extend(coordinated_jobs)
+      else:
+        raise ValueError("`coordinated_jobs` must be a list of job names or "
+                         "None, but got: %s" % (coordinated_jobs,))
+    self._coordination_service_config = config
 
   @property
   def coordination_service(self):
-    return self._coordination_service
+    return self._coordination_service_config
 
   def set_config_key_value(self, key, value):
     ensure_initialized()
@@ -1024,6 +1087,9 @@ class Context(object):
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
 
+    if self._operation_timeout_in_ms is not None:
+      config.operation_timeout_in_ms = self._operation_timeout_in_ms
+
     is_mlir_bridge_enabled = pywrap_tfe.TF_IsMlirBridgeEnabled()
     config.experimental.mlir_bridge_rollout = is_mlir_bridge_enabled
     if (is_mlir_bridge_enabled ==
@@ -1066,6 +1132,8 @@ class Context(object):
     rewriter_toggle("auto_mixed_precision")
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
+    rewriter_toggle("auto_mixed_precision_onednn_bfloat16")
+    rewriter_toggle("auto_mixed_precision_mkl")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
       config.graph_options.rewrite_options.min_graph_nodes = nodes
@@ -1105,8 +1173,9 @@ class Context(object):
         config.device_filters.append(f)
 
     # Configure coordination service
-    if self._coordination_service:
-      config.experimental.coordination_service = self._coordination_service
+    if self._coordination_service_config:
+      config.experimental.coordination_config.CopyFrom(
+          self._coordination_service_config)
 
     return config
 
@@ -1116,7 +1185,13 @@ class Context(object):
     virtual_devices = []
     gpu_index = -1
     memory_growths = set()
-    for dev in self.list_physical_devices("GPU"):
+    gpu_devices = self.list_physical_devices("GPU")
+    pluggable_devices = self._pluggable_devices
+    compatible_devices = gpu_devices
+    for dev in pluggable_devices:
+      if dev not in gpu_devices:
+        compatible_devices.append(dev)
+    for dev in compatible_devices:
       gpu_index += 1
 
       if dev not in self._visible_device_list:
@@ -1128,9 +1203,11 @@ class Context(object):
 
       if self._virtual_device_map:
         vdevs = self._virtual_device_map.get(dev, [])
+        device_ordinals = []
         device_limits = []
         priority = []
         for virt_dev in vdevs:
+          device_ordinals.append(virt_dev.experimental_device_ordinal)
           device_limits.append(virt_dev.memory_limit)
           if virt_dev.experimental_priority is not None:
             priority.append(virt_dev.experimental_priority)
@@ -1141,7 +1218,9 @@ class Context(object):
 
         virtual_devices.append(
             config_pb2.GPUOptions.Experimental.VirtualDevices(
-                memory_limit_mb=device_limits, priority=priority))
+                memory_limit_mb=device_limits,
+                priority=priority,
+                device_ordinal=device_ordinals))
 
     # Only compute growth if virtual devices have not been configured and we
     # have GPUs
@@ -1342,10 +1421,19 @@ class Context(object):
       self._physical_device_to_index = {
           p: i for i, p in enumerate(self._physical_devices)
       }
+      # We maintain a separate list just so we can check whether the device in
+      # _physical_devices is a PluggableDevice.
+      pluggable_devs = pywrap_tfe.TF_ListPluggablePhysicalDevices()
+      self._pluggable_devices = [
+          PhysicalDevice(name=d.decode(), device_type=d.decode().split(":")[1])
+          for d in pluggable_devs
+      ]
 
       self._visible_device_list = list(self._physical_devices)
       self._memory_growth_map = {
-          d: None for d in self._physical_devices if d.device_type == "GPU"
+          d: None
+          for d in self._physical_devices
+          if d.device_type == "GPU" or d in self._pluggable_devices
       }
 
     # Import device settings that may have been passed into the constructor
@@ -1535,8 +1623,9 @@ class Context(object):
       raise ValueError(
           "Cannot set memory growth on device when virtual devices configured")
 
-    if dev.device_type != "GPU":
-      raise ValueError("Cannot set memory growth on non-GPU devices")
+    if dev.device_type != "GPU" and dev not in self._pluggable_devices:
+      raise ValueError(
+          "Cannot set memory growth on non-GPU and non-Pluggable devices")
 
     if self._memory_growth_map.get(dev) == enable:
       return
@@ -1571,6 +1660,9 @@ class Context(object):
         if vdev.experimental_priority is not None:
           raise ValueError("Setting experimental_priority on CPU virtual "
                            " devices is currently not supported")
+        if vdev.experimental_device_ordinal != 0:
+          raise ValueError("Setting experimental_device_ordinal on CPU virtual "
+                           " devices is currently not supported")
     elif dev.device_type == "GPU":
       for vdev in virtual_devices:
         if vdev.memory_limit is None:
@@ -1604,9 +1696,16 @@ class Context(object):
      RuntimeError: If virtual CPUs are already configured at context
      initialization.
     """
+    server_def = self._server_def or self._collective_ops_server_def
+    local_prefix = ["/device"]
+    if server_def is not None:
+      local_prefix.append("/job:%s/replica:0/task:%d" % (server_def.job_name,
+                                                         server_def.task_index))
+    logical_local_devices = [d for d in self.list_logical_devices("CPU") if
+                             d.name.startswith(tuple(local_prefix))]
     self.ensure_initialized()
     # Error out if there are already multiple logical CPU in the context.
-    if len(self.list_logical_devices("CPU")) > 1:
+    if len(logical_local_devices) > 1:
       raise RuntimeError("Virtual CPUs already set, cannot modify again.")
 
     pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
@@ -1685,6 +1784,8 @@ class Context(object):
     rewriter_toggle("auto_mixed_precision")
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
+    rewriter_toggle("auto_mixed_precision_onednn_bfloat16")
+    rewriter_toggle("auto_mixed_precision_mkl")
 
     if rewrite_options.min_graph_nodes != 0:
       options["min_graph_nodes"] = rewrite_options.min_graph_nodes
@@ -1756,6 +1857,16 @@ class Context(object):
     self._thread_local_data.function_call_options = None
 
   @property
+  def jit_compile_rewrite(self):
+    return self._jit_compile_rewrite
+
+  @jit_compile_rewrite.setter
+  def jit_compile_rewrite(self, enable):
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextSetJitCompileRewrite(self._handle, enable)
+    self._jit_compile_rewrite = enable
+
+  @property
   def device_policy(self):
     # Only get the policy from the context if it has already been initialized
     if self._context_handle is not None:
@@ -1812,6 +1923,21 @@ class Context(object):
       if self._initialized:
         raise ValueError("use_tfrt should be set before being initialized.")
       self._use_tfrt_distributed_runtime = enable
+
+  @property
+  def operation_timeout_in_ms(self):
+    return self.config.operation_timeout_in_ms
+
+  @operation_timeout_in_ms.setter
+  def operation_timeout_in_ms(self, timeout_in_ms):
+    if self._operation_timeout_in_ms == timeout_in_ms:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Operation timeout cannot be modified after initialization.")
+
+    self._operation_timeout_in_ms = timeout_in_ms
 
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
@@ -1922,7 +2048,7 @@ class _EagerDeviceContext(object):
     ctx._set_device(old_device_name, old_device_spec)  # pylint: disable=protected-access
 
 
-# Do not set directly. Use _set_context.
+# Do not change directly.
 _context = None
 _context_lock = threading.Lock()
 
@@ -1930,6 +2056,7 @@ _context_lock = threading.Lock()
 def _set_context_locked(ctx):
   global _context
   pywrap_tfe.TFE_Py_SetEagerContext(ctx)
+  ctx.mark_as_global_context()
   _context = ctx
 
 
@@ -1963,6 +2090,14 @@ def _reset_context():
       _context = None
   _create_context()
   _device_parsing_cache = {}
+
+
+def _reset_jit_compiler_flags():
+  """Clears and re-initializes the TF JIT compiler flags.
+
+  Should only be used for testing.
+  """
+  pywrap_tfe.TF_ResetJitCompilerFlags()
 
 
 def context():
@@ -2131,24 +2266,19 @@ def in_eager_mode():
   return executing_eagerly()
 
 
-def shared_name(name=None):
-  """Returns the anonymous shared name GUID if no shared name is specified.
+def anonymous_name():
+  """Returns the anonymous shared name.
 
-  In eager mode we need to use a unique shared name to avoid spurious sharing
-  issues. The runtime generates a unique name on our behalf when the reserved
-  GUID is used as a shared name.
-
-  Args:
-    name: Optional shared name
+  In eager mode we create anonymous resources to avoid spurious sharing issues.
+  The runtime generates a unique name on our behalf when the reserved
+  anonymous shared name is used as a shared name.
 
   Returns:
-    Eager compatible shared name.
+    The anonymous shared name.
   """
-  if name or not executing_eagerly():
-    return name
 
-  # Ensure a unique name when eager execution is enabled to avoid spurious
-  # sharing issues.
+  # The magic value is defined as
+  # `tensorflow::ResourceHandle::ANONYMOUS_NAME` in C++.
   return "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
 
 
@@ -2527,6 +2657,9 @@ def async_wait():
   are finished, potentially raising exceptions if async execution results in
   an error state. It is a no-op if the context is not initialized.
   """
+  disable_async_executor_env_var = "TF_PS_DISABLE_ASYNC_EXECUTOR_GLOBALLY"
+  if os.environ.get(disable_async_executor_env_var) == str(True):
+    return
   if context()._context_handle is not None:  # pylint: disable=protected-access
     context().sync_executors()
 

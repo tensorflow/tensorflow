@@ -55,7 +55,7 @@ std::vector<StackFrame> StackTrace::ToStackFrames(
 
     const std::pair<PyCodeObject*, int>& code_obj = code_objs_[idx];
     const char* file_name = GetPythonString(code_obj.first->co_filename);
-    const int line_number = PyCode_Addr2Line(code_obj.first, code_obj.second);
+    const int line_number = code_obj.second;
 
     if (filtered && filtered(file_name)) {
       continue;

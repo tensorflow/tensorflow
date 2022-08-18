@@ -18,8 +18,6 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
@@ -55,7 +53,7 @@ void BuildProfilerSubmodule(py::module* m) {
   profiler.def(
       "start_server",
       [](int port) -> std::unique_ptr<tensorflow::profiler::ProfilerServer> {
-        auto server = absl::make_unique<tensorflow::profiler::ProfilerServer>();
+        auto server = std::make_unique<tensorflow::profiler::ProfilerServer>();
         server->StartProfilerServer(port);
         return server;
       },
@@ -77,7 +75,6 @@ void BuildProfilerSubmodule(py::module* m) {
              tensorflow::profiler::XSpace xspace;
              // Disables the ProfilerSession
              TF_RETURN_IF_ERROR(sess->CollectData(&xspace));
-             xspace.add_hostnames(tensorflow::port::Hostname());
              return tensorflow::profiler::ExportToTensorBoard(xspace,
                                                               tensorboard_dir);
            });
@@ -104,7 +101,7 @@ void BuildProfilerSubmodule(py::module* m) {
                     &tensorflow::ProfileOptions::set_duration_ms)
       .def_property(
           "repository_path", &tensorflow::ProfileOptions::repository_path,
-          [](tensorflow::ProfileOptions* options, const string& path) {
+          [](tensorflow::ProfileOptions* options, const std::string& path) {
             options->set_repository_path(path);
           });
 

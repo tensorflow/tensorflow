@@ -129,15 +129,15 @@ class ConstantFolding : public GraphOptimizer {
   Status FoldGraph(const GraphProperties& properties, GraphDef* output,
                    absl::flat_hash_set<string>* nodes_to_not_simplify);
 
-  bool IsSimplifiableReshape(const NodeDef& node,
-                             const GraphProperties& properties) const;
-  Status SimplifyGraph(bool use_shape_info, GraphDef* optimized_graph,
-                       GraphProperties* properties,
+  Status IsSimplifiableReshape(const NodeDef& node,
+                               const GraphProperties& properties) const;
+  Status SimplifyGraph(GraphDef* optimized_graph, GraphProperties* properties,
                        absl::flat_hash_set<string>* nodes_to_not_simplify);
-  Status SimplifyNode(bool use_shape_info, NodeDef* node,
-                      GraphDef* optimized_graph, GraphProperties* properties);
+  Status SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
+                      GraphProperties* properties);
 
   Status RunOptimizationPass(Cluster* cluster, GrapplerItem* item,
+                             GraphProperties* properties,
                              GraphDef* optimized_graph);
 
   // Applies partial constant folding for Concat which is not commutative.

@@ -103,7 +103,7 @@ TEST(ConcatenationOpTest, ThreeDimensionalOneInput) {
   ConcatenationOpModel m0({TensorType_FLOAT32, {2, 1, 2}}, /*axis=*/1,
                           /*num_inputs=*/1);
   m0.SetInput(0, {1.0f, 3.0f, 4.0f, 7.0f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput(), ElementsAreArray({1, 3, 4, 7}));
 }
 
@@ -112,7 +112,7 @@ TEST(ConcatenationOpTest, FiveDimensionalOneInput) {
                           /*num_inputs=*/1);
   m0.SetInput(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f,
                   11.0f, 12.0f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
 }
@@ -124,7 +124,7 @@ TEST(ConcatenationOpTest, FiveDimensionalTwoInput) {
                   11.0f, 12.0f});
   m0.SetInput(1, {13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f, 20.0f, 21.0f,
                   22.0f, 23.0f, 24.0f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m0.GetOutput(),
       ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
@@ -138,7 +138,7 @@ TEST(ConcatenationOpTest, FiveDimensionalTwoInputNegativeAxes) {
                   11.0f, 12.0f});
   m0.SetInput(1, {13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f, 20.0f, 21.0f,
                   22.0f, 23.0f, 24.0f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput(),
               ElementsAreArray({1, 2, 3, 13, 14, 15, 4,  5,  6,  16, 17, 18,
                                 7, 8, 9, 19, 20, 21, 10, 11, 12, 22, 23, 24}));
@@ -154,7 +154,7 @@ TEST(ConcatenationOpTest, FiveDimensionalTwoInputQuantizedUint8) {
                            10.0f, 11.0f, 12.0f});
   m0.SetInput<uint8_t>(1, {1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 7.1f, 8.1f, 9.1f,
                            10.1f, 11.1f, 12.1f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
                   1.0f, 2.0f,  3.0f,  4.0f,  5.0f, 6.0f,  7.0f,  8.0f,
@@ -176,7 +176,7 @@ TEST(ConcatenationOpTest, ThreeDimensionalTwoInputsDifferentShapes) {
   m0.SetInput(0, {1.0f, 3.0f, 4.0f, 7.0f});
   m0.SetInput(1, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0, 7.0f, 8.0f, 9.0f, 10.0f,
                   11.0f, 12.0f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput(), ElementsAreArray({1, 3, 1, 2, 3, 4, 5, 6, 4, 7, 7,
                                                 8, 9, 10, 11, 12}));
 }
@@ -195,7 +195,7 @@ TEST(ConcatenationOpTest, OneTrivialInput) {
   ConcatenationOpModel m0({TensorType_FLOAT32, {1}}, /*axis=*/0,
                           /*num_inputs=*/1);
   m0.SetInput(0, {5.0f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput(), ::testing::ElementsAre(5));
 }
 
@@ -203,7 +203,7 @@ TEST(ConcatenationOpTest, TwoDimensionalOneInput) {
   ConcatenationOpModel m0({TensorType_FLOAT32, {2, 3}}, /*axis=*/0,
                           /*num_inputs=*/1);
   m0.SetInput(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
@@ -216,7 +216,7 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxes) {
                           /*num_inputs=*/2);
   m0.SetInput(0, tensor0);
   m0.SetInput(1, tensor1);
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
 
@@ -224,7 +224,7 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxes) {
                                    /*num_inputs=*/2);
   m0_negative.SetInput(0, tensor0);
   m0_negative.SetInput(1, tensor1);
-  m0_negative.Invoke();
+  ASSERT_EQ(m0_negative.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0_negative.GetOutput(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
 
@@ -232,7 +232,7 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxes) {
                           /*num_inputs=*/2);
   m1.SetInput(0, tensor0);
   m1.SetInput(1, tensor1);
-  m1.Invoke();
+  ASSERT_EQ(m1.Invoke(), kTfLiteOk);
   EXPECT_THAT(m1.GetOutput(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 
@@ -240,7 +240,7 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxes) {
                                    /*num_inputs=*/2);
   m1_negative.SetInput(0, tensor0);
   m1_negative.SetInput(1, tensor1);
-  m1_negative.Invoke();
+  ASSERT_EQ(m1_negative.Invoke(), kTfLiteOk);
   EXPECT_THAT(m1_negative.GetOutput(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 }
@@ -252,7 +252,7 @@ TEST(ConcatenationOpTest, FourInputs) {
   m0.SetInput(1, {1.1f, 3.1f, 4.1f, 7.1f});
   m0.SetInput(2, {1.2f, 3.2f, 4.2f, 7.2f});
   m0.SetInput(3, {1.3f, 3.3f, 4.3f, 7.3f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput(),
               ElementsAreArray({
                   1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
@@ -269,7 +269,7 @@ TEST(ConcatenationOpTest, FourInputsQuantizedUint8) {
   m0.SetInput<uint8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
   m0.SetInput<uint8_t>(2, {1.2f, 3.2f, 4.2f, 7.2f});
   m0.SetInput<uint8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
                   1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
@@ -310,7 +310,7 @@ TYPED_TEST(ConcatenationOpTestTyped, FourInputsQuantizedInt8) {
   m0.SetInput<TestType>(1, {1.1f, 3.1f, 4.1f, 7.1f});
   m0.SetInput<TestType>(2, {1.2f, 3.2f, 4.2f, 7.2f});
   m0.SetInput<TestType>(3, {1.3f, 3.3f, 4.3f, 7.3f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetDequantizedOutput<TestType>(),
               ElementsAreArray(ArrayFloatNear({
                   1, 3, 1.1, 3.1, 1.2, 3.2, 1.3, 3.3,  //
@@ -330,7 +330,7 @@ TEST(ConcatenationOpTest, FourInputsQuantizedMixedRange) {
   m0.SetInput<uint8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
   m0.SetInput<uint8_t>(2, {1.2f, 3.2f, 4.2f, 7.2f});
   m0.SetInput<uint8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
                   1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
@@ -355,7 +355,7 @@ TEST(ConcatenationOpTest, FourInputsQuantizedMixedRangeClampingLogic) {
   m0.SetInput<uint8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
   m0.SetInput<uint8_t>(2, {1.2f, -3.2f, -4.2f, 7.2f});
   m0.SetInput<uint8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -376,7 +376,7 @@ TEST(ConcatenationOpTest, ThreeDimensionalNonQuantizedOneInput) {
       /*axis=*/1,
       /*num_inputs=*/1);
   m0.SetInput<uint8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({1.0f, 3.0f, 4.0f, 7.0f})));
 }
@@ -387,7 +387,7 @@ TEST(ConcatenationOpTest, OneTrivialNonQuantizedInput) {
       /*axis=*/0,
       /*num_inputs=*/1);
   m0.SetInput<uint8_t>(0, {5.0f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput<uint8_t>(), ::testing::ElementsAre(5));
 }
 
@@ -397,7 +397,7 @@ TEST(ConcatenationOpTest, TwoDimensionalNonQuantizedOneInput) {
       /*axis=*/0,
       /*num_inputs=*/1);
   m0.SetInput<uint8_t>(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput<uint8_t>(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
@@ -412,7 +412,7 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
       /*num_inputs=*/2);
   m0.SetInput<uint8_t>(0, tensor0);
   m0.SetInput<uint8_t>(1, tensor1);
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput<uint8_t>(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
 
@@ -422,7 +422,7 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
       /*num_inputs=*/2);
   m0_negative.SetInput<uint8_t>(0, tensor0);
   m0_negative.SetInput<uint8_t>(1, tensor1);
-  m0_negative.Invoke();
+  ASSERT_EQ(m0_negative.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0_negative.GetOutput<uint8_t>(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
 
@@ -432,7 +432,7 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
       /*num_inputs=*/2);
   m1.SetInput<uint8_t>(0, tensor0);
   m1.SetInput<uint8_t>(1, tensor1);
-  m1.Invoke();
+  ASSERT_EQ(m1.Invoke(), kTfLiteOk);
   EXPECT_THAT(m1.GetOutput<uint8_t>(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 
@@ -442,7 +442,7 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
       /*num_inputs=*/2);
   m1_negative.SetInput<uint8_t>(0, tensor0);
   m1_negative.SetInput<uint8_t>(1, tensor1);
-  m1_negative.Invoke();
+  ASSERT_EQ(m1_negative.Invoke(), kTfLiteOk);
   EXPECT_THAT(m1_negative.GetOutput<uint8_t>(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 }
@@ -451,7 +451,7 @@ TEST(ConcatenationOpTest, BoolTypeOneInput) {
   BoolConcatenationOpModel m0({TensorType_BOOL, {2, 1, 2}}, /*axis=*/1,
                               /*num_inputs=*/1);
   m0.SetInput(0, {true, false, false, true});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput(), ElementsAreArray({true, false, false, true}));
 }
 
@@ -462,11 +462,191 @@ TEST(ConcatenationOpTest, BoolTypeTwoInputs) {
   m0.SetInput(0, {false, false, false, false});
   m0.SetInput(1, {true, true, true, true, true, true, true, true, true, true,
                   true, true});
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m0.GetOutput(),
       ElementsAreArray({false, false, true, true, true, true, true, true, false,
                         false, true, true, true, true, true, true}));
+}
+
+enum class TestInputType {
+  kPersistentRo = 0,
+  kOnePersistentRo = 1,
+  kDefault = 2,
+};
+
+struct PersistentTestCase {
+  TestInputType test_type;
+  TensorType tensor_type;
+  bool is_quantized = false;
+};
+
+template <typename T>
+class PersistentConcatenationOpModel : public SingleOpModel {
+ public:
+  PersistentConcatenationOpModel(const std::vector<TensorData>& input_template,
+                                 int axis, const TensorData& output_template,
+                                 PersistentTestCase test_case,
+                                 std::vector<std::vector<T>> input_data_list)
+      : input_data_list_(input_data_list), test_case_(test_case) {
+    const int num_inputs = input_data_list.size();
+    std::vector<std::vector<int>> all_input_shapes;
+    CHECK_EQ(input_template.size(), num_inputs);
+    for (int i = 0; i < num_inputs; ++i) {
+      int id;
+      all_input_shapes.push_back(input_template[i].shape);
+      id = AddInput(input_template[i]);
+      concat_inputs_.push_back(id);
+    }
+    output_ = AddOutput(output_template);
+    SetBuiltinOp(
+        BuiltinOperator_CONCATENATION, BuiltinOptions_ConcatenationOptions,
+        CreateConcatenationOptions(builder_, axis, ActivationFunctionType_NONE)
+            .Union());
+    BuildInterpreter(all_input_shapes, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true,
+                     /*allocate_and_delegate=*/false);
+
+    int num_persistent_inputs = 0;
+    if (test_case_.test_type == TestInputType::kPersistentRo) {
+      num_persistent_inputs = num_inputs;
+    } else if (test_case_.test_type == TestInputType::kOnePersistentRo) {
+      num_persistent_inputs = 1;
+    }
+
+    for (int i = 0; i < num_persistent_inputs; ++i) {
+      interpreter_->tensor(concat_inputs_[i])->allocation_type =
+          kTfLitePersistentRo;
+      std::vector<T>& input_data = input_data_list[i];
+      interpreter_->ResizeInputTensorStrict(concat_inputs_[i],
+                                            input_template[i].shape);
+      if (test_case.is_quantized) {
+        QuantizeAndPopulate<int8_t>(concat_inputs_[i], FloatVector(input_data));
+      } else {
+        PopulateTensor(concat_inputs_[i], input_data);
+      }
+    }
+    AllocateAndDelegate(true);
+  }
+
+  std::vector<float> FloatVector(std::vector<T> data) {
+    std::vector<float> ret;
+    for (T t : data) {
+      ret.push_back(static_cast<float>(t));
+    }
+    return ret;
+  }
+
+  void PopulateInputTensors() {
+    int start = -1;
+    if (test_case_.test_type == TestInputType::kDefault) {
+      start = 0;
+    } else if (test_case_.test_type == TestInputType::kOnePersistentRo) {
+      start = 1;
+    }
+    if (start < 0) {
+      return;
+    }
+    for (int i = start; i < input_data_list_.size(); ++i) {
+      if (test_case_.is_quantized) {
+        QuantizeAndPopulate<int8_t>(concat_inputs_[i],
+                                    FloatVector(input_data_list_[i]));
+      } else {
+        std::vector<T> v(input_data_list_[i]);
+        PopulateTensor(concat_inputs_[i], v);
+      }
+    }
+  }
+
+  bool IsPersistentOutput() {
+    const TfLiteTensor* tensor = interpreter_->tensor(output_);
+    return tensor->allocation_type == kTfLitePersistentRo;
+  }
+
+  std::vector<float> GetOutput() {
+    if (test_case_.is_quantized) {
+      return Dequantize<int8_t>(ExtractVector<int8_t>(output_),
+                                GetScale(output_), GetZeroPoint(output_));
+    }
+    return FloatVector(ExtractVector<T>(output_));
+  }
+
+ protected:
+  int output_;
+  std::vector<std::vector<T>> input_data_list_;
+  PersistentTestCase test_case_;
+  std::vector<int> concat_inputs_;
+};
+
+template <typename T>
+class ConcatenationOpPersistentModelTest : public ::testing::Test {
+ public:
+  static std::vector<PersistentTestCase> Range(bool is_quantized = false) {
+    TensorType tensor_type = TensorType_FLOAT32;
+    if (std::is_same<T, int32_t>::value) {
+      tensor_type = TensorType_INT32;
+    }
+    if (is_quantized) {
+      tensor_type = TensorType_INT8;
+    }
+    return {{TestInputType::kDefault, tensor_type, is_quantized},
+            {TestInputType::kPersistentRo, tensor_type, is_quantized}};
+  }
+};
+
+using DataTypes = ::testing::Types<float, int32_t>;
+TYPED_TEST_SUITE(ConcatenationOpPersistentModelTest, DataTypes);
+
+TYPED_TEST(ConcatenationOpPersistentModelTest, PersistentTest) {
+  for (PersistentTestCase test_case :
+       ConcatenationOpPersistentModelTest<TypeParam>::Range()) {
+    std::vector<std::vector<TypeParam>> input_data_lists = {
+        {1, 2, 3, 4, 5, 6}, {7, 8, 9, 10, 11, 12}};
+    std::vector<TensorData> input_template = {{test_case.tensor_type, {2, 3}},
+                                              {test_case.tensor_type, {2, 3}}};
+    TensorData output_template = {test_case.tensor_type, {4, 3}};
+    PersistentConcatenationOpModel<TypeParam> m0(input_template, /*axis=*/0,
+                                                 output_template, test_case,
+                                                 input_data_lists);
+    m0.PopulateInputTensors();
+    ASSERT_EQ(m0.Invoke(), kTfLiteOk);
+    ASSERT_EQ(m0.IsPersistentOutput(),
+              test_case.test_type == TestInputType::kPersistentRo);
+    EXPECT_THAT(
+        m0.GetOutput(),
+        ElementsAreArray(ArrayFloatNear(
+            {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0})));
+  }
+}
+
+TYPED_TEST(ConcatenationOpPersistentModelTest, QuantizedPersistentTest) {
+  const bool is_quantized = true;
+  for (PersistentTestCase test_case :
+       ConcatenationOpPersistentModelTest<TypeParam>::Range(is_quantized)) {
+    std::vector<std::vector<TypeParam>> input_data_lists = {
+        {1, 2, 3, 4, 5, 6}, {7, 8, 9, 10, 11, 12}};
+    float scale = 12.0 / 255.0;
+    int zero_point = -128;
+    std::vector<TensorData> input_template = {
+        {test_case.tensor_type, {2, 3}, 0.0, 12.0, scale, zero_point},
+        {test_case.tensor_type, {2, 3}, 0.0, 12.0, scale, zero_point},
+    };
+    TensorData output_template = {
+        test_case.tensor_type, {4, 3}, 0.0, 12.0, scale, zero_point};
+    PersistentConcatenationOpModel<TypeParam> m0(input_template, /*axis=*/0,
+                                                 output_template, test_case,
+                                                 input_data_lists);
+    m0.PopulateInputTensors();
+    ASSERT_EQ(m0.Invoke(), kTfLiteOk);
+    ASSERT_EQ(m0.IsPersistentOutput(),
+              test_case.test_type == TestInputType::kPersistentRo);
+    EXPECT_THAT(
+        m0.GetOutput(),
+        ElementsAreArray(ArrayFloatNear(
+            {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0},
+            1e-1)));
+  }
 }
 
 }  // namespace

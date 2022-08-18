@@ -19,15 +19,11 @@ more complex summaries (e.g. audio, image).  Those test live separately in
 tensorflow/python/kernel_tests/summary_v1_*.py.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -105,7 +101,7 @@ class SummaryTest(test.TestCase):
     values = summary.value
     self.assertEqual(len(values), 3)
     tags = sorted(v.tag for v in values)
-    expected = sorted('outer/inner/image/{}'.format(i) for i in xrange(3))
+    expected = sorted('outer/inner/image/{}'.format(i) for i in range(3))
     self.assertEqual(tags, expected)
 
   @test_util.run_deprecated_v1
@@ -121,8 +117,8 @@ class SummaryTest(test.TestCase):
     values = summary.value
     self.assertEqual(len(values), 3)
     tags = sorted(v.tag for v in values)
-    expected = sorted('family/outer/family/inner/image/{}'.format(i)
-                      for i in xrange(3))
+    expected = sorted(
+        'family/outer/family/inner/image/{}'.format(i) for i in range(3))
     self.assertEqual(tags, expected)
 
   @test_util.run_deprecated_v1
@@ -168,7 +164,7 @@ class SummaryTest(test.TestCase):
     values = summary.value
     self.assertEqual(len(values), 3)
     tags = sorted(v.tag for v in values)
-    expected = sorted('outer/inner/audio/{}'.format(i) for i in xrange(3))
+    expected = sorted('outer/inner/audio/{}'.format(i) for i in range(3))
     self.assertEqual(tags, expected)
 
   @test_util.run_deprecated_v1
@@ -184,9 +180,14 @@ class SummaryTest(test.TestCase):
     values = summary.value
     self.assertEqual(len(values), 3)
     tags = sorted(v.tag for v in values)
-    expected = sorted('family/outer/family/inner/audio/{}'.format(i)
-                      for i in xrange(3))
+    expected = sorted(
+        'family/outer/family/inner/audio/{}'.format(i) for i in range(3))
     self.assertEqual(tags, expected)
+
+  def testAudioSummaryWithInvalidSampleRate(self):
+    with self.assertRaises(errors.InvalidArgumentError):
+      invalid_sample_rate = [22000.0, 22000.0]
+      self.evaluate(summary_lib.audio('', [[1.0]], invalid_sample_rate))
 
   @test_util.run_deprecated_v1
   def testTextSummary(self):

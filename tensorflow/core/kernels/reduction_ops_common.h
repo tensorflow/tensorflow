@@ -60,7 +60,6 @@ struct Constants {
   }
 };
 
-#if defined(EIGEN_HAS_INDEX_LIST)
 struct ConstantsBase {
   const Eigen::IndexList<Eigen::type2index<0>> kZero;
   const Eigen::IndexList<Eigen::type2index<1>> kOne;
@@ -68,7 +67,6 @@ struct ConstantsBase {
 };
 template <>
 struct Constants<CPUDevice> : ConstantsBase {};
-#endif  // EIGEN_HAS_INDEX_LIST
 
 class ReductionHelper {
  public:

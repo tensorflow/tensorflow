@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_tpu_device.h"
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -50,9 +53,9 @@ static bool tpu_use_substreams_for_cross_tpu_device_transfers_flag = true;
 // Given a tensor of `shape` and `type`, as what shape should it be stored on
 // the TPU device? This function tranposes or flattens the excessively-padded
 // tensors to rank 1, but leaves other tensor shapes alone.
-StatusOr<xla::Shape> TpuShapeRepresentation(const TensorShape& shape,
-                                            DataType type,
-                                            bool use_fast_memory) {
+StatusOr<xla::Shape> TpuShapeRepresentation(
+    const TensorShape& shape, DataType type, bool use_fast_memory,
+    XlaLayoutPreference layout_preference) {
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(
       tensorflow::TensorShapeToXLAShape(type, shape, &xla_shape));
@@ -96,7 +99,7 @@ Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
     return status.status();
   }
   *shape = tpu_shape.AsCpp<xla::Shape>();
-  return Status::OK();
+  return OkStatus();
 }
 
 // Check if TPU has been initialized. TPU initialization is not necessary
@@ -107,7 +110,7 @@ Status CheckIfTPUInitialized() {
     return errors::FailedPrecondition(
         "The TPU system has not been initialized.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Implementation of TPU->TPU device copies that copies over the dedicated TPU
@@ -136,13 +139,13 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
       Status s = CheckIfTPUInitialized();
       if (!s.ok()) {
         done(s);
-        return Status::OK();
+        return OkStatus();
       }
     }
     if (input->shape().num_elements() == 0) {
       // Zero-element tensors have no backing buffers.
-      done(Status::OK());
-      return Status::OK();
+      done(OkStatus());
+      return OkStatus();
     }
 
     se::Stream* const src_compute_stream = src_xla_context->stream();
@@ -163,8 +166,8 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
             dst_compute_stream_impl)) {
       // Surprisingly, this path does get triggered in practice.
       *output = *input;
-      done(Status::OK());
-      return Status::OK();
+      done(OkStatus());
+      return OkStatus();
     }
 
     // To avoid stream exhaustion, we pick a substream from a pool if enabled.
@@ -197,10 +200,15 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
     TF_RET_CHECK(xla_output != nullptr && !xla_output->has_shaped_buffer());
     TF_RET_CHECK(input->shape() == output->shape());
 
+    const auto& shape_determination_fns =
+        dst_xla_context->shape_determination_fns();
+    XlaLayoutPreference layout_preference =
+        shape_determination_fns.layout_preference_fn(
+            input->shape(), input->dtype(), std::nullopt);
     TF_ASSIGN_OR_RETURN(xla::Shape shape,
-                        dst_xla_context->shape_representation_fn()(
+                        shape_determination_fns.shape_representation_fn(
                             input->shape(), input->dtype(),
-                            /*use_fast_memory=*/false));
+                            /*use_fast_memory=*/false, layout_preference));
     TF_RETURN_IF_ERROR(xla_output->AllocateShapedBuffer(
         input->dtype(), shape, dst_xla_context->client(), dst_device_ordinal));
 
@@ -287,10 +295,10 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
                 dst_device_to_device_stream);
           }
           input_reference.Unref();
-          done(Status::OK());
+          done(OkStatus());
         });
 
-    return Status::OK();
+    return OkStatus();
   };
   Status status = impl();
   if (!status.ok()) {
@@ -310,7 +318,7 @@ Status TpuNodeDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
       tpu::TpuPlatformInterface::GetRegisteredPlatform();
   if (platform == nullptr) {
     // If we don't have a platform registered, then we have no devices.
-    return Status::OK();
+    return OkStatus();
   }
 
   int device_count = platform->VisibleDeviceCount();
@@ -320,7 +328,7 @@ Status TpuNodeDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
     devices->push_back(device_name);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuNodeDeviceFactory::CreateDevices(
@@ -330,7 +338,7 @@ Status TpuNodeDeviceFactory::CreateDevices(
       tpu::TpuPlatformInterface::GetRegisteredPlatform();
   if (platform == nullptr) {
     // If we don't have a platform registered, then we should not create any.
-    return Status::OK();
+    return OkStatus();
   }
 
   if (platform != nullptr && platform->ShouldRegisterTpuDeviceToDeviceCopy()) {
@@ -374,14 +382,16 @@ Status TpuNodeDeviceFactory::CreateDevices(
     // We set `use_global_compute_stream` to true for TPUs as TPUs can only
     // have one program running on each core at the same time.
     options.use_global_compute_stream = true;
-    options.shape_representation_fn = &TpuShapeRepresentation;
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
+        UseNoPreferenceLayoutFn(), &TpuShapeRepresentation};
+    options.shape_determination_fns = {shape_determination_fns};
     options.padded_shape_fn = &TpuPaddedShapeFn;
-    auto device = absl::make_unique<XlaDevice>(session_options, options);
+    auto device = std::make_unique<XlaDevice>(session_options, options);
 
-    // The GpuDeviceInfo actually provides information not only for GPU
+    // The AcceleratorDeviceInfo actually provides information not only for GPU
     // devices but also for TPU. The name is a legacy from the pre-TPU
     // dark ages.
-    Status status = device->UseGpuDeviceInfo();
+    Status status = device->UseAcceleratorDeviceInfo();
     if (!status.ok()) {
       errors::AppendToMessage(&status, "while setting up ", DEVICE_TPU_XLA_JIT,
                               " device number ", i);
@@ -395,7 +405,7 @@ Status TpuNodeDeviceFactory::CreateDevices(
     devices->push_back(std::move(device));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 class TpuSystemDeviceFactory : public DeviceFactory {
@@ -411,12 +421,12 @@ Status TpuSystemDeviceFactory::ListPhysicalDevices(
   TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpusPerHost(&device_count));
   if (device_count == 0) {
     VLOG(1) << "Host has no TPUs, not creating a TPU_SYSTEM device";
-    return Status::OK();
+    return OkStatus();
   }
 
   devices->push_back("/physical_device:TPU_SYSTEM:0");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuSystemDeviceFactory::CreateDevices(
@@ -426,7 +436,7 @@ Status TpuSystemDeviceFactory::CreateDevices(
   TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpusPerHost(&device_count));
   if (device_count == 0) {
     VLOG(1) << "Host has no TPUs, not creating a TPU_SYSTEM device";
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t memory_limit;
@@ -437,11 +447,11 @@ Status TpuSystemDeviceFactory::CreateDevices(
       absl::StrCat(name_prefix, "/device:", DEVICE_TPU_SYSTEM, ":", 0),
       DeviceType(DEVICE_TPU_SYSTEM), Bytes(memory_limit), DeviceLocality(),
       absl::StrCat("device: ", DEVICE_TPU_SYSTEM, " device"));
-  devices->push_back(absl::make_unique<VirtualDevice>(options.env, attrs));
+  devices->push_back(std::make_unique<VirtualDevice>(options.env, attrs));
   VLOG(1) << "Created TPU_SYSTEM device. This host has " << device_count
           << " TPUs";
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

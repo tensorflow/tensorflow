@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
 #include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -60,18 +61,10 @@ class RandomUniformOp : public XlaOpKernel {
         << name();
     xla::XlaOp result = xla::RngUniform(XlaHelpers::Zero(b, dtype),
                                         XlaHelpers::One(b, dtype), xla_shape);
-    std::vector<bool> dynamic_dims;
-    OP_REQUIRES_OK(ctx,
-                   ctx->ResolveInputDynamismIntoPredVector(0, &dynamic_dims));
-    for (int64_t i = 0; i < xla_shape.rank(); ++i) {
-      // If a dimension is dynamic, call set-dimension-size on the output.
-      if (dynamic_dims[i]) {
-        auto dynamic_dim_size = xla::Slice(ctx->Input(0), {i}, {i + 1}, {1});
-        dynamic_dim_size = xla::Reshape(dynamic_dim_size, {});
-        dynamic_dim_size = xla::ConvertElementType(dynamic_dim_size, xla::S32);
-        result = xla::SetDimensionSize(result, dynamic_dim_size, i);
-      }
-    }
+    auto result_status_or =
+        SetAllDimensionSizes(&ctx->value_inference(), result, ctx->Input(0));
+    OP_REQUIRES_OK(ctx, result_status_or.status());
+    result = result_status_or.ValueOrDie();
     ctx->SetOutput(0, result);
   }
 
@@ -130,7 +123,8 @@ class RandomStandardNormalOp : public XlaOpKernel {
     const DataType dtype = output_type(0);
 
     TensorShape shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(
+                            0, &shape, xla::ValueInferenceMode::kUpperBound));
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
 
@@ -139,7 +133,10 @@ class RandomStandardNormalOp : public XlaOpKernel {
     // Normal distribution with a mean of 0 and a standard deviation of 1:
     xla::XlaOp result = xla::RngNormal(XlaHelpers::Zero(b, dtype),
                                        XlaHelpers::One(b, dtype), xla_shape);
-
+    auto result_status_or =
+        SetAllDimensionSizes(&ctx->value_inference(), result, ctx->Input(0));
+    OP_REQUIRES_OK(ctx, result_status_or.status());
+    result = result_status_or.ValueOrDie();
     ctx->SetOutput(0, result);
   }
 
@@ -183,6 +180,31 @@ REGISTER_XLA_OP(Name("TruncatedNormal")
                     .TypeConstraint("dtype", {DT_FLOAT, DT_DOUBLE}),
                 TruncatedNormalOp);
 
+// Broadcast a ParameterizedTruncatedNormal parameter to the output shape. If
+// the parameter is a vector of shape [num_batches], then it is broadcast along
+// dimension 0 to ([num_batches] x samples_per_batch). Otherwise it is a scalar
+// or has shape [1], in which case the single value is broadcast.
+static StatusOr<xla::XlaOp> BroadcastParameters(xla::XlaOp params,
+                                                TensorShape& output_shape) {
+  // broadcast to [samples1, ..., num_batches]
+  int rank = output_shape.dims();
+  std::vector<int64_t> bcast_shape;
+  for (int i = 1; i < rank; ++i) {
+    bcast_shape.push_back(output_shape.dim_size(i));
+  }
+  bcast_shape.push_back(output_shape.dim_size(0));
+  TF_ASSIGN_OR_RETURN(xla::XlaOp bcast_params,
+                      BroadcastTo(params, bcast_shape));
+
+  // transpose to [num_batches, samples1, ...]
+  std::vector<int64_t> permutation;
+  permutation.push_back(rank - 1);
+  for (int i = 0; i < rank - 1; ++i) {
+    permutation.push_back(i);
+  }
+  return xla::Transpose(bcast_params, permutation);
+}
+
 class ParameterizedTruncatedNormalOp : public XlaOpKernel {
  public:
   explicit ParameterizedTruncatedNormalOp(OpKernelConstruction* ctx)
@@ -195,6 +217,10 @@ class ParameterizedTruncatedNormalOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
+    OP_REQUIRES(ctx, xla_shape.rank() >= 1,
+                errors::InvalidArgument(
+                    "shape parameter must have rank >= 1, received (",
+                    xla::ShapeUtil::HumanString(xla_shape), ")"));
 
     xla::XlaBuilder* b = ctx->builder();
 
@@ -211,13 +237,13 @@ class ParameterizedTruncatedNormalOp : public XlaOpKernel {
 
     auto result = b->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
       TF_ASSIGN_OR_RETURN(xla::XlaOp means,
-                          BroadcastTo(ctx->Input(1), shape.dim_sizes()));
+                          BroadcastParameters(ctx->Input(1), shape));
       TF_ASSIGN_OR_RETURN(xla::XlaOp stddevs,
-                          BroadcastTo(ctx->Input(2), shape.dim_sizes()));
+                          BroadcastParameters(ctx->Input(2), shape));
       TF_ASSIGN_OR_RETURN(xla::XlaOp minvals,
-                          BroadcastTo(ctx->Input(3), shape.dim_sizes()));
+                          BroadcastParameters(ctx->Input(3), shape));
       TF_ASSIGN_OR_RETURN(xla::XlaOp maxvals,
-                          BroadcastTo(ctx->Input(4), shape.dim_sizes()));
+                          BroadcastParameters(ctx->Input(4), shape));
       return ParameterizedTruncatedNormal(uniform, means, stddevs, minvals,
                                           maxvals);
     });

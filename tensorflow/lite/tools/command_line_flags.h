@@ -117,6 +117,8 @@ class Flag {
 
   FlagType GetFlagType() const { return flag_type_; }
 
+  std::string GetFlagName() const { return name_; }
+
  private:
   friend class Flags;
 

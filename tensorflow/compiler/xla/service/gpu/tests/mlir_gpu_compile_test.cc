@@ -25,10 +25,10 @@ class CompileTest : public MlirGpuTestBase {};
 
 TEST_F(CompileTest, InvalidCollectivePermuteOp) {
   const char* mlir_text = R"(
-      func @main(%arg0: memref<4xf32> {lmhlo.params = 0 : index},
+      func.func @main(%arg0: memref<4xf32> {lmhlo.params = 0 : index},
                  %arg1: memref<4xf32> {lmhlo.output_index = dense<[0]> : tensor<1xindex>}) -> () {
           "lmhlo.collective_permute"(%arg0, %arg1) {source_target_pairs = dense<[[0, 1, 2]]> : tensor<1x3xi64>} : (memref<4xf32>, memref<4xf32>) -> ()
-          "std.return" () : () -> ()
+          "func.return" () : () -> ()
       })";
   auto executable = CompileMlirText(mlir_text);
   ASSERT_FALSE(executable.ok());

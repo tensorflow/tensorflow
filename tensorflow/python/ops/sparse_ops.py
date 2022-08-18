@@ -19,10 +19,6 @@
 See also `tf.sparse.SparseTensor`.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numbers
 
 import numpy as np
@@ -969,7 +965,7 @@ def sparse_reshape(sp_input, shape, name=None):
 
 
 # TODO(aselle): Remove keyword required once for 1.0 final
-class KeywordRequired(object):
+class KeywordRequired:
 
   def __repr__(self):
     # This is needed to make documentation without fully qualified module paths
@@ -1065,7 +1061,7 @@ def sparse_split_v2(sp_input=None,
 
   >>> indices = [[0, 2], [0, 4], [0, 5], [1, 0], [1, 1]]
   >>> values = [1, 2, 3, 4, 5]
-  >>> t = tf.SparseTensor(indices=indices, values=values, dense_shape=[2, 7])
+  >>> t = tf.sparse.SparseTensor(indices=indices, values=values, dense_shape=[2, 7])
   >>> tf.sparse.to_dense(t)
   <tf.Tensor: shape=(2, 7), dtype=int32, numpy=
   array([[0, 0, 1, 0, 2, 3, 0],
@@ -1675,7 +1671,7 @@ def sparse_tensor_to_dense(sp_input,
 
   For this sparse tensor with three non-empty values:
 
-  >>> sp_input = tf.SparseTensor(
+  >>> sp_input = tf.sparse.SparseTensor(
   ...   dense_shape=[3, 5],
   ...   values=[7, 8, 9],
   ...   indices =[[0, 1],
@@ -2897,7 +2893,7 @@ def map_values(op, *args, **kwargs):
          [6, 0, 0]], dtype=int32)
 
   Note: even though `tf.add(0, 5) != 0`, implicit zeros
-  will remain unchanged. However, if the sparse tensor contains any explict
+  will remain unchanged. However, if the sparse tensor contains any explicit
   zeros, these will be affected by the mapping!
 
   Args:

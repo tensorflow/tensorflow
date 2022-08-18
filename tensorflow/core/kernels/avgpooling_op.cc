@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -77,10 +78,10 @@ class AvgPoolingOp : public UnaryOp<T> {
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
-
     for (int i = 0; i < ksize_.size(); ++i) {
-      OP_REQUIRES(context, ksize_[i] != 0,
-                  errors::InvalidArgument("ksize cannot be zero"));
+      OP_REQUIRES(context, ksize_[i] > 0,
+                  errors::InvalidArgument(
+                      "ksize must be a postive int32 value, got:", ksize_[i]));
     }
   }
 
@@ -142,6 +143,11 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 4 dimensions"));
+    for (int i = 0; i < ksize_.size(); ++i) {
+      OP_REQUIRES(context, ksize_[i] > 0,
+                  errors::InvalidArgument(
+                      "ksize must be a postive int32 value, got:", ksize_[i]));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
                 errors::InvalidArgument("Sliding window stride field must "
@@ -298,7 +304,7 @@ class AvgPoolingGradOp : public OpKernel {
     TensorShape output_shape;
     auto shape_vec = tensor_in_shape.vec<int32>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
-      output_shape.AddDim(shape_vec(i));
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
     const int64_t in_rows = output_shape.dim_size(1);
     const int64_t in_cols = output_shape.dim_size(2);
@@ -457,7 +463,7 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
     TensorShape output_shape;
     auto shape_vec = tensor_in_shape.vec<int32>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
-      output_shape.AddDim(shape_vec(i));
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
 
     if (output_shape.num_elements() == 0) {
@@ -543,7 +549,7 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
     TensorShape output_shape;
     auto shape_vec = tensor_in_shape.vec<int32>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
-      output_shape.AddDim(shape_vec(i));
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
     if (output_shape.num_elements() == 0) {
       Tensor* output = nullptr;

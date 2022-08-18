@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for zeros_like."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
@@ -39,12 +35,13 @@ def make_zeros_like_tests(options):
         name="input",
         shape=parameters["input_shape"])
     zeros = tf.zeros_like(input_tensor)
-    # This maximum node is so that toco can perform the constants-propagation
-    # through the above zeros_like, which it can't do if the output of the
-    # zeros_like as an output of the whole graphs (graph outputs can't be
-    # constants). If toco does not perform such constants-propagation then
-    # the resulting tflite graph retains the zeros_like as a Fill op, which
-    # is unsupported by TFLite, even as a custom op.
+    # This maximum node is so that converter can perform the
+    # constants-propagation through the above zeros_like, which it can't do if
+    # the output of the zeros_like as an output of the whole graphs (graph
+    # outputs can't be constants). If converter does not perform such
+    # constants-propagation then the resulting tflite graph retains the
+    # zeros_like as a Fill op, which is unsupported by TFLite, even as a custom
+    # op.
     out = tf.maximum(zeros, input_tensor)
     return [input_tensor], [out]
 

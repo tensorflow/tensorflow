@@ -443,13 +443,19 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory) {
   // These variables are a hack to prevent overflows.
   int64_t cumulative_total_size = 0;
-  int64_t total_hlos = computation->parent()->instruction_count();
-  absl::flat_hash_map<const HloInstruction*, int64_t> extra_users;
-  absl::flat_hash_map<const HloInstruction*, int64_t> total_sizes;
+  int64_t total_hlos = computation->instruction_count();
+  struct Stats {
+    // Transitively includes the count of all nodes that lead to it.
+    int64_t extra_users = 0;
+    // Transitively includes the sizes of all nodes that lead to it.
+    int64_t total_sizes = 0;
+  };
+  absl::flat_hash_map<const HloInstruction*, Stats> stats_map;
+  stats_map.reserve(computation->instruction_count());
+
   for (const HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
+    auto& stats = stats_map[hlo];
     if (ListScheduler::IgnoreInstruction(*hlo)) {
-      extra_users[hlo] = 0;
-      total_sizes[hlo] = 0;
       continue;
     }
     // This ordering is based on DFS post-order, with a heuristic to decide
@@ -457,18 +463,19 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     // which is simply users-1 for each instruction.  By subtracting 1, we're
     // saying that instructions with no users or a single user don't count;
     // instructions with lots of fan-out will be visited earlier.
-    extra_users[hlo] = hlo->users().empty() ? 0 : hlo->users().size() - 1;
+    stats.extra_users = hlo->users().empty() ? 0 : hlo->users().size() - 1;
     int64_t logical_buffer_size = SumLogicalBufferSizes(
         points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function);
-    total_sizes[hlo] = logical_buffer_size;
+    stats.total_sizes = logical_buffer_size;
     cumulative_total_size += logical_buffer_size;
     absl::flat_hash_set<const HloInstruction*> unique_operands(
         hlo->operands().begin(), hlo->operands().end());
     for (const HloInstruction* operand : unique_operands) {
-      extra_users[hlo] += extra_users[operand];
-      total_sizes[hlo] += total_sizes[operand];
+      auto& operand_stats = stats_map.at(operand);
+      stats.extra_users += operand_stats.extra_users;
+      stats.total_sizes += operand_stats.total_sizes;
     }
-    // total_sizes[hlo] transitively includes the sizes of all nodes that
+    // stats.total_sizes transitively includes the sizes of all nodes that
     // lead to it. But computation is a DAG, so we are double-counting nodes,
     // which can lead to overflows for large programs.
     // cumulative_total_size caps the size to prevent overflows.
@@ -477,11 +484,10 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     // NOTE(dimvar): this is quite ugly and should be changed. It's unclear
     // why we care about transitive sizes; when scheduling a node, its input
     // and output buffers should be all that matters, not its "history".
-    total_sizes[hlo] = std::min(total_sizes[hlo], cumulative_total_size);
-    extra_users[hlo] = std::min(extra_users[hlo], total_hlos);
+    stats.total_sizes = std::min(stats.total_sizes, cumulative_total_size);
+    stats.extra_users = std::min(stats.extra_users, total_hlos);
   }
-  CHECK_EQ(extra_users.size(), computation->instruction_count());
-  CHECK_EQ(total_sizes.size(), computation->instruction_count());
+  CHECK_EQ(stats_map.size(), computation->instruction_count());
 
   // Construct a total order based on DFS post-order, visiting operands in
   // decreasing cumulative extra user order, and next by cumulative size, with a
@@ -489,17 +495,18 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
   HloInstructionSequence sequence;
   FunctionVisitor visitor([&sequence](HloInstruction* hlo) {
     sequence.push_back(hlo);
-    return Status::OK();
+    return OkStatus();
   });
   visitor.ReserveVisitStates(computation->instruction_count());
   TF_RETURN_IF_ERROR(computation->AcceptWithOperandOrder(
-      &visitor, [&extra_users, &total_sizes](const HloInstruction* a,
-                                             const HloInstruction* b) {
-        if (extra_users[a] != extra_users[b]) {
-          return extra_users[a] > extra_users[b];
+      &visitor, [&stats_map](const HloInstruction* a, const HloInstruction* b) {
+        auto& stats_a = stats_map.at(a);
+        auto& stats_b = stats_map.at(b);
+        if (stats_a.extra_users != stats_b.extra_users) {
+          return stats_a.extra_users > stats_b.extra_users;
         }
-        if (total_sizes[a] != total_sizes[b]) {
-          return total_sizes[a] > total_sizes[b];
+        if (stats_a.total_sizes != stats_b.total_sizes) {
+          return stats_a.total_sizes > stats_b.total_sizes;
         }
         return a->name() < b->name();
       }));
@@ -520,13 +527,16 @@ ModuleSchedulerAlgorithm ComputationSchedulerToModuleScheduler(
     const MemorySchedulerAlgorithm& computation_scheduler,
     const MemorySchedulerPostprocessor& postprocessor) {
   return [computation_scheduler, postprocessor](
-             HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+             const HloModule* module,
+             const TuplePointsToAnalysis& points_to_analysis,
              const HloAliasAnalysis& alias_analysis,
              const LogicalBuffer::SizeFunction& size_func,
+             const absl::flat_hash_set<absl::string_view>& execution_threads,
              int64_t* peak_memory) -> StatusOr<HloSchedule> {
     HloSchedule schedule(module);
     absl::flat_hash_map<const HloComputation*, int64_t> memory_by_computation;
-    for (auto* computation : module->MakeComputationPostOrder()) {
+    for (auto* computation :
+         module->MakeComputationPostOrder(execution_threads)) {
       if (!computation->IsFusionComputation()) {
         TF_ASSIGN_OR_RETURN(
             HloInstructionSequence computation_sequence,
@@ -651,9 +661,11 @@ StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
 }
 
 StatusOr<HloSchedule> DefaultModuleScheduler(
-    HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+    const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
-    const BufferValue::SizeFunction& size_function, int64_t* peak_memory) {
+    const BufferValue::SizeFunction& size_function,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    int64_t* peak_memory) {
   // We try a few schedulers and choose whichever returns a lower min-memory,
   // not accounting for fragmentation.
   // - List is a scheduler that uses greedy heuristics.
@@ -667,7 +679,7 @@ StatusOr<HloSchedule> DefaultModuleScheduler(
       HloSchedule list_sequence,
       ComputationSchedulerToModuleScheduler(ListMemoryScheduler, {})(
           module, points_to_analysis, alias_analysis, size_function,
-          &list_memory));
+          execution_threads, &list_memory));
 
   VLOG(2) << "Min-memory list sequence: " << HumanReadableNumBytes(list_memory);
 
@@ -676,7 +688,7 @@ StatusOr<HloSchedule> DefaultModuleScheduler(
       HloSchedule dfs_sequence,
       ComputationSchedulerToModuleScheduler(DFSMemoryScheduler, {})(
           module, points_to_analysis, alias_analysis, size_function,
-          &dfs_memory));
+          execution_threads, &dfs_memory));
   VLOG(2) << "Min-memory dfs sequence: " << HumanReadableNumBytes(dfs_memory);
 
   int64_t post_order_memory;
@@ -684,7 +696,7 @@ StatusOr<HloSchedule> DefaultModuleScheduler(
       HloSchedule post_order_sequence,
       ComputationSchedulerToModuleScheduler(PostOrderMemoryScheduler, {})(
           module, points_to_analysis, alias_analysis, size_function,
-          &post_order_memory));
+          execution_threads, &post_order_memory));
   VLOG(2) << "Min-memory post order sequence: "
           << HumanReadableNumBytes(post_order_memory);
 
@@ -709,8 +721,10 @@ StatusOr<HloSchedule> DefaultModuleScheduler(
 }
 
 StatusOr<HloSchedule> ScheduleModule(
-    HloModule* module, const BufferValue::SizeFunction& size_function,
-    const ModuleSchedulerAlgorithm& algorithm, int64_t* peak_memory) {
+    const HloModule* module, const BufferValue::SizeFunction& size_function,
+    const ModuleSchedulerAlgorithm& algorithm,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    int64_t* peak_memory) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -719,7 +733,7 @@ StatusOr<HloSchedule> ScheduleModule(
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                       (algorithm ? algorithm : DefaultModuleScheduler)(
                           module, *points_to_analysis, *alias_analysis,
-                          size_function, peak_memory));
+                          size_function, execution_threads, peak_memory));
 
   TF_RETURN_IF_ERROR(schedule.Verify());
 
@@ -746,23 +760,29 @@ HloMemoryScheduler::HloMemoryScheduler(
     const ModuleSchedulerAlgorithm& algorithm)
     : size_function_(size_function), algorithm_(algorithm) {}
 
-StatusOr<bool> HloMemoryScheduler::Run(HloModule* module) {
-  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
-                      ScheduleModule(module, size_function_, algorithm_));
+StatusOr<bool> HloMemoryScheduler::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  TF_ASSIGN_OR_RETURN(
+      HloSchedule schedule,
+      ScheduleModule(module, size_function_, algorithm_, execution_threads));
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
   return true;
 }
 
-StatusOr<bool> HloTrivialScheduler::Run(HloModule* module) {
+StatusOr<bool> HloTrivialScheduler::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   HloSchedule schedule(module);
-  for (HloComputation* computation : module->MakeComputationPostOrder()) {
+  for (HloComputation* computation :
+       module->MakeComputationPostOrder(execution_threads)) {
     if (!computation->IsFusionComputation()) {
       HloInstructionSequence& computation_sequence =
           schedule.GetOrCreateSequence(computation);
       FunctionVisitor visitor(
           [&computation_sequence](HloInstruction* instruction) {
             computation_sequence.push_back(instruction);
-            return Status::OK();
+            return OkStatus();
           });
       visitor.ReserveVisitStates(computation->instruction_count());
       TF_RETURN_IF_ERROR(computation->Accept(&visitor));
@@ -772,7 +792,9 @@ StatusOr<bool> HloTrivialScheduler::Run(HloModule* module) {
   return true;
 }
 
-StatusOr<bool> HloDescheduler::Run(HloModule* module) {
+StatusOr<bool> HloDescheduler::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = module->has_schedule();
   module->clear_schedule();
   return changed;

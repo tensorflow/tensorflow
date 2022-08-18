@@ -23,8 +23,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -73,7 +75,7 @@ struct ReshapeSparseTensorFunctor<CPUDevice> {
         id %= output_strides[j];
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -99,7 +101,9 @@ void ReshapeSparseTensor(OpKernelContext *context,
                   target_shape_in.shape().DebugString()));
 
   const int64_t output_rank = target_shape_in.NumElements();
-  const TensorShape input_shape(input_shape_in.vec<int64_t>());
+  TensorShape input_shape;
+  OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
+                              input_shape_in.vec<int64_t>(), &input_shape));
   const int64_t dense_size = input_shape.num_elements();
   const int64_t nnz = input_indices_in.shape().dim_size(0);
 

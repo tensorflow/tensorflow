@@ -12,31 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Tensorflow -> CPURT compilation."""
+"""Tests for Tensorflow -> jitrt compilation."""
 
 import numpy as np
 
-import unittest
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
+from tensorflow.python.platform import test
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 # Metadata operations that are noop at runtime, but exist in the Tensorflow
 # graphs purely to facilitate graph construction and transformations.
-class TfMetadataOpsTest(googletest.TestCase):
+class TfMetadataOpsTest(test.TestCase):
 
   def test_stop_gradient(self):
     mlir_function = """
-      func @test(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+      func.func @test(%arg0: tensor<?xf32>) -> tensor<?xf32> {
         %0 = "tf.StopGradient"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-        return %0 : tensor<?xf32>
+        func.return %0 : tensor<?xf32>
       }"""
-    compiled = cpurt.compile(mlir_function, 'test')
+    compiled = jitrt.compile(mlir_function, 'test')
     arg0 = np.random.uniform(0.0, 1.0, size=(10)).astype(np.float32)
-    [res] = cpurt.execute(compiled, [arg0])
+    [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_allclose(res, arg0, rtol=0.0)
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

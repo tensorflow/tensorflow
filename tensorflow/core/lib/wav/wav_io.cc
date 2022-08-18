@@ -85,11 +85,15 @@ inline float Int16SampleToFloat(int16_t data) {
 
 // Handles moving the data index forward, validating the arguments, and avoiding
 // overflow or underflow.
-Status IncrementOffset(int old_offset, size_t increment, size_t max_size,
+Status IncrementOffset(int old_offset, int64_t increment, size_t max_size,
                        int* new_offset) {
   if (old_offset < 0) {
     return errors::InvalidArgument("Negative offsets are not allowed: ",
                                    old_offset);
+  }
+  if (increment < 0) {
+    return errors::InvalidArgument("Negative increment is not allowed: ",
+                                   increment);
   }
   if (old_offset > max_size) {
     return errors::InvalidArgument("Initial offset is outside data range: ",
@@ -105,7 +109,7 @@ Status IncrementOffset(int old_offset, size_t increment, size_t max_size,
     return errors::InvalidArgument("Offset too large, overflowed: ",
                                    *new_offset);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExpectText(const std::string& data, const std::string& expected_text,
@@ -120,7 +124,7 @@ Status ExpectText(const std::string& data, const std::string& expected_text,
                                    " but found ", found_text);
   }
   *offset = new_offset;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadString(const std::string& data, int expected_length,
@@ -130,7 +134,7 @@ Status ReadString(const std::string& data, int expected_length,
       IncrementOffset(*offset, expected_length, data.size(), &new_offset));
   *value = std::string(data.begin() + *offset, data.begin() + new_offset);
   *offset = new_offset;
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
@@ -205,7 +209,7 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
     core::EncodeFixed16(&data[i * kBytesPerSample],
                         static_cast<uint16>(sample));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template Status EncodeAudioAsS16LEWav<std::string>(const float* audio,
@@ -228,7 +232,26 @@ Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
   uint32 total_file_size;
   TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &total_file_size, &offset));
   TF_RETURN_IF_ERROR(ExpectText(wav_string, kRiffType, &offset));
-  TF_RETURN_IF_ERROR(ExpectText(wav_string, kFormatChunkId, &offset));
+  std::string found_text;
+  TF_RETURN_IF_ERROR(ReadString(wav_string, 4, &found_text, &offset));
+  while (found_text != kFormatChunkId) {
+    // Padding chunk may occur between "WAVE" and "fmt ".
+    // Skip JUNK/bext/etc field to support for WAV file with either JUNK Chunk,
+    // or broadcast WAV where additional tags might appear.
+    // Reference: the implementation of tfio in audio_video_wav_kernels.cc,
+    //            https://www.daubnet.com/en/file-format-riff,
+    //            https://en.wikipedia.org/wiki/Broadcast_Wave_Format
+    if (found_text != "JUNK" && found_text != "bext" && found_text != "iXML" &&
+        found_text != "qlty" && found_text != "mext" && found_text != "levl" &&
+        found_text != "link" && found_text != "axml") {
+      return errors::InvalidArgument("Unexpected field ", found_text);
+    }
+    uint32 size_of_chunk;
+    TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &size_of_chunk, &offset));
+    TF_RETURN_IF_ERROR(
+        IncrementOffset(offset, size_of_chunk, wav_string.size(), &offset));
+    TF_RETURN_IF_ERROR(ReadString(wav_string, 4, &found_text, &offset));
+  }
   uint32 format_chunk_size;
   TF_RETURN_IF_ERROR(
       ReadValue<uint32>(wav_string, &format_chunk_size, &offset));
@@ -322,7 +345,7 @@ Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
   if (!was_data_found) {
     return errors::InvalidArgument("No data chunk found in WAV");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace wav

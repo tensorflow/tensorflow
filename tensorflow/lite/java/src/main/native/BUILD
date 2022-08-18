@@ -10,6 +10,19 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+cc_library_with_tflite(
+    name = "jni_utils",
+    srcs = ["jni_utils.cc"],
+    hdrs = ["jni_utils.h"],
+    tflite_deps = [
+        "//tensorflow/lite/core/shims:jni_utils",
+    ],
+    deps = [
+        "//tensorflow/lite:error_reporter",
+        "//tensorflow/lite/java/jni",
+    ],
+)
+
 alias_with_tflite(
     name = "native_framework_only",
     actual = ":native_experimental_framework_only",
@@ -20,10 +33,11 @@ alias_with_tflite(
 cc_library_with_tflite(
     name = "native_experimental_framework_only",
     srcs = [
-        "nativeinterpreterwrapperexperimental_jni.cc",
+        ":native_experimental_only_srcs",
     ],
-    hdrs = ["jni_utils.h"],
+    hdrs = [":native_hdrs"],
     tflite_deps = [
+        ":jni_utils",
         ":native_stable_framework_only",
         "//tensorflow/lite/core/shims:framework_experimental",
     ],
@@ -33,29 +47,60 @@ cc_library_with_tflite(
     alwayslink = 1,
 )
 
+filegroup(
+    name = "native_experimental_only_srcs",
+    srcs = [
+        "nativeinterpreterwrapperexperimental_jni.cc",
+    ],
+)
+
+filegroup(
+    name = "native_hdrs",
+    srcs = [
+        "op_resolver_lazy_delegate_proxy.h",
+    ],
+)
+
 # Native code needed for TF Lite Java API, excluding experimental APIs;
 # but only the framework code, no ops.
-cc_library_with_tflite(
-    name = "native_stable_framework_only",
+filegroup(
+    name = "native_stable_srcs",
     srcs = [
-        "jni_utils.cc",
+        "interpreter_factory_impl_jni.cc",
         "nativeinterpreterwrapper_jni.cc",
         "nativesignaturerunner_jni.cc",
+        "op_resolver_lazy_delegate_proxy.cc",
         "tensor_jni.cc",
         "tensorflow_lite_jni.cc",
     ],
-    hdrs = ["jni_utils.h"],
+)
+
+filegroup(
+    name = "native_api_srcs",
+    srcs = [
+        "tensorflow_lite_jni.cc",
+    ],
+)
+
+cc_library_with_tflite(
+    name = "native_stable_framework_only",
+    srcs = [":native_stable_srcs"],
+    hdrs = [":native_hdrs"],
     copts = tflite_copts(),
     linkopts = [
         "-lm",
         "-ldl",
     ],
     tflite_deps = [
+        ":jni_utils",
+        "//tensorflow/lite/core/shims:c_api_without_op_resolver",
         "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/core/shims:create_op_resolver_header",
+        "//tensorflow/lite/core/shims:delegate_plugin",
         "//tensorflow/lite/core/shims:framework_stable",
-        "//tensorflow/lite/core/shims:jni_initialization",
         "//tensorflow/lite/core/shims:jni_utils",
+        "//tensorflow/lite/core/shims:xnnpack_plugin",
+        "//tensorflow/lite/core/shims:verifier_internal",
     ],
     deps = [
         "//tensorflow/lite:minimal_logging",
@@ -63,6 +108,7 @@ cc_library_with_tflite(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/core/api:op_resolver_internal",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         "//tensorflow/lite/java/jni",
     ],
@@ -99,7 +145,7 @@ cc_library_with_tflite(
     name = "native_stable",
     copts = tflite_copts(),
     tflite_deps = [
-        ":native_framework_only",
+        ":native_stable_framework_only",
         "//tensorflow/lite/core/shims:builtin_ops",
         "//tensorflow/lite/core/shims:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/core/shims:framework_stable",

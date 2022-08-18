@@ -31,13 +31,13 @@ using tensorflow::py_dispatch::PyUnionChecker;
 
 namespace {
 
-py::handle Dispatch(PythonAPIDispatcher* self, py::handle args,
+py::object Dispatch(PythonAPIDispatcher* self, py::handle args,
                     py::handle kwargs) {
   auto result = self->Dispatch(args.ptr(), kwargs.ptr());
   if (result == nullptr) {
     throw py::error_already_set();
   } else {
-    return result.release();
+    return py::reinterpret_steal<py::object>(result.release());
   }
 }
 
@@ -114,9 +114,17 @@ PYBIND11_MODULE(_pywrap_python_api_dispatcher, m) {
            })
       .def("__repr__", &PythonAPIDispatcher::DebugString);
 
-  m.def("MakeInstanceChecker", [](py::handle py_class) {
+  m.def("MakeInstanceChecker", [](py::args py_classes) {
+    std::vector<PyObject*> py_classes_vector;
+    py_classes_vector.reserve(py_classes.size());
+    for (auto& cls : py_classes) {
+      if (!PyType_Check(cls.ptr())) {
+        throw py::type_error("`*py_classes` must be a tuple of types.");
+      }
+      py_classes_vector.push_back(cls.ptr());
+    }
     return std::shared_ptr<PyTypeChecker>(
-        std::make_shared<PyInstanceChecker>(py_class.ptr()));
+        std::make_shared<PyInstanceChecker>(py_classes_vector));
   });
   m.def("MakeListChecker", [](std::shared_ptr<PyTypeChecker> elt_type) {
     return std::shared_ptr<PyTypeChecker>(

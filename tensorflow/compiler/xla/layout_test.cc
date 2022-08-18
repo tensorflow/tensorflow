@@ -32,7 +32,7 @@ namespace {
 class LayoutTest : public ::testing::Test {};
 
 TEST_F(LayoutTest, ToString) {
-  EXPECT_EQ(Layout().ToString(), "invalid{}");
+  EXPECT_EQ(Layout().ToString(), "{}");
   EXPECT_EQ(Layout({4, 5, 6}).ToString(), "{4,5,6}");
   EXPECT_EQ(Layout({4, 5, 6}).ToString(), "{4,5,6}");
   EXPECT_EQ(Layout({3, 2, 1, 0}, {Tile({42, 123}), Tile({4, 5})}).ToString(),
@@ -67,7 +67,7 @@ TEST_F(LayoutTest, Equality) {
   EXPECT_EQ(Layout(), Layout());
   const std::vector<int64_t> empty_dims;
   EXPECT_EQ(Layout(empty_dims), Layout(empty_dims));
-  EXPECT_NE(Layout(), Layout(empty_dims));
+  EXPECT_EQ(Layout(), Layout(empty_dims));
   EXPECT_EQ(Layout({0, 1, 2, 3}), Layout({0, 1, 2, 3}));
   EXPECT_NE(Layout({0, 1, 2, 3}), Layout({0, 1, 2}));
   EXPECT_EQ(Layout({0, 1, 2}, {Tile({42, 44})}),

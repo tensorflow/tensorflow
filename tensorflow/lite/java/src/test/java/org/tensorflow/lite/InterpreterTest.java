@@ -101,6 +101,17 @@ public final class InterpreterTest {
   }
 
   @Test
+  public void testInterpreterWithNullOptions() throws Exception {
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER, null)) {
+      assertThat(interpreter).isNotNull();
+      assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    }
+  }
+
+  @Test
   public void testRunWithFileModel() throws Exception {
     if (!TestUtils.supportsFilePaths()) {
       System.err.println("Not testing with file model, since file paths aren't supported.");

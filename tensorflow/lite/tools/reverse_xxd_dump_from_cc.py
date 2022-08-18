@@ -23,10 +23,6 @@ The xxd command to dump the TFLite file to a C++ source file looks like:
 xxd -i model_data.tflite > model_data.cc
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import app
 from absl import flags
 

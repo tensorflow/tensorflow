@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/core/util/determinism_test_util.h"
 
 namespace tensorflow {
 namespace {
@@ -48,13 +50,13 @@ TEST_F(PrintingV2GraphTest, StringSuccess) {
 }
 
 TEST_F(PrintingV2GraphTest, InvalidOutputStream) {
-  ASSERT_NE(::tensorflow::Status::OK(), (Init("invalid_output_stream")));
+  ASSERT_NE(OkStatus(), (Init("invalid_output_stream")));
 }
 
 TEST_F(PrintingV2GraphTest, InvalidInputRank) {
   TF_ASSERT_OK(Init());
   AddInputFromArray<tstring>(TensorShape({2}), {"bar", "foo"});
-  ASSERT_NE(::tensorflow::Status::OK(), RunOpKernel());
+  ASSERT_NE(OkStatus(), RunOpKernel());
 }
 
 class PrintingGraphTest : public OpsTestBase {
@@ -148,6 +150,15 @@ TEST_F(TimestampTest, WaitAtLeast) {
   double ts2 = *((*GetOutput(0)).flat<double>().data());
 
   EXPECT_LE(1.0, ts2 - ts1);
+}
+
+TEST_F(TimestampTest, DeterminismError) {
+  test::DeterministicOpsScope det_scope;
+  TF_ASSERT_OK(Init());
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(
+                  error::FAILED_PRECONDITION,
+                  "Timestamp cannot be called when determinism is enabled"));
 }
 
 }  // end namespace

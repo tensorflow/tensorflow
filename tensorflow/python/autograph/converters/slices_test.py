@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for slices module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.converters import directives as directives_converter
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import converter_testing

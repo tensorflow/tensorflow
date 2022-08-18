@@ -1,0 +1,14 @@
+node {
+  name: "input0"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 29
+  min_consumer: 12
+}

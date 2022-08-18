@@ -32,10 +32,12 @@ StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64_t dim) {
 
   // Transpose the input so C is directly followed by VECT_C.
   std::vector<int64_t> permutation;
-  for (int64_t i = 0; i != input_shape.rank() - 1; ++i) {
+  auto rank = input_shape.rank();
+  permutation.reserve(rank);
+  for (int64_t i = 0; i != rank - 1; ++i) {
     permutation.push_back(i);
     if (i == dim) {
-      permutation.push_back(input_shape.rank() - 1);
+      permutation.push_back(rank - 1);
     }
   }
 
@@ -66,7 +68,9 @@ StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64_t dim) {
 
   // Move the newly created dimension to the end with a transpose.
   std::vector<int64_t> permutation;
-  for (int64_t i = 0, end = expanded_shape.size(); i != end; ++i) {
+  const int64_t expanded_shape_size = expanded_shape.size();
+  permutation.reserve(expanded_shape_size);
+  for (int64_t i = 0; i != expanded_shape_size; ++i) {
     permutation.push_back(i);
     if (i == dim) {
       ++i;

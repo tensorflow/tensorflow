@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
+#include "tensorflow/core/framework/dataset_metadata.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -24,6 +25,12 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_utils {
 namespace {
+
+using test::function::NDef;
+
+constexpr char kOutputShapes[] = "output_shapes";
+constexpr char kOutputTypes[] = "output_types";
+constexpr char kToutputTypes[] = "Toutput_types";
 
 TEST(GraphUtilsTest, GetFirstElementIndexWithPredicate) {
   std::vector<int> vec({1, 2, 3, 4, 5, 6});
@@ -368,6 +375,49 @@ TEST(GraphUtilsTest, TestFindSinkNodeNoFetches) {
   NodeDef* sink_node;
   Status s = GetFetchNode(graph, item, &sink_node);
   EXPECT_FALSE(s.ok());
+}
+
+TEST(GraphUtilsTest, TestCopyShapesAndTypesAttrsNoShapes) {
+  NodeDef from = NDef("range", "RangeDataset", {},
+                      {{kOutputTypes, gtl::ArraySlice<DataType>{}}});
+  NodeDef to_node;
+  EXPECT_FALSE(CopyShapesAndTypesAttrs(from, &to_node));
+}
+
+TEST(GraphUtilsTest, TestCopyShapesAndTypesAttrsNoTypes) {
+  NodeDef from = NDef("range", "RangeDataset", {},
+                      {{kOutputShapes, gtl::ArraySlice<TensorShape>{}}});
+  NodeDef to_node;
+  EXPECT_FALSE(CopyShapesAndTypesAttrs(from, &to_node));
+}
+
+TEST(GraphUtilsTest, TestCopyShapesAndTypesAttrsOutputTypes) {
+  NodeDef from = NDef("range", "RangeDataset", {},
+                      {{kOutputShapes, 666}, {kOutputTypes, 888}});
+  NodeDef to_node;
+  EXPECT_TRUE(CopyShapesAndTypesAttrs(from, &to_node));
+  EXPECT_EQ(to_node.attr().at(kOutputShapes).i(), 666);
+  EXPECT_EQ(to_node.attr().at(kOutputTypes).i(), 888);
+}
+
+TEST(GraphUtilsTest, TestCopyShapesAndTypesAttrsToutputTypes) {
+  NodeDef from = NDef("tensor", "TensorDataset", {},
+                      {{kOutputShapes, 666}, {kToutputTypes, 888}});
+  NodeDef to_node;
+  EXPECT_TRUE(CopyShapesAndTypesAttrs(from, &to_node));
+  EXPECT_EQ(to_node.attr().at(kOutputShapes).i(), 666);
+  EXPECT_EQ(to_node.attr().at(kOutputTypes).i(), 888);
+}
+
+TEST(GraphUtilsTest, TestSetMetadataName) {
+  NodeDef node = NDef("range", "RangeDataset", {},
+                      {{kOutputShapes, 666}, {kOutputTypes, 888}});
+  EXPECT_TRUE(SetMetadataName("metadata_name", &node).ok());
+  EXPECT_TRUE(node.attr().contains("metadata"));
+  data::Metadata metadata;
+  metadata.ParseFromString(node.attr().at("metadata").s());
+  EXPECT_EQ("metadata_name", metadata.name());
+  EXPECT_FALSE(SetMetadataName("new_metadata_name", &node).ok());
 }
 
 }  // namespace

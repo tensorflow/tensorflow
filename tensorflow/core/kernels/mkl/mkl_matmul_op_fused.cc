@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
-// This file uses MKL-DNN InnerProduct for acceleration of TF Matrix-Matrix
+// This file uses oneDNN InnerProduct for acceleration of TF Matrix-Matrix
 // Multiplication (MatMul) with bias (BiasAdd) operations.
 #ifdef INTEL_MKL
 
@@ -35,8 +35,12 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("fused_ops", &fused_ops_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("is_filter_const", &(this->is_weight_const_)));
+    if (AreWeightsFrozen()) {
+      this->is_weight_const_ = true;
+    } else {
+      OP_REQUIRES_OK(
+          ctx, ctx->GetAttr("is_filter_const", &(this->is_weight_const_)));
+    }
 
     OP_REQUIRES(ctx, fused_ops_.size() <= 2,
                 errors::InvalidArgument(
@@ -77,8 +81,13 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
                 errors::InvalidArgument("In[0] is not a matrix"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(weight_tf_shape),
                 errors::InvalidArgument("In[1] is not a matrix"));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(bias_tensor.shape()),
-                errors::InvalidArgument("Biases must be 1D"));
+    for (int i = 0; i < bias_tensor.dims() - 1; i++) {
+      OP_REQUIRES(
+          ctx, bias_tensor.dim_size(i) == 1,
+          errors::InvalidArgument("For bias_dims > 1, all except the "
+                                  "last dimension (channel) must be 1, got: ",
+                                  bias_tensor.shape().DebugString()));
+    }
 
     // Expression: [batch, k] * [k, channel] + [channel] = [batch, channel]
     //
@@ -95,7 +104,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         errors::InvalidArgument(
             "Matrix size-incompatible: In[0]: ", src_tf_shape.DebugString(),
             ", In[1]: ", weight_tf_shape.DebugString()));
-    OP_REQUIRES(ctx, bias_tensor.shape().dim_size(0) == channel,
+    OP_REQUIRES(ctx, bias_tensor.dim_size(bias_tensor.dims() - 1) == channel,
                 errors::InvalidArgument(
                     "Must provide as many biases as the channel size: ",
                     bias_tensor.shape().DebugString(), " vs. ", channel));
@@ -113,22 +122,27 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     memory::format_tag weight_format =
         transpose_b_ ? memory::format_tag::oi : memory::format_tag::io;
 
-    // Set weight format for primitive:
-    //   1. const, let MKL-DNN determine format because it will be cached;
-    //   2. var, keep the original format to avoid reordering.
+    // Set weight format `any` for primitive as per oneDNN recommendation.
     MklDnnMatMulFwdParams matmul_params(
         src_dims, weight_dims, bias_dims, dst_dims, src_format,
         (this->is_weight_const_) ? memory::format_tag::any : weight_format,
-        memory::format_tag::nc);
-
+        memory::format_tag::nc, this->is_weight_const_);
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
+#ifdef DNNL_AARCH64_USE_ACL
+    // TODO(milpuz01): Remove once Arm Compute Library provides support for
+    // in-place updates
+    matmul_params.weight_hash =
+        Hash64(weight_tensor.tensor_data().data(),
+               std::min(kWeightTensorHashLength,
+                        static_cast<int>(weight_tensor.tensor_data().size())));
+#endif
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
         MklDnnMatMulFwdPrimitiveFactory<T, T, T, T, T>::Get(matmul_params, 0);
 
     // Allocate output tensor.
     Tensor* dst_tensor = nullptr;
-    std::shared_ptr<mkldnn::inner_product_forward::primitive_desc> matmul_pd =
+    std::shared_ptr<dnnl::inner_product_forward::primitive_desc> matmul_pd =
         matmul_prim->GetPrimitiveDesc();
 
     // The output shape of MatMul is same both for MKL and TF version.
@@ -177,7 +191,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
           // changing memory layout, hence using same memory descriptor.
           add_md = dst_md =
               memory::desc({add_tensor.NumElements()}, MklDnnType<T>(),
-                           mkldnn::memory::format_tag::x);
+                           dnnl::memory::format_tag::x);
         }
 
         auto fuse_add_src_ = memory(add_md, this->cpu_engine_, add_buf);
@@ -249,12 +263,17 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         }
       }
       std::shared_ptr<stream> cpu_stream;
-      MklDnnThreadPool eigen_tp(ctx);
+      auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
+      MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
+
+      UserScratchPad<unsigned char> scratch_pad;
+      scratch_pad.AllocateSPTensor(matmul_prim, ctx);
+
       // Execute fused matmul op.
       matmul_prim->Execute(src_data, weight_data, bias_data, dst_data,
-                           cpu_stream);
-    } catch (mkldnn::error& e) {
+                           scratch_pad.Get(), cpu_stream);
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -274,6 +293,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         params.post_op_params.push_back({"relu6", {1.0, 6.0, 0.0}});
       } else if (post_op == "Elu") {
         params.post_op_params.push_back({"elu", {1.0, 1.0, 0.0}});
+      } else if (post_op == "GeluApproximate") {
+        params.post_op_params.push_back({"gelu_approximate", {1.0, 1.0, 0.0}});
+      } else if (post_op == "GeluExact") {
+        params.post_op_params.push_back({"gelu_exact", {1.0, 1.0, 0.0}});
       } else if (post_op == "Tanh") {
         params.post_op_params.push_back({"tanh", {1.0, 0.0, 0.0}});
       } else if (post_op == "Add") {
@@ -299,6 +322,9 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
   std::vector<string> fused_ops_;
   const int kInputIndex_Add = 3;
   const int kOutputIndex_Dst = 0;
+#ifdef DNNL_AARCH64_USE_ACL
+  const int kWeightTensorHashLength = 1024;
+#endif
 };  // namespace tensorflow
 
 // Register mkl kernels for supported operations and types.

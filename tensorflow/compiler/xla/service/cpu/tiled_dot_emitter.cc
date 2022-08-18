@@ -129,15 +129,16 @@ class GemvConfig {
   int64_t k() const { return k_; }
   bool has_addend() const { return has_addend_; }
 
-  string GetCacheKey() const {
+  std::string GetCacheKey() const {
     return absl::StrCat(name_, "_", PrimitiveType_Name(scalar_type()), "_",
                         tile_rows(), "_", tile_cols(), "_", m(), "_", k(),
                         has_addend() ? "_with_addend" : "");
   }
 
  protected:
-  explicit GemvConfig(string name, PrimitiveType scalar_type, int64_t tile_rows,
-                      int64_t tile_cols, int64_t m, int64_t k, bool has_addend)
+  explicit GemvConfig(std::string name, PrimitiveType scalar_type,
+                      int64_t tile_rows, int64_t tile_cols, int64_t m,
+                      int64_t k, bool has_addend)
       : name_(std::move(name)),
         scalar_type_(scalar_type),
         tile_rows_(tile_rows),
@@ -147,7 +148,7 @@ class GemvConfig {
         has_addend_(has_addend) {}
 
  private:
-  string name_;
+  std::string name_;
   PrimitiveType scalar_type_;
   int64_t tile_rows_;
   int64_t tile_cols_;
@@ -241,7 +242,8 @@ class ColumnMajorMatrixVectorProductEmitter
         b_(b),
         ksl_(b_),
         vsl_(config.scalar_type(), /*vector_size=*/config.tile_rows(), b_, "") {
-    CHECK(tile_rows() > 0 && IsPowerOfTwo(static_cast<uint64_t>(tile_rows())));
+    CHECK(tile_rows() > 0 &&
+          absl::has_single_bit(static_cast<uint64_t>(tile_rows())));
     CHECK(!has_addend() || addend != nullptr);
   }
 
@@ -467,7 +469,8 @@ class RowMajorMatrixVectorProductEmitter
         b_(b),
         ksl_(b_),
         vsl_(scalar_type(), /*vector_size=*/tile_cols(), b_, "") {
-    CHECK(tile_cols() > 0 && IsPowerOfTwo(static_cast<uint64_t>(tile_cols())));
+    CHECK(tile_cols() > 0 &&
+          absl::has_single_bit(static_cast<uint64_t>(tile_cols())));
     CHECK(!has_addend() || addend != nullptr);
   }
 
@@ -507,7 +510,9 @@ void RowMajorMatrixVectorProductEmitter::EmitOuterLoopBody(llvm::Value* row,
                                                 /*row_count=*/row_count);
   std::vector<VectorVariable> vector_accumulators;
   std::vector<ScalarVariable> scalar_accumulators;
-  for (int i = 0; i < row_count; i++) {
+  vector_accumulators.reserve(row_count);
+  scalar_accumulators.reserve(row_count);
+  for (int64_t i = 0; i < row_count; i++) {
     vector_accumulators.emplace_back(&vsl_, vsl_.GetZeroVector());
     scalar_accumulators.emplace_back(&vsl_, vsl_.GetZeroScalar());
   }
@@ -625,7 +630,9 @@ class TiledSmallGemmEmitter {
     int64_t k() const { return k_; }
     int64_t n() const { return n_; }
 
-    string ToString() const { return absl::StrCat(m(), "x", k(), "x", n()); }
+    std::string ToString() const {
+      return absl::StrCat(m(), "x", k(), "x", n());
+    }
 
    private:
     const int64_t m_;
@@ -667,7 +674,7 @@ class TiledSmallGemmEmitter {
           tile_size_m_(tile_size_m),
           tile_size_k_(tile_size_k) {}
 
-    string GetCacheKey() const {
+    std::string GetCacheKey() const {
       return absl::StrCat("gemm_", PrimitiveType_Name(scalar_type()), "_",
                           dims().ToString(), "_", max_vectorization_width(),
                           "_", min_vectorization_width(), "_", tile_size_m(),
@@ -704,11 +711,13 @@ class TiledSmallGemmEmitter {
         config_(config),
         b_(b),
         ksl_(b_) {
-    CHECK(max_vectorization_width() > 0 &&
-          IsPowerOfTwo(static_cast<uint64_t>(max_vectorization_width())));
+    CHECK(
+        max_vectorization_width() > 0 &&
+        absl::has_single_bit(static_cast<uint64_t>(max_vectorization_width())));
     CHECK_GT(max_vector_count(), 0);
-    CHECK(min_vectorization_width() > 0 &&
-          IsPowerOfTwo(static_cast<uint64_t>(min_vectorization_width())));
+    CHECK(
+        min_vectorization_width() > 0 &&
+        absl::has_single_bit(static_cast<uint64_t>(min_vectorization_width())));
     CHECK_GE(max_vectorization_width(), min_vectorization_width());
     CHECK_GT(tile_size_k(), 0);
   }
@@ -941,8 +950,9 @@ void TiledSmallGemmEmitter::EmitTiledGemm(
 }
 
 llvm::Type* GetPointerToElementType(llvm::Type* pointer_type) {
-  llvm::Type* type =
-      llvm::cast<llvm::PointerType>(pointer_type)->getElementType();
+  if (pointer_type->isOpaquePointerTy()) return pointer_type;
+
+  llvm::Type* type = pointer_type->getNonOpaquePointerElementType();
   while (auto* array_type = llvm::dyn_cast<llvm::ArrayType>(type)) {
     type = array_type->getElementType();
   }

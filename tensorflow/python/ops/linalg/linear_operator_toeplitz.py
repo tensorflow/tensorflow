@@ -14,10 +14,6 @@
 # ==============================================================================
 """`LinearOperator` acting like a Toeplitz matrix."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -167,8 +163,6 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
           parameters=parameters,
           name=name)
 
-      self._set_graph_parents([self._row, self._col])
-
   def _check_row_col(self, row, col):
     """Static check of row and column."""
     for name, tensor in [["row", row], ["col", col]]:
@@ -284,6 +278,10 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("col", "row")
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"col": 1, "row": 1}
 
 
 def _to_complex(x):

@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "BinaryIoU"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CategoricalAccuracy"
     mtype: "<type \'type\'>"
   }
@@ -42,6 +46,10 @@ tf_module {
   }
   member {
     name: "Hinge"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "IoU"
     mtype: "<type \'type\'>"
   }
   member {
@@ -90,6 +98,14 @@ tf_module {
   }
   member {
     name: "Metric"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OneHotIoU"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OneHotMeanIoU"
     mtype: "<type \'type\'>"
   }
   member {
@@ -185,6 +201,10 @@ tf_module {
     argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'0.0\', \'-1\'], "
   }
   member_method {
+    name: "binary_focal_crossentropy"
+    argspec: "args=[\'y_true\', \'y_pred\', \'apply_class_balancing\', \'alpha\', \'gamma\', \'from_logits\', \'label_smoothing\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'0.25\', \'2.0\', \'False\', \'0.0\', \'-1\'], "
+  }
+  member_method {
     name: "categorical_accuracy"
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
@@ -270,7 +290,7 @@ tf_module {
   }
   member_method {
     name: "sparse_categorical_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\'], "
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'axis\', \'ignore_class\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "sparse_top_k_categorical_accuracy"

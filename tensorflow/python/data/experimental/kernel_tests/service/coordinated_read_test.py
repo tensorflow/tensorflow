@@ -171,6 +171,19 @@ class CoordinatedReadTest(data_service_test_base.TestBase,
         "cardinality, but the dataset has cardinality " + str(num_elements)):
       self.getDatasetOutput(ds)
 
+  # We test only eager combinations because the `map` transformation used for
+  # compression in make_distributed_dataset makes cardinality unknown in TF1.
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCardinality(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    ds = self.make_distributed_dataset(
+        dataset_ops.Dataset.range(10).repeat(),
+        cluster,
+        job_name="test",
+        consumer_index=0,
+        num_consumers=2)
+    self.assertEqual(self.evaluate(ds.cardinality()), dataset_ops.INFINITE)
+
 
 if __name__ == "__main__":
   test.main()

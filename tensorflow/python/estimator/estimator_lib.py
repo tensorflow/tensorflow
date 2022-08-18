@@ -19,10 +19,6 @@ and will soon break!
 """
 # pylint: disable=unused-import,g-bad-import-order,g-import-not-at-top,wildcard-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow_estimator.python.estimator import estimator_lib
 
 # Include attrs that start with single underscore.

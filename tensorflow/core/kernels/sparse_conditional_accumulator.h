@@ -57,7 +57,7 @@ class SparseConditionalAccumulator
         accum_val_(std::make_unique<Tensor>()) {}
 
  protected:
-  std::unique_ptr<std::vector<int64>> accum_idx_vec_;
+  std::unique_ptr<std::vector<int64_t>> accum_idx_vec_;
   std::unique_ptr<std::vector<int>> count_element_;
 
   std::unique_ptr<Tensor> accum_val_;
@@ -140,7 +140,7 @@ class SparseConditionalAccumulator
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   void AllocateAndAssignToAccumGradFunction(
@@ -228,7 +228,7 @@ class SparseConditionalAccumulator
     }
 
     // (2) Copy or sum the non-zero elements into sum_indices and sum_tensor
-    std::vector<int64>* sum_indices_vec = new std::vector<int64_t>();
+    std::vector<int64_t>* sum_indices_vec = new std::vector<int64_t>();
     sum_indices_vec->reserve(sum_nnz);
 
     std::vector<int>* sum_counts = new std::vector<int>();
@@ -382,7 +382,7 @@ class SparseConditionalAccumulator
   }
 
  private:
-  inline int cmp(std::vector<int64>* a_idx, const Tensor* b_idx,
+  inline int cmp(std::vector<int64_t>* a_idx, const Tensor* b_idx,
                  const int64_t a_row, const int64_t b_row) {
     const int64_t a = a_idx->at(a_row);
     const int64_t b = b_idx->vec<int64_t>()(b_row);

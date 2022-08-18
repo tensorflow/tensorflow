@@ -39,7 +39,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/framework:types_proto",
-        "//tensorflow/stream_executor:dnn_proto",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
     ],
 )
 
@@ -95,9 +95,9 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
-        "//tensorflow/stream_executor:dnn_proto",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
     ],
-    visibility = ["//waymo/ml/deploy/onboard/autotuning:__subpackages__"],
+    visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 )
 
 # copybara:uncomment_begin(google-only)
@@ -105,7 +105,7 @@ tf_proto_library(
 #     name = "autotune_map_py_pb2",
 #     has_services = 0,
 #     api_version = 2,
-#     visibility = ["//waymo/ml/deploy/onboard/autotuning:__subpackages__"],
+#     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 #     deps = [":autotune_map_proto"],
 # )
 # copybara:uncomment_end
@@ -125,10 +125,11 @@ tf_cuda_library(
         ":conv_autotune_maps",
         ":conv_parameters",
         ":conv_parameters_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/stream_executor:dnn_proto_cc",
         "//tensorflow/stream_executor:stream_header",
     ],
 )
@@ -137,6 +138,7 @@ tf_cuda_only_cc_test(
     name = "autotune_serialize_test",
     size = "small",
     srcs = ["autotune_serialize_test.cc"],
+    tags = ["no_rocm"],
     deps = [
         ":autotune_serialize",
         ":conv_autotune_maps",
@@ -144,6 +146,7 @@ tf_cuda_only_cc_test(
         ":conv_parameters_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
         "//tensorflow/stream_executor/gpu:gpu_driver_header",
     ],
 )

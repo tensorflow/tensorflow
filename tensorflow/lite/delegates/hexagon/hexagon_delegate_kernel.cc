@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/hexagon/hexagon_delegate_kernel.h"
 
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
@@ -190,8 +192,10 @@ TfLiteStatus HexagonDelegateKernel::ResizeOutputTensors(TfLiteContext* context,
 TfLiteStatus HexagonDelegateKernel::Prepare(TfLiteContext* context,
                                             TfLiteNode* node) {
   if (graph_prepared_) {
-    if (!params_.enable_dynamic_batch_size)
-      TF_LITE_KERNEL_LOG(context, "Calling prepare multiple times");
+    // If params_.enable_dynamic_batch_size = false, the delegate flags will
+    // cause the runtime to re-do delegation in case of input tensor resize.
+    // So here we can assume that input shapes remain the same, and return Ok.
+    if (!params_.enable_dynamic_batch_size) return kTfLiteOk;
     // Graph already prepared, but we must resize TFLite output tensors
     // based on the new input shape.
     return ResizeOutputTensors(context, node);
@@ -239,8 +243,8 @@ TfLiteStatus HexagonDelegateKernel::Prepare(TfLiteContext* context,
 TfLiteStatus HexagonDelegateKernel::BuildGraph(
     TfLiteContext* context, const TfLiteIntArray* input_tensors,
     const TfLiteIntArray* output_tensors) {
-  builder_.reset(
-      new delegates::hexagon::GraphBuilder(hexagon_nn_, context, graph_id_));
+  builder_ = std::make_unique<delegates::hexagon::GraphBuilder>(
+      hexagon_nn_, context, graph_id_);
   if (params_.enable_dynamic_batch_size) {
     builder_->AddBatchSeqConfig(params_.max_batch_size,
                                 params_.input_batch_dimensions,
@@ -328,7 +332,7 @@ void HexagonDelegateKernel::PrintPerformanceData(Profiler* profiler) {
     int node_id = builder_->GetTFLiteNodeID(perf_data[i].node_id);
     if (node_id != -1 && op_type_id >= 0) {
       profiler->AddEvent((op_type_id < 0 ? "" : op_name.data()),
-                         Profiler::EventType::OPERATOR_INVOKE_EVENT, 0, counter,
+                         Profiler::EventType::OPERATOR_INVOKE_EVENT, counter,
                          node_id);
     }
   }

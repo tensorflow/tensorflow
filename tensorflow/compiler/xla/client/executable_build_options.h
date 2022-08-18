@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 
+#include <optional>
+#include <vector>
+
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -73,7 +75,7 @@ class ExecutableBuildOptions {
 
   // Returns a string representation of the build options, suitable for
   // debugging.
-  string ToString() const;
+  std::string ToString() const;
 
   // The number of replicas of this computation that are to be executed.
   // Defaults to 1.
@@ -88,6 +90,25 @@ class ExecutableBuildOptions {
   // num_partitions > 1 and XLA is requested to partition the input program.
   bool use_spmd_partitioning() const { return use_spmd_partitioning_; }
   ExecutableBuildOptions& set_use_spmd_partitioning(bool use_spmd_partitioning);
+
+  // Whether to automatically generate XLA shardings for SPMD partitioner.
+  bool use_auto_spmd_partitioning() const {
+    return use_auto_spmd_partitioning_;
+  }
+  ExecutableBuildOptions& set_use_auto_spmd_partitioning(
+      bool use_auto_spmd_partitioning);
+
+  std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+    return auto_spmd_partitioning_mesh_shape_;
+  }
+  ExecutableBuildOptions& set_auto_spmd_partitioning_mesh_shape(
+      std::vector<int64_t> mesh_shape);
+
+  std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+    return auto_spmd_partitioning_mesh_ids_;
+  }
+  ExecutableBuildOptions& set_auto_spmd_partitioning_mesh_ids(
+      std::vector<int64_t> mesh_ids);
 
   bool deduplicate_hlo() const { return deduplicate_hlo_; }
   ExecutableBuildOptions& set_deduplicate_hlo(bool deduplicate_hlo);
@@ -122,6 +143,23 @@ class ExecutableBuildOptions {
     return *this;
   }
 
+  bool allow_spmd_sharding_propagation_to_output() const {
+    return allow_spmd_sharding_propagation_to_output_;
+  }
+  // Allows sharding propagation to propagate to the outputs. This changes the
+  // output shape of the computation (which is undesirable), but it can be used
+  // to allow to run partial compilation to determine what would be the output
+  // sharding of a computation if XLA would be allowed to propagate the sharding
+  // which can be used by higher level framework as a way to query intermediate
+  // sharding of operations when multiple computation would be chained and
+  // merged together.
+  ExecutableBuildOptions& set_allow_spmd_sharding_propagation_to_output(
+      bool allow_spmd_sharding_propagation_to_output) {
+    allow_spmd_sharding_propagation_to_output_ =
+        allow_spmd_sharding_propagation_to_output;
+    return *this;
+  }
+
   // Thread pool for parallel compilation.
   tensorflow::thread::ThreadPool* compile_thread_pool() const {
     return compile_thread_pool_;
@@ -132,22 +170,31 @@ class ExecutableBuildOptions {
     return *this;
   }
 
+  StatusOr<ExecutableBuildOptionsProto> ToProto() const;
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
-  absl::optional<DebugOptions> debug_options_;
+  std::optional<DebugOptions> debug_options_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;
   int num_partitions_ = 1;
   bool use_spmd_partitioning_ = false;
+  bool use_auto_spmd_partitioning_ = false;
+  std::vector<int64_t> auto_spmd_partitioning_mesh_shape_;
+  std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
   bool deduplicate_hlo_ = false;
   bool broadcast_replicated_params_ = false;
-  absl::optional<DeviceAssignment> device_assignment_;
+  std::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
   bool run_backend_only_ = false;
+  bool allow_spmd_sharding_propagation_to_output_ = false;
   tensorflow::thread::ThreadPool* compile_thread_pool_ = nullptr;
 };
+
+StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
+    const ExecutableBuildOptionsProto& input);
 
 // Creates an ExecutionOptions based on a given ExecutableBuildOptions and
 // ProgramShape.

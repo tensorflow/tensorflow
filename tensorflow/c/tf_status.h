@@ -72,6 +72,12 @@ TF_CAPI_EXPORT extern void TF_DeleteStatus(TF_Status*);
 TF_CAPI_EXPORT extern void TF_SetStatus(TF_Status* s, TF_Code code,
                                         const char* msg);
 
+// Record <key, value> as a payload in *s. The previous payload having the
+// same key (if any) is overwritten. Payload will not be added if the Status
+// is OK.
+TF_CAPI_EXPORT void TF_SetPayload(TF_Status* s, const char* key,
+                                  const char* value);
+
 // Convert from an I/O error code (e.g., errno) to a TF_Status value.
 // Any previous information is lost. Prefer to use this instead of TF_SetStatus
 // when the error comes from I/O operations.

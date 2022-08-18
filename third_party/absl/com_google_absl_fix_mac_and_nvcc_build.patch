@@ -1,5 +1,5 @@
 diff --git a/absl/container/internal/compressed_tuple.h b/absl/container/internal/compressed_tuple.h
-index 02bfd03..d25d96d 100644
+index 5ebe1649..01db7134 100644
 --- a/absl/container/internal/compressed_tuple.h
 +++ b/absl/container/internal/compressed_tuple.h
 @@ -32,7 +32,6 @@
@@ -233,10 +233,10 @@ index 02bfd03..d25d96d 100644
  };
  
 diff --git a/absl/time/internal/cctz/BUILD.bazel b/absl/time/internal/cctz/BUILD.bazel
-index 45a9529..57c954e 100644
+index 7304d40d..75d8e086 100644
 --- a/absl/time/internal/cctz/BUILD.bazel
 +++ b/absl/time/internal/cctz/BUILD.bazel
-@@ -74,15 +74,6 @@ cc_library(
+@@ -72,15 +72,6 @@ cc_library(
          "include/cctz/time_zone.h",
          "include/cctz/zone_info_source.h",
      ],

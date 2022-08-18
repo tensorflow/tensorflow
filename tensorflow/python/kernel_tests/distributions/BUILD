@@ -20,7 +20,6 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -61,6 +60,7 @@ cuda_py_test(
     size = "small",
     srcs = ["beta_test.py"],
     tags = [
+        "no_oss",  # b/205574093, and because tf.distributions is deprecated
         "nomac",  # b/191763315
         "notsan",  # b/173653918
     ],
@@ -303,6 +303,5 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )

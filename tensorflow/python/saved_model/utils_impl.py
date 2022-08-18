@@ -14,12 +14,6 @@
 # ==============================================================================
 """SavedModel utility functions implementation."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import os
-
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import struct_pb2
@@ -30,6 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
@@ -39,15 +34,15 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # TensorInfo helpers.
+_DEPRECATION_MSG = (
+    "This API was designed for TensorFlow v1. See "
+    "https://www.tensorflow.org/guide/migrate for instructions on how to "
+    "migrate your code to TensorFlow v2.")
 
 
-@tf_export(v1=["saved_model.build_tensor_info",
-               "saved_model.utils.build_tensor_info"])
-@deprecation.deprecated(
-    None,
-    "This function will only be available through the v1 compatibility "
-    "library as tf.compat.v1.saved_model.utils.build_tensor_info or "
-    "tf.compat.v1.saved_model.build_tensor_info.")
+@tf_export(
+    v1=["saved_model.build_tensor_info", "saved_model.utils.build_tensor_info"])
+@deprecation.deprecated(None, _DEPRECATION_MSG)
 def build_tensor_info(tensor):
   """Utility function to build TensorInfo proto from a Tensor.
 
@@ -78,7 +73,8 @@ def build_tensor_info(tensor):
 def build_tensor_info_internal(tensor):
   """Utility function to build TensorInfo proto from a Tensor."""
   if (isinstance(tensor, composite_tensor.CompositeTensor) and
-      not isinstance(tensor, sparse_tensor.SparseTensor)):
+      not isinstance(tensor, sparse_tensor.SparseTensor) and
+      not isinstance(tensor, resource_variable_ops.ResourceVariable)):
     return _build_composite_tensor_info_internal(tensor)
 
   tensor_info = meta_graph_pb2.TensorInfo(
@@ -97,8 +93,7 @@ def _build_composite_tensor_info_internal(tensor):
   """Utility function to build TensorInfo proto from a CompositeTensor."""
   spec = tensor._type_spec  # pylint: disable=protected-access
   tensor_info = meta_graph_pb2.TensorInfo()
-  struct_coder = nested_structure_coder.StructureCoder()
-  spec_proto = struct_coder.encode_structure(spec)
+  spec_proto = nested_structure_coder.encode_structure(spec)
   tensor_info.composite_tensor.type_spec.CopyFrom(spec_proto.type_spec_value)
   for component in nest.flatten(tensor, expand_composites=True):
     tensor_info.composite_tensor.components.add().CopyFrom(
@@ -149,11 +144,7 @@ def build_tensor_info_from_op(op):
 
 @tf_export(v1=["saved_model.get_tensor_from_tensor_info",
                "saved_model.utils.get_tensor_from_tensor_info"])
-@deprecation.deprecated(
-    None,
-    "This function will only be available through the v1 compatibility "
-    "library as tf.compat.v1.saved_model.utils.get_tensor_from_tensor_info or "
-    "tf.compat.v1.saved_model.get_tensor_from_tensor_info.")
+@deprecation.deprecated(None, _DEPRECATION_MSG)
 def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
   """Returns the Tensor or CompositeTensor described by a TensorInfo proto.
 
@@ -186,10 +177,9 @@ def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
         _get_tensor(tensor_info.coo_sparse.values_tensor_name),
         _get_tensor(tensor_info.coo_sparse.dense_shape_tensor_name))
   elif encoding == "composite_tensor":
-    struct_coder = nested_structure_coder.StructureCoder()
     spec_proto = struct_pb2.StructuredValue(
         type_spec_value=tensor_info.composite_tensor.type_spec)
-    spec = struct_coder.decode_proto(spec_proto)
+    spec = nested_structure_coder.decode_proto(spec_proto)
     components = [_get_tensor(component.name) for component in
                   tensor_info.composite_tensor.components]
     return nest.pack_sequence_as(spec, components, expand_composites=True)
@@ -232,14 +222,13 @@ def get_or_create_variables_dir(export_dir):
 
 def get_variables_dir(export_dir):
   """Return variables sub-directory in the SavedModel."""
-  return os.path.join(
-      compat.as_text(export_dir),
-      compat.as_text(constants.VARIABLES_DIRECTORY))
+  return file_io.join(
+      compat.as_text(export_dir), compat.as_text(constants.VARIABLES_DIRECTORY))
 
 
 def get_variables_path(export_dir):
   """Return the variables path, used as the prefix for checkpoint files."""
-  return os.path.join(
+  return file_io.join(
       compat.as_text(get_variables_dir(export_dir)),
       compat.as_text(constants.VARIABLES_FILENAME))
 
@@ -255,9 +244,8 @@ def get_or_create_assets_dir(export_dir):
 
 def get_assets_dir(export_dir):
   """Return path to asset directory in the SavedModel."""
-  return os.path.join(
-      compat.as_text(export_dir),
-      compat.as_text(constants.ASSETS_DIRECTORY))
+  return file_io.join(
+      compat.as_text(export_dir), compat.as_text(constants.ASSETS_DIRECTORY))
 
 
 def get_or_create_debug_dir(export_dir):
@@ -270,20 +258,20 @@ def get_or_create_debug_dir(export_dir):
 
 
 def get_saved_model_pbtxt_path(export_dir):
-  return os.path.join(
+  return file_io.join(
       compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
 
 
 def get_saved_model_pb_path(export_dir):
-  return os.path.join(
+  return file_io.join(
       compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
 
 
 def get_debug_dir(export_dir):
   """Returns path to the debug sub-directory in the SavedModel."""
-  return os.path.join(
+  return file_io.join(
       compat.as_text(export_dir), compat.as_text(constants.DEBUG_DIRECTORY))
 
 # Based on tensor_bundle/byte_swap.cc

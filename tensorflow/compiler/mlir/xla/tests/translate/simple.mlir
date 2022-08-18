@@ -1,13 +1,14 @@
 // RUN: tf-mlir-translate -mlir-hlo-to-hlo %s | FileCheck %s
 
-func @main(tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> {
+module @foobar {
+func.func @main(tensor<4xf32>, tensor<4xf32>) -> tensor<f32> {
 ^bb0(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>):
   %0 = "mhlo.add"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  %1 = "mhlo.dot"(%0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %1 : tensor<4xf32>
+  %1 = "mhlo.dot"(%0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<f32>
+  func.return %1 : tensor<f32>
 }
-
-// CHECK: name: "main
+}
+// CHECK: name: "foobar
 // CHECK: entry_computation_name: "main
 // CHECK: computations {
 // CHECK: name: "main

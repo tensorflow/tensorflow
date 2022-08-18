@@ -21,6 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
@@ -79,6 +82,13 @@ class ScopedStepContainer;
 class CollectiveExecutor;
 class StepStatsCollectorInterface;
 class CoordinationServiceAgent;
+
+// A label that is added to kernels that are JIT compiled. These labels will be
+// removed before kernels are looked up, so they can be used without specifying
+// the label. This label is a temporary measure to allow JIT kernels to be
+// disabled if needed.
+extern const char* kJitKernelLabel;
+extern const char* kDisableJitKernelsEnvVar;
 
 class OpKernel {
  public:
@@ -292,7 +302,7 @@ class OpKernelConstruction {
   // attr with attr_name is found in def(), or the attr does not have
   // a matching type, a non-ok status will be returned.
   template <class T>
-  Status GetAttr(StringPiece attr_name, T* value) const;
+  Status GetAttr(StringPiece attr_name, T* value) const TF_ATTRIBUTE_NOINLINE;
 
   // Return true if the attr_name is defined in def().
   bool HasAttr(StringPiece attr_name) const;
@@ -558,6 +568,9 @@ class OpKernelContext {
     // Timestamp for the start of graph execution. Used for latency metrics.
     int64_t start_time_usecs = 0;
 
+    // The deadline for the session to complete by. Empty if unspecified.
+    absl::optional<absl::Time> deadline;
+
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
 
@@ -628,11 +641,10 @@ class OpKernelContext {
     CancellationManager* cancellation_manager = nullptr;
 
     // Inputs to this op kernel.
-    const gtl::InlinedVector<TensorValue, 4>* inputs = nullptr;
+    absl::Span<const TensorValue> inputs;
     bool is_input_dead = false;
 
-    const gtl::InlinedVector<AllocatorAttributes, 4>* input_alloc_attrs =
-        nullptr;
+    absl::Span<const AllocatorAttributes> input_alloc_attrs;
 
     // Device context.
     DeviceContext* op_device_context = nullptr;
@@ -683,6 +695,10 @@ class OpKernelContext {
 
   int64_t start_time_usecs() const { return params_->start_time_usecs; }
 
+  // The deadline for the session to complete by. Empty if unspecified in
+  // RunOptions.
+  absl::optional<absl::Time> deadline() const { return params_->deadline; }
+
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 
   // Stack trace of where the op was defined (if defined in eager mode).
@@ -692,7 +708,7 @@ class OpKernelContext {
 
   // Input/output signature.
 
-  int num_inputs() const { return params_->inputs->size(); }
+  int num_inputs() const { return params_->inputs.size(); }
   DataType input_dtype(int index) const;
   Status input_dtype(StringPiece name, DataType* dtype) const;
   MemoryType input_memory_type(int index) const;
@@ -975,14 +991,9 @@ class OpKernelContext {
                        Tensor* out_temp, AllocatorAttributes allocator_attr,
                        const AllocationAttributes& allocation_attr);
   Status allocate_temp(DataType type, const TensorShape& shape,
-                       Tensor* out_temp, AllocatorAttributes allocator_attr) {
-    return allocate_temp(type, shape, out_temp, allocator_attr,
-                         AllocationAttributes());
-  }
+                       Tensor* out_temp, AllocatorAttributes allocator_attr);
   Status allocate_temp(DataType type, const TensorShape& shape,
-                       Tensor* out_temp) {
-    return allocate_temp(type, shape, out_temp, AllocatorAttributes());
-  }
+                       Tensor* out_temp);
 
   // Copies a tensor (allocated by the caller) to the specified output
   // index.  REQUIRES: !IsRefType(expected_output_dtype(index))
@@ -1012,19 +1023,19 @@ class OpKernelContext {
   DeviceContext* op_device_context() {
     DeviceContext* ret = params_->op_device_context;
     if (ret == nullptr) {
-      auto* dev_info = device()->tensorflow_gpu_device_info();
+      auto* dev_info = device()->tensorflow_accelerator_device_info();
       if (dev_info) ret = dev_info->default_context;
     }
     return ret;
   }
 
   AllocatorAttributes input_alloc_attr(int index) const {
-    if (params_->input_alloc_attrs == nullptr) {
+    if (params_->input_alloc_attrs.empty()) {
       return AllocatorAttributes();
     } else {
       DCHECK_GE(index, 0);
-      DCHECK_LT(index, params_->input_alloc_attrs->size());
-      return (*params_->input_alloc_attrs)[index];
+      DCHECK_LT(index, params_->input_alloc_attrs.size());
+      return params_->input_alloc_attrs[index];
     }
   }
 
@@ -1368,7 +1379,7 @@ namespace register_kernel {
 
 class Name : public KernelDefBuilder {
  public:
-  explicit Name(const char* op) : KernelDefBuilder(op) {}
+  explicit Name(const char* op);
 };
 
 }  // namespace register_kernel
@@ -1488,14 +1499,16 @@ class OpKernelRegistrar {
   // factory Create() method when it determines that a kernel matching the given
   // KernelDef is required.
   OpKernelRegistrar(const KernelDef* kernel_def, StringPiece kernel_class_name,
-                    std::unique_ptr<OpKernelFactory> factory) {
+                    std::unique_ptr<OpKernelFactory> factory)
+      TF_ATTRIBUTE_NOINLINE {
     InitInternal(kernel_def, kernel_class_name, std::move(factory));
   }
 
   // Registers the given factory function with TensorFlow. This is equivalent
   // to registering a factory whose Create function invokes `create_fn`.
   OpKernelRegistrar(const KernelDef* kernel_def, StringPiece kernel_class_name,
-                    OpKernel* (*create_fn)(OpKernelConstruction*)) {
+                    OpKernel* (*create_fn)(OpKernelConstruction*))
+      TF_ATTRIBUTE_NOINLINE {
     InitInternal(kernel_def, kernel_class_name,
                  absl::make_unique<PtrOpKernelFactory>(create_fn));
   }
@@ -1527,7 +1540,7 @@ Status OpKernelConstruction::GetAttr(StringPiece attr_name, T* value) const {
 inline DataType OpKernelContext::input_dtype(int index) const {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_inputs());
-  const TensorValue& value((*params_->inputs)[index]);
+  const TensorValue& value(params_->inputs[index]);
   return value.dtype();
 }
 
@@ -1550,7 +1563,7 @@ inline MemoryType OpKernelContext::output_memory_type(int index) const {
 }
 
 inline bool OpKernelContext::input_is_ref(int index) const {
-  const TensorValue& value((*params_->inputs)[index]);
+  const TensorValue& value(params_->inputs[index]);
   return value.is_ref();
 }
 
@@ -1558,14 +1571,14 @@ inline bool OpKernelContext::input_is_ref(int index) const {
 inline bool OpKernelContext::has_input(int index) const {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_inputs());
-  return (*params_->inputs)[index].tensor != nullptr;
+  return params_->inputs[index].tensor != nullptr;
 }
 
 inline mutex* OpKernelContext::input_ref_mutex(int index) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_inputs());
   DCHECK(input_is_ref(index));
-  return (*params_->inputs)[index].mutex_if_ref;
+  return params_->inputs[index].mutex_if_ref;
 }
 
 inline Tensor* OpKernelContext::mutable_output(int index) {
@@ -1580,37 +1593,6 @@ inline TensorValue OpKernelContext::release_output(int index) {
   TensorValue value = outputs_[index];
   outputs_[index] = TensorValue();
   return value;
-}
-
-inline Status OpKernelContext::forward_input_or_allocate_output(
-    gtl::ArraySlice<int> candidate_input_indices, int output_index,
-    const TensorShape& output_shape, Tensor** output, int* forwarded_input) {
-  for (int input_index : candidate_input_indices) {
-    if (forward_input_to_output_with_shape(input_index, output_index,
-                                           output_shape, output)) {
-      if (forwarded_input != nullptr) {
-        *forwarded_input = input_index;
-      }
-      return Status::OK();
-    }
-  }
-  if (forwarded_input != nullptr) {
-    *forwarded_input = -1;
-  }
-  return allocate_output(output_index, output_shape, output);
-}
-
-inline Status OpKernelContext::forward_input_or_allocate_output(
-    gtl::ArraySlice<StringPiece> candidate_input_names, StringPiece output_name,
-    const TensorShape& output_shape, Tensor** output) {
-  for (const StringPiece& input_name : candidate_input_names) {
-    if (forward_input_to_output_with_shape(input_name, output_name,
-                                           output_shape, output)
-            .ok()) {
-      return Status::OK();
-    }
-  }
-  return allocate_output(output_name, output_shape, output);
 }
 
 template <typename T>

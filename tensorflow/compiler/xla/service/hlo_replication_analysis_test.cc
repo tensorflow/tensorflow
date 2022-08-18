@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -33,7 +32,7 @@ namespace {
 class HloReplicationAnalysisTest : public HloTestBase {};
 
 TEST_F(HloReplicationAnalysisTest, NoControlFlow) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule NoControlFlow
 
 sum {
@@ -100,7 +99,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, NoControlFlowSPMD) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule NoControlFlow
 
 sum {
@@ -116,10 +115,11 @@ sum.u32 {
 }
 
 ENTRY entry {
-  param = (f32[4096,4096]{1,0}, f32[4096,4096]{1,0}) parameter(0),
-    sharding={{maximal device=0}, {replicated}}
+  param = (f32[4096,4096]{1,0}, f32[4096,4096]{1,0}, f32[4096,4096]{1,0})
+    parameter(0), sharding={{maximal device=0}, {replicated}, {replicated}}
   get-tuple-element.2 = f32[4096,4096]{1,0} get-tuple-element(param), index=0
   get-tuple-element.3 = f32[4096,4096]{1,0} get-tuple-element(param), index=1
+  get-tuple-element.4 = f32[4096,4096]{1,0} get-tuple-element(param), index=2
   after-all.1 = token[] after-all()
   replica-id = u32[] replica-id()
   partition-id = u32[] partition-id()
@@ -132,25 +132,37 @@ ENTRY entry {
   get-tuple-element.6 = f32[8,8]{1,0} get-tuple-element(infeed-data), index=1
   dot = f32[4096,4096]{1,0} dot(get-tuple-element.5, get-tuple-element.3),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot.2 = f32[4096,4096]{1,0} dot(get-tuple-element.4, get-tuple-element.3),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
   all-reduce = f32[4096,4096]{1,0} all-reduce(dot), replica_groups={},
+    to_apply=sum
+  all-reduce.2 = f32[4096,4096]{1,0} all-reduce(dot.2), replica_groups={},
     to_apply=sum
   all-reduce-subgroup = f32[4096,4096]{1,0} all-reduce(dot),
     replica_groups={{0,1},{2,3}}, to_apply=sum
   all-reduce-partitions = f32[4096,4096]{1,0} all-reduce(get-tuple-element.2),
     channel_id=1, to_apply=sum
+  all-reduce-partitions.2 = f32[4096,4096]{1,0} all-reduce(get-tuple-element.4),
+    channel_id=1, to_apply=sum
   subtract = f32[4096,4096]{1,0} subtract(get-tuple-element.3,
     all-reduce-partitions)
+  subtract.2 = f32[4096,4096]{1,0} subtract(get-tuple-element.3,
+    all-reduce-partitions.2)
   all-reduce-same-operand = u32[] all-reduce(replica-id), to_apply=sum.u32
   all-reduce-same-operand-subgroup = u32[] all-reduce(replica-id),
     replica_groups={{0,1},{2,3}}, to_apply=sum.u32
   all-reduce-different-operand = u32[] all-reduce(partition-id),
     to_apply=sum.u32
-  ROOT add = f32[4096,4096]{1,0} add(get-tuple-element.2, subtract)
+  add = f32[4096,4096]{1,0} add(get-tuple-element.2, subtract)
+  ROOT add.2 = f32[4096,4096]{1,0} add(get-tuple-element.4, subtract.2)
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            module_str, /*replica_count=*/4));
+  auto param = module->entry_computation()->parameter_instruction(0);
+  param->set_parameter_replicated_at_leaf_buffers(
+      absl::Span<const bool>{false, true, false});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> analysis,
       HloReplicationAnalysis::Run(module.get(), /*cross_partition_spmd=*/true));
@@ -159,23 +171,35 @@ ENTRY entry {
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "get-tuple-element.3"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "get-tuple-element.4"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "get-tuple-element.5"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "get-tuple-element.6"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "dot"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "dot.2"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "all-reduce"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "all-reduce.2"), {}));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "all-reduce-partitions"), {}));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "all-reduce-partitions.2"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "subtract"), {}));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "subtract.2"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "add"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "add"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "replica-id"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "partition-id"), {}));
-  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
-      FindInstruction(module.get(), "all-reduce-partitions"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "all-reduce-same-operand"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
@@ -185,7 +209,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, NestedCall) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule NestedCall
 
 fusion_computation {
@@ -237,7 +261,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, SimpleWhileLoop) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule SimpleWhileLoop
 
 cond {
@@ -283,7 +307,7 @@ ENTRY SimpleWhileLoop {
 
 TEST_F(HloReplicationAnalysisTest,
        WhileLoopParameterAliasingNonReplicatedOutput) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule WhileLoopParameterAliasingNonReplicatedOutput
 
 cond {
@@ -334,7 +358,7 @@ ENTRY WhileLoopParameterAliasingNonReplicatedOutput {
 }
 
 TEST_F(HloReplicationAnalysisTest, WhileLoopDifferentCondition) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule WhileLoopDifferentCondition
 
 cond {
@@ -375,7 +399,7 @@ ENTRY WhileLoopDifferentCondition {
 }
 
 TEST_F(HloReplicationAnalysisTest, SimpleConditional) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule SimpleConditional
 
 Negate {
@@ -437,7 +461,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, ConditionalWithDifferentPredicates) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule ConditionalWithDifferentPredicates
 
 Negate {
@@ -502,8 +526,8 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, X64SplitCombine) {
-  const string module_str = R"(
-HloModule SimpleTupleSelect
+  const std::string module_str = R"(
+HloModule SimpleX64SplitCombine
 
 ENTRY entry {
   param = (f64[]) parameter(0)
@@ -531,62 +555,8 @@ ENTRY entry {
       FindInstruction(module.get(), "result-combine"), {}));
 }
 
-TEST_F(HloReplicationAnalysisTest, SimpleTupleSelect) {
-  const string module_str = R"(
-HloModule SimpleTupleSelect
-
-ENTRY entry {
-  param = ((f32[], f32[]), (f32[], f32[]), pred[]) parameter(0)
-  get-tuple-element.4 = (f32[], f32[]) get-tuple-element(param), index=0
-  get-tuple-element.5 = (f32[], f32[]) get-tuple-element(param), index=1
-  get-tuple-element.6 = pred[] get-tuple-element(param), index=2
-  ROOT tuple-select = (f32[], f32[]) tuple-select(get-tuple-element.6, get-tuple-element.4, get-tuple-element.5)
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
-  auto param = module->entry_computation()->parameter_instruction(0);
-  param->set_parameter_replicated_at_leaf_buffers(
-      absl::Span<const bool>{true, false, true, true, true});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::Run(
-                              module.get(), /*cross_partition_spmd=*/false));
-  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
-      FindInstruction(module.get(), "tuple-select"), {0}));
-  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
-      FindInstruction(module.get(), "tuple-select"), {1}));
-}
-
-TEST_F(HloReplicationAnalysisTest, TupleSelectWithDifferentPredicates) {
-  const string module_str = R"(
-HloModule TupleSelectWithDifferentPredicates
-
-ENTRY entry {
-  param = ((f32[], f32[]), (f32[], f32[]), pred[]) parameter(0)
-  get-tuple-element.4 = (f32[], f32[]) get-tuple-element(param), index=0
-  get-tuple-element.5 = (f32[], f32[]) get-tuple-element(param), index=1
-  get-tuple-element.6 = pred[] get-tuple-element(param), index=2
-  ROOT tuple-select = (f32[], f32[]) tuple-select(get-tuple-element.6, get-tuple-element.4, get-tuple-element.5)
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
-  auto param = module->entry_computation()->parameter_instruction(0);
-  param->set_parameter_replicated_at_leaf_buffers(
-      absl::Span<const bool>{true, true, true, true, false});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::Run(
-                              module.get(), /*cross_partition_spmd=*/false));
-  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
-      FindInstruction(module.get(), "tuple-select"), {0}));
-  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
-      FindInstruction(module.get(), "tuple-select"), {1}));
-}
-
 TEST_F(HloReplicationAnalysisTest, CrossModuleAndReplicaAllReduce) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule CrossModuleAndReplicaAllReduce
 
 sum {
@@ -617,7 +587,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, GlobalIdAllGather) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule GlobalIdAllGather
 
 ENTRY entry {
@@ -656,6 +626,53 @@ ENTRY entry {
       FindInstruction(module.get(), "ag2"), {}));
   EXPECT_TRUE(partition_analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "ag3"), {}));
+}
+
+TEST_F(HloReplicationAnalysisTest, PartiallyReplicatedDynamicSlice) {
+  const std::string module_str = R"(
+HloModule PartiallyReplicatedDynamicSlice
+
+ENTRY entry {
+  constant = s32[8] constant({1, 3, 9, 10, 1, 3, 9, 10})
+  replica-id = u32[] replica-id()
+  ROOT dynamic-slice = s32[1] dynamic-slice(constant, replica-id), dynamic_slice_sizes={1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/8,
+                                                /*num_partitions=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloReplicationAnalysis> replica_analysis,
+      HloReplicationAnalysis::RunWithPartialReplication(
+          module.get(),
+          /*cross_partition_spmd=*/false));
+
+  EXPECT_FALSE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "dynamic-slice"), {}));
+  std::vector<ReplicaGroup> replica_groups(4);
+  replica_groups[0].add_replica_ids(0);
+  replica_groups[0].add_replica_ids(4);
+  replica_groups[1].add_replica_ids(1);
+  replica_groups[1].add_replica_ids(5);
+  replica_groups[2].add_replica_ids(2);
+  replica_groups[2].add_replica_ids(6);
+  replica_groups[3].add_replica_ids(3);
+  replica_groups[3].add_replica_ids(7);
+  EXPECT_TRUE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "dynamic-slice"), {}, replica_groups));
+
+  std::vector<ReplicaGroup> replica_groups_2(2);
+  replica_groups_2[0].add_replica_ids(0);
+  replica_groups_2[0].add_replica_ids(1);
+  replica_groups_2[0].add_replica_ids(2);
+  replica_groups_2[0].add_replica_ids(3);
+  replica_groups_2[1].add_replica_ids(4);
+  replica_groups_2[1].add_replica_ids(5);
+  replica_groups_2[1].add_replica_ids(6);
+  replica_groups_2[1].add_replica_ids(7);
+  EXPECT_FALSE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "dynamic-slice"), {}, replica_groups_2));
 }
 
 }  // namespace

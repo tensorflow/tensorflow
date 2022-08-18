@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace {
 
-using xla::string;
+using std::string;
 
 xla::XlaComputation Doubler() {
   xla::XlaBuilder builder("doubler");
@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
     triple_string = "x86_64-none-linux-gnu";
   } else if (target_cpu == "darwin") {
     triple_string = "x86_64-apple-macosx";
-  } else if (target_cpu == "arm") {
+  } else if ((target_cpu == "arm") || (target_cpu == "aarch64")) {
     triple_string = "aarch64-none-linux-gnu";
   } else if (target_cpu == "x64_windows") {
     triple_string = "x86_64-pc-windows-msvc19";
@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
 
   llvm::Triple triple(triple_string);
 
-  xla::XlaComputation computation = builder.Build().ConsumeValueOrDie();
+  xla::XlaComputation computation = builder.Build().value();
   xla::CompileOnlyClient::AotXlaComputationInstance instance{
       &computation, /*argument_layouts=*/{&opaque_shape}, &r0f32};
 
@@ -92,8 +92,7 @@ int main(int argc, char** argv) {
       /*cpu_name=*/"", /*features=*/"", "SumAndDouble",
       xla::cpu::CpuAotCompilationOptions::RelocationModel::Static);
 
-  auto results =
-      client->CompileAheadOfTime({instance}, options).ConsumeValueOrDie();
+  auto results = client->CompileAheadOfTime({instance}, options).value();
   auto result = xla::unique_ptr_static_cast<xla::cpu::CpuAotCompilationResult>(
       std::move(results.front()));
   // It's lame to hard-code the buffer assignments, but we need

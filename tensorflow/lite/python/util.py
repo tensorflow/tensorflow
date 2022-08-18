@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,27 +14,23 @@
 # ==============================================================================
 """Functions used by multiple converter files."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import datetime
 import sys
 
 from absl import logging
-import six
-from six.moves import range
 
 import flatbuffers
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
+from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metadata_fb
 from tensorflow.lite.python import schema_py_generated as schema_fb
 from tensorflow.lite.python import schema_util
 from tensorflow.lite.python import tflite_keras_util as _tflite_keras_util
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
+from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.python.eager import function
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes
@@ -44,9 +39,22 @@ from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
 
+# The field name of conversion metadata in the flatbuffer file.
+CONVERSION_METADATA_FIELD_NAME = "CONVERSION_METADATA"
+
 # Keras functions used by TFLite
 model_input_signature = _tflite_keras_util.model_input_signature
 trace_model_call = _tflite_keras_util.trace_model_call
+
+# Jax functions used by TFLite
+# pylint: disable=g-import-not-at-top
+# pylint: disable=unused-import
+try:
+  from jax import xla_computation as _xla_computation
+except ImportError:
+  _xla_computation = None
+# pylint: enable=g-import-not-at-top
+# pylint: enable=unused-import
 
 # Defined as per TFLite schema
 _MAP_TFLITE_ENUM_TO_TF_TYPES = {
@@ -107,7 +115,7 @@ def get_tensor_name(tensor):
   Returns:
     str
   """
-  parts = six.ensure_str(tensor.name).split(":")
+  parts = tensor.name.split(":")
   if len(parts) > 2:
     raise ValueError("Tensor name invalid. Expect 0 or 1 colon, got {0}".format(
         len(parts) - 1))
@@ -143,7 +151,7 @@ def get_tensors_from_tensor_names(graph, tensor_names):
   tensors = []
   invalid_tensors = []
   for name in tensor_names:
-    if not isinstance(name, six.string_types):
+    if not isinstance(name, str):
       raise ValueError("Invalid type for a tensor name in the provided graph. "
                        "Expected type for a tensor name is 'str', instead got "
                        "type '{}' for tensor name '{}'".format(
@@ -315,8 +323,7 @@ def is_frozen_graph(sess):
     Bool.
   """
   for op in sess.graph.get_operations():
-    if six.ensure_str(op.type).startswith("Variable") or six.ensure_str(
-        op.type).endswith("VariableOp"):
+    if op.type.startswith("Variable") or op.type.endswith("VariableOp"):
       return False
   return True
 
@@ -450,7 +457,7 @@ def convert_bytes_to_c_source(data,
     if (len(array_line) + 4) > max_line_width:
       array_lines.append(array_line + "\n")
       array_line = starting_pad
-    array_line += " 0x%02x," % (value)
+    array_line += " 0x%02x," % (value,)
   if len(array_line) > len(starting_pad):
     array_lines.append(array_line + "\n")
   array_values = "".join(array_lines)
@@ -545,7 +552,6 @@ def _convert_model_from_bytearray_to_object(model_bytearray):
   model_object = schema_fb.Model.GetRootAsModel(model_bytearray, 0)
   model_object = schema_fb.ModelT.InitFromObj(model_object)
   model_object = copy.deepcopy(model_object)
-  model_object.subgraphs[0].inputs[0] = model_object.subgraphs[0].inputs[0]
   return model_object
 
 
@@ -591,8 +597,10 @@ def _remove_tensors_from_model(model, remove_tensors_idxs):
   if not remove_tensors_idxs:
     return
   if len(model.subgraphs) > 1:
-    raise ValueError("Model must only have one subgraph. Instead, it has "
-                     "{} subgraphs.".format(len(model.subgraphs)))
+    logging.info("Skipping the removal of dangled tensors since the model has "
+                 "multiple subgraphs and tensors can be used in the different "
+                 "subgraph(s)")
+    return
   subgraph = model.subgraphs[0]
   tensors = subgraph.tensors
   operators = subgraph.operators
@@ -635,11 +643,23 @@ def _remove_tensors_from_model(model, remove_tensors_idxs):
 
 def _modify_model_input_type(model, inference_input_type=dtypes.float32):
   """Modify model input type."""
-
   if inference_input_type == dtypes.float32:
     return
 
-  subgraph = model.subgraphs[0]
+  if not model.signatureDefs:
+    _modify_model_input_type_per_subgraph(model, 0, -1, inference_input_type)
+    return
+
+  for signature_index, signature_def in enumerate(model.signatureDefs):
+    _modify_model_input_type_per_subgraph(model, signature_def.subgraphIndex,
+                                          signature_index, inference_input_type)
+
+
+def _modify_model_input_type_per_subgraph(model, subgraph_index,
+                                          signature_index,
+                                          inference_input_type):
+  """Modify model input type per subgraph."""
+  subgraph = model.subgraphs[subgraph_index]
   tensors = subgraph.tensors
   operators = subgraph.operators
 
@@ -712,8 +732,8 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
     remove_tensors_idxs = set()
     for op in input_quant_ops:
       subgraph.inputs[subgraph.inputs == op.inputs[0]] = op.outputs[0]
-      if model.signatureDefs:
-        signature_def = model.signatureDefs[0]
+      if signature_index >= 0:
+        signature_def = model.signatureDefs[signature_index]
         for i in range(len(signature_def.inputs)):
           if signature_def.inputs[i].tensorIndex == op.inputs[0]:
             signature_def.inputs[i].tensorIndex = op.outputs[0]
@@ -729,11 +749,24 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
 
 def _modify_model_output_type(model, inference_output_type=dtypes.float32):
   """Modify model output type."""
-
   if inference_output_type == dtypes.float32:
     return
 
-  subgraph = model.subgraphs[0]
+  if not model.signatureDefs:
+    _modify_model_output_type_per_subgraph(model, 0, -1, inference_output_type)
+    return
+
+  for signature_index, signature_def in enumerate(model.signatureDefs):
+    _modify_model_output_type_per_subgraph(model, signature_def.subgraphIndex,
+                                           signature_index,
+                                           inference_output_type)
+
+
+def _modify_model_output_type_per_subgraph(model, subgraph_index,
+                                           signature_index,
+                                           inference_output_type):
+  """Modify model output type per subgraph."""
+  subgraph = model.subgraphs[subgraph_index]
   tensors = subgraph.tensors
   operators = subgraph.operators
 
@@ -822,8 +855,8 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
     remove_tensors_idxs = set()
     for op in output_dequant_ops:
       subgraph.outputs[subgraph.outputs == op.outputs[0]] = op.inputs[0]
-      if model.signatureDefs:
-        signature_def = model.signatureDefs[0]
+      if signature_index >= 0:
+        signature_def = model.signatureDefs[signature_index]
         for i in range(len(signature_def.outputs)):
           if signature_def.outputs[i].tensorIndex == op.outputs[0]:
             signature_def.outputs[i].tensorIndex = op.inputs[0]
@@ -839,7 +872,20 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
 
 def _remove_redundant_quantize_ops(model):
   """Finds back to back quantize ops and remove the first quantize op."""
-  subgraph = model.subgraphs[0]
+  if not model.signatureDefs:
+    _remove_redundant_quantize_ops_per_subgraph(model, 0, -1)
+    return
+
+  for signature_index, signature_def in enumerate(model.signatureDefs):
+    _remove_redundant_quantize_ops_per_subgraph(model,
+                                                signature_def.subgraphIndex,
+                                                signature_index)
+
+
+def _remove_redundant_quantize_ops_per_subgraph(model, subgraph_index,
+                                                signature_index):
+  """Remove redundant quantize ops per subgraph."""
+  subgraph = model.subgraphs[subgraph_index]
   tensors = subgraph.tensors
   operators = subgraph.operators
 
@@ -885,8 +931,8 @@ def _remove_redundant_quantize_ops(model):
     if output_tensor_idx in output_dequant_tensors:
       dequant_op = output_dequant_tensors[output_tensor_idx]
       subgraph.outputs[subgraph.outputs == dequant_op.outputs[0]] = op.inputs[0]
-      if model.signatureDefs:
-        signature_def = model.signatureDefs[0]
+      if signature_index >= 0:
+        signature_def = model.signatureDefs[signature_index]
         for output in signature_def.outputs:
           if output.tensorIndex == dequant_op.outputs[0]:
             output.tensorIndex = op.inputs[0]
@@ -925,10 +971,6 @@ def modify_model_io_type(
 
   model_object = _convert_model_from_bytearray_to_object(model)
 
-  if len(model_object.subgraphs) > 1:
-    raise ValueError("Model must only have one subgraph. Instead, it has "
-                     "{} subgraphs.".format(len(model_object.subgraphs)))
-
   _modify_model_input_type(model_object, inference_input_type)
 
   _modify_model_output_type(model_object, inference_output_type)
@@ -936,3 +978,97 @@ def modify_model_io_type(
   _remove_redundant_quantize_ops(model_object)
 
   return _convert_model_from_object_to_bytearray(model_object)
+
+
+def get_sparsity_modes(model_object):
+  """Get sparsity modes used in a tflite model.
+
+  The sparsity modes are listed in conversion_metadata.fbs file.
+
+  Args:
+    model_object: A tflite model in object form.
+
+  Returns:
+    The list of sparsity modes used in the model.
+  """
+  if not model_object or not model_object.metadata:
+    return []
+
+  result = set()
+  for subgraph in model_object.subgraphs:
+    for tensor in subgraph.tensors:
+      if not tensor.sparsity:
+        continue
+
+      # Block map is the list if indexes where the block size is larger than 1.
+      # So empty block map means it is random sparsity.
+      if not tensor.sparsity.blockMap:
+        result.add(
+            conversion_metadata_fb.ModelOptimizationMode.RANDOM_SPARSITY)
+      else:
+        result.add(
+            conversion_metadata_fb.ModelOptimizationMode.BLOCK_SPARSITY)
+
+  return list(result)
+
+
+def populate_conversion_metadata(model_object, metadata):
+  """Add or update conversion metadata to a tflite model.
+
+  Args:
+    model_object: A tflite model in object form.
+    metadata: The conversion metadata.
+
+  Returns:
+    A tflite model object with embedded conversion metadata.
+  """
+  try:
+    metadata_builder = flatbuffers.Builder(0)
+    metadata_builder.Finish(metadata.Pack(metadata_builder))
+    buffer_field = schema_fb.BufferT()
+    buffer_field.data = metadata_builder.Output()
+
+    if not model_object.metadata:
+      model_object.metadata = []
+    else:
+      # Check if metadata has already been populated.
+      for meta in model_object.metadata:
+        if meta.name.decode("utf-8") == CONVERSION_METADATA_FIELD_NAME:
+          model_object.buffers[meta.buffer] = buffer_field
+          return model_object
+
+    if not model_object.buffers:
+      model_object.buffers = []
+    model_object.buffers.append(buffer_field)
+    # Creates a new metadata field.
+    metadata_field = schema_fb.MetadataT()
+    metadata_field.name = CONVERSION_METADATA_FIELD_NAME
+    metadata_field.buffer = len(model_object.buffers) - 1
+    model_object.metadata.append(metadata_field)
+
+    return model_object
+  except Exception:  # pylint: disable=broad-except
+    return model_object
+
+
+def get_conversion_metadata(model_buffer):
+  """Read conversion metadata from a tflite model.
+
+  Args:
+    model_buffer: A tflite model.
+
+  Returns:
+    The conversion metadata or None if it is not populated.
+  """
+  model_object = flatbuffer_utils.convert_bytearray_to_object(model_buffer)
+  if not model_object or not model_object.metadata:
+    return None
+
+  for meta in model_object.metadata:
+    if meta.name.decode("utf-8") == CONVERSION_METADATA_FIELD_NAME:
+      metadata_buf = model_object.buffers[meta.buffer].data.tobytes()
+      return conversion_metadata_fb.ConversionMetadataT.InitFromObj(
+          conversion_metadata_fb.ConversionMetadata.GetRootAsConversionMetadata(
+              metadata_buf, 0))
+
+  return None

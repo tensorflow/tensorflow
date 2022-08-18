@@ -28,9 +28,9 @@ namespace xla {
 namespace {
 
 int64_t GetUniqueId() {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static absl::Mutex mu(absl::kConstInit);
   static int64_t counter = 0;
-  tensorflow::mutex_lock loc(mu);
+  absl::MutexLock loc(&mu);
   const int64_t id = counter++;
   return id;
 }
@@ -39,7 +39,7 @@ int64_t GetUniqueId() {
 
 ExecutionHandle CompilationCache::Insert(
     std::unique_ptr<Executable> executable) {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
 
   CacheKey key = GetUniqueId();
   VLOG(2) << "inserting cache key: " << key;
@@ -53,7 +53,7 @@ ExecutionHandle CompilationCache::Insert(
 
 StatusOr<std::shared_ptr<Executable>> CompilationCache::LookUp(
     const ExecutionHandle& handle) const {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
 
   CacheKey key = handle.handle();
   VLOG(2) << "looking up cache key: " << key;

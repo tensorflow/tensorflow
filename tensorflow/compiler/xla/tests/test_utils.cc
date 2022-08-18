@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
 #include <cmath>
+#include <memory>
 
 #include "absl/base/casts.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -88,13 +88,13 @@ void PopulateWithIntNext(Literal* literal);
 template <>
 void PopulateWithIntNext<half>(Literal* literal) {
   // Duplicates may be generated if we don't have enough bits.
-  uint16 next_value = 0;
+  uint16_t next_value = 0;
   for (half& value : literal->data<half>()) {
     // Zero-out the MSB of the exponent to avoid Infs and NaNs, and put it into
     // the sign bit. We could be less wasteful, but this is best-effort anyway.
-    uint16 exponent_msb = next_value & 0x4000;
-    value = Eigen::numext::bit_cast<half, uint16>((next_value & 0xBFFF) |
-                                                  (exponent_msb << 1));
+    uint16_t exponent_msb = next_value & 0x4000;
+    value = Eigen::numext::bit_cast<half, uint16_t>((next_value & 0xBFFF) |
+                                                    (exponent_msb << 1));
     next_value++;
   }
 }
@@ -103,13 +103,13 @@ template <>
 void PopulateWithIntNext<bfloat16>(Literal* literal) {
   // Duplicates may be generated if we don't have enough bits.
   // Start at 0x80 rather than 0 to avoid denormals.
-  uint16 next_value = 0x80;
+  uint16_t next_value = 0x80;
   for (bfloat16& value : literal->data<bfloat16>()) {
     // Zero-out the MSB of the exponent to avoid Infs and NaNs, and put it into
     // the sign bit. We could be less wasteful, but this is best-effort anyway.
-    uint16 exponent_msb = next_value & 0x4000;
-    value = Eigen::numext::bit_cast<bfloat16, uint16>((next_value & 0xBFFF) |
-                                                      (exponent_msb << 1));
+    uint16_t exponent_msb = next_value & 0x4000;
+    value = Eigen::numext::bit_cast<bfloat16, uint16_t>((next_value & 0xBFFF) |
+                                                        (exponent_msb << 1));
     next_value++;
   }
 }
@@ -228,13 +228,13 @@ struct RngT {
 };
 
 template <>
-struct RngT<int8> {
-  using type = int16;
+struct RngT<int8_t> {
+  using type = int16_t;
 };
 
 template <>
-struct RngT<uint8> {
-  using type = uint16;
+struct RngT<uint8_t> {
+  using type = uint16_t;
 };
 
 template <typename IntT>
@@ -269,7 +269,9 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
                                           bool use_large_range) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
-    for (const Shape& element_shape : shape.tuple_shapes()) {
+    const auto& shape_tuple_shapes = shape.tuple_shapes();
+    elements.reserve(shape_tuple_shapes.size());
+    for (const Shape& element_shape : shape_tuple_shapes) {
       TF_ASSIGN_OR_RETURN(Literal element, MakeFakeLiteralInternal(
                                                element_shape, engine,
                                                no_duplicates, use_large_range));
@@ -304,22 +306,22 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
                                             use_large_range);
       break;
     case S8:
-      PopulateWithRandomIntegralData<int8>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int8_t>(&literal, engine, no_duplicates);
       break;
     case U8:
-      PopulateWithRandomIntegralData<uint8>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint8_t>(&literal, engine, no_duplicates);
       break;
     case S16:
-      PopulateWithRandomIntegralData<int16>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int16_t>(&literal, engine, no_duplicates);
       break;
     case U16:
-      PopulateWithRandomIntegralData<uint16>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint16_t>(&literal, engine, no_duplicates);
       break;
     case S32:
-      PopulateWithRandomIntegralData<int32>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int32_t>(&literal, engine, no_duplicates);
       break;
     case U32:
-      PopulateWithRandomIntegralData<uint32>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint32_t>(&literal, engine, no_duplicates);
       break;
     case S64:
       PopulateWithRandomIntegralData<int64_t>(&literal, engine, no_duplicates);
@@ -371,7 +373,9 @@ StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
                                                     bool is_sorted) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
-    for (const Shape& element_shape : shape.tuple_shapes()) {
+    const auto& shape_tuple_shapes = shape.tuple_shapes();
+    elements.reserve(shape_tuple_shapes.size());
+    for (const Shape& element_shape : shape_tuple_shapes) {
       TF_ASSIGN_OR_RETURN(Literal element,
                           MakeFakeLiteralInternalWithBounds(
                               element_shape, engine, min, max, is_sorted));
@@ -390,45 +394,55 @@ StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
   Literal literal(new_shape);
   switch (shape.element_type()) {
     case S8:
-      PopulateWithRandomIntegralDataWithBounds<int8>(
-          &literal, engine, static_cast<int8>(min), static_cast<int8>(max));
+      PopulateWithRandomIntegralDataWithBounds<int8_t>(
+          &literal, engine, static_cast<int8_t>(min), static_cast<int8_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int8>().begin(), literal.data<int8>().end());
+        std::sort(literal.data<int8_t>().begin(), literal.data<int8_t>().end());
       }
       break;
     case U8:
-      PopulateWithRandomIntegralDataWithBounds<uint8>(
-          &literal, engine, static_cast<uint8>(min), static_cast<uint8>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint8_t>(
+          &literal, engine, static_cast<uint8_t>(min),
+          static_cast<uint8_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint8>().begin(), literal.data<uint8>().end());
+        std::sort(literal.data<uint8_t>().begin(),
+                  literal.data<uint8_t>().end());
       }
       break;
     case S16:
-      PopulateWithRandomIntegralDataWithBounds<int16>(
-          &literal, engine, static_cast<int16>(min), static_cast<int16>(max));
+      PopulateWithRandomIntegralDataWithBounds<int16_t>(
+          &literal, engine, static_cast<int16_t>(min),
+          static_cast<int16_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int16>().begin(), literal.data<int16>().end());
+        std::sort(literal.data<int16_t>().begin(),
+                  literal.data<int16_t>().end());
       }
       break;
     case U16:
-      PopulateWithRandomIntegralDataWithBounds<uint16>(
-          &literal, engine, static_cast<uint16>(min), static_cast<uint16>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint16_t>(
+          &literal, engine, static_cast<uint16_t>(min),
+          static_cast<uint16_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint16>().begin(), literal.data<uint16>().end());
+        std::sort(literal.data<uint16_t>().begin(),
+                  literal.data<uint16_t>().end());
       }
       break;
     case S32:
-      PopulateWithRandomIntegralDataWithBounds<int32>(
-          &literal, engine, static_cast<int32>(min), static_cast<int32>(max));
+      PopulateWithRandomIntegralDataWithBounds<int32_t>(
+          &literal, engine, static_cast<int32_t>(min),
+          static_cast<int32_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int32>().begin(), literal.data<int32>().end());
+        std::sort(literal.data<int32_t>().begin(),
+                  literal.data<int32_t>().end());
       }
       break;
     case U32:
-      PopulateWithRandomIntegralDataWithBounds<uint32>(
-          &literal, engine, static_cast<uint32>(min), static_cast<uint32>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint32_t>(
+          &literal, engine, static_cast<uint32_t>(min),
+          static_cast<uint32_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint32>().begin(), literal.data<uint32>().end());
+        std::sort(literal.data<uint32_t>().begin(),
+                  literal.data<uint32_t>().end());
       }
       break;
     case S64:
@@ -495,8 +509,37 @@ bool NeedsInitValue(const HloUse& use) {
 // Generate random values that are constrained to the input_shape minus the
 // output_shape so as not to produce wrapping slices, for instance.
 Literal MakeRandomIndex(int64_t index_bound, std::minstd_rand0* engine) {
-  std::uniform_int_distribution<int32> generator(0, index_bound);
-  return LiteralUtil::CreateR0<int32>(generator(*engine));
+  std::uniform_int_distribution<int32_t> generator(0, index_bound);
+  return LiteralUtil::CreateR0<int32_t>(generator(*engine));
+}
+
+// Returns true if `dest' is reachable from `src' through data-formatting and
+// custom call instructions within the same computation.
+bool ReachableViaDataFormatting(const HloInstruction* src,
+                                const HloInstruction* dest) {
+  if (src == dest) {
+    return true;
+  }
+  switch (dest->opcode()) {
+    case HloOpcode::kReshape:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kCopy:
+    case HloOpcode::kSlice:
+      break;
+    case HloOpcode::kCustomCall:
+      if (dest->custom_call_target() == "AssumeGatherIndicesInBound") {
+        break;
+      }
+      return false;
+    default:
+      return false;
+  }
+  for (const auto* operand : dest->operands()) {
+    if (ReachableViaDataFormatting(src, operand)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // Use dataflow analysis on each parameter to see if there are uses that would
@@ -509,7 +552,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
   std::vector<HloInstruction*> constrained_uses;
   for (const auto& pair : dataflow.GetInstructionValueSet(&param)) {
     const HloValue& value = dataflow.GetUniqueValueAt(&param, pair.first);
-    for (const HloUse& use : value.uses()) {
+    for (const HloUse& use : value.GetUses()) {
       HloInstruction* instruction = use.instruction;
       const HloOpcode opcode = instruction->opcode();
       const int64_t op_num = use.operand_number;
@@ -539,6 +582,19 @@ std::vector<HloInstruction*> FindConstrainedUses(
         // (two-operand) kSort instructions. Since sort stability is not
         // guaranteed, constrain keys of key-value sort not to have duplicates,
         // since otherwise the value order may legitimately differ.
+        constrained_uses.push_back(instruction);
+      }
+    }
+  }
+
+  for (auto* instruction : param.parent()->instructions()) {
+    const HloOpcode opcode = instruction->opcode();
+    if (opcode == HloOpcode::kGather || opcode == HloOpcode::kScatter) {
+      if (instruction->operand(1) == &param) {
+        // Above already covers this case.
+        continue;
+      }
+      if (ReachableViaDataFormatting(&param, instruction->operand(1))) {
         constrained_uses.push_back(instruction);
       }
     }
@@ -584,16 +640,13 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
       case HloOpcode::kGather:
       case HloOpcode::kScatter: {
         const Shape& operand_shape = use->operand(0)->shape();
-        if (use->operand(1) == &param) {
-          auto index_map =
-              use->opcode() == HloOpcode::kGather
-                  ? use->gather_dimension_numbers().start_index_map()
-                  : use->scatter_dimension_numbers()
-                        .scatter_dims_to_operand_dims();
-          for (const auto dim_in_operand : index_map) {
-            index_bound =
-                std::min(index_bound, operand_shape.dimensions(dim_in_operand));
-          }
+        auto index_map = use->opcode() == HloOpcode::kGather
+                             ? use->gather_dimension_numbers().start_index_map()
+                             : use->scatter_dimension_numbers()
+                                   .scatter_dims_to_operand_dims();
+        for (const auto dim_in_operand : index_map) {
+          index_bound = std::min(index_bound,
+                                 operand_shape.dimensions(dim_in_operand) - 1);
         }
         if (use->opcode() == HloOpcode::kScatter) {
           needs_sorted_indices |=
@@ -633,7 +686,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
     return Unimplemented("Conflicting operand generation constraints.");
   }
   if (index_bound != INT64_MAX) {
-    return MakeFakeLiteralInternalWithBounds(param_shape, engine, -1,
+    return MakeFakeLiteralInternalWithBounds(param_shape, engine, 0,
                                              index_bound, needs_sorted_indices);
   } else if (needs_constant) {
     switch (constant_type) {
@@ -670,21 +723,19 @@ StatusOr<Literal> MakeConstrainedArgument(const HloDataflowAnalysis& dataflow,
 
 StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
                                   bool use_large_range) {
-  auto engine =
-      pseudo_random ? absl::make_unique<std::minstd_rand0>() : nullptr;
+  auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeLiteralInternal(shape, engine.get(), /*no_duplicates=*/false,
                                  use_large_range);
 }
 
-StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
+StatusOr<std::vector<Literal>> MakeFakeArguments(const HloModule* module,
                                                  bool pseudo_random,
                                                  bool use_large_range) {
-  auto engine =
-      pseudo_random ? absl::make_unique<std::minstd_rand0>() : nullptr;
+  auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeArguments(module, engine.get(), use_large_range);
 }
 
-StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
+StatusOr<std::vector<Literal>> MakeFakeArguments(const HloModule* module,
                                                  std::minstd_rand0* engine,
                                                  bool use_large_range) {
   TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
@@ -702,9 +753,9 @@ StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
                                          .shape()
                                    : params[i]->shape();
 
-    arguments[i] = MakeConstrainedArgument(*dataflow, *params[i], param_shape,
-                                           engine, use_large_range)
-                       .ValueOrDie();
+    TF_ASSIGN_OR_RETURN(arguments[i], MakeConstrainedArgument(
+                                          *dataflow, *params[i], param_shape,
+                                          engine, use_large_range));
   }
   return std::move(arguments);
 }
@@ -729,7 +780,7 @@ std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
   dot_dimension_numbers.add_lhs_contracting_dimensions(
       lhs->shape().rank() > 1 ? 1 : 0);
   dot_dimension_numbers.add_rhs_contracting_dimensions(0);
-  return absl::make_unique<HloDotInstruction>(
+  return std::make_unique<HloDotInstruction>(
       shape, lhs, rhs, dot_dimension_numbers, precision_config);
 }
 }  // namespace xla

@@ -80,7 +80,7 @@ class PythonRefManager {
   // The purpose of this function is to amortize lock acquisition costs over
   // a larger number of API calls.
   void MaybeCollectGarbage() {
-    if (garbage_count_.load(std::memory_order_relaxed) > 100) {
+    if (garbage_count_.load(std::memory_order_relaxed) >= 100) {
       CollectGarbage();
     }
   }

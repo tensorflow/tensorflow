@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 
-#include <memory>
-#include <vector>
-
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -33,7 +30,7 @@ xla::XlaOp Zeros(xla::XlaBuilder* builder, const xla::Shape& shape) {
   return xla::Broadcast(
       xla::ConstantLiteral(builder,
                            xla::LiteralUtil::Zero(shape.element_type())),
-      xla::AsInt64Slice(shape.dimensions()));
+      shape.dimensions());
 }
 
 xla::XlaOp FloatLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
@@ -67,25 +64,25 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
   xla::Literal literal;
   switch (type) {
     case xla::U8:
-      literal = xla::LiteralUtil::CreateR0<uint8>(value);
+      literal = xla::LiteralUtil::CreateR0<uint8_t>(value);
       break;
     case xla::U16:
-      literal = xla::LiteralUtil::CreateR0<uint16>(value);
+      literal = xla::LiteralUtil::CreateR0<uint16_t>(value);
       break;
     case xla::U32:
-      literal = xla::LiteralUtil::CreateR0<uint32>(value);
+      literal = xla::LiteralUtil::CreateR0<uint32_t>(value);
       break;
     case xla::U64:
-      literal = xla::LiteralUtil::CreateR0<uint64>(value);
+      literal = xla::LiteralUtil::CreateR0<uint64_t>(value);
       break;
     case xla::S8:
-      literal = xla::LiteralUtil::CreateR0<int8>(value);
+      literal = xla::LiteralUtil::CreateR0<int8_t>(value);
       break;
     case xla::S16:
-      literal = xla::LiteralUtil::CreateR0<int16>(value);
+      literal = xla::LiteralUtil::CreateR0<int16_t>(value);
       break;
     case xla::S32:
-      literal = xla::LiteralUtil::CreateR0<int32>(value);
+      literal = xla::LiteralUtil::CreateR0<int32_t>(value);
       break;
     case xla::S64:
       literal = xla::LiteralUtil::CreateR0<int64_t>(value);
@@ -97,16 +94,16 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
       literal = xla::LiteralUtil::CreateR0<double>(value);
       break;
     case xla::C64:
-      literal = xla::LiteralUtil::CreateR0<complex64>(value);
+      literal = xla::LiteralUtil::CreateR0<xla::complex64>(value);
       break;
     case xla::C128:
-      literal = xla::LiteralUtil::CreateR0<complex128>(value);
+      literal = xla::LiteralUtil::CreateR0<xla::complex128>(value);
       break;
     case xla::PRED:
       LOG(FATAL) << "pred element type is not integral";
     case xla::BF16:
-      literal =
-          xla::LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(value));
+      literal = xla::LiteralUtil::CreateR0<xla::bfloat16>(
+          static_cast<xla::bfloat16>(value));
       break;
     case xla::F16:
       literal =
@@ -120,14 +117,6 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
       LOG(FATAL) << "unhandled element type " << type;
   }
   return xla::ConstantLiteral(builder, literal);
-}
-
-std::vector<int64_t> ConcatVectors(absl::Span<const int64_t> xs,
-                                   absl::Span<const int64_t> ys) {
-  std::vector<int64_t> output(xs.size() + ys.size());
-  std::copy(xs.begin(), xs.end(), output.begin());
-  std::copy(ys.begin(), ys.end(), output.begin() + xs.size());
-  return output;
 }
 
 }  // namespace tensorflow

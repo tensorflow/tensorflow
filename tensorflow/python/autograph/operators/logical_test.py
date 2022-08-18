@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for logical module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.operators import logical
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util

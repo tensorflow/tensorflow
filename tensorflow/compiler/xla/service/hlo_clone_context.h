@@ -34,12 +34,12 @@ class HloCloneContext {
   // Creates a new HloCloneContext object to clone HloInstruction and
   // HloComputation objects to be added to the module specified as argument.
   // The suffix string will be appended to computation names.
-  explicit HloCloneContext(HloModule* module, const string& suffix = "")
+  explicit HloCloneContext(HloModule* module, const std::string& suffix = "")
       : module_(module), suffix_(suffix) {}
 
   HloModule* module() const { return module_; }
 
-  const string& suffix() const { return suffix_; }
+  const std::string& suffix() const { return suffix_; }
 
   void MapInstruction(const HloInstruction* old_instruction,
                       HloInstruction* new_instruction) {
@@ -84,8 +84,11 @@ class HloCloneContext {
   }
 
  private:
+  HloCloneContext(const HloCloneContext&) = delete;
+  const HloCloneContext& operator=(const HloCloneContext&) = delete;
+
   HloModule* module_;
-  string suffix_;
+  std::string suffix_;
   absl::flat_hash_map<const HloInstruction*, HloInstruction*> instructions_;
   absl::flat_hash_map<const HloComputation*, HloComputation*> computations_;
 };

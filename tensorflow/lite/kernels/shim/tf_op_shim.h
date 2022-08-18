@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/kernels/shim/op_kernel.h"
 #include "tensorflow/lite/kernels/shim/shape.h"
 #include "tensorflow/lite/kernels/shim/tf_tensor_view.h"
@@ -87,11 +88,6 @@ class TfShapeInferenceContext
   ::tensorflow::shape_inference::InferenceContext* context_;
 };
 
-// Converts absl::Status to tensorflow::Status
-::tensorflow::Status FromAbslStatus(const ::absl::Status& s);
-// Converts to tensorflow::Status to absl::Status
-::absl::Status ToAbslStatus(const ::tensorflow::Status& s);
-
 // The adaptor between an op implementation (OpKernelShim subclass) and TF
 // runtime
 template <template <Runtime> typename Impl>
@@ -100,22 +96,22 @@ class TfOpKernel : public ::tensorflow::OpKernel {
   using ImplType = Impl<Runtime::kTf>;
 
   explicit TfOpKernel(::tensorflow::OpKernelConstruction* c)
-      : OpKernel(c), impl_(absl::make_unique<ImplType>()) {
+      : OpKernel(c), impl_(std::make_unique<ImplType>()) {
     TfInitContext ctx(c);
-    c->SetStatus(FromAbslStatus(impl_->Init(&ctx)));
+    c->SetStatus(::tensorflow::FromAbslStatus(impl_->Init(&ctx)));
   }
 
   // The main computation of the op
   void Compute(::tensorflow::OpKernelContext* c) override {
     TfInvokeContext ctx(c);
-    OP_REQUIRES_OK(c, FromAbslStatus(impl_->Invoke(&ctx)));
+    OP_REQUIRES_OK(c, ::tensorflow::FromAbslStatus(impl_->Invoke(&ctx)));
   }
 
   // Shape inference for the op.
   static tensorflow::Status ShapeInference(
       ::tensorflow::shape_inference::InferenceContext* c) {
     TfShapeInferenceContext ctx(c);
-    return FromAbslStatus(ImplType::ShapeInference(&ctx));
+    return ::tensorflow::FromAbslStatus(ImplType::ShapeInference(&ctx));
   }
 
   // The operation name
@@ -154,16 +150,15 @@ struct ContextTypeForRuntime<Runtime::kTf> {
 
 // Macros for defining an op. These are taken from op.h because they need to be
 // slightly modified here.
-#define REGISTER_OP_SHIM_IMPL(ctr, name, op_kernel_cls)           \
-  static ::tensorflow::InitOnStartupMarker const register_op##ctr \
-      TF_ATTRIBUTE_UNUSED =                                       \
-          TF_INIT_ON_STARTUP_IF(SHOULD_REGISTER_OP(name))         \
+#define REGISTER_OP_SHIM_IMPL(ctr, op_kernel_cls)                            \
+  static ::tensorflow::InitOnStartupMarker const register_op##ctr            \
+      TF_ATTRIBUTE_UNUSED =                                                  \
+          TF_INIT_ON_STARTUP_IF(SHOULD_REGISTER_OP(op_kernel_cls::OpName())) \
           << ::tflite::shim::CreateOpDefBuilderWrapper<op_kernel_cls>()
 
-#define REGISTER_TF_OP_SHIM(name, op_kernel_cls) \
-  TF_ATTRIBUTE_ANNOTATE("tf:op")                 \
-  TF_NEW_ID_FOR_INIT(REGISTER_OP_SHIM_IMPL, name, op_kernel_cls)
-
+#define REGISTER_TF_OP_SHIM(op_kernel_cls) \
+  TF_ATTRIBUTE_ANNOTATE("tf:op")           \
+  TF_NEW_ID_FOR_INIT(REGISTER_OP_SHIM_IMPL, op_kernel_cls)
 
 }  // namespace shim
 }  // namespace tflite

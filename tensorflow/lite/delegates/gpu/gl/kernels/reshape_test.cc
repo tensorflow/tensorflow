@@ -112,9 +112,8 @@ TEST(Reshape, BatchIsUnsupported) {
   SingleOpModel model({ToString(OperationType::RESHAPE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_THAT(
-      model.Invoke(*NewReshapeNodeShader()).message(),
-      testing::HasSubstr("Only identical batch dimension is supported"));
+  ASSERT_THAT(model.Invoke(*NewReshapeNodeShader()).message(),
+              testing::HasSubstr("Batch size mismatch, expected 4 but got 1"));
 }
 
 }  // namespace

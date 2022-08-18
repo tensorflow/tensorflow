@@ -137,6 +137,16 @@ inline std::vector<int16_t> Split(const string& s, const string& delimiter) {
 }
 
 template <>
+inline std::vector<uint16_t> Split(const string& s, const string& delimiter) {
+  std::vector<uint16_t> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    // NOLINTNEXTLINE(runtime/deprecated_fn)
+    fields.push_back(strtol(s.data() + p.first, nullptr, 10));
+  }
+  return fields;
+}
+
+template <>
 inline std::vector<bool> Split(const string& s, const string& delimiter) {
   std::vector<bool> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {

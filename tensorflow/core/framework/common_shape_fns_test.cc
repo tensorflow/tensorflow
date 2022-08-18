@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -1486,6 +1487,118 @@ TEST(CommonShapeFnsTest, ValidateSparseTensor) {
   auto values = c.input(1);
   auto shape = c.input(2);
   TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ReduceScatterSuccess) {
+  OpRegistrationData op_reg_data;
+  TF_CHECK_OK(OpDefBuilder("XlaReduceScatter")
+                  .Input("input: float")
+                  .Input("group_assignment: int32")
+                  .Input("scatter_dimension: int32")
+                  .Output("output: float")
+                  .Finalize(&op_reg_data));
+  OpDef op_def = op_reg_data.op_def;
+
+  NodeDef def;
+  TF_CHECK_OK(NodeDefBuilder("test", "XlaReduceScatter")
+                  .Input("input", 0, DT_FLOAT)
+                  .Input("group_assignment", 0, DT_INT32)
+                  .Input("scatter_dimension", 0, DT_INT32)
+                  .Finalize(&def));
+  const Tensor scatter_dimension = Tensor(0);
+  InferenceContext c(TF_GRAPH_DEF_VERSION, def, op_def,
+                     {S({2, 2}), S({1, 2}), S({1})},
+                     {nullptr, nullptr, &scatter_dimension}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  TF_EXPECT_OK(ReduceScatterShape(&c));
+  ShapeHandle output = c.output(0);
+  EXPECT_EQ(1, c.Value(c.Dim(output, 0)));
+  EXPECT_EQ(2, c.Value(c.Dim(output, 1)));
+}
+
+TEST(CommonShapeFnsTest, ReduceScatter_MissingScatterDimension) {
+  OpRegistrationData op_reg_data;
+  TF_CHECK_OK(OpDefBuilder("XlaReduceScatter")
+                  .Input("input: float")
+                  .Input("group_assignment: int32")
+                  .Input("scatter_dimension: int32")
+                  .Output("output: float")
+                  .Finalize(&op_reg_data));
+  OpDef op_def = op_reg_data.op_def;
+
+  NodeDef def;
+  TF_CHECK_OK(NodeDefBuilder("test", "XlaReduceScatter")
+                  .Input("input", 0, DT_FLOAT)
+                  .Input("group_assignment", 0, DT_INT32)
+                  .Input("scatter_dimension", 0, DT_INT32)
+                  .Finalize(&def));
+  InferenceContext c(TF_GRAPH_DEF_VERSION, def, op_def,
+                     {S({2, 2}), S({1, 2}), S({1})}, {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  TF_EXPECT_OK(ReduceScatterShape(&c));
+  ShapeHandle output = c.output(0);
+  EXPECT_FALSE(c.ValueKnown(c.Dim(output, 0)));
+  EXPECT_FALSE(c.ValueKnown(c.Dim(output, 1)));
+}
+
+TEST(CommonShapeFnsTest, ReduceScatter_NotEvenlyDivisible) {
+  OpRegistrationData op_reg_data;
+  TF_CHECK_OK(OpDefBuilder("XlaReduceScatter")
+                  .Input("input: float")
+                  .Input("group_assignment: int32")
+                  .Input("scatter_dimension: int32")
+                  .Output("output: float")
+                  .Finalize(&op_reg_data));
+  OpDef op_def = op_reg_data.op_def;
+
+  NodeDef def;
+  TF_CHECK_OK(NodeDefBuilder("test", "XlaReduceScatter")
+                  .Input("input", 0, DT_FLOAT)
+                  .Input("group_assignment", 0, DT_INT32)
+                  .Input("scatter_dimension", 0, DT_INT32)
+                  .Finalize(&def));
+  const Tensor scatter_dimension = Tensor(0);
+  InferenceContext c(TF_GRAPH_DEF_VERSION, def, op_def,
+                     {S({3, 3}), S({1, 2}), S({1})},
+                     {nullptr, nullptr, &scatter_dimension}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+  EXPECT_THAT(ReduceScatterShape(&c),
+              tensorflow::testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Dimension size must be evenly divisible by 2 but is 3"));
+}
+
+TEST(CommonShapeFnsTest, ReduceScatter_INVALID_GROUP_ASSIGNMENT) {
+  OpRegistrationData op_reg_data;
+  TF_CHECK_OK(OpDefBuilder("XlaReduceScatter")
+                  .Input("input: float")
+                  .Input("group_assignment: int32")
+                  .Input("scatter_dimension: int32")
+                  .Output("output: float")
+                  .Finalize(&op_reg_data));
+  OpDef op_def = op_reg_data.op_def;
+
+  NodeDef def;
+  TF_CHECK_OK(NodeDefBuilder("test", "XlaReduceScatter")
+                  .Input("input", 0, DT_FLOAT)
+                  .Input("group_assignment", 0, DT_INT32)
+                  .Input("scatter_dimension", 0, DT_INT32)
+                  .Finalize(&def));
+  const Tensor scatter_dimension = Tensor(0);
+  InferenceContext c(TF_GRAPH_DEF_VERSION, def, op_def,
+                     {S({3, 3}), S({2}), S({1})},
+                     {nullptr, nullptr, &scatter_dimension}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+  EXPECT_THAT(ReduceScatterShape(&c),
+              tensorflow::testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "ReduceScatter group_assignment should be rank 2"));
 }
 
 }  // namespace shape_inference

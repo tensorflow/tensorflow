@@ -22,5 +22,8 @@ upper_tabs:
         path: /mlir/tf_ops
       - title: TensorFlow Lite
         path: /mlir/tfl_ops
+      - heading: Passes
+      - title: TF dialect
+        path: /mlir/tf_passes
 
 - include: /_upper_tabs_right.yaml

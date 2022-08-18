@@ -21,15 +21,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
+Status MlirXlaOpKernel::ContextToXlaArgs(
+    XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>& xla_args) {
+  // Collect arguments that are registered as CompileTimeConstantInput.
+  std::vector<int> registered_consts_vec;
+  TF_RETURN_IF_ERROR(tensorflow::XlaOpRegistry::CompileTimeConstantInputs(
+      *this, &registered_consts_vec));
+  llvm::SmallDenseSet<int, 4> registered_consts;
+  registered_consts.insert(registered_consts_vec.begin(),
+                           registered_consts_vec.end());
 
-Status ContextToXlaArgs(XlaOpKernelContext* ctx,
-                        std::vector<XlaCompiler::Argument>& xla_args) {
   int num_inputs = ctx->num_inputs();
   xla_args.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
-    // TODO(b/180448676): If the input `XlaExpression` kind is `kConstant`, then
-    // create a constant `XlaArgument`.
     // TODO(b/180448774): Handle kResource and kTensorList.
     XlaExpression::Kind ctx_kind_i = ctx->InputExpression(i).kind();
     if (ctx_kind_i != XlaExpression::Kind::kXlaOp &&
@@ -38,16 +42,26 @@ Status ContextToXlaArgs(XlaOpKernelContext* ctx,
           absl::StrCat("Input ", i, " to an MlirXlaOpKernel is invalid: ",
                        ctx->InputExpression(i).HumanString()));
     XlaCompiler::Argument arg;
-    arg.kind = XlaCompiler::Argument::kParameter;
     arg.type = ctx->input_type(i);
     arg.shape = ctx->InputXlaShape(i).ValueOrDie();
     arg.name = absl::StrCat("_arg", i);
+    if (registered_consts.count(i)) {
+      arg.kind = XlaCompiler::Argument::kConstant;
+      TF_ASSIGN_OR_RETURN(arg.constant_value, ctx->ConstantInputTensor(i));
+    } else {
+      arg.kind = XlaCompiler::Argument::kParameter;
+    }
     xla_args.push_back(arg);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-}  // namespace
+MlirXlaOpKernel::MlirXlaOpKernel(OpKernelConstruction* ctx)
+    : XlaOpKernel(ctx),
+      // Since this kernel implements lowering for a single TF operation, we
+      // disable MLIR threading for efficiency purpose (avoid starting a large
+      // number of threads eagerly).
+      mlir_ctx_(mlir::MLIRContext::Threading::DISABLED) {}
 
 Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
   // Create input XlaArguments.
@@ -88,7 +102,7 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
   GraphDebugInfo debug_info;
   std::vector<xla::XlaOp> returns(1);
   TF_RETURN_IF_ERROR(BuildHloFromGraph(
-      *graph, *ctx->builder(), xla_params, returns,
+      *graph, *ctx->builder(), mlir_ctx_, xla_params, returns,
       mlir::SpanToArrayRef<XlaCompiler::Argument>(xla_args), control_rets,
       device->device_type(),
       *ctx->function_library()->GetFunctionLibraryDefinition(), debug_info,
@@ -99,7 +113,7 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
     ctx->SetOutput(i, returns[i]);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void MlirXlaOpKernel::Compile(XlaOpKernelContext* ctx) {

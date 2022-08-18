@@ -14,10 +14,6 @@
 # ==============================================================================
 """A configure tuple for high-level APIs for running distribution strategies."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 

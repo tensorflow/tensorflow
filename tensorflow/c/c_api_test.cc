@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
+#include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
@@ -246,7 +247,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
 
     // Convert back to a C++ Tensor and ensure we get expected output.
     Tensor output;
-    ASSERT_EQ(Status::OK(), TF_TensorToTensor(dst, &output)) << line;
+    ASSERT_EQ(OkStatus(), TF_TensorToTensor(dst, &output)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
     for (int64_t i = 0; i < src.NumElements(); ++i) {
       ASSERT_EQ(data[i], output.flat<tstring>()(i)) << line;
@@ -2444,6 +2445,24 @@ TEST_F(CApiAttributesTest, EmptyList) {
   auto oper = TF_FinishOperation(desc, s_);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
   EXPECT_TF_META("v", 0, TF_ATTR_INT, -1);
+}
+
+TEST_F(CApiAttributesTest, Names) {
+  auto desc = init("string");
+  TF_SetAttrString(desc, "v", "bunny", 5);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TF_META("v", -1, TF_ATTR_STRING, 5);
+
+  ASSERT_EQ(1, TF_OperationGetNumAttrs(oper));
+  ASSERT_EQ(1, TF_OperationGetAttrNameLength(oper, 0));
+
+  std::unique_ptr<char[]> value(new char[1]);
+
+  TF_OperationGetAttrName(oper, 0, value.get(), s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ("v", string(static_cast<const char*>(value.get()), 1));
 }
 
 TEST_F(CApiAttributesTest, Errors) {

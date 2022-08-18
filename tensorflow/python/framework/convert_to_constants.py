@@ -14,10 +14,6 @@
 # ==============================================================================
 """Helpers to convert variables to constants in TensorFlow 2.0."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import numpy as np
 
@@ -99,7 +95,7 @@ class _Convertible(object):
       will be modified during conversion. Its main use will be in the
       implementations of convert_variable_to_constant().
     """
-    raise NotImplementedError()
+    raise NotImplementedError
 
   def convert_variable_to_constant(self, incoming_edge, tensor_data):
     """Converts a variable in this Convertible and its dependencies.
@@ -113,7 +109,7 @@ class _Convertible(object):
         converted to a constant.
       tensor_data: The tensor representing the constant.
     """
-    raise NotImplementedError()
+    raise NotImplementedError
 
   def create_edges(self):
     """Calls add_outgoing_edge for all edges known to this Convertible.
@@ -122,7 +118,7 @@ class _Convertible(object):
     variables to constants can be properly propagated through the graph. Usually
     this method will call add_outgoing_edge() to all the Convertible inputs.
     """
-    raise NotImplementedError()
+    raise NotImplementedError
 
   def add_outgoing_edge(self, edge):
     """Adds an outgoing edge to the Convertible's list of edges.
@@ -198,6 +194,17 @@ class _Function(_Convertible):
     function = self.converted_self().function
     index = incoming_edge.destination.index
     function.signature.input_arg[index].type = tensor_data.dtype
+
+    # TODO(b/176982859): Find a more satisfying way to update shape information
+    # than clearing it, or migrate users to a workflow that does not require
+    # freezing.
+    if "_input_shapes" in function.attr:
+      function.attr["_input_shapes"].list.shape[index].unknown_rank = True
+      del function.attr["_input_shapes"].list.shape[index].dim[:]
+    arg_attrs = function.arg_attr[index].attr
+    if "_output_shapes" in arg_attrs:
+      arg_attrs["_output_shapes"].list.shape[0].unknown_rank = True
+      del arg_attrs["_output_shapes"].list.shape[0].dim[:]
 
     for edge in self.outgoing_edges:
       if edge.source.index == index:
@@ -350,9 +357,9 @@ class _Node(_Convertible):
       if index == 0:
         attr.type = dtype
         return
-    raise ValueError(
-        "Index %d out of range for node(%s).attr(%s), which has %d elements." %
-        (index, self._node.name, attr_name, num_types))
+    raise ValueError(f"`index` {index:d} is out of range for "
+                     f"node({self._node.name}).attr({attr_name}), which has "
+                     f"{num_types:d} elements.")
 
 
 class _Intermediate(_Node):
@@ -408,7 +415,9 @@ class _ResourceGather(_Node):
     if self._function is not None:
       return
     if self._node.attr["batch_dims"].i != 0:
-      raise ValueError("batch_dims != 0 is not supported by freeze_graph.")
+      raise ValueError("batch_dims must be 0 for freeze_graph, but got "
+                       f"node({self._node.name}).attr('batch_dims') = "
+                       f"{self._node.attr['batch_dims'].i}.")
     axis_node_name = self._node.name + "/axis"
     axis_dtype = self._node.attr["Tindices"]
     axis_data = np.array(self._node.attr["batch_dims"].i)
@@ -1263,16 +1272,6 @@ def convert_variables_to_constants_from_session_graph(
   Returns:
     An optimized GraphDef.
   """
-  # TODO(b/176982859): Find a more satisfying way to update shape information
-  # than clearing it, or migrate users to a workflow that does not require
-  # freezing.
-  for function in graph_def.library.function:
-    if "_input_shapes" in function.attr:
-      for input_arg, shape_attribute in zip(
-          function.signature.input_arg,
-          function.attr["_input_shapes"].list.shape):
-        if dtypes.as_dtype(input_arg.type) == dtypes.resource:
-          shape_attribute.unknown_rank = True
   graph_def, _ = _replace_variables_by_constants(
       converter_data=_SessionConverterData(
           session=session,

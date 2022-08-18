@@ -60,9 +60,9 @@ __global__ void PopulationCountKernel(const int size,
 }
 
 template <>
-__global__ void PopulationCountKernel<int64>(const int size,
-                                             const int64* __restrict__ input,
-                                             uint8* __restrict__ output) {
+__global__ void PopulationCountKernel<int64_t>(const int size,
+                                               const int64* __restrict__ input,
+                                               uint8* __restrict__ output) {
   GPU_1D_KERNEL_LOOP(i, size) { output[i] = __popcll(ldg(input + i)); }
 }
 

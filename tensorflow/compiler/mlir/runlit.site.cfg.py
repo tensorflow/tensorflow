@@ -13,10 +13,6 @@
 # limitations under the License.
 """Lit runner site configuration."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import platform
 import lit.llvm
@@ -41,19 +37,24 @@ config.mlir_tools_dir = os.path.join(external_srcdir, 'llvm-project', 'mlir')
 config.suffixes = ['.td', '.mlir', '.pbtxt']
 
 mlir_tf_tools_dirs = [
+    'tensorflow/core/ir/importexport/',
     'tensorflow/core/ir/tests/',
     'tensorflow/core/transforms/',
     'tensorflow/compiler/mlir',
-    'tensorflow/compiler/mlir/hlo',
+    'tensorflow/compiler/xla/mlir_hlo',
+    'tensorflow/compiler/xla/mlir_hlo/tosa',
     'tensorflow/compiler/mlir/lite',
     'tensorflow/compiler/mlir/lite/experimental/tac',
+    'tensorflow/compiler/mlir/quantization/tensorflow',
     'tensorflow/compiler/mlir/tensorflow',
     'tensorflow/compiler/mlir/tfjs',
+    'tensorflow/compiler/mlir/tfrt',
     'tensorflow/compiler/mlir/xla',
     'tensorflow/compiler/mlir/tools/kernel_gen',
     'tensorflow/compiler/aot',
     'tensorflow/compiler/xla/service/mlir_gpu',
     'tensorflow/compiler/xla/service/gpu/tests',
+    'tensorflow/compiler/xla/mlir/tools/runtime',
 ]
 config.mlir_tf_tools_dirs = [
     os.path.join(real_test_srcdir, os.environ['TEST_WORKSPACE'], s)

@@ -20,7 +20,7 @@ limitations under the License.
 namespace tflite {
 namespace shim {
 
-REGISTER_TF_OP_SHIM("SimpleOperation", SimpleOpKernel);
+REGISTER_TF_OP_SHIM(SimpleOpKernel);
 
 REGISTER_KERNEL_BUILDER(
     Name(SimpleOpKernel::OpName()).Device(::tensorflow::DEVICE_CPU),

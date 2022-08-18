@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/local_service.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -77,7 +76,7 @@ namespace {
 // If the parameter number is invalid for this computation, nullopt is
 // returned. When the return value has_value(), nullptr will never be
 // the held value.
-absl::optional<const OpMetadata*> ParameterMetadata(
+std::optional<const OpMetadata*> ParameterMetadata(
     const XlaComputation& computation, int parameter_number) {
   for (const HloComputationProto& comp : computation.proto().computations()) {
     if (comp.id() == computation.proto().entry_computation_id()) {
@@ -85,20 +84,19 @@ absl::optional<const OpMetadata*> ParameterMetadata(
         if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter) &&
             instr.parameter_number() == parameter_number) {
           if (!instr.has_metadata()) {
-            return absl::nullopt;
+            return std::nullopt;
           }
           return &instr.metadata();
         }
       }
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 }  // namespace
 
-StatusOr<std::vector<std::unique_ptr<Executable>>>
-LocalService::CompileExecutables(
+StatusOr<std::unique_ptr<HloModuleConfig>> LocalService::GetHloModuleConfig(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options) {
@@ -118,9 +116,9 @@ LocalService::CompileExecutables(
     TF_RETURN_IF_ERROR(
         ShapeUtil::ValidateShapeWithOptionalLayout(argument_shape));
     if (!ShapeUtil::Compatible(argument_shape, program_shape.parameters(i))) {
-      absl::optional<const OpMetadata*> metadata =
+      std::optional<const OpMetadata*> metadata =
           ParameterMetadata(computation, /*parameter_number=*/i);
-      auto metadata_string = [&metadata]() -> string {
+      auto metadata_string = [&metadata]() -> std::string {
         if (!metadata.has_value()) {
           return "";
         }
@@ -146,9 +144,18 @@ LocalService::CompileExecutables(
   ExecutionOptions execution_options =
       CreateExecutionOptions(build_options, &program_shape);
 
+  return CreateModuleConfig(program_shape, argument_layouts,
+                            &execution_options);
+}
+
+StatusOr<std::vector<std::unique_ptr<Executable>>>
+LocalService::CompileExecutables(
+    const XlaComputation& computation,
+    const absl::Span<const Shape* const> argument_layouts,
+    const ExecutableBuildOptions& build_options) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(program_shape, argument_layouts, &execution_options));
+      GetHloModuleConfig(computation, argument_layouts, build_options));
 
   VLOG(3) << "Computation Layout: "
           << module_config->entry_computation_layout().ToString();
@@ -161,12 +168,13 @@ LocalService::CompileExecutables(
   // single partition computations are built using `BuildExecutables`, fix it,
   // and remove this special case (provided the performance if similar).
   if (build_options.num_partitions() == 1) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                        BuildExecutable(proto, std::move(module_config),
-                                        execute_backend_.get(), executor,
-                                        {build_options.device_allocator(),
-                                         build_options.compile_thread_pool()},
-                                        build_options.run_backend_only()));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Executable> executable,
+        BuildExecutable(computation.proto(), std::move(module_config),
+                        execute_backend_.get(), executor,
+                        {build_options.device_allocator(),
+                         build_options.compile_thread_pool()},
+                        build_options.run_backend_only()));
     std::vector<std::unique_ptr<Executable>> executables;
     executables.push_back(std::move(executable));
     return executables;
@@ -179,12 +187,40 @@ LocalService::CompileExecutables(
                                                executor);
 
     return BuildExecutables(
-        /*module_protos=*/{&proto}, std::move(module_configs),
+        /*module_protos=*/{&computation.proto()}, std::move(module_configs),
         execute_backend_.get(), {executors},
         Compiler::CompileOptions{build_options.device_allocator(),
                                  build_options.compile_thread_pool()},
         build_options.run_backend_only());
   }
+}
+
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+LocalService::CompileAotResults(
+    const XlaComputation& computation,
+    const absl::Span<const Shape* const> argument_layouts,
+    const ExecutableBuildOptions& build_options) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModuleConfig> module_config,
+      GetHloModuleConfig(computation, argument_layouts, build_options));
+
+  TF_ASSIGN_OR_RETURN(
+      se::StreamExecutor * executor,
+      execute_backend_->stream_executor(build_options.device_ordinal()));
+
+  std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
+  module_configs.push_back(std::move(module_config));
+  // BuildAotResults uses the executors length to determine the number of
+  // cores per module, but otherwise only uses the first executor.
+  std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
+                                             executor);
+
+  return BuildAotResults(
+      /*module_protos=*/{&computation.proto()}, std::move(module_configs),
+      execute_backend_.get(), {executors},
+      Compiler::CompileOptions{build_options.device_allocator(),
+                               build_options.compile_thread_pool()},
+      build_options.run_backend_only());
 }
 
 StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {
@@ -205,7 +241,8 @@ StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
 }
 
 StatusOr<GlobalDataHandle> LocalService::RegisterReplicatedBuffers(
-    std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag) {
+    std::vector<ScopedShapedBuffer> replicated_buffers,
+    const std::string& tag) {
   return allocation_tracker_.RegisterReplicatedBuffers(
       std::move(replicated_buffers), tag);
 }

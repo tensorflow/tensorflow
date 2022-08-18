@@ -38,7 +38,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -190,7 +192,7 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
     device_cumulative_fraction += op->self_time_fraction();
     op->set_cumulative_time_fraction(device_cumulative_fraction);
     op->set_flop_rate(
-        SafeDivide(metrics->flops(), PicosToNanos(metrics->time_ps())));
+        SafeDivide(metrics->flops(), PicoToNano(metrics->time_ps())));
     auto iter = kernel_stats_by_op_name.find(op->name());
     if (iter != kernel_stats_by_op_name.end()) {
       op->set_is_op_tensorcore_eligible(
@@ -294,7 +296,6 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
   re.set_task_count(run_environment.task_count());
   re.set_device_type(run_environment.device_type());
   re.set_device_core_count(run_environment.device_core_count());
-  re.set_per_core_batch_size(run_environment.per_core_batch_size());
   re.set_replica_count(run_environment.replica_count());
   re.set_num_cores_per_replica(run_environment.num_cores_per_replica());
   *re.mutable_host_independent_job_info() =
@@ -388,6 +389,21 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats) {
               .device_op_time_outside_compilation_percent()),
       overview_page.mutable_recommendation());
   PopulateOverviewDiagnostics(op_stats, overview_page.mutable_diagnostics());
+  return overview_page;
+}
+
+OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
+                                          const XSpace& xspace) {
+  OverviewPage overview_page = ConvertOpStatsToOverviewPage(op_stats);
+  const XPlane* runtimePlane = FindPlaneWithName(xspace, kHostThreadsPlaneName);
+  if (runtimePlane != nullptr) {
+    auto visitor = CreateTfXPlaneVisitor(runtimePlane);
+    auto stat = visitor.GetStat(StatType::kMatrixUnitUtilizationPercent);
+    if (stat.has_value()) {
+      overview_page.mutable_analysis()->set_mxu_utilization_percent(
+          stat->DoubleValue());
+    }
+  }
   return overview_page;
 }
 

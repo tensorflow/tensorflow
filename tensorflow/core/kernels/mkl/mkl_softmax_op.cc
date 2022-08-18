@@ -17,8 +17,8 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#include "mkldnn.hpp"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -26,10 +26,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
-using mkldnn::prop_kind;
-using mkldnn::softmax_forward;
-using mkldnn::stream;
+using dnnl::prop_kind;
+using dnnl::softmax_forward;
+using dnnl::stream;
 
 namespace tensorflow {
 
@@ -38,7 +41,9 @@ class MklSoftmaxParams {
   memory::dims src_dims;
   MklTensorFormat src_fmt;
   int axis;
-
+#ifdef DNNL_AARCH64_USE_ACL
+  int aarch64_counter;
+#endif
   MklSoftmaxParams(memory::dims src_dims, MklTensorFormat src_fmt, int axis)
       : src_dims(src_dims), src_fmt(src_fmt), axis(axis) {}
 };
@@ -58,6 +63,9 @@ class MklSoftmaxPrimitive : public MklPrimitive {
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data,
                std::shared_ptr<stream> fwd_cpu_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_cpu_stream);
@@ -78,7 +86,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(DummyData);
   }
 
-  std::shared_ptr<mkldnn::softmax_forward::primitive_desc> GetSoftmaxFwdPd() {
+  std::shared_ptr<dnnl::softmax_forward::primitive_desc> GetSoftmaxFwdPd() {
     return context_.fwd_pd;
   }
 
@@ -89,16 +97,16 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     std::shared_ptr<memory> dst_mem;
 
     // Primitive descriptor.
-    std::shared_ptr<mkldnn::softmax_forward::desc> fwd_desc;
+    std::shared_ptr<dnnl::softmax_forward::desc> fwd_desc;
 
     // Memory descriptor.
     std::shared_ptr<memory::desc> src_md;
 
     // Softmax primitive.
-    std::shared_ptr<mkldnn::softmax_forward::primitive_desc> fwd_pd;
-    std::shared_ptr<mkldnn::primitive> softmax_fwd;
+    std::shared_ptr<dnnl::softmax_forward::primitive_desc> fwd_pd;
+    std::shared_ptr<dnnl::primitive> softmax_fwd;
 
-    std::vector<mkldnn::primitive> fwd_primitives;
+    std::vector<dnnl::primitive> fwd_primitives;
     std::vector<MemoryArgsMap> fwd_net_args;
 
     SoftmaxFwdContext()
@@ -118,9 +126,9 @@ class MklSoftmaxPrimitive : public MklPrimitive {
         new memory::desc({fwdParams.src_dims}, MklDnnType<T>(), src_format));
 
     // Create softmax descriptor and primitive descriptor.
-    context_.fwd_desc.reset(new mkldnn::softmax_forward::desc(
+    context_.fwd_desc.reset(new dnnl::softmax_forward::desc(
         prop_kind::forward_scoring, *context_.src_md, fwdParams.axis));
-    context_.fwd_pd.reset(new mkldnn::softmax_forward::primitive_desc(
+    context_.fwd_pd.reset(new dnnl::softmax_forward::primitive_desc(
         *context_.fwd_desc, cpu_engine_));
 
     // Create memory primitive based on dummy data.
@@ -130,14 +138,18 @@ class MklSoftmaxPrimitive : public MklPrimitive {
         new memory(context_.fwd_pd.get()->dst_desc(), cpu_engine_, DummyData));
 
     // Create softmax primitive and add it to net
-    context_.softmax_fwd.reset(new mkldnn::softmax_forward(*context_.fwd_pd));
-    context_.fwd_net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
-                                     {MKLDNN_ARG_DST, *context_.dst_mem}});
+    context_.softmax_fwd.reset(new dnnl::softmax_forward(*context_.fwd_pd));
+    context_.fwd_net_args.push_back(
+        {{DNNL_ARG_SRC, *context_.src_mem}, {DNNL_ARG_DST, *context_.dst_mem}});
 
     context_.fwd_primitives.push_back(*context_.softmax_fwd);
   }
 
   struct SoftmaxFwdContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -173,7 +185,9 @@ class MklSoftmaxPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(fwdParams.src_dims);
     key_creator.AddAsKey<int>(static_cast<int>(fwdParams.src_fmt));
     key_creator.AddAsKey<int>(fwdParams.axis);
-
+#ifdef DNNL_AARCH64_USE_ACL
+    key_creator.AddAsKey(fwdParams.aarch64_counter);
+#endif
     return key_creator.GetKey();
   }
 
@@ -269,6 +283,15 @@ class MklSoftmaxOp : public OpKernel {
 
       // Get a softmax fwd primitive from primitive pool.
       MklSoftmaxParams fwdParams(src_dims, src_fmt, axis);
+#ifdef DNNL_AARCH64_USE_ACL
+      // ACL does not support reuse of primitives with different data.
+      // For softmax, the previous approach (PR #47775) of using Tensor
+      // addresses does not work, as the addresses are re-used in matmul with
+      // different data The counter ensures we still benefit from caching via
+      // SetSoftmaxFwd().
+      fwdParams.aarch64_counter =
+          MklSoftmaxPrimitiveFactory<T>::IncrementCounter();
+#endif
       MklSoftmaxPrimitive<T>* softmax_fwd =
           MklSoftmaxPrimitiveFactory<T>::Get(fwdParams);
 
@@ -301,7 +324,7 @@ class MklSoftmaxOp : public OpKernel {
       MklDnnThreadPool eigen_tp(context);
       fwd_cpu_stream.reset(CreateStream(&eigen_tp, softmax_fwd->GetEngine()));
       softmax_fwd->Execute(src_data, dst_data, fwd_cpu_stream);
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);

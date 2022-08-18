@@ -16,7 +16,9 @@ limitations under the License.
 #include <memory>
 
 #include "Python.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "pybind11/chrono.h"
 #include "pybind11/complex.h"
 #include "pybind11/functional.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/get_compiler_ir.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
@@ -158,21 +161,55 @@ TFE_InputTensorHandles InputTFE_InputTensorHandles(
       } else if (tensorflow::swig::IsTensor(elem)) {
         // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
         // tensor.
-        tensorflow::Safe_PyObjectPtr name_attr(
-            PyObject_GetAttrString(elem, "name"));
+        tensorflow::Safe_PyObjectPtr py_tensor_repr(PyObject_Repr(elem));
+        std::string tensor_repr =
+            py_tensor_repr ? TFE_GetPythonString(py_tensor_repr.get())
+                           : "<unknown>";
+        tensorflow::Safe_PyObjectPtr py_op(PyObject_GetAttrString(elem, "op"));
+        tensorflow::Safe_PyObjectPtr py_defined_graph(
+            PyObject_GetAttrString(py_op.get(), "graph"));
+        tensorflow::Safe_PyObjectPtr py_defined_graph_str(
+            PyObject_Str(py_defined_graph.get()));
+        std::string defined_graph_str =
+            py_defined_graph_str
+                ? TFE_GetPythonString(py_defined_graph_str.get())
+                : "<unknown>";
+        tensorflow::Safe_PyObjectPtr c_op(
+            PyObject_GetAttrString(py_op.get(), "_c_op"));
+        auto& node = py::cast<TF_Operation*>(c_op.get())->node;
+        auto node_name_str = node.name();
+        std::string frame_str, traceback_str;
+        if (auto stack_trace = node.GetStackTrace()) {
+          auto frame = stack_trace->LastUserFrame();
+          frame_str =
+              absl::StrFormat("File \"%s\", line %d, in %s", frame.file_name,
+                              frame.line_number, frame.function_name);
+          auto stack_trace_list =
+              absl::StrSplit(stack_trace->ToString({true}), '\n');
+          traceback_str = absl::StrJoin(
+              stack_trace_list, "", [&](std::string* out, const auto line) {
+                absl::StrAppend(out, "    ", line, "\n");
+              });
+        } else {
+          frame_str = "<unknown>";
+          traceback_str = "<unknown>\n";
+        }
+        // Keep in sync with func_graph.py.
+        // TODO(b/200991648): Unify those two paths.
         tensorflow::ThrowTypeError(
             tensorflow::strings::StrCat(
-                "An op outside of the function building code is being passed\n"
-                "a \"Graph\" tensor. It is possible to have Graph tensors\n"
-                "leak out of the function building context by including a\n"
-                "tf.init_scope in your function building code.\n"
-                "For example, the following function will fail:\n",
-                "  @tf.function\n", "  def has_init_scope():\n",
-                "    my_constant = tf.constant(1.)\n",
-                "    with tf.init_scope():\n",
-                "      added = my_constant * 2\n",
-                "The graph tensor has name: ",
-                name_attr ? TFE_GetPythonString(name_attr.get()) : "<unknown>")
+                tensor_repr,
+                " is out of scope and cannot be used here. "
+                "Use return values, explicit Python locals or TensorFlow "
+                "collections to access it.\n"
+                "Please see https://www.tensorflow.org/guide/"
+                "function#all_outputs_of_a_tffunction_must_be_return_values "
+                "for more information.\n\n",
+                tensor_repr, " was defined here:\n", traceback_str,
+                "\nThe tensor ", tensor_repr,
+                " cannot be accessed from here, because it was "
+                "defined in ",
+                defined_graph_str, ", which is out of scope.")
                 .c_str());
       } else {
         tensorflow::ThrowTypeError(
@@ -376,6 +413,8 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
   IrExportStage selected_stage = [&] {
     if (s_stage == "hlo") {
       return IrExportStage::HLO;
+    } else if (s_stage == "hlo_no_metadata") {
+      return IrExportStage::HLO_NO_METADATA;
     } else if (s_stage == "hlo_serialized") {
       return IrExportStage::HLO_SERIALIZED;
     } else if (s_stage == "optimized_hlo") {
@@ -657,8 +696,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_EnableXlaDevices", [] {
     tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
   });
+  m.def("TF_ResetJitCompilerFlags",
+        [] { tensorflow::ResetJitCompilerFlags(); });
 
-  // // TFE_Context Logic
+  // TFE_Context Logic
   m.def(
       "TFE_NewContext",
       [](const TFE_ContextOptions* opts) {
@@ -881,12 +922,24 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     TFE_ContextSetSoftDevicePlacement(tensorflow::InputTFE_Context(ctx), enable,
                                       status.get());
   });
+  m.def("TFE_ContextSetRunEagerOpAsFunction", [](py::handle& ctx, bool enable) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextSetRunEagerOpAsFunction(tensorflow::InputTFE_Context(ctx),
+                                       enable, status.get());
+  });
+  m.def("TFE_ContextSetJitCompileRewrite", [](py::handle& ctx, bool enable) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextSetJitCompileRewrite(tensorflow::InputTFE_Context(ctx), enable,
+                                    status.get());
+  });
 
   // TFE_Executor logic
   m.def(
       "TFE_NewExecutor",
-      [](const bool is_async) {
-        TFE_Executor* exc = TFE_NewExecutor(is_async);
+      [](const bool is_async, const bool enable_streaming_enqueue) {
+        TFE_Executor* exc = TFE_NewExecutor(is_async, enable_streaming_enqueue);
         return exc;
       },
       py::return_value_policy::reference);
@@ -1135,6 +1188,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         [](TFE_ContextOptions* options, bool run_eager_op_as_function) {
           options->run_eager_op_as_function = run_eager_op_as_function;
         });
+  m.def("TFE_ContextOptionsSetJitCompileRewrite",
+        [](TFE_ContextOptions* options, bool jit_compile_rewrite) {
+          options->jit_compile_rewrite = jit_compile_rewrite;
+        });
   m.def("TFE_ContextOptionsSetAsync", &TFE_ContextOptionsSetAsync);
   m.def("TFE_DeleteContextOptions", &TFE_DeleteContextOptions,
         py::return_value_policy::reference);
@@ -1156,14 +1213,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_SetEagerContext", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_SetEagerContext(o.ptr()));
   });
+  m.def("TFE_Py_SetCEagerContext", [](const py::handle& ctx) {
+    // TODO(mdan): This cast might need rewriting to ImmediateExecutionContext.
+    tensorflow::SetCEagerContext(reinterpret_cast<tensorflow::EagerContext*>(
+        tensorflow::InputTFE_Context(ctx)));
+  });
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));
   });
-  m.def("TFE_Py_EncodeArg",
-        [](const py::handle& o, bool include_tensor_ranks_only) {
-          return tensorflow::PyoOrThrow(
-              TFE_Py_EncodeArg(o.ptr(), include_tensor_ranks_only));
-        });
   m.def("TFE_EnableCollectiveOps", [](const py::handle& ctx, py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());

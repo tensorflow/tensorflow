@@ -19,18 +19,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
 
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
-
-namespace stream_executor {
-namespace cuda {
-
-using CUDAStream = gpu::GpuStream;
-
-inline CUDAStream* AsCUDAStream(Stream* stream) {
-  return gpu::AsGpuStream(stream);
-}
-
-}  // namespace cuda
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_

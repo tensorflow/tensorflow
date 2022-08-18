@@ -21,23 +21,36 @@ namespace gpu {
 
 namespace nvptx {
 // The triple that represents our target.
-constexpr char kTargetTriple[] = "nvptx64-nvidia-cuda";
+inline const char* TargetTriple() {
+  static constexpr char kTargetTriple[] = "nvptx64-nvidia-cuda";
+  return kTargetTriple;
+}
 
 // The data layout of the emitted module. Copied from computeDataLayout in
 // NVPTXTargetMachine.cpp.
-constexpr char kDataLayout[] = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
+inline const char* DataLayout() {
+  static constexpr char kDataLayout[] =
+      "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
+  return kDataLayout;
+}
 }  // namespace nvptx
 
 namespace amdgpu {
 
 // The triple that represents our target on LLVM AMDGPU backend.
-constexpr char kTargetTriple[] = "amdgcn-amd-amdhsa";
+inline const char* TargetTriple() {
+  static constexpr char kTargetTriple[] = "amdgcn-amd-amdhsa";
+  return kTargetTriple;
+}
 
 // The data layout of the emitted module.
-constexpr char kDataLayout[] =
-    "e-p:64:64-p1:64:64-p2:64:64-p3:32:32-p4:32:32-p5:32:32"
-    "-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128"
-    "-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-A5";
+inline const char* DataLayout() {
+  static constexpr char kDataLayout[] =
+      "e-p:64:64-p1:64:64-p2:64:64-p3:32:32-p4:32:32-p5:32:32"
+      "-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128"
+      "-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-A5";
+  return kDataLayout;
+}
 
 }  // namespace amdgpu
 

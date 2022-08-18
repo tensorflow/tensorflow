@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmarks for `tf.data.Dataset.interleave()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.experimental.ops import interleave_ops

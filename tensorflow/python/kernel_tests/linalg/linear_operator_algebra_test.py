@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for registration mechanisms."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops.linalg import cholesky_registrations  # pylint: disable=unused-import
 from tensorflow.python.ops.linalg import linear_operator

@@ -29,11 +29,15 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
+        "no_mac",  # b/198669105
         "no_pip",
         "no_rocm",
         "no_windows",  # Bugs due to some paths.
     ],
     deps = [
+        "@six_archive//:six",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:lib",
@@ -41,7 +45,6 @@ py_test(
         "//tensorflow/tools/api/lib:python_object_to_proto_visitor",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
-        "@six_archive//:six",
     ],
 )
 

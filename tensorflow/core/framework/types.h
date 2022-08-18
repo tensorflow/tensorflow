@@ -562,8 +562,8 @@ struct TypeHasher {
   }
 };
 
-// Maps a legacy DType proto enum to an equivalent FullType Tensor.
-void map_dtype_to_tensor(const DataType& dtype, FullTypeDef* t);
+// Maps a legacy DType proto enum to an equivalent FullType ID.
+void map_dtype_to_tensor(const DataType& dtype, FullTypeDef& t);
 
 }  // namespace tensorflow
 

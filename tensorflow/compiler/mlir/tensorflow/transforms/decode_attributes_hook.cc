@@ -32,24 +32,5 @@ limitations under the License.
 namespace mlir {
 namespace {
 
-// Since this method is passed to MLIR as decode hook it has to conform
-// to LLVM style used by MLIR.
-LogicalResult DecodeOpaqueTensorHook(const OpaqueElementsAttr input,
-                                     ElementsAttr& output) {  // NOLINT
-  Builder builder(input.getType().getContext());
-  auto decoded_attr_or = tensorflow::DecodeOpaqueTensor(input, builder);
-  if (!decoded_attr_or.ok()) {
-    VLOG(2) << decoded_attr_or.status().error_message();
-    return failure();
-  }
-
-  output = decoded_attr_or.ValueOrDie();
-  return success();
-}
-
-static bool init_hooks = ([] () {
-  TF::TensorFlowDialect::RegisterDecodeConstantHook(DecodeOpaqueTensorHook);
-}(), true);
-
 }  // anonymous namespace
 }  // namespace mlir

@@ -13,7 +13,23 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SupportsTracingProtocol"
+    mtype: "<class \'typing._ProtocolMeta\'>"
+  }
+  member {
     name: "TensorLike"
     mtype: "typing.Union"
+  }
+  member {
+    name: "TraceType"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TracingContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "distributed"
+    mtype: "<type \'module\'>"
   }
 }

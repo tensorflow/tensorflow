@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/topk_rewriter.h"
 
+#include <optional>
+
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -36,7 +37,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
     return m::Select(
         m::Lt(param_s32, m::ConstantScalar(0)),
         m::BitcastConvert(
-            m::Subtract(m::ConstantScalar(std::numeric_limits<int32>::max()),
+            m::Subtract(m::ConstantScalar(std::numeric_limits<int32_t>::max()),
                         param_u32))
             .WithShape(m::Shape().WithElementType(S32)),
         param_s32);
@@ -50,7 +51,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
     auto param_u32 =
         m::BitcastConvert(param).WithShape(m::Shape().WithElementType(U32));
     auto max_u32 =
-        m::Convert(m::ConstantScalar(std::numeric_limits<int32>::max()))
+        m::Convert(m::ConstantScalar(std::numeric_limits<int32_t>::max()))
             .WithShape(m::Shape().WithElementType(U32));
     return m::Select(m::Lt(param_s32, m::ConstantScalar(0)),
                      m::BitcastConvert(m::Subtract(max_u32, param_u32))
@@ -69,7 +70,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
     return m::Select(
         m::Lt(param_s32, m::ConstantScalar(0)),
         m::BitcastConvert(
-            m::Subtract(m::ConstantScalar(std::numeric_limits<int32>::max()),
+            m::Subtract(m::ConstantScalar(std::numeric_limits<int32_t>::max()),
                         param_u32))
             .WithShape(m::Shape().WithElementType(S32)),
         param_s32);
@@ -84,12 +85,18 @@ static bool IsNanSafeGt(HloComputation* comp) {
     auto param_u32 =
         m::BitcastConvert(param).WithShape(m::Shape().WithElementType(U32));
     auto max_u32 =
-        m::Convert(m::ConstantScalar(std::numeric_limits<int32>::max()))
+        m::Convert(m::ConstantScalar(std::numeric_limits<int32_t>::max()))
             .WithShape(m::Shape().WithElementType(U32));
     return m::Select(m::Lt(param_s32, m::ConstantScalar(0)),
                      m::BitcastConvert(m::Subtract(max_u32, param_u32))
                          .WithShape(m::Shape().WithElementType(S32)),
                      param_s32);
+  };
+
+  auto match_s32 = [](int64_t parameter_number) {
+    auto param = m::Parameter(parameter_number)
+                     .WithShape(m::Shape().WithElementType(S32));
+    return param;
   };
 
   return Match(comp->root_instruction(),
@@ -101,16 +108,17 @@ static bool IsNanSafeGt(HloComputation* comp) {
                      match_bitcast_f32_with_convert(1))) ||
          Match(comp->root_instruction(),
                m::Gt(match_bitcast_bf16_with_convert(0),
-                     match_bitcast_bf16_with_convert(1)));
+                     match_bitcast_bf16_with_convert(1))) ||
+         Match(comp->root_instruction(), m::Gt(match_s32(0), match_s32(1)));
 }
 
-absl::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
+std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
   HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
   if (sort == nullptr) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (sort->operand_count() != 1 && sort->operand_count() != 2) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   HloInstruction* data = sort->mutable_operand(0);
 
@@ -121,18 +129,18 @@ absl::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
         iota->shape().element_type() != S32 ||
         iota->opcode() != HloOpcode::kIota ||
         iota->iota_dimension() != sort->sort_dimension()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
   if (!IsNanSafeGt(sort->to_apply())) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   const int64_t sort_dim = sort->sort_dimension();
   const int64_t batch_dim = sort_dim == 1 ? 0 : 1;
   const bool has_batch = data->shape().rank() == 2;
 
   bool supported = true;
-  absl::optional<int64_t> k;
+  std::optional<int64_t> k;
   for (HloInstruction* user : sort->users()) {
     const HloInstruction* slice = user;
     if (sort->operand_count() == 2) {
@@ -160,7 +168,7 @@ absl::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
       supported = false;
       break;
     }
-    if (k == absl::nullopt) {
+    if (k == std::nullopt) {
       k = slice->slice_limits(sort_dim);
     } else if (k != slice->slice_limits(sort_dim)) {
       // Different k for the different operands isn't supported.
@@ -168,18 +176,20 @@ absl::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
       break;
     }
   }
-  if (k == absl::nullopt || !supported) {
-    return absl::nullopt;
+  if (k == std::nullopt || !supported) {
+    return std::nullopt;
   }
   return k;
 }
 
-StatusOr<bool> TopkRewriter::TransformToCustomCall(HloModule* module) {
+StatusOr<bool> TopkRewriter::TransformToCustomCall(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->computations()) {
+  for (HloComputation* comp : module->computations(execution_threads)) {
     for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
       // Check if sort is in TopK.
-      absl::optional<int64_t> k = SortIsInTopK(inst);
+      std::optional<int64_t> k = SortIsInTopK(inst);
       if (!k) {
         continue;
       }
@@ -261,10 +271,12 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(HloModule* module) {
   return changed;
 }
 
-StatusOr<bool> TopkRewriter::Run(HloModule* module) {
+StatusOr<bool> TopkRewriter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   TF_ASSIGN_OR_RETURN(auto transform_to_customcall_changed,
-                      TransformToCustomCall(module));
+                      TransformToCustomCall(module, execution_threads));
   changed |= transform_to_customcall_changed;
   return changed;
 }

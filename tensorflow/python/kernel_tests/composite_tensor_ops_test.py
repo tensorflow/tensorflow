@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for composite_tensor_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.eager import backprop
@@ -81,7 +77,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @parameterized.named_parameters([
       ('IncompatibleSpec', lambda: ragged_factory_ops.constant([[1]]),
        ragged_tensor.RaggedTensorSpec([None, None, None], dtypes.int32),
-       r'TypeSpec .* is not compatible with value .*'),
+       r'`type_spec` .* is not compatible with `value` .*'),
   ])
   def testEncodingErrors(self, value, spec, message):
     with self.assertRaisesRegex(ValueError, message):

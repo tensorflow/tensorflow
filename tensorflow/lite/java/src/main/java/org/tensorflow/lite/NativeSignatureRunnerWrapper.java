@@ -45,13 +45,13 @@ final class NativeSignatureRunnerWrapper {
   }
 
   /** Gets the input tensor specified by {@code inputName}. */
-  public Tensor getInputTensor(String inputName) {
-    return Tensor.fromSignatureInput(signatureRunnerHandle, inputName);
+  public TensorImpl getInputTensor(String inputName) {
+    return TensorImpl.fromSignatureInput(signatureRunnerHandle, inputName);
   }
 
   /** Gets the output tensor specified by {@code outputName}. */
-  public Tensor getOutputTensor(String outputName) {
-    return Tensor.fromSignatureOutput(signatureRunnerHandle, outputName);
+  public TensorImpl getOutputTensor(String outputName) {
+    return TensorImpl.fromSignatureOutput(signatureRunnerHandle, outputName);
   }
 
   /** Gets the index of the input specified by {@code inputName}. */

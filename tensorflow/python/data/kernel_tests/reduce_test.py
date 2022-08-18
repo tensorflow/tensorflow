@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.reduce()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from absl.testing import parameterized
@@ -262,6 +258,13 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.apply(testing.assert_next(["MapAndBatch"]))
     dataset = dataset.map(lambda x: x * 2).batch(5)
     self.evaluate(dataset.reduce(0, lambda state, value: state))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42)
+    self.assertEqual(
+        self.evaluate(
+            dataset.reduce(0, lambda state, value: value, name="reduce")), 42)
 
 
 if __name__ == "__main__":

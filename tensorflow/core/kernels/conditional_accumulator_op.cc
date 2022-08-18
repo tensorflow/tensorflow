@@ -37,13 +37,13 @@ class ConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
           new ConditionalAccumulator<Device, T>(dtype_, shape_, cinfo_.name(),
                                                 reduction_type_);
       *ret = accumulator;
-      return Status::OK();
+      return OkStatus();
     };
   }
 
   Status CheckSignature(OpKernelContext* ctx) override {
     TF_RETURN_IF_ERROR(ctx->MatchSignature({}, {DT_STRING_REF}));
-    return Status::OK();
+    return OkStatus();
   }
 
   void SetHandleToOutput(OpKernelContext* ctx)
@@ -74,13 +74,13 @@ class ResourceConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
           new ConditionalAccumulator<Device, T>(dtype_, shape_, cinfo_.name(),
                                                 reduction_type_);
       *ret = accumulator;
-      return Status::OK();
+      return OkStatus();
     };
   }
 
   Status CheckSignature(OpKernelContext* ctx) override {
     TF_RETURN_IF_ERROR(ctx->MatchSignature({}, {DT_RESOURCE}));
-    return Status::OK();
+    return OkStatus();
   }
 
   void SetHandleToOutput(OpKernelContext* ctx)

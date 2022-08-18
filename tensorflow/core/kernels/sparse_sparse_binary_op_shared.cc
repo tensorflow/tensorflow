@@ -60,9 +60,9 @@ namespace {
 // row-major order.
 template <typename T>
 void UnionSparseIndicesAndValues(
-    typename TTypes<int64>::ConstMatrix a_indices_mat,
+    typename TTypes<int64_t>::ConstMatrix a_indices_mat,
     typename TTypes<T>::ConstFlat a_values, int64_t a_nnz,
-    typename TTypes<int64>::ConstMatrix b_indices_mat,
+    typename TTypes<int64_t>::ConstMatrix b_indices_mat,
     typename TTypes<T>::ConstFlat b_values, int64_t b_nnz, int num_dims,
     std::vector<T> *a_augmented_values, std::vector<T> *b_augmented_values,
     std::vector<std::pair<bool, int64>> *entries_to_copy) {

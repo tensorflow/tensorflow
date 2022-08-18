@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "pybind11/pybind11.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
 namespace tensorflow {
@@ -25,6 +24,16 @@ PYBIND11_MODULE(_errors_test_helper, m) {
     status.SetPayload("key1", "value1");
     status.SetPayload("key2", "value2");
     MaybeRaiseRegisteredFromStatus(status);
+    return 0;
+  });
+
+  m.def("TestRaiseFromTFStatus", [](int code) {
+    TF_Status *tf_status = TF_NewStatus();
+    TF_SetStatus(tf_status, static_cast<TF_Code>(code), "test_message");
+    TF_SetPayload(tf_status, "key1", "value1");
+    TF_SetPayload(tf_status, "key2", "value2");
+    MaybeRaiseRegisteredFromTFStatus(tf_status);
+    TF_DeleteStatus(tf_status);
     return 0;
   });
 }

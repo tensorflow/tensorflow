@@ -16,10 +16,6 @@
 """For seeding individual ops based on a graph-level seed.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import weakref
 
 from tensorflow.python.eager import context
@@ -84,7 +80,7 @@ def get_seed(op_seed):
     else:
       seeds = None, None
 
-  if seeds == (None, None) and config.deterministic_ops_enabled():
+  if seeds == (None, None) and config.is_op_determinism_enabled():
     raise RuntimeError(  # pylint: disable=g-doc-exception
         'Random ops require a seed to be set when determinism is enabled. '
         'Please set a seed before running the op, e.g. by calling '

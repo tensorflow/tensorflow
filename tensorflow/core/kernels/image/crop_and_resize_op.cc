@@ -61,7 +61,7 @@ static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
                                            int* num_boxes) {
   if (boxes.NumElements() == 0 && box_index.NumElements() == 0) {
     *num_boxes = 0;
-    return Status::OK();
+    return OkStatus();
   }
   // The shape of 'boxes' is [num_boxes, 4].
   if (boxes.dims() != 2) {
@@ -80,7 +80,7 @@ static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
   if (box_index.dim_size(0) != *num_boxes) {
     return errors::InvalidArgument("box_index has incompatible shape");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Conditionally calls the compute callback if all values in box_index are in
@@ -170,14 +170,15 @@ class CropAndResizeOp : public AsyncOpKernel {
         context, crop_height > 0 && crop_width > 0,
         errors::InvalidArgument("crop dimensions must be positive"), done);
 
+    TensorShape shape;
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(num_boxes), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(crop_height), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(crop_width), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(depth), done);
     // Allocate output tensor.
     Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        context->allocate_output(
-            0, TensorShape({num_boxes, crop_height, crop_width, depth}),
-            &output),
-        done);
+    OP_REQUIRES_OK_ASYNC(context, context->allocate_output(0, shape, &output),
+                         done);
 
     auto compute_callback = [this, context, output]() {
       const Tensor& image = context->input(0);
@@ -417,14 +418,15 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
           done);
     }
 
+    TensorShape shape;
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(batch_size), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(image_height), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(image_width), done);
+    OP_REQUIRES_OK_ASYNC(context, shape.AddDimWithStatus(depth), done);
     // Allocate output tensor.
     Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        context->allocate_output(
-            0, TensorShape({batch_size, image_height, image_width, depth}),
-            &output),
-        done);
+    OP_REQUIRES_OK_ASYNC(context, context->allocate_output(0, shape, &output),
+                         done);
 
     auto compute_callback = [this, context, output]() {
       const Tensor& grads = context->input(0);
@@ -887,8 +889,9 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
     done();
   };
 
-  context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-      stream, wrapped_callback);
+  context->device()
+      ->tensorflow_accelerator_device_info()
+      ->event_mgr->ThenExecute(stream, wrapped_callback);
 }
 
 }  // namespace

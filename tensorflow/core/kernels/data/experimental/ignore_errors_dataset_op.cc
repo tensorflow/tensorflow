@@ -49,7 +49,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
+      return std::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::IgnoreErrors")});
     }
 
@@ -64,12 +64,12 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
       return "IgnoreErrorsDatasetOp::Dataset";
     }
 
-    int64_t Cardinality() const override { return kUnknownCardinality; }
+    int64_t CardinalityInternal() const override { return kUnknownCardinality; }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -87,7 +87,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(
           b->AddDataset(this, {std::make_pair(0, input_graph_node)}, {},
                         {{"log_warning", log_warning_attr}}, output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -109,7 +109,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
-            return Status::OK();
+            return OkStatus();
           }
           s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
           while (!s.ok() && !errors::IsCancelled(s)) {
@@ -143,7 +143,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
         else
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -153,7 +153,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
         else
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-        return Status::OK();
+        return OkStatus();
       }
 
      private:

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -141,13 +142,6 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
       if (arguments[arg_idx].kind != XlaCompiler::Argument::kParameter) {
         return false;
       }
-      for (int branch_idx = 0; branch_idx < num_branches; branch_idx++) {
-        if (!case_branch_must_be_const_nodes
-                [branch_idx]
-                [case_bodies[branch_idx]->arg_nodes[arg_idx]->id()]) {
-          return false;
-        }
-      }
       return true;
     };
     ConvertCompileTimeConstArgumentsToConst(ctx, &arguments,
@@ -168,6 +162,10 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx,
                    compiler->CompileFunction(options, branches[j], arguments,
                                              &branch_results[j]));
+    OP_REQUIRES_OK(
+        ctx,
+        ctx->xla_context()->RecordCollectiveInfoFromNestedCompilationResult(
+            branch_results[j]));
   }
 
   bool has_tensor_array_gradients = false;
@@ -228,17 +226,6 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
             xla::ShapeUtil::HumanString(branch0_input_shape), " vs. ",
             xla::ShapeUtil::HumanString(branch_input_shape)));
 
-    // Check that all branches have identical output shapes.
-    OP_REQUIRES(
-        ctx,
-        xla::ShapeUtil::Compatible(branch_results[0].xla_output_shape,
-                                   branch_results[j].xla_output_shape),
-        errors::InvalidArgument(
-            "Output shapes of 0 and ", j, " branches do not match: ",
-            xla::ShapeUtil::HumanString(branch_results[0].xla_output_shape),
-            " vs. ",
-            xla::ShapeUtil::HumanString(branch_results[j].xla_output_shape)));
-
     if (j == 0) {
       VLOG(2) << "Input shape: "
               << xla::ShapeUtil::HumanString(branch0_input_shape);
@@ -292,6 +279,7 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
     if (has_token_input_output_ && i == num_inputs - 1) {
       // Set token input for this "case" op.
       std::vector<xla::XlaOp> token_inputs;
+      token_inputs.reserve(token_input_nodes_.size());
       for (const string& node_name : token_input_nodes_) {
         auto token_or = compiler->GetNodeToken(node_name);
         OP_REQUIRES_OK(ctx, token_or.status());
@@ -307,10 +295,9 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
     }
   }
   auto input_tuple = xla::Tuple(b, inputs);
-
-  xla::XlaOp outputs =
-      xla::Conditional(branch_index, absl::MakeSpan(result_computations),
-                       std::vector<xla::XlaOp>(num_branches, input_tuple));
+  xla::XlaOp outputs = xla::DynamicConditional(
+      ctx->builder(), branch_index, absl::MakeSpan(result_computations),
+      std::vector<xla::XlaOp>(num_branches, input_tuple));
   // Sets non-variable outputs.
   for (int i = 0; i < output_types_.size(); ++i) {
     xla::XlaOp output_handle = xla::GetTupleElement(outputs, i);

@@ -1,4 +1,3 @@
-# Lint as python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +14,6 @@
 # ==============================================================================
 """StructuredTensor array ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from typing import Sequence
 
 from tensorflow.python.framework import constant_op
@@ -27,11 +22,28 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.ragged import dynamic_ragged_shape
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+
+
+@dispatch.dispatch_for_api(array_ops.shape_v2)
+def shape_v2(input: StructuredTensor, out_type=dtypes.int32,  # pylint: disable=redefined-builtin
+             name=None) -> dynamic_ragged_shape.DynamicRaggedShape:
+  """Returns a DynamicRaggedShape containing the shape of the input."""
+  del name
+  return input._ragged_shape.with_dtype(out_type)  # pylint: disable=protected-access
+
+
+@dispatch.dispatch_for_api(array_ops.shape)
+def shape_v1(input: StructuredTensor, name=None,  # pylint: disable=redefined-builtin
+             out_type=dtypes.int32) -> dynamic_ragged_shape.DynamicRaggedShape:
+  """Returns a DynamicRaggedShape containing the shape of the input."""
+  del name
+  return input._ragged_shape.with_dtype(out_type)  # pylint: disable=protected-access
 
 
 @dispatch.dispatch_for_types(array_ops.expand_dims, StructuredTensor)
@@ -203,14 +215,16 @@ def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor."""
   with ops.name_scope(name, 'size', [input]) as name:
-    if not input._row_partitions:
-      if input._nrows is not None:
-        return math_ops.cast(input._nrows, out_type)  # vector.
+    if not input.row_partitions:
+      if input.nrows() is not None:
+        return math_ops.cast(input.nrows(), out_type)  # vector.
       else:
         return math_ops.cast(1, out_type)  # scalar.
     # 2D and up.
-    last_row_partition = input._row_partitions[-1]
-    return last_row_partition.nvals(out_type)
+    nvals = input.row_partitions[-1].nvals()
+    if nvals is None or out_type is None:
+      return nvals
+    return math_ops.cast(nvals, dtype=out_type)
 
 
 # pylint: disable=protected-access
@@ -244,17 +258,17 @@ def zeros_like_v2(input, dtype=None, name=None):  # pylint: disable=redefined-bu
   if dtype is None:
     dtype = dtypes.float32
   with ops.name_scope(name, 'zeros_like', [input]) as name:
-    if not input._row_partitions:
-      if input._nrows is not None:
-        return array_ops.zeros([input._nrows], dtype)  # vector.
+    if not input.row_partitions:
+      if input.nrows() is not None:
+        return array_ops.zeros([input.nrows()], dtype)  # vector.
       else:
         return array_ops.zeros([], dtype)  # scalar.
     # 2D and up.
-    last_row_partition = input._row_partitions[-1]
+    last_row_partition = input.row_partitions[-1]
 
     result = ragged_tensor.RaggedTensor._from_nested_row_partitions(
         array_ops.zeros(last_row_partition.nvals(), dtype=dtype),
-        input._row_partitions)
+        input.row_partitions)
     return result
 
 
@@ -289,17 +303,17 @@ def ones_like_v2(input, dtype=None, name=None):  # pylint: disable=redefined-bui
   if dtype is None:
     dtype = dtypes.float32
   with ops.name_scope(name, 'ones_like', [input]) as name:
-    if not input._row_partitions:
-      if input._nrows is not None:
-        return array_ops.ones([input._nrows], dtype)  # vector.
+    if not input.row_partitions:
+      if input.nrows() is not None:
+        return array_ops.ones([input.nrows()], dtype)  # vector.
       else:
         return array_ops.ones([], dtype)  # scalar.
     # 2D and up.
-    last_row_partition = input._row_partitions[-1]
+    last_row_partition = input.row_partitions[-1]
 
     result = ragged_tensor.RaggedTensor._from_nested_row_partitions(
         array_ops.ones(last_row_partition.nvals(), dtype=dtype),
-        input._row_partitions)
+        input.row_partitions)
     return result
 
 

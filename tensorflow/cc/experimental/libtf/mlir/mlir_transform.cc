@@ -51,13 +51,14 @@ Handle LoadModule(Object self, String saved_model) {
   // transforms.
   // auto obj = TaggedValue::Dict();
   Object obj;
-  obj.Set(String("_module"),
-          Handle(impl::TaggedValue::Capsule(new mlir::OwningModuleRef(
-              std::move(module_or).ConsumeValueOrDie()))));
+  obj.Set(
+      String("_module"),
+      Handle(impl::TaggedValue::Capsule(new mlir::OwningOpRef<mlir::ModuleOp>(
+          std::move(module_or).value()))));
 
   auto get_string = [](Object self) {
     auto ref = self.Get<internal::Capsule>(String("_module"))
-                   ->cast<mlir::OwningModuleRef*>();
+                   ->cast<mlir::OwningOpRef<mlir::ModuleOp>*>();
     return String(tensorflow::MlirModuleToString(ref->get(), false).c_str());
   };
   obj.Set(String("ToString"), Callable(TFLIB_CALLABLE_ADAPTOR(get_string)));

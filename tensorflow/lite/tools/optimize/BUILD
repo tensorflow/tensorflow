@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load(
@@ -23,7 +23,7 @@ cc_library(
     hdrs = [
         "reduced_precision_support.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
@@ -172,7 +172,7 @@ cc_library(
     name = "quantization_utils",
     srcs = ["quantization_utils.cc"],
     hdrs = ["quantization_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":model_utils",
         "//tensorflow/lite:framework",
@@ -193,7 +193,7 @@ cc_library(
     name = "model_utils",
     srcs = ["model_utils.cc"],
     hdrs = ["model_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":operator_property",
         "//tensorflow/lite:framework",
@@ -227,7 +227,7 @@ cc_library(
     name = "operator_property",
     srcs = ["operator_property.cc"],
     hdrs = ["operator_property.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
@@ -268,9 +268,13 @@ tf_cc_test(
 
 cc_library(
     name = "quantize_weights",
-    srcs = ["quantize_weights.cc"],
+    srcs = select({
+        "//tensorflow:ios": ["quantize_weights_portable.cc"],
+        "//tensorflow:android": ["quantize_weights_portable.cc"],
+        "//conditions:default": ["quantize_weights.cc"],
+    }),
     hdrs = ["quantize_weights.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":quantization_utils",
         ":model_utils",
@@ -285,7 +289,13 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/core:tflite_portable_logging",
-    ],
+    ] + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//conditions:default": [
+            "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_weights",
+        ],
+    }),
 )
 
 tf_cc_test(
@@ -341,8 +351,10 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
 )
@@ -371,6 +383,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/mixed16x8.bin",
         "//tensorflow/lite/tools/optimize:testdata/multi_input_add_reshape.bin",
         "//tensorflow/lite/tools/optimize:testdata/pack.bin",
+        "//tensorflow/lite/tools/optimize:testdata/resource_vars_calibrated.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_no_bias.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
@@ -397,6 +410,7 @@ tf_cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
+        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],

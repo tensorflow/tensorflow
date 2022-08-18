@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_TEST_CLUSTER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_TEST_CLUSTER_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -26,7 +28,9 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/server_lib.h"
+#include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/service/worker_client.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -42,8 +46,19 @@ namespace data {
 // Helper class for unit testing a tf.data service cluster.
 class TestCluster {
  public:
+  struct Config {
+   public:
+    int num_workers = 3;
+    int64_t client_timeout_ms = 0;
+    int64_t worker_heartbeat_interval_ms = 0;
+    int64_t job_gc_check_interval_ms = 0;
+    int64_t job_gc_timeout_ms = 0;
+  };
+
   // Creates a new test cluster with a dispatcher and `num_workers` workers.
   explicit TestCluster(int num_workers);
+  explicit TestCluster(const Config& config);
+
   // Initializes the test cluster. This must be called before interacting with
   // the cluster. Initialize should be called only once.
   Status Initialize();
@@ -51,6 +66,10 @@ class TestCluster {
   Status AddWorker();
   // Returns the number of workers in this cluster.
   size_t NumWorkers() const { return workers_.size(); }
+  // Returns the number of active iterations.
+  StatusOr<size_t> NumActiveIterations() const {
+    return dispatcher_->NumActiveIterations();
+  }
   // Returns the dispatcher address in the form "hostname:port".
   std::string DispatcherAddress() const;
   // Returns the address of the worker at the specified index, in the form
@@ -63,9 +82,14 @@ class TestCluster {
   // Stops all workers.
   void StopWorkers();
 
+  // Returns the server state exports.
+  ServerStateExport ExportDispatcherState() const;
+  ServerStateExport ExportWorkerState(size_t index) const;
+
  private:
   bool initialized_ = false;
   int num_workers_;
+  Config config_;
   std::unique_ptr<DispatchGrpcDataServer> dispatcher_;
   std::string dispatcher_address_;
   std::vector<std::unique_ptr<WorkerGrpcDataServer>> workers_;
@@ -77,7 +101,7 @@ class TestCluster {
 //
 // TestCluster cluster(/*num_workers=*/2);
 // TF_ASSERT_OK(cluster.Initialize());
-// DatasetReader<int64> dataset_reader(cluster);
+// DatasetClient<int64_t> dataset_reader(cluster);
 //
 // EXPECT_THAT(
 //     dataset_reader.Read(RangeDataset(4), ProcessingModeDef::DATA,
@@ -86,10 +110,10 @@ class TestCluster {
 //         Pair(cluster.WorkerAddress(0), ElementsAre(0, 2)),
 //         Pair(cluster.WorkerAddress(1), ElementsAre(1, 3)))));
 template <class T>
-class DatasetReader {
+class DatasetClient {
  public:
-  // Creates a dataset reader. It will process datasets in `cluster`.
-  explicit DatasetReader(const TestCluster& cluster);
+  // Creates a dataset client. It will process datasets in `cluster`.
+  explicit DatasetClient(const TestCluster& cluster);
 
   // Maps a worker address to the data it produces when calling `Read`.
   using WorkerResultMap = absl::flat_hash_map<std::string, std::vector<T>>;
@@ -100,17 +124,20 @@ class DatasetReader {
       const DatasetDef& dataset,
       ProcessingModeDef::ShardingPolicy sharding_policy,
       TargetWorkers target_workers);
+  // Creates an iteration and returns the iteration client ID.
+  StatusOr<int64_t> CreateIteration(const DatasetDef& dataset);
+  // Gets the tasks for iteration `iteration_client_id`. The iteration has one
+  // task processed by every worker.
+  StatusOr<std::vector<TaskInfo>> GetTasks(int64_t iteration_client_id);
 
  private:
   // Registers the dataset and returns the dataset ID.
-  StatusOr<int64> RegisterDataset(const DatasetDef& dataset);
-  // Creates a job and returns the job client ID.
-  StatusOr<int64> CreateJob(int64 dataset_id,
-                            ProcessingModeDef::ShardingPolicy sharding_policy,
-                            TargetWorkers target_workers);
-  // Gets the tasks for job `job_client_id`. The job has one task processed by
-  // every worker.
-  StatusOr<std::vector<TaskInfo>> GetTasks(int64 job_client_id);
+  StatusOr<std::string> RegisterDataset(const DatasetDef& dataset);
+  // Creates an iteration and returns the iteration client ID.
+  StatusOr<int64_t> CreateIteration(
+      const std::string& dataset_id,
+      ProcessingModeDef::ShardingPolicy sharding_policy,
+      TargetWorkers target_workers);
   // Reads values from `tasks`, one task at a time, until all tasks have
   // finished.
   StatusOr<WorkerResultMap> ReadFromTasks(const std::vector<TaskInfo>& tasks);
@@ -124,69 +151,85 @@ class DatasetReader {
 };
 
 template <class T>
-DatasetReader<T>::DatasetReader(const TestCluster& cluster)
+DatasetClient<T>::DatasetClient(const TestCluster& cluster)
     : cluster_(cluster) {
-  dispatcher_client_ = absl::make_unique<DataServiceDispatcherClient>(
+  dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
       cluster_.DispatcherAddress(), "grpc");
 
   for (size_t i = 0; i < cluster.NumWorkers(); ++i) {
     worker_clients_[cluster_.WorkerAddress(i)] =
-        absl::make_unique<DataServiceWorkerClient>(cluster_.WorkerAddress(i),
-                                                   "grpc", "grpc");
+        std::make_unique<DataServiceWorkerClient>(cluster_.WorkerAddress(i),
+                                                  "grpc", "grpc");
   }
 }
 
 template <class T>
-StatusOr<typename DatasetReader<T>::WorkerResultMap> DatasetReader<T>::Read(
+StatusOr<typename DatasetClient<T>::WorkerResultMap> DatasetClient<T>::Read(
     const DatasetDef& dataset,
     ProcessingModeDef::ShardingPolicy sharding_policy,
     TargetWorkers target_workers) {
-  TF_ASSIGN_OR_RETURN(const int64 dataset_id, RegisterDataset(dataset));
-  TF_ASSIGN_OR_RETURN(const int64 job_client_id,
-                      CreateJob(dataset_id, sharding_policy, target_workers));
+  TF_ASSIGN_OR_RETURN(const std::string dataset_id, RegisterDataset(dataset));
+  TF_ASSIGN_OR_RETURN(
+      const int64_t iteration_client_id,
+      CreateIteration(dataset_id, sharding_policy, target_workers));
   TF_ASSIGN_OR_RETURN(const std::vector<TaskInfo> tasks,
-                      GetTasks(job_client_id));
+                      GetTasks(iteration_client_id));
   return ReadFromTasks(tasks);
 }
 
 template <class T>
-StatusOr<int64> DatasetReader<T>::RegisterDataset(const DatasetDef& dataset) {
-  int64 dataset_id = 0;
+StatusOr<std::string> DatasetClient<T>::RegisterDataset(
+    const DatasetDef& dataset) {
+  std::string dataset_id;
   TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
-      dataset, /*element_spec=*/absl::nullopt, dataset_id));
+      dataset, DataServiceMetadata(), /*requested_dataset_id=*/std::nullopt,
+      dataset_id));
   return dataset_id;
 }
 
 template <class T>
-StatusOr<int64> DatasetReader<T>::CreateJob(
-    const int64 dataset_id, ProcessingModeDef::ShardingPolicy sharding_policy,
+StatusOr<int64_t> DatasetClient<T>::CreateIteration(
+    const std::string& dataset_id,
+    ProcessingModeDef::ShardingPolicy sharding_policy,
     TargetWorkers target_workers) {
-  int64 job_client_id = 0;
   ProcessingModeDef processing_mode_def;
   processing_mode_def.set_sharding_policy(sharding_policy);
+  int64_t job_id;
   TF_RETURN_IF_ERROR(dispatcher_client_->GetOrCreateJob(
-      dataset_id, processing_mode_def, /*job_key=*/absl::nullopt,
-      /*num_consumers=*/absl::nullopt, job_client_id, target_workers));
-  return job_client_id;
+      dataset_id, processing_mode_def, /*job_name=*/std::nullopt,
+      /*num_consumers=*/std::nullopt, /*use_cross_trainer_cache=*/false,
+      target_workers, job_id));
+  int64_t iteration_client_id;
+  TF_RETURN_IF_ERROR(dispatcher_client_->GetOrCreateIteration(
+      job_id, /*repetition=*/0, iteration_client_id));
+  return iteration_client_id;
 }
 
 template <class T>
-StatusOr<std::vector<TaskInfo>> DatasetReader<T>::GetTasks(
-    const int64 job_client_id) {
+StatusOr<int64_t> DatasetClient<T>::CreateIteration(const DatasetDef& dataset) {
+  TF_ASSIGN_OR_RETURN(const std::string dataset_id, RegisterDataset(dataset));
+  return CreateIteration(dataset_id, ProcessingModeDef::OFF,
+                         TARGET_WORKERS_ANY);
+}
+
+template <class T>
+StatusOr<std::vector<TaskInfo>> DatasetClient<T>::GetTasks(
+    const int64_t iteration_client_id) {
   ClientHeartbeatRequest request;
   ClientHeartbeatResponse response;
-  request.set_job_client_id(job_client_id);
+  request.set_iteration_client_id(iteration_client_id);
   TF_RETURN_IF_ERROR(dispatcher_client_->ClientHeartbeat(request, response));
   if (response.task_info().empty()) {
-    return errors::NotFound("No task found for job ", job_client_id, ".");
+    return errors::NotFound("No task found for iteration ", iteration_client_id,
+                            ".");
   }
   return std::vector<TaskInfo>(response.task_info().begin(),
                                response.task_info().end());
 }
 
 template <class T>
-StatusOr<typename DatasetReader<T>::WorkerResultMap>
-DatasetReader<T>::ReadFromTasks(const std::vector<TaskInfo>& tasks) {
+StatusOr<typename DatasetClient<T>::WorkerResultMap>
+DatasetClient<T>::ReadFromTasks(const std::vector<TaskInfo>& tasks) {
   WorkerResultMap result;
   bool all_workers_finished = false;
   while (!all_workers_finished) {
@@ -211,7 +254,7 @@ DatasetReader<T>::ReadFromTasks(const std::vector<TaskInfo>& tasks) {
 }
 
 template <class T>
-StatusOr<GetElementResult> DatasetReader<T>::ReadFromTask(
+StatusOr<GetElementResult> DatasetClient<T>::ReadFromTask(
     const TaskInfo& task_info) {
   GetElementRequest request;
   GetElementResult element_result;

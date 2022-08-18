@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/tpu/tpu_defs.h"
+#include "absl/numeric/bits.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
 namespace {
@@ -186,8 +187,7 @@ std::pair<xla::XlaOp, xla::XlaOp> CreateTopKUnique(
 
   xla::XlaOp topk_indices_r2;
   if (masked_with_iota) {
-    int32_t log2_ceiling = tensorflow::Log2Ceiling(width);
-    int32_t next_power_of_two = 1U << log2_ceiling;
+    int32_t next_power_of_two = absl::bit_ceil<uint64_t>(width);
     int32_t count_mask = next_power_of_two - 1;
     xla::XlaOp mask_r0 = xla::ConstantR0(builder, count_mask);
     xla::XlaOp mask_r2 = xla::Broadcast(mask_r0, {height, k});
@@ -265,8 +265,7 @@ xla::XlaOp CreateMakeUnique(xla::XlaBuilder* builder, const xla::XlaOp input,
 
   // count_mask is used to mask away the low order bits to ensure
   // that every element is distinct.
-  uint32 log2_ceiling = static_cast<uint32>(std::ceil(std::log2(width)));
-  uint32 next_power_of_two = 1U << log2_ceiling;
+  uint32_t next_power_of_two = absl::bit_ceil<uint64_t>(width);
   uint32 count_mask = ~(next_power_of_two - 1);
   xla::XlaOp count_mask_r0 = xla::ConstantR0(builder, count_mask);
   xla::XlaOp count_mask_r2 = xla::Broadcast(count_mask_r0, {height, width});

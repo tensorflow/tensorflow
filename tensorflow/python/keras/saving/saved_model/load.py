@@ -46,8 +46,8 @@ from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable import data_structures
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
@@ -768,7 +768,6 @@ class KerasObjectLoader(object):
 
   def _infer_inputs(self, layer_node_id, convert_to_shapes=False):
     """Infers input shape of layer from SavedModel functions."""
-    coder = nested_structure_coder.StructureCoder()
     call_fn_id = self._search_for_child_node(
         layer_node_id, ['call_and_return_all_conditional_losses'])
     if call_fn_id is None:
@@ -780,7 +779,7 @@ class KerasObjectLoader(object):
       return None
     call_fn_name = concrete_functions[0]
     call_fn_proto = self._proto.concrete_functions[call_fn_name]
-    structured_input_signature = coder.decode_proto(
+    structured_input_signature = nested_structure_coder.decode_proto(
         call_fn_proto.canonicalized_input_signature)
     inputs = structured_input_signature[0][0]
     if convert_to_shapes:

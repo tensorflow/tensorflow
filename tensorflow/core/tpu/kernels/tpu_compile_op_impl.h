@@ -55,6 +55,7 @@ class TpuCompileOpKernelImpl : public TpuCompileOpKernelCommon {
       const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
       const XLA_TpuMeshState* mesh_state,
       const std::vector<TensorShape>& arg_shapes,
+      const TpuCompilationCacheKey* key,
       TpuProgramGroupInterface* tpu_program_group) override;
 };
 }  // namespace tpu

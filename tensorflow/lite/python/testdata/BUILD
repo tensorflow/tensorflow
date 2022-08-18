@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "pybind_extension", "tf_custom_op_py_library
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
-    "tf_features_nolayering_check_if_android_or_ios",
+    "tf_features_nolayering_check_if_ios",
     "tf_gen_op_wrapper_py",
     "tf_opts_nortti_if_android",
 )
@@ -101,7 +101,7 @@ cc_library(
     testonly = 1,
     srcs = ["double_op.cc"],
     copts = tflite_copts() + tf_opts_nortti_if_android(),
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -165,7 +165,6 @@ pybind_extension(
     hdrs = ["test_registerer.h"],
     additional_exported_symbols = ["TF_TestRegisterer"],
     link_in_framework = True,
-    module_name = "_pywrap_test_registerer",
     deps = [
         ":test_registerer",
         "//tensorflow/lite:framework",

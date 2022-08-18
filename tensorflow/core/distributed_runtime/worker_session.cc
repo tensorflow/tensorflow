@@ -125,7 +125,7 @@ WorkerSession::WorkerSession(
       borrowed_device_mgr_(nullptr),
       remote_device_mgr_(std::move(remote_device_mgr)) {
   // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/core/platform/default", this is
+  // provided). For builds using "tensorflow/tsl/platform/default", this is
   // currently a no-op.
   worker_session_created->GetCell()->Set(true);
 }
@@ -142,7 +142,7 @@ Status WorkerSession::UpdateWorkerCacheAndDevices(
   TF_RETURN_IF_ERROR(remote_device_mgr_->RemoveDevices(removed_remote_devices));
   TF_RETURN_IF_ERROR(
       remote_device_mgr_->AddDevices(std::move(added_remote_devices)));
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */
@@ -171,7 +171,7 @@ WorkerSession::WorkerSession(
       borrowed_device_mgr_(borrowed_device_mgr),
       remote_device_mgr_(std::move(remote_device_mgr)) {
   // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/core/platform/default", this is
+  // provided). For builds using "tensorflow/tsl/platform/default", this is
   // currently a no-op.
   worker_session_created->GetCell()->Set(true);
 }

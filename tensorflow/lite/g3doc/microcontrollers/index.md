@@ -1,7 +1,7 @@
 # TensorFlow Lite for Microcontrollers
 
 TensorFlow Lite for Microcontrollers is designed to run machine learning models
-on microcontrollers and other devices with only few kilobytes of memory. The
+on microcontrollers and other devices with only a few kilobytes of memory. The
 core runtime just fits in 16 KB on an Arm Cortex M3 and can run many basic
 models. It doesn't require operating system support, any standard C or C++
 libraries, or dynamic memory allocation.
@@ -39,7 +39,7 @@ any C++ 11 project.
 
 The following development boards are supported:
 
-*   [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
+*   [Arduino Nano 33 BLE Sense](https://store-usa.arduino.cc/products/arduino-nano-33-ble-sense-with-headers)
 *   [SparkFun Edge](https://www.sparkfun.com/products/15170)
 *   [STM32F746 Discovery kit](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)
 *   [Adafruit EdgeBadge](https://www.adafruit.com/product/4400)
@@ -50,6 +50,7 @@ The following development boards are supported:
 *   [Wio Terminal: ATSAMD51](https://www.seeedstudio.com/Wio-Terminal-p-4509.html)
 *   [Himax WE-I Plus EVB Endpoint AI Development Board](https://www.sparkfun.com/products/17256)
 *   [Synopsys DesignWare ARC EM Software Development Platform](https://www.synopsys.com/dw/ipdir.php?ds=arc-em-software-development-platform)
+*   [Sony Spresense](https://developer.sony.com/develop/spresense/)
 
 ## Explore the examples
 

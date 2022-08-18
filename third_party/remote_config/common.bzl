@@ -69,7 +69,7 @@ def get_python_bin(repository_ctx):
                      "python is installed and add its directory in PATH, or --define " +
                      "%s='/something/else'.\nPATH=%s" % (
                          PYTHON_BIN_PATH,
-                         get_environ("PATH", ""),
+                         get_environ(repository_ctx, "PATH"),
                      ))
     return python_bin  # unreachable
 
@@ -91,7 +91,7 @@ def get_bash_bin(repository_ctx):
                          "bash is installed and add its directory in PATH, or --define " +
                          "%s='/path/to/bash'.\nPATH=%s" % (
                              BAZEL_SH,
-                             get_environ("PATH", ""),
+                             get_environ(repository_ctx, "PATH"),
                          ))
     return bash_bin_path
 
@@ -220,8 +220,8 @@ def execute(
       cmdline: list of strings, the command to execute
       error_msg: string, a summary of the error if the command fails
       error_details: string, details about the error or steps to fix it
-      allow_failure: bool, if True, an empty stdout result and output to stderr
-        is fine, otherwise it's an error
+      allow_failure: bool, if True, an empty stdout result or output to stderr
+        is fine, otherwise either of these is an error
     Returns:
       The result of repository_ctx.execute(cmdline)
     """

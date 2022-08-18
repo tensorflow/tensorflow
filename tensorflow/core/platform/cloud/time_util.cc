@@ -50,7 +50,7 @@ Status ParseRfc3339Time(const string& time, int64_t* mtime_nsec) {
                 static_cast<int64_t>(std::floor((seconds - int_seconds) *
                                                 kNanosecondsPerSecond));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

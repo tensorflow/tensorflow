@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -178,7 +178,7 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
       assert(body);
       auto type_from_body = GetElementTypeFromAccess(
           body.getArgument(use.getOperandNumber()), module, infer_from_op);
-      if (type_from_body.hasValue()) return type_from_body;
+      if (type_from_body.has_value()) return type_from_body;
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(use.getOwner())) {
       auto then_branch = if_op.then_function();
       auto else_branch = if_op.else_function();
@@ -186,21 +186,21 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
       auto type_from_then = GetElementTypeFromAccess(
           then_branch.getArgument(use.getOperandNumber() - 1), module,
           infer_from_op);
-      if (type_from_then.hasValue()) return type_from_then;
+      if (type_from_then.has_value()) return type_from_then;
       auto type_from_else = GetElementTypeFromAccess(
           else_branch.getArgument(use.getOperandNumber() - 1), module,
           infer_from_op);
-      if (type_from_else.hasValue()) return type_from_else;
+      if (type_from_else.has_value()) return type_from_else;
     } else if (auto call = llvm::dyn_cast<CallOpInterface>(use.getOwner())) {
-      auto callee = dyn_cast<FuncOp>(call.resolveCallable());
+      auto callee = dyn_cast<func::FuncOp>(call.resolveCallable());
       auto type_from_callee = GetElementTypeFromAccess(
           callee.getArgument(use.getOperandNumber()), module, infer_from_op);
-      if (type_from_callee.hasValue()) return type_from_callee;
+      if (type_from_callee.has_value()) return type_from_callee;
     } else if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(use.getOwner())) {
       auto type_from_alias = GetElementTypeFromAccess(
           use.getOwner()->getResult(use.getOperandNumber()), module,
           infer_from_op);
-      if (type_from_alias.hasValue()) return type_from_alias;
+      if (type_from_alias.has_value()) return type_from_alias;
     } else if (auto type = infer_from_op(use.getOwner())) {
       if (!type) continue;
       auto elem_type = type->dyn_cast<RankedTensorType>();

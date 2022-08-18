@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for common methods in strategy classes."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.data.ops import dataset_ops
@@ -33,13 +29,15 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import indexed_slices
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 
+@tf_test_util.with_eager_op_as_function
 @combinations.generate(
     combinations.combine(
         strategy=[
@@ -193,15 +191,10 @@ class GatherTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   r'Shape mismatch'):
         run()
-    elif isinstance(
-        strategy,
-        (mirrored_strategy.MirroredStrategy,
-         central_storage_strategy.CentralStorageStrategy)) and pure_eager:
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  r'Dimensions of inputs should match'):
-        run()
-    else:
-      with self.assertRaisesRegex(ValueError,
+    elif isinstance(strategy,
+                    (mirrored_strategy.MirroredStrategy,
+                     central_storage_strategy.CentralStorageStrategy)):
+      with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
                                   r'Dimension \d in both shapes must be equal'):
         run()
 
@@ -511,15 +504,10 @@ class GatherTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   r'Shape mismatch'):
         strategy.run(run, args=(per_replica_value,))
-    elif isinstance(
-        strategy,
-        (mirrored_strategy.MirroredStrategy,
-         central_storage_strategy.CentralStorageStrategy)) and pure_eager:
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  r'Dimensions of inputs should match'):
-        strategy.run(run, args=(per_replica_value,))
-    else:
-      with self.assertRaisesRegex(ValueError,
+    elif isinstance(strategy,
+                    (mirrored_strategy.MirroredStrategy,
+                     central_storage_strategy.CentralStorageStrategy)):
+      with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
                                   r'Dimension \d in both shapes must be equal'):
         strategy.run(run, args=(per_replica_value,))
 
@@ -656,7 +644,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
 
 def _make_indexed_slices(values, indices, dense_shape):
-  tensor = ops.IndexedSlices(
+  tensor = indexed_slices.IndexedSlices(
       values=constant_op.constant(values),
       indices=constant_op.constant(indices),
       dense_shape=constant_op.constant(dense_shape))

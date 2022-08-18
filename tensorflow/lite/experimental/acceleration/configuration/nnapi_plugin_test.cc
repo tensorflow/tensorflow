@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <memory>
+#include <string>
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -65,7 +67,7 @@ class NNAPIPluginTest : public ::testing::Test {
   NNAPIPluginTest() : delegate_(nullptr, [](TfLiteDelegate*) {}) {}
   void SetUp() override {
     nnapi_ = const_cast<NnApi*>(NnApiImplementation());
-    nnapi_mock_ = absl::make_unique<NnApiMock>(nnapi_);
+    nnapi_mock_ = std::make_unique<NnApiMock>(nnapi_);
     nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices =
         [](const ANeuralNetworksModel* model,
            const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
@@ -111,12 +113,13 @@ class NNAPIPluginTest : public ::testing::Test {
         << " given input: " << input << " expected output: " << output;
   }
 
-  void CreateDelegate(flatbuffers::Offset<NNAPISettings> settings) {
-    settings_ = flatbuffers::GetTemporaryPointer(
-        fbb_, CreateTFLiteSettings(fbb_, tflite::Delegate_NNAPI, settings));
+  void CreateDelegate(flatbuffers::Offset<NNAPISettings> nnapi_settings) {
+    tflite_settings_ = flatbuffers::GetTemporaryPointer(
+        fbb_,
+        CreateTFLiteSettings(fbb_, tflite::Delegate_NNAPI, nnapi_settings));
 
-    plugin_ = delegates::DelegatePluginRegistry::CreateByName("NnapiPlugin",
-                                                              *settings_);
+    plugin_ = delegates::DelegatePluginRegistry::CreateByName(
+        "NnapiPlugin", *tflite_settings_);
     delegate_ = plugin_->Create();
   }
 
@@ -129,7 +132,7 @@ class NNAPIPluginTest : public ::testing::Test {
   std::unique_ptr<NnApiMock> nnapi_mock_;
   SingleAddOpModel model_;
   flatbuffers::FlatBufferBuilder fbb_;
-  const TFLiteSettings* settings_ = nullptr;
+  const TFLiteSettings* tflite_settings_ = nullptr;
   delegates::TfLiteDelegatePtr delegate_;
   std::unique_ptr<delegates::DelegatePluginInterface> plugin_;
 };
@@ -269,21 +272,22 @@ class NNAPIMultiOpPluginTest : public ::testing::Test {
   NNAPIMultiOpPluginTest() : delegate_(nullptr, [](TfLiteDelegate*) {}) {}
   void SetUp() override {
     nnapi_ = const_cast<NnApi*>(NnApiImplementation());
-    nnapi_mock_ = absl::make_unique<NnApiMock>(nnapi_);
+    nnapi_mock_ = std::make_unique<NnApiMock>(nnapi_);
   }
 
-  void CreateDelegate(flatbuffers::Offset<NNAPISettings> settings,
+  void CreateDelegate(flatbuffers::Offset<NNAPISettings> nnapi_settings,
                       int max_delegated_partitions) {
-    settings_ = flatbuffers::GetTemporaryPointer(
+    tflite_settings_ = flatbuffers::GetTemporaryPointer(
         fbb_,
-        CreateTFLiteSettings(fbb_, tflite::Delegate_NNAPI, settings,
+        CreateTFLiteSettings(fbb_, tflite::Delegate_NNAPI, nnapi_settings,
                              /* gpu_settings */ 0,
                              /* hexagon_settings */ 0,
                              /* xnnpack_settings */ 0,
+                             /* coreml_settings */ 0,
                              /* cpu_settings */ 0, max_delegated_partitions));
 
-    plugin_ = delegates::DelegatePluginRegistry::CreateByName("NnapiPlugin",
-                                                              *settings_);
+    plugin_ = delegates::DelegatePluginRegistry::CreateByName(
+        "NnapiPlugin", *tflite_settings_);
     delegate_ = plugin_->Create();
   }
 
@@ -306,7 +310,7 @@ class NNAPIMultiOpPluginTest : public ::testing::Test {
   std::unique_ptr<NnApiMock> nnapi_mock_;
   MultiplePartitionsModel model_;
   flatbuffers::FlatBufferBuilder fbb_;
-  const TFLiteSettings* settings_ = nullptr;
+  const TFLiteSettings* tflite_settings_ = nullptr;
   delegates::TfLiteDelegatePtr delegate_;
   std::unique_ptr<delegates::DelegatePluginInterface> plugin_;
 };

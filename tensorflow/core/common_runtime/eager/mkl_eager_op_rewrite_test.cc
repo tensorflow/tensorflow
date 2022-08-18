@@ -35,7 +35,7 @@ class EagerOpRewriteTest : public ::testing::Test {
   // Creates a new op to be used as input to MKL eager rewrite.
   std::unique_ptr<tensorflow::EagerOperation> CreateOp(const string op_name) {
     std::unique_ptr<DeviceMgr> device_mgr =
-        absl::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
+        std::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
             "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
     bool async = false;
     tensorflow::Rendezvous* rendezvous =

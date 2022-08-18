@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/core/platform/ctstring_internal.h"
 #include "tensorflow/core/platform/test.h"
 
 static const char kLongString[] =
@@ -378,5 +379,27 @@ TEST(TF_CTStringTest, ResizeReserve) {
     EXPECT_EQ(223, TF_TString_GetCapacity(&s70));
 
     TF_TString_Dealloc(&s70);
+  }
+}
+
+TEST(TF_CTStringTest, OffsetType) {
+  {
+    uint8_t str[] = "test";
+    constexpr size_t str_size = sizeof(str) / sizeof(str[0]);
+
+    uint8_t buf[sizeof(TF_TString) + str_size];
+
+    memcpy(buf + sizeof(TF_TString), str, str_size);
+
+    TF_TString *offsets = (TF_TString *)buf;
+    TF_TString_Init(offsets);
+    // using existing TF_le32toh to achieve htole32
+    offsets[0].u.offset.size = TF_le32toh(str_size << 2 | TF_TSTR_OFFSET);
+    offsets[0].u.offset.offset = TF_le32toh(sizeof(TF_TString));
+    offsets[0].u.offset.count = TF_le32toh(1);
+
+    EXPECT_EQ(str_size, TF_TString_GetSize(offsets));
+    EXPECT_EQ(TF_TSTR_OFFSET, TF_TString_GetType(offsets));
+    EXPECT_EQ(0, ::memcmp(str, TF_TString_GetDataPointer(offsets), str_size));
   }
 }

@@ -15,13 +15,14 @@ limitations under the License.
 
 // Tests that constants in program memory round trip as expected.
 
+#include "tensorflow/compiler/xla/client/lib/constants.h"
+
 #include <memory>
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -58,21 +58,21 @@ TEST_F(ConstantsTest, OneCellF32) {
 }
 
 TEST_F(ConstantsTest, OneCellS32) {
-  std::vector<int32> constant = {2};
+  std::vector<int32_t> constant = {2};
 
   XlaBuilder builder(TestName());
-  ConstantR1<int32>(&builder, constant);
+  ConstantR1<int32_t>(&builder, constant);
 
-  ComputeAndCompareR1<int32>(&builder, constant, {});
+  ComputeAndCompareR1<int32_t>(&builder, constant, {});
 }
 
 TEST_F(ConstantsTest, OneCellU32) {
-  std::vector<uint32> constant = {2};
+  std::vector<uint32_t> constant = {2};
 
   XlaBuilder builder(TestName());
-  ConstantR1<uint32>(&builder, constant);
+  ConstantR1<uint32_t>(&builder, constant);
 
-  ComputeAndCompareR1<uint32>(&builder, constant, {});
+  ComputeAndCompareR1<uint32_t>(&builder, constant, {});
 }
 
 TEST_F(ConstantsTest, EightCells) {
@@ -165,7 +165,7 @@ TEST_F(ConstantsTest, DISABLED_TupleConstant) {
                                 {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}),
                                  LiteralUtil::CreateR1<float>({2.0, 42})}));
 
-  Literal result = ExecuteAndTransfer(&builder, {}).ConsumeValueOrDie();
+  Literal result = ExecuteAndTransfer(&builder, {}).value();
 
   LiteralTestUtil::ExpectR2Near<float>({{1.0}, {2.0}},
                                        LiteralSlice(result, {0}), error_spec_);
@@ -225,7 +225,7 @@ XLA_TEST_F(ConstantsHloTest, DISABLED_ON_GPU(BitcastOfConstant)) {
     }
   )";
   auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
-  auto param = LiteralUtil::CreateR0<int32>(1);
+  auto param = LiteralUtil::CreateR0<int32_t>(1);
   auto result = ExecuteNoHloPasses(std::move(module), {&param});
   EXPECT_TRUE(LiteralTestUtil::Equal(param, result));
 }

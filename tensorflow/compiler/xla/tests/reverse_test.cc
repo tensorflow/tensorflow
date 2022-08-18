@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -44,7 +43,7 @@ struct ReverseSpec {
   std::vector<int64_t> reversal;
   bool use_bfloat16;
 
-  string ToTestCaseName() const {
+  std::string ToTestCaseName() const {
     return absl::StrFormat(
         "reverse_%s_in_dims_%s_%s", absl::StrJoin(input_dims, "x"),
         absl::StrJoin(reversal, "x"), use_bfloat16 ? "bf16" : "f32");
@@ -84,7 +83,7 @@ TEST_P(FloatReverseTest, Reverses) {
       ShapeUtil::ElementsIn(ShapeUtil::MakeShape(F32, spec.input_dims)));
   std::iota(input_vector.begin(), input_vector.end(), 0.0);
   auto r1_literal = LiteralUtil::CreateR1<float>(input_vector);
-  auto input_literal = r1_literal.Reshape(spec.input_dims).ConsumeValueOrDie();
+  auto input_literal = r1_literal.Reshape(spec.input_dims).value();
 
   XlaBuilder builder(TestName());
   auto a = AddParam(input_literal, &builder);
@@ -117,7 +116,7 @@ XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
   XlaBuilder b(TestName());
   // Input shape is U8[1x2x3x4].
   // clang-format off
-  Array4D<uint8> input({{
+  Array4D<uint8_t> input({{
     {{1, 2, 3, 4},
      {5, 6, 7, 8},
      {9, 10, 11, 12}},
@@ -127,10 +126,10 @@ XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
   }});
   // clang-format on
 
-  Rev(ConstantR4FromArray4D<uint8>(&b, input), {0, 3});
+  Rev(ConstantR4FromArray4D<uint8_t>(&b, input), {0, 3});
 
   // clang-format off
-  Array4D<uint8> expected({{
+  Array4D<uint8_t> expected({{
     {{4, 3, 2, 1},
      {8, 7, 6, 5},
      {12, 11, 10, 9}},
@@ -139,7 +138,7 @@ XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
      {24, 23, 22, 21}},
   }});
   // clang-format on
-  ComputeAndCompareR4<uint8>(&b, expected, {});
+  ComputeAndCompareR4<uint8_t>(&b, expected, {});
 }
 
 // Tests the reverse operation on a 4D float array on dimension 0 and 1.

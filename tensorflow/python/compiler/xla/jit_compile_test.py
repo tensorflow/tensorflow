@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -24,6 +20,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
@@ -88,7 +85,8 @@ class JitCompileTest(test.TestCase):
     with ops.Graph().as_default() as g:
 
       def fn(x):
-        return array_ops.unique(x).y  # Unique is not supported by XLA
+        return string_ops.string_length(
+            string_ops.string_format('{}', x))
 
       xla_func = def_function.function(fn, jit_compile=True)
       inputs = array_ops.placeholder(dtypes.float32, [5])

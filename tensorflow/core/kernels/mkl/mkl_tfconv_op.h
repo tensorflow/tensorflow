@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-using mkldnn::stream;
+using dnnl::stream;
 
 namespace tensorflow {
 
@@ -60,7 +60,7 @@ class MklToTfOp : public OpKernel {
     VLOG(1) << "MKLToTFConversion complete successfully.";
   }
 
-  // TODO(bhavanis): Move the below ConvertMklToTf() to mkl_util.h
+  // TODO(intel-tf): Move the below ConvertMklToTf() to mkl_util.h
   static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
                              string data_format_str, DataType op_data_type,
                              bool has_avx512f, uint input_number) {
@@ -117,7 +117,7 @@ class MklToTfOp : public OpKernel {
                     errors::Internal(
                         "MklToTfOp: Failed to forward input tensor to output"));
       }
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception: Status: ", e.status,

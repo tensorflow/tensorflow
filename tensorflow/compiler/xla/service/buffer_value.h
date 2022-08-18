@@ -26,8 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -95,7 +93,14 @@ class BufferValue {
   using SizeFunction = std::function<int64_t(const BufferValue&)>;
   using AlignmentFunction = std::function<int64_t(BufferValue::Color)>;
 
-  virtual ~BufferValue();
+  // Prevent value being copied, allowing comparison by pointer,
+  BufferValue(const BufferValue&) = delete;
+  BufferValue& operator=(const BufferValue&) = delete;
+  // ... but allow moves.
+  BufferValue(BufferValue&&) = default;
+  BufferValue& operator=(BufferValue&&) = default;
+
+  virtual ~BufferValue() {}
 
   Id id() const { return id_; }
 
@@ -140,13 +145,9 @@ class BufferValue {
   // Whether this buffer contains an array.
   bool IsArray() const { return is_array_; }
 
-  // operator< is required for std::set.
   bool operator<(const BufferValue& other) const { return id_ < other.id_; }
 
-  bool operator==(const BufferValue& other) const { return id_ == other.id_; }
-  bool operator!=(const BufferValue& other) const { return id_ != other.id_; }
-
-  virtual string ToString() const = 0;
+  virtual std::string ToString() const = 0;
 
   // TODO(lauj) rename LogicalBufferProto to BufferValueProto.
   LogicalBufferProto ToProto(const SizeFunction& size_fn) const;

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -53,7 +52,7 @@ XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
   // deallocation happen on the right allocator.
   ExecutableRunOptions options;
   options.set_allocator(allocator);
-  absl::optional<ScopedShapedBuffer> result =
+  std::optional<ScopedShapedBuffer> result =
       ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {},
                           DefaultExecutableBuildOptions(), options);
 
@@ -77,7 +76,7 @@ XLA_TEST_F(LocalClientAllocationTest, RunOnDevices) {
   auto x = ConstantR1<float>(&builder, {0.0f, 1.0f, 2.0f});
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   Add(x, y);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   TestAllocator* allocator = GetOrCreateAllocator(local_client_->platform());
   for (int d = 0; d < local_client_->device_count(); ++d) {

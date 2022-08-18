@@ -17,10 +17,6 @@
 Programs that want to build TensorFlow Ops and Graphs without having to import
 the constructors and utilities individually can import this file:
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 import tensorflow as tf
 """
@@ -37,8 +33,8 @@ import traceback
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 
-from tensorflow.python.eager import context
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+from tensorflow.python.eager import context
 
 # pylint: enable=wildcard-import
 
@@ -90,6 +86,7 @@ from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import gen_sendrecv_ops
 from tensorflow.python.ops import gen_tpu_ops
+from tensorflow.python.ops import gen_uniform_quant_ops
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
@@ -157,6 +154,11 @@ nn.raw_rnn = rnn.raw_rnn
 nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
 nn.static_state_saving_rnn = rnn.static_state_saving_rnn
 nn.rnn_cell = rnn_cell
+
+# Update dispatch decorator docstrings to contain lists of registered APIs.
+# (This should come after any imports that register APIs.)
+from tensorflow.python.util import dispatch
+dispatch.update_docstrings_with_api_lists()
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

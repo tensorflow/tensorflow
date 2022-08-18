@@ -73,7 +73,7 @@ tensorflow::Status GetContents(const std::string& filename,
 tensorflow::Status SetContents(const std::string& filename,
                                const std::string& contents,
                                const Options& options);
-std::string JoinPath(const std::string& base, const std::string& filename);
+std::string JoinPath(const std::string& a, const std::string& b);
 tensorflow::Status Writable(const std::string& filename);
 tensorflow::Status Readable(const std::string& filename,
                             const Options& options);

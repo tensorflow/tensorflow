@@ -17,12 +17,9 @@
 Adapted from Tangent.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 import inspect
+import io
 import linecache
 import re
 import sys
@@ -31,7 +28,6 @@ import tokenize
 
 import astunparse
 import gast
-import six
 
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
@@ -39,8 +35,6 @@ from tensorflow.python.util import tf_inspect
 
 
 PY2_PREAMBLE = textwrap.dedent("""
-from __future__ import division
-from __future__ import print_function
 """)
 PY3_PREAMBLE = ''
 MAX_SIZE = 0
@@ -71,7 +65,7 @@ def dedent_block(code_string):
 
   code_string = _unfold_continuations(code_string)
 
-  token_gen = tokenize.generate_tokens(six.StringIO(code_string).readline)
+  token_gen = tokenize.generate_tokens(io.StringIO(code_string).readline)
 
   block_indentation = None
   tokens = []
@@ -152,15 +146,14 @@ def parse_entity(entity, future_features):
 
   try:
     original_source = inspect_utils.getimmediatesource(entity)
-  except (IOError, OSError) as e:
-    raise ValueError(
-        'Unable to locate the source code of {}. Note that functions defined'
-        ' in certain environments, like the interactive Python shell, do not'
-        ' expose their source code. If that is the case, you should define'
-        ' them in a .py source file. If you are certain the code is'
+  except OSError as e:
+    raise errors.InaccessibleSourceCodeError(
+        f'Unable to locate the source code of {entity}. Note that functions'
+        ' defined in certain environments, like the interactive Python shell,'
+        ' do not expose their source code. If that is the case, you should'
+        ' define them in a .py source file. If you are certain the code is'
         ' graph-compatible, wrap the call using'
-        ' @tf.autograph.experimental.do_not_convert. Original error: {}'.format(
-            entity, e))
+        f' @tf.autograph.experimental.do_not_convert. Original error: {e}')
 
   source = dedent_block(original_source)
 

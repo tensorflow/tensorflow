@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "IsTPUEmbeddingInitialized"
+  visibility: HIDDEN
+  summary: "Whether TPU Embedding is initialized in a distributed TPU system."
+}

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for control_flow_ops.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import itertools
 import time
@@ -37,6 +33,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -198,7 +195,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testIndexedSlicesWithDenseShape(self):
     with self.cached_session():
-      data = ops.IndexedSlices(
+      data = indexed_slices.IndexedSlices(
           constant_op.constant([1, 2, 3]),
           constant_op.constant([0, 1, 2]),
           dense_shape=constant_op.constant([3]))
@@ -553,7 +550,7 @@ def _get_nested_shape(nested):
   def _get_shape(tensor):
     if isinstance(tensor, tensor_array_ops.TensorArray):
       return tensor_array_ops.TensorArray
-    elif isinstance(tensor, ops.IndexedSlices):
+    elif isinstance(tensor, indexed_slices.IndexedSlices):
       return tensor.dense_shape
     else:
       return tensor.get_shape()
@@ -1155,6 +1152,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.disable_xla("Wants RunMetadata")
   def testParallelExecution(self):
     """Verify disjoint branches across while iterations are run in parallel."""
+    self.skipTest("b/210666081: Flaky")
     if control_flow_v2_toggles.control_flow_v2_enabled():
       self.skipTest("b/138870290")
 

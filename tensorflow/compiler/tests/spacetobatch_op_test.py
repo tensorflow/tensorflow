@@ -14,13 +14,10 @@
 # ==============================================================================
 """Functional tests for SpaceToBatch and BatchToSpace ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -147,6 +144,29 @@ class SpaceToBatchTest(xla_test.XLATestCase):
              [[[6], [8]], [[14], [16]]], [[[22], [24]], [[30], [32]]]]
     block_size = 2
     self._testOne(x_np, block_size, x_out)
+
+
+class SpaceToBatchNDErrorHandlingTest(xla_test.XLATestCase):
+
+  def testInvalidBlockShape(self):
+    with self.assertRaisesRegex(ValueError, "block_shape must be positive"):
+      with self.session() as sess, self.test_scope():
+        tf_in = constant_op.constant(
+            -3.5e+35, shape=[10, 20, 20], dtype=dtypes.float32)
+        block_shape = constant_op.constant(-10, shape=[2], dtype=dtypes.int64)
+        paddings = constant_op.constant(0, shape=[2, 2], dtype=dtypes.int32)
+        sess.run(array_ops.space_to_batch_nd(tf_in, block_shape, paddings))
+
+  def testOutputSizeOutOfBounds(self):
+    with self.assertRaisesRegex(ValueError,
+                                "Negative.* dimension size caused by overflow"):
+      with self.session() as sess, self.test_scope():
+        tf_in = constant_op.constant(
+            -3.5e+35, shape=[10, 19, 22], dtype=dtypes.float32)
+        block_shape = constant_op.constant(
+            1879048192, shape=[2], dtype=dtypes.int64)
+        paddings = constant_op.constant(0, shape=[2, 2], dtype=dtypes.int32)
+        sess.run(array_ops.space_to_batch_nd(tf_in, block_shape, paddings))
 
 
 class SpaceToBatchNDTest(xla_test.XLATestCase):

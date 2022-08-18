@@ -60,6 +60,9 @@ template <typename T>
 struct SaveTypeTraits;
 
 template <typename T>
+int TensorProtoDataSize(const TensorProto& t);
+
+template <typename T>
 const typename SaveTypeTraits<T>::SavedType* TensorProtoData(
     const TensorProto& t);
 
@@ -95,6 +98,10 @@ void Fill(T* data, size_t n, TensorProto* t);
 #define TENSOR_PROTO_EXTRACT_TYPE(TYPE, FIELD, FTYPE)             \
   TENSOR_PROTO_EXTRACT_TYPE_HELPER(TYPE, FIELD, FTYPE, FTYPE)     \
   template <>                                                     \
+  inline int TensorProtoDataSize<TYPE>(const TensorProto& t) {    \
+    return t.FIELD##_val_size();                                  \
+  }                                                               \
+  template <>                                                     \
   inline void Fill(const TYPE* data, size_t n, TensorProto* t) {  \
     typename protobuf::RepeatedField<FTYPE> copy(data, data + n); \
     t->mutable_##FIELD##_val()->Swap(&copy);                      \
@@ -103,6 +110,10 @@ void Fill(T* data, size_t n, TensorProto* t);
 // Complex needs special treatment since proto doesn't have native complex
 #define TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(TYPE, FIELD, FTYPE)       \
   TENSOR_PROTO_EXTRACT_TYPE_HELPER(TYPE, FIELD, FTYPE, TYPE)        \
+  template <>                                                       \
+  inline int TensorProtoDataSize<TYPE>(const TensorProto& t) {      \
+    return t.FIELD##_val_size() / 2;                                \
+  }                                                                 \
   template <>                                                       \
   inline void Fill(const TYPE* data, size_t n, TensorProto* t) {    \
     const FTYPE* sub = reinterpret_cast<const FTYPE*>(data);        \
@@ -137,6 +148,11 @@ template <>
 struct SaveTypeTraits<qint32> : SaveTypeTraits<int32> {};
 
 template <>
+inline int TensorProtoDataSize<qint32>(const TensorProto& t) {
+  return t.int_val_size();
+}
+
+template <>
 inline const int32* TensorProtoData<qint32>(const TensorProto& t) {
   static_assert(SaveTypeTraits<qint32>::supported,
                 "Specified type qint32 not supported for Restore");
@@ -157,6 +173,11 @@ struct SaveTypeTraits<Eigen::half> {
   typedef int SavedType;
   typedef protobuf::RepeatedField<int32> RepeatedField;
 };
+
+template <>
+inline int TensorProtoDataSize<Eigen::half>(const TensorProto& t) {
+  return t.half_val_size();
+}
 
 template <>
 inline const int* TensorProtoData<Eigen::half>(const TensorProto& t) {
@@ -186,6 +207,11 @@ struct SaveTypeTraits<tstring> {
   typedef const string* SavedType;
   typedef protobuf::RepeatedPtrField<string> RepeatedField;
 };
+
+template <>
+inline int TensorProtoDataSize<tstring>(const TensorProto& t) {
+  return t.string_val_size();
+}
 
 template <>
 inline const string* const* TensorProtoData<tstring>(const TensorProto& t) {

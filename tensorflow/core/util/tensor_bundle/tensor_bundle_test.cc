@@ -16,7 +16,12 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 #include <random>
+#include <string>
 #include <vector>
+
+#if defined(_WIN32)
+#include <windows.h>
+#endif  // _WIN32
 
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -32,9 +37,11 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
 namespace tensorflow {
+using ::testing::ElementsAre;
 
 namespace {
 
@@ -313,7 +320,7 @@ TEST(TensorBundleTest, SwapBytes) {
   // functions. As a workaround, we make some dummy calls here.
   // TODO(frreiss): Remove this workaround when the compiler bug is fixed.
   ByteSwap(Constant_2x3<int>(42));
-  EXPECT_NE(Status::OK(), FlipEndiannessBit(Prefix("not_a_valid_prefix")));
+  EXPECT_NE(OkStatus(), FlipEndiannessBit(Prefix("not_a_valid_prefix")));
 
   // Test patterns, manually swapped so that we aren't relying on the
   // correctness of our own byte-swapping macros when testing those macros.
@@ -720,6 +727,19 @@ TEST(TensorBundleTest, StringTensorsOldFormat) {
   Expect<float>(&reader, "floats", Constant_2x3<float>(16.18));
 }
 
+// Copied from absl code.
+size_t GetPageSize() {
+#ifdef _WIN32
+  SYSTEM_INFO system_info;
+  GetSystemInfo(&system_info);
+  return std::max(system_info.dwPageSize, system_info.dwAllocationGranularity);
+#elif defined(__wasm__) || defined(__asmjs__)
+  return getpagesize();
+#else
+  return sysconf(_SC_PAGESIZE);
+#endif
+}
+
 TEST(TensorBundleTest, StringTensors) {
   constexpr size_t kLongLength = static_cast<size_t>(UINT32_MAX) + 1;
   Tensor long_string_tensor(DT_STRING, TensorShape({1}));
@@ -780,14 +800,17 @@ TEST(TensorBundleTest, StringTensors) {
     TF_ASSERT_OK(reader.Lookup("long_scalar", &long_string_tensor));
     ASSERT_EQ(backing_string, long_string_tensor.flat<tstring>().data());
     EXPECT_EQ(kLongLength, backing_string->length());
-    for (size_t i = 0; i < kLongLength; i++) {
-      // Not using ASSERT_EQ('d', c) because this way is twice as fast due to
-      // compiler optimizations.
-      if ((*backing_string)[i] != 'd') {
+
+    const size_t kPageSize = GetPageSize();
+    char* testblock = new char[kPageSize];
+    memset(testblock, 'd', sizeof(char) * kPageSize);
+    for (size_t i = 0; i < kLongLength; i += kPageSize) {
+      if (memcmp(testblock, backing_string->data() + i, kPageSize) != 0) {
         FAIL() << "long_scalar is not full of 'd's as expected.";
         break;
       }
     }
+    delete[] testblock;
   }
 }
 
@@ -884,6 +907,43 @@ TEST(TensorBundleTest, DirectoryStructure) {
       MergeBundles(env, {kAnotherPrefix, kBundlePrefixes[1]}, kMerged));
   CheckDirFiles(kMerged, {"merged.index", "merged.data-00000-of-00002",
                           "merged.data-00001-of-00002"});
+}
+
+TEST(TensorBundleTest, SortForSequentialAccess) {
+  Env* env = Env::Default();
+  const std::vector<string> kBundlePrefixes = {Prefix("worker0"),
+                                               Prefix("worker1")};
+  BundleWriter writer0(env, kBundlePrefixes[0]);
+  for (int i = 0; i < 3; ++i) {
+    TF_EXPECT_OK(
+        writer0.Add(strings::StrCat("tensor-0-", i), Constant_2x3<float>(0.)));
+  }
+  TF_ASSERT_OK(writer0.Finish());
+
+  BundleWriter writer1(env, kBundlePrefixes[1]);
+  for (int i = 2; i >= 0; --i) {
+    TF_EXPECT_OK(
+        writer1.Add(strings::StrCat("tensor-1-", i), Constant_2x3<float>(0.)));
+  }
+  TF_ASSERT_OK(writer1.Finish());
+
+  const string kMerged = Prefix("merged");
+  TF_ASSERT_OK(
+      MergeBundles(env, {kBundlePrefixes[0], kBundlePrefixes[1]}, kMerged));
+
+  // We now have:
+  //   merged.data-00000-of-00002 with tensor-0-0, tensor-0-1, tensor-0-2
+  //   merged.data-00001-of-00002 with tensor-1-2, tensor-1-1, tensor-1-0
+
+  BundleReader reader(env, kMerged);
+  TF_ASSERT_OK(reader.status());
+  std::vector<string> tensor_names = {"tensor-1-0", "tensor-0-1", "tensor-1-2",
+                                      "tensor-0-0", "tensor-1-1", "tensor-0-2"};
+  TF_ASSERT_OK(reader.SortForSequentialAccess<string>(
+      tensor_names, [](const string& element) { return element; }));
+  EXPECT_THAT(tensor_names,
+              ElementsAre("tensor-0-0", "tensor-0-1", "tensor-0-2",
+                          "tensor-1-2", "tensor-1-1", "tensor-1-0"));
 }
 
 TEST(TensorBundleTest, Error) {

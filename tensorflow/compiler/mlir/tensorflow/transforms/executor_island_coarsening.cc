@@ -480,16 +480,16 @@ void InsertDummyIslandForFetch(FetchOp fetch) {
 struct ExecutorIslandCoarseningPass
     : public TF::ExecutorIslandCoarseningPassBase<
           ExecutorIslandCoarseningPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void ExecutorIslandCoarseningPass::runOnFunction() {
+void ExecutorIslandCoarseningPass::runOnOperation() {
   // Temporary datastructure to keep operands and results for each island.
   // We define it here to grow and reuse the storage for the duration of the
   // pass.
   IslandOperandsAndResults island_operands_and_results;
 
-  getFunction().walk([&](GraphOp graph) {
+  getOperation().walk([&](GraphOp graph) {
     InsertDummyIslandForFetch(graph.GetFetch());
 
     // Compute an analysis that decides which islands should be merged together,
@@ -502,7 +502,8 @@ void ExecutorIslandCoarseningPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorIslandCoarseningPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTFExecutorIslandCoarseningPass() {
   return std::make_unique<ExecutorIslandCoarseningPass>();
 }
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils.h"
 
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>

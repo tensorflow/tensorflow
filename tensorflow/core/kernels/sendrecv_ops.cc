@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sendrecv_ops.h"
 
+#include <utility>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -119,7 +121,9 @@ string SendOp::TraceString(const OpKernelContext& ctx, bool verbose) const {
   const string& src = src_it != attr.end() ? src_it->second.s() : "";
   const string& dst = dst_it != attr.end() ? dst_it->second.s() : "";
   string op = profiler::TraceMeOp(name_view(), type_string_view());
-  return profiler::TraceMeEncode(std::move(op), {{"from", src}, {"to", dst}});
+  return profiler::TraceMeEncode(
+      std::move(op),
+      {{"from", src}, {"to", dst}, {"key", parsed_key_.FullKey()}});
 }
 
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_CPU), SendOp);
@@ -163,7 +167,9 @@ string RecvOp::TraceString(const OpKernelContext& ctx, bool verbose) const {
   const string& src = src_it != attr.end() ? src_it->second.s() : "";
   const string& dst = dst_it != attr.end() ? dst_it->second.s() : "";
   string op = profiler::TraceMeOp(name_view(), type_string_view());
-  return profiler::TraceMeEncode(std::move(op), {{"from", src}, {"to", dst}});
+  return profiler::TraceMeEncode(
+      std::move(op),
+      {{"from", src}, {"to", dst}, {"key", parsed_key_.FullKey()}});
 }
 
 namespace {

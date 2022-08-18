@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -116,6 +117,11 @@ class BufferBase : public TensorBuffer {
         proto->set_has_single_reference(true);
       }
     }
+  }
+
+  // Returns the type of the underlying memory.
+  AllocatorMemoryType GetMemoryType() const override {
+    return alloc_->GetMemoryType();
   }
 
  protected:
@@ -339,8 +345,9 @@ PROTO_TRAITS(quint16, int32, int);
 
 template <>
 struct ProtoHelper<int64_t> {
-  static const int64_t* Begin(const TensorProto& proto) {
-    return reinterpret_cast<const int64_t*>(proto.int64_val().begin());
+  static protobuf::RepeatedField<int64_t>::const_iterator Begin(
+      const TensorProto& proto) {
+    return proto.int64_val().begin();
   }
   static size_t NumElements(const TensorProto& proto) {
     return proto.int64_val().size();
@@ -353,8 +360,9 @@ struct ProtoHelper<int64_t> {
 
 template <>
 struct ProtoHelper<uint64> {
-  static const uint64* Begin(const TensorProto& proto) {
-    return reinterpret_cast<const uint64*>(proto.uint64_val().begin());
+  static protobuf::RepeatedField<uint64_t>::const_iterator Begin(
+      const TensorProto& proto) {
+    return proto.uint64_val().begin();
   }
   static size_t NumElements(const TensorProto& proto) {
     return proto.uint64_val().size();
@@ -536,6 +544,46 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
   return buf;
 }
 
+// Separate implementation for `ResourceHandle` to handle the case when the
+// proto for the resource is invalid. See `resource_handle.h` constructor and
+// static factory builder.
+template <>
+TensorBuffer* FromProtoField<ResourceHandle>(Allocator* a,
+                                             const TensorProto& in, int64_t n) {
+  CHECK_GT(n, 0);
+  Buffer<ResourceHandle>* buf = new Buffer<ResourceHandle>(a, n);
+  ResourceHandle* data = buf->template base<ResourceHandle>();
+  if (data == nullptr) {
+    buf->Unref();
+    return nullptr;
+  }
+  const int64_t in_n = ProtoHelper<ResourceHandle>::NumElements(in);
+  if (in_n <= 0) {
+    std::fill_n(data, n, ResourceHandle());
+  } else {
+    // If tensor shape says we have n < in_n elements in the output tensor
+    // then make sure to only decode the first n out of the in_n elements in the
+    // in tensors. In all other cases, we decode all in_n elements of in and set
+    // the remaining elements up to n to be the default ResourceHandle() value.
+    const int64_t real_n = n < in_n ? n : in_n;
+    for (int64_t i = 0; i < real_n; ++i) {
+      Status s = ResourceHandle::BuildResourceHandle(in.resource_handle_val(i),
+                                                     &data[i]);
+      if (!s.ok()) {
+        LOG(ERROR) << "Could not decode resource handle from proto \""
+                   << in.resource_handle_val(i).ShortDebugString()
+                   << "\", returned status: " << s.ToString();
+        buf->Unref();
+        return nullptr;
+      }
+    }
+    for (int64_t i = in_n; i < n; ++i) {
+      data[i] = ResourceHandle();
+    }
+  }
+  return buf;
+}
+
 template <>
 TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
                                       int64_t n) {
@@ -709,7 +757,7 @@ Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
     buf_ = other.buf_;
     RefIfNonNull(buf_);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
@@ -723,11 +771,11 @@ bool Tensor::RefCountIsOne() const {
 // The macro CASES() expands to a switch statement conditioned on
 // TYPE_ENUM. Each case expands the STMTS after a typedef for T.
 #define SINGLE_ARG(...) __VA_ARGS__
-#define CASE(TYPE, STMTS)             \
-  case DataTypeToEnum<TYPE>::value: { \
-    typedef TYPE T;                   \
-    STMTS;                            \
-    break;                            \
+#define CASE(TYPE, STMTS)               \
+  case DataTypeToEnum<TYPE>::value: {   \
+    typedef TF_ATTRIBUTE_UNUSED TYPE T; \
+    STMTS;                              \
+    break;                              \
   }
 #define CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, INVALID, DEFAULT) \
   switch (TYPE_ENUM) {                                         \
@@ -763,9 +811,8 @@ bool Tensor::RefCountIsOne() const {
   }
 
 #define CASES(TYPE_ENUM, STMTS)                                      \
-  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS,                               \
-                     LOG(FATAL) << "Unexpected type: " << TYPE_ENUM; \
-                     , LOG(FATAL) << "Type not set";)
+  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, LOG(FATAL) << "Type not set"; \
+                     , LOG(FATAL) << "Unexpected type: " << TYPE_ENUM;)
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
     : shape_(shape), buf_(nullptr) {
@@ -793,6 +840,16 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
     LogMemory::RecordTensorAllocation("Unknown (with attributes)",
                                       LogMemory::UNKNOWN_STEP_ID, *this);
   }
+}
+
+Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
+                           Tensor* out_tensor) {
+  // Avoid crashes due to invalid or unsupported types.
+  CASES_WITH_DEFAULT(
+      type, {}, return errors::InvalidArgument("Type not set"),
+      return errors::InvalidArgument("Unexpected type: ", DataType_Name(type)));
+  *out_tensor = Tensor(type, shape);
+  return OkStatus();
 }
 
 // NOTE(mrry): The default allocator for a Tensor (when none is specified) is
@@ -933,6 +990,15 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
                          dtype_error = true, dtype_error = true);
     }
     if (dtype_error || p == nullptr) return false;
+  } else {
+    // Handle the case of empty tensors (N = 0) or tensors with incomplete shape
+    // (N = -1). All other values of `shape.num_elements()` should be invalid by
+    // construction.
+    // Here, we just need to validate that the `proto.dtype()` value is valid.
+    bool dtype_error = false;
+    CASES_WITH_DEFAULT(proto.dtype(), break, dtype_error = true,
+                       dtype_error = true);
+    if (dtype_error) return false;
   }
   shape_ = shape;
   set_dtype(proto.dtype());

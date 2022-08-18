@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONVOLUTION_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONVOLUTION_THUNK_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
@@ -55,9 +57,15 @@ class ConvolutionThunk : public Thunk {
   std::vector<BufferAllocation::Slice> operand_buffers_;
   BufferAllocation::Slice result_buffer_;
   BufferAllocation::Slice scratch_buffer_;
+  MaybeFusedConvRunner& GetOrCreateRunner(
+      const stream_executor::Stream* stream);
 
   // Convolution config
   const GpuConvConfig config_;
+  absl::Mutex mu_;
+  absl::flat_hash_map<const stream_executor::Stream*,
+                      std::unique_ptr<MaybeFusedConvRunner>>
+      runner_cache_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace gpu

@@ -14,16 +14,12 @@
 # ==============================================================================
 """Tests for Momentum."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -214,8 +210,9 @@ class MomentumOptimizerTest(test.TestCase):
         mom_op = momentum_lib.MomentumOptimizer(
             learning_rate=2.0, momentum=0.9, use_nesterov=True)
         x_feed = array_ops.placeholder(dtype)
-        y_feed = ops.IndexedSlices(x_feed, constant_op.constant([0, 1]),
-                                   constant_op.constant([2]))
+        y_feed = indexed_slices.IndexedSlices(x_feed,
+                                              constant_op.constant([0, 1]),
+                                              constant_op.constant([2]))
         grads_and_vars = [(y_feed, var0),
                           (constant_op.constant([3.0, 3.0], dtype=dtype), var1)]
         opt_update = mom_op.apply_gradients(grads_and_vars)
@@ -454,7 +451,7 @@ class MomentumOptimizerTest(test.TestCase):
       mom_opt = momentum_lib.MomentumOptimizer(learning_rate=0.1, momentum=0.1)
       mom_update = mom_opt.apply_gradients(zip([grads0], [var0]))
       self.evaluate(variables.global_variables_initializer())
-      for i in xrange(num_samples):
+      for i in range(num_samples):
         mom_update.run(feed_dict={grads0: db_grad[i]})
         self.assertAllClose(np.array(db_out[i]), self.evaluate(var0))
 
@@ -464,10 +461,10 @@ class MomentumOptimizerTest(test.TestCase):
       with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable(array_ops.zeros([4, 2], dtype=dtype))
         var1 = variables.Variable(constant_op.constant(1.0, dtype, [4, 2]))
-        grads0 = ops.IndexedSlices(
+        grads0 = indexed_slices.IndexedSlices(
             constant_op.constant([[.1, .1]], dtype=dtype),
             constant_op.constant([1]), constant_op.constant([4, 2]))
-        grads1 = ops.IndexedSlices(
+        grads1 = indexed_slices.IndexedSlices(
             constant_op.constant([[.01, .01], [.01, .01]], dtype=dtype),
             constant_op.constant([2, 3]), constant_op.constant([4, 2]))
         mom_opt = momentum_lib.MomentumOptimizer(

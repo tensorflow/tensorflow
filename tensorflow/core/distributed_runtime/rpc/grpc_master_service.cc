@@ -196,15 +196,17 @@ class GrpcMasterService : public AsyncServiceInterface {
     call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
     master_impl_->RunStep(
         call_opts, wrapped_request, wrapped_response,
-        [call, call_opts, wrapped_request, trace](const Status& status) {
+        [call, call_opts, wrapped_request, wrapped_response,
+         trace](const Status& status) {
           call->ClearCancelCallback();
           delete call_opts;
           delete wrapped_request;
+          delete wrapped_response;
           delete trace;
           if (call->request.store_errors_in_response_body() && !status.ok()) {
             call->response.set_status_code(status.code());
             call->response.set_status_error_message(status.error_message());
-            call->SendResponse(ToGrpcStatus(Status::OK()));
+            call->SendResponse(ToGrpcStatus(OkStatus()));
           } else {
             call->SendResponse(ToGrpcStatus(status));
           }

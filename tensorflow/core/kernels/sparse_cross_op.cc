@@ -24,12 +24,14 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/strong_hash.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -272,7 +274,7 @@ StringPiece KeyedDenseTensorColumn<StringPiece>::Feature(
 template <typename OutType>
 class OutputUpdater {
  public:
-  OutputUpdater(const std::vector<int64>& output_start_indices,
+  OutputUpdater(const std::vector<int64_t>& output_start_indices,
                 Tensor* indices_out, Tensor* values_out)
       : output_start_indices_(output_start_indices),
         indices_out_(indices_out),
@@ -292,7 +294,7 @@ class OutputUpdater {
   }
 
  private:
-  const std::vector<int64>& output_start_indices_;
+  const std::vector<int64_t>& output_start_indices_;
   Tensor* indices_out_;
   Tensor* values_out_;
 };
@@ -589,7 +591,7 @@ Status ValidateInput(const OpInputList& indices_list_in,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Extracts data about the features and populates feature data.
@@ -643,10 +645,10 @@ GenerateColumnsFromInput(const OpInputList& indices_list_in,
   const int64_t batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
   const int64_t number_of_columns = shapes_list_in.size();
 
-  std::vector<std::vector<int64>> feature_counts(number_of_columns,
-                                                 std::vector<int64_t>());
-  std::vector<std::vector<int64>> feature_start_indices(number_of_columns,
-                                                        std::vector<int64_t>());
+  std::vector<std::vector<int64_t>> feature_counts(number_of_columns,
+                                                   std::vector<int64_t>());
+  std::vector<std::vector<int64_t>> feature_start_indices(
+      number_of_columns, std::vector<int64_t>());
 
   ExtractFeatureData(indices_list_in, batch_size, &feature_counts,
                      &feature_start_indices);
@@ -676,10 +678,10 @@ GenerateKeyedColumnsFromInput(const OpInputList& indices_list_in,
   const int64_t batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
   const int64_t number_of_columns = shapes_list_in.size();
 
-  std::vector<std::vector<int64>> feature_counts(number_of_columns,
-                                                 std::vector<int64_t>());
-  std::vector<std::vector<int64>> feature_start_indices(number_of_columns,
-                                                        std::vector<int64_t>());
+  std::vector<std::vector<int64_t>> feature_counts(number_of_columns,
+                                                   std::vector<int64_t>());
+  std::vector<std::vector<int64_t>> feature_start_indices(
+      number_of_columns, std::vector<int64_t>());
 
   ExtractFeatureData(indices_list_in, batch_size, &feature_counts,
                      &feature_start_indices);
@@ -707,7 +709,7 @@ Status CreateOutputTensors(
     const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>& columns,
     int64_t batch_size, OpKernelContext* context, Tensor** indices_out,
     Tensor** values_out, Tensor** shape_out,
-    std::vector<int64>* output_start_indices) {
+    std::vector<int64_t>* output_start_indices) {
   // Calculates dimensions for output tensors.
   int64_t cross_count_total = 0;
   int64_t max_cross_count = 0;
@@ -731,7 +733,7 @@ Status CreateOutputTensors(
   shape_vec(0) = batch_size;
   shape_vec(1) = max_cross_count;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <bool HASHED_OUTPUT, typename InternalType>
@@ -832,6 +834,10 @@ class SparseCrossV2Op : public OpKernel {
 
     const Tensor* sep_t;
     OP_REQUIRES_OK(context, context->input("sep", &sep_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(sep_t->shape()),
+                errors::InvalidArgument("Input separator should be a scalar. "
+                                        "Received: ",
+                                        sep_t->DebugString()));
     const tstring separator = sep_t->scalar<tstring>()();
 
     std::vector<std::unique_ptr<ColumnInterface<tstring>>> columns =
@@ -927,7 +933,7 @@ class SparseCrossHashedOp : public OpKernel {
     auto do_work = [&columns, crosser, updater, strong_hash](int64_t begin,
                                                              int64_t end) {
       for (int b = begin; b < end; b++) {
-        ProductIterator<int64> product_iterator(columns, b);
+        ProductIterator<int64_t> product_iterator(columns, b);
         int64_t cross_count = 0;
         while (product_iterator.HasNext()) {
           const auto permutation = product_iterator.Next();

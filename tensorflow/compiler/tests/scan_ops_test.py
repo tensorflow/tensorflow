@@ -14,14 +14,11 @@
 # ==============================================================================
 """Functional tests for scan ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -35,9 +32,9 @@ def numpy_reverse(x, axis):
   if axis < 0:
     axis = length + axis
 
-  ix = [
+  ix = tuple(
       slice(None, None, -1) if i == axis else slice(None) for i in range(length)
-  ]
+  )
   return x[ix]
 
 
@@ -51,10 +48,11 @@ def handle_options(func, x, axis, exclusive, reverse):
     x = numpy_reverse(x, axis)
 
   if exclusive:
-    ix_head = [slice(0, 1) if i == axis else slice(None) for i in range(length)]
-    ix_init = [
+    ix_head = tuple(slice(0, 1) if i == axis else slice(None)
+                    for i in range(length))
+    ix_init = tuple(
         slice(0, -1) if i == axis else slice(None) for i in range(length)
-    ]
+    )
     if func == np.cumsum:
       init = np.zeros_like(x[ix_head])
     elif func == np.cumprod:
@@ -129,6 +127,14 @@ class CumsumTest(xla_test.XLATestCase):
       x = np.arange(1, 145).reshape([2, 2, 3, 3, 2, 2]).astype(dtype)
       for axis in range(-6, 6, 3):
         self._compareAll(x, axis)
+
+  def testMixedPrecision(self):
+    with self.session(), self.test_scope():
+      y = math_ops.cumsum(
+          constant_op.constant([1., 2., 3., 4.], dtypes.bfloat16),
+          -1,
+          exclusive=True).eval()
+    self.assertAllEqual(y, [0., 1., 3., 6.])
 
   @test_util.disable_mlir_bridge("Error handling")
   def testInvalidAxis(self):

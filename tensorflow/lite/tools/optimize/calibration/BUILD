@@ -63,6 +63,7 @@ cc_library(
         ":logging_op",
         ":logging_op_resolver",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",

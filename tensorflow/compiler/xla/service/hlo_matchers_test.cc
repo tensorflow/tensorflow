@@ -28,14 +28,15 @@ namespace {
 
 using HloMatchersTest = HloTestBase;
 
-string DescribeHloMatcher(const ::testing::Matcher<const HloInstruction*>& m) {
+std::string DescribeHloMatcher(
+    const ::testing::Matcher<const HloInstruction*>& m) {
   std::stringstream ss;
   m.DescribeTo(&ss);
   return ss.str();
 }
 
 template <typename M, typename T>
-string Explain(const T& t, const M& m) {
+std::string Explain(const T& t, const M& m) {
   ::testing::StringMatchResultListener listener;
   EXPECT_THAT(t, ::testing::Not(m));  // For the error message.
   EXPECT_FALSE(m.MatchAndExplain(t, &listener));
@@ -92,7 +93,7 @@ TEST_F(HloMatchersTest, CustomCallMatcher) {
   auto c1 =
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1, 2, 3}));
   auto c2 =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({1, 2, 3}));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32_t>({1, 2, 3}));
   auto call = HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {1}), {c1.get(), c2.get()}, "foo_target");
 
@@ -200,7 +201,7 @@ TEST_F(HloMatchersTest, ShardingMatcher) {
 }
 
 TEST_F(HloMatchersTest, DotMatcher) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule DotOperationFusion_TransposeFusion
 
 ENTRY DotOperationFusion_TransposeFusion {
@@ -301,7 +302,7 @@ TEST_F(HloMatchersTest, AsyncCopyMatcher) {
 }
 
 TEST_F(HloMatchersTest, ConstantMatcher) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule Constant
 
 ENTRY main {
@@ -321,6 +322,30 @@ ENTRY main {
   EXPECT_THAT(Explain(root, op::Constant(LiteralUtil::CreateR0<uint32_t>(1))),
               "(%x = u32[2]{0} constant({1, 2})) has wrong value (got u32[2] "
               "{1, 2}, want u32[] 1)");
+}
+
+TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
+  Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
+  std::unique_ptr<HloInstruction> p0 =
+      HloInstruction::CreateParameter(0, shape, "param");
+
+  std::vector<ReplicaGroup> replica_groups(2);
+  replica_groups[0].add_replica_ids(0);
+  replica_groups[0].add_replica_ids(2);
+  replica_groups[1].add_replica_ids(1);
+  replica_groups[1].add_replica_ids(3);
+  std::unique_ptr<HloInstruction> all_to_all =
+      HloInstruction::CreateAllToAll(shape, {p0.get()}, replica_groups,
+                                     /*constrain_layout=*/false,
+                                     /*channel_id=*/std::nullopt);
+
+  EXPECT_THAT(Explain(p0.get(), op::ReplicaGroups({})),
+              "%param = f32[5,7]{1,0} parameter(0) not a collective op");
+  EXPECT_THAT(Explain(all_to_all.get(), op::ReplicaGroups({{0, 1}, {2, 3}})),
+              "%all-to-all = f32[5,7]{1,0} all-to-all(f32[5,7]{1,0} %param), "
+              "replica_groups={{0,2},{1,3}} has incorrect replica_groups "
+              "(expected: {{0,1},{2,3}})");
+  EXPECT_THAT(all_to_all.get(), op::ReplicaGroups({{0, 2}, {1, 3}}));
 }
 
 }  // namespace

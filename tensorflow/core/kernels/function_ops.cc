@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -50,7 +52,7 @@ void ArgOp::Compute(OpKernelContext* ctx) {
 
   auto validate_type = [this](const Tensor& val) {
     if (val.dtype() == dtype_) {
-      return Status::OK();
+      return OkStatus();
     } else {
       return errors::InvalidArgument("Type mismatch: actual ",
                                      DataTypeString(val.dtype()),
@@ -98,58 +100,70 @@ REGISTER_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_TPU_SYSTEM), RetvalOp);
 
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
-      Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), ArgOp);
-TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_QUANTIZED_TYPES(REGISTER)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kArgOp)
-                                                   .Device(DEVICE_GPU)
-                                                   .HostMemory("output")
-                                                   .TypeConstraint<int32>("T"),
-                                               ArgOp);
+      Name(kArgOp).Device(DEVICE_DEFAULT).TypeConstraint<type>("T"), ArgOp);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER);
+TF_CALL_QUANTIZED_TYPES(REGISTER);
+TF_CALL_bool(REGISTER);
+
 REGISTER_KERNEL_BUILDER(
-    Name(kDeviceArgOp).Device(DEVICE_GPU).TypeConstraint<int32>("T"), ArgOp);
+    Name(kDeviceArgOp).Device(DEVICE_DEFAULT).TypeConstraint<int32>("T"),
+    ArgOp);
+
+REGISTER_KERNEL_BUILDER(Name(kArgOp)
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        ArgOp);
 #undef REGISTER
 
 REGISTER_KERNEL_BUILDER(Name(kArgOp)
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("output")
                             .TypeConstraint<ResourceHandle>("T"),
                         ArgOp);
 
 REGISTER_KERNEL_BUILDER(Name(kArgOp)
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("output")
                             .TypeConstraint<tstring>("T"),
                         ArgOp);
 
 REGISTER_KERNEL_BUILDER(
-    Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<Variant>("T"), ArgOp);
+    Name(kArgOp).Device(DEVICE_DEFAULT).TypeConstraint<Variant>("T"), ArgOp);
 
-#define REGISTER(type)     \
-  REGISTER_KERNEL_BUILDER( \
-      Name(kRetOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
-TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_QUANTIZED_TYPES(REGISTER)
-REGISTER(Variant)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
-                                                   .Device(DEVICE_GPU)
-                                                   .HostMemory("input")
-                                                   .TypeConstraint<int32>("T"),
-                                               RetvalOp);
-REGISTER_KERNEL_BUILDER(
-    Name(kDeviceRetOp).Device(DEVICE_GPU).TypeConstraint<int32>("T"), RetvalOp);
+#define REGISTER(type)                                               \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name(kRetOp).Device(DEVICE_DEFAULT).TypeConstraint<type>("T"), \
+      RetvalOp);
+
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER);
+TF_CALL_QUANTIZED_TYPES(REGISTER);
+TF_CALL_qint16(REGISTER);
+TF_CALL_quint16(REGISTER);
+REGISTER(Variant);
+TF_CALL_bool(REGISTER);
 
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("input")
+                            .TypeConstraint<int32>("T"),
+                        RetvalOp);
+REGISTER_KERNEL_BUILDER(
+    Name(kDeviceRetOp).Device(DEVICE_DEFAULT).TypeConstraint<int32>("T"),
+    RetvalOp);
+
+REGISTER_KERNEL_BUILDER(Name(kRetOp)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<ResourceHandle>("T")
                             .HostMemory("input"),
                         RetvalOp);
 
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<tstring>("T")
                             .HostMemory("input"),
                         RetvalOp);
+
 #undef REGISTER
 
 class PassOn : public OpKernel {
@@ -177,28 +191,28 @@ class PassOn : public OpKernel {
 REGISTER_SYSTEM_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_CPU), PassOn);
 REGISTER_SYSTEM_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
 
-#define REGISTER_GPU_KERNELS(type)                                       \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_ListToArray").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
-      PassOn);                                                           \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_ArrayToList").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+#define REGISTER_DEFAULT_KERNELS(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("_ListToArray").Device(DEVICE_DEFAULT).TypeConstraint<type>("T"), \
+      PassOn);                                                               \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("_ArrayToList").Device(DEVICE_DEFAULT).TypeConstraint<type>("T"), \
       PassOn);
 
-REGISTER_GPU_KERNELS(Eigen::half);
-REGISTER_GPU_KERNELS(float);
-REGISTER_GPU_KERNELS(double);
+REGISTER_DEFAULT_KERNELS(Eigen::half);
+REGISTER_DEFAULT_KERNELS(float);
+REGISTER_DEFAULT_KERNELS(double);
 
-#undef REGISTER_GPU_KERNELS
+#undef REGISTER_DEFAULT_KERNELS
 
 REGISTER_KERNEL_BUILDER(Name("_ListToArray")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("input")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         PassOn);
 REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("input")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
@@ -258,10 +272,11 @@ class SymbolicGradientOp : public AsyncOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_CPU),
                         SymbolicGradientOp);
-REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_DEFAULT),
                         SymbolicGradientOp);
 
-RemoteCallOp::RemoteCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
+RemoteCallOp::RemoteCallOp(OpKernelConstruction* ctx)
+    : AsyncOpKernel(ctx), return_type_(ctx->def().experimental_type()) {
   OP_REQUIRES_OK(ctx,
                  ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, &func_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tin", &input_dtypes_));
@@ -346,9 +361,30 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     opts.args_alloc_attrs.push_back(arg_alloc_attrs);
   }
   opts.rets_alloc_attrs.reserve(output_dtypes_.size());
+  DCHECK(!return_type_.IsInitialized() ||
+         (return_type_.type_id() == TFT_UNSET) ||
+         (output_dtypes_.size() == return_type_.args_size()))
+      << "RemoteCall op has a full type information for "
+      << return_type_.args_size() << " outputs but the number of outputs is "
+      << output_dtypes_.size();
   for (const auto& dtype : output_dtypes_) {
     AllocatorAttributes ret_alloc_attrs;
-    ret_alloc_attrs.set_on_host(DataTypeAlwaysOnHost(dtype));
+    bool on_host = DataTypeAlwaysOnHost(dtype);
+    if (return_type_.IsInitialized() && (return_type_.type_id() != TFT_UNSET)) {
+      DCHECK(return_type_.type_id() == TFT_PRODUCT)
+          << return_type_.DebugString();
+      FullTypeDef ftd = full_type::GetArgDefaultUnset(
+          return_type_, opts.rets_alloc_attrs.size());
+      if (full_type::IsHostMemoryType(ftd)) {
+        on_host = true;
+      }
+      VLOG(5) << "FulltypeDef for RemoteCall output="
+              << opts.rets_alloc_attrs.size()
+              << ", IsHostMemoryType=" << full_type::IsHostMemoryType(ftd)
+              << ":\n"
+              << ftd.DebugString();
+    }
+    ret_alloc_attrs.set_on_host(on_host);
     opts.rets_alloc_attrs.push_back(ret_alloc_attrs);
   }
   auto* rets = new std::vector<Tensor>;
@@ -402,5 +438,6 @@ string RemoteCallOp::TraceString(const OpKernelContext& ctx,
 REGISTER_KERNEL_BUILDER(
     Name("RemoteCall").Device(DEVICE_CPU).HostMemory("target"), RemoteCallOp);
 REGISTER_KERNEL_BUILDER(
-    Name("RemoteCall").Device(DEVICE_GPU).HostMemory("target"), RemoteCallOp);
+    Name("RemoteCall").Device(DEVICE_DEFAULT).HostMemory("target"),
+    RemoteCallOp);
 }  // namespace tensorflow

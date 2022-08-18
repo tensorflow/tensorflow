@@ -21,6 +21,7 @@ package(
         "//tensorflow/core/lib/strings:__pkg__",
         # tensorflow/core/platform:tracing depends on hash
         "//tensorflow/core/platform:__subpackages__",
+        "//tensorflow/tsl/platform:__subpackages__",
         # tensorflow/core/framework:tensor depends on hash
         "//tensorflow/core/framework:__pkg__",
     ],

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Various learning rate decay functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 from tensorflow.python.keras.optimizer_v2 import legacy_learning_rate_decay as learning_rate_decay
 

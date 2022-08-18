@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -24,8 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -38,7 +37,7 @@ StatusOr<ChannelHandle> ChannelTracker::NewChannel(
       type != ChannelHandle::DEVICE_TO_HOST) {
     return InvalidArgument("Invalid channel type: %d", type);
   }
-  tensorflow::mutex_lock lock(channel_mutex_);
+  absl::MutexLock lock(&channel_mutex_);
 
   // Create a new channel handle with a unique value.
   ChannelHandle new_handle = AllocateHandle(type);
@@ -54,12 +53,12 @@ StatusOr<ChannelHandle> ChannelTracker::NewChannel(
 }
 
 Status ChannelTracker::RegisterSend(const ChannelHandle& handle) {
-  tensorflow::mutex_lock lock(channel_mutex_);
+  absl::MutexLock lock(&channel_mutex_);
   return RegisterSendInternal(handle);
 }
 
 Status ChannelTracker::RegisterRecv(const ChannelHandle& handle) {
-  tensorflow::mutex_lock lock(channel_mutex_);
+  absl::MutexLock lock(&channel_mutex_);
   return RegisterRecvInternal(handle);
 }
 
@@ -90,7 +89,7 @@ Status ChannelTracker::RegisterSendInternal(const ChannelHandle& handle) {
         handle.handle());
   }
   channel.has_sender = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
@@ -113,7 +112,7 @@ Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
         handle.handle());
   }
   channel.receiver_count += 1;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace xla

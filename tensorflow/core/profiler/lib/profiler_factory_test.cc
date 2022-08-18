@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
 
 #include <functional>
+#include <utility>
 
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
@@ -29,9 +30,9 @@ namespace {
 
 class TestProfiler : public ProfilerInterface {
  public:
-  Status Start() override { return Status::OK(); }
-  Status Stop() override { return Status::OK(); }
-  Status CollectData(XSpace*) override { return Status::OK(); }
+  Status Start() override { return OkStatus(); }
+  Status Stop() override { return OkStatus(); }
+  Status CollectData(XSpace*) override { return OkStatus(); }
 };
 
 std::unique_ptr<ProfilerInterface> TestFactoryFunction(
@@ -42,8 +43,7 @@ std::unique_ptr<ProfilerInterface> TestFactoryFunction(
 TEST(ProfilerFactoryTest, FactoryFunctionPointer) {
   ClearRegisteredProfilersForTest();
   RegisterProfilerFactory(&TestFactoryFunction);
-  std::vector<std::unique_ptr<ProfilerInterface>> profilers;
-  CreateProfilers(ProfileOptions(), &profilers);
+  auto profilers = CreateProfilers(ProfileOptions());
   EXPECT_EQ(profilers.size(), 1);
 }
 
@@ -52,8 +52,7 @@ TEST(ProfilerFactoryTest, FactoryLambda) {
   RegisterProfilerFactory([](const ProfileOptions& options) {
     return absl::make_unique<TestProfiler>();
   });
-  std::vector<std::unique_ptr<ProfilerInterface>> profilers;
-  CreateProfilers(ProfileOptions(), &profilers);
+  auto profilers = CreateProfilers(ProfileOptions());
   EXPECT_EQ(profilers.size(), 1);
 }
 
@@ -65,8 +64,7 @@ std::unique_ptr<ProfilerInterface> NullFactoryFunction(
 TEST(ProfilerFactoryTest, FactoryReturnsNull) {
   ClearRegisteredProfilersForTest();
   RegisterProfilerFactory(&NullFactoryFunction);
-  std::vector<std::unique_ptr<ProfilerInterface>> profilers;
-  CreateProfilers(ProfileOptions(), &profilers);
+  auto profilers = CreateProfilers(ProfileOptions());
   EXPECT_TRUE(profilers.empty());
 }
 
@@ -93,8 +91,7 @@ TEST(ProfilerFactoryTest, FactoryClassCapturedByLambda) {
       [factory = std::move(factory)](const ProfileOptions& options) {
         return factory.CreateProfiler(options);
       });
-  std::vector<std::unique_ptr<ProfilerInterface>> profilers;
-  CreateProfilers(ProfileOptions(), &profilers);
+  auto profilers = CreateProfilers(ProfileOptions());
   EXPECT_EQ(profilers.size(), 1);
 }
 

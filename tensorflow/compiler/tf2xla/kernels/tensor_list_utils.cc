@@ -115,7 +115,7 @@ bool IsTensorListInput(XlaOpKernelContext* ctx, int index) {
 Status IsTensorListInitialized(xla::XlaOp list, bool* is_initialized) {
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, list.builder()->GetShape(list));
   *is_initialized = list_shape.IsTuple();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IsNestedTensorList(xla::XlaOp list, bool* is_nested_list) {
@@ -126,14 +126,14 @@ Status IsNestedTensorList(xla::XlaOp list, bool* is_nested_list) {
   }
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, list.builder()->GetShape(list));
   *is_nested_list = (xla::ShapeUtil::TupleElementCount(list_shape) > 2);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BuildNonNestedTensorList(xla::XlaOp buffer, xla::XlaOp push_index,
                                 xla::XlaOp* output_list) {
   TF_RET_CHECK(buffer.builder());
   *output_list = xla::Tuple(buffer.builder(), {buffer, push_index});
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTensorListBufferShape(xla::XlaOp list, xla::Shape* buffer_shape) {
@@ -144,7 +144,7 @@ Status GetTensorListBufferShape(xla::XlaOp list, xla::Shape* buffer_shape) {
   }
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, list.builder()->GetShape(list));
   *buffer_shape = xla::ShapeUtil::GetTupleElementShape(list_shape, 0);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTensorListBuffer(xla::XlaOp list, xla::XlaOp* buffer) {
@@ -154,7 +154,7 @@ Status GetTensorListBuffer(xla::XlaOp list, xla::XlaOp* buffer) {
     return errors::InvalidArgument("TensorList is not initialized");
   }
   *buffer = xla::GetTupleElement(list, 0);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTensorListPushIndex(xla::XlaOp list, xla::XlaOp* push_index) {
@@ -166,7 +166,7 @@ Status GetTensorListPushIndex(xla::XlaOp list, xla::XlaOp* push_index) {
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, list.builder()->GetShape(list));
   int tuple_size = xla::ShapeUtil::TupleElementCount(list_shape);
   *push_index = xla::GetTupleElement(list, tuple_size - 1);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SetTensorListPushIndex(xla::XlaOp list, xla::XlaOp push_index,
@@ -185,7 +185,7 @@ Status SetTensorListPushIndex(xla::XlaOp list, xla::XlaOp push_index,
   }
   result_parts.push_back(push_index);
   *result = xla::Tuple(list.builder(), result_parts);
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::XlaOp BuildUninitializedTensorList(xla::XlaBuilder* b,
@@ -220,7 +220,7 @@ Status GetLeadingDimForTensorList(xla::XlaOp list, int64_t* leading_dim,
     *leading_dim = list_shape.dimensions(0);
     *leading_dim_dynamic_size = xla::GetDimensionSize(list, 0);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTensorListShapeFromElementTensorListShape(
@@ -242,7 +242,7 @@ Status GetTensorListShapeFromElementTensorListShape(
   shapes.push_back(xla::ShapeUtil::MakeShape(xla::PrimitiveType::S32,
                                              std::vector<int64_t>{}));
   *tensor_list_shape = xla::ShapeUtil::MakeTupleShape(shapes);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTensorListShapeFromElementShape(const xla::Shape& element_shape,
@@ -265,7 +265,7 @@ Status GetTensorListShapeFromElementShape(const xla::Shape& element_shape,
   shapes.push_back(xla::ShapeUtil::MakeShape(xla::PrimitiveType::S32,
                                              std::vector<int64_t>{}));
   *tensor_list_shape = xla::ShapeUtil::MakeTupleShape(shapes);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateZerosTensorListWithShape(
@@ -292,7 +292,7 @@ Status CreateZerosTensorListWithShape(
                    .element_type() == xla::S32);
   elements.push_back(xla::ConstantLiteral(b, xla::LiteralUtil::Zero(xla::S32)));
   *list = xla::Tuple(b, elements);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetInitializedTensorListForElement(xla::XlaOp list, xla::XlaOp element,
@@ -326,12 +326,12 @@ Status GetInitializedTensorListForElement(xla::XlaOp list, xla::XlaOp element,
           ", expected: ", list_shape.DebugString());
     }
     *initialized_list = list;
-    return Status::OK();
+    return OkStatus();
   } else {
     // Prepare dynamic dimension dimensions for zero tensor list. The dynamic
     // sizes are created by reading the dynamic dimension size of sub-elements.
     std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
-    for (int64_t i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+    for (int i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
       std::vector<xla::XlaOp> dynamic_dims;
       const xla::Shape& shape = list_shape.tuple_shapes(i);
       dynamic_dims.push_back(leading_dim_dynamic_size);
@@ -410,7 +410,7 @@ Status ExecuteTensorListPushBack(xla::XlaOp list, xla::XlaOp element,
   result_parts.push_back(updated_push_index);
 
   *result = xla::Tuple(b, result_parts);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExecuteTensorListPopBack(xla::XlaOp list, xla::XlaOp* list_result,
@@ -459,7 +459,7 @@ Status ExecuteTensorListPopBack(xla::XlaOp list, xla::XlaOp* list_result,
     *element_result = element_result_parts[0];
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
@@ -495,7 +495,7 @@ Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
   result_parts.push_back(updated_list_part);
   result_parts.push_back(xla::GetTupleElement(list, 1));
   *result = xla::Tuple(b, result_parts);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExecuteTensorListGetItem(xla::XlaOp list, xla::XlaOp index,
@@ -537,7 +537,7 @@ Status ExecuteTensorListGetItem(xla::XlaOp list, xla::XlaOp index,
   }
   slice_shape.erase(slice_shape.begin());
   *result = xla::Reshape(read, slice_shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExecuteTensorListFromTensor(int push_index, xla::XlaOp tensor,
@@ -554,7 +554,7 @@ Status ExecuteTensorListFromTensor(int push_index, xla::XlaOp tensor,
   std::vector<xla::XlaOp> result_parts{tensor,
                                        xla::ConstantR0<int32>(b, push_index)};
   *result = xla::Tuple(b, result_parts);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

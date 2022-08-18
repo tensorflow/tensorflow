@@ -50,7 +50,7 @@ NodeDef ToNodeDef(NodeDefBuilder&& builder) {
 }
 
 void ExpectSuccess(const NodeDef& good, const OpDef& op_def) {
-  EXPECT_EQ(Status::OK(), ValidateNodeDef(good, op_def))
+  EXPECT_EQ(OkStatus(), ValidateNodeDef(good, op_def))
       << "NodeDef: " << SummarizeNodeDef(good)
       << "; OpDef: " << SummarizeOpDef(op_def);
 }
@@ -317,7 +317,7 @@ TEST(NodeDefUtilTest, Device) {
 }
 
 void ExpectValidSyntax(const NodeDef& good) {
-  EXPECT_EQ(Status::OK(), ValidateExternalNodeDefSyntax(good))
+  EXPECT_EQ(OkStatus(), ValidateExternalNodeDefSyntax(good))
       << "NodeDef: " << SummarizeNodeDef(good);
 }
 
@@ -847,6 +847,27 @@ TEST(FormatNodeForErrorTest, NodeDef) {
   node_def.set_op("Enter");
   AddNodeAttr("frame_name", "test_frame", &node_def);
   EXPECT_EQ("{{node enter}}", FormatNodeDefForError(node_def));
+}
+
+TEST(FormatNodeForErrorTest, NodeDefWithOriginalNames) {
+  NodeDef node_def;
+  node_def.set_name("enter");
+  node_def.set_op("Enter");
+  AddNodeAttr("frame_name", "test_frame", &node_def);
+  *(node_def.mutable_experimental_debug_info()->add_original_node_names()) =
+      "node_name";
+  *(node_def.mutable_experimental_debug_info()->add_original_func_names()) =
+      "func_name";
+  EXPECT_EQ("{{function_node func_name}}{{node node_name}}",
+            FormatNodeDefForError(node_def));
+  *(node_def.mutable_experimental_debug_info()->add_original_node_names()) =
+      "node_name2";
+  *(node_def.mutable_experimental_debug_info()->add_original_func_names()) =
+      "func_name2";
+  EXPECT_EQ(
+      "{{function_node func_name}}{{node node_name}}, "
+      "{{function_node func_name2}}{{node node_name2}}",
+      FormatNodeDefForError(node_def));
 }
 
 TEST(AttachDef, AllowMultipleFormattedNode) {

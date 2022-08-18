@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for type_inference module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from typing import Any, Callable, List
 
 from tensorflow.python.autograph.pyct import anno

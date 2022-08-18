@@ -92,8 +92,8 @@ HloOp Zero(HloComputation* comp) {
 
 HloOp EffectiveFilterSize(HloComputation* comp, int64_t window_size,
                           int64_t window_dilation) {
-  return ConstantR0<int32>(comp, (window_size - 1) * window_dilation + 1,
-                           "effective_filter_size");
+  return ConstantR0<int32_t>(comp, (window_size - 1) * window_dilation + 1,
+                             "effective_filter_size");
 }
 }  // namespace
 
@@ -105,20 +105,20 @@ DynamicWindowDims GetWindowedOutputSize(HloInstruction* input_size,
   HloComputation* comp = input_size->parent();
   DynamicWindowDims result;
 
-  HloOp stride = ConstantR0<int32>(comp, window_stride, "stride");
+  HloOp stride = ConstantR0<int32_t>(comp, window_stride, "stride");
   HloOp effective_filter_size =
       EffectiveFilterSize(comp, window_size, window_dilation);
   if (padding_type == PaddingType::PADDING_VALID) {
     HloOp output =
         (HloOp(input_size) + stride - effective_filter_size) / stride;
     result.output_size = output.get();
-    result.padding_before = Zero<int32>(comp).get();
+    result.padding_before = Zero<int32_t>(comp).get();
   } else if (padding_type == PaddingType::PADDING_SAME) {
-    HloOp output = (HloOp(input_size) + stride - One<int32>(comp)) / stride;
+    HloOp output = (HloOp(input_size) + stride - One<int32_t>(comp)) / stride;
     HloOp padding_needed = Maximum(
-        Zero<int32>(comp), (output - One<int32>(comp)) * stride +
-                               effective_filter_size - HloOp(input_size));
-    HloOp padding_before = padding_needed / ConstantR0<int32>(comp, 2);
+        Zero<int32_t>(comp), (output - One<int32_t>(comp)) * stride +
+                                 effective_filter_size - HloOp(input_size));
+    HloOp padding_before = padding_needed / ConstantR0<int32_t>(comp, 2);
     result.padding_before = padding_before.get();
     result.output_size = output.get();
   }
@@ -134,14 +134,14 @@ DynamicWindowDims GetWindowedInputGradSize(HloInstruction* input_size,
   HloComputation* comp = input_size->parent();
   DynamicWindowDims result;
   HloOp effective_filter_size =
-      ConstantR0<int32>(comp, (window_size - 1) * window_dilation + 1);
-  HloOp stride = ConstantR0<int32>(comp, window_stride);
+      ConstantR0<int32_t>(comp, (window_size - 1) * window_dilation + 1);
+  HloOp stride = ConstantR0<int32_t>(comp, window_stride);
   DynamicWindowDims forward_dims = GetWindowedOutputSize(
       input_size, window_size, window_dilation, window_stride, padding_type);
   HloOp output_size =
-      (HloOp(forward_dims.output_size) - One<int32>(comp)) * stride +
-      One<int32>(comp);
-  HloOp padding_before = effective_filter_size - One<int32>(comp) -
+      (HloOp(forward_dims.output_size) - One<int32_t>(comp)) * stride +
+      One<int32_t>(comp);
+  HloOp padding_before = effective_filter_size - One<int32_t>(comp) -
                          HloOp(forward_dims.padding_before);
   result.output_size = output_size.get();
   result.padding_before = padding_before.get();

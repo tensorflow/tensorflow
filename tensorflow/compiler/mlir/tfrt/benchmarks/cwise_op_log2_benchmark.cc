@@ -19,8 +19,8 @@ namespace tensorflow {
 
 static const char* mlir_input = R"(
 #map0 = affine_map<(d0) -> (d0)>
-func @log2_1d(%input: memref<?xf32>) -> memref<?xf32> {
-  %c0 = constant 0 : index
+func.func @log2_1d(%input: memref<?xf32>) -> memref<?xf32> {
+  %c0 = arith.constant 0 : index
   %0 = memref.dim %input, %c0 : memref<?xf32>
   %output = memref.alloc(%0) : memref<?xf32>
 
@@ -35,7 +35,7 @@ func @log2_1d(%input: memref<?xf32>) -> memref<?xf32> {
      %2 = math.log2 %in : f32
       linalg.yield %2 : f32
   }
-  return %output : memref<?xf32>
+  func.return %output : memref<?xf32>
 }
 )";
 
@@ -44,19 +44,19 @@ using f32 = float;
 
 #define EXPR_BUILDER [](auto& in) { return in.log2(); }
 
-BM_Mlir(Log2, mlir_input, "log2_1d", 1, f32, 1.0, 1.0)
+BM_Mlir(Log2, mlir_input, "log2_1d", 1, f32, 1.0, 1.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
     ->Arg(10 * 1024);
 
-BM_EigenScalar(Log2, EXPR_BUILDER, 1, f32, 1.0, 1.0)
+BM_EigenScalar(Log2, EXPR_BUILDER, 1, f32, 1.0, 1.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
     ->Arg(10 * 1024);
 
-BM_EigenVectorized(Log2, EXPR_BUILDER, 1, f32, 1.0, 1.0)
+BM_EigenVectorized(Log2, EXPR_BUILDER, 1, f32, 1.0, 1.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)

@@ -268,8 +268,7 @@ inline void RequantizeManyInNewRangeReference(const qint32* input,
   const int64_t output_offset_fp =
       output_range == 0.0
           ? 0
-          : static_cast<int64_t>((1 << fp_shift) * (min_output * 255.0) /
-                                 output_range);
+          : std::lround((1 << fp_shift) * (min_output * 255.0) / output_range);
   const int64_t rounding_delta = 1 << (fp_shift - 1);
 
   // Inside this loop we just do minimal adds, multiplies, and shifts, in a way
@@ -630,12 +629,12 @@ inline void RequantizeManyInNewRange<quint8, qint32>(
 
   // Requantize remaining elements in array without SIMD.
   const int64 lowest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::lowest());
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::lowest());
   const int64 highest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::highest());
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::highest());
 
   for (; i < count; ++i) {
-    const int64 input_value = static_cast<int64>(input[i]);
+    const int64 input_value = static_cast<int64_t>(input[i]);
     int64 output_value = code_0_int64 + (input_value * mult_int32);
     output_value = std::max(output_value, lowest_quantized);
     output_value = std::min(output_value, highest_quantized);
@@ -667,7 +666,6 @@ inline void RequantizeManyInNewRange<quint8, qint32>(
 
 template <int shift>
 struct int64_right_shift_op {
-  EIGEN_EMPTY_STRUCT_CTOR(int64_right_shift_op)
   EIGEN_DEVICE_FUNC
   EIGEN_STRONG_INLINE const int64_t operator()(const int64_t a) const {
     return a >> shift;
@@ -714,8 +712,7 @@ inline void RequantizeManyInNewRangeUsingEigen<qint32, quint8>(
   const int64_t output_offset_fp =
       output_range == 0.0
           ? 0
-          : static_cast<int64_t>((1 << fp_shift) * (min_output * 255.0) /
-                                 output_range);
+          : std::lround((1 << fp_shift) * (min_output * 255.0) / output_range);
   const int64_t rounding_delta = 1 << (fp_shift - 1);
 
   // Inside this eigen expression we just do minimal adds, multiplies, and

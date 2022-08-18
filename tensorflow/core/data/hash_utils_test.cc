@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -54,12 +56,14 @@ class DatasetHashUtilsTest : public ::testing::Test {
     *graph_def.mutable_library() = library;
 
     NodeDef* node1 = graph_def.add_node();
+    node1->set_name("RemoteCall");
     node1->set_op("RemoteCall");
     NameAttrList func1;
     func1.set_name(fn1.signature().name());
     AddNodeAttr("f", func1, node1);
 
     NodeDef* node2 = graph_def.add_node();
+    node1->set_name("RemoteCall2");
     node2->set_op("RemoteCall");
     NameAttrList func2;
     func2.set_name(fn2.signature().name());
@@ -143,7 +147,7 @@ TEST_F(DatasetHashUtilsTest, HashFunctionDifferentInternalNodeNames) {
 
   FunctionDef* f2 = fl.add_function();
   *f2 = FunctionDefHelper::Create(
-      "AddAndMul", {"a: float", "b: float", "c: float"}, {"o: float"}, {},
+      "AddAndMul2", {"a: float", "b: float", "c: float"}, {"o: float"}, {},
       {{{"add"}, "Add", {"a", "b"}, {{"T", DT_FLOAT}}},
        {{"mul"}, "Mul", {"add:z:0", "c"}, {{"T", DT_FLOAT}}}},
       /*ret_def=*/{{"o", "mul:z:0"}},
@@ -418,7 +422,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeReversedOrder) {
                   .Finalize(n3));
 
   NodeDef* n4 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Add")
                   .Device("CPU:0")
                   .Input(n2->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
@@ -456,7 +460,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeInputPortChanged) {
                   .Finalize(n3));
 
   NodeDef* n4 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Add")
                   .Device("CPU:0")
                   .Input(n1->name(), 1, DT_INT32)
                   .Input(n2->name(), 2, DT_INT32)
@@ -521,7 +525,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionDifferentNames) {
   NameAttrList* nal2 = a2.mutable_func();
   nal2->set_name("AddAndMul2");
 
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "For")
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
@@ -587,7 +591,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionListsDifferentNames) {
   NameAttrList* nal2 = list2->add_func();
   nal2->set_name("AddAndMul2");
 
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "For")
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
@@ -639,7 +643,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionsOps) {
                   .Finalize(n2));
 
   NodeDef* n3 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "AddAndMul2", &flib)
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "AddAndMul2", &flib)
                   .Input(n1->name(), 0, DT_FLOAT)
                   .Device("CPU:0")
                   .Finalize(n3));
@@ -687,7 +691,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctionsOps) {
                   .Finalize(n2));
 
   NodeDef* n3 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "AddAndMul2", &flib)
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "AddAndMul2", &flib)
                   .Input(n1->name(), 0, DT_FLOAT)
                   .Device("CPU:0")
                   .Finalize(n3));
@@ -754,7 +758,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctions) {
   NameAttrList* nal2 = a2.mutable_func();
   nal2->set_name("AddAndMul2");
 
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "For")
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
@@ -827,7 +831,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctionLists) {
   NameAttrList* nal2 = list2->add_func();
   nal2->set_name("AddAndMul2");
 
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "For")
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
                   .Input(n1->name(), 0, DT_INT32)
@@ -875,7 +879,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentControlInputs) {
                   .Finalize(n4));
 
   NodeDef* n5 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Identity")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_5", "Identity")
                   .Device("CPU:0")
                   .Input(n1->name(), 0, DT_INT32)
                   .ControlInput(n3->name())
@@ -921,7 +925,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeControlInputDifferentOrdering) {
                   .Finalize(n4));
 
   NodeDef* n5 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Identity")
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_5", "Identity")
                   .Device("CPU:0")
                   .Input(n1->name(), 0, DT_INT32)
                   .ControlInput(n3->name())
@@ -1171,6 +1175,182 @@ TEST_F(DatasetHashUtilsTest, HashStringTensor) {
   EXPECT_EQ(GetHash(v1), GetHash(v2));
   EXPECT_NE(GetHash(v1), GetHash(v3));
 }
+
+// Benchmark that simulates a shallow and wide graph.
+static void BM_ParallelFunctionCallsGraph(benchmark::State& state) {
+  GraphDef graph_def;
+  FunctionDefLibrary* fl = graph_def.mutable_library();
+
+  FunctionDef* fd = fl->add_function();
+  *fd = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  NodeDef* input = graph_def.add_node();
+  input->set_name("InputPlaceholder");
+  input->set_op("Placeholder");
+  AddNodeAttr("dtype", DT_FLOAT, input);
+
+  // Equivalent of a `tf.group()`.
+  NodeDef* target = graph_def.add_node();
+  target->set_name("Target");
+  target->set_op("NoOp");
+
+  // Create 100 parallel PartitionedCalls that all depend on input. Generate a
+  // NodeDef that has close to similar attributes that TensorFlow will generate.
+  ConfigProto config_pb;
+  config_pb.mutable_device_count()->insert({"CPU", 1});
+  config_pb.mutable_device_count()->insert({"GPU", 1});
+  config_pb.set_allow_soft_placement(true);
+  for (int i = 0; i < 100; ++i) {
+    NodeDef* node = graph_def.add_node();
+    node->set_name(absl::StrCat("PartitionedCall_", i));
+    node->set_op("PartitionedCall");
+    *node->add_input() = input->name();
+    AddNodeAttr("Tin", DT_FLOAT, node);
+    AddNodeAttr("Tout", DT_FLOAT, node);
+    AddNodeAttr("config", "", node);
+    AddNodeAttr("config_proto", config_pb.SerializeAsString(), node);
+    NameAttrList func;
+    func.set_name(fd->signature().name());
+    AddNodeAttr("f", func, node);
+    *target->add_input() = absl::StrCat("^", node->name());
+  }
+
+  uint64 hash_value;
+  for (auto _ : state) {
+    CHECK(HashNode(graph_def, *target, &hash_value).ok());
+  }
+}
+BENCHMARK(BM_ParallelFunctionCallsGraph);
+
+// Benchmark that simulates a narrow and deep graph.
+static void BM_ChainedFunctionCallsGraph(benchmark::State& state) {
+  GraphDef graph_def;
+  FunctionDefLibrary* fl = graph_def.mutable_library();
+
+  FunctionDef* fd = fl->add_function();
+  *fd = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  NodeDef* input = graph_def.add_node();
+  input->set_name("InputPlaceholder");
+  input->set_op("Placeholder");
+  AddNodeAttr("dtype", DT_FLOAT, input);
+
+  // Create 100 chained PartitionedCalls, each depending on the previous.
+  // Generate a NodeDef that has close to similar attributes that TensorFlow
+  // will generate.
+  ConfigProto config_pb;
+  config_pb.mutable_device_count()->insert({"CPU", 1});
+  config_pb.mutable_device_count()->insert({"GPU", 1});
+  config_pb.set_allow_soft_placement(true);
+  for (int i = 0; i < 100; ++i) {
+    NodeDef* node = graph_def.add_node();
+    node->set_name(absl::StrCat("PartitionedCall_", i));
+    node->set_op("PartitionedCall");
+    if (i > 0) {
+      *node->add_input() = absl::StrCat("PartitionedCall_", i - 1);
+    } else {
+      *node->add_input() = input->name();
+    }
+    AddNodeAttr("Tin", DT_FLOAT, node);
+    AddNodeAttr("Tout", DT_FLOAT, node);
+    AddNodeAttr("config", "", node);
+    AddNodeAttr("config_proto", config_pb.SerializeAsString(), node);
+    NameAttrList func;
+    func.set_name(fd->signature().name());
+    AddNodeAttr("f", func, node);
+  }
+
+  const NodeDef& target = graph_def.node(graph_def.node_size() - 1);
+
+  uint64 hash_value;
+  for (auto _ : state) {
+    CHECK(HashNode(graph_def, target, &hash_value).ok());
+  }
+}
+BENCHMARK(BM_ChainedFunctionCallsGraph);
+
+// Benchmark that simulates many nested function calls.
+static void BM_ComposedFunctionCallsGraph(benchmark::State& state) {
+  GraphDef graph_def;
+  FunctionDefLibrary* fl = graph_def.mutable_library();
+
+  // AddAndMul will be the last function, all others will be calls up to this.
+  FunctionDef* fd = fl->add_function();
+  *fd = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  ConfigProto config_pb;
+  config_pb.mutable_device_count()->insert({"CPU", 1});
+  config_pb.mutable_device_count()->insert({"GPU", 1});
+  config_pb.set_allow_soft_placement(true);
+  for (int i = 0; i < 99; ++i) {
+    // Get the name fo the previous function
+    NameAttrList func;
+    func.set_name(fd->signature().name());
+
+    FunctionDef* fd = fl->add_function();
+    *fd = FunctionDefHelper::Create(
+        /*function_name=*/absl::StrCat("F_", i),
+        /*in_def=*/{"i: float"},
+        /*out_def=*/{"o: float"},
+        /*attr_def=*/{},
+        /*node_def=*/
+        {
+            {
+                {"inner_call"},
+                "PartitionedCall",
+                {"i"},
+                {{"Ti", DT_FLOAT},
+                 {"Tout", DT_FLOAT},
+                 {"config", ""},
+                 {"config_proto", config_pb.SerializeAsString()},
+                 {"f", func}},
+            },
+        },
+        /*ret_def=*/{{"o", "inner_call:o:0"}},
+        /*control_ret_def=*/{{"must_execute", "inner_call"}});
+  }
+
+  NodeDef* input = graph_def.add_node();
+  input->set_name("InputPlaceholder");
+  input->set_op("Placeholder");
+  AddNodeAttr("dtype", DT_FLOAT, input);
+
+  // Create call to the outer most function.
+  NodeDef* node = graph_def.add_node();
+  node->set_name("PartitionedCall_start");
+  node->set_op("PartitionedCall");
+  *node->add_input() = input->name();
+  AddNodeAttr("Tin", DT_FLOAT, node);
+  AddNodeAttr("Tout", DT_FLOAT, node);
+  AddNodeAttr("config", "", node);
+  AddNodeAttr("config_proto", config_pb.SerializeAsString(), node);
+  NameAttrList func;
+  func.set_name(fd->signature().name());
+  AddNodeAttr("f", func, node);
+
+  const NodeDef& target = graph_def.node(graph_def.node_size() - 1);
+
+  uint64 hash_value;
+  for (auto _ : state) {
+    CHECK(HashNode(graph_def, target, &hash_value).ok());
+  }
+}
+BENCHMARK(BM_ComposedFunctionCallsGraph);
 
 }  // namespace
 }  // namespace data

@@ -280,9 +280,10 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   // The live range of the while should be before the add.
   EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(xla_while),
                                        dataflow->GetValueDefinedAt(add)));
-  ASSERT_EQ(dataflow->GetValueDefinedAt(xla_while).uses().size(), 1);
+  ASSERT_EQ(dataflow->GetValueDefinedAt(xla_while).GetUses().size(), 1);
 
-  const HloUse* while_use = &dataflow->GetValueDefinedAt(xla_while).uses()[0];
+  const HloUse* while_use =
+      &dataflow->GetValueDefinedAt(xla_while).GetUses()[0];
   EXPECT_EQ(while_use->instruction, add);
   EXPECT_TRUE(ordering.UsesBeforeValueDefinition(
       {&while_use, 1}, dataflow->GetValueDefinedAt(add), *dataflow));
@@ -583,7 +584,7 @@ ENTRY entry {
   auto p_body_2 = FindInstruction(module.get(), "p_body2");
 
   auto tuple_use = HloUse{root, 0};
-  auto value = dataflow->GetUniqueValueAt(p_body_2, {0});
+  const HloValue& value = dataflow->GetUniqueValueAt(p_body_2, {0});
   EXPECT_FALSE(
       ordering.UsesBeforeValueDefinition({&tuple_use}, value, *dataflow));
 }

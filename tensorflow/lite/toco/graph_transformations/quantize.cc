@@ -413,7 +413,9 @@ bool ChooseQuantizationForOperatorOutput(
       op.type == OperatorType::kRelu || op.type == OperatorType::kRelu1 ||
       op.type == OperatorType::kRelu6 || op.type == OperatorType::kPRelu ||
       op.type == OperatorType::kUnpack || op.type == OperatorType::kSlice ||
-      op.type == OperatorType::kStridedSlice) {
+      op.type == OperatorType::kStridedSlice ||
+      op.type == OperatorType::kAveragePool ||
+      op.type == OperatorType::kMaxPool) {
     int data_input_index = 0;
     if (op.type == OperatorType::kSplit) {
       data_input_index = 1;
@@ -516,7 +518,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
   auto& op = *model->operators[op_index];
   if (op.type == OperatorType::kDequantize ||
       op.type == OperatorType::kFakeQuant) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Our assumption here is that the input arrays are already quantized -
@@ -553,7 +555,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
       if (!array.minmax && !array.buffer) {
         LOG(WARNING) << "Can't quantize input array " << input
                      << " because it lacks min/max info";
-        return ::tensorflow::Status::OK();
+        return ::tensorflow::OkStatus();
       }
       const auto* other_op = GetOpWithOutput(*model, input);
       if (other_op && other_op->type != OperatorType::kDequantize) {
@@ -563,7 +565,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
             "which means that we should yield and let other ops "
             "get quantized first",
             LogName(op), input);
-        return ::tensorflow::Status::OK();
+        return ::tensorflow::OkStatus();
       }
     }
   }
@@ -725,7 +727,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
   }
 
   *modified = changed;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

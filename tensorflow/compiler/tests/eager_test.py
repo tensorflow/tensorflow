@@ -14,10 +14,6 @@
 # ==============================================================================
 """Test cases for eager execution using XLA."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
@@ -28,6 +24,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
@@ -282,7 +279,7 @@ class EagerTest(xla_test.XLATestCase):
         embedding = embedding_ops.embedding_lookup(embedding_matrix, [1])
         y = math_ops.reduce_sum(embedding)
       dy_dx = tape.gradient(y, embedding_matrix)
-      self.assertIsInstance(dy_dx, ops.IndexedSlices)
+      self.assertIsInstance(dy_dx, indexed_slices.IndexedSlices)
       optimizer = adam.AdamOptimizer(0.1)
       # The gradient application operations will run on CPU because optimizer
       # updates are always collocated with the variable.

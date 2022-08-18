@@ -45,6 +45,7 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -88,8 +89,8 @@ struct Options {
 
   bool NeedsRealData() const { return !use_fake_data && !compile_only; }
 
-  string fake_infeed_shape;
-  string fake_outfeed_shape;
+  std::string fake_infeed_shape;
+  std::string fake_outfeed_shape;
 
   // generate_fake_infeed == true is a safe default: If the model has 0 or 1
   // infeeds, then it will work like normal.  If the model has more than one
@@ -141,9 +142,8 @@ StatusOr<std::unique_ptr<LocalExecutable>> CompileExecutable(
   return std::move(executables[0]);
 }
 
-absl::optional<Shape> GetXfeedShape(bool is_infeed,
-                                    const HloModuleProto& module,
-                                    const Options& opts) {
+std::optional<Shape> GetXfeedShape(bool is_infeed, const HloModuleProto& module,
+                                   const Options& opts) {
   std::vector<HloInstructionProto> xfeed_instrs;
   for (const auto& comp : module.computations()) {
     for (const auto& instruction : comp.instructions()) {
@@ -173,9 +173,9 @@ absl::optional<Shape> GetXfeedShape(bool is_infeed,
     LOG(FATAL) << "No instruction with id " << id;
   };
 
-  absl::optional<Shape> xfeed_shape;
-  string xfeed_name = is_infeed ? "infeed" : "outfeed";
-  string fake_xfeed_shape =
+  std::optional<Shape> xfeed_shape;
+  std::string xfeed_name = is_infeed ? "infeed" : "outfeed";
+  std::string fake_xfeed_shape =
       is_infeed ? opts.fake_infeed_shape : opts.fake_outfeed_shape;
   bool generate_fake_xfeed =
       is_infeed ? opts.generate_fake_infeed : opts.generate_fake_outfeed;
@@ -255,7 +255,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
         MakeFakeArgumentsOrDie(computation, client, &debug_opts);
     for (const auto& data : global_data_arguments) {
       argument_ptrs.push_back(
-          client->GlobalDataToShapedBuffer(data->handle(), /*device_ordinal=*/0)
+          client->GlobalDataToShapedBuffer(data->handle(), /*replica_number=*/0)
               .ValueOrDie());
     }
   } else {  // use recorded data if available
@@ -272,12 +272,12 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   }
 
   std::shared_ptr<Literal> infeed_data;
-  if (absl::optional<Shape> infeed_shape = GetXfeedShape(
+  if (std::optional<Shape> infeed_shape = GetXfeedShape(
           /*is_infeed=*/true, computation.proto(), opts)) {
     infeed_data = std::make_shared<Literal>(
         std::move(MakeFakeLiteral(*infeed_shape)).ValueOrDie());
   }
-  absl::optional<Shape> outfeed_shape =
+  std::optional<Shape> outfeed_shape =
       GetXfeedShape(/*is_infeed=*/false, computation.proto(), opts);
 
   // Do not attempt to run the executable if num_runs is less than 1.
@@ -291,7 +291,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   se::StreamExecutorMemoryAllocator allocator(
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
-  absl::optional<ScopedShapedBuffer> final_result;
+  std::optional<ScopedShapedBuffer> final_result;
   LOG(ERROR) << "Running " << opts.num_runs << " number of times\n";
   for (int i = 0; i < opts.num_runs; ++i) {
     // If xla_hlo_profile is enabled, print a noisy message before the last run,
@@ -356,13 +356,13 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
 
   std::unique_ptr<tensorflow::RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
-      string(filename.begin(), filename.end()), &file));
+      std::string(filename.begin(), filename.end()), &file));
   tensorflow::io::RecordReader reader(
       file.get(),
       tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
 
   std::vector<HloSnapshot> snapshots;
-  uint64 offset = 0;
+  uint64_t offset = 0;
   tensorflow::tstring record;
   while (reader.ReadRecord(&offset, &record).ok()) {
     HloSnapshot snapshot;
@@ -381,14 +381,14 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
   return snapshots;
 }
 
-StatusOr<HloSnapshot> ParseSingleHloFile(const string& filename,
-                                         const Options& opts) {
+StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(
+    const std::string& filename, const Options& opts) {
   tensorflow::Env* env = tensorflow::Env::Default();
 
   HloSnapshot snapshot;
   auto s = tensorflow::ReadBinaryProto(env, filename, &snapshot);
   if (s.ok()) {
-    return snapshot;
+    return std::vector<HloSnapshot>{std::move(snapshot)};
   }
   if (s.code() == tensorflow::error::NOT_FOUND) {
     return s;
@@ -400,36 +400,51 @@ StatusOr<HloSnapshot> ParseSingleHloFile(const string& filename,
           filename.c_str());
 
   if (tensorflow::ReadBinaryProto(env, filename, snapshot.mutable_hlo()).ok()) {
-    return snapshot;
+    return std::vector<HloSnapshot>{std::move(snapshot)};
   }
   fprintf(stderr, "%s: is not HloProto. Trying HLO text.\n", filename.c_str());
-  string contents;
+  std::string contents;
   TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(env, filename, &contents));
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
-  StatusOr<std::unique_ptr<HloModule>> module =
-      ParseAndReturnUnverifiedModule(contents, config);
-  if (module.ok()) {
-    *snapshot.mutable_hlo()->mutable_hlo_module() =
-        module.ValueOrDie()->ToProto();
-    return snapshot;
-  } else {
-    LOG(ERROR) << module.status();
+  std::vector<std::string> hlo_module_texts =
+      absl::StrSplit(contents, "// -----");
+  std::vector<HloSnapshot> snapshots;
+  int start_line = 0;
+  for (const std::string& hlo_module_text : hlo_module_texts) {
+    StatusOr<std::unique_ptr<HloModule>> module =
+        ParseAndReturnUnverifiedModule(hlo_module_text, config);
+    if (module.ok()) {
+      HloSnapshot snapshot;
+      *snapshot.mutable_hlo()->mutable_hlo_module() =
+          module.ValueOrDie()->ToProto();
+      snapshots.push_back(snapshot);
+    } else {
+      LOG(ERROR) << module.status();
+      if (hlo_module_texts.size() > 1) {
+        LOG(ERROR)
+            << "The error below was done on the section starting at line "
+            << start_line;
+      }
+    }
+    start_line += absl::c_count(hlo_module_text, '\n');
+  }
+  if (!snapshots.empty()) {
+    return snapshots;
   }
   fprintf(stderr, "%s: is not HLO text.  Nothing left to try.\n",
           filename.c_str());
   return InvalidArgument("Could not parse %s.", filename);
 }
 
-StatusOr<std::vector<HloSnapshot>> ParseInputFile(const string& filename,
+StatusOr<std::vector<HloSnapshot>> ParseInputFile(const std::string& filename,
                                                   const Options& opts) {
   std::vector<HloSnapshot> snapshots;
   absl::string_view filename_view = filename;
   if (absl::ConsumePrefix(&filename_view, "recordio_hlo_proto:")) {
     return ParseRecordIoFile(filename_view, opts);
   }
-  TF_ASSIGN_OR_RETURN(auto snapshot, ParseSingleHloFile(filename, opts));
-  return std::vector<HloSnapshot>{std::move(snapshot)};
+  return ParseSingleHloFile(filename, opts);
 }
 
 int RealMain(absl::Span<char* const> args, const Options& opts) {
@@ -502,8 +517,7 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
               result.ToString().c_str());
       auto& snapshot = snapshots[i];
       if (snapshot.has_result()) {
-        Literal literal =
-            Literal::CreateFromProto(snapshot.result()).ConsumeValueOrDie();
+        Literal literal = Literal::CreateFromProto(snapshot.result()).value();
         fprintf(
             stdout, "was %s:%s\n",
             ShapeUtil::HumanString(Shape(snapshot.result().shape())).c_str(),
@@ -548,7 +562,7 @@ int main(int argc, char** argv) {
                        "to compiled and executed."),
   };
   xla::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(argv[0], &argc, &argv);
   if (argc < 2 || !parse_ok) {

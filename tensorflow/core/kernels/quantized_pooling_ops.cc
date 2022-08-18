@@ -20,11 +20,13 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/pooling_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -65,8 +67,20 @@ class QuantizedAvgPoolingOp : public OpKernel {
       return;
     }
 
-    const float min_input = context->input(1).flat<float>()(0);
-    const float max_input = context->input(2).flat<float>()(0);
+    const Tensor& min_input_tensor = context->input(1);
+    const Tensor& max_input_tensor = context->input(2);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_tensor.shape()),
+                errors::InvalidArgument(
+                    "min_input shape must be rank 0 but is rank ",
+                    min_input_tensor.dims(),
+                    ", received shape: ", min_input_tensor.shape()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_tensor.shape()),
+                errors::InvalidArgument(
+                    "max_input shape must be rank 0 but is rank ",
+                    max_input_tensor.dims(),
+                    ", received shape: ", max_input_tensor.shape()));
+    const float min_input = context->input(1).scalar<float>()();
+    const float max_input = context->input(2).scalar<float>()();
 
     OP_REQUIRES(context, params.depth_window == 1,
                 errors::Unimplemented("Non-spatial pooling is not "
@@ -117,8 +131,20 @@ class QuantizedMaxPoolingOp : public MaxPoolingOp<Device, T> {
       : MaxPoolingOp<Device, T>(context) {}
 
   void Compute(OpKernelContext* context) override {
-    const float min_input = context->input(1).flat<float>()(0);
-    const float max_input = context->input(2).flat<float>()(0);
+    const Tensor& min_input_tensor = context->input(1);
+    const Tensor& max_input_tensor = context->input(2);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_tensor.shape()),
+                errors::InvalidArgument(
+                    "min_input shape must be rank 0 but is rank ",
+                    min_input_tensor.dims(),
+                    ", received shape: ", min_input_tensor.shape()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_tensor.shape()),
+                errors::InvalidArgument(
+                    "max_input shape must be rank 0 but is rank ",
+                    max_input_tensor.dims(),
+                    ", received shape: ", max_input_tensor.shape()));
+    const float min_input = context->input(1).scalar<float>()();
+    const float max_input = context->input(2).scalar<float>()();
     MaxPoolingOp<Device, T>::Compute(context);
     Tensor* output_min = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(1, {}, &output_min));

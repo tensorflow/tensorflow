@@ -24,6 +24,15 @@
 set -e
 set -x
 
+#using default targets from tensorflow project
+source "./tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh"
+if [[ -z "$DEFAULT_BAZEL_TARGETS" ]]; then
+   DEFAULT_BAZEL_TARGETS="//tensorflow/...  -//tensorflow/compiler/...  -//tensorflow/lite/..."
+else
+   DEFAULT_BAZEL_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/..."
+fi
+echo "DEFAULT_BAZEL_TARGETS: $DEFAULT_BAZEL_TARGETS "
+
 DEFAULT_OMP_NUM_THREADS="10"
 DEFAULT_CONFIG="--config=mkl"
 
@@ -80,7 +89,7 @@ echo ""
 # execution in an MKL primitive. This reduces the effects of an oversubscription
 # of OpenMP threads caused by executing multiple tests concurrently.
 bazel test \
-    --test_tag_filters=-no_oss,-no_oss_py2,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only \
+    --test_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only \
     --test_lang_filters=cc,py \
     -k \
     --jobs=${N_JOBS} \
@@ -93,7 +102,4 @@ bazel test \
     ${BLOCK_FORMAT} \
     --config=opt \
     --test_output=errors \
-    -- \
-    //tensorflow/... \
-    -//tensorflow/compiler/... \
-    -//tensorflow/lite/...
+    -- ${DEFAULT_BAZEL_TARGETS}

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.map()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import threading
@@ -29,11 +25,15 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_sanitizers
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -59,8 +59,6 @@ from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util as trackable_utils
 
 try:
   import attr  # pylint:disable=g-import-not-at-top
@@ -126,7 +124,7 @@ def _short_circuit_test_cases():
   return functools.reduce(reduce_fn, cases, [])
 
 
-class Foo(object):
+class Foo:
   """Dummy class used for invalid return value tests."""
 
   def __init__(self):
@@ -578,7 +576,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.zip((labels, images))
 
     @attr.s(cmp=True)
-    class Example(object):
+    class Example:
       label = attr.ib()
       image = attr.ib()
 
@@ -1328,6 +1326,14 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 1])))
+  def testName(self, num_parallel_calls):
+    dataset = dataset_ops.Dataset.from_tensors(21).map(
+        lambda x: x * 2, num_parallel_calls=num_parallel_calls, name="map")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                         parameterized.TestCase):
@@ -1460,6 +1466,63 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
     num_outputs = 10
     verify_fn(self, lambda: _build_ds(num_outputs), num_outputs=num_outputs)
+
+
+class MapRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.v2_only_combinations(),
+                         combinations.combine(index=[-1, 4, 5])))
+  def testInvalidIndex(self, index):
+    dataset = dataset_ops.Dataset.from_tensor_slices([-1, 0, 1,
+                                                      2]).map(lambda x: x * 2)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(
+      combinations.times(test_base.v2_only_combinations(),
+                         combinations.combine(index=[-1, 0])))
+  def testEmptyDataset(self, index):
+    dataset = dataset_ops.Dataset.from_tensor_slices([]).map(lambda x: x // 2)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(combinations.times(test_base.v2_only_combinations()))
+  def testBasic(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([0, 1, 2, 3, 4,
+                                                      5]).map(lambda x: x * 3)
+    for i in range(5):
+      self.assertEqual(self.evaluate(random_access.at(dataset, index=i)), i * 3)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.v2_only_combinations(),
+          combinations.combine(
+              elements=[0, 10, 20, 40], num_parallel_calls=[None, 2])))
+  def testMultipleCombinations(self, elements, num_parallel_calls):
+    dataset = dataset_ops.Dataset.range(elements).map(
+        lambda x: x // 2, num_parallel_calls=num_parallel_calls)
+    for i in range(elements):
+      self.assertEqual(
+          self.evaluate(random_access.at(dataset, index=i)), i // 2)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.v2_only_combinations(),
+          combinations.combine(
+              elements=[0, 10, 20, 40], num_parallel_calls=[None, 2])))
+  def testMapFnInFunction(self, elements, num_parallel_calls):
+
+    @def_function.function
+    def _map_fn(x):
+      return math_ops.square(x)
+
+    dataset = dataset_ops.Dataset.range(elements).map(
+        _map_fn, num_parallel_calls=num_parallel_calls)
+    for i in range(elements):
+      self.assertEqual(
+          self.evaluate(random_access.at(dataset, index=i)),
+          self.evaluate(math_ops.square(i)))
 
 
 if __name__ == "__main__":

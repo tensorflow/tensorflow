@@ -16,10 +16,6 @@
 # RUN: %p/hash_table_asset_v1| FileCheck %s
 
 # pylint: disable=missing-docstring,line-too-long
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import tempfile
 

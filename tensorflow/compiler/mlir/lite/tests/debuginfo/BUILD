@@ -44,6 +44,7 @@ py_binary(
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "@absl_py//absl:app",
     ],
 )
 
@@ -54,5 +55,6 @@ py_binary(
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "@absl_py//absl:app",
     ],
 )

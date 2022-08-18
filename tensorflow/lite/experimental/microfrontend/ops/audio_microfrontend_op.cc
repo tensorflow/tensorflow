@@ -23,13 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 
-using tensorflow::OpKernel;
-using tensorflow::OpKernelConstruction;
-using tensorflow::OpKernelContext;
-using tensorflow::Status;
-using tensorflow::Tensor;
-using tensorflow::TensorShape;
-using tensorflow::TensorShapeUtils;
 using tensorflow::errors::Internal;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::shape_inference::DimensionHandle;
@@ -103,7 +96,7 @@ REGISTER_OP("AudioMicrofrontend")
 
       ShapeHandle output = ctx->MakeShape({num_frames, num_features});
       ctx->set_output(0, output);
-      return tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Audio Microfrontend Op.

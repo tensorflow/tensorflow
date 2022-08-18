@@ -105,7 +105,7 @@ class DeviceIdUtil {
           "visible_device_list contained a duplicate entry: ",
           visible_device_list);
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

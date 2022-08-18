@@ -19,9 +19,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace gpu {
@@ -40,8 +40,8 @@ static StatusOr<bool> PadForGemm(HloDotInstruction* dot, PrimitiveType datatype,
   }
 
   auto pad_dim = [&](Shape& s, int dim) {
-    s.set_dimensions(
-        dim, RoundUpToNearest<int64_t>(s.dimensions(dim), pad_to_multiple_of));
+    s.set_dimensions(dim,
+                     RoundUpTo<int64_t>(s.dimensions(dim), pad_to_multiple_of));
   };
 
   auto pad_matrix_dims = [&pad_dim](Shape s) {
@@ -164,9 +164,12 @@ static std::vector<HloDotInstruction*> GetRelevantDots(HloComputation* comp,
   return gemms;
 }
 
-StatusOr<bool> CublasPadForGemms::Run(HloModule* module) {
+StatusOr<bool> CublasPadForGemms::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloDotInstruction* dot : GetRelevantDots(comp, datatype_)) {
       TF_ASSIGN_OR_RETURN(bool result,
                           PadForGemm(dot, datatype_, pad_to_multiple_of_));

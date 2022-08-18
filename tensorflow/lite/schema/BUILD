@@ -77,6 +77,11 @@ py_test(
 #         "//tensorflow/lite/schema:schema_generated.h.oss",
 #     ],
 #     python_version = "PY3",
+#     # TODO(b/217577534): Enable this TAP with FlatBuffer 2.0 migration.
+#     tags = [
+#         "manual",
+#         "notap",
+#     ],
 #     deps = [
 #         "//testing/pybase",
 #         "@absl_py//absl/flags",
@@ -85,6 +90,7 @@ py_test(
 # copybara:uncomment_end
 
 exports_files([
+    "conversion_metadata.fbs",
     "schema.fbs",
     "schema_v0.fbs",
     "schema_v1.fbs",

@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -50,10 +49,12 @@ XlaOp BuildFakeDataOpOnDevice(const Shape& shape, XlaBuilder* builder) {
   if (shape.IsArray()) {
     return Broadcast(
         ConstantLiteral(builder, LiteralUtil::One(shape.element_type())),
-        AsInt64Slice(shape.dimensions()));
+        shape.dimensions());
   }
   std::vector<XlaOp> parts;
-  for (const Shape& s : shape.tuple_shapes()) {
+  const auto& tuple_shapes = shape.tuple_shapes();
+  parts.reserve(tuple_shapes.size());
+  for (const Shape& s : tuple_shapes) {
     parts.push_back(BuildFakeDataOpOnDevice(s, builder));
   }
   return Tuple(builder, parts);
@@ -63,7 +64,7 @@ std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(
     const Shape& shape, Client* client, DebugOptions* debug_opts) {
   XlaBuilder b(absl::StrCat("make_fake_", ShapeUtil::HumanString(shape)));
   BuildFakeDataOpOnDevice(shape, &b);
-  XlaComputation computation = b.Build().ConsumeValueOrDie();
+  XlaComputation computation = b.Build().value();
 
   auto execution_options = CreateDefaultExecutionOptions();
   *execution_options.mutable_shape_with_output_layout() = shape.ToProto();
@@ -71,7 +72,7 @@ std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(
     *execution_options.mutable_debug_options() = *debug_opts;
   }
   return client->Execute(computation, /*arguments=*/{}, &execution_options)
-      .ConsumeValueOrDie();
+      .value();
 }
 
 }  // namespace

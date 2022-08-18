@@ -21,10 +21,6 @@ This is *not* related to the __qualname__ attribute used by inspect, which
 refers to scopes.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 import gast

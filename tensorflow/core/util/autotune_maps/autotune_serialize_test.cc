@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
 
+#include "absl/types/variant.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
@@ -30,6 +32,8 @@ namespace {
 using stream_executor::dnn::AlgorithmConfig;
 using stream_executor::dnn::AlgorithmDesc;
 using stream_executor::gpu::GpuDriver;
+using ::tensorflow::testing::StatusIs;
+using ::testing::HasSubstr;
 
 // Tests when there is no entry in the autotune maps.
 TEST(AutotuneSerializeTest, Empty) {
@@ -38,7 +42,7 @@ TEST(AutotuneSerializeTest, Empty) {
   std::string output;
   TF_CHECK_OK(SerializeAutotuneMaps(&output));
   TF_CHECK_OK(LoadSerializedAutotuneMaps(output));
-  EXPECT_EQ(AutotuneConv::GetInstance()->GetMap().size(), 0);
+  EXPECT_EQ(ConvAutotuneMap::GetInstance()->GetMap().size(), 0);
 }
 
 // Tests the consistency of SerializeAutotuneMaps and LoadSerializedAutotuneMaps
@@ -51,13 +55,12 @@ TEST(AutotuneSerializeTest, Empty) {
 TEST(AutotuneSerializeTest, Consistency) {
   TF_CHECK_OK(GpuDriver::Init());
   ResetAutotuneMaps();
-  std::string serialized_string;
   ConvParameters conv_params_example_a = {
-      /*batch_size=*/1,
+      /*batch=*/1,
       /*in_depths=*/1,
       /*in=*/{{1, 1}},
       /*data_format=*/TensorFormat::FORMAT_NCHW,
-      /*out_depth=*/1,
+      /*out_depths=*/1,
       /*filter=*/{{1, 1}},
       /*dilation=*/{{1, 1}},
       /*stride=*/{{1, 1}},
@@ -66,11 +69,11 @@ TEST(AutotuneSerializeTest, Consistency) {
       /*device_id=*/0,
       /*group_count=*/1};
   ConvParameters fused_params_example_a = {
-      /*batch_size=*/1,
+      /*batch=*/1,
       /*in_depths=*/1,
       /*in=*/{{1, 1}},
       /*data_format=*/TensorFormat::FORMAT_NCHW,
-      /*out_depth=*/1,
+      /*out_depths=*/1,
       /*filter=*/{{1, 1}},
       /*dilation=*/{{1, 1}},
       /*stride=*/{{1, 1}},
@@ -78,17 +81,17 @@ TEST(AutotuneSerializeTest, Consistency) {
       /*dtype=*/DataType::DT_INT8,
       /*device_id=*/0,
       /*group_count=*/1,
-      ConvParameters::FusionInfo{/*has_side_input=*/false,
+      ConvParameters::FusionInfo{1.0, 0., 0.,
                                  /*activation_mode=*/
                                  se::dnn::ActivationMode::kNone,
                                  /*is_contrib=*/false},
   };
   ConvParameters contrib_fused_params_example_a = {
-      /*batch_size=*/1,
+      /*batch=*/1,
       /*in_depths=*/1,
       /*in=*/{{1, 1}},
       /*data_format=*/TensorFormat::FORMAT_NCHW,
-      /*out_depth=*/1,
+      /*out_depths=*/1,
       /*filter=*/{{1, 1}},
       /*dilation=*/{{1, 1}},
       /*stride=*/{{1, 1}},
@@ -96,36 +99,79 @@ TEST(AutotuneSerializeTest, Consistency) {
       /*dtype=*/DataType::DT_INT8,
       /*device_id=*/0,
       /*group_count=*/1,
-      ConvParameters::FusionInfo{/*has_side_input=*/true,
+      ConvParameters::FusionInfo{1.0, 0., 0.,
                                  /*activation_mode=*/
                                  se::dnn::ActivationMode::kRelu,
                                  /*is_contrib=*/true}};
 
-  AlgorithmDesc algorithm(/*algo_id=*/1, /*use_tensor_op=*/true);
-  AlgorithmDesc algorithm_no_scratch(/*algo_id=*/1, /*use_tensor_op=*/true);
-  AlgorithmConfig algorithm_config_example_a(algorithm, /*scratch_size=*/1,
-                                             algorithm_no_scratch);
-  AutotuneConv::GetInstance()->Insert(conv_params_example_a,
-                                      algorithm_config_example_a);
-  AutotuneConv::GetInstance()->Insert(fused_params_example_a,
-                                      algorithm_config_example_a);
-  AutotuneConv::GetInstance()->Insert(contrib_fused_params_example_a,
-                                      algorithm_config_example_a);
+  AlgorithmDesc algorithm(/*algo_id=*/1, /*use_tensor_ops=*/true);
+  AlgorithmDesc algorithm_no_scratch(/*algo_id=*/1, /*use_tensor_ops=*/true);
+  AutotuneEntry<se::dnn::ConvOp> example_a(algorithm, algorithm_no_scratch);
+  ConvAutotuneMap::GetInstance()->Insert(conv_params_example_a, example_a);
+  ConvAutotuneMap::GetInstance()->Insert(fused_params_example_a, example_a);
+  ConvAutotuneMap::GetInstance()->Insert(contrib_fused_params_example_a,
+                                         example_a);
+  std::string serialized_string;
   TF_CHECK_OK(SerializeAutotuneMaps(&serialized_string));
   ResetAutotuneMaps();
   TF_CHECK_OK(LoadSerializedAutotuneMaps(serialized_string));
-  EXPECT_EQ(AutotuneConv::GetInstance()->GetMap().size(), 3);
+  EXPECT_EQ(ConvAutotuneMap::GetInstance()->GetMap().size(), 3);
 
-  AlgorithmConfig algorithm_config;
-  EXPECT_TRUE(AutotuneConv::GetInstance()->Find(conv_params_example_a,
-                                                &algorithm_config));
-  EXPECT_EQ(algorithm_config, algorithm_config_example_a);
-  EXPECT_TRUE(AutotuneConv::GetInstance()->Find(fused_params_example_a,
-                                                &algorithm_config));
-  EXPECT_EQ(algorithm_config, algorithm_config_example_a);
-  EXPECT_TRUE(AutotuneConv::GetInstance()->Find(contrib_fused_params_example_a,
-                                                &algorithm_config));
-  EXPECT_EQ(algorithm_config, algorithm_config_example_a);
+  AutotuneEntry<se::dnn::ConvOp> entry;
+  EXPECT_TRUE(
+      ConvAutotuneMap::GetInstance()->Find(conv_params_example_a, &entry));
+  EXPECT_EQ(entry, example_a);
+  EXPECT_TRUE(
+      ConvAutotuneMap::GetInstance()->Find(fused_params_example_a, &entry));
+  EXPECT_EQ(entry, example_a);
+  EXPECT_TRUE(ConvAutotuneMap::GetInstance()->Find(
+      contrib_fused_params_example_a, &entry));
+  EXPECT_EQ(entry, example_a);
+}
+
+// Test that LoadSerializedAutotuneMaps will reject entries with incompatible
+// version.
+TEST(AutotuneSerializeTest, VersionControl) {
+  TF_CHECK_OK(GpuDriver::Init());
+  ResetAutotuneMaps();
+
+  ConvParameters fused_params_example_a = {
+      /*batch=*/1,
+      /*in_depths=*/1,
+      /*in=*/{{1, 1}},
+      /*data_format=*/TensorFormat::FORMAT_NCHW,
+      /*out_depths=*/1,
+      /*filter=*/{{1, 1}},
+      /*dilation=*/{{1, 1}},
+      /*stride=*/{{1, 1}},
+      /*padding=*/{{1, 1}},
+      /*dtype=*/DataType::DT_INT8,
+      /*device_id=*/0,
+      /*group_count=*/1,
+      ConvParameters::FusionInfo{1.0, 0., 0.,
+                                 /*activation_mode=*/
+                                 se::dnn::ActivationMode::kNone,
+                                 /*is_contrib=*/false},
+      /*version=*/ConvParameters::kVersion - 1};
+
+  AlgorithmDesc algorithm(/*algo_id=*/1, /*use_tensor_ops=*/true);
+  AlgorithmDesc algorithm_no_scratch(/*algo_id=*/1, /*use_tensor_ops=*/true);
+  AlgorithmConfig algorithm_config_example_a(algorithm, /*scratch_size=*/1,
+                                             algorithm_no_scratch);
+
+  ConvAutotuneMap::GetInstance()->Insert(
+      fused_params_example_a,
+      AutotuneEntry<se::dnn::ConvOp>(algorithm_config_example_a));
+
+  std::string serialized_string;
+  TF_CHECK_OK(SerializeAutotuneMaps(&serialized_string));
+
+  ResetAutotuneMaps();
+  EXPECT_THAT(
+      LoadSerializedAutotuneMaps(serialized_string),
+      StatusIs(error::ABORTED,
+               HasSubstr("Aborted because the loaded autotune results")));
+  EXPECT_EQ(ConvAutotuneMap::GetInstance()->GetMap().size(), 0);
 }
 }  // namespace
 }  // namespace tensorflow

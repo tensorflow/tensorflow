@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Wraps toco interface with python lazy loader."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # We need to import pywrap_tensorflow prior to the toco wrapper.
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
@@ -63,3 +59,8 @@ def wrapped_register_custom_opdefs(custom_opdefs_list):
 def wrapped_retrieve_collected_errors():
   """Wraps RetrieveCollectedErrors with lazy loader."""
   return _pywrap_toco_api.RetrieveCollectedErrors()
+
+
+def wrapped_flat_buffer_file_to_mlir(model, input_is_filepath):
+  """Wraps FlatBufferFileToMlir with lazy loader."""
+  return _pywrap_toco_api.FlatBufferToMlir(model, input_is_filepath)

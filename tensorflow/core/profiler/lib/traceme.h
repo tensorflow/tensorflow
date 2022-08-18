@@ -27,12 +27,20 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"  // IWYU pragma: export
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/internal/cpu/traceme_recorder.h"
+#include "tensorflow/core/profiler/backends/cpu/traceme_recorder.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #endif
 
 namespace tensorflow {
 namespace profiler {
+
+// NOTE: Borrowed from boost C++ libraries. When TF embrace C++17 this should
+// be replaced with std::is_invocable;
+template <typename F, typename... Args>
+struct is_invocable
+    : std::is_constructible<
+          std::function<void(Args...)>,
+          std::reference_wrapper<typename std::remove_reference<F>::type> > {};
 
 // Predefined levels:
 // - Level 1 (kCritical) is the default and used only for user instrumentation.
@@ -133,12 +141,14 @@ class TraceMe {
   //   TraceMe trace_me_with_metadata([&value1]() {
   //     return TraceMeEncode("my_trace", {{"key1", value1}, {"key2", 42}});
   //   });
-  template <typename NameGeneratorT>
-  explicit TraceMe(NameGeneratorT name_generator, int level = 1) {
+  template <typename NameGeneratorT,
+            std::enable_if_t<is_invocable<NameGeneratorT>::value, bool> = true>
+  explicit TraceMe(NameGeneratorT&& name_generator, int level = 1) {
     DCHECK_GE(level, 1);
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      new (&no_init_.name) std::string(name_generator());
+      new (&no_init_.name)
+          std::string(std::forward<NameGeneratorT>(name_generator)());
       start_time_ = GetCurrentTimeNanos();
     }
 #endif
@@ -193,12 +203,16 @@ class TraceMe {
   //   trace_me.AppendMetadata([&value1]() {
   //     return TraceMeEncode({{"key1", value1}, {"key2", 42}});
   //   });
-  template <typename MetadataGeneratorT>
-  void AppendMetadata(MetadataGeneratorT metadata_generator) {
+  template <
+      typename MetadataGeneratorT,
+      std::enable_if_t<is_invocable<MetadataGeneratorT>::value, bool> = true>
+  void AppendMetadata(MetadataGeneratorT&& metadata_generator) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
-        traceme_internal::AppendMetadata(&no_init_.name, metadata_generator());
+        traceme_internal::AppendMetadata(
+            &no_init_.name,
+            std::forward<MetadataGeneratorT>(metadata_generator)());
       }
     }
 #endif
@@ -209,13 +223,14 @@ class TraceMe {
   // Record the start time of an activity.
   // Returns the activity ID, which is used to stop the activity.
   // Calls `name_generator` to get the name for activity.
-  template <typename NameGeneratorT>
-  static int64_t ActivityStart(NameGeneratorT name_generator, int level = 1) {
+  template <typename NameGeneratorT,
+            std::enable_if_t<is_invocable<NameGeneratorT>::value, bool> = true>
+  static int64_t ActivityStart(NameGeneratorT&& name_generator, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       int64_t activity_id = TraceMeRecorder::NewActivityId();
-      TraceMeRecorder::Record(
-          {name_generator(), GetCurrentTimeNanos(), -activity_id});
+      TraceMeRecorder::Record({std::forward<NameGeneratorT>(name_generator)(),
+                               GetCurrentTimeNanos(), -activity_id});
       return activity_id;
     }
 #endif
@@ -260,13 +275,14 @@ class TraceMe {
   }
 
   // Records the time of an instant activity.
-  template <typename NameGeneratorT>
-  static void InstantActivity(NameGeneratorT name_generator, int level = 1) {
+  template <typename NameGeneratorT,
+            std::enable_if_t<is_invocable<NameGeneratorT>::value, bool> = true>
+  static void InstantActivity(NameGeneratorT&& name_generator, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       int64_t now = GetCurrentTimeNanos();
-      TraceMeRecorder::Record(
-          {name_generator(), /*start_time=*/now, /*end_time=*/now});
+      TraceMeRecorder::Record({std::forward<NameGeneratorT>(name_generator)(),
+                               /*start_time=*/now, /*end_time=*/now});
     }
 #endif
   }

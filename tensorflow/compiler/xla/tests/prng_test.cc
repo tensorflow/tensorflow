@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -57,8 +56,7 @@ Literal PrngTest::UniformTest(T a, T b, absl::Span<const int64_t> dims,
       ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<T>(), dims));
 
   SetSeed(seed);
-  auto actual =
-      ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
+  auto actual = ExecuteAndTransfer(&builder, /*arguments=*/{}).value();
   EXPECT_THAT(dims, ::testing::ElementsAreArray(actual.shape().dimensions()));
   actual.EachCell<T>([=](absl::Span<const int64_t>, T value) {
     EXPECT_LE(a, value);
@@ -78,7 +76,7 @@ XLA_TEST_F(PrngTest, TenValuesU01) { UniformTest<float>(0, 1, {10}); }
 XLA_TEST_F(PrngTest, TenValuesU37) { UniformTest<float>(3, 7, {10}); }
 XLA_TEST_F(PrngTest, ZeroValuesR2) { UniformTest<float>(0, 1, {0, 20}); }
 XLA_TEST_F(PrngTest, LargeU01) { UniformTest<float>(0, 1, {0x100, 0x100}); }
-XLA_TEST_F(PrngTest, TwelveValuesU524) { UniformTest<int32>(5, 24, {12}); }
+XLA_TEST_F(PrngTest, TwelveValuesU524) { UniformTest<int32_t>(5, 24, {12}); }
 
 // TODO(b/71543667): Fix Rng ops on LLVM backends.
 // TODO(b/122047800): Interpreter does not support BF16 for RNG ops.
@@ -121,7 +119,7 @@ XLA_TEST_F(PrngTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
   bfloat16 low = static_cast<bfloat16>(32.25);
   bfloat16 high = static_cast<bfloat16>(33);
   bfloat16 interval = static_cast<bfloat16>(0.25);
-  std::vector<int32> counts(static_cast<int64_t>((high - low) / interval), 0);
+  std::vector<int32_t> counts(static_cast<int64_t>((high - low) / interval), 0);
 
   constexpr int64_t count = 1000;
   for (int64_t seed = 0; seed < count; ++seed) {
@@ -150,15 +148,14 @@ double PrngTest::UniformChiSquared(int32_t range_size, int32_t expected_count,
   int32_t sample_size = range_size * expected_count;
 
   XlaBuilder builder(TestName());
-  RngUniform(ConstantR0<int32>(&builder, 0),
-             ConstantR0<int32>(&builder, range_size),
+  RngUniform(ConstantR0<int32_t>(&builder, 0),
+             ConstantR0<int32_t>(&builder, range_size),
              ShapeUtil::MakeShape(S32, {sample_size}));
 
   SetSeed(seed);
-  auto actual =
-      ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
-  std::vector<int32> counts(range_size, 0);
-  actual.EachCell<int32>(
+  auto actual = ExecuteAndTransfer(&builder, /*arguments=*/{}).value();
+  std::vector<int32_t> counts(range_size, 0);
+  actual.EachCell<int32_t>(
       [&counts](absl::Span<const int64_t>, int32_t value) { ++counts[value]; });
   int64_t sum = 0;
   for (int32_t i = 0; i < range_size; ++i) {
@@ -297,11 +294,11 @@ XLA_TEST_F(PrngTest, DifferentValuesForIdenticalRngNodesInSameComputation) {
   // Build a U[0,1) computation.
   auto build_computation = [this]() {
     XlaBuilder builder(TestName());
-    auto a = RngUniform(ConstantR0<int32>(&builder, 0),
-                        ConstantR0<int32>(&builder, 100),
+    auto a = RngUniform(ConstantR0<int32_t>(&builder, 0),
+                        ConstantR0<int32_t>(&builder, 100),
                         ShapeUtil::MakeShape(S32, {10}));
-    auto b = RngUniform(ConstantR0<int32>(&builder, 0),
-                        ConstantR0<int32>(&builder, 100),
+    auto b = RngUniform(ConstantR0<int32_t>(&builder, 0),
+                        ConstantR0<int32_t>(&builder, 100),
                         ShapeUtil::MakeShape(S32, {10}));
     Tuple(&builder, {a, b});
     return builder.Build();
@@ -330,7 +327,7 @@ XLA_TEST_F(PrngTest, TenValuesN01) {
             ShapeUtil::MakeShape(F32, {10}));
 
   SetSeed(42);
-  ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
+  ExecuteAndTransfer(&builder, /*arguments=*/{}).value();
   // TODO(b/25995601): Test that resultant values are reasonable
 }
 
@@ -338,11 +335,11 @@ XLA_TEST_F(PrngTest, RngUniformCrash) {
   XlaBuilder builder(TestName());
 
   // This used to crash XLA during LLVM IR generation for CPUs.
-  RngUniform(ConstantR0<int32>(&builder, 0),
-             ConstantR0<int32>(&builder, 1000 * 1000),
+  RngUniform(ConstantR0<int32_t>(&builder, 0),
+             ConstantR0<int32_t>(&builder, 1000 * 1000),
              ShapeUtil::MakeShape(S32, {}));
   SetSeed(0);
-  ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
+  ExecuteAndTransfer(&builder, /*arguments=*/{}).value();
 }
 
 }  // namespace

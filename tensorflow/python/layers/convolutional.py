@@ -15,10 +15,6 @@
 
 """Contains the convolutional layer classes and their functional aliases.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.keras.legacy_tf_layers import convolutional
 
 Conv1D = convolutional.Conv1D

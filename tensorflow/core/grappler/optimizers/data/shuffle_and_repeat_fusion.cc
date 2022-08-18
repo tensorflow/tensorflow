@@ -39,8 +39,6 @@ constexpr char kRepeatDataset[] = "RepeatDataset";
 constexpr char kShuffleAndRepeatDataset[] = "ShuffleAndRepeatDataset";
 constexpr char kShuffleAndRepeatDatasetV2[] = "ShuffleAndRepeatDatasetV2";
 
-constexpr char kOutputShapes[] = "output_shapes";
-constexpr char kOutputTypes[] = "output_types";
 constexpr char kReshuffleEachIteration[] = "reshuffle_each_iteration";
 
 Status FuseShuffleV1AndRepeat(const NodeDef& shuffle_node,
@@ -68,11 +66,13 @@ Status FuseShuffleV1AndRepeat(const NodeDef& shuffle_node,
 
   // Set `output_types`, `output_shapes`, and `reshuffle_each_iteration`
   // attributes.
-  for (auto key : {kOutputShapes, kOutputTypes, kReshuffleEachIteration}) {
-    graph_utils::CopyAttribute(key, shuffle_node, fused_node);
-  }
+  graph_utils::CopyShapesAndTypesAttrs(shuffle_node, fused_node);
+  graph_utils::CopyAttribute(kReshuffleEachIteration, shuffle_node, fused_node);
 
-  return Status::OK();
+  // Optionally set the `metadata` attribute.
+  graph_utils::MaybeSetFusedMetadata(shuffle_node, repeat_node, fused_node);
+
+  return OkStatus();
 }
 
 Status FuseShuffleV2AndRepeat(const NodeDef& shuffle_node,
@@ -104,14 +104,15 @@ Status FuseShuffleV2AndRepeat(const NodeDef& shuffle_node,
   fused_node->add_input(shuffle_node.input(2));
 
   // Set `output_types` and `output_shapes` attributes.
-  for (auto key : {kOutputShapes, kOutputTypes}) {
-    graph_utils::CopyAttribute(key, shuffle_node, fused_node);
-  }
+  graph_utils::CopyShapesAndTypesAttrs(shuffle_node, fused_node);
 
   // Default the `reshuffle_each_iteration` attribute to true.
   (*fused_node->mutable_attr())[kReshuffleEachIteration].set_b(true);
 
-  return Status::OK();
+  // Optionally set the `metadata` attribute.
+  graph_utils::MaybeSetFusedMetadata(shuffle_node, repeat_node, fused_node);
+
+  return OkStatus();
 }
 
 Status FuseShuffleV3AndRepeat(const NodeDef& shuffle_node,
@@ -142,11 +143,13 @@ Status FuseShuffleV3AndRepeat(const NodeDef& shuffle_node,
 
   // Set `output_types`, `output_shapes`, and `reshuffle_each_iteration`
   // attributes.
-  for (auto key : {kOutputShapes, kOutputTypes, kReshuffleEachIteration}) {
-    graph_utils::CopyAttribute(key, shuffle_node, fused_node);
-  }
+  graph_utils::CopyShapesAndTypesAttrs(shuffle_node, fused_node);
+  graph_utils::CopyAttribute(kReshuffleEachIteration, shuffle_node, fused_node);
 
-  return Status::OK();
+  // Optionally set the `metadata` attribute.
+  graph_utils::MaybeSetFusedMetadata(shuffle_node, repeat_node, fused_node);
+
+  return OkStatus();
 }
 
 }  // namespace
@@ -202,7 +205,7 @@ Status ShuffleAndRepeatFusion::OptimizeAndCollectStats(
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(ShuffleAndRepeatFusion,

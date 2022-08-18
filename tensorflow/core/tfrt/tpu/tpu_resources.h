@@ -18,7 +18,13 @@ limitations under the License.
 // This file contains stub implementations for Google internal TPU APIs.
 
 namespace tfrt {
-inline void AddTpuResources(class ResourceContext *resource_context) {}
+
+namespace tpu {
+class TpuModelResource {
+};
+}  // namespace tpu
+
+inline void AddTpuResources(class ResourceContext* resource_context, tpu::TpuModelResource* tpu_model_resource) {}
 }  // namespace tfrt
 
 #endif  // TENSORFLOW_CORE_TFRT_TPU_TPU_RESOURCES_H_

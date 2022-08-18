@@ -165,7 +165,7 @@ IMAGE_TEST_DEPS = [
 tf_kernel_library(
     name = "adjust_contrast_op",
     prefix = "adjust_contrast_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
 )
 
 cc_library(

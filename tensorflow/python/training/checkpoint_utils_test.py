@@ -14,16 +14,14 @@
 # ==============================================================================
 """Tests for checkpoints tools."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
+import pathlib
 import time
 
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -38,7 +36,6 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.tracking import util as trackable_utils
 
 
 def _create_checkpoints(sess, checkpoint_dir):
@@ -118,6 +115,23 @@ class CheckpointsTest(test.TestCase):
         checkpoint_utils.list_variables(checkpoint_dir),
         [("useful_scope/var4", [9, 9]), ("var1", [1, 10]), ("var2", [10, 10]),
          ("var3", [100, 100])])
+
+  def testFSPath(self):
+    checkpoint_dir = pathlib.Path(self.get_temp_dir())
+    with self.cached_session() as session:
+      v1, v2, v3, v4 = _create_checkpoints(session, checkpoint_dir)  # pylint: disable=unused-variable
+
+    reader = checkpoint_utils.load_checkpoint(checkpoint_dir)
+    self.assertAllEqual(reader.get_tensor("var1"), v1)
+
+    self.assertAllEqual(
+        checkpoint_utils.load_variable(checkpoint_dir, "var1"), v1)
+
+    self.assertEqual(
+        checkpoint_utils.list_variables(checkpoint_dir),
+        [("useful_scope/var4", [9, 9]), ("var1", [1, 10]), ("var2", [10, 10]),
+         ("var3", [100, 100])])
+
 
   def testInitFromCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
@@ -418,6 +432,24 @@ class CheckpointIteratorTest(test.TestCase):
       gfile.MakeDirs(checkpoint_dir)
 
     save_path = os.path.join(checkpoint_dir, "model.ckpt")
+
+    a = resource_variable_ops.ResourceVariable(5)
+    self.evaluate(a.initializer)
+    checkpoint = trackable_utils.Checkpoint(a=a)
+    checkpoint.save(file_prefix=save_path)
+
+    num_found = 0
+    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
+      num_found += 1
+    self.assertEqual(num_found, 1)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testWorksWithFSPath(self):
+    checkpoint_dir = pathlib.Path(self.get_temp_dir()) / "one_checkpoint_found"
+    if not gfile.Exists(checkpoint_dir):
+      gfile.MakeDirs(checkpoint_dir)
+
+    save_path = checkpoint_dir / "model.ckpt"
 
     a = resource_variable_ops.ResourceVariable(5)
     self.evaluate(a.initializer)

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
@@ -112,7 +113,7 @@ struct LaunchConv2DBackpropInputOpImpl {
                   const Tensor& out_backprop, const Tensor& filter,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings,
+                  const std::vector<int64_t>& explicit_paddings,
                   Tensor* in_backprop, TensorFormat data_format) {
     std::vector<int32> strides(4, 1);
     std::vector<int32> dilations(4, 1);
@@ -207,7 +208,7 @@ struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
                   const Tensor& out_backprop, const Tensor& filter,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings,
+                  const std::vector<int64_t>& explicit_paddings,
                   Tensor* in_backprop, TensorFormat data_format) {
     LaunchConv2DBackpropInputOpImpl<CPUDevice, T> launcher;
     launcher(ctx, use_cudnn, cudnn_use_autotune, out_backprop, filter,
@@ -421,6 +422,11 @@ class Conv2DBackpropInputOp : public OpKernel {
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);
 
+    OP_REQUIRES(
+        context, out_backprop.dims() == 4,
+        errors::InvalidArgument("input_sizes must be 4-dimensional, got: ",
+                                out_backprop.dims()));
+
     TensorShape input_shape;
     OP_REQUIRES_OK(context,
                    Conv2DBackpropComputeInputShape(input_sizes, filter.shape(),
@@ -433,6 +439,15 @@ class Conv2DBackpropInputOp : public OpKernel {
 
     // If there is nothing to compute, return.
     if (input_shape.num_elements() == 0) {
+      return;
+    }
+
+    // If shapes are valid but `out_backprop` is empty, in_backprop should be
+    // set to all zeros.  Otherwise, cudnn/dnnl fail with an empty input.
+    if (out_backprop.NumElements() == 0) {
+      functor::SetZeroFunctor<Device, T> set_zero;
+      set_zero(context->eigen_device<Device>(),
+               in_backprop->template flat<T>());
       return;
     }
 
@@ -517,6 +532,10 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     const Tensor& input_sizes = context->input(0);
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);
+    OP_REQUIRES(
+        context, out_backprop.dims() == 4,
+        errors::InvalidArgument("input_sizes must be 4-dimensional, got: ",
+                                out_backprop.dims()));
 
     TensorShape input_shape;
     OP_REQUIRES_OK(context,
@@ -533,9 +552,12 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                        explicit_paddings_, data_format_, &dims));
 
     OP_REQUIRES(context, dims.in_depth == filter.shape().dim_size(2),
-                errors::InvalidArgument("Computed input depth ", dims.in_depth,
-                                        " doesn't match filter input depth ",
-                                        filter.shape().dim_size(2)));
+                errors::InvalidArgument(
+                    "Gradients for grouped convolutions are not "
+                    "supported on CPU. Please file a feature request if you "
+                    "run into this issue. Computed input depth ",
+                    dims.in_depth, " doesn't match filter input depth ",
+                    filter.shape().dim_size(2)));
     OP_REQUIRES(
         context, dims.out_depth == filter.shape().dim_size(3),
         errors::InvalidArgument("Computed output depth ", dims.out_depth,
@@ -548,6 +570,15 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
     // If there is nothing to compute, return.
     if (input_shape.num_elements() == 0) {
+      return;
+    }
+
+    // If shapes are valid but `out_backprop` is empty, in_backprop should be
+    // set to all zeros.  Otherwise, cudnn/dnnl fail with an empty input.
+    if (out_backprop.NumElements() == 0) {
+      functor::SetZeroFunctor<Device, T> set_zero;
+      set_zero(context->eigen_device<Device>(),
+               in_backprop->template flat<T>());
       return;
     }
 

@@ -1,0 +1,752 @@
+node {
+  name: "input/Initializer/Const"
+  op: "Const"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@input"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 5
+      }
+    }
+  }
+}
+node {
+  name: "input"
+  op: "VarHandleOp"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@input"
+      }
+    }
+  }
+  attr {
+    key: "allowed_devices"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: "input"
+    }
+  }
+}
+node {
+  name: "input/IsInitialized/VarIsInitializedOp"
+  op: "VarIsInitializedOp"
+  input: "input"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+}
+node {
+  name: "input/Assign"
+  op: "AssignVariableOp"
+  input: "input"
+  input: "input/Initializer/Const"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input/Read/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "input"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "Placeholder"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+node {
+  name: "input0"
+  op: "TPUReplicatedInput"
+  input: "Placeholder"
+  attr {
+    key: "N"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "is_mirrored_variable"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "is_packed"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "cluster/pivot"
+  op: "NoOp"
+  attr {
+    key: "_pivot_for_cluster"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "TPUReplicateMetadata"
+  op: "TPUReplicateMetadata"
+  input: "^cluster/pivot"
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+  attr {
+    key: "allow_soft_placement"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "computation_shape"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "device_assignment"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "host_compute_core"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "num_cores_per_replica"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "num_replicas"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "padding_map"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "step_marker_location"
+    value {
+      s: "STEP_MARK_AT_ENTRY"
+    }
+  }
+  attr {
+    key: "topology"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "use_spmd_for_xla_partitioning"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "use_tpu"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "replicated_input_0"
+  op: "Identity"
+  input: "input0"
+  input: "^TPUReplicateMetadata"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_tpu_input_identity"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "Less/y"
+  op: "Const"
+  input: "^TPUReplicateMetadata"
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 2
+      }
+    }
+  }
+}
+node {
+  name: "Less"
+  op: "Less"
+  input: "replicated_input_0"
+  input: "Less/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "cond/Switch"
+  op: "Switch"
+  input: "Less"
+  input: "Less"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "cond/switch_t"
+  op: "Identity"
+  input: "cond/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "cond/switch_f"
+  op: "Identity"
+  input: "cond/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "cond/pred_id"
+  op: "Identity"
+  input: "Less"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "cond/Identity/ReadVariableOp/Switch"
+  op: "Switch"
+  input: "input"
+  input: "cond/pred_id"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@input"
+      }
+    }
+  }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "cond/Identity/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "cond/Identity/ReadVariableOp/Switch:1"
+  input: "^TPUReplicateMetadata"
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "cond/Identity"
+  op: "Identity"
+  input: "cond/Identity/ReadVariableOp"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "cond/add/y"
+  op: "Const"
+  input: "^TPUReplicateMetadata"
+  input: "^cond/switch_t"
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+  attr {
+    key: "_xla_outside_compilation"
+    value {
+      s: "0"
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1234
+      }
+    }
+  }
+}
+node {
+  name: "cond/add"
+  op: "AddV2"
+  input: "cond/Identity"
+  input: "cond/add/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+  attr {
+    key: "_xla_outside_compilation"
+    value {
+      s: "0"
+    }
+  }
+}
+node {
+  name: "cond/AssignVariableOp"
+  op: "AssignVariableOp"
+  input: "cond/Identity/ReadVariableOp/Switch:1"
+  input: "cond/add"
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "cond/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "cond/Identity/ReadVariableOp/Switch:1"
+  input: "^TPUReplicateMetadata"
+  input: "^cond/AssignVariableOp"
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "cond/ReadVariableOp_1"
+  op: "ReadVariableOp"
+  input: "cond/Identity/ReadVariableOp/Switch:1"
+  input: "^TPUReplicateMetadata"
+  input: "^cond/AssignVariableOp"
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "cond/ReadVariableOp_2/Switch"
+  op: "Switch"
+  input: "input"
+  input: "cond/pred_id"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@input"
+      }
+    }
+  }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "cond/ReadVariableOp_2"
+  op: "ReadVariableOp"
+  input: "cond/ReadVariableOp_2/Switch"
+  input: "^TPUReplicateMetadata"
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "cond/Merge"
+  op: "Merge"
+  input: "cond/ReadVariableOp_2"
+  input: "cond/ReadVariableOp_1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "NoOp"
+  op: "NoOp"
+  input: "^cluster/pivot"
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "Identity"
+  op: "Identity"
+  input: "cond/Merge"
+  device: "/device:TPU_REPLICATED_CORE:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_tpu_output_identity"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "TPUCompilationResult"
+  op: "TPUCompilationResult"
+  input: "^TPUReplicateMetadata"
+  attr {
+    key: "_tpu_compilation_status"
+    value {
+      s: "cluster"
+    }
+  }
+}
+node {
+  name: "output0"
+  op: "TPUReplicatedOutput"
+  input: "Identity"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "num_replicas"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "output_0_shard_0"
+  op: "Identity"
+  input: "output0"
+  input: "^NoOp"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "ConfigureDistributedTPU"
+  op: "ConfigureDistributedTPU"
+  device: "/device:TPU_SYSTEM:0"
+  attr {
+    key: "compilation_failure_closes_chips"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "embedding_config"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "enable_whole_mesh_compilations"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "is_global_init"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "tpu_embedding_config"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "init"
+  op: "NoOp"
+  input: "^input/Assign"
+}
+library {
+}
+versions {
+  producer: 729
+}

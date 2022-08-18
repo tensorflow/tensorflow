@@ -36,17 +36,12 @@ TODO(mdan): Alternatively, consider adding an edge from try to all its excepts.
 # They should rather be called 'block statements', because they include
 # statements that may have a body, e.g. if and while.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import enum
 import weakref
 
 import astunparse
 import gast
-import six
 
 from tensorflow.python.autograph.pyct import anno
 
@@ -62,8 +57,8 @@ class Node(object):
   holds for all nodes: "child in node.next" iff "node in child.prev".
 
   Attributes:
-    next: FrozenSet[Node, ...], the nodes that follow this node, in control
-      flow order
+    next: FrozenSet[Node, ...], the nodes that follow this node, in control flow
+      order
     prev: FrozenSet[Node, ...], the nodes that precede this node, in reverse
       control flow order
     ast_node: ast.AST, the AST node corresponding to this CFG node
@@ -118,13 +113,12 @@ class Graph(
     entry: Node, the entry node
     exit: FrozenSet[Node, ...], the exit nodes
     error: FrozenSet[Node, ...], nodes that exit due to an explicitly raised
-        error (errors propagated from function calls are not accounted)
-    index: Dict[ast.Node, Node], mapping AST nodes to the respective CFG
-        node
-    stmt_prev: Dict[ast.Node, FrozenSet[Node, ...]], mapping statement AST
-        nodes to their predecessor CFG nodes
-    stmt_next: Dict[ast.Node, FrozenSet[Node, ...]], mapping statement AST
-        nodes to their successor CFG nodes
+      error (errors propagated from function calls are not accounted)
+    index: Dict[ast.Node, Node], mapping AST nodes to the respective CFG node
+    stmt_prev: Dict[ast.Node, FrozenSet[Node, ...]], mapping statement AST nodes
+      to their predecessor CFG nodes
+    stmt_next: Dict[ast.Node, FrozenSet[Node, ...]], mapping statement AST nodes
+      to their successor CFG nodes
   """
 
   def __repr__(self):
@@ -176,7 +170,9 @@ class GraphVisitor(object):
     self.reset()
 
   def init_state(self, node):
-    """State initialization function. Optional to overload.
+    """State initialization function.
+
+    Optional to overload.
 
     An in/out state slot will be created for each node in the graph. Subclasses
     must overload this to control what that is initialized to.
@@ -192,6 +188,7 @@ class GraphVisitor(object):
 
     Args:
       node: Node
+
     Returns:
       bool, whether the node should be revisited; subclasses can visit every
           reachable node exactly once by always returning False
@@ -211,10 +208,6 @@ class GraphVisitor(object):
     ast_node = node.ast_node
     if anno.hasanno(ast_node, anno.Basic.SKIP_PROCESSING):
       return True
-    if six.PY2:
-      if (isinstance(ast_node, gast.Name) and
-          ast_node.id in ('None', 'True', 'False')):
-        return True
     return isinstance(ast_node,
                       (gast.Break, gast.Continue, gast.Raise, gast.Pass))
 
@@ -373,8 +366,8 @@ class GraphBuilder(object):
     """Marks the beginning of a statement.
 
     Args:
-      stmt: Hashable, a key by which the statement can be identified in
-          the CFG's stmt_prev and stmt_next attributes
+      stmt: Hashable, a key by which the statement can be identified in the
+        CFG's stmt_prev and stmt_next attributes
     """
     self.active_stmts.add(stmt)
 
@@ -382,9 +375,9 @@ class GraphBuilder(object):
     """Marks the end of a statement.
 
     Args:
-      stmt: Hashable, a key by which the statement can be identified in
-          the CFG's stmt_prev and stmt_next attributes; must match a key
-          previously passed to begin_statement.
+      stmt: Hashable, a key by which the statement can be identified in the
+        CFG's stmt_prev and stmt_next attributes; must match a key previously
+        passed to begin_statement.
     """
     self.active_stmts.remove(stmt)
 
@@ -396,6 +389,7 @@ class GraphBuilder(object):
 
     Args:
       ast_node: ast.AST
+
     Returns:
       Node
     """
@@ -413,6 +407,7 @@ class GraphBuilder(object):
     Args:
       ast_node: ast.AST
       guards: Tuple[ast.AST, ...], the finally sections active for this node
+
     Returns:
       Node
     """
@@ -442,9 +437,10 @@ class GraphBuilder(object):
 
     Args:
       ast_node: ast.AST
-      section_id: Hashable, the node for which ast_node should be considered
-          to be an exit node
+      section_id: Hashable, the node for which ast_node should be considered to
+        be an exit node
       guards: Tuple[ast.AST, ...], the finally sections that guard ast_node
+
     Returns:
       Node
     """
@@ -459,8 +455,8 @@ class GraphBuilder(object):
 
     Args:
       ast_node: ast.AST
-      section_id: Hashable, the node for which ast_node should be considered
-          to be an exit node
+      section_id: Hashable, the node for which ast_node should be considered to
+        be an exit node
       guards: Tuple[ast.AST, ...], the finally sections that guard ast_node
     """
     node = self._add_jump_node(ast_node, guards)
@@ -488,7 +484,7 @@ class GraphBuilder(object):
 
     Args:
       section_id: Hashable, the same node that will be used in calls to the
-          ast_node arg passed to add_exit_node
+        ast_node arg passed to add_exit_node
     """
     assert section_id not in self.exits
     self.exits[section_id] = set()
@@ -511,9 +507,9 @@ class GraphBuilder(object):
 
     Args:
       section_id: Hashable, the same node that will be used in calls to the
-          ast_node arg passed to add_continue_node
-      entry_node: ast.AST, the entry node into the loop (e.g. the test node
-          for while loops)
+        ast_node arg passed to add_continue_node
+      entry_node: ast.AST, the entry node into the loop (e.g. the test node for
+        while loops)
     """
     assert section_id not in self.section_entry
     assert section_id not in self.continues
@@ -543,7 +539,7 @@ class GraphBuilder(object):
 
     Args:
       section_id: Hashable, the same node that will be used in calls to the
-          section_id arg passed to new_cond_branch
+        section_id arg passed to new_cond_branch
     """
 
     assert section_id not in self.cond_entry
@@ -688,8 +684,10 @@ class AstToCfg(gast.NodeVisitor):
     self.generic_visit(node)
     self.builder.add_ordinary_node(node)
 
-  def _process_exit_statement(
-      self, node, exits_nodes_of_type, may_exit_via_except=False):
+  def _process_exit_statement(self,
+                              node,
+                              exits_nodes_of_type,
+                              may_exit_via_except=False):
     self.generic_visit(node)
     # Note: this is safe because we process functions separately.
     try_node, guards = self._get_enclosing_finally_scopes(exits_nodes_of_type)
@@ -892,10 +890,16 @@ class AstToCfg(gast.NodeVisitor):
     self.builder.end_statement(node)
 
   def visit_Break(self, node):
-    self._process_exit_statement(node, (gast.While, gast.For,))
+    self._process_exit_statement(node, (
+        gast.While,
+        gast.For,
+    ))
 
   def visit_Continue(self, node):
-    self._process_continue_statement(node, (gast.While, gast.For,))
+    self._process_continue_statement(node, (
+        gast.While,
+        gast.For,
+    ))
 
   def visit_ExceptHandler(self, node):
     self.builder.begin_statement(node)

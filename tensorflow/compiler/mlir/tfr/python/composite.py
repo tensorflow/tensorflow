@@ -14,10 +14,6 @@
 # ==============================================================================
 """Op composition registration."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 # TODO(fengliuai): add the tf_export decrator
 class Composite(object):

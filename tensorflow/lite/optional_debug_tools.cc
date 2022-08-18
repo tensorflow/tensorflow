@@ -36,6 +36,10 @@ namespace {
 // Just forward declarations.
 const char* AllocTypeName(TfLiteAllocationType type);
 
+void PrintIntVector(const std::vector<int>& v,
+                    bool collapse_consecutives = true,
+                    bool add_newline = false);
+
 // A class to represent the information of a memory arena that's used in TfLite
 // runtime for holding allocated memory of tensors. The information includes
 // the following:
@@ -144,6 +148,45 @@ class MemoryArenaInfo {
   std::set<TensorAllocInfo, TensorAllocInfoCompare> alloc_info_;
 };
 
+class DynamicMemoryInfo {
+ public:
+  void Update(size_t tensor_index, const TfLiteTensor& tensor) {
+    if (tensor.allocation_type != kTfLiteDynamic) return;
+    if (tensor.data.data == nullptr) return;
+    if (tensor.bytes > max_tensor_mem_bytes_) {
+      max_tensor_mem_bytes_ = tensor.bytes;
+      max_tensor_ids_.clear();
+      max_tensor_ids_.push_back(tensor_index);
+    } else if (tensor.bytes == max_tensor_mem_bytes_) {
+      max_tensor_ids_.push_back(static_cast<int>(tensor_index));
+    }
+    total_mem_bytes_ += tensor.bytes;
+    num_total_tensors_++;
+  }
+
+  void Print() const {
+    printf("kTfLiteDynamic Info: ");
+    if (total_mem_bytes_ == 0) {
+      printf("not holding any allocation.\n");
+      return;
+    }
+    printf("\n%zu Tensors ", max_tensor_ids_.size());
+    PrintIntVector(max_tensor_ids_, /*collapse_consecutives*/ false);
+    printf(" have the max size %zu bytes (%.3f MB).\n", max_tensor_mem_bytes_,
+           static_cast<float>(max_tensor_mem_bytes_) / (1 << 20));
+    printf("There are %d dynamic tensors, taking %zu bytes (%.3f MB).\n",
+           num_total_tensors_, total_mem_bytes_,
+           static_cast<float>(total_mem_bytes_) / (1 << 20));
+  }
+
+ private:
+  size_t max_tensor_mem_bytes_ = 0;
+  // the index list of the tensor that has the max memory size.
+  std::vector<int> max_tensor_ids_;
+  size_t total_mem_bytes_ = 0;
+  int num_total_tensors_ = 0;
+};
+
 class ModelTensorMemoryInfo {
  public:
   ModelTensorMemoryInfo()
@@ -155,6 +198,7 @@ class ModelTensorMemoryInfo {
     rw_info_.Update(tensor_index, tensor);
     rw_persistent_info_.Update(tensor_index, tensor);
     mmap_info_.Update(tensor_index, tensor);
+    dynamic_info_.Update(tensor_index, tensor);
   }
 
   // Get the offset from the beginning address of the memory arena for 'tensor'.
@@ -185,12 +229,15 @@ class ModelTensorMemoryInfo {
     printf("\n");
     mmap_info_.Print();
     printf("\n");
+    dynamic_info_.Print();
+    printf("\n");
   }
 
  private:
   MemoryArenaInfo rw_info_;
   MemoryArenaInfo rw_persistent_info_;
   MemoryArenaInfo mmap_info_;
+  DynamicMemoryInfo dynamic_info_;
 };
 
 template <typename T>
@@ -206,9 +253,8 @@ void PrintTotalBytesOfTensors(const Subgraph& subgraph, const T& tensor_ids,
          static_cast<float>(total) / (1 << 20));
 }
 
-void PrintIntVector(const std::vector<int>& v,
-                    bool collapse_consecutives = true,
-                    bool add_newline = false) {
+void PrintIntVector(const std::vector<int>& v, bool collapse_consecutives,
+                    bool add_newline) {
   if (v.empty()) {
     printf("(null)");
     if (add_newline) {
@@ -279,6 +325,8 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteString";
     case kTfLiteBool:
       return "kTfLiteBool";
+    case kTfLiteUInt16:
+      return "kTfLiteUInt16";
     case kTfLiteInt16:
       return "kTfLiteInt16";
     case kTfLiteComplex64:
@@ -329,11 +377,11 @@ std::string TruncateString(const char* str, int size_limit,
 
   if (truncate_at_end) {
     truncated.resize(size_limit);
-    // Change the the last 3 chars to  "..." to imply truncation.
+    // Change the last 3 chars to  "..." to imply truncation.
     truncated.replace(size_limit - 3, 3, "...");
   } else {
     truncated.erase(0, length - size_limit);
-    // Change the the first 3 chars to  "..." to imply truncation.
+    // Change the first 3 chars to  "..." to imply truncation.
     truncated.replace(0, 3, "...");
   }
   return truncated;
@@ -507,6 +555,64 @@ void PrintInterpreterState(const Interpreter* interpreter) {
 
     printf("--------------Subgraph-%d dump has completed--------------\n\n", i);
   }
+  printf("--------------Memory Arena Status Start--------------\n");
+  size_t total_arena_memory_bytes = 0;
+  size_t total_dynamic_memory_bytes = 0;
+  size_t total_resource_bytes = 0;
+
+  for (int i = 0; i < num_subgraphs; ++i) {
+    const Subgraph& subgraph = *(interpreter->subgraph(i));
+    Subgraph::SubgraphAllocInfo alloc_info;
+    subgraph.GetMemoryAllocInfo(&alloc_info);
+    total_arena_memory_bytes += alloc_info.arena_size;
+    total_arena_memory_bytes += alloc_info.arena_persist_size;
+    total_dynamic_memory_bytes += alloc_info.dynamic_size;
+    // Resources are shared with all subgraphs. So calculate it only once.
+    if (i == 0) {
+      total_resource_bytes = alloc_info.resource_size;
+    }
+  }
+  size_t total_memory_bytes = total_arena_memory_bytes +
+                              total_dynamic_memory_bytes + total_resource_bytes;
+  printf("Total memory usage: %zu bytes (%.3f MB)\n", total_memory_bytes,
+         static_cast<float>(total_memory_bytes) / (1 << 20));
+  printf("- Total arena memory usage: %zu bytes (%.3f MB)\n",
+         total_arena_memory_bytes,
+         static_cast<float>(total_arena_memory_bytes) / (1 << 20));
+  printf("- Total dynamic memory usage: %zu bytes (%.3f MB)\n",
+         total_dynamic_memory_bytes,
+         static_cast<float>(total_dynamic_memory_bytes) / (1 << 20));
+  if (total_resource_bytes) {
+    printf("- Total resource memory usage: %zu bytes (%.3f MB)\n",
+           total_resource_bytes,
+           static_cast<float>(total_resource_bytes) / (1 << 20));
+  }
+  putchar('\n');
+
+  for (int i = 0; i < num_subgraphs; ++i) {
+    const Subgraph& subgraph = *(interpreter->subgraph(i));
+    Subgraph::SubgraphAllocInfo alloc_info;
+    subgraph.GetMemoryAllocInfo(&alloc_info);
+    if (alloc_info.arena_size) {
+      printf(
+          "Subgraph#%-3d %-18s %10zu (%.2f%%)\n", i, "Arena (Normal)",
+          alloc_info.arena_size,
+          static_cast<float>(alloc_info.arena_size * 100) / total_memory_bytes);
+    }
+    if (alloc_info.arena_persist_size) {
+      printf("Subgraph#%-3d %-18s %10zu (%.2f%%)\n", i, "Arena (Persistent)",
+             alloc_info.arena_persist_size,
+             static_cast<float>(alloc_info.arena_persist_size * 100) /
+                 total_memory_bytes);
+    }
+    if (alloc_info.dynamic_size) {
+      printf("Subgraph#%-3d %-18s %10zu (%.2f%%)\n", i, "Dyanmic Tensors",
+             alloc_info.dynamic_size,
+             static_cast<float>(alloc_info.dynamic_size * 100) /
+                 total_memory_bytes);
+    }
+  }
+  printf("--------------Memory Arena Status End--------------\n\n");
 }
 
 }  // namespace tflite

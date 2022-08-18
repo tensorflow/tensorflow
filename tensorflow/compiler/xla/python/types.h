@@ -17,15 +17,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/types/optional.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
-#include "tensorflow/compiler/xla/python/absl_casters.h"
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -141,7 +141,7 @@ struct CastToArrayResult {
   const char* buf_ptr;
   xla::Shape shape;
 };
-absl::optional<CastToArrayResult> CastToArray(pybind11::handle h);
+std::optional<CastToArrayResult> CastToArray(pybind11::handle h);
 
 }  // namespace xla
 
@@ -409,7 +409,7 @@ struct type_caster<xla::OpMetadata> {
     }
     pybind11::handle source_line = getattr(handle, "source_line");
     if (!source_line.is_none()) {
-      value.set_source_line(source_line.cast<xla::int32>());
+      value.set_source_line(source_line.cast<int32_t>());
     }
     return true;
   }
@@ -433,76 +433,6 @@ struct type_caster<xla::PrecisionConfig> {
       value.add_operand_precision(
           operand_precision.cast<xla::PrecisionConfig::Precision>());
     }
-    return true;
-  }
-};
-
-template <>
-struct type_caster<xla::OpSharding> {
- public:
-  PYBIND11_TYPE_CASTER(xla::OpSharding, _("xla::OpSharding"));
-
-  // PyObject -> C++ conversion.
-  bool load(handle handle_obj, bool) {
-    if (handle_obj.is_none()) {
-      return true;
-    }
-
-    // Sets `type` field.
-    handle sharding_type = getattr(handle_obj, "type");
-    if (!sharding_type.is_none()) {
-      value.set_type(sharding_type.cast<xla::OpSharding_Type>());
-    }
-
-    // Sets `tile_assignment_dimensions` field.
-    std::vector<int64_t> dims;
-    dims = getattr(handle_obj, "tile_assignment_dimensions")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_tile_assignment_dimensions()));
-
-    // Sets `tile_assignment_devices` field.
-    std::vector<int64_t> devices;
-    devices = getattr(handle_obj, "tile_assignment_devices")
-                  .cast<std::vector<int64_t>>();
-    std::copy(devices.begin(), devices.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_tile_assignment_devices()));
-
-    // Sets `tuple_shardings` field.
-    sequence tuple_shardings =
-        reinterpret_borrow<sequence>(getattr(handle_obj, "tuple_shardings"));
-
-    for (const auto& tuple_sharding : tuple_shardings) {
-      xla::OpSharding* sharding = value.add_tuple_shardings();
-
-      handle sharding_type = getattr(tuple_sharding, "type");
-      if (!sharding_type.is_none()) {
-        sharding->set_type(sharding_type.cast<xla::OpSharding_Type>());
-      }
-      std::vector<int64_t> dims;
-      dims = getattr(tuple_sharding, "tile_assignment_dimensions")
-                 .cast<std::vector<int64_t>>();
-      std::copy(dims.begin(), dims.end(),
-                tensorflow::protobuf::RepeatedFieldBackInserter(
-                    sharding->mutable_tile_assignment_dimensions()));
-
-      std::vector<int64_t> devices;
-      devices = getattr(tuple_sharding, "tile_assignment_devices")
-                    .cast<std::vector<int64_t>>();
-      std::copy(devices.begin(), devices.end(),
-                tensorflow::protobuf::RepeatedFieldBackInserter(
-                    sharding->mutable_tile_assignment_devices()));
-
-      sharding->set_replicate_on_last_tile_dim(
-          getattr(tuple_sharding, "replicate_on_last_tile_dim").cast<bool>());
-    }
-
-    // Sets `replicate_on_last_tile_dim` field.
-    value.set_replicate_on_last_tile_dim(
-        getattr(handle_obj, "replicate_on_last_tile_dim").cast<bool>());
-
     return true;
   }
 };

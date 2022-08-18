@@ -30,4 +30,10 @@ std::string AbstractTensorHandle::DebugString() const {
                       ", dtype=", DataType_Name(DataType()), ")");
 }
 
+Status AbstractTensorHandle::TensorHandleStatus() const {
+  // Tensor handles in current runtime don't carry error info and this method
+  // should always return OK status.
+  return OkStatus();
+}
+
 }  // namespace tensorflow

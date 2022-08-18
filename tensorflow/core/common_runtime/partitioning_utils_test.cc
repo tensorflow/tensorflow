@@ -48,7 +48,7 @@ class PartitioningUtilsTest : public ::testing::Test {
                                           &devices));
     device0_ = devices[0].get();
     device1_ = devices[1].get();
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+    device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
 
     for (auto d : device_mgr_->ListDevices()) {
       device_set_.AddDevice(d);
@@ -119,7 +119,7 @@ class PartitioningUtilsTest : public ::testing::Test {
 };
 
 TEST_F(PartitioningUtilsTest, GraphWithoutAssignedDevicesFails) {
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   SwapGraph(graph.get());
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
@@ -129,7 +129,7 @@ TEST_F(PartitioningUtilsTest, GraphWithoutAssignedDevicesFails) {
 }
 
 TEST_F(PartitioningUtilsTest, OneDevice) {
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   SwapGraph(graph.get(), true);
   int num_nodes = graph->num_op_nodes();
 
@@ -145,7 +145,7 @@ TEST_F(PartitioningUtilsTest, OneDevice) {
 }
 
 TEST_F(PartitioningUtilsTest, TwoDevices) {
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   TwoDeviceSwapGraph(graph.get());
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
@@ -159,6 +159,94 @@ TEST_F(PartitioningUtilsTest, TwoDevices) {
   ASSERT_EQ(3, part1->num_op_nodes());
   const auto& part2 = subgraphs["/job:a/replica:0/task:0/device:CPU:1"];
   ASSERT_EQ(3, part2->num_op_nodes());
+}
+
+TEST_F(PartitioningUtilsTest, InsertTransferOpsWithOneDevice) {
+  // A graph with three nodes that are on the same device.
+  // x(_Arg, device0) -> id_x(Identity, device0) -> ret_x(_Retval, device0)
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  Scope scope = Scope::NewRootScope().WithDevice(device0_->name());
+
+  auto x = ops::_Arg(scope.WithOpName("x"), DT_FLOAT, 0);
+  auto id_x = ops::Identity(scope.WithOpName("id_x"), x);
+  auto ret_x = ops::_Retval(scope.WithOpName("ret_x"), id_x, 0);
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  FunctionLibraryDefinition flib_def(OpRegistry::Global());
+  Placer placer(graph.get(), "", &flib_def, &device_set_, device0_);
+  TF_ASSERT_OK(placer.Run());
+
+  // No Send/Recv node initially.
+  EXPECT_EQ(graph->num_op_nodes(), 3);
+  int send_count = 0, recv_count = 0;
+  for (const auto* op : graph->op_nodes()) {
+    if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
+  }
+  ASSERT_EQ(send_count, 0);
+  ASSERT_EQ(recv_count, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Graph> new_graph,
+                          InsertTransferOps(device_set_, std::move(graph)));
+
+  // No Send/Recv node is added, as all nodes are on the same device.
+  EXPECT_EQ(new_graph->num_op_nodes(), 3);
+  send_count = recv_count = 0;
+  for (const auto* op : new_graph->op_nodes()) {
+    if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
+  }
+  EXPECT_EQ(send_count, 0);
+  EXPECT_EQ(recv_count, 0);
+}
+
+TEST_F(PartitioningUtilsTest, InsertTransferOpsWithTwoDevices) {
+  // A graph with three nodes that are on two devices.
+  // x(_Arg, device0) -> id_x(Identity, device1) -> ret_x(_Retval, device0)
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  Scope scope = Scope::NewRootScope();
+  Scope scope1 = scope.WithDevice(device0_->name());
+  Scope scope2 = scope.WithDevice(device1_->name());
+
+  auto x = ops::_Arg(scope1.WithOpName("x"), DT_FLOAT, 0);
+  auto id_x = ops::Identity(scope2.WithOpName("id_x"), x);
+  auto ret_x = ops::_Retval(scope1.WithOpName("ret_x"), id_x, 0);
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  FunctionLibraryDefinition flib_def(OpRegistry::Global());
+  Placer placer(graph.get(), "", &flib_def, &device_set_, device0_);
+  TF_ASSERT_OK(placer.Run());
+
+  // No Send/Recv node initially.
+  EXPECT_EQ(graph->num_op_nodes(), 3);
+  int send_count = 0, recv_count = 0;
+  for (const auto* op : graph->op_nodes()) {
+    if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
+  }
+  ASSERT_EQ(send_count, 0);
+  ASSERT_EQ(recv_count, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Graph> new_graph,
+                          InsertTransferOps(device_set_, std::move(graph)));
+
+  // Two pairs of Send/Recv nodes are inserted.
+  EXPECT_EQ(new_graph->num_op_nodes(), 7);
+  send_count = recv_count = 0;
+  for (const auto* op : new_graph->op_nodes()) {
+    if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
+  }
+  EXPECT_EQ(send_count, 2);
+  EXPECT_EQ(recv_count, 2);
 }
 
 void CheckRetIndices(const std::vector<int>& expected,
@@ -194,7 +282,7 @@ void CheckIndex(const Node& node, int expected_index) {
 }
 
 TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   SubGraph(graph.get(), DT_FLOAT, {3}, {5});
 
   std::vector<FunctionArgIndex> arg_indices;
@@ -202,11 +290,9 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
 
-  string device_type = "CPU";
-
   Status status = UpdateArgAndRetvalMetadata(
-      graph.get(), device_type, &arg_indices, &ret_indices, &arg_alloc_attrs,
-      &ret_alloc_attrs);
+      graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
+      &ret_alloc_attrs, /*ints_on_device=*/false);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   CheckArgIndices({{3, -1}}, arg_indices);
@@ -221,8 +307,44 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
   CheckIndex(*nodes["retval1"], 0);
 }
 
+TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsNotOnDevice) {
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  SubGraph(graph.get(), DT_INT32, {3}, {5});
+
+  std::vector<FunctionArgIndex> arg_indices;
+  std::vector<int> ret_indices;
+  std::vector<AllocatorAttributes> arg_alloc_attrs;
+  std::vector<AllocatorAttributes> ret_alloc_attrs;
+
+  Status status = UpdateArgAndRetvalMetadata(
+      graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
+      &ret_alloc_attrs, /*ints_on_device=*/false);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  CheckAlloc({true}, arg_alloc_attrs);
+  CheckAlloc({true}, ret_alloc_attrs);
+}
+
+TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsOnDevice) {
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  SubGraph(graph.get(), DT_INT32, {3}, {5});
+
+  std::vector<FunctionArgIndex> arg_indices;
+  std::vector<int> ret_indices;
+  std::vector<AllocatorAttributes> arg_alloc_attrs;
+  std::vector<AllocatorAttributes> ret_alloc_attrs;
+
+  Status status = UpdateArgAndRetvalMetadata(
+      graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
+      &ret_alloc_attrs, /*ints_on_device=*/true);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  CheckAlloc({false}, arg_alloc_attrs);
+  CheckAlloc({false}, ret_alloc_attrs);
+}
+
 TEST_F(PartitioningUtilsTest, UpdateArgsAndRets_Order) {
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   SubGraph(graph.get(), DT_FLOAT, {9, 7, 5, 3, 1}, {2, 4, 6, 8, 10});
 
   const std::map<int, int> sub_indices = {
@@ -241,11 +363,9 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets_Order) {
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
 
-  string device_type = "CPU";
-
   Status status = UpdateArgAndRetvalMetadata(
-      graph.get(), device_type, &arg_indices, &ret_indices, &arg_alloc_attrs,
-      &ret_alloc_attrs);
+      graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
+      &ret_alloc_attrs, /*ints_on_device=*/false);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   CheckArgIndices({{1, 0}, {3, 1}, {5, 2}, {7, 2}, {9, 0}}, arg_indices);

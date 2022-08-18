@@ -15,10 +15,6 @@
 """Deprecation tests."""
 
 # pylint: disable=unused-import
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import enum
 
@@ -228,7 +224,7 @@ class DeprecationTest(test.TestCase):
     self.assertEqual(
         "fn doc. (deprecated)"
         "\n"
-        "\nWarning: THIS FUNCTION IS DEPRECATED. "
+        "\nDeprecated: THIS FUNCTION IS DEPRECATED. "
         "It will be removed in a future version."
         "\nInstructions for updating:\n%s"
         "\n"
@@ -271,7 +267,7 @@ class DeprecationTest(test.TestCase):
     self.assertEqual(
         "fn doc. (deprecated)"
         "\n"
-        "\nWarning: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
+        "\nDeprecated: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:\n%s"
         "\n"
         "\nArgs:"
@@ -304,7 +300,7 @@ class DeprecationTest(test.TestCase):
     self.assertEqual(
         "fn doc. (deprecated)"
         "\n"
-        "\nWarning: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
+        "\nDeprecated: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:\n%s" % (date, instructions), _fn.__doc__)
 
     # Assert calling new fn issues log warning.
@@ -329,7 +325,7 @@ class DeprecationTest(test.TestCase):
     self.assertEqual(
         "DEPRECATED FUNCTION"
         "\n"
-        "\nWarning: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
+        "\nDeprecated: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:"
         "\n%s" % (date, instructions), _fn.__doc__)
 
@@ -367,7 +363,7 @@ class DeprecationTest(test.TestCase):
     self.assertEqual(
         "fn doc. (deprecated)"
         "\n"
-        "\nWarning: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
+        "\nDeprecated: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:\n%s"
         "\n"
         "\nArgs:"
@@ -404,7 +400,7 @@ class DeprecationTest(test.TestCase):
     self.assertEqual(
         "fn doc. (deprecated)"
         "\n"
-        "\nWarning: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
+        "\nDeprecated: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:\n%s" % (date, instructions),
         getattr(_Object, "_fn").__doc__)
 
@@ -433,7 +429,7 @@ class DeprecationTest(test.TestCase):
     self.assertEqual(
         "DEPRECATED FUNCTION"
         "\n"
-        "\nWarning: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
+        "\nDeprecated: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:"
         "\n%s" % (date, instructions),
         getattr(_Object, "_fn").__doc__)
@@ -485,7 +481,7 @@ class DeprecationTest(test.TestCase):
     self.assertEqual(
         "prop doc. (deprecated)"
         "\n"
-        "\nWarning: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
+        "\nDeprecated: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:"
         "\n%s"
         "\n"
@@ -519,7 +515,7 @@ class DeprecationTest(test.TestCase):
     self.assertEqual(
         "DEPRECATED FUNCTION"
         "\n"
-        "\nWarning: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
+        "\nDeprecated: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:"
         "\n%s" % (date, instructions),
         getattr(_Object, "_prop").__doc__)
@@ -589,7 +585,7 @@ class DeprecatedArgsTest(test.TestCase):
     self.assertEqual(
         "fn doc. (deprecated arguments)"
         "\n"
-        "\nWarning: SOME ARGUMENTS ARE DEPRECATED: `(deprecated)`. "
+        "\nDeprecated: SOME ARGUMENTS ARE DEPRECATED: `(deprecated)`. "
         "They will be removed after %s."
         "\nInstructions for updating:\n%s"
         "\n"
@@ -628,7 +624,7 @@ class DeprecatedArgsTest(test.TestCase):
     self.assertEqual(
         "fn doc. (deprecated arguments)"
         "\n"
-        "\nWarning: SOME ARGUMENTS ARE DEPRECATED: `(deprecated)`. "
+        "\nDeprecated: SOME ARGUMENTS ARE DEPRECATED: `(deprecated)`. "
         "They will be removed after %s."
         "\nInstructions for updating:\n%s" % (date, instructions), _fn.__doc__)
 
@@ -658,7 +654,7 @@ class DeprecatedArgsTest(test.TestCase):
     self.assertEqual(
         "DEPRECATED FUNCTION ARGUMENTS"
         "\n"
-        "\nWarning: SOME ARGUMENTS ARE DEPRECATED: `(deprecated)`. "
+        "\nDeprecated: SOME ARGUMENTS ARE DEPRECATED: `(deprecated)`. "
         "They will be removed after %s."
         "\nInstructions for updating:"
         "\n%s" % (date, instructions), _fn.__doc__)
@@ -920,7 +916,7 @@ class DeprecatedArgValuesTest(test.TestCase):
     self.assertEqual(
         "fn doc. (deprecated argument values)"
         "\n"
-        "\nWarning: SOME ARGUMENT VALUES ARE DEPRECATED: `(deprecated=True)`. "
+        "\nDeprecated: SOME ARGUMENT VALUES ARE DEPRECATED: `(deprecated=True)`. "
         "They will be removed after %s."
         "\nInstructions for updating:\n%s"
         "\n"
@@ -964,7 +960,7 @@ class DeprecatedArgValuesTest(test.TestCase):
     self.assertEqual(
         "fn doc. (deprecated argument values)"
         "\n"
-        "\nWarning: SOME ARGUMENT VALUES ARE DEPRECATED: `(deprecated=True)`. "
+        "\nDeprecated: SOME ARGUMENT VALUES ARE DEPRECATED: `(deprecated=True)`. "
         "They will be removed after %s."
         "\nInstructions for updating:\n%s" % (date, instructions), _fn.__doc__)
 
@@ -999,7 +995,7 @@ class DeprecatedArgValuesTest(test.TestCase):
     self.assertEqual(
         "DEPRECATED FUNCTION ARGUMENT VALUES"
         "\n"
-        "\nWarning: SOME ARGUMENT VALUES ARE DEPRECATED: `(deprecated=True)`. "
+        "\nDeprecated: SOME ARGUMENT VALUES ARE DEPRECATED: `(deprecated=True)`. "
         "They will be removed after %s."
         "\nInstructions for updating:"
         "\n%s" % (date, instructions), _fn.__doc__)
@@ -1088,10 +1084,9 @@ class DeprecationArgumentsTest(test.TestCase):
                                                good_value), good_value)
     with self.assertRaisesRegex(ValueError,
                                 "Cannot specify both 'val_old' and 'val_new'"):
-      self.assertEqual(
-          deprecation.deprecated_argument_lookup("val_new", good_value,
-                                                 "val_old", good_value),
-          good_value)
+
+      deprecation.deprecated_argument_lookup("val_new", good_value,
+                                             "val_old", good_value)
 
   def testRewriteArgumentDocstring(self):
     docs = """Add `a` and `b`
@@ -1131,6 +1126,20 @@ class DeprecatedEndpointsTest(test.TestCase):
       @deprecation.deprecated_endpoints("foo2")
       def foo():  # pylint: disable=unused-variable
         pass
+
+
+class DeprecateMovedModuleTest(test.TestCase):
+
+  @test.mock.patch.object(logging, "warning", autospec=True)
+  def testCallDeprecatedModule(self, mock_warning):
+    from tensorflow.python.util import deprecated_module  # pylint: disable=g-import-not-at-top
+    self.assertEqual(0, mock_warning.call_count)
+    result = deprecated_module.a()
+    self.assertEqual(1, mock_warning.call_count)
+    self.assertEqual(1, result)
+
+    deprecated_module.a()
+    self.assertEqual(1, mock_warning.call_count)
 
 
 if __name__ == "__main__":

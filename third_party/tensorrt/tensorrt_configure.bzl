@@ -52,6 +52,21 @@ _DEFINE_TENSORRT_SONAME_MAJOR = "#define NV_TENSORRT_SONAME_MAJOR"
 _DEFINE_TENSORRT_SONAME_MINOR = "#define NV_TENSORRT_SONAME_MINOR"
 _DEFINE_TENSORRT_SONAME_PATCH = "#define NV_TENSORRT_SONAME_PATCH"
 
+_TENSORRT_OSS_DUMMY_BUILD_CONTENT = """
+cc_library(
+  name = "nvinfer_plugin_nms",
+  visibility = ["//visibility:public"],
+)
+"""
+
+_TENSORRT_OSS_ARCHIVE_BUILD_CONTENT = """
+alias(
+  name = "nvinfer_plugin_nms",
+  actual = "@tensorrt_oss_archive//:nvinfer_plugin_nms",
+  visibility = ["//visibility:public"],
+)
+"""
+
 def _at_least_version(actual_version, required_version):
     actual = [int(v) for v in actual_version.split(".")]
     required = [int(v) for v in required_version.split(".")]
@@ -81,6 +96,7 @@ def _create_dummy_repository(repository_ctx):
         "%{copy_rules}": "",
         "\":tensorrt_include\"": "",
         "\":tensorrt_lib\"": "",
+        "%{oss_rules}": _TENSORRT_OSS_DUMMY_BUILD_CONTENT,
     })
     _tpl(repository_ctx, "tensorrt/include/tensorrt_config.h", {
         "%{tensorrt_version}": "",
@@ -120,6 +136,7 @@ def _create_local_tensorrt_repository(repository_ctx):
         "BUILD": _tpl_path(repository_ctx, "BUILD"),
         "tensorrt/include/tensorrt_config.h": _tpl_path(repository_ctx, "tensorrt/include/tensorrt_config.h"),
         "tensorrt/tensorrt_config.py": _tpl_path(repository_ctx, "tensorrt/tensorrt_config.py"),
+        "plugin.BUILD": _tpl_path(repository_ctx, "plugin.BUILD"),
     }
 
     config = find_cuda_config(repository_ctx, find_cuda_config_path, ["tensorrt"])
@@ -177,7 +194,18 @@ def _create_local_tensorrt_repository(repository_ctx):
     repository_ctx.template(
         "BUILD",
         tpl_paths["BUILD"],
-        {"%{copy_rules}": "\n".join(copy_rules)},
+        {
+            "%{copy_rules}": "\n".join(copy_rules),
+        },
+    )
+
+    # Set up the plugins folder BUILD file.
+    repository_ctx.template(
+        "plugin/BUILD",
+        tpl_paths["plugin.BUILD"],
+        {
+            "%{oss_rules}": _TENSORRT_OSS_ARCHIVE_BUILD_CONTENT,
+        },
     )
 
     # Copy license file in non-remote build.

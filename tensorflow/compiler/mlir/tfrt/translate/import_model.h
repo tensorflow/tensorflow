@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_IMPORT_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_IMPORT_MODEL_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/function/function.h"
@@ -32,12 +33,12 @@ struct FunctionBody;
 // point of tf.function to TFRT. function_name and device_name are given from
 // the Python context. The lowered BEF will be stored in an external buffer
 // pointed by bef_buffer.
-Status ConvertFunctionToBef(mlir::StringRef function_name,
-                            const tensorflow::FunctionBody* fbody,
-                            const FunctionLibraryDefinition& flib_def,
-                            tfrt::ArrayRef<tfrt::string_view> devices,
-                            tensorflow::TfrtFunctionCompileOptions options,
-                            tfrt::BefBuffer* bef_buffer);
+Status ConvertFunctionToBef(
+    mlir::StringRef function_name, const tensorflow::FunctionBody* fbody,
+    const FunctionLibraryDefinition& flib_def,
+    tfrt::ArrayRef<tfrt::string_view> devices,
+    const tensorflow::TfrtFunctionCompileOptions& options,
+    tfrt::BefBuffer* bef_buffer);
 
 // Converts an MLIR `module` in TF dialect to TFRT's Binary Executable Format.
 Status ConvertTfMlirToBef(const TfrtCompileOptions& options,

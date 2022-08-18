@@ -35,10 +35,6 @@ Sample usage:
   For e.g.:
      pprof -png --nodecount=100 --sample_index=1 output_dir/profile_output.pb.gz
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict
 from collections import namedtuple
 import gzip

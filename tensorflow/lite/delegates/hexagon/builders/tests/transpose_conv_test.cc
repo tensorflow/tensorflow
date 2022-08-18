@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <initializer_list>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/builders/tests/hexagon_delegate_op_model.h"
@@ -113,7 +115,7 @@ TEST(QuantizedTransposeConvOpModel, SimpleTestQuantized) {
   // Float would be {1, 2, 3, 4, 5, 6, 7, 8, 9}
   std::initializer_list<uint8_t> filter_data = {129, 131, 133, 135, 137,
                                                 139, 141, 143, 145};
-  auto model = QuantizedTransposeConvOpModel<uint8_t>(
+  QuantizedTransposeConvOpModel<uint8_t> model(
       {1, 4, 4, 1}, {TensorType_UINT8, {1, 3, 3, 1}, -63.5, 64}, filter_data,
       {TensorType_UINT8, {1, 4, 4, 1}, -63.5, 64},
       {TensorType_UINT8, {}, -508, 512}, Padding_SAME, 1, 1);
@@ -136,7 +138,7 @@ TEST(QuantizedTransposeConvOpModel, PaddingValidTestQuantized) {
   std::initializer_list<uint8_t> filter_data = {129, 131, 133, 135, 137, 139,
                                                 141, 143, 145, 147, 149, 151,
                                                 153, 155, 157, 159, 161, 163};
-  auto model = QuantizedTransposeConvOpModel<uint8_t>(
+  QuantizedTransposeConvOpModel<uint8_t> model(
       {1, 6, 6, 1}, {TensorType_UINT8, {1, 3, 3, 2}, -63.5, 64}, filter_data,
       {TensorType_UINT8, {1, 4, 4, 2}, -63.5, 64},
       {TensorType_UINT8, {}, -4064, 4096}, Padding_VALID, 1, 1);
@@ -161,7 +163,7 @@ TEST(QuantizedTransposeConvOpModel, TwoFiltersTestQuantized) {
   std::initializer_list<uint8_t> filter_data = {129, 131, 133, 135, 137, 139,
                                                 141, 143, 145, 147, 149, 151,
                                                 153, 155, 157, 159, 161, 163};
-  auto model = QuantizedTransposeConvOpModel<uint8_t>(
+  QuantizedTransposeConvOpModel<uint8_t> model(
       {1, 4, 4, 1}, {TensorType_UINT8, {1, 3, 3, 2}, -63.5, 64}, filter_data,
       {TensorType_UINT8, {1, 4, 4, 2}, -63.5, 64},
       {TensorType_UINT8, {}, -4064, 4096}, Padding_SAME, 1, 1);
@@ -182,7 +184,7 @@ TEST(QuantizedTransposeConvOpModel,
      SimpleTestQuantizedPerChannelSingleChannel) {
   const std::initializer_list<int8_t> filter_data = {14, 28, 42,  56, 71,
                                                      85, 99, 113, 127};
-  auto model = QuantizedTransposeConvOpModel<int8_t>(
+  QuantizedTransposeConvOpModel<int8_t> model(
       {1, 4, 4, 1},
       {TensorType_INT8, {1, 3, 3, 1}, 0, 0, 0, 0, true, {9.0 / 127}, {0}, 0},
       filter_data, {TensorType_INT8, {1, 4, 4, 1}, 0, 0, 16.0 / 255, -128},
@@ -202,7 +204,7 @@ TEST(QuantizedTransposeConvOpModel, TestQuantizedPerChannelMultiChannel) {
   const std::initializer_list<int8_t> filter_data = {
       7,  22, 37, 52, 67, 82, 97, 112, 127,
       14, 28, 42, 56, 71, 85, 99, 113, 127};
-  auto model = QuantizedTransposeConvOpModel<int8_t>(
+  QuantizedTransposeConvOpModel<int8_t> model(
       {1, 5, 5, 2},
       {TensorType_INT8,
        {2, 3, 3, 1},
@@ -232,7 +234,7 @@ TEST(QuantizedTransposeConvOpModel, TestQuantizedPerChannelMultiChannel) {
 TEST(QuantizedTransposeConvOpModel, SimpleBiasQuantized) {
   const std::initializer_list<uint8_t> filter_data = {129, 131, 133, 135, 137,
                                                       139, 141, 143, 145};
-  auto model = QuantizedTransposeConvOpModel<uint8_t>(
+  QuantizedTransposeConvOpModel<uint8_t> model(
       {1, 4, 4, 1}, {TensorType_UINT8, {1, 3, 3, 1}, -63.5, 64}, filter_data,
       {TensorType_UINT8, {1, 4, 4, 1}, -63.5, 64},
       {TensorType_UINT8, {}, -508, 512}, Padding_SAME, 1, 1,
@@ -249,10 +251,10 @@ TEST(QuantizedTransposeConvOpModel, SimpleBiasQuantized) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
 
-TEST(QuantizedTransposeConvOpModel, PerChannelQuantizedBias) {
+TEST(QuantizedTransposeConvOpModel, PerChannelQuantizedBiasSingleChannel) {
   const std::initializer_list<int8_t> filter_data = {14, 28, 42,  56, 70,
                                                      84, 98, 112, 126};
-  auto model = QuantizedTransposeConvOpModel<int8_t>(
+  QuantizedTransposeConvOpModel<int8_t> model(
       {1, 4, 4, 1},
       {TensorType_INT8, {1, 3, 3, 1}, 0, 0, 0, 0, true, {9.0 / 127}, {0}, 0},
       filter_data, {TensorType_INT8, {1, 4, 4, 1}, 0, 0, 16.0 / 255, -128},
@@ -268,6 +270,39 @@ TEST(QuantizedTransposeConvOpModel, PerChannelQuantizedBias) {
                                        370, 414, 328, 262, 442, 482, 362},
                                       1e-5)));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(QuantizedTransposeConvOpModel, PerChannelQuantizedBiasMultiChannel) {
+  const std::initializer_list<int8_t> filter_data = {
+      7,  22, 37, 52, 67, 82, 97, 112, 127,
+      14, 28, 42, 56, 71, 85, 99, 113, 127};
+  QuantizedTransposeConvOpModel<int8_t> model(
+      {1, 5, 5, 2},
+      {TensorType_INT8,
+       {2, 3, 3, 1},
+       0,
+       0,
+       0,
+       0,
+       true,
+       {17.0 / 127, 18.0 / 127},
+       {0, 0},
+       0},
+      filter_data, {TensorType_INT8, {1, 2, 2, 1}, 0, 0, 4.0 / 255, -128},
+      {TensorType_INT8, {}, 0, 0, 1, -128}, Padding_VALID, 2, 2,
+      /*add_bias=*/true);
+  model.SetInput({1, 2, 3, 4});
+  model.SetBias({1});
+
+  // Expected output from CPU.
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  auto expected_output = model.GetDequantizedOutput();
+
+  // Check delegate output.
+  model.ApplyDelegateAndInvoke();
+  EXPECT_THAT(model.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(expected_output, 1e-5)));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 5, 5, 2}));
 }
 
 }  // namespace tflite

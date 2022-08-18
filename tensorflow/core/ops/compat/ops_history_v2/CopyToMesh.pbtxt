@@ -1,0 +1,26 @@
+op 	 {
+  name: "CopyToMesh"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "layout"
+    type: "string"
+  }
+  attr {
+    name: "source_layout"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

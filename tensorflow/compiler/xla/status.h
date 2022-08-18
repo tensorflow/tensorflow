@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STATUS_H_
 
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
+using tensorflow::OkStatus;
 using tensorflow::Status;  // TENSORFLOW_STATUS_OK
 
 }  // namespace xla

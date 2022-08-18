@@ -22,6 +22,7 @@ limitations under the License.
 #include <list>
 #include <map>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device/device_id.h"
@@ -108,7 +109,7 @@ Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
     allocated_memory = total_memory * per_process_device_memory_fraction;
   }
   *memory_limit = allocated_memory;
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -128,7 +129,7 @@ Status PluggableDeviceFactory::ListPhysicalDevices(
     devices->push_back(device_name);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PluggableDeviceFactory::GetDeviceDetails(
@@ -136,7 +137,7 @@ Status PluggableDeviceFactory::GetDeviceDetails(
   TF_RETURN_IF_ERROR(ValidatePluggableDeviceMachineManager(platform_name_));
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   if (platform == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
 
   int device_count = platform->VisibleDeviceCount();
@@ -149,9 +150,9 @@ Status PluggableDeviceFactory::GetDeviceDetails(
     return desc_status.status();
   }
 
-  auto desc = desc_status.ConsumeValueOrDie();
+  auto desc = std::move(desc_status).value();
   (*details)["device_name"] = desc->name();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PluggableDeviceFactory::CreateDevices(
@@ -160,11 +161,11 @@ Status PluggableDeviceFactory::CreateDevices(
   TF_RETURN_IF_ERROR(ValidatePluggableDeviceMachineManager(platform_name_));
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   if (platform == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (platform->VisibleDeviceCount() <= 0) {
-    return Status::OK();
+    return OkStatus();
   }
 
   size_t num_tf_devices = INT_MAX;
@@ -211,7 +212,7 @@ Status PluggableDeviceFactory::CreateDevices(
                                              bytes, device_localities[di],
                                              devices));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static string GetShortDeviceDescription(PlatformDeviceId platform_device_id,
@@ -242,7 +243,7 @@ Status PluggableDeviceFactory::CreatePluggableDevice(
   if (!desc_status.ok()) {
     return desc_status.status();
   }
-  auto desc = desc_status.ConsumeValueOrDie();
+  auto desc = std::move(desc_status).value();
   PluggableDeviceProcessState* process_state =
       PluggableDeviceProcessState::singleton(device_type_, platform_name_);
   Allocator* device_allocator = process_state->GetPluggableDeviceAllocator(
@@ -274,7 +275,7 @@ Status PluggableDeviceFactory::CreatePluggableDevice(
             << GetShortDeviceDescription(platform_device_id, *desc) << ")";
   TF_RETURN_IF_ERROR(pluggable_device->Init(options));
   devices->push_back(std::move(pluggable_device));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PluggableDeviceFactory::GetDeviceLocalities(
@@ -293,7 +294,7 @@ Status PluggableDeviceFactory::GetDeviceLocalities(
     if (!desc_status.ok()) {
       return desc_status.status();
     }
-    auto desc = desc_status.ConsumeValueOrDie();
+    auto desc = std::move(desc_status).value();
     int numa_node = desc->numa_node();
     if (numa_node < 0) {
       // For some reason the StreamExecutor couldn't get the NUMA
@@ -317,7 +318,7 @@ Status PluggableDeviceFactory::GetDeviceLocalities(
             << dev_locality.bus_id() << " numa: " << numa_node
             << "DeviceLocality: " << dev_locality.DebugString();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

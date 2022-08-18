@@ -22,7 +22,6 @@ assignees:
 compiler_assignees:
    - joker-eph
    - sanjoy
-   - sherhut
 # filesystem path
 filesystem_path:
    - tensorflow/c/experimental/filesystem

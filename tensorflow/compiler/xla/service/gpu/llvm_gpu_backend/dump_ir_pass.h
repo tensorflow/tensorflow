@@ -29,8 +29,8 @@ namespace gpu {
 // pass.
 class IrDumpingPassManager : public llvm::legacy::PassManager {
  public:
-  IrDumpingPassManager(const string& input_filename, const string& output_dir,
-                       bool dump_ir)
+  IrDumpingPassManager(const std::string& input_filename,
+                       const std::string& output_dir, bool dump_ir)
       : llvm::legacy::PassManager(),
         input_filename_(input_filename),
         output_dir_(output_dir),
@@ -39,8 +39,8 @@ class IrDumpingPassManager : public llvm::legacy::PassManager {
   void run(llvm::Module& module);  // NOLINT(runtime/references)
 
  private:
-  string input_filename_;
-  string output_dir_;
+  std::string input_filename_;
+  std::string output_dir_;
   bool dump_ir_;
   std::vector<llvm::Pass*> passes_;
 };

@@ -1,0 +1,7 @@
+{
+  "packages" : [
+    "tensorflow/lite/delegates/gpu/metal"
+  ],
+  "projectName" : "Benchmark",
+  "workspaceRoot" : "../../../../../../.."
+}

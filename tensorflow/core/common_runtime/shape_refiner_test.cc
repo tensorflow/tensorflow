@@ -64,7 +64,8 @@ class ShapeRefinerTest : public ::testing::Test {
   void TestStridedSlice(const PartialTensorShape& input_shape, int begin,
                         int end, int stride, const char* expected,
                         int begin_mask = 0, int end_mask = 0,
-                        int ellipsis_mask = 0) {
+                        int ellipsis_mask = 0, int shrink_axis_mask = 0,
+                        StringPiece test_op = "TensorAsShapeInt32") {
     Scope root = Scope::DisabledShapeInferenceScope();
     auto placeholder =
         ops::Placeholder(root, DT_INT32, ops::Placeholder::Shape(input_shape));
@@ -75,9 +76,10 @@ class ShapeRefinerTest : public ::testing::Test {
     auto slice = ops::StridedSlice(root, input, begin_op, end_op, stride_op,
                                    ops::StridedSlice::BeginMask(begin_mask)
                                        .EndMask(end_mask)
-                                       .EllipsisMask(ellipsis_mask));
+                                       .EllipsisMask(ellipsis_mask)
+                                       .ShrinkAxisMask(shrink_axis_mask));
     Node* result;
-    TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt32")
+    TF_ASSERT_OK(NodeBuilder("test", test_op)
                      .Input(slice.node())
                      .Finalize(root.graph(), &result));
 
@@ -328,7 +330,7 @@ REGISTER_OP("TestOp")
       if (c->input_tensor(0)) {
         if (c->input_tensor(1)) {
           c->set_output(0, c->Matrix(10, 10));
-          return Status::OK();
+          return OkStatus();
         }
         return shape_inference::ScalarShape(c);
       }
@@ -382,7 +384,7 @@ REGISTER_OP("ShapeData")
       }
 
       c->set_output(0, c->MakeShape(dims));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ShapeDataInt64")
@@ -397,11 +399,11 @@ REGISTER_OP("ShapeDataInt64")
       std::vector<shape_inference::DimensionHandle> dims;
       dims.reserve(shape_data->NumElements());
       for (int i = 0; i < shape_data->NumElements(); ++i) {
-        dims.emplace_back(c->MakeDim(shape_data->flat<int64>()(i)));
+        dims.emplace_back(c->MakeDim(shape_data->flat<int64_t>()(i)));
       }
 
       c->set_output(0, c->MakeShape(dims));
-      return Status::OK();
+      return OkStatus();
     });
 
 // An op with a shape function that looks at its input tensor
@@ -420,7 +422,7 @@ REGISTER_OP("ShapeVectorForAllElements")
       }
 
       c->set_output(0, c->Vector(total));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("MultiIdentity")
@@ -431,7 +433,7 @@ REGISTER_OP("MultiIdentity")
       for (int i = 0; i < c->num_inputs(); ++i) {
         c->set_output(i, c->input(i));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 class MultiIdentity : public OpKernel {
@@ -832,10 +834,27 @@ Status TensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
   shape_inference::ShapeHandle out;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0 /* input_idx */, &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
+}
+
+Status PartialTensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
+  shape_inference::ShapeHandle out;
+  const Tensor* t = c->input_tensor(0);
+  if (t == nullptr || t->NumElements() != 1) {
+    c->set_output(0, c->UnknownShape());
+    return OkStatus();
+  }
+  TF_RETURN_IF_ERROR(
+      c->MakeShapeFromTensorShape(TensorShape({t->flat<int32>()(0)}), &out));
+  c->set_output(0, out);
+  return OkStatus();
 }
 
 // Register ops used by the ConstantValueAsShape* tests.
+REGISTER_OP("PartialTensorAsShapeInt32")
+    .Input("a: int32")
+    .Output("o: int32")
+    .SetShapeFn(PartialTensorAsShapeShapeFn);
 
 REGISTER_OP("TensorAsShapeInt32")
     .Input("a: int32")
@@ -862,7 +881,7 @@ REGISTER_OP("WithEmptyVectorShape")
     .SetDoNotOptimize()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(0));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("WithPartialShape")
@@ -872,7 +891,7 @@ REGISTER_OP("WithPartialShape")
       c->set_output(
           0, c->MakeShape({1, shape_inference::InferenceContext::kUnknownDim, 3,
                            shape_inference::InferenceContext::kUnknownDim, 5}));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("WithPartialShape2")
@@ -882,7 +901,7 @@ REGISTER_OP("WithPartialShape2")
       c->set_output(
           0,
           c->MakeShape({6, shape_inference::InferenceContext::kUnknownDim, 8}));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("WithUnknownShape")
@@ -890,7 +909,7 @@ REGISTER_OP("WithUnknownShape")
     .SetDoNotOptimize()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace
@@ -1215,6 +1234,35 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_StridedSliceInvalidMask) {
       /*begin_mask=*/0,
       /*end_mask=*/0,
       /*ellipsis_mask=*/1);
+}
+
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_StridedSliceWithShrinkAxis) {
+  TestStridedSlice(
+      /*input_shape=*/{1, -1, 3, -1, 5},
+      /*begin=*/2,
+      /*end=*/3,
+      /*stride=*/1,
+      /*expected=*/"[3]",
+      /*begin_mask=*/0,
+      /*end_mask=*/0,
+      /*ellipsis_mask=*/0,
+      /*shrink_axis_mask=*/1,
+      /*test_op=*/"PartialTensorAsShapeInt32");
+}
+
+TEST_F(ShapeRefinerTest,
+       ConstantValueAsShape_StridedSliceWithShrinkAxisOnUnknownDim) {
+  TestStridedSlice(
+      /*input_shape=*/{1, -1, 3, -1, 5},
+      /*begin=*/1,
+      /*end=*/2,
+      /*stride=*/1,
+      /*expected=*/"?",
+      /*begin_mask=*/0,
+      /*end_mask=*/0,
+      /*ellipsis_mask=*/0,
+      /*shrink_axis_mask=*/1,
+      /*test_op=*/"PartialTensorAsShapeInt32");
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_StridedSliceMulti) {

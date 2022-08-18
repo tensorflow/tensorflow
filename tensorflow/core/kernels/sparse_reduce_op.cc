@@ -18,8 +18,10 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
@@ -127,7 +129,7 @@ Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 struct SumOp {
@@ -172,10 +174,13 @@ class SparseReduceOp : public OpKernel {
     // making deep copies here.  Remove this if/when we change Reorder()'s
     // semantics.
     const auto shape_vec = shape_t->vec<int64_t>();
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(shape_vec, &shape));
+
     SparseTensor sp;
     OP_REQUIRES_OK(ctx, SparseTensor::Create(
         tensor::DeepCopy(*indices_t), tensor::DeepCopy(*values_t),
-                    TensorShape(shape_vec), &sp));
+                    shape, &sp));
     ReduceDetails reduction = SparseTensorReduceHelper(
         sp, reduction_axes_t->flat<int32>(), keep_dims_);
 
@@ -201,8 +206,8 @@ class SparseReduceOp : public OpKernel {
       }
     }
 
-    auto CoordinatesToFlatIndex = [](ArraySlice<int64> coords,
-                                     ArraySlice<int64> strides) -> int64 {
+    auto CoordinatesToFlatIndex = [](ArraySlice<int64_t> coords,
+                                     ArraySlice<int64_t> strides) -> int64 {
       if (strides.empty()) {  // Reduce all.
         return 0;
       }
@@ -275,10 +280,13 @@ class SparseReduceSparseOp : public OpKernel {
 
     OP_REQUIRES_OK(ctx, ValidateInputs(shape_t, reduction_axes_t));
 
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(shape_t->vec<int64_t>(),
+                                                      &shape));
     SparseTensor sp;
     OP_REQUIRES_OK(ctx, SparseTensor::Create(tensor::DeepCopy(*indices_t),
                                          tensor::DeepCopy(*values_t),
-                    TensorShape(shape_t->vec<int64_t>()), &sp));
+                    shape, &sp));
     ReduceDetails reduction = SparseTensorReduceHelper(
         sp, reduction_axes_t->flat<int32>(), keep_dims_);
 
@@ -295,7 +303,7 @@ class SparseReduceSparseOp : public OpKernel {
                    ctx->allocate_output(
                        0, TensorShape({nnz, reduction.reduced_shape.dims()}),
                        &out_indices_t));
-    typename TTypes<int64>::Matrix out_indices_mat =
+    typename TTypes<int64_t>::Matrix out_indices_mat =
         out_indices_t->matrix<int64_t>();
     // For keep_dims. We don't explicitly set dim fields for reduced dims below.
     out_indices_mat.setZero();

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -36,18 +37,6 @@ namespace {
 // Stay on the conservative side, this is smaller than full 64kB, but allows
 // some extra space for cache.
 int64_t kSharedMemoryBudgetInBytes = 40000;
-
-void AppendParams(const HloInstruction& instr,
-                  std::vector<HloInstruction*>* params) {
-  if (instr.opcode() == HloOpcode::kFusion) {
-    params->insert(std::end(*params), std::begin(instr.fused_parameters()),
-                   std::end(instr.fused_parameters()));
-  } else {
-    for (HloInstruction* operand : instr.operands()) {
-      params->push_back(operand);
-    }
-  }
-}
 
 bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
@@ -67,47 +56,24 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   return false;
 }
 
-std::vector<int64_t> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
-  std::vector<int64_t> relative_order;
-  for (int64_t dim : LayoutUtil::MinorToMajor(shape)) {
-    if (shape.dimensions(dim) > 1) {
-      relative_order.push_back(dim);
-    }
-  }
-  // Now normalize the dimensions to values between 0 and true rank - 1.
-  std::vector<int64_t> sorted_dims = relative_order;
-  std::sort(sorted_dims.begin(), sorted_dims.end());
-  for (int64_t& dim : relative_order) {
-    int64_t sorted_index = std::distance(
-        sorted_dims.begin(),
-        std::lower_bound(sorted_dims.begin(), sorted_dims.end(), dim));
-    dim = sorted_index;
-  }
-  return relative_order;
-}
-
 }  // namespace
 
-bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
-                                         const HloInstruction& reduce) {
-  std::vector<HloInstruction*> params;
-  AppendParams(producer, &params);
-  AppendParams(reduce, &params);
-  int64_t max_true_rank = -1;
-  std::vector<int64_t> max_rank_order;
-  for (HloInstruction* param : params) {
-    if (param->shape().IsArray() &&
-        ShapeUtil::TrueRank(param->shape()) > max_true_rank) {
-      max_true_rank = ShapeUtil::TrueRank(param->shape());
-      max_rank_order = ExtractRelativeOrderOfNontrivialDims(param->shape());
+bool IsPhysicallyTransposing(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kFusion) {
+    for (const HloInstruction* fused_instr : instr.fused_instructions()) {
+      if (IsPhysicallyTransposing(*fused_instr)) {
+        return true;
+      }
     }
   }
-  return absl::c_all_of(params, [&](HloInstruction* param) {
-    return !param->shape().IsArray() ||
-           ShapeUtil::TrueRank(param->shape()) < max_true_rank ||
-           ExtractRelativeOrderOfNontrivialDims(param->shape()) ==
-               max_rank_order;
-  });
+
+  // A fusion iterates over its output in physically-contiguous order. This
+  // applies "upwards" to operands.  Only an operator that changes an operand's
+  // physical layout can create a "bad" memory access pattern.
+  return instr.opcode() == HloOpcode::kCopy ||
+         (instr.opcode() == HloOpcode::kTranspose &&
+          !ShapeUtil::TransposeIsBitcast(instr.operand(0)->shape(),
+                                         instr.shape(), instr.dimensions()));
 }
 
 bool IsReduceInputFusion(const HloInstruction& instr) {
@@ -134,11 +100,6 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleReduction(const HloInstruction& instr) {
-  // TODO(b/129089333): Don't fuse variadic reduce.
-  if (instr.opcode() == HloOpcode::kReduce && instr.shape().IsTuple()) {
-    return false;
-  }
-
   return IsReduceInputFusion(instr) ||
          IsReductionFromOrToContiguousDimensions(instr);
 }
@@ -238,40 +199,29 @@ bool IsLoopFusible(const HloInstruction& instr) {
           instr.opcode() == HloOpcode::kTranspose);
 }
 
-bool IsProducerConsumerFusible(const HloInstruction& producer,
-                               const HloInstruction& consumer) {
+FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
+                                         const HloInstruction& consumer) {
   if (!IsLoopFusible(producer)) {
-    VLOG(5) << "Producer " << producer.name() << " is not loop-fusible";
-    return false;
+    return "the producer is not loop-fusible";
   }
 
   if (!IsInputFusible(consumer) && !IsLoopFusible(consumer)) {
-    VLOG(5) << "Consumer " << consumer.name()
-            << "is not input-fusible and not loop-fusible";
-    return false;
+    return "the consumer is not input-fusible and not loop-fusible";
   }
 
   // Skip multiple output fusion. It's not yet supported.
   if (producer.IsMultiOutputFusion()) {
-    VLOG(5) << "Producer " << producer.name()
-            << " is not fusible as it is a multi-output fusion";
-    return false;
+    return "the producer is not fusible as it is a multi-output fusion";
   }
 
   if (CreatesNestedLoop(producer, consumer)) {
-    VLOG(5) << "Fusing " << producer.name() << " into " << consumer.name()
-            << " creates nested loop";
-    return false;
+    return "the fusion would create a nested loop";
   }
 
-  // Do not fuse into reduce input fusions if the resulting kernel would suffer
-  // from poor data locality (due to unfriendly input layouts).
-  if (IsInputFusibleReduction(consumer) &&
-      !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
-    VLOG(5) << "Layout of " << producer.name()
-            << " is not fusion-friendly for consumer reduction "
-            << consumer.name();
-    return false;
+  // Do not fuse into fusions if the resulting kernel would suffer from
+  // uncoalesced reads due to a transposed memory access pattern.
+  if (IsInputFusibleReduction(consumer) && IsPhysicallyTransposing(producer)) {
+    return "fusing the producer would break read coalescing";
   }
 
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
@@ -285,12 +235,11 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
   if (producer.opcode() == HloOpcode::kConstant &&
       (!ShapeUtil::IsEffectiveScalar(producer.shape()) ||
        consumer.opcode() != HloOpcode::kFusion)) {
-    VLOG(5) << "Not fusing constant " << producer.name() << " into "
-            << consumer.name();
-    return false;
+    return "not fusing constant";
   }
 
-  return true;
+  // Make sure the new fusion obeys the in-place semantics.
+  return InstructionFusion::ShouldFuseInPlaceOp(&producer, &consumer);
 }
 
 bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
@@ -300,6 +249,33 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
     return false;
   }
 
+  // Allowing multi-output fusions that contain in-place operations makes code
+  // generation more difficult. For the generated loop to iterate over all
+  // outputs in parallel, it must find an iteration order that guarantees that
+  // no loop iteration writes an element of any in-place operand that is read
+  // or written by any other iteration. For example:
+  //
+  //   %fused_computation {
+  //     %param_0 = s32[4,4]{1,0} parameter(0)
+  //     ...
+  //     %updated = s32[4,4]{1,0} dynamic-update-slice(
+  //         %param_0, %add, %constant_1, %constant_0)
+  //     %transpose = s32[4,4]{0,1} transpose(%updated), dimensions={1,0}
+  //     ROOT %tuple.5 = tuple(%transpose, %updated)
+  //   }
+  //
+  // Iterating 'transpose' and 'updated' in parallel by array index is
+  // not valid, because an iteration that produces some element of 'transpose'
+  // will read from an element of 'param_0' that has been overwritten by some
+  // other iteration (writing to 'updated').
+  //
+  // To avoid these problems, we simply ban fusion altogether when the producer
+  // is in-place. (We can relax this restriction by establishing an explicit
+  // contract that describes what multi-output fusion scenarios are supported by
+  // codegen and then changing this check to allow exactly those fusions).
+  if (!HloDataflowAnalysis::GetInPlaceInputOutputPairs(&producer).empty()) {
+    return false;
+  }
   if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return false;
   }
@@ -309,33 +285,36 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
     return false;
   }
-  if (!LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
+  if (IsPhysicallyTransposing(producer)) {
     return false;
   }
   return true;
 }
 
 // Returns shared memory usage for a given instruction in bytes.
-static int64_t SharedMemoryUsage(const HloInstruction& instr) {
+static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
   // For now we are only fusing reductions.
-  if (IsReductionFromOrToContiguousDimensions(instr)) {
+  if (instr.opcode() == HloOpcode::kReduce &&
+      IsReductionFromOrToContiguousDimensions(instr)) {
     ReductionDimensions reduction_info =
         GetReductionKindAndContiguousComponents(instr);
-    int64_t primitive_size =
-        ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
+    int64_t primitive_size = ShapeUtil::ByteSizeOfPrimitiveType(
+        instr.operand(0)->shape().element_type());
+    int num_variadic =
+        instr.shape().IsTuple() ? instr.shape().tuple_shapes_size() : 1;
     if (reduction_info.is_row_reduction) {
       // __shared__[32] is used for row reduction.
-      return 32 * primitive_size;
+      return 32 * primitive_size * num_variadic;
     } else {
       // __shared__[2][32][33] cache is used for column reduction ("2" comes
       // from potential x-tiling).
-      return 2 * 32 * 33 * primitive_size;
+      return 2 * 32 * 33 * primitive_size * num_variadic;
     }
   } else if (instr.opcode() == HloOpcode::kFusion) {
     int64_t sum = 0;
     for (const HloInstruction* hlo :
-         instr.fused_instructions_computation()->MakeInstructionPostOrder()) {
-      sum += SharedMemoryUsage(*hlo);
+         instr.fused_instructions_computation()->instructions()) {
+      sum += SharedMemoryUsageNoCache(*hlo);
     }
     return sum;
   }
@@ -343,24 +322,65 @@ static int64_t SharedMemoryUsage(const HloInstruction& instr) {
   return 0;
 }
 
+static int64_t SharedMemoryUsage(const HloInstruction& instr,
+                                 FusionInfoCache* cache = nullptr) {
+  if (!cache) {
+    return SharedMemoryUsageNoCache(instr);
+  }
+
+  // nb: Users are only expected to call cache.Invalidate() on top-level
+  // instructions, not instructions inside fusion nodes.  Therefore we can only
+  // cache top-level instructions; it would not be valid to pass the cache to
+  // SharedMemoryUsageNoCache and use the cache *within* the fusion.
+  auto it_and_inserted = cache->shared_memory_usage.emplace(&instr, -1);
+  auto it = it_and_inserted.first;
+  auto inserted = it_and_inserted.second;
+
+  if (inserted) {
+    it->second = SharedMemoryUsageNoCache(instr);
+  }
+  return it->second;
+}
+
 // Codegen'ing unnested reductions requires a lot of registers, so a MOF
 // combining many of those runs a high risk of spilling.
 constexpr int64_t kMaxUnnestedReductionOutputsPerFusion = 8;
 
 // Returns the number of unnested reductions in the instruction output.
-static int64_t NumUnnestedReductions(const HloInstruction& instr) {
-  if (IsReductionFromOrToContiguousDimensions(instr)) {
+static int64_t NumUnnestedReductionsNoCache(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kReduce &&
+      IsReductionFromOrToContiguousDimensions(instr)) {
     return 1;
   }
   if (instr.opcode() == HloOpcode::kFusion) {
     int64_t sum = 0;
     for (const HloInstruction* hlo :
-         instr.fused_instructions_computation()->MakeInstructionPostOrder()) {
-      sum += NumUnnestedReductions(*hlo);
+         instr.fused_instructions_computation()->instructions()) {
+      sum += NumUnnestedReductionsNoCache(*hlo);
     }
     return sum;
   }
   return 0;
+}
+
+static int64_t NumUnnestedReductions(const HloInstruction& instr,
+                                     FusionInfoCache* cache) {
+  if (!cache) {
+    return NumUnnestedReductionsNoCache(instr);
+  }
+
+  // nb: Users are only expected to call cache.Invalidate() on top-level
+  // instructions, not instructions inside fusion nodes.  Therefore we can only
+  // cache top-level instructions; it would not be valid to pass the cache to
+  // NumUnnestedReductionsNoCache and use the cache *within* the fusion.
+  auto it_and_inserted = cache->num_unnested_reductions.emplace(&instr, -1);
+  auto it = it_and_inserted.first;
+  auto inserted = it_and_inserted.second;
+
+  if (inserted) {
+    it->second = NumUnnestedReductionsNoCache(instr);
+  }
+  return it->second;
 }
 
 // This function limits the maximum number of operands to a fusion, and the
@@ -376,7 +396,7 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr) {
 // big temp buffer versus in other allocations.
 //
 // As a heuristic, we simply cap the number of fusion operands plus outputs at
-// kMaxOperandsAndOutputsPerFusion.  This puts an upper bound on the number of
+// MaxOperandsAndOutputsPerFusion().  This puts an upper bound on the number of
 // parameters to the kernel, working around the correctness problem.
 //
 // This limit is also often good for performance.  In a fusion with many
@@ -386,22 +406,22 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr) {
 // If the fusion is a producer/consumer fusion and instr1 is the
 // consumer and instr2 is the producer, set is_consumer_producer_fusion
 // to true to enable more fusion.
-bool FusionWouldBeTooLarge(const HloInstruction& instr1,
-                           const HloInstruction& instr2,
-                           bool is_consumer_producer_fusion) {
-  if (SharedMemoryUsage(instr1) + SharedMemoryUsage(instr2) >
+FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
+                                  const HloInstruction& instr2,
+                                  bool is_consumer_producer_fusion,
+                                  FusionInfoCache* cache /*=nullptr*/) {
+  if (SharedMemoryUsage(instr1, cache) + SharedMemoryUsage(instr2, cache) >
       kSharedMemoryBudgetInBytes) {
-    VLOG(5) << "Shared memory usage of fusion of " << instr1.ToString()
-            << " and " << instr2.ToString() << " would be over the budget of "
-            << kSharedMemoryBudgetInBytes << "B";
-    return true;
+    return FusionDecision{}
+           << "shared memory usage would be over the budget of "
+           << kSharedMemoryBudgetInBytes << "B";
   }
 
-  if (NumUnnestedReductions(instr1) + NumUnnestedReductions(instr2) >
+  if (NumUnnestedReductions(instr1, cache) +
+          NumUnnestedReductions(instr2, cache) >
       kMaxUnnestedReductionOutputsPerFusion) {
-    VLOG(5) << "Not fusing over " << kMaxUnnestedReductionOutputsPerFusion
-            << " unnested reductions in fusion";
-    return true;
+    return FusionDecision{} << "over " << kMaxUnnestedReductionOutputsPerFusion
+                            << " unnested reductions in fusion";
   }
 
   // Compute the number of outputs of the (possibly multi-output) fusion node
@@ -417,7 +437,7 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   //    fusion.
   //
   // But because this is a heuristic and our limit
-  // kMaxOperandsAndOutputsPerFusion is a large value (so +/- 1 doesn't make a
+  // MaxOperandsAndOutputsPerFusion() is a large value (so +/- 1 doesn't make a
   // big difference), we ignore this small inaccuracy in favor of simplicity.
   int64_t num_output_buffers = ShapeUtil::SubshapeCount(instr1.shape()) +
                                ShapeUtil::SubshapeCount(instr2.shape());
@@ -431,8 +451,8 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   // number of operands, which can be expensive.
   if (instr1.operand_count() + instr2.operand_count() - 1 +
           num_output_buffers <=
-      kMaxOperandsAndOutputsPerFusion) {
-    return false;
+      MaxOperandsAndOutputsPerFusion()) {
+    return {};
   } else {
     VLOG(5) << "Operand count of "
             << "(" << instr1.ToString() << " ) = " << instr1.operand_count()
@@ -440,7 +460,7 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
             << " ) = " << instr2.operand_count()
             << " and num_output_buffers = " << num_output_buffers
             << " is bigger than the bound of "
-            << kMaxOperandsAndOutputsPerFusion;
+            << MaxOperandsAndOutputsPerFusion();
   }
 
   // Compute the precise number of operands to the new fusion.
@@ -458,11 +478,15 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   // consumer numbers of output. So no need to check it.
   if (is_consumer_producer_fusion &&
       operands.size() <= instr1.operands().size()) {
-    return false;
+    return {};
   }
 
   // Does the new fusion have more operands and outputs than the max?
-  return operands.size() + num_output_buffers > kMaxOperandsAndOutputsPerFusion;
+  if (operands.size() + num_output_buffers > MaxOperandsAndOutputsPerFusion()) {
+    return "Number of operands and output buffers is larger than allowed "
+           "budget per fusion";
+  }
+  return {};
 }
 
 bool CreatesNestedLoop(const HloInstruction& producer,

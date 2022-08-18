@@ -48,11 +48,11 @@ namespace {
 //
 //  - A T to indicate a successful operation.
 template <class T>
-using StatusOrOptional = StatusOr<absl::optional<T>>;
+using StatusOrOptional = StatusOr<std::optional<T>>;
 
 StatusOrOptional<Tensor> TryToGetTensorFromConstOp(Node* n) {
   if (n->type_string() != "Const") {
-    return {absl::nullopt};
+    return {std::nullopt};
   }
 
   const TensorProto* proto = nullptr;
@@ -108,14 +108,14 @@ StatusOrOptional<SliceInputs> GetSliceInputs(Node* slice) {
   slice_inputs.size =
       Output(slice_size_edge->src(), slice_size_edge->src_output());
 
-  TF_ASSIGN_OR_RETURN(absl::optional<Tensor> tf_slice_size,
+  TF_ASSIGN_OR_RETURN(std::optional<Tensor> tf_slice_size,
                       TryToGetTensorFromConstOp(slice_inputs.size.node()));
   if (!tf_slice_size.has_value()) {
-    return {absl::nullopt};
+    return {std::nullopt};
   }
 
   if (tf_slice_size->dims() != 1) {
-    return {absl::nullopt};
+    return {std::nullopt};
   }
 
   slice_inputs.size_as_vector = IntTensorAsVector(*tf_slice_size);
@@ -184,7 +184,7 @@ Status ComputeSliceSize(const Scope& host_scope,
   if (absl::c_all_of(slice_inputs.size_as_vector,
                      [](int64_t i) { return i >= 0; })) {
     *size = slice_inputs.size;
-    return Status::OK();
+    return OkStatus();
   }
 
   Output input_shape =
@@ -227,7 +227,7 @@ Status ComputeSliceSize(const Scope& host_scope,
     *size = ops::Concat(host_scope.WithOpName("slice_size"), slice_size,
                         concat_axis);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Terminology: "static sized" slice is a slice with the
@@ -310,7 +310,7 @@ Status RewriteSlice(Graph* g, Node* slice, const SliceInputs& slice_inputs,
   TF_RETURN_IF_ERROR(ConvertTensorFlowSliceToStaticShapedSlice(
       g, slice, slice_inputs, cluster_name, &static_shaped_slice));
   ReplaceTensorFlowSliceWithStaticShapedSlice(g, slice, static_shaped_slice);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Return true if `n` is a slice we should rewrite to have a static shape
@@ -325,7 +325,7 @@ StatusOr<bool> ShouldRewriteSlice(Node* n) {
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(absl::optional<SliceInputs> slice_inputs,
+  TF_ASSIGN_OR_RETURN(std::optional<SliceInputs> slice_inputs,
                       GetSliceInputs(n));
   if (!slice_inputs.has_value()) {
     return false;
@@ -354,7 +354,7 @@ Status FindAndRewriteSlices(Graph* g, bool* changed) {
   }
 
   for (Node* n : slices_to_rewrite) {
-    TF_ASSIGN_OR_RETURN(absl::optional<SliceInputs> slice_inputs,
+    TF_ASSIGN_OR_RETURN(std::optional<SliceInputs> slice_inputs,
                         GetSliceInputs(n));
     TF_RET_CHECK(slice_inputs.has_value());
     TF_RETURN_IF_ERROR(
@@ -368,7 +368,7 @@ Status FindAndRewriteSlices(Graph* g, bool* changed) {
 
   *changed = !slices_to_rewrite.empty();
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -387,7 +387,7 @@ Status IncreaseDynamismForAutoJitPass::Run(
                     options.flib_def);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

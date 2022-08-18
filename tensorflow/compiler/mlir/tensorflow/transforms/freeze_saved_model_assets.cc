@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 #include "tensorflow/core/platform/path.h"
 
 namespace mlir {
@@ -34,24 +36,17 @@ namespace {
 // This pass will replace a func's saved model asset bound inputs which are
 // bound to tf.InitializeTableFromTextFileV2Op ops with tf.Const ops inside the
 // func's body.
-struct FreezeAssetsPass
-    : public PassWrapper<FreezeAssetsPass, OperationPass<ModuleOp>> {
+struct FreezeAssetsPass : public FreezeAssetsPassBase<FreezeAssetsPass> {
   FreezeAssetsPass() = default;
 
   FreezeAssetsPass(const FreezeAssetsPass& pass) {}
   explicit FreezeAssetsPass(std::string saved_model_dir) {
     this->saved_model_dir = saved_model_dir;
   }
-
-  StringRef getArgument() const final { return "tf-saved-model-freeze-assets"; }
-
-  StringRef getDescription() const final {
-    return "Freeze tf_saved_model.asset's in func bodies.";
-  }
-
   void runOnOperation() override;
 
  private:
+  // TODO(team): should be a pass option.
   std::string saved_model_dir;
 };
 
@@ -62,8 +57,8 @@ void FreezeAssetsPass::runOnOperation() {
   }
   SymbolTable symbol_table(module);
 
-  for (auto func : module.getOps<FuncOp>()) {
-    SmallVector<unsigned, 4> args_to_erase;
+  for (auto func : module.getOps<func::FuncOp>()) {
+    llvm::BitVector args_to_erase(func.getNumArguments());
     OpBuilder builder(func.getBody());
 
     for (int i = 0, e = func.getNumArguments(); i < e; ++i) {
@@ -85,7 +80,7 @@ void FreezeAssetsPass::runOnOperation() {
         }
       }
       if (arg_is_deletable) {
-        args_to_erase.push_back(i);
+        args_to_erase.set(i);
       }
 
       // Replace the arg with a tf.Const op in the function body.
@@ -115,9 +110,6 @@ void FreezeAssetsPass::runOnOperation() {
 }
 
 }  // namespace
-
-// For "opt" to pick up this pass.
-static PassRegistration<FreezeAssetsPass> freeze_assets_pass;
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeAssetsPass(
     std::string saved_model_dir) {

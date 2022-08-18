@@ -14,15 +14,10 @@
 # ==============================================================================
 """Tests for training.input."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 import os
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -282,7 +277,7 @@ class RangeInputProducerTest(test_lib.TestCase):
 
       # No randomness, so just see repeated copies of the input.
       output = self.evaluate(dequeue_many)
-      self.assertAllEqual(list(xrange(range_size)) * num_epochs, output)
+      self.assertAllEqual(list(range(range_size)) * num_epochs, output)
 
       # Reached the limit.
       with self.assertRaises(errors_impl.OutOfRangeError):

@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -80,7 +79,7 @@ enum class TokKind {
   kDecimal,        // 4.2
 };
 
-string TokKindToString(TokKind kind);
+std::string TokKindToString(TokKind kind);
 
 // Lexer for the HloModule::ToString() format text.
 //
@@ -89,13 +88,13 @@ string TokKindToString(TokKind kind);
 class HloLexer {
  public:
   explicit HloLexer(absl::string_view buf) : buf_(buf) {
-    current_ptr_ = buf_.begin();
+    current_ptr_ = buf_.data();
   }
 
   TokKind Lex() { return token_state_.current_kind = LexToken(); }
 
   TokKind GetKind() const { return token_state_.current_kind; }
-  string GetStrVal() const {
+  std::string GetStrVal() const {
     switch (GetKind()) {
       case TokKind::kName:
       case TokKind::kAttributeName:
@@ -144,10 +143,10 @@ class HloLexer {
   // Returns the current character.
   int PeekCurrentChar() const;
 
-  // Creates StringPiece with the given begin and end. Exits if the begin > end,
+  // Creates string_view with the given begin and end. Exits if the begin > end,
   // or it's out of the range of the current buffer.
-  absl::string_view StringPieceFromPointers(const char* begin,
-                                            const char* end) const;
+  absl::string_view StringViewFromPointers(const char* begin,
+                                           const char* end) const;
 
   // Returns true if the given ptr is dereferenceable within the range of the
   // current buffer.
@@ -162,16 +161,16 @@ class HloLexer {
   TokKind LexNumberOrPattern();
   TokKind LexString();
 
-  absl::optional<int64_t> LexNanPayload(absl::string_view& consumable);
+  std::optional<int64_t> LexNanPayload(absl::string_view& consumable);
 
-  const absl::string_view buf_;
+  absl::string_view buf_;
   const char* current_ptr_;
 
   // Information about the current token.
   struct TokenState {
     const char* token_start = nullptr;
     TokKind current_kind;
-    string str_val;
+    std::string str_val;
     int64_t int64_val;
     double decimal_val;
     PrimitiveType primitive_type_val;

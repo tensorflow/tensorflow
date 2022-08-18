@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.eager import def_function
@@ -38,7 +34,7 @@ class DefFunctionCpuOnlyTest(test.TestCase, parameterized.TestCase):
       return
 
     with self.assertRaisesRegex(errors.UnimplementedError,
-                                'check target linkage'):
+                                'support for that platform linked in'):
 
       @def_function.function(jit_compile=True)
       def fn(x):

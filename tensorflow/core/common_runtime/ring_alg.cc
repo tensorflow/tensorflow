@@ -115,7 +115,7 @@ Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
   if (col_params->instance.impl_details.max_subdivs_per_device == -1) {
     col_params->instance.impl_details.subdiv_offsets = {0};
     VLOG(2) << "Limiting to 1 subdivision as max_subdivs_per_device == -1";
-    return Status::OK();
+    return OkStatus();
   }
 
   if (col_params->instance.shape.num_elements() == 0) {
@@ -173,13 +173,13 @@ Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
             << tensor_size << " chunk_size " << chunk_size;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
 Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   const string& device_name =
-      col_params->group.devices[col_params->default_rank].name();
+      col_params->group.members[col_params->default_rank].device.name();
   // Each subdiv permutation is a ring formed by rotating each
   // single-task subsequence of devices by an offset.  This makes most
   // sense when each task has the same number of devices but we can't
@@ -189,16 +189,14 @@ Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   // Start by counting the devices in each task.
   // Precondition: device_names must be sorted so that all devices in
   // the same task are adjacent.
-  VLOG(2) << "Sorted task names: "
-          << absl::StrJoin(col_params->group.task_names, ", ");
   std::vector<int> dev_per_task;
-  const string* prior_task_name = &col_params->group.task_names[0];
+  const string* prior_task_name = &col_params->group.members[0].task;
   int dev_count = 1;
   for (int di = 1; di < col_params->group.group_size; ++di) {
-    if (col_params->group.task_names[di] != *prior_task_name) {
+    if (col_params->group.members[di].task != *prior_task_name) {
       dev_per_task.push_back(dev_count);
       dev_count = 1;
-      prior_task_name = &col_params->group.task_names[di];
+      prior_task_name = &col_params->group.members[di].task;
     } else {
       ++dev_count;
     }
@@ -242,7 +240,8 @@ Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
         int permuted_di = prior_dev_count + offset_di;
         int rank = static_cast<int>(perm.size());
         perm.push_back(permuted_di);
-        if (col_params->group.devices[permuted_di].name() == device_name) {
+        if (col_params->group.members[permuted_di].device.name() ==
+            device_name) {
           DCHECK_EQ(permuted_di, col_params->default_rank);
           col_params->subdiv_rank[sdi] = rank;
         }
@@ -253,26 +252,27 @@ Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   }
 
   VLOG(2) << collective_util::SubdivPermDebugString(*col_params);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RingAlg::InitializeCollectiveContext(
     std::shared_ptr<CollectiveContext> col_ctx) {
   DCHECK(col_ctx->dev_mgr);
   col_ctx_ = col_ctx;
-  col_params_ = col_ctx->col_params;
+  col_params_ = col_ctx->col_params.get();
   return collective_util::InitializeDeviceAndLocality(
       col_ctx->dev_mgr, col_ctx->device_name, &col_ctx->device,
       &col_ctx->device_locality);
 }
 
 string RingAlg::TensorDebugString(const Tensor& tensor) {
-  const DeviceBase::GpuDeviceInfo* gpu_device_info =
-      col_ctx_->op_ctx->device()->tensorflow_gpu_device_info();
-  if (gpu_device_info) {
+  const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
+      col_ctx_->op_ctx->device()->tensorflow_accelerator_device_info();
+  if (accelerator_device_info) {
     Tensor cpu_tensor(tensor.dtype(), tensor.shape());
-    Status st = gpu_device_info->default_context->CopyDeviceTensorToCPUSync(
-        &tensor, "" /*tensor_name*/, col_ctx_->device, &cpu_tensor);
+    Status st =
+        accelerator_device_info->default_context->CopyDeviceTensorToCPUSync(
+            &tensor, "" /*tensor_name*/, col_ctx_->device, &cpu_tensor);
     DCHECK(st.ok());
     return cpu_tensor.SummarizeValue(64);
   } else {
@@ -346,8 +346,8 @@ void RingAlg::InitRingField(RingField* rf, int chunk_idx, int subdiv_idx,
                          .subdiv_permutations[subdiv_idx][recv_from_rank];
   int send_dev_idx = col_params_->instance.impl_details
                          .subdiv_permutations[subdiv_idx][send_to_rank];
-  rf->recv_is_remote = !col_params_->task.is_local[rf->recv_dev_idx];
-  rf->send_is_remote = !col_params_->task.is_local[send_dev_idx];
+  rf->recv_is_remote = !col_params_->group.members[rf->recv_dev_idx].is_local;
+  rf->send_is_remote = !col_params_->group.members[send_dev_idx].is_local;
   if (ca_->ChunkBytes(rf->sc_idx) > 0) {
     // In pass 0 we skip Recv when rank = chunk_idx
     rf->do_recv = (rf->chunk_idx != rf->rank);
@@ -405,8 +405,8 @@ void RingAlg::DispatchSend(RingField* rf, const StatusCallback& done) {
   int send_to_dev_idx = col_params_->instance.impl_details
                             .subdiv_permutations[rf->subdiv_idx][send_to_rank];
   col_ctx_->col_exec->remote_access()->PostToPeer(
-      col_params_->group.devices[send_to_dev_idx].name(),
-      col_params_->group.task_names[send_to_dev_idx], send_buf_key,
+      col_params_->group.members[send_to_dev_idx].device.name(),
+      col_params_->group.members[send_to_dev_idx].task, send_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), &rf->chunk,
       col_ctx_->device_locality, col_ctx_->op_ctx->cancellation_manager(),
@@ -425,9 +425,9 @@ void RingAlg::DispatchRecv(RingField* rf, const StatusCallback& done) {
                            ? &rf->tmp_chunk
                            : &rf->chunk;
   col_ctx_->col_exec->remote_access()->RecvFromPeer(
-      col_params_->group.devices[rf->recv_dev_idx].name(),
-      col_params_->group.task_names[rf->recv_dev_idx],
-      col_params_->task.is_local[rf->recv_dev_idx], recv_buf_key,
+      col_params_->group.members[rf->recv_dev_idx].device.name(),
+      col_params_->group.members[rf->recv_dev_idx].task,
+      col_params_->group.members[rf->recv_dev_idx].is_local, recv_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), dst_tensor,
       col_ctx_->device_locality, rf->subdiv_idx,

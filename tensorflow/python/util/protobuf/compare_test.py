@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for python.util.protobuf.compare."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import re
 import textwrap
@@ -348,6 +344,17 @@ class AssertTest(googletest.TestCase):
     pb2 = compare_test_pb2.Large()
     pb2.double_ = 4
     compare.assertProtoEqual(self, pb1, pb2, normalize_numbers=True)
+
+  def testLargeProtoData(self):
+    # Proto size should be larger than 2**16.
+    number_of_entries = 2**13
+    string_value = 'dummystr'  # Has length of 2**3.
+    pb1_txt = 'strings: "dummystr"\n' * number_of_entries
+    pb2 = compare_test_pb2.Small(strings=[string_value] * number_of_entries)
+    compare.assertProtoEqual(self, pb1_txt, pb2)
+
+    with self.assertRaises(AssertionError):
+      compare.assertProtoEqual(self, pb1_txt + 'strings: "Should fail."', pb2)
 
   def testPrimitives(self):
     self.assertAll('string_: "x"')

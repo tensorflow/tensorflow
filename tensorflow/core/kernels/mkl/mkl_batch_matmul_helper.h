@@ -17,18 +17,14 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/mkl/mkl_matmul_ops_common.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/matmul_bcast.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -53,8 +49,9 @@ struct MklBatchMatMulHelper {
   }
 
   std::unique_ptr<MklMatMulParams> CreateMatMulParams(
-      const TensorShape& lhs_shape, const TensorShape& rhs_shape,
-      const TensorShape& out_shape, bool& adj_x, bool& adj_y) {
+      string& prefix, const TensorShape& lhs_shape,
+      const TensorShape& rhs_shape, const TensorShape& out_shape, bool& adj_x,
+      bool& adj_y) {
     const auto ndims_lhs = lhs_shape.dims();
     const auto ndims_rhs = rhs_shape.dims();
     const auto ndims_out = out_shape.dims();
@@ -101,8 +98,9 @@ struct MklBatchMatMulHelper {
       rhs_strides[n_idx] = 1;
     }
 
-    return std::make_unique<MklMatMulParams>(
-        lhs_dims, rhs_dims, out_dims, lhs_strides, rhs_strides, out_strides);
+    return std::make_unique<MklMatMulParams>(prefix, lhs_dims, rhs_dims,
+                                             out_dims, lhs_strides, rhs_strides,
+                                             out_strides);
   }
 };
 

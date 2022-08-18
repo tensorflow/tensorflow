@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <numeric>
+#include <optional>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -27,25 +27,25 @@ namespace xla {
 namespace {
 
 XLA_TEST_F(HloTestBase, IotaReshapeR1) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
   HloModule iota_reshape
   ENTRY main {
     i = s32[24] iota(), iota_dimension=0
     ROOT r = s32[4,3,2] reshape(i)
   }
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_text, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, IotaReshapeExtraDims) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
   HloModule iota_reshape
   ENTRY main {
     i = s32[5,5,111,42] iota(), iota_dimension=0
     ROOT r = s32[25,3,37,7,6] reshape(i)
   }
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_text, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
 template <typename T>
@@ -69,12 +69,12 @@ XLA_TEST_P(IotaR1Test, DoIt) {
     ComputeAndCompareR1<float>(&builder, GetR1Expected<float>(num_elements), {},
                                ErrorSpec{0.0001});
   } else if (element_type == U32) {
-    ComputeAndCompareR1<uint32>(&builder, GetR1Expected<uint32>(num_elements),
-                                {});
+    ComputeAndCompareR1<uint32_t>(&builder,
+                                  GetR1Expected<uint32_t>(num_elements), {});
   } else {
     CHECK_EQ(element_type, S32);
-    ComputeAndCompareR1<int32>(&builder, GetR1Expected<int32>(num_elements),
-                               {});
+    ComputeAndCompareR1<int32_t>(&builder, GetR1Expected<int32_t>(num_elements),
+                                 {});
   }
 }
 

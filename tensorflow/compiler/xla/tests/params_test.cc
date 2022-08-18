@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -44,7 +43,7 @@ XLA_TEST_F(ParamsTest, ConstantR0F32Param) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR0<float>(3.14159f);
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "param0");
 
@@ -56,7 +55,7 @@ XLA_TEST_F(ParamsTest, ConstantR1S0F32Param) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR1<float>({});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {0}), "param0");
 
@@ -68,7 +67,7 @@ XLA_TEST_F(ParamsTest, ConstantR1S2F32Param) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR1<float>({3.14f, -100.25f});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "param0");
 
@@ -78,10 +77,10 @@ XLA_TEST_F(ParamsTest, ConstantR1S2F32Param) {
 
 XLA_TEST_F(ParamsTest, ConstantR1U8Param) {
   XlaBuilder builder(TestName());
-  string str("hello world");
+  std::string str("hello world");
   Literal param0_literal = LiteralUtil::CreateR1U8(str);
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   Parameter(&builder, 0,
             ShapeUtil::MakeShape(U8, {static_cast<int64_t>(str.size())}),
@@ -95,7 +94,7 @@ XLA_TEST_F(ParamsTest, ConstantR2_3x0_F32Param) {
   Literal param0_literal =
       LiteralUtil::CreateR2FromArray2D<float>(Array2D<float>(3, 0));
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3, 0}), "param0");
 
@@ -108,7 +107,7 @@ XLA_TEST_F(ParamsTest, ConstantR2F32Param) {
   Literal param0_literal = LiteralUtil::CreateR2<float>(
       {{3.14f, -100.25f}, {7e8f, 7e-9f}, {30.3f, -100.0f}});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3, 2}), "param0");
 
@@ -123,12 +122,12 @@ XLA_TEST_F(ParamsTest, TwoParameters) {
 
   Literal literal0 = LiteralUtil::CreateR1<float>({1, 2});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(literal0).ConsumeValueOrDie();
+      client_->TransferToServer(literal0).value();
   auto param0 = Parameter(&builder, 0, literal0.shape(), "param0");
 
   Literal literal1 = LiteralUtil::CreateR1<float>({10, 20});
   std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(literal1).ConsumeValueOrDie();
+      client_->TransferToServer(literal1).value();
   auto param1 = Parameter(&builder, 1, literal1.shape(), "param1");
 
   // Use both parameters
@@ -153,14 +152,13 @@ XLA_TEST_F(ParamsTest, MissingParameter) {
   // Test that an error is returned when a computation with an incomplete set of
   // parameters (parameter numbers not contiguous from 0) is executed.
   Literal literal = LiteralUtil::CreateR0<float>(3.14159f);
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
 
   XlaBuilder builder(TestName());
   Parameter(&builder, 2, ShapeUtil::MakeShape(F32, {}), "param2");
   auto computation_status = builder.Build();
 
-  ASSERT_NE(computation_status.status(), Status::OK());
+  ASSERT_NE(computation_status.status(), OkStatus());
 }
 
 XLA_TEST_F(ParamsTest, UnusedParameter) {
@@ -168,12 +166,12 @@ XLA_TEST_F(ParamsTest, UnusedParameter) {
 
   Literal literal0 = LiteralUtil::CreateR1<float>({1, 2});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(literal0).ConsumeValueOrDie();
+      client_->TransferToServer(literal0).value();
   Parameter(&builder, 0, literal0.shape(), "param0");
 
   Literal literal1 = LiteralUtil::CreateR1<float>({10, 20});
   std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(literal1).ConsumeValueOrDie();
+      client_->TransferToServer(literal1).value();
   Parameter(&builder, 1, literal1.shape(), "param1");
 
   ComputeAndCompareR1<float>(&builder, {10, 20},
@@ -188,11 +186,11 @@ XLA_TEST_F(ParamsTest, UnusedParametersInUnusedExpression) {
 
   Literal literal0 = LiteralUtil::CreateR1<float>({1, 2});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(literal0).ConsumeValueOrDie();
+      client_->TransferToServer(literal0).value();
 
   Literal literal1 = LiteralUtil::CreateR1<float>({10, 20, 30});
   std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(literal1).ConsumeValueOrDie();
+      client_->TransferToServer(literal1).value();
 
   auto param0 = Parameter(&builder, 0, literal0.shape(), "param0");
   auto param1 = Parameter(&builder, 1, literal1.shape(), "param1");
@@ -231,8 +229,7 @@ XLA_TEST_F(ParamsTest, HundredLargeR1Parameters) {
     std::vector<float> sum_value = {{entry0, entry1}};
     sum_value.resize(size);
     Literal literal = LiteralUtil::CreateR1<float>(sum_value);
-    param_data_owner.push_back(
-        client_->TransferToServer(literal).ConsumeValueOrDie());
+    param_data_owner.push_back(client_->TransferToServer(literal).value());
     XlaOp param = Parameter(&builder, i, literal.shape(), "param");
     sum_handle = Add(sum_handle, param);
   }
@@ -291,13 +288,15 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
   XlaBuilder builder(TestName());
 
   std::vector<std::unique_ptr<GlobalData>> param_data_owner;
-  XlaOp sum_handle = ConstantR1<int32>(&builder, {0, 0});
-  int32 target = 0;
+  XlaOp sum_handle = ConstantR1<int32_t>(&builder, {0, 0});
+  int32_t target = 0;
   constexpr int kParamCount = 3000;
   std::vector<XlaOp> params;
+  param_data_owner.reserve(kParamCount);
+  params.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
     target += i;
-    Literal literal = LiteralUtil::CreateR1<int32>({i, i});
+    Literal literal = LiteralUtil::CreateR1<int32_t>({i, i});
     param_data_owner.push_back(
         std::move(client_->TransferToServer(literal)).ValueOrDie());
     XlaOp param = Parameter(&builder, i, literal.shape(), "param");
@@ -306,6 +305,7 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
   }
 
   std::vector<XlaOp> outputs;
+  outputs.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
     outputs.push_back(Add(params[i], sum_handle));
   }
@@ -322,7 +322,8 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
   std::vector<const Literal*> ptrs;
   elements.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
-    elements.push_back(LiteralUtil::CreateR1<int32>({target + i, target + i}));
+    elements.push_back(
+        LiteralUtil::CreateR1<int32_t>({target + i, target + i}));
     ptrs.push_back(&elements.back());
   }
   ComputeAndCompareTuple(&builder, LiteralUtil::MakeTuple(ptrs), param_data);
@@ -353,8 +354,11 @@ XLA_TEST_F(ParamsTest,
   constexpr int kParamCount = 1900;
   std::vector<XlaOp> params;
   std::vector<Shape> parameter_shapes;
+  param_data_owner.reserve(kParamCount);
+  params.reserve(kParamCount);
+  parameter_shapes.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
-    Literal literal = LiteralUtil::CreateR1<int32>({i, i});
+    Literal literal = LiteralUtil::CreateR1<int32_t>({i, i});
     param_data_owner.push_back(
         std::move(client_->TransferToServer(literal)).ValueOrDie());
     XlaOp param = Parameter(&builder, i, literal.shape(), "param");
@@ -382,7 +386,7 @@ XLA_TEST_F(ParamsTest,
     auto condition_parameter =
         Parameter(&builder, 0, while_shape, "condition_parameter");
     GetTupleElement(condition_parameter, kParamCount);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body.
@@ -392,21 +396,23 @@ XLA_TEST_F(ParamsTest,
     XlaBuilder builder("body");
     auto body_parameter = Parameter(&builder, 0, while_shape, "body_parameter");
     std::vector<XlaOp> updates;
+    updates.reserve(kParamCount + 1);
     for (int i = 0; i < kParamCount; ++i) {
       auto add = Add(GetTupleElement(body_parameter, i),
-                     ConstantR1<int32>(&builder, {1, 1}));
+                     ConstantR1<int32_t>(&builder, {1, 1}));
       updates.push_back(add);
     }
     // Add bool parameter.
     updates.push_back(GetTupleElement(body_parameter, kParamCount));
 
     Tuple(&builder, updates);
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   auto loop = While(condition, body, init);
 
   std::vector<XlaOp> outputs;
+  outputs.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
     outputs.push_back(GetTupleElement(loop, i));
   }
@@ -422,7 +428,7 @@ XLA_TEST_F(ParamsTest,
   std::vector<const Literal*> ptrs;
   elements.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
-    elements.push_back(LiteralUtil::CreateR1<int32>({i, i}));
+    elements.push_back(LiteralUtil::CreateR1<int32_t>({i, i}));
     ptrs.push_back(&elements.back());
   }
   ComputeAndCompareTuple(&builder, LiteralUtil::MakeTuple(ptrs), param_data);
@@ -446,7 +452,7 @@ XLA_TEST_F(ParamsTest, TupleOfR1ParametersAddedTogether) {
               LiteralUtil::CreateR1<float>({1, 2, 3}),
               LiteralUtil::CreateR1<float>({4, 5, 6}),
           }))
-          .ConsumeValueOrDie();
+          .value();
 
   std::vector<GlobalData*> arguments = {data.get()};
   const std::vector<float> expected = {1 + 4, 2 + 5, 3 + 6};
@@ -461,8 +467,7 @@ XLA_TEST_F(ParamsTest, R2_2x2_Layout_01) {
   XlaBuilder builder(TestName());
   Parameter(&builder, 0, literal.shape(), "input");
 
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   ComputeAndCompareLiteral(&builder, literal, {data.get()}, ErrorSpec(1e-3));
 }
 
@@ -473,8 +478,7 @@ XLA_TEST_F(ParamsTest, R2_2x2_Layout_10) {
   XlaBuilder builder(TestName());
   Parameter(&builder, 0, literal.shape(), "input");
 
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   ComputeAndCompareLiteral(&builder, literal, {data.get()}, ErrorSpec(1e-3));
 }
 
@@ -501,8 +505,7 @@ XLA_TEST_F(ParamsTest, R2_2x2_TryToPassReverseLayoutToParameter) {
   // Use the slice operator to get an off-diagonal element.
   Slice(input, {0, 1}, {1, 2}, {1, 1});
 
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   // Check that we got the off-diagonal value that we expected.
   Array2D<float> expected(1, 1);
   expected(0, 0) = 2;

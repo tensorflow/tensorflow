@@ -46,7 +46,7 @@ class AllGatherCanonicalizeTest : public HloTestBase {
     HloPassPipeline pipeline("all-gather-cse");
     pipeline.AddPass<CanonicalizeAllGatherForCSE>();
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -62,7 +62,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(reshape,
@@ -82,12 +82,10 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
-  EXPECT_THAT(reshape, AllOf(op::Reshape(op::AllGather(
-                                 AllOf(op::Reshape(_), op::Shape("s32[1,8]")))),
-                             op::Shape("s32[2,8,1,1]")));
+  EXPECT_THAT(reshape, op::Reshape(op::AllGather(op::Parameter())));
 }
 
 TEST_F(AllGatherCanonicalizeTest, MultipleDegenerateReshapes2) {
@@ -103,12 +101,10 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
-  EXPECT_THAT(reshape, AllOf(op::Reshape(op::AllGather(
-                                 AllOf(op::Reshape(_), op::Shape("s32[1,8]")))),
-                             op::Shape("s32[2,8,1,1]")));
+  EXPECT_THAT(reshape, op::Reshape(op::AllGather(op::Parameter())));
 }
 
 TEST_F(AllGatherCanonicalizeTest, MultipleDegenerateReshapesNoDim0) {
@@ -124,11 +120,10 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
-  EXPECT_THAT(reshape, AllOf(op::AllGather(op::Reshape(op::Reshape(_))),
-                             op::Shape("s32[1,16,1,1]")));
+  EXPECT_THAT(reshape, op::Reshape(op::AllGather(op::Parameter())));
 }
 
 TEST_F(AllGatherCanonicalizeTest, NonDegenerateReshape) {
@@ -144,31 +139,11 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(reshape, AllOf(op::AllGather(op::Reshape(op::Reshape(_))),
                              op::Shape("s32[2,4,2,1,1]")));
-}
-
-TEST_F(AllGatherCanonicalizeTest, MultipleDegenerateBitcast) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-ENTRY entry {
-  param0 = s32[8]{0} parameter(0)
-  resh = s32[8,1,1]{2,1,0} bitcast(param0)
-  resh2 = s32[1,8,1,1]{3,2,1,0} bitcast(resh)
-  ROOT ag = s32[2,8,1,1]{3,2,1,0} all-gather(resh2), replica_groups={{0,1}},
-    dimensions={0}, channel_id=0, use_global_device_ids=true
-})";
-  auto module_status = RunPass(hlo_string);
-  EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
-  const HloInstruction* const reshape =
-      module->entry_computation()->root_instruction();
-  EXPECT_THAT(reshape,
-              AllOf(op::Reshape(op::AllGather(_)), op::Shape("s32[2,8,1,1]")));
 }
 
 }  // namespace

@@ -15,17 +15,12 @@
 # ==============================================================================
 """A wrapper of Session API which runs hooks."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import os
-import sys
-
-import six
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.checkpoint import checkpoint as trackable_util
+from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.distribute import distribute_coordinator_context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -42,8 +37,6 @@ from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
-from tensorflow.python.training.tracking import graph_view
-from tensorflow.python.training.tracking import util as trackable_util
 from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
 
@@ -56,7 +49,7 @@ USE_DEFAULT = object()
 
 
 @tf_export(v1=['train.Scaffold'])
-class Scaffold(object):
+class Scaffold:
   """Structure to create or gather pieces commonly needed to train a model.
 
   When you build a model for training you usually need ops to initialize
@@ -458,6 +451,17 @@ def MonitoredTrainingSession(
   more
   information.
 
+  @compatibility(TF2)
+  This API is not compatible with eager execution and `tf.function`. To migrate
+  to TF2, rewrite the code to be compatible with eager execution. Check the
+  [migration
+  guide](https://www.tensorflow.org/guide/migrate#1_replace_v1sessionrun_calls)
+  on replacing `Session.run` calls. In Keras, session hooks can be replaced by
+  Callbacks e.g. [logging hook notebook](
+  https://github.com/tensorflow/docs/blob/master/site/en/guide/migrate/logging_stop_hook.ipynb)
+  For more details please read [Better
+  performance with tf.function](https://www.tensorflow.org/guide/function).
+  @end_compatibility
 
   Args:
     master: `String` the TensorFlow master to use.
@@ -606,8 +610,7 @@ def MonitoredTrainingSession(
 
 
 @tf_export(v1=['train.SessionCreator'])
-@six.add_metaclass(abc.ABCMeta)
-class SessionCreator(object):
+class SessionCreator(metaclass=abc.ABCMeta):
   """A factory for tf.Session."""
 
   @abc.abstractmethod
@@ -713,7 +716,7 @@ class WorkerSessionCreator(SessionCreator):
         self._master, config=self._config, max_wait_secs=self._max_wait_secs)
 
 
-class _MonitoredSession(object):
+class _MonitoredSession:
   """See `MonitoredSession` or `SingularMonitoredSession`."""
 
   def __init__(self,
@@ -834,7 +837,7 @@ class _MonitoredSession(object):
     # `_RecoverableSession.run_step_fn`.
     return self._sess.run_step_fn(step_fn, self._tf_sess(), run_with_hooks=None)
 
-  class StepContext(object):
+  class StepContext:
     """Control flow instrument for the `step_fn` from `run_step_fn()`.
 
        Users of `step_fn` may perform `run()` calls without running hooks
@@ -1019,6 +1022,18 @@ class MonitoredSession(_MonitoredSession):
   * it cannot be sent to saver.save.
   * it cannot be sent to tf.train.start_queue_runners.
 
+  @compatibility(TF2)
+  This API is not compatible with eager execution and `tf.function`. To migrate
+  to TF2, rewrite the code to be compatible with eager execution. Check the
+  [migration
+  guide](https://www.tensorflow.org/guide/migrate#1_replace_v1sessionrun_calls)
+  on replacing `Session.run` calls. In Keras, session hooks can be replaced by
+  Callbacks e.g. [logging hook notebook](
+  https://github.com/tensorflow/docs/blob/master/site/en/guide/migrate/logging_stop_hook.ipynb)
+  For more details please read [Better
+  performance with tf.function](https://www.tensorflow.org/guide/function).
+  @end_compatibility
+
   Args:
     session_creator: A factory object to create session. Typically a
       `ChiefSessionCreator` which is the default one.
@@ -1091,6 +1106,18 @@ class SingularMonitoredSession(_MonitoredSession):
   * closes the queue runners and the session
   * suppresses `OutOfRange` error which indicates that all inputs have been
     processed if the `SingularMonitoredSession` is used as a context.
+
+  @compatibility(TF2)
+  This API is not compatible with eager execution and `tf.function`. To migrate
+  to TF2, rewrite the code to be compatible with eager execution. Check the
+  [migration
+  guide](https://www.tensorflow.org/guide/migrate#1_replace_v1sessionrun_calls)
+  on replacing `Session.run` calls. In Keras, session hooks can be replaced by
+  Callbacks e.g. [logging hook notebook](
+  https://github.com/tensorflow/docs/blob/master/site/en/guide/migrate/logging_stop_hook.ipynb)
+  For more details please read [Better
+  performance with tf.function](https://www.tensorflow.org/guide/function).
+  @end_compatibility
   """
 
   def __init__(self,
@@ -1133,7 +1160,7 @@ class SingularMonitoredSession(_MonitoredSession):
     return self._tf_sess()
 
 
-class _WrappedSession(object):
+class _WrappedSession:
   """Wrapper around a `tf.compat.v1.Session`.
 
   This wrapper is used as a base class for various session wrappers
@@ -1370,19 +1397,18 @@ class _CoordinatedSession(_WrappedSession):
       return self._sess.run(*args, **kwargs)
     except _PREEMPTION_ERRORS:
       raise
-    except Exception:  # pylint: disable=broad-except
+    except Exception as original_exception:  # pylint: disable=broad-except
       # A non-preemption error could have been caused by a preemption error
       # in the coordinator. If this is the case, raise that exception instead,
-      # since it's the root cause. Otherwise, stick to the `original_exc_info`.
-      original_exc_info = sys.exc_info()
+      # since it's the root cause. Otherwise, stick to the `original_exception`.
       try:
         self._coord.raise_requested_exception()
       except _PREEMPTION_ERRORS:
         raise
       except Exception:  # pylint: disable=broad-except
-        raise six.reraise(*original_exc_info)
+        raise original_exception from None
       else:
-        raise six.reraise(*original_exc_info)
+        raise
 
 
 class _HookedSession(_WrappedSession):

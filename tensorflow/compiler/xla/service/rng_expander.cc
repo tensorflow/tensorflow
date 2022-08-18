@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 
+#include <random>
+
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -26,9 +28,9 @@ namespace xla {
 namespace {
 
 int64_t GlobalRandomValue() {
-  static auto* mu = new tensorflow::mutex();
+  static auto* mu = new absl::Mutex();
   static std::mt19937_64 rng{42};
-  tensorflow::mutex_lock l(*mu);
+  absl::MutexLock l(mu);
   return rng();
 }
 

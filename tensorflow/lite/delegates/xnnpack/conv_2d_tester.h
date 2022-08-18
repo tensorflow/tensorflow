@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -55,6 +56,19 @@ class Conv2DTester {
   }
 
   inline int32_t OutputChannels() const { return output_channels_; }
+
+  inline Conv2DTester& Groups(int32_t groups) {
+    EXPECT_EQ(InputChannels() % groups, 0);
+    EXPECT_EQ(OutputChannels() % groups, 0);
+    groups_ = groups;
+    return *this;
+  }
+
+  inline int32_t Groups() const { return groups_; }
+
+  inline int32_t KernelInputChannels() const {
+    return input_channels_ / groups_;
+  }
 
   inline Conv2DTester& InputHeight(int32_t input_height) {
     EXPECT_GT(input_height, 0);
@@ -162,6 +176,15 @@ class Conv2DTester {
 
   inline bool INT8Weights() const { return int8_weights_; }
 
+  inline Conv2DTester& INT8ChannelWiseWeights() {
+    int8_channel_wise_weights_ = true;
+    return *this;
+  }
+
+  inline bool INT8ChannelWiseWeights() const {
+    return int8_channel_wise_weights_;
+  }
+
   inline Conv2DTester& SparseWeights() {
     sparse_weights_ = true;
     return *this;
@@ -204,11 +227,17 @@ class Conv2DTester {
     return *this;
   }
 
+  inline Conv2DTester& WeightsCache(
+      TfLiteXNNPackDelegateWeightsCache* weights_cache) {
+    weights_cache_ = weights_cache;
+    return *this;
+  }
+
   void Test(TfLiteDelegate* delegate) const;
 
- private:
   std::vector<char> CreateTfLiteModel() const;
 
+ private:
   inline ::tflite::Padding Padding() const { return padding_; }
 
   inline ::tflite::ActivationFunctionType Activation() const {
@@ -218,6 +247,7 @@ class Conv2DTester {
   int32_t batch_size_ = 1;
   int32_t input_channels_ = 1;
   int32_t output_channels_ = 1;
+  int32_t groups_ = 1;
   int32_t input_height_ = 1;
   int32_t input_width_ = 1;
   int32_t kernel_height_ = 1;
@@ -228,10 +258,12 @@ class Conv2DTester {
   int32_t dilation_width_ = 1;
   bool fp16_weights_ = false;
   bool int8_weights_ = false;
+  bool int8_channel_wise_weights_ = false;
   bool sparse_weights_ = false;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
+  TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
 };
 
 }  // namespace xnnpack

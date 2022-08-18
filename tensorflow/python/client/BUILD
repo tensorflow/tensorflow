@@ -25,6 +25,7 @@ py_library(
     deps = [
         ":_pywrap_tf_session",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/util:tf_stack",
     ],
 )
 
@@ -44,7 +45,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:numpy_hdr",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
-    module_name = "_pywrap_tf_session",
     deps = [
         "//third_party/eigen3",
         "//tensorflow/python/lib/core:pybind11_lib",
@@ -59,16 +59,19 @@ tf_python_pybind_extension(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core/util:version_info",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/core/lib/llvm_rtti",
     ] + if_static(
         extra_deps = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
             "//tensorflow/core:version_lib",
         ],
         otherwise = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
@@ -79,7 +82,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_debug_events_writer",
     srcs = ["debug_events_writer_wrapper.cc"],
-    module_name = "_pywrap_debug_events_writer",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -96,7 +98,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_events_writer",
     srcs = ["events_writer_wrapper.cc"],
-    module_name = "_pywrap_events_writer",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -161,7 +162,6 @@ py_library(
 tf_python_pybind_extension(
     name = "_pywrap_device_lib",
     srcs = ["device_lib_wrapper.cc"],
-    module_name = "_pywrap_device_lib",
     deps = [
         "//tensorflow/core:framework_internal_headers_lib",
         "//tensorflow/core:protos_all_cc",
@@ -212,6 +212,8 @@ tf_cuda_library(
         ":session_ref",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:tf_buffer",
+        "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core",
         "//tensorflow/core:all_kernels",
@@ -284,6 +286,7 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_gpu",  # b/127001953
+        "no_oss",  # b/198485096
         "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
         "no_windows",
     ],

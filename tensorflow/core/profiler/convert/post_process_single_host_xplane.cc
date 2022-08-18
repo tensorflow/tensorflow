@@ -28,8 +28,8 @@ void MergeHostPlanesAndSortLines(XSpace* space) {
   XPlane* host_plane =
       FindOrAddMutablePlaneWithName(space, kHostThreadsPlaneName);
   std::vector<const XPlane*> additional_host_planes = FindPlanesWithNames(
-      *space,
-      {kTpuRuntimePlaneName, kCuptiDriverApiPlaneName, kPythonTracerPlaneName});
+      *space, {kTpuRuntimePlaneName, kCuptiDriverApiPlaneName,
+               kPythonTracerPlaneName, kRoctracerApiPlaneName});
   if (!additional_host_planes.empty()) {
     MergePlanes(additional_host_planes, host_plane);
     RemovePlanes(space, additional_host_planes);

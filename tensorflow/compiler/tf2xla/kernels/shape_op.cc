@@ -308,29 +308,30 @@ class SqueezeOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape input_shape = ctx->InputShape(0);
-    auto existing_dims = input_shape.dim_sizes();
-    int existing_dims_size = input_shape.dims();
-    std::vector<int64_t> new_shape;
+    StatusOr<xla::Shape> input_shape = ctx->builder()->GetShape(ctx->Input(0));
+    OP_REQUIRES_OK(ctx, input_shape.status());
+    xla::Shape shape = input_shape.ValueOrDie();
+    int64_t rank = shape.rank();
 
     std::unordered_set<int32> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());
+    std::vector<int64_t> new_shape;
     // Validate squeeze dims against the input.
     for (int32_t dim : squeeze_dims_) {
-      OP_REQUIRES(ctx, (dim >= -input_shape.dims() && dim < input_shape.dims()),
-                  errors::InvalidArgument("Tried to squeeze dim index ", dim,
-                                          " for tensor with ",
-                                          input_shape.dims(), " dimensions."));
+      OP_REQUIRES(
+          ctx, (dim >= -rank && dim < rank),
+          errors::InvalidArgument("Tried to squeeze dim index ", dim,
+                                  " for tensor with ", rank, " dimensions."));
       // If dim is < 0, we wrap around (-1 means the last element).
       if (dim < 0) {
-        dim = existing_dims_size + dim;
+        dim = rank + dim;
       }
 
       wrapped_squeeze_dims.insert(dim);
     }
 
-    for (int i = 0; i < existing_dims_size; ++i) {
-      auto existing_dim = existing_dims[i];
+    for (int i = 0; i < rank; ++i) {
+      auto existing_dim = shape.dimensions(i);
 
       // If squeeze_set is non-empty, only squeeze those dimensions.
       if (!wrapped_squeeze_dims.empty()) {
@@ -344,6 +345,11 @@ class SqueezeOp : public XlaOpKernel {
           new_shape.push_back(existing_dim);
         }
       } else {
+        OP_REQUIRES(
+            ctx, !shape.is_dynamic_dimension(i),
+            errors::InvalidArgument("Squeeze op does not support bounded "
+                                    "dynamic dimensions. Input shape: ",
+                                    shape.DebugString()));
         // Copy over all non-1-length dimensions.
         if (existing_dim != 1) {
           new_shape.push_back(existing_dim);
@@ -382,7 +388,7 @@ class ZerosLikeOp : public XlaOpKernel {
       const xla::Shape& list_shape = list_shape_or.ValueOrDie();
       std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
       list_dynamic_dims.reserve(list_shape.tuple_shapes_size() - 1);
-      for (int64_t i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+      for (int i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
         // Set dynamic dimension size to 0 for initialization value.
         std::vector<xla::XlaOp> dynamic_dims;
         const xla::Shape& shape = list_shape.tuple_shapes(i);

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Script to evaluate accuracy of TFLite flatbuffer model on mnist dataset."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow as tf  # pylint: disable=g-bad-import-order
 from tensorflow.lite.tutorials import dataset

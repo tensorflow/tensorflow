@@ -1,5 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_google",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -31,7 +32,13 @@ package(
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
-    features = ["-layering_check"],
+    features = if_google(
+        [
+            "-layering_check",
+            "-parse_headers",
+        ],
+        ["-layering_check"],
+    ),
     licenses = ["notice"],
 )
 
@@ -63,14 +70,14 @@ cc_library(
 cc_library(
     name = "cuda",
     deps = [
-        "//tensorflow/core/platform/default/build_config:cuda",
+        "//tensorflow/tsl/platform/default/build_config:cuda",
     ],
 )
 
 cc_library(
     name = "rocm",
     deps = [
-        "//tensorflow/core/platform/default/build_config:rocm",
+        "//tensorflow/tsl/platform/default/build_config:rocm",
     ],
 )
 
@@ -127,7 +134,6 @@ tf_cuda_library(
     name = "gpu_runtime_impl",
     srcs = [
         "gpu_cudamalloc_allocator.cc",
-        "gpu_cudamallocasync_allocator.cc",
         "gpu_debug_allocator.cc",
         "gpu_device.cc",
         "gpu_device_factory.cc",
@@ -145,6 +151,7 @@ tf_cuda_library(
     ],
     deps = [
         ":gpu_bfc_allocator",
+        ":gpu_cudamallocasync_allocator",
         ":gpu_id_impl",
         ":gpu_init_impl",
         ":gpu_lib",
@@ -156,11 +163,12 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_impl",
+        "//tensorflow/core/common_runtime:node_file_writer",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
-        "//tensorflow/core/util:determinism",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -170,9 +178,31 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
+    name = "gpu_cudamallocasync_allocator",
+    srcs = [
+        "gpu_cudamallocasync_allocator.cc",
+        ":gpu_runtime_headers",
+    ],
+    hdrs = ["gpu_cudamallocasync_allocator.h"],
+    cuda_deps = [
+        "//tensorflow/stream_executor/cuda:cuda_platform",
+    ],
+    deps = [
+        ":gpu_id_impl",
+        ":gpu_init_impl",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cuda_library(
     name = "gpu_runtime",
     hdrs = [":gpu_runtime_headers"],
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -214,6 +244,10 @@ tf_cuda_library(
         "gpu_virtual_mem_allocator.h",
     ],
     copts = tf_copts(),
+    cuda_deps = [
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
+    ],
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
@@ -319,6 +353,7 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_id",
+        ":gpu_runtime",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",

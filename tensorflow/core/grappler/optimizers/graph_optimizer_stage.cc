@@ -37,7 +37,7 @@ Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
                                       " doesn't exists in a node map");
   }
   *node = node_by_name;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTensorProperties(const GraphOptimizerContext& ctx,
@@ -68,7 +68,7 @@ Status GetTensorProperties(const GraphOptimizerContext& ctx,
   }
 
   *properties = &output_properties[tensor_id.index()];
-  return Status::OK();
+  return OkStatus();
 }
 
 NodeDef* AddCopyNode(const GraphOptimizerContext& ctx, const string& name,

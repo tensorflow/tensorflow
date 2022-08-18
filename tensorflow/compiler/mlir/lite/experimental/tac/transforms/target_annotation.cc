@@ -41,6 +41,11 @@ namespace {
 
 class TargetAnnotationPass : public TacFunctionPass<TargetAnnotationPass> {
  public:
+  llvm::StringRef getArgument() const final { return "tfl-target-annotation"; }
+  llvm::StringRef getDescription() const final {
+    return "Add user specified target annotations to the TFL operations given "
+           "operation capabilities, will default to CPU.";
+  }
   // using TacFunctionPass::TacFunctionPass;
   TargetAnnotationPass() : TacFunctionPass(nullptr) {}
   TargetAnnotationPass(const TargetAnnotationPass& copy)
@@ -63,7 +68,7 @@ class TargetAnnotationPass : public TacFunctionPass<TargetAnnotationPass> {
       *this, "device-specs",
       llvm::cl::desc(
           "comma separated list of device specs, like CPU, GPU, Hexagon."),
-      llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated};
+      llvm::cl::ZeroOrMore};
 };
 
 void SetAnnotation(Operation* op, std::string attribute, std::string annotation,
@@ -105,7 +110,8 @@ void TargetAnnotationPass::SetTargetAnnotation(
   }
   // default to CPU
   if (!device_is_set) {
-    if (IsTFLDialectNonConstOp(op)) {
+    if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
+        !llvm::isa<func::ReturnOp, func::FuncOp, CallableOpInterface>(op)) {
       SetAnnotation(op, kDevice, "CPU", builder);
       device_is_set = true;
     }
@@ -121,7 +127,9 @@ void TargetAnnotationPass::runOnFunction() {
 
   func.walk([&](Operation* op) {
     // We only care about TFL dialect.
-    if (IsTFLDialectNonConstOp(op) && IsTFLNonQuantDequantizeOp(op)) {
+    if (IsNonConstOp(op) && NotTFLQuantDequantizeOp(op) &&
+        !IsTerminatorOp(op) &&
+        !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op)) {
       SetTargetAnnotation(op, device_specs_flag_, &builder);
     }
   });
@@ -129,20 +137,17 @@ void TargetAnnotationPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTargetAnnotationPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTargetAnnotationPass(
     llvm::ArrayRef<std::string> device_specs) {
   return std::make_unique<TargetAnnotationPass>(device_specs);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTargetAnnotationPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTargetAnnotationPass(
     const TacModule* module) {
   return std::make_unique<TargetAnnotationPass>(module);
 }
 
-static PassRegistration<TargetAnnotationPass> pass(
-    "tfl-target-annotation",
-    "Add user specified target annotations to the TFL operations given "
-    "operation capabilities, will default to CPU.");
+static PassRegistration<TargetAnnotationPass> pass;
 
 }  // namespace tac
 }  // namespace TFL

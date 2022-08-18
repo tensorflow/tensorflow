@@ -52,6 +52,8 @@ NodeDef MakeFusedFilterNode(const NodeDef& first_filter_node,
 
   for (auto key : {"output_shapes", "output_types"})
     graph_utils::CopyAttribute(key, second_filter_node, &fused_node);
+  graph_utils::MaybeSetFusedMetadata(first_filter_node, second_filter_node,
+                                     &fused_node);
 
   return fused_node;
 }
@@ -123,7 +125,7 @@ Status FilterFusion::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(FilterFusion, "filter_fusion");

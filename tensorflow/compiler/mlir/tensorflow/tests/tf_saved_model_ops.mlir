@@ -34,7 +34,7 @@ module attributes {tf_saved_model.semantics} {
 
   // Representation for functions: func's with attributes.
   // CHECK: func @__concrete_function_run_computation
-  func @__concrete_function_run_computation(
+  func.func @__concrete_function_run_computation(
     %arg0: tensor<f32> {tf_saved_model.index_path = [0, "foo"]},
     %arg1: tensor<!tf_type.resource<tensor<1x64xf32>>> {tf_saved_model.bound_input = @some_constant},
     %arg2: tensor<!tf_type.resource<tensor<?x64xf32>>> {tf_saved_model.bound_input = @some_variable}
@@ -43,23 +43,23 @@ module attributes {tf_saved_model.semantics} {
   ) attributes { tf_saved_model.exported_names = ["some_func"] }
   {
     "tf.some_call"() {callee = @f} : () -> ()
-    return %arg0 : tensor<f32>
+    func.return %arg0 : tensor<f32>
   }
 
-  func private @f() attributes {
-    return
+  func.func private @f() attributes {
+    func.return
   }
 
   // Representation for init functions
   // CHECK: func @init
   // CHECK-SAME: exported_names = ["__tf_saved_model_session_initializer"]
-  func @init(
+  func.func @init(
     %arg0: tensor<!tf_type.string> {tf_saved_model.bound_input = @asset_sym_name},
     %arg1: tensor<!tf_type.resource<tensor<1x64xf32>>> {tf_saved_model.bound_input = @some_constant}
   ) attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]}
   {
     "tf.some_call"(%arg1) : (tensor<!tf_type.resource<tensor<1x64xf32>>>) -> ()
-    return
+    func.return
   }
 
 }
@@ -69,10 +69,10 @@ module attributes {tf_saved_model.semantics} {
 module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
   // CHECK: func @f
-  func @f(
+  func.func @f(
     %arg0: tensor<f32> {tf.resource_name = "resource"}
   ) attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
-    return
+    func.return
   }
 
 }
@@ -82,10 +82,10 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
 module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.0> : tensor<f32> } : () -> ()
   // CHECK: func @f
-  func @f(
+  func.func @f(
     %arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
     %arg1: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}
   ) attributes {tf_saved_model.exported_names = ["f"]} {
-    return
+    func.return
   }
 }

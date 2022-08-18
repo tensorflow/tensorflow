@@ -74,18 +74,6 @@ class GraphOptimizer {
   void Optimize(FunctionLibraryRuntime* runtime, Env* env, const Device* device,
                 std::unique_ptr<Graph>* graph,
                 const Options& graph_optimizer_options);
-  // DEPRECATED: Consider passing a GraphOptimizer::Options object instead.
-  void Optimize(
-      FunctionLibraryRuntime* runtime, Env* env, const Device* device,
-      std::unique_ptr<Graph>* graph,
-      const std::unordered_map<string, std::vector<PartialTensorShape>>*
-          shape_map,
-      const NodePredicate& cse_consider_fn = nullptr,
-      const NodePredicate& cf_consider_fn = nullptr,
-      bool inline_multi_device_functions = false,
-      bool inline_impl_selection_group_functions = false,
-      bool inline_with_single_device_body_placer = false,
-      bool ignore_noinline = false);
 
   const OptimizerOptions& options() { return opts_; }
 

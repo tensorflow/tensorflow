@@ -47,7 +47,7 @@ void LlvmIrGenTestBase::ResetIrHook() {
 }
 
 void LlvmIrGenTestBase::CompileAndVerifyIr(
-    std::unique_ptr<HloModule> hlo_module, const string& pattern,
+    std::unique_ptr<HloModule> hlo_module, const std::string& pattern,
     bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
   Status status = CompileToExecutable(std::move(hlo_module)).status();
@@ -59,8 +59,8 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(
   EXPECT_TRUE(filecheck_result.ValueOrDie()) << "Full IR: " << ir_;
 }
 
-void LlvmIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
-                                           const string& expected_llvm_ir,
+void LlvmIrGenTestBase::CompileAndVerifyIr(const std::string& hlo_text,
+                                           const std::string& expected_llvm_ir,
                                            bool match_optimized_ir) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
@@ -71,7 +71,7 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
 
 void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
-    const string& pattern, bool match_optimized_ir) {
+    const std::string& pattern, bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
   Status status =
       CompileToAotCompilationResult(std::move(hlo_module), options).status();
@@ -106,13 +106,20 @@ StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
       backend().default_stream_executor()->GetAllocator());
 }
 
+StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
+    std::unique_ptr<HloModule> hlo_module) {
+  return backend().compiler()->RunHloPasses(
+      std::move(hlo_module), backend().default_stream_executor(),
+      backend().default_stream_executor()->GetAllocator());
+}
+
 LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {
   return static_cast<LLVMCompiler*>(backend().compiler());
 }
 
 Status LlvmIrGenTestBase::IrHook(const llvm::Module& module) {
   ir_ = llvm_ir::DumpModuleToString(module);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace xla

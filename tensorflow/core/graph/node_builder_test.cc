@@ -12,11 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/graph/node_builder.h"
+
+#include <string>
 
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -82,7 +84,7 @@ REGISTER_OP("FullTypeOpBasicType")
       arg->set_type_id(TFT_VAR);
       arg->set_s("out_type");
 
-      return Status::OK();
+      return OkStatus();
     });
 
 TEST(NodeBuilderTest, TypeConstructorBasicType) {
@@ -91,16 +93,14 @@ TEST(NodeBuilderTest, TypeConstructorBasicType) {
   TF_EXPECT_OK(NodeBuilder("op", "FullTypeOpBasicType")
                    .Attr("out_type", DT_FLOAT)
                    .Finalize(&graph, &node));
-  FullTypeDef* ft;
-  graph.NodeType(node->name(), &ft);
-  ASSERT_NE(ft, nullptr);
-  ASSERT_EQ(ft->type_id(), TFT_PRODUCT);
-  ASSERT_EQ(ft->args_size(), 1);
-  auto ot = ft->args(0);
+  ASSERT_TRUE(node->def().has_experimental_type());
+  const FullTypeDef& ft = node->def().experimental_type();
+  ASSERT_EQ(ft.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(ft.args_size(), 1);
+  auto ot = ft.args(0);
   ASSERT_EQ(ot.type_id(), TFT_ARRAY);
-  ASSERT_EQ(ot.args(0).type_id(), TFT_TENSOR);
-  ASSERT_EQ(ot.args(0).args(0).type_id(), TFT_FLOAT);
-  ASSERT_EQ(ot.args(0).args(0).args().size(), 0);
+  ASSERT_EQ(ot.args(0).type_id(), TFT_FLOAT);
+  ASSERT_EQ(ot.args(0).args().size(), 0);
 }
 
 REGISTER_OP("FullTypeOpListType")
@@ -115,26 +115,16 @@ REGISTER_OP("FullTypeOpListType")
       arg->set_type_id(TFT_VAR);
       arg->set_s("out_types");
 
-      return Status::OK();
+      return OkStatus();
     });
 
 TEST(NodeBuilderTest, TypeConstructorListType) {
   Graph graph(OpRegistry::Global());
   Node* node;
-  TF_EXPECT_OK(NodeBuilder("op", "FullTypeOpListType")
+  ASSERT_FALSE(NodeBuilder("op", "FullTypeOpListType")
                    .Attr("out_types", {DT_FLOAT, DT_INT32})
-                   .Finalize(&graph, &node));
-  FullTypeDef* ft;
-  graph.NodeType(node->name(), &ft);
-  ASSERT_NE(ft, nullptr);
-  ASSERT_EQ(ft->type_id(), TFT_PRODUCT);
-  ASSERT_EQ(ft->args_size(), 1);
-  auto ot = ft->args(0);
-  ASSERT_EQ(ot.type_id(), TFT_ARRAY);
-  ASSERT_EQ(ot.args(0).type_id(), TFT_PRODUCT);
-  ASSERT_EQ(ot.args(0).args(0).type_id(), TFT_TENSOR);
-  ASSERT_EQ(ot.args(0).args(0).args(0).type_id(), TFT_FLOAT);
-  ASSERT_EQ(ot.args(0).args(0).args(0).args().size(), 0);
+                   .Finalize(&graph, &node)
+                   .ok());
 }
 
 }  // namespace

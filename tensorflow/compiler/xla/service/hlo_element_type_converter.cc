@@ -66,7 +66,9 @@ bool HasOperandType(HloInstruction* hlo, PrimitiveType type) {
 Shape GetConvertedTupleShape(const Shape& shape, PrimitiveType from_type,
                              PrimitiveType to_type) {
   std::vector<Shape> new_tuple_subshapes;
-  for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+  const int64_t n = ShapeUtil::TupleElementCount(shape);
+  new_tuple_subshapes.reserve(n);
+  for (int64_t i = 0; i < n; ++i) {
     Shape subshape = ShapeUtil::GetTupleElementShape(shape, i);
     CHECK(!subshape.IsTuple());
     if (subshape.element_type() == from_type) {
@@ -111,7 +113,9 @@ HloElementTypeConverter::HloElementTypeConverter(
 
 // This routine converts the arithmetic operations in the given module that use
 // eliminate_type_ to operations that use replace_with_type_.
-StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
+StatusOr<bool> HloElementTypeConverter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       3, "HloElementTypeConverter::Run(), before:\n" + module->ToString());
 
@@ -121,7 +125,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
 
   HloCloneContext context(module);
   bool changed = false;
-  for (auto* computation : module->computations()) {
+  for (auto* computation : module->computations(execution_threads)) {
     for (auto* hlo : computation->MakeInstructionPostOrder()) {
       const auto opcode = hlo->opcode();
       // These are ops where it does not make sense to convert them.
@@ -173,7 +177,9 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       // First, convert the operands with eliminate_type_ to operands with
       // replace_with_type_.
       std::vector<HloInstruction*> new_operands;
-      for (HloInstruction* operand : hlo->operands()) {
+      const auto& operands = hlo->operands();
+      new_operands.reserve(operands.size());
+      for (HloInstruction* operand : operands) {
         if (operand->shape().element_type() == eliminate_type_) {
           operand = ToElementType(operand, replace_with_type_);
         }

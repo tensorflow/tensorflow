@@ -38,24 +38,25 @@ class ReverseSequenceOp : public XlaOpKernel {
     const TensorShape seq_lens_shape = context->InputShape(1);
 
     OP_REQUIRES(context, TensorShapeUtils::IsVector(seq_lens_shape),
-                errors::InvalidArgument("seq_lens input must be 1-dim, not ",
+                errors::InvalidArgument("seq_lengths must be 1-dim, not ",
                                         seq_lens_shape.dims()));
     OP_REQUIRES(context, batch_dim_ != seq_dim_,
                 errors::InvalidArgument("batch_dim == seq_dim == ", seq_dim_));
     OP_REQUIRES(
         context, seq_dim_ < input_shape.dims(),
-        errors::InvalidArgument("seq_dim must be < input.dims()", "( ",
-                                seq_dim_, " vs. ", input_shape.dims(), ")"));
+        errors::InvalidArgument("seq_dim must be < input rank", " ( ", seq_dim_,
+                                " vs. ", input_shape.dims(), ")"));
     OP_REQUIRES(
         context, batch_dim_ < input_shape.dims(),
-        errors::InvalidArgument("batch_dim must be < input.dims()", "( ",
+        errors::InvalidArgument("batch_dim must be < input rank", " ( ",
                                 batch_dim_, " vs. ", input_shape.dims(), ")"));
     OP_REQUIRES(
         context,
         seq_lens_shape.num_elements() == input_shape.dim_size(batch_dim_),
-        errors::InvalidArgument("len(seq_lens) != input.dims(", batch_dim_,
-                                "), ", "(", seq_lens_shape.num_elements(),
-                                " vs. ", input_shape.dim_size(batch_dim_)));
+        errors::InvalidArgument("Length of seq_lengths != input.dims(",
+                                batch_dim_, "), ", "(",
+                                seq_lens_shape.num_elements(), " vs. ",
+                                input_shape.dim_size(batch_dim_), ")"));
 
     xla::XlaBuilder* builder = context->builder();
     const auto input = context->Input(0);

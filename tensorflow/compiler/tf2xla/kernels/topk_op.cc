@@ -31,16 +31,28 @@ class TopKOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* context) override {
+    const TensorShape input_shape = context->InputShape(0);
+    int last_dim = input_shape.dims() - 1;
+    int last_dim_size = input_shape.dim_size(last_dim);
+
     int64_t k;
-    OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(1, &k));
+    bool k_bound_inferrable =
+        context
+            ->ConstantInputAsIntScalar(1, &k,
+                                       xla::ValueInferenceMode::kUpperBound)
+            .ok();
+    if (!k_bound_inferrable) {
+      // - If we can infer the bound of K, use the bound.
+      // - If not, use last dim's size.
+      k = last_dim_size;
+    }
     OP_REQUIRES(context, k >= 0,
                 errors::InvalidArgument("Need k >= 0, got ", k));
-    const TensorShape input_shape = context->InputShape(0);
+
     OP_REQUIRES(context, input_shape.dims() >= 1,
                 errors::InvalidArgument("input must be >= 1-D, got shape ",
                                         input_shape.DebugString()));
-    int last_dim = input_shape.dims() - 1;
-    int last_dim_size = input_shape.dim_size(last_dim);
+
     OP_REQUIRES(
         context, last_dim_size >= k,
         errors::InvalidArgument("input must have at least k columns. Had ",
@@ -48,9 +60,20 @@ class TopKOp : public XlaOpKernel {
     if (last_dim_size < k) {
       k = last_dim_size;
     }
+
+    bool k_is_dynamic;
+    OP_REQUIRES_OK(context,
+                   context->ResolveInputDynamismIntoPred(1, &k_is_dynamic));
     xla::XlaOp output_tuple = TopK(context->Input(0), k);
-    context->SetOutput(0, xla::GetTupleElement(output_tuple, 0));
-    context->SetOutput(1, xla::GetTupleElement(output_tuple, 1));
+    auto values = xla::GetTupleElement(output_tuple, 0);
+    auto indices = xla::GetTupleElement(output_tuple, 1);
+    if (k_is_dynamic) {
+      xla::XlaOp dynamic_k = context->Input(1);
+      values = xla::SetDimensionSize(values, dynamic_k, last_dim);
+      indices = xla::SetDimensionSize(indices, dynamic_k, last_dim);
+    }
+    context->SetOutput(0, values);
+    context->SetOutput(1, indices);
   }
 
  private:

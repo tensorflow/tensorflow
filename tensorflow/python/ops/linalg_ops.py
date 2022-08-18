@@ -14,10 +14,6 @@
 # ==============================================================================
 """Operations for linear algebra."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -398,7 +394,8 @@ def eig(tensor, name=None):
     name: string, optional name of the operation.
 
   Returns:
-    e: Eigenvalues. Shape is `[..., N]`. Sorted in non-decreasing order.
+    e: Eigenvalues. Shape is `[..., N]`. The eigenvalues are not necessarily
+       ordered.
     v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
       matrices contain eigenvectors of the corresponding matrices in `tensor`
   """

@@ -73,7 +73,7 @@ ImmutableExecutorState::FrameInfo* ImmutableExecutorState::EnsureFrameInfo(
   if (iter != frame_info_.end()) {
     return iter->second.get();
   } else {
-    auto frame_info = absl::make_unique<FrameInfo>(fname);
+    auto frame_info = std::make_unique<FrameInfo>(fname);
     absl::string_view fname_view = frame_info->name;
     auto emplace_result =
         frame_info_.emplace(fname_view, std::move(frame_info));
@@ -90,7 +90,7 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
 
   for (auto& it : cf_info.unique_frame_names) {
     EnsureFrameInfo(it)->nodes =
-        absl::make_unique<std::vector<const NodeItem*>>();
+        std::make_unique<std::vector<const NodeItem*>>();
   }
   root_frame_info_ = frame_info_[""].get();
 
@@ -131,6 +131,7 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
 
     Status s = params_.create_kernel(n->properties(), &item->kernel);
     if (!s.ok()) {
+      params_.delete_kernel(item->kernel);
       item->kernel = nullptr;
       s = AttachDef(s, *n);
       return s;
@@ -316,6 +317,10 @@ Status ImmutableExecutorState::BuildControlFlowInfo(const Graph* g,
     } else if (IsExit(curr_node)) {
       // Exit to the parent frame.
       parent = parent_nodes[curr_id];
+      if (!parent) {
+        return errors::InvalidArgument(
+            "Invalid Exit op: Cannot find a corresponding Enter op.");
+      }
       frame_name = cf_info->frame_names[parent->id()];
       parent = parent_nodes[parent->id()];
     } else {
@@ -342,7 +347,7 @@ Status ImmutableExecutorState::BuildControlFlowInfo(const Graph* g,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void ImmutableExecutorState::InitializePending(const Graph* graph,
@@ -351,7 +356,7 @@ void ImmutableExecutorState::InitializePending(const Graph* graph,
     FrameInfo* finfo = EnsureFrameInfo(it);
     DCHECK_EQ(finfo->pending_counts.get(), nullptr);
     finfo->pending_counts =
-        absl::make_unique<PendingCounts>(finfo->pending_counts_layout);
+        std::make_unique<PendingCounts>(finfo->pending_counts_layout);
   }
 
   if (!requires_control_flow_) {

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities for manipulating the loss collections."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -160,7 +156,8 @@ def check_per_example_loss_rank(per_example_loss):
     if loss_rank == 0:
       raise ValueError(
           "Invalid value passed for `per_example_loss`. Expected a tensor with "
-          "at least rank 1, received: {}".format(per_example_loss))
+          f"at least rank 1. Received per_example_loss={per_example_loss} with "
+          f"rank {loss_rank}")
     yield
   else:
     # Handle dynamic rank.

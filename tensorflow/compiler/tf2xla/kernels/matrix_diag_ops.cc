@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -65,7 +66,7 @@ std::pair<int64_t, int64_t> ProcessDiagIndex(XlaOpKernelContext* context) {
                      context->ConstantInputAsIntScalar("k", &lower_diag_index));
       upper_diag_index = lower_diag_index;
     } else {
-      std::vector<int64> diag_index;
+      std::vector<int64_t> diag_index;
       OP_REQUIRES_OK(context,
                      context->ConstantInputAsIntVector("k", &diag_index));
       OP_REQUIRES(
@@ -329,7 +330,7 @@ class MatrixDiagOp : public XlaOpKernel {
   static constexpr int kNumV1Inputs = 1;
 };
 
-REGISTER_XLA_OP(Name("MatrixDiag"), MatrixDiagOp);
+REGISTER_XLA_OP(Name("MatrixDiag"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("MatrixDiagV2")
                     .CompileTimeConstantInput("k")
                     .CompileTimeConstantInput("num_rows")

@@ -15,69 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cusolver_context.h"
 
+#include <algorithm>
+#include <complex>
+#include <utility>
+
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/util.h"
-
-#if TENSORFLOW_USE_ROCM
-
-namespace rocblas_wrap {
-
-using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
-using tensorflow::Env;
-
-#ifdef PLATFORM_GOOGLE
-#define ROCBLAS_API_WRAPPER(__name)           \
-  struct WrapperShim__##__name {              \
-    static const char* kName;                 \
-    template <typename... Args>               \
-    rocblas_status operator()(Args... args) { \
-      return ::__name(args...);               \
-    }                                         \
-  } __name;                                   \
-  const char* WrapperShim__##__name::kName = #__name;
-
-#else
-
-#define ROCBLAS_API_WRAPPER(__name)                                        \
-  struct DynLoadShim__##__name {                                           \
-    static const char* kName;                                              \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;           \
-    static void* GetDsoHandle() {                                          \
-      auto s = GetRocblasDsoHandle();                                      \
-      return s.ValueOrDie();                                               \
-    }                                                                      \
-    static FuncPtrT LoadOrDie() {                                          \
-      void* f;                                                             \
-      auto s =                                                             \
-          Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), kName, &f); \
-      CHECK(s.ok()) << "could not find " << kName                          \
-                    << " in rocblas DSO; dlerror: " << s.error_message();  \
-      return reinterpret_cast<FuncPtrT>(f);                                \
-    }                                                                      \
-    static FuncPtrT DynLoad() {                                            \
-      static FuncPtrT f = LoadOrDie();                                     \
-      return f;                                                            \
-    }                                                                      \
-    template <typename... Args>                                            \
-    rocblas_status operator()(Args... args) {                              \
-      return DynLoad()(args...);                                           \
-    }                                                                      \
-  } __name;                                                                \
-  const char* DynLoadShim__##__name::kName = #__name;
-
-#endif
-
-// clang-format off
-#define FOREACH_ROCBLAS_API(__macro)            \
-  __macro(rocblas_create_handle)                \
-  __macro(rocblas_destroy_handle)               \
-  __macro(rocblas_set_stream)
-// clang-format on
-
-FOREACH_ROCBLAS_API(ROCBLAS_API_WRAPPER)
-
-}  // namespace rocblas_wrap
-
-#endif  // TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -89,13 +32,16 @@ template <typename T>
 struct GpuComplexT {
   typedef T type;
 };
-#if !defined(TENSORFLOW_USE_ROCM)
+
+// For ROCm, use hipsolver if the ROCm version >= 4.5 and
+// rocblas/rocsolver if the ROCm version < 4.5.
+
+#if !TENSORFLOW_USE_ROCM
+
+#define GPU_SOLVER_CONTEXT_PREFIX cusolverDn
+#define GPU_SOLVER_PREFIX cusolverDn
 
 using gpuStream_t = cudaStream_t;
-
-#define GpuSolverCreate cusolverDnCreate
-#define GpuSolverSetStream cusolverDnSetStream
-#define GpuSolverDestroy cusolverDnDestroy
 
 template <>
 struct GpuComplexT<std::complex<float>> {
@@ -106,13 +52,43 @@ struct GpuComplexT<std::complex<double>> {
   typedef cuDoubleComplex type;
 };
 
+template <>
+struct GpuComplexT<std::complex<float>*> {
+  typedef cuComplex* type;
+};
+template <>
+struct GpuComplexT<std::complex<double>*> {
+  typedef cuDoubleComplex* type;
+};
+
 #else
 
 using gpuStream_t = hipStream_t;
 
-#define GpuSolverCreate rocblas_wrap::rocblas_create_handle
-#define GpuSolverSetStream rocblas_wrap::rocblas_set_stream
-#define GpuSolverDestroy rocblas_wrap::rocblas_destroy_handle
+#if TF_ROCM_VERSION >= 40500
+#define GPU_SOLVER_CONTEXT_PREFIX tensorflow::wrap::hipsolver
+#define GPU_SOLVER_PREFIX tensorflow::wrap::hipsolver
+
+template <>
+struct GpuComplexT<std::complex<float>> {
+  typedef hipFloatComplex type;
+};
+template <>
+struct GpuComplexT<std::complex<double>> {
+  typedef hipDoubleComplex type;
+};
+
+template <>
+struct GpuComplexT<std::complex<float>*> {
+  typedef hipFloatComplex* type;
+};
+template <>
+struct GpuComplexT<std::complex<double>*> {
+  typedef hipDoubleComplex* type;
+};
+#else
+#define GPU_SOLVER_CONTEXT_PREFIX tensorflow::wrap::rocblas_
+#define GPU_SOLVER_PREFIX tensorflow::wrap::rocsolver_
 
 template <>
 struct GpuComplexT<std::complex<float>> {
@@ -122,14 +98,25 @@ template <>
 struct GpuComplexT<std::complex<double>> {
   typedef rocblas_double_complex type;
 };
-#endif
+
+template <>
+struct GpuComplexT<std::complex<float>*> {
+  typedef rocblas_float_complex* type;
+};
+template <>
+struct GpuComplexT<std::complex<double>*> {
+  typedef rocblas_double_complex* type;
+};
+#endif  // TF_ROCM_VERSION >= 40500
+
+#endif  // !TENSORFLOW_USE_ROCM
 
 template <typename T>
 inline typename GpuComplexT<T>::type* ToDevicePointer(se::DeviceMemory<T> p) {
   return static_cast<typename GpuComplexT<T>::type*>(p.opaque());
 }
 
-#if !defined(TENSORFLOW_USE_ROCM)
+#if !TENSORFLOW_USE_ROCM
 cublasFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
   switch (uplo) {
     case se::blas::UpperLower::kUpper:
@@ -145,7 +132,7 @@ cublasFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
 Status ConvertStatus(cusolverStatus_t status) {
   switch (status) {
     case CUSOLVER_STATUS_SUCCESS:
-      return Status::OK();
+      return OkStatus();
     case CUSOLVER_STATUS_NOT_INITIALIZED:
       return FailedPrecondition("cuSolver has not been initialized");
     case CUSOLVER_STATUS_ALLOC_FAILED:
@@ -173,6 +160,49 @@ Status ConvertStatus(cusolverStatus_t status) {
   }
 }
 #else
+#if TF_ROCM_VERSION >= 40500
+hipsolverFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
+  switch (uplo) {
+    case se::blas::UpperLower::kUpper:
+      return HIPSOLVER_FILL_MODE_UPPER;
+    case se::blas::UpperLower::kLower:
+      return HIPSOLVER_FILL_MODE_LOWER;
+    default:
+      LOG(FATAL) << "Invalid value of blas::UpperLower.";
+  }
+}
+
+Status ConvertStatus(hipsolverStatus_t status) {
+  switch (status) {
+    case HIPSOLVER_STATUS_SUCCESS:
+      return Status::OK();
+    case HIPSOLVER_STATUS_NOT_INITIALIZED:
+      return FailedPrecondition("hipsolver has not been initialized");
+    case HIPSOLVER_STATUS_ALLOC_FAILED:
+      return ResourceExhausted("hipsolver allocation failed");
+    case HIPSOLVER_STATUS_INVALID_VALUE:
+      return InvalidArgument("hipsolver invalid value error");
+    case HIPSOLVER_STATUS_MAPPING_ERROR:
+      return Unknown("hipsolver mapping error");
+    case HIPSOLVER_STATUS_EXECUTION_FAILED:
+      return Unknown("hipsolver execution failed");
+    case HIPSOLVER_STATUS_INTERNAL_ERROR:
+      return Internal("hipsolver internal error");
+    case HIPSOLVER_STATUS_NOT_SUPPORTED:
+      return Unimplemented("hipsolver not supported error");
+    case HIPSOLVER_STATUS_ARCH_MISMATCH:
+      return FailedPrecondition("cuSolver architecture mismatch error");
+    case HIPSOLVER_STATUS_HANDLE_IS_NULLPTR:
+      return InvalidArgument("hipsolver handle is nullptr error");
+    case HIPSOLVER_STATUS_INVALID_ENUM:
+      return InvalidArgument("hipsolver invalid enum error");
+    case HIPSOLVER_STATUS_UNKNOWN:
+      return Unknown("hipsolver status unknown");
+    default:
+      return Unknown("Unknown hipsolver error");
+  }
+}
+#else
 rocblas_fill GpuBlasUpperLower(se::blas::UpperLower uplo) {
   switch (uplo) {
     case se::blas::UpperLower::kUpper:
@@ -184,7 +214,6 @@ rocblas_fill GpuBlasUpperLower(se::blas::UpperLower uplo) {
   }
 }
 
-// Converts a cuSolver status to a Status.
 Status ConvertStatus(rocblas_status status) {
   switch (status) {
     case rocblas_status_success:
@@ -217,6 +246,48 @@ Status ConvertStatus(rocblas_status status) {
       return Unknown("Unknown rocsolver error");
   }
 }
+#endif  // TF_ROCM_VERSION >= 40500
+#endif  // TENSORFLOW_USE_ROCM
+
+#define GPU_SOLVER_CAT_NX(A, B) A##B
+#define GPU_SOLVER_CAT(A, B) GPU_SOLVER_CAT_NX(A, B)
+
+#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
+#define GpuSolverCreate GPU_SOLVER_CAT(GPU_SOLVER_CONTEXT_PREFIX, Create)
+#define GpuSolverSetStream GPU_SOLVER_CAT(GPU_SOLVER_CONTEXT_PREFIX, SetStream)
+#define GpuSolverDestroy GPU_SOLVER_CAT(GPU_SOLVER_CONTEXT_PREFIX, Destroy)
+#else  // TENSORFLOW_USE_ROCSOLVER
+#define GpuSolverCreate GPU_SOLVER_CAT(GPU_SOLVER_CONTEXT_PREFIX, create_handle)
+#define GpuSolverSetStream GPU_SOLVER_CAT(GPU_SOLVER_CONTEXT_PREFIX, set_stream)
+#define GpuSolverDestroy \
+  GPU_SOLVER_CAT(GPU_SOLVER_CONTEXT_PREFIX, destroy_handle)
+#endif
+#define GpuSolverSpotrf_bufferSize \
+  GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Spotrf_bufferSize)
+#define GpuSolverDpotrf_bufferSize \
+  GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Dpotrf_bufferSize)
+#define GpuSolverCpotrf_bufferSize \
+  GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Cpotrf_bufferSize)
+#define GpuSolverZpotrf_bufferSize \
+  GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Zpotrf_bufferSize)
+#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
+#define GpuSolverSpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Spotrf)
+#define GpuSolverDpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Dpotrf)
+#define GpuSolverCpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Cpotrf)
+#define GpuSolverZpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Zpotrf)
+#define GpuSolverSpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, SpotrfBatched)
+#define GpuSolverDpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, DpotrfBatched)
+#define GpuSolverCpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, CpotrfBatched)
+#define GpuSolverZpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, ZpotrfBatched)
+#else  // TENSORFLOW_USE_ROCSOLVER
+#define GpuSolverSpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, spotrf)
+#define GpuSolverDpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, dpotrf)
+#define GpuSolverCpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, cpotrf)
+#define GpuSolverZpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, zpotrf)
+#define GpuSolverSpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, spotrf_batched)
+#define GpuSolverDpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, dpotrf_batched)
+#define GpuSolverCpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, cpotrf_batched)
+#define GpuSolverZpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, zpotrf_batched)
 #endif
 
 }  // namespace
@@ -262,47 +333,33 @@ GpuSolverContext::~GpuSolverContext() {
   }
 }
 
-#if !defined(TENSORFLOW_USE_ROCM)
-#define CALL_LAPACK_TYPES(m) \
-  m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
-
-#define DN_SOLVER_FN(method, type_prefix) cusolverDn##type_prefix##method
-
-#else
-
-#define CALL_LAPACK_TYPES(m) \
-  m(float, s) m(double, d) m(std::complex<float>, c) m(std::complex<double>, z)
-
-#define DN_SOLVER_FN(method, type_prefix) \
-  tensorflow::wrap::rocsolver_##type_prefix##method
-
-#endif
 // Note: NVidia have promised that it is safe to pass 'nullptr' as the argument
 // buffers to cuSolver buffer size methods and this will be a documented
 // behavior in a future cuSolver release.
 StatusOr<int64_t> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
                                                     se::blas::UpperLower uplo,
-                                                    int n, int lda) {
-#if !defined(TENSORFLOW_USE_ROCM)
+                                                    int n, int lda,
+                                                    int batch_size) {
+#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
   int size = -1;
   switch (type) {
     case F32: {
-      TF_RETURN_IF_ERROR(ConvertStatus(cusolverDnSpotrf_bufferSize(
+      TF_RETURN_IF_ERROR(ConvertStatus(GpuSolverSpotrf_bufferSize(
           handle(), GpuBlasUpperLower(uplo), n, /*A=*/nullptr, lda, &size)));
       break;
     }
     case F64: {
-      TF_RETURN_IF_ERROR(ConvertStatus(cusolverDnDpotrf_bufferSize(
+      TF_RETURN_IF_ERROR(ConvertStatus(GpuSolverDpotrf_bufferSize(
           handle(), GpuBlasUpperLower(uplo), n, /*A=*/nullptr, lda, &size)));
       break;
     }
     case C64: {
-      TF_RETURN_IF_ERROR(ConvertStatus(cusolverDnCpotrf_bufferSize(
+      TF_RETURN_IF_ERROR(ConvertStatus(GpuSolverCpotrf_bufferSize(
           handle(), GpuBlasUpperLower(uplo), n, /*A=*/nullptr, lda, &size)));
       break;
     }
     case C128: {
-      TF_RETURN_IF_ERROR(ConvertStatus(cusolverDnZpotrf_bufferSize(
+      TF_RETURN_IF_ERROR(ConvertStatus(GpuSolverZpotrf_bufferSize(
           handle(), GpuBlasUpperLower(uplo), n, /*A=*/nullptr, lda, &size)));
       break;
     }
@@ -310,36 +367,118 @@ StatusOr<int64_t> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
       return InvalidArgument("Invalid type for cholesky decomposition: %s",
                              PrimitiveType_Name(type));
   }
-  return size;
-#else
+  // CUDA's potrfBatched needs space for the `as` array, which contains
+  // batch_size pointers.  Divide by sizeof(type) because this function returns
+  // not bytes but a number of elements of `type`.
+  int64_t potrf_batched_scratch = CeilOfRatio<int64_t>(
+      batch_size * sizeof(void*), primitive_util::ByteWidth(type));
+
+  return std::max<int64_t>(size, potrf_batched_scratch);
+#else  // not supported in rocsolver
   return 0;
 #endif
 }
 
-#if !defined(TENSORFLOW_USE_ROCM)
-#define POTRF_INSTANCE(T, type_prefix)                                    \
-  template <>                                                             \
-  Status GpuSolverContext::Potrf<T>(                                      \
-      se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda,   \
-      se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace) { \
-    return ConvertStatus(DN_SOLVER_FN(potrf, type_prefix)(                \
-        handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(A), lda,    \
-        ToDevicePointer(workspace), workspace.ElementCount(),             \
-        ToDevicePointer(lapack_info)));                                   \
-  }
-#else
-#define POTRF_INSTANCE(T, type_prefix)                                    \
-  template <>                                                             \
-  Status GpuSolverContext::Potrf<T>(                                      \
-      se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda,   \
-      se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace) { \
-    return ConvertStatus(DN_SOLVER_FN(potrf, type_prefix)(                \
-        handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(A), lda,    \
-        ToDevicePointer(lapack_info)));                                   \
-  }
+Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
+                               se::DeviceMemory<float> a, int lda,
+                               se::DeviceMemory<int> lapack_info,
+                               se::DeviceMemoryBase workspace) {
+  return ConvertStatus(GpuSolverSpotrf(
+      handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(a), lda,
+#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
+      ToDevicePointer(se::DeviceMemory<float>(workspace)),
+      se::DeviceMemory<float>(workspace).ElementCount(),
 #endif
+      ToDevicePointer(lapack_info)));
+}
 
-CALL_LAPACK_TYPES(POTRF_INSTANCE);
+Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
+                               se::DeviceMemory<double> a, int lda,
+                               se::DeviceMemory<int> lapack_info,
+                               se::DeviceMemoryBase workspace) {
+  return ConvertStatus(GpuSolverDpotrf(
+      handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(a), lda,
+#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
+      ToDevicePointer(se::DeviceMemory<double>(workspace)),
+      se::DeviceMemory<double>(workspace).ElementCount(),
+#endif
+      ToDevicePointer(lapack_info)));
+}
+
+Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
+                               se::DeviceMemory<std::complex<float>> a, int lda,
+                               se::DeviceMemory<int> lapack_info,
+                               se::DeviceMemoryBase workspace) {
+  return ConvertStatus(GpuSolverCpotrf(
+      handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(a), lda,
+#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
+      ToDevicePointer(se::DeviceMemory<std::complex<float>>(workspace)),
+      se::DeviceMemory<std::complex<float>>(workspace).ElementCount(),
+#endif
+      ToDevicePointer(lapack_info)));
+}
+
+Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
+                               se::DeviceMemory<std::complex<double>> a,
+                               int lda, se::DeviceMemory<int> lapack_info,
+                               se::DeviceMemoryBase workspace) {
+  return ConvertStatus(GpuSolverZpotrf(
+      handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(a), lda,
+#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
+      ToDevicePointer(se::DeviceMemory<std::complex<double>>(workspace)),
+      se::DeviceMemory<std::complex<double>>(workspace).ElementCount(),
+#endif
+      ToDevicePointer(lapack_info)));
+}
+
+Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
+                                      se::DeviceMemory<float*> as, int lda,
+                                      se::DeviceMemory<int> lapack_info,
+                                      int batch_size) {
+  return ConvertStatus(GpuSolverSpotrfBatched(
+      handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(as), lda,
+#if TENSORFLOW_USE_HIPSOLVER
+      nullptr, 0,
+#endif
+      ToDevicePointer(lapack_info), batch_size));
+}
+
+Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
+                                      se::DeviceMemory<double*> as, int lda,
+                                      se::DeviceMemory<int> lapack_info,
+                                      int batch_size) {
+  return ConvertStatus(GpuSolverDpotrfBatched(
+      handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(as), lda,
+#if TENSORFLOW_USE_HIPSOLVER
+      nullptr, 0,
+#endif
+      ToDevicePointer(lapack_info), batch_size));
+}
+
+Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
+                                      se::DeviceMemory<std::complex<float>*> as,
+                                      int lda,
+                                      se::DeviceMemory<int> lapack_info,
+                                      int batch_size) {
+  return ConvertStatus(GpuSolverCpotrfBatched(
+      handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(as), lda,
+#if TENSORFLOW_USE_HIPSOLVER
+      nullptr, 0,
+#endif
+      ToDevicePointer(lapack_info), batch_size));
+}
+
+Status GpuSolverContext::PotrfBatched(
+    se::blas::UpperLower uplo, int n,
+    se::DeviceMemory<std::complex<double>*> as, int lda,
+    se::DeviceMemory<int> lapack_info, int batch_size) {
+  return ConvertStatus(GpuSolverZpotrfBatched(
+      handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(as), lda,
+#if TENSORFLOW_USE_HIPSOLVER
+      nullptr, 0,
+#endif
+      ToDevicePointer(lapack_info), batch_size));
+}
 
 }  // namespace gpu
 }  // namespace xla

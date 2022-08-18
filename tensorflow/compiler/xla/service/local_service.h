@@ -52,6 +52,14 @@ class LocalService : public Service {
       const absl::Span<const Shape* const> argument_layouts,
       const ExecutableBuildOptions& build_options);
 
+  // Same as CompileExecutables() above, but return AotCompilationResult objects
+  // (instead of Executable objects), which can be persisted to later load
+  // Executable objects.
+  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  CompileAotResults(const XlaComputation& computation,
+                    const absl::Span<const Shape* const> argument_layouts,
+                    const ExecutableBuildOptions& build_options);
+
   // Returns the device ordinal that corresponds to the given replica number.
   //
   // This returns an error if there is not a one-to-one correspondence of
@@ -67,13 +75,21 @@ class LocalService : public Service {
   // Registers a vector of shaped buffers of device memory, one per replica, and
   // returns a corresponding handle that can be used for talking to XLA clients.
   StatusOr<GlobalDataHandle> RegisterReplicatedBuffers(
-      std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag);
+      std::vector<ScopedShapedBuffer> replicated_buffers,
+      const std::string& tag);
 
  private:
   explicit LocalService(const ServiceOptions& options,
                         std::unique_ptr<Backend> backend);
   LocalService(const LocalService&) = delete;
   void operator=(const LocalService&) = delete;
+
+  // Validates the computation argument layouts, and returns the corresponding
+  // HloModuleConfig.
+  StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
+      const XlaComputation& computation,
+      const absl::Span<const Shape* const> argument_layouts,
+      const ExecutableBuildOptions& build_options);
 };
 
 }  // namespace xla

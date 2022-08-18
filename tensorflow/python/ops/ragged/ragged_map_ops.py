@@ -14,9 +14,6 @@
 # ==============================================================================
 """Functional operations for RaggedTensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader

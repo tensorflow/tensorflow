@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "llvm/ADT/Triple.h"
 #include "llvm/ADT/Twine.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -45,7 +46,7 @@ CompileOnlyClient::CompileAheadOfTime(
     TF_RET_CHECK(instance.computation != nullptr);
     service_instance.computation = instance.computation->proto();
     service_instance.argument_layouts = instance.argument_layouts;
-    service_instance.result_layout = instance.result_layout;
+    service_instance.result_layout = *instance.result_layout;
   }
   return compiler_service_->CompileAheadOfTime(service_instances, options,
                                                metadata);

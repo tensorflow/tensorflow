@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
+#include <utility>
+
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -42,7 +44,7 @@ TEST(StreamExecutor, SuccessfulRegistration) {
   port::StatusOr<Platform*> maybe_platform =
       MultiPlatformManager::PlatformWithName("MY_DEVICE");
   TF_ASSERT_OK(maybe_platform.status());
-  Platform* platform = maybe_platform.ConsumeValueOrDie();
+  Platform* platform = std::move(maybe_platform).value();
   ASSERT_EQ(platform->Name(), test_util::kDeviceName);
   ASSERT_EQ(platform->VisibleDeviceCount(), test_util::kDeviceCount);
 
@@ -153,7 +155,7 @@ class StreamExecutorTest : public ::testing::Test {
     port::StatusOr<StreamExecutor*> maybe_executor =
         cplatform_->ExecutorForDevice(ordinal);
     TF_CHECK_OK(maybe_executor.status());
-    return maybe_executor.ConsumeValueOrDie();
+    return std::move(maybe_executor).value();
   }
   SP_Platform platform_;
   SP_PlatformFns platform_fns_;
@@ -723,7 +725,7 @@ TEST_F(StreamExecutorTest, HostCallbackOk) {
   Stream stream(executor);
   stream.Init();
   std::function<port::Status()> callback = []() -> port::Status {
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   };
   stream.ThenDoHostCallbackWithStatus(callback);
   ASSERT_TRUE(stream.ok());
@@ -800,6 +802,64 @@ TEST_F(StreamExecutorTest, DeviceDescriptionNumaNodeNotSet) {
   ASSERT_EQ(description.pci_bus_id(), "TestPCIBusId");
   ASSERT_EQ(description.numa_node(), -1);
   ASSERT_EQ(description.memory_bandwidth(), 54);
+}
+
+TEST_F(StreamExecutorTest, MemZero) {
+  se_.create_stream = [](const SP_Device* const device, SP_Stream* stream,
+                         TF_Status* const status) -> void {
+    *stream = new SP_Stream_st(14);
+  };
+  se_.destroy_stream = [](const SP_Device* const device,
+                          SP_Stream stream) -> void { delete stream; };
+
+  se_.mem_zero = [](const SP_Device* device, SP_Stream stream,
+                    SP_DeviceMemoryBase* location, uint64_t size,
+                    TF_Status* status) {
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(stream->stream_id, 14);
+    std::memset(location->opaque, 0, size);
+  };
+
+  StreamExecutor* executor = GetExecutor(0);
+  Stream stream(executor);
+  stream.Init();
+  size_t size = sizeof(int);
+  int data = 2;
+  DeviceMemoryBase device_data(&data, size);
+  Stream& stream_ref = stream.ThenMemZero(&device_data, size);
+  ASSERT_EQ(data, 0);
+  ASSERT_EQ(stream_ref.implementation(), stream.implementation());
+}
+
+TEST_F(StreamExecutorTest, Memset32) {
+  se_.create_stream = [](const SP_Device* const device, SP_Stream* stream,
+                         TF_Status* const status) -> void {
+    *stream = new SP_Stream_st(14);
+  };
+  se_.destroy_stream = [](const SP_Device* const device,
+                          SP_Stream stream) -> void { delete stream; };
+
+  se_.memset32 = [](const SP_Device* device, SP_Stream stream,
+                    SP_DeviceMemoryBase* location, uint32_t pattern,
+                    uint64_t size, TF_Status* status) {
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(stream->stream_id, 14);
+    EXPECT_EQ(size % 4, 0);
+    auto ptr = static_cast<uint32_t*>(location->opaque);
+    for (int i = 0; i < size / 4; i++) {
+      *(ptr + i) = pattern;
+    }
+  };
+
+  StreamExecutor* executor = GetExecutor(0);
+  Stream stream(executor);
+  stream.Init();
+  size_t size = sizeof(int);
+  int data = 2;
+  DeviceMemoryBase device_data(&data, size);
+  Stream& stream_ref = stream.ThenMemset32(&device_data, 18, size);
+  ASSERT_EQ(data, 18);
+  ASSERT_EQ(stream_ref.implementation(), stream.implementation());
 }
 
 }  // namespace

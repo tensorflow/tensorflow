@@ -23,16 +23,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -80,9 +75,10 @@ class HloSharding {
       absl::Span<const OpMetadata> metadata = {});
 
   // Creates a subgroup sharding with device-level tile assignment, the
-  // sharding type of each subgroup is defined by sharding_types.
+  // sharding type of each subgroup is defined by subgroup_types. When creating
+  // the HloSharding, subgroup dims of the same type will be merged.
   static HloSharding Subgroup(const Array<int64_t>& tile_assignment,
-                              absl::Span<const OpSharding::Type> sharding_types,
+                              absl::Span<const OpSharding::Type> subgroup_types,
                               absl::Span<const OpMetadata> metadata = {});
 
   // Creates a new sharding which splits a one-dimensional input shape into
@@ -120,7 +116,7 @@ class HloSharding {
 
   // Note that this string canonically has outer curly braces, e.g.
   // "{replicated}".
-  string ToString(bool include_metadata = false) const;
+  std::string ToString(bool include_metadata = false) const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
   Status Validate(const Shape& shape, int64_t num_devices) const;
@@ -159,7 +155,7 @@ class HloSharding {
   // Returns whether the sharding represents manual subgroup sharding.
   bool IsManualSubgroup() const {
     if (!IsTuple()) {
-      return absl::c_linear_search(sharding_types_, OpSharding::MANUAL);
+      return absl::c_linear_search(subgroup_types_, OpSharding::MANUAL);
     }
     return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
       return s.IsManualSubgroup();
@@ -174,6 +170,13 @@ class HloSharding {
   // true, data is sharded according to other dimensions of tile_assignment(),
   // but replicated across devices along the last dimension.
   bool ReplicateOnLastTileDim() const { return replicate_on_last_tile_dim_; }
+
+  // Returns whether there is any partial replication. This can be using
+  // ReplicateOnLastTileDim or subgroups with REPLICATED.
+  bool HasPartialReplication() const {
+    return replicate_on_last_tile_dim_ ||
+           absl::c_linear_search(subgroup_types_, OpSharding::REPLICATED);
+  }
 
   // Returns true if the sharding defines an operation on the given device.
   bool UsesDevice(int64_t device) const;
@@ -217,7 +220,7 @@ class HloSharding {
   // span a single device, the return value will be empty.
   // In order for a sharding to span a single device, every leaf sharding must
   // be maximal and not replicated, and the used device must match.
-  absl::optional<int64_t> UniqueDevice() const;
+  std::optional<int64_t> UniqueDevice() const;
 
   // Retrieves the unique device or fails with a CHECK.
   int64_t GetUniqueDevice() const;
@@ -248,7 +251,7 @@ class HloSharding {
   // be returned. If it is a tuple, and all the tuple elements are common, the
   // common element will be returned. Otherwise the optional will contain no
   // value.
-  absl::optional<HloSharding> ExtractSingleSharding() const;
+  std::optional<HloSharding> ExtractSingleSharding() const;
 
   // Returns a copy of the sharding with no metadata. If sharding is of tuple
   // type, sub shardings will have no metadata.
@@ -267,26 +270,28 @@ class HloSharding {
            tile_assignment_ == other.tile_assignment_ &&
            tuple_elements_ == other.tuple_elements_ &&
            replicate_on_last_tile_dim_ == other.replicate_on_last_tile_dim_ &&
-           sharding_types_ == other.sharding_types_;
+           subgroup_types_ == other.subgroup_types_;
   }
   bool operator!=(const HloSharding& other) const { return !(*this == other); }
 
-  size_t Hash() const;
-
-  struct Hasher {
-    size_t operator()(const HloSharding& sharding) const {
-      return sharding.Hash();
+  template <typename H>
+  friend H AbslHashValue(H h, const HloSharding& sharding) {
+    if (sharding.tuple_) {
+      return H::combine(std::move(h), sharding.tuple_elements_);
     }
-  };
+    return H::combine(std::move(h), sharding.replicated_, sharding.manual_,
+                      sharding.tile_assignment_,
+                      sharding.replicate_on_last_tile_dim_);
+  }
 
   // Gets the tile assignment tensor.
   // REQUIRES: !IsReplicated() && !IsTuple()
   const Array<int64_t>& tile_assignment() const { return tile_assignment_; }
 
-  // Gets the sharding types array.
-  // REQUIRES: !sharding_tyes.empty() && !IsTuple()
-  const std::vector<OpSharding::Type>& sharding_types() const {
-    return sharding_types_;
+  // Gets the subgroup types array.
+  // REQUIRES: !IsTuple()
+  const std::vector<OpSharding::Type>& subgroup_types() const {
+    return subgroup_types_;
   }
 
   // Returns the flattened list of all the leaf shardings in a tuple shape, by
@@ -315,6 +320,38 @@ class HloSharding {
   // Gets metadata from sharding.
   std::vector<OpMetadata>& metadata() { return metadata_; }
   const std::vector<OpMetadata>& metadata() const { return metadata_; }
+
+  // Returns the replication subgroiup dim, or -1 if it doesn't exist.
+  int64_t SubgroupReplicationDim() const {
+    auto it = absl::c_find(subgroup_types_, OpSharding::REPLICATED);
+    if (it != subgroup_types_.end()) {
+      return (it - subgroup_types_.begin()) + TiledDataRank();
+    }
+    if (replicate_on_last_tile_dim_) {
+      return tile_assignment_.num_dimensions() - 1;
+    }
+    return -1;
+  }
+
+  // Returns the manual subgroiup dim, or -1 if it doesn't exist.
+  int64_t SubgroupManualDim() const {
+    auto it = absl::c_find(subgroup_types_, OpSharding::MANUAL);
+    if (it != subgroup_types_.end()) {
+      return (it - subgroup_types_.begin()) + TiledDataRank();
+    }
+    return -1;
+  }
+
+  // Returns the data rank for tiled sharding. It doesn't include subgroup dims.
+  int64_t TiledDataRank() const {
+    CHECK(IsTiled());
+    int64_t rank = tile_assignment_.num_dimensions();
+    if (ReplicateOnLastTileDim()) {
+      rank--;
+    }
+    rank -= subgroup_types_.size();
+    return rank;
+  }
 
  private:
   explicit HloSharding(bool manual, bool replicated,
@@ -351,7 +388,7 @@ class HloSharding {
         replicate_on_last_tile_dim_(replicate_on_last_tile_dim),
         metadata_(metadata.begin(), metadata.end()) {}
   explicit HloSharding(const Array<int64_t>& tile_assignment,
-                       absl::Span<const OpSharding::Type> sharding_types,
+                       absl::Span<const OpSharding::Type> subgroup_types,
                        absl::Span<const OpMetadata> metadata = {})
       : replicated_(false),
         maximal_(false),
@@ -360,7 +397,7 @@ class HloSharding {
         tile_assignment_(tile_assignment),
         replicate_on_last_tile_dim_(false),
         metadata_(metadata.begin(), metadata.end()),
-        sharding_types_(sharding_types.begin(), sharding_types.end()) {}
+        subgroup_types_(subgroup_types.begin(), subgroup_types.end()) {}
   explicit HloSharding(const std::vector<HloSharding>& tuple_shardings)
       : replicated_(false),
         maximal_(false),
@@ -419,8 +456,10 @@ class HloSharding {
   // This field is used to represented the sharding type of each subgroup.
   // For example, sharding={devices=[2,2,2,2]0,1,2,...,15 last_tile_dims={
   // replicate, manual, unreduced}} means that each of the last 3 dimensions
-  // in [2,2,2,2] represents a subgrouping in replicate, manual,
-  std::vector<OpSharding::Type> sharding_types_;
+  // in [2,2,2,2] represents a subgrouping in replicate, manual.
+  // When creating HloSharding, subgroup dims of the same type will be merged,
+  // so that there is at most one dim with a given type.
+  std::vector<OpSharding::Type> subgroup_types_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);

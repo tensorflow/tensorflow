@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 
@@ -54,7 +54,7 @@ StatusScopedDiagnosticHandler::~StatusScopedDiagnosticHandler() {
 bool StatusScopedDiagnosticHandler::ok() const { return diag_str_.empty(); }
 
 Status StatusScopedDiagnosticHandler::ConsumeStatus() {
-  if (ok()) return Status::OK();
+  if (ok()) return ::tensorflow::OkStatus();
 
   // TODO(jpienaar) This should be combining status with one previously built
   // up.

@@ -1,15 +1,12 @@
 """DLPack is a protocol for sharing arrays between deep learning frameworks."""
 
-load("//third_party:repo.bzl", "tf_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
     tf_http_archive(
         name = "dlpack",
-        strip_prefix = "dlpack-3efc489b55385936531a06ff83425b719387ec63",
-        sha256 = "b59586ce69bcf3efdbf3cf4803fadfeaae4948044e2b8d89cf912194cf28f233",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/dmlc/dlpack/archive/3efc489b55385936531a06ff83425b719387ec63.tar.gz",
-            "https://github.com/dmlc/dlpack/archive/3efc489b55385936531a06ff83425b719387ec63.tar.gz",
-        ],
-        build_file = "//third_party/dlpack:BUILD.bazel",
+        strip_prefix = "dlpack-9351cf542ab478499294864ff3acfdab5c8c5f3d",
+        sha256 = "7aca112f2809b7e9523e9b47b04a393affeca38247861951f07c42dee10180e2",
+        urls = tf_mirror_urls("https://github.com/dmlc/dlpack/archive/9351cf542ab478499294864ff3acfdab5c8c5f3d.tar.gz"),
+        build_file = "//third_party/dlpack:dlpack.BUILD",
     )

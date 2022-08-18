@@ -1,7 +1,7 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
-load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
@@ -331,7 +331,10 @@ py_library(
         ":saved_model_utils",
         "//tensorflow/python",
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
-    ],
+    ] + if_google([
+        "//tensorflow/core/tfrt/tfrt_session",
+        "//tensorflow_text:tensorflow_text",
+    ]),
 )
 
 py_library(
@@ -355,7 +358,7 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "nosan",
+        "noasan",  # asan disabled in b/222716501.
     ],
     deps = [
         ":saved_model_cli_lib",
@@ -500,15 +503,18 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:test_main",
     ] + if_xla_available([
+        # LINT.IfChange
         ":aot_compiled_vars_and_arithmetic",
         ":aot_compiled_vars_and_arithmetic_frozen",
         ":aot_compiled_x_matmul_y_large",
         ":aot_compiled_x_matmul_y_large_multithreaded",
         ":aot_compiled_x_matmul_y_small",
         ":aot_compiled_x_plus_y",
+        # LINT.ThenChange(//tensorflow/tools/pip_package/xla_build/pip_test/run_xla_aot_test.sh)
+        "//tensorflow/compiler/xla/service/cpu:runtime_matmul_acl",
         "//tensorflow/core:test",
-        "//third_party/eigen3",
         "//tensorflow/core/platform:logging",
+        "//third_party/eigen3",
     ]),
 )
 

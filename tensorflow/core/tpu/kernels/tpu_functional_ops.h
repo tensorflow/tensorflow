@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_ordinal_selector.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
@@ -108,6 +109,13 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
         pool_(ctx->env(), "InitializeVarOnTPUPool", 1),
         library_runtime_(nullptr) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+    // If the importer has set the original function name, it means the function
+    // attribute is referring to a rewritten function, but we need to use the
+    // original function name in order to find it in the function library.
+    std::string orig_f;
+    if (ctx->GetAttr("_orig_f", &orig_f).ok()) {
+      func_.set_name(orig_f);
+    }
     auto status = ctx->GetAttr("autotuner_thresh", &autotuner_thresh_);
     if (!status.ok()) {
       autotuner_thresh_ = 0;
@@ -133,10 +141,16 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
     std::unique_ptr<FunctionLibraryDefinition> flib_def;
   };
 
+  struct TPUMetadata {
+    tpu::TopologyProto topology;
+    int num_cores_per_replica = 1;
+    std::vector<int> device_assignment;
+  };
+
+  // This method is thread-safe.
   Status GetTpuCoreOrdinal(OpKernelContext* ctx, uint64 input_hash,
                            int64_t* ordinal_selector_req_id,
-                           int32_t* core_ordinal)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                           int32_t* core_ordinal);
 
   // Helper to create and initialize a TPU variable given a CPU variable
   // var: the CPU variable created by the user
@@ -160,7 +174,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   Status InitializeShardedVarOnTPU(OpKernelContext* ctx,
                                    const core::RefCountPtr<Var>& var,
                                    std::vector<NodeDef>& ndefs, int split_dim,
-                                   int device_ordinal)
+                                   const std::vector<string>& tpu_devices)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Check if any of the immediate successors of node has attribute
@@ -170,18 +184,20 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // Replace an _Arg node of type DT_RESOURCE by a VarHandleOp on TPU
   Status ReplaceResourceArgsWithVarHandleOps(Graph* graph, OpKernelContext* ctx,
                                              int device_ordinal,
-                                             int num_cores_per_replica,
-                                             bool enable_spmd_xla_partitioning)
+                                             bool enable_spmd_xla_partitioning,
+                                             const TPUMetadata& tpu_metadata)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Replace a _Arg node indicates a variable on CPU host by sharded/replicated
   // variables on all logical TPU devices.
   Status ReplaceAndPartitionXLAShardingVariable(
       Graph* graph, OpKernelContext* ctx, int device_ordinal,
-      ResourceHandle& handle, Node* variable, int num_cores_per_replica)
+      ResourceHandle& handle, Node* variable, const TPUMetadata& tpu_metadata)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status ShardInputsWithXlaSharding(Graph* graph, int num_cores_per_replica,
+  Status ShardInputsWithXlaSharding(Graph* graph,
+                                    const std::string& cluster_name,
+                                    int num_cores_per_replica,
                                     OpKernelContext* ctx)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -199,8 +215,8 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
 
   // Copies the graph backing `func_` into `graph`.
   Status GetGraphFromFunction(Graph* graph, int device_ordinal,
-                              int* num_core_per_replica,
-                              bool* use_spmd_for_xla_partitioning)
+                              bool* use_spmd_for_xla_partitioning,
+                              TPUMetadata* tpu_metadata)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Places the graph carried by `optimization_options` and runs graph
@@ -283,7 +299,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
     } else {
       *remote_execution = true;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Init once flagas.

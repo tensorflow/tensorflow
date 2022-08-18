@@ -14,8 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 
+#include <sys/types.h>
+
+#include <functional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
@@ -69,12 +77,12 @@ UniqueTfLiteTensor MakeLiteTensor<string>(const std::vector<int>& shape,
 }
 
 template <typename T>
-tensorflow::Tensor MakeTensor(const std::vector<int>& shape,
-                              const std::vector<T>& data) {
-  BufferMap buffer_map;  // BufferMap is the easiest way to build the tensor.
-  UniqueTfLiteTensor t1 = MakeLiteTensor<T>(shape, data);
-  buffer_map.SetFromTfLite(0, t1.get());
-  return buffer_map.GetTensor(0);
+tensorflow::Tensor MakeTensor(const std::vector<int64_t>& shape,
+                              const std::vector<T>& data,
+                              tensorflow::DataType dtype) {
+  tensorflow::Tensor tensor(dtype, tensorflow::TensorShape(shape));
+  memcpy(tensor.data(), data.data(), data.size() * sizeof(T));
+  return tensor;
 }
 
 std::vector<int64_t> GetTensorShape(const tensorflow::Tensor& t) {
@@ -160,9 +168,35 @@ TEST(BufferMapTest, SetFromTfLiteStringTwice) {
               ElementsAre("", "", "", "s3", "", "", "s1", "s2"));
 }
 
+TEST(BufferMapTest, SetFromTfLiteBuiltinResource) {
+  BufferMap buffer_map;
+
+  // Constructs a fake resource tensor.
+  auto tensor = UniqueTfLiteTensor(new TfLiteTensor(), [](TfLiteTensor* t) {
+    TfLiteTensorDataFree(t);
+    TfLiteIntArrayFree(t->dims);
+    delete t;
+  });
+  tensor->allocation_type = kTfLiteDynamic;
+  tensor->type = kTfLiteResource;
+  tensor->dims = ConvertVectorToTfLiteIntArray({1});
+  TfLiteTensorRealloc(sizeof(int32_t), tensor.get());
+  tensor->delegate = nullptr;
+  tensor->data.i32[0] = 1;
+
+  buffer_map.SetFromTfLite(0, tensor.get());
+  // Also check details of the tensor.
+  tensorflow::Tensor out_tensor = buffer_map.GetTensor(0);
+  ASSERT_EQ(out_tensor.dtype(), tensorflow::DT_RESOURCE);
+  ASSERT_EQ(out_tensor.NumElements(), 1);
+  tensorflow::ResourceHandle handle =
+      out_tensor.flat<tensorflow::ResourceHandle>()(0);
+  EXPECT_EQ(handle.name(), "tflite_resource_variable:1");
+}
+
 TEST(BufferMapTest, SetFromTensorFlow) {
-  tensorflow::Tensor t1 =
-      MakeTensor<float>({1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0});
+  tensorflow::Tensor t1 = MakeTensor<float>(
+      {1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0}, tensorflow::DT_FLOAT);
 
   BufferMap buffer_map;
   buffer_map.SetFromTensorFlow(0, t1);
@@ -178,9 +212,10 @@ TEST(BufferMapTest, SetFromTensorFlow) {
 }
 
 TEST(BufferMapTest, SetFromTensorFlowTwice) {
-  tensorflow::Tensor t1 =
-      MakeTensor<float>({1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0});
-  tensorflow::Tensor t2 = MakeTensor<int>({1, 2, 4}, {0, 0, 0, 3, 0, 0, 1, 2});
+  tensorflow::Tensor t1 = MakeTensor<float>(
+      {1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0}, tensorflow::DT_FLOAT);
+  tensorflow::Tensor t2 = MakeTensor<int>({1, 2, 4}, {0, 0, 0, 3, 0, 0, 1, 2},
+                                          tensorflow::DT_INT32);
   BufferMap buffer_map;
   buffer_map.SetFromTensorFlow(0, t1);
   buffer_map.SetFromTensorFlow(0, t2);
@@ -190,8 +225,8 @@ TEST(BufferMapTest, SetFromTensorFlowTwice) {
 }
 
 TEST(BufferMapTest, TfLiteOverwritesTensorFlow) {
-  tensorflow::Tensor t1 =
-      MakeTensor<float>({1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0});
+  tensorflow::Tensor t1 = MakeTensor<float>(
+      {1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0}, tensorflow::DT_FLOAT);
   UniqueTfLiteTensor t2 =
       MakeLiteTensor<int>({1, 2, 4}, {0, 0, 0, 3, 0, 0, 1, 2});
 
@@ -205,8 +240,8 @@ TEST(BufferMapTest, TfLiteOverwritesTensorFlow) {
 }
 
 TEST(BufferMapTest, TensorFlowOverwritesTfLite) {
-  tensorflow::Tensor t1 =
-      MakeTensor<float>({1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0});
+  tensorflow::Tensor t1 = MakeTensor<float>(
+      {1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0}, tensorflow::DT_FLOAT);
   UniqueTfLiteTensor t2 =
       MakeLiteTensor<int>({1, 2, 4}, {0, 0, 0, 3, 0, 0, 1, 2});
   BufferMap buffer_map;
@@ -216,6 +251,41 @@ TEST(BufferMapTest, TensorFlowOverwritesTfLite) {
   EXPECT_TRUE(buffer_map.IsTensorFlowTensor(0));
   EXPECT_THAT(GetTensorData<float>(buffer_map.GetTensor(0)),
               ElementsAre(0, 0, 0, 0.123f, 0, 0));
+}
+
+TEST(BufferMapTest, TensorflowBufferReuse) {
+  TfLiteTensor tensor;
+  tensor.allocation_type = kTfLiteDynamic;
+  tensor.data.raw = nullptr;
+  TfLiteTensorRealloc(10, &tensor);
+  CHECK(tensor.data.raw);
+  EXPECT_EQ(tensor.bytes, 10);
+
+  TfLiteTensorBuffer* tensor_buffer_reused = new TfLiteTensorBuffer(&tensor);
+  // Checks that the underlying buffer is reused.
+  EXPECT_TRUE(tensor_buffer_reused->BufferReusedFromTfLiteTensor());
+  EXPECT_EQ(tensor_buffer_reused->data(), tensor.data.raw);
+  tensor_buffer_reused->Unref();
+
+  TfLiteTensorDataFree(&tensor);
+}
+
+TEST(BufferMapTest, ExplicitlyDisableBufferReuse) {
+  TfLiteTensor tensor;
+  tensor.allocation_type = kTfLiteDynamic;
+  tensor.data.raw = nullptr;
+  TfLiteTensorRealloc(10, &tensor);
+  CHECK(tensor.data.raw);
+  EXPECT_EQ(tensor.bytes, 10);
+
+  TfLiteTensorBuffer* tensor_buffer =
+      new TfLiteTensorBuffer(&tensor, /*=allow_reusing*/ false);
+  // Checks that the underlying buffer is not reused.
+  EXPECT_FALSE(tensor_buffer->BufferReusedFromTfLiteTensor());
+  EXPECT_NE(tensor_buffer->data(), tensor.data.raw);
+  tensor_buffer->Unref();
+
+  TfLiteTensorDataFree(&tensor);
 }
 
 }  // namespace

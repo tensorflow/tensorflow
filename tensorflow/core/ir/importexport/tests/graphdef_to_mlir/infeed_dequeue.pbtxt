@@ -1,0 +1,76 @@
+# RUN: tfg-translate -graphdef-to-mlir %s | FileCheck %s
+
+# CHECK: InfeedDequeue
+# CHECK-SAME: tensor<*xi8>
+# CHECK: InfeedDequeueTuple
+# CHECK-SAME: -> (tensor<*xui16>, tensor<*xui32>, tensor<*xui64>)
+
+node {
+  name: "InfeedDequeue_0"
+  op: "InfeedDequeue"
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: -1
+        }
+        dim {
+          size: 8
+        }
+        dim {
+          size: -1
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT8
+    }
+  }
+}
+node {
+  name: "InfeedDequeueTuple"
+  op: "InfeedDequeueTuple"
+  attr {
+    key: "shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: -1
+          }
+          dim {
+            size: -1
+          }
+          dim {
+            size: -1
+          }
+        }
+        shape {
+          unknown_rank: true
+        }
+        shape {
+          dim {
+            size: 7
+          }
+          dim {
+            size: 56
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtypes"
+    value {
+      list {
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+}

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/determinism.h"
 
 namespace tensorflow {
 
@@ -63,6 +64,14 @@ class AdjustContrastOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_value.shape()),
                 errors::InvalidArgument("max_value must be scalar: ",
                                         max_value.shape().DebugString()));
+
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(
+          context, !OpDeterminismRequired(),
+          errors::Unimplemented(
+              "A deterministic GPU implementation of AdjustContrast is not"
+              " currently available."));
+    }
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
@@ -413,6 +422,12 @@ class AdjustContrastOpv2<GPUDevice, T> : public AdjustContrastOpV2Base {
                  const ComputeOptions& options) override {
     const int64_t shape[4] = {options.batch, options.height, options.width,
                               options.channels};
+    OP_REQUIRES(
+        context, !OpDeterminismRequired(),
+        errors::Unimplemented(
+            "A deterministic GPU implementation of AdjustContrastv2 is not"
+            " currently available."));
+
     functor::AdjustContrastv2<GPUDevice, T>()(
         context->eigen_device<GPUDevice>(), options.input->shaped<T, 4>(shape),
         options.factor->scalar<float>(), options.output->shaped<T, 4>(shape));

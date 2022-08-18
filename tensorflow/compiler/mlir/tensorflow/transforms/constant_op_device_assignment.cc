@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -32,16 +33,8 @@ namespace {
 constexpr const char *kDeviceAttr = "device";
 
 struct ConstantOpDeviceAssignmentPass
-    : public PassWrapper<ConstantOpDeviceAssignmentPass,
-                         OperationPass<ModuleOp>> {
-  StringRef getArgument() const final {
-    return "constant-op-device-assignment";
-  }
-
-  StringRef getDescription() const final {
-    return "Assign device for tf.Const ops.";
-  }
-
+    : public ConstantOpDeviceAssignmentPassBase<
+          ConstantOpDeviceAssignmentPass> {
   void runOnOperation() override;
 };
 
@@ -91,8 +84,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateConstantOpDeviceAssignmentPass() {
   return std::make_unique<ConstantOpDeviceAssignmentPass>();
 }
-
-static PassRegistration<ConstantOpDeviceAssignmentPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

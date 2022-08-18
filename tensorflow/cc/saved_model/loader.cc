@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -33,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/file_system_helper.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
@@ -96,7 +99,20 @@ static Status ValidateNode(const NodeDef& node) {
         "Saved model contains node \"", node.name(),
         "\" which is a constant tensor but no value has been provided");
   }
-  return Status::OK();
+  return OkStatus();
+}
+
+static Status ValidateFunctionNotRecursive(const FunctionDef& function) {
+  const auto& function_name = function.signature().name();
+  for (const auto& node : function.node_def()) {
+    if (node.op() == function_name) {
+      return errors::FailedPrecondition(
+          "Function ", function_name,
+          " is self recursive and TensorFlow does not support this scenario.");
+    }
+  }
+
+  return OkStatus();
 }
 
 static Status ValidateSavedTensors(const GraphDef& graph_def) {
@@ -110,10 +126,13 @@ static Status ValidateSavedTensors(const GraphDef& graph_def) {
       for (const auto& node : function.node_def()) {
         TF_RETURN_IF_ERROR(ValidateNode(node));
       }
+
+      // Also check that there is no recursivity in the library
+      TF_RETURN_IF_ERROR(ValidateFunctionNotRecursive(function));
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Tensor CreateStringTensor(const string& value) {
@@ -199,7 +218,7 @@ Status RunInitOp(const RunOptions& run_options, const string& export_dir,
     return RunOnce(run_options, inputs, {}, {init_op_name},
                    nullptr /* outputs */, &run_metadata, session);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RunRestore(const RunOptions& run_options, const string& export_dir,
@@ -216,11 +235,14 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
   // variables are stored in the variables.data-?????-of-????? files.
   const string variables_index_path = io::JoinPath(
       variables_directory, MetaFilename(kSavedModelVariablesFilename));
-  if (!Env::Default()->FileExists(variables_index_path).ok()) {
+  TF_ASSIGN_OR_RETURN(
+      bool variables_index_exists,
+      internal::FileExists(Env::Default(), variables_index_path));
+  if (!variables_index_exists) {
     LOG(INFO) << "The specified SavedModel has no variables; no checkpoints "
                  "were restored. File does not exist: "
               << variables_index_path;
-    return Status::OK();
+    return OkStatus();
   }
   const string variables_path =
       io::JoinPath(variables_directory, kSavedModelVariablesFilename);
@@ -266,7 +288,7 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
       session_options, bundle->meta_graph_def, &bundle->session));
   TF_RETURN_IF_ERROR(RestoreSession(run_options, bundle->meta_graph_def,
                                     export_dir, &bundle->session));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoadSavedModel(const SessionOptions& session_options,
@@ -432,7 +454,7 @@ Status RestoreSession(const RunOptions& run_options,
   // Record wall time spent in init op.
   load_latency_by_stage->GetCell(export_dir, "init_graph")
       ->Add(GetLatencyMicroseconds(graph_init_start_microseconds));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoadSavedModel(const SessionOptions& session_options,
@@ -457,7 +479,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
   *bundle = SavedModelBundleLite(
       absl::make_unique<LiteSessionWrapper>(std::move(legacy_bundle.session)),
       std::move(*legacy_bundle.meta_graph_def.mutable_signature_def()));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool MaybeSavedModelDirectory(const string& export_dir) {

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -149,7 +150,8 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       /*device_mgr_owned*/ true, r,
       /*cluster_flr=*/nullptr,
       /*collective_executor_mgr=*/nullptr,
-      /*run_eager_op_as_function=*/opts->run_eager_op_as_function);
+      /*run_eager_op_as_function=*/opts->run_eager_op_as_function,
+      /*jit_compile_rewrite=*/opts->jit_compile_rewrite);
 #if !defined(IS_MOBILE_PLATFORM)
   eager_context->SetDistributedManager(
       std::make_unique<tensorflow::EagerContextDistributedManager>(
@@ -526,7 +528,7 @@ class CAPICustomDeviceTensorHandle
     }
     summary = std::string(reinterpret_cast<const char*>(summary_buffer->data),
                           summary_buffer->length);
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -1043,7 +1045,9 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
       // String
       if (const int s_size = default_value.list().s_size()) {
         absl::InlinedVector<const void*, 4> values_vector;
+        values_vector.reserve(s_size);
         absl::InlinedVector<size_t, 4> lengths_vector;
+        lengths_vector.reserve(s_size);
         for (int i = 0; i < s_size; ++i) {
           const string& v = default_value.list().s(i);
           values_vector.push_back(v.data());
@@ -1056,6 +1060,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
       // Int
       if (const int i_size = default_value.list().i_size()) {
         absl::InlinedVector<int64_t, 4> i_vector;
+        i_vector.reserve(i_size);
         for (int i = 0; i < i_size; ++i) {
           i_vector.push_back(default_value.list().i(i));
         }
@@ -1064,6 +1069,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
       // Float
       if (const int f_size = default_value.list().f_size()) {
         absl::InlinedVector<float, 4> f_vector;
+        f_vector.reserve(f_size);
         for (int i = 0; i < f_size; ++i) {
           f_vector.push_back(default_value.list().f(i));
         }
@@ -1072,6 +1078,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
       // Bool
       if (const int b_size = default_value.list().b_size()) {
         absl::InlinedVector<unsigned char, 4> b_vector;
+        b_vector.reserve(b_size);
         for (int i = 0; i < b_size; i++) {
           b_vector.push_back(default_value.list().b(i));
         }
@@ -1080,6 +1087,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
       // Type
       if (const int type_size = default_value.list().type_size()) {
         absl::InlinedVector<unsigned int, 4> type_vector;
+        type_vector.reserve(type_size);
         for (int i = 0; i < type_size; ++i) {
           type_vector.push_back(default_value.list().type(i));
         }

@@ -74,9 +74,9 @@ struct SparseReorderFunctor<GPUDevice, T> {
     const int64 num_elems = input_ind.dims() > 0 ? input_ind.dim_size(0) : 1;
     const int64 num_dims = input_ind.dims() > 1 ? input_ind.dim_size(1) : 1;
 
-    auto indices = input_ind.template flat<int64>().data();
+    auto indices = input_ind.template flat<int64_t>().data();
     auto values = input_val.template flat<T>().data();
-    auto dims = input_shape_in.template flat<int64>().data();
+    auto dims = input_shape_in.template flat<int64_t>().data();
 
     if (num_elems == 0) {
       c->set_output(0, input_ind);
@@ -87,7 +87,7 @@ struct SparseReorderFunctor<GPUDevice, T> {
     Tensor flat_indices_tensor;
     OP_REQUIRES_OK(c, c->allocate_temp(DT_INT64, TensorShape({num_elems}),
                                        &flat_indices_tensor));
-    auto flat_indices = flat_indices_tensor.template flat<int64>().data();
+    auto flat_indices = flat_indices_tensor.template flat<int64_t>().data();
 
     GpuLaunchConfig config = GetGpuLaunchConfig(num_elems, d);
     OP_REQUIRES_OK(
@@ -98,7 +98,7 @@ struct SparseReorderFunctor<GPUDevice, T> {
     Tensor permutation_tensor;
     OP_REQUIRES_OK(
         c, c->allocate_temp(DT_INT64, {num_elems}, &permutation_tensor));
-    auto permutation_data = permutation_tensor.template flat<int64>().data();
+    auto permutation_data = permutation_tensor.template flat<int64_t>().data();
 
     OP_REQUIRES_OK(
         c, GpuRadixSort(c, num_elems, /*keys_in=*/flat_indices,
@@ -117,7 +117,7 @@ struct SparseReorderFunctor<GPUDevice, T> {
     OP_REQUIRES_OK(
         c, c->allocate_output(1, input_val.shape(), &reordered_val_tensor));
     auto reordered_ind_data =
-        reordered_ind_tensor->template flat<int64>().data();
+        reordered_ind_tensor->template flat<int64_t>().data();
     auto reordered_val_data = reordered_val_tensor->template flat<T>().data();
 
     OP_REQUIRES_OK(

@@ -74,8 +74,8 @@ XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
   std::unique_ptr<tensorflow::Thread> thread(
       tensorflow::Env::Default()->StartThread(
           tensorflow::ThreadOptions(), "execute_thread", [&] {
-            comp_result = local_client_->ExecuteAndTransfer(computation, {})
-                              .ConsumeValueOrDie();
+            comp_result =
+                local_client_->ExecuteAndTransfer(computation, {}).value();
           }));
 
   VLOG(1) << "Transferring trip count to computation";
@@ -88,7 +88,7 @@ XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
     VLOG(1) << "Reading from condition outfeed";
     TF_ASSERT_OK_AND_ASSIGN(Literal r,
                             local_client_->TransferFromOutfeed(&int_shape));
-    EXPECT_EQ(r.Get<int32>({}), 1);
+    EXPECT_EQ(r.Get<int32_t>({}), 1);
   }
 
   VLOG(1) << "Writing data to infeed";
@@ -101,21 +101,21 @@ XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
     VLOG(1) << "Reading from body outfeed";
     TF_ASSERT_OK_AND_ASSIGN(Literal r,
                             local_client_->TransferFromOutfeed(&xfeed_shape));
-    EXPECT_EQ(r.Get<int32>({0}), 11);
-    EXPECT_EQ(r.Get<int32>({1}), 21);
+    EXPECT_EQ(r.Get<int32_t>({0}), 11);
+    EXPECT_EQ(r.Get<int32_t>({1}), 21);
   }
 
   {
     VLOG(1) << "Reading from condition outfeed";
     TF_ASSERT_OK_AND_ASSIGN(Literal r,
                             local_client_->TransferFromOutfeed(&int_shape));
-    EXPECT_EQ(r.Get<int32>({}), 0);
+    EXPECT_EQ(r.Get<int32_t>({}), 0);
   }
 
   // Joins the thread
   thread.reset();
 
-  EXPECT_EQ(comp_result.Get<int32>({}), 0);
+  EXPECT_EQ(comp_result.Get<int32_t>({}), 0);
 }
 
 XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
@@ -149,8 +149,8 @@ XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
   std::unique_ptr<tensorflow::Thread> thread(
       tensorflow::Env::Default()->StartThread(
           tensorflow::ThreadOptions(), "execute_thread", [&] {
-            comp_result = local_client_->ExecuteAndTransfer(computation, {})
-                              .ConsumeValueOrDie();
+            comp_result =
+                local_client_->ExecuteAndTransfer(computation, {}).value();
           }));
 
   TF_ASSERT_OK(

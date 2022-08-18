@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -95,21 +96,21 @@ TEST(CombineHashes, TestHashOutputsDifferent) {
 }
 
 TEST(GetOpNameByRegistration, ValidBuiltinCode) {
-  TfLiteRegistration registration;
+  TfLiteRegistration registration{};
   registration.builtin_code = tflite::BuiltinOperator_ADD;
   const auto op_name = GetOpNameByRegistration(registration);
   EXPECT_EQ("ADD", op_name);
 }
 
 TEST(GetOpNameByRegistration, InvalidBuiltinCode) {
-  TfLiteRegistration registration;
+  TfLiteRegistration registration{};
   registration.builtin_code = -1;
   const auto op_name = GetOpNameByRegistration(registration);
   EXPECT_EQ("", op_name);
 }
 
 TEST(GetOpNameByRegistration, CustomName) {
-  TfLiteRegistration registration;
+  TfLiteRegistration registration{};
   registration.builtin_code = tflite::BuiltinOperator_CUSTOM;
   registration.custom_name = "TestOp";
   auto op_name = GetOpNameByRegistration(registration);
@@ -128,6 +129,13 @@ TEST(ValidationSubgraph, NameIsDetected) {
   EXPECT_FALSE(IsValidationSubgraph("VALIDATIONfoo"));
   EXPECT_TRUE(IsValidationSubgraph("VALIDATION:"));
   EXPECT_TRUE(IsValidationSubgraph("VALIDATION:main"));
+}
+
+TEST(MultiplyAndCheckOverflow, Validate) {
+  size_t res = 0;
+  EXPECT_TRUE(MultiplyAndCheckOverflow(1, 2, &res) == kTfLiteOk);
+  EXPECT_FALSE(MultiplyAndCheckOverflow(static_cast<size_t>(123456789023),
+                                        1223423425, &res) == kTfLiteOk);
 }
 
 }  // namespace

@@ -14,9 +14,7 @@
 # ==============================================================================
 """Tests for XLA implementation of tf.linalg.solve."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import os
 
 from absl.testing import parameterized
 import numpy as np
@@ -75,4 +73,6 @@ class MatrixSolveOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
+  os.environ["XLA_FLAGS"] = ("--xla_gpu_enable_cublaslt=true " +
+                             os.environ.get("XLA_FLAGS", ""))
   googletest.main()

@@ -15,10 +15,10 @@ limitations under the License.
 
 // Basic server binary that exposes a xla::Service through a GRPC interface
 // on a configurable port.
+#include "absl/strings/str_format.h"
 #include "grpcpp/security/server_credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
-#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/rpc/grpc_service.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -31,7 +31,7 @@ namespace {
 int RealMain(int argc, char** argv) {
   int32_t port = 1685;
   bool any_address = false;
-  string platform_str;
+  std::string platform_str;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("platform", &platform_str,
                        "The XLA platform this service should be bound to"),
@@ -40,7 +40,7 @@ int RealMain(int argc, char** argv) {
           "any", &any_address,
           "Whether to listen to any host address or simply localhost"),
   };
-  string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parsed_values_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parsed_values_ok) {
     LOG(ERROR) << usage;
@@ -53,10 +53,10 @@ int RealMain(int argc, char** argv) {
     platform = PlatformUtil::GetPlatform(platform_str).ValueOrDie();
   }
   std::unique_ptr<xla::GRPCService> service =
-      xla::GRPCService::NewService(platform).ConsumeValueOrDie();
+      xla::GRPCService::NewService(platform).value();
 
   ::grpc::ServerBuilder builder;
-  string server_address(
+  std::string server_address(
       absl::StrFormat("%s:%d", any_address ? "[::]" : "localhost", port));
 
   builder.SetMaxReceiveMessageSize(INT_MAX);

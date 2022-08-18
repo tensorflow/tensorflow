@@ -81,7 +81,6 @@ tf_python_pybind_extension(
     name = "_pywrap_traceme",
     srcs = ["traceme_wrapper.cc"],
     copts = tf_profiler_copts(),
-    module_name = "_pywrap_traceme",
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
         "//tensorflow/python/profiler:__subpackages__",
@@ -112,18 +111,18 @@ tf_python_pybind_extension(
     name = "_pywrap_profiler",
     srcs = ["profiler_wrapper.cc"],
     copts = tf_profiler_copts(),
-    module_name = "_pywrap_profiler",
     visibility = [
+        "//tensorflow/core/profiler:internal",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/profiler:__pkg__",
     ],
     deps = [
         ":profiler_pywrap_impl",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/profiler/convert:tool_options",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
         "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",
         "//tensorflow/python:pybind11_status",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
     ],

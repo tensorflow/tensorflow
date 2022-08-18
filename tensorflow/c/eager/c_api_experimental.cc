@@ -567,11 +567,11 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TF_Status* status) {
   tensorflow::unwrap(op)->SetCancellationManager(
       tensorflow::unwrap(cancellation_manager));
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
-TFE_Executor* TFE_NewExecutor(bool is_async) {
-  return new TFE_Executor(is_async);
+TFE_Executor* TFE_NewExecutor(bool is_async, bool enable_streaming_enqueue) {
+  return new TFE_Executor(is_async, enable_streaming_enqueue);
 }
 
 void TFE_DeleteExecutor(TFE_Executor* executor) { delete executor; }
@@ -626,7 +626,7 @@ void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
 TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
@@ -704,6 +704,16 @@ void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx, unsigned char enable,
   tensorflow::unwrap(ctx)->SetLogDevicePlacement(enable);
 }
 
+void TFE_ContextSetRunEagerOpAsFunction(TFE_Context* ctx, unsigned char enable,
+                                        TF_Status* status) {
+  tensorflow::unwrap(ctx)->SetRunEagerOpAsFunction(enable);
+}
+
+void TFE_ContextSetJitCompileRewrite(TFE_Context* ctx, unsigned char enable,
+                                     TF_Status* status) {
+  tensorflow::unwrap(ctx)->SetJitCompileRewrite(enable);
+}
+
 const char* TFE_TensorHandleDeviceType(TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr) {
     status->status = tensorflow::errors::InvalidArgument("Invalid handle");
@@ -718,6 +728,11 @@ int TFE_TensorHandleDeviceID(TFE_TensorHandle* h, TF_Status* status) {
     return -1;
   }
   return tensorflow::unwrap(h)->DeviceId(&status->status);
+}
+
+TF_CAPI_EXPORT extern void TFE_TensorHandleGetStatus(TFE_TensorHandle* h,
+                                                     TF_Status* status) {
+  status->status = tensorflow::unwrap(h)->TensorHandleStatus();
 }
 
 void TFE_GetExecutedOpNames(TFE_Context* ctx, TF_Buffer* buf,
@@ -737,7 +752,7 @@ void TFE_GetExecutedOpNames(TFE_Context* ctx, TF_Buffer* buf,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
 void TFE_SetLogicalCpuDevices(TFE_Context* ctx, int num_cpus,

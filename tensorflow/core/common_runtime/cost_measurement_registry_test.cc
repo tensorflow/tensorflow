@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -27,6 +28,8 @@ constexpr char kTestCostName[] = "test";
 
 class TestCostMeasurement : public CostMeasurement {
  public:
+  using CostMeasurement::CostMeasurement;
+
   absl::Duration GetTotalCost() override { return absl::ZeroDuration(); }
   absl::string_view GetCostType() const override { return kTestCostName; }
 };
@@ -34,18 +37,19 @@ class TestCostMeasurement : public CostMeasurement {
 REGISTER_COST_MEASUREMENT(kTestCostName, TestCostMeasurement);
 
 TEST(CostMeasurementRegistryTest, Basic) {
+  const CostMeasurement::Context context;
   std::unique_ptr<const CostMeasurement> test_cost_measurement =
-      CostMeasurementRegistry::CreateByNameOrNull("unregistered");
+      CostMeasurementRegistry::CreateByNameOrNull("unregistered", context);
   EXPECT_EQ(test_cost_measurement, nullptr);
 
   test_cost_measurement =
-      CostMeasurementRegistry::CreateByNameOrNull(kTestCostName);
+      CostMeasurementRegistry::CreateByNameOrNull(kTestCostName, context);
   EXPECT_NE(test_cost_measurement, nullptr);
 }
 
 TEST(CostMeasurementRegistryDeathTest, CrashWhenRegisterTwice) {
-  const auto creator = []() {
-    return absl::make_unique<TestCostMeasurement>();
+  const auto creator = [](const CostMeasurement::Context& context) {
+    return std::make_unique<TestCostMeasurement>(context);
   };
   EXPECT_DEATH(
       CostMeasurementRegistry::RegisterCostMeasurement(kTestCostName, creator),

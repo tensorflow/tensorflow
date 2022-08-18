@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/analysis/tensor_array_side_effect_analysis.h"
 
@@ -22,11 +23,22 @@ namespace {
 class TestTensorArraySideEffectAnalysis
     : public mlir::PassWrapper<TestTensorArraySideEffectAnalysis,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      TestTensorArraySideEffectAnalysis)
+
+ private:
+  llvm::StringRef getArgument() const final {
+    return "tfrt-test-tensor-array-effect";
+  }
+  llvm::StringRef getDescription() const final {
+    return "Test TensorArraySideEffectAnalysis";
+  }
   void runOnOperation() override {
     auto module = getOperation();
     TensorArraySideEffectAnalysis tensor_array_side_effect_analysis(module);
 
-    for (auto func_op : module.getOps<mlir::FuncOp>()) {
+    for (auto func_op : module.getOps<mlir::func::FuncOp>()) {
       func_op.emitRemark() << "HasAtMostTensorArrayEffect: "
                            << tensor_array_side_effect_analysis
                                   .HasAtMostTensorArrayEffect(func_op);
@@ -34,8 +46,7 @@ class TestTensorArraySideEffectAnalysis
   }
 };
 
-mlir::PassRegistration<TestTensorArraySideEffectAnalysis> pass(
-    "tfrt-test-tensor-array-effect", "Test TensorArraySideEffectAnalysis");
+mlir::PassRegistration<TestTensorArraySideEffectAnalysis> pass;
 
 }  // namespace
 }  // namespace tfrt_compiler

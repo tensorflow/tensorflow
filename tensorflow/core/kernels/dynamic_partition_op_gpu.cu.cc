@@ -315,7 +315,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
       done();
     };
 
-    c->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+    c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
         stream, wrapped_callback);
   }
 
@@ -343,9 +343,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
         c,
-        c->allocate_temp(DT_INT8,
-                         TensorShape({static_cast<int64>(temp_storage_bytes)}),
-                         &cub_temp_storage),
+        c->allocate_temp(
+            DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
+            &cub_temp_storage),
         done);
     // Radix-sort the partition information.
     gpuprim::DeviceRadixSort::SortPairs(
@@ -419,9 +419,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
         c,
-        c->allocate_temp(DT_INT8,
-                         TensorShape({static_cast<int64>(temp_storage_bytes)}),
-                         &cub_temp_storage),
+        c->allocate_temp(
+            DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
+            &cub_temp_storage),
         done);
     // Run reduce-by-key. The effect is that we count how many times
     // each index appears in partitions. The distinct indices are stored
@@ -467,6 +467,8 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
       Name("DynamicPartition").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       DynamicPartitionOpGPU<T>)
 
+TF_CALL_int32(REGISTER_DYNAMIC_PARTITION_GPU);
+TF_CALL_int64(REGISTER_DYNAMIC_PARTITION_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_DYNAMIC_PARTITION_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_DYNAMIC_PARTITION_GPU);
 #undef REGISTER_DYNAMIC_PARTITION_GPU

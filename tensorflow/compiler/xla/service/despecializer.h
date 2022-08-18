@@ -34,10 +34,34 @@ class Despecializer : public HloModulePass {
  public:
   Despecializer();
   absl::string_view name() const override { return "despecializer"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   HloPassPipeline pipeline_;
+};
+
+// Pass which strips control dependencies from all instructions in the module.
+class ControlDepRemover : public HloModulePass {
+ public:
+  ControlDepRemover() = default;
+  absl::string_view name() const override { return "control-dep-remover"; }
+
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(HloModule* module,
+                     const absl::flat_hash_set<absl::string_view>&
+                         execution_threads) override {
+    bool changed = false;
+    for (HloComputation* computation : module->computations()) {
+      for (HloInstruction* instruction : computation->instructions()) {
+        changed |= !instruction->control_predecessors().empty();
+        TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+      }
+    }
+    return changed;
+  }
 };
 
 }  // namespace xla

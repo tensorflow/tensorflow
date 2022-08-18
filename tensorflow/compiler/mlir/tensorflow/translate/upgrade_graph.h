@@ -31,15 +31,10 @@ class MetaGraphDef;
 Status GenerateResourceSharedNameIfEmpty(
     GraphDef& gdef, const OpRegistryInterface* default_registry);
 
-// Run grapler passes over `meta_graph_def`.graph_def() and returns the
-// optimized graphdef.
-stream_executor::port::StatusOr<GraphDef> RunGrappler(
-    const MetaGraphDef& meta_graph_def);
-
 // Upgrade the `graph` and `flib_def` by applying control flow
 // functionalization.
 Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
-                          bool restrict_functionalization_to_tpu_nodes);
+                          bool restrict_functionalization_to_compiled_nodes);
 
 }  // namespace tensorflow
 

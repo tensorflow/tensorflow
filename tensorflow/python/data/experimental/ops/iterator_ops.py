@@ -14,15 +14,11 @@
 # ==============================================================================
 """Iterator ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.training import basic_session_run_hooks
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import deprecation
@@ -39,9 +35,9 @@ def _convert_external_state_policy_to_enum(external_state_policy):
   if external_state_policy == "fail":
     return options_lib.ExternalStatePolicy.FAIL
   raise ValueError(
-      "Failed to convert {} to an instance of ExternalStatePolicy."
-      "Supported values include: 'warn', 'ignore' and 'fail'".format(
-          external_state_policy))
+      f"Invalid `ExternalStatePolicy.` Supported values include 'warn', "
+      f"'ignore', and 'fail.' Received {external_state_policy}."
+  )
 
 
 @tf_export("data.experimental.make_saveable_from_iterator")

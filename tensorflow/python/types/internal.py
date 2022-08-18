@@ -17,10 +17,6 @@
 These types should not be exported. External code should not rely on these.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 # TODO(mdan): Is this strictly needed? Only ops.py really uses it.
 class NativeObject(object):

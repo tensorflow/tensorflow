@@ -20,16 +20,37 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_OP_DEF_BUILDER_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
+// TODO(b/62899350): Refactor without proto dependencies.
 typedef std::function<Status(OpDef* c)> OpTypeConstructor;
+
+typedef std::vector<std::reference_wrapper<const FullTypeDef>> TypeRefVector;
+typedef std::map<std::string, std::reference_wrapper<const FullTypeDef>>
+    TypeRefMap;
+
+// A type inference function, called for each node during type inference
+// (possibly multiple times).
+// The first argument (input_types) will hold the type of each of the node's
+// inputs. The second argument (type_vars) will hold the return type of
+// each function referred from any type variable (e.g. `FuncVar`) present
+// in the node's corresponding op definition.
+//
+// TODO(mdan): Consider a vector-in, vector-out contract.
+// TODO(mdan): Rename to just TypeInferenceFn (since it's not always "forward").
+typedef std::function<StatusOr<FullTypeDef>(const TypeRefVector&,
+                                            const TypeRefMap&)>
+    ForwardTypeInferenceFn;
 
 class FunctionDefHelper;
 
@@ -75,6 +96,42 @@ struct OpRegistrationData {
   //  * in the future, the type constructor will create a FullType containing
   //    `Callable[(x: T), Bar[T]]`, and the attribute `T` will be deprecated.
   OpTypeConstructor type_ctor;
+
+  // Forward type inference function. This callable infers the return type of an
+  // op based on its input types.
+  //
+  // Note that the type constructor and forward inference functions need not be
+  // mutually exclusive: if there is some static information that can be set
+  // based on attributes, then that should be set in the constructor. If more
+  // information can be extracted from inputs, that should be done in the
+  // forward inference function.
+  //
+  // This is similar to the shape function, but is more general, and applied
+  // directly to NodeDefs, rather than working on the ShapeAndType structures.
+  // Note that the op input/output declarations may specify some implicit type
+  // constraints through attribute references (i.e. two inputs pointing to the
+  // same type attribute). Those constraints may duplicate what this function
+  // specifies in its body. That's intended, for a gradual transition to a more
+  // formal type system.
+  //
+  // These type inference functions are intermediate solutions as well: once the
+  // op registration has a complete, formal type definition, along with
+  // a solver-based type inference, it will replace these functions.
+  //
+  // TODO(mdan): Merge with shape inference.
+  // TODO(mdan): Replace with a union-based type inference algorithm.
+  ForwardTypeInferenceFn fwd_type_fn;
+
+  // Reverse type inference function. This callable infers some input types
+  // based on the return type.
+  //
+  // TODO(mdan): Replace with a union-based type inference algorithm.
+  ForwardTypeInferenceFn rev_type_fn;
+
+  // The input number affected by reverse type inference. Only one input may be
+  // updated in this manner.
+  // TODO(mdan): Encode in a manner more consistent with the forward version.
+  int rev_type_input;
 
   bool is_function_op = false;
 };
@@ -160,16 +217,19 @@ class OpDefBuilder {
   // may start the description with an "=" (like name:= <description>)
   // to suppress the automatically-generated type documentation in
   // generated output.
-#ifndef TF_LEAN_BINARY
   OpDefBuilder& Doc(std::string text);
-#else
-  OpDefBuilder& Doc(string text) { return *this; }
-#endif
 
-  // Sets the function to be used as type constructor. Type constructors are
-  // called just before a graph node is finalized, which also happens before
-  // shape inference.
+  // Sets the function to be used as type constructor.
+  // See OpRegistrationData::type_ctor.
   OpDefBuilder& SetTypeConstructor(OpTypeConstructor c);
+
+  // Sets the function to be used for forward type inference.
+  // See OpRegistrationData::fwd_type_fn.
+  OpDefBuilder& SetForwardTypeFn(ForwardTypeInferenceFn f);
+
+  // Sets the function to be used for reverse type inference.
+  // See OpRegistrationData::rew_type_fn.
+  OpDefBuilder& SetReverseTypeFn(int input_number, ForwardTypeInferenceFn f);
 
   // Sets the shape function to be used for shape inference.
   //

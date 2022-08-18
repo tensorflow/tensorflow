@@ -61,7 +61,8 @@ Status InitializeFusedComputation(
       *fused_computation == FusedComputationType::kBiasAddWithRelu ||
       *fused_computation == FusedComputationType::kBiasAddWithRelu6 ||
       *fused_computation == FusedComputationType::kBiasAddWithElu ||
-      *fused_computation == FusedComputationType::kBiasAddWithLeakyRelu) {
+      *fused_computation == FusedComputationType::kBiasAddWithLeakyRelu ||
+      *fused_computation == FusedComputationType::kBiasAddWithGeluApproximate) {
     if (num_args != 1) {
       return errors::InvalidArgument(
           "Fused ", kernel_name,
@@ -94,7 +95,7 @@ Status InitializeFusedComputation(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

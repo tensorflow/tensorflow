@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -40,7 +40,7 @@ namespace TFL {
 namespace tac {
 namespace {
 
-// This pass is used to fold tfl.const ops to each subgraph (FuncOp):
+// This pass is used to fold tfl.const ops to each subgraph (func::FuncOp):
 // See the example below:
 //
 // In main:
@@ -60,6 +60,14 @@ class FoldConstantsToSubgraphPass
     : public mlir::PassWrapper<FoldConstantsToSubgraphPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FoldConstantsToSubgraphPass)
+
+  llvm::StringRef getArgument() const final {
+    return "tfl-fold-constants-to-subgraph";
+  }
+  llvm::StringRef getDescription() const final {
+    return "Fold constants into each subgraph.";
+  }
   FoldConstantsToSubgraphPass() = default;
   FoldConstantsToSubgraphPass(const FoldConstantsToSubgraphPass& other) {
     this->fold_all_constants_flag_ = other.fold_all_constants_flag_;
@@ -78,7 +86,7 @@ class FoldConstantsToSubgraphPass
 };
 
 void CopyConstantIntoFunc(int argument_index, Operation* const_op,
-                          FuncOp func) {
+                          func::FuncOp func) {
   assert((llvm::isa<TFL::ConstOp, TFL::QConstOp>(const_op)) &&
          "Expect QConst or Const op.");
   OpBuilder builder(func.getBody());
@@ -114,46 +122,41 @@ bool IsConstOrQConstInt(Operation* op) {
 void FoldConstantsToSubgraphPass::runOnOperation() {
   auto module = getOperation();
 
-  // Start from the main func.
-  FuncOp main_fn = module.lookupSymbol<FuncOp>("main");
-  if (!main_fn) {
-    module.emitError("cannot find the main function");
-    signalPassFailure();
-  }
+  for (auto fn : module.getOps<func::FuncOp>()) {
+    fn.walk([&](Operation* op) {
+      if (!llvm::isa<TFL::ConstOp, TFL::QConstOp>(op)) return;
 
-  main_fn.walk([&](Operation* op) {
-    if (!llvm::isa<TFL::ConstOp, TFL::QConstOp>(op)) return;
-
-    // We only fold int32/int64 for Const and i32 for QConst if not specify all
-    // constants flag. (Since they're more like "configs" or i32 biases.) We
-    // will fold every const ops (and q_const ops) if we speicfy the
-    // fold_all_constants_flag.
-    if (!fold_all_constants_flag_) {
-      if (!IsConstOrQConstInt(op)) return;
-    }
-
-    for (auto consumer : op->getResult(0).getUsers()) {
-      auto consumer_call = llvm::dyn_cast_or_null<CallOp>(consumer);
-
-      if (!consumer_call) continue;
-
-      auto function_name = consumer_call.getCallee();
-
-      // Locate the argument position of the use.
-      int argument_index = -1;
-      for (int i = 0; i < consumer_call.getNumOperands(); ++i) {
-        if (consumer_call.getOperand(i) == op->getResult(0)) {
-          argument_index = i;
-          break;
-        }
+      // We only fold int32/int64 for Const and i32 for QConst if not specify
+      // all constants flag. (Since they're more like "configs" or i32 biases.)
+      // We will fold every const ops (and q_const ops) if we speicfy the
+      // fold_all_constants_flag.
+      if (!fold_all_constants_flag_) {
+        if (!IsConstOrQConstInt(op)) return;
       }
 
-      // Copy the const into the consumer func and replace their usages.
-      FuncOp func = module.lookupSymbol<FuncOp>(function_name);
+      for (auto consumer : op->getResult(0).getUsers()) {
+        auto consumer_call = llvm::dyn_cast_or_null<func::CallOp>(consumer);
 
-      CopyConstantIntoFunc(argument_index, op, func);
-    }
-  });
+        if (!consumer_call) continue;
+
+        auto function_name = consumer_call.getCallee();
+
+        // Locate the argument position of the use.
+        int argument_index = -1;
+        for (int i = 0; i < consumer_call.getNumOperands(); ++i) {
+          if (consumer_call.getOperand(i) == op->getResult(0)) {
+            argument_index = i;
+            break;
+          }
+        }
+
+        // Copy the const into the consumer func and replace their usages.
+        func::FuncOp func = module.lookupSymbol<func::FuncOp>(function_name);
+
+        CopyConstantIntoFunc(argument_index, op, func);
+      }
+    });
+  }
 }
 
 }  // namespace
@@ -163,8 +166,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateFoldConstantsToSubgraphPass(
   return std::make_unique<FoldConstantsToSubgraphPass>(fold_all_constants);
 }
 
-static PassRegistration<FoldConstantsToSubgraphPass> pass(
-    "tfl-fold-constants-to-subgraph", "Fold constants into each subgraph.");
+static PassRegistration<FoldConstantsToSubgraphPass> pass;
 
 }  // namespace tac
 }  // namespace TFL

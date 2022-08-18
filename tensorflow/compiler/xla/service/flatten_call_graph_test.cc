@@ -61,7 +61,7 @@ class FlattenCallGraphTest : public HloTestBase {
   // given computation with value 'callsites' number of times.
   std::unique_ptr<HloComputation> MakeCallingComputation(
       HloComputation* callee_computation, int64_t callsites,
-      const string& suffix = ".CallingComputation") {
+      const std::string& suffix = ".CallingComputation") {
     HloComputation::Builder builder(TestName() + suffix);
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
@@ -252,6 +252,56 @@ TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
 
   const CallGraphNode& sub_node = call_graph->GetNode(sub_computation);
   EXPECT_EQ(1, sub_node.caller_callsites().size());
+}
+
+TEST_F(FlattenCallGraphTest, AsyncCall) {
+  std::string hlo_string = R"(
+HloModule AsyncCall
+
+%called_computation (param_0: f32[4096], param_1: f32[4096]) -> f32[4096] {
+  %param_0 = f32[4096]{0} parameter(0)
+  %param_1 = f32[4096]{0} parameter(1)
+  ROOT %result.1 = f32[4096]{0} add(f32[4096]{0} %param_0, f32[4096]{0} %param_1)
+}
+
+%async_wrapped (async_param: f32[4096], async_param.1: f32[4096]) -> f32[4096] {
+  %async_param = f32[4096]{0} parameter(0)
+  %async_param.1 = f32[4096]{0} parameter(1)
+  ROOT %call = f32[4096]{0} call(f32[4096]{0} %async_param, f32[4096]{0} %async_param.1), to_apply=%called_computation
+}
+
+ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+  %a = f32[4096]{0} parameter(0)
+  %b = f32[4096]{0} parameter(1)
+  %async-start.0 = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) async-start(f32[4096]{0} %a, f32[4096]{0} %b), async_group_id=0, calls=%async_wrapped
+  %async-done.0 = f32[4096]{0} async-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start.0), async_group_id=0, calls=%async_wrapped
+  %async-start.1 = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) async-start(f32[4096]{0} %async-done.0, f32[4096]{0} %b), async_group_id=1, calls=%async_wrapped
+  %async-done.1 = f32[4096]{0} async-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start.1), async_group_id=1, calls=%async_wrapped
+  ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %a, f32[4096]{0} %async-done.1)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+
+  // We expect the entry computation, two async_wrapped computations and two
+  // called_computation computations.
+  EXPECT_EQ(5, module->computation_count());
+
+  EXPECT_EQ(FindInstruction(module.get(), "async-start.0")
+                ->async_wrapped_computation(),
+            FindInstruction(module.get(), "async-done.0")
+                ->async_wrapped_computation());
+  EXPECT_EQ(FindInstruction(module.get(), "async-start.1")
+                ->async_wrapped_computation(),
+            FindInstruction(module.get(), "async-done.1")
+                ->async_wrapped_computation());
+  EXPECT_NE(FindInstruction(module.get(), "async-start.0")
+                ->async_wrapped_computation(),
+            FindInstruction(module.get(), "async-start.1")
+                ->async_wrapped_computation());
 }
 
 }  // namespace

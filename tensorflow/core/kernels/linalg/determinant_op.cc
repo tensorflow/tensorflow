@@ -35,7 +35,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/fill_functor.h"
-#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -165,7 +165,7 @@ class DeterminantOpGpu : public AsyncOpKernel {
     }
 
     // TODO(rmlarsen): Convert to absl::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    std::unique_ptr<GpuSolver> solver(new GpuSolver(context));
 
     // Reuse the input buffer or make a copy for the factorization step,
     // depending on whether this ops owns it exclusively.
@@ -259,8 +259,8 @@ class DeterminantOpGpu : public AsyncOpKernel {
       }
       done();
     };
-    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(info_checker));
+    GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                   std::move(info_checker));
   }
 };
 
@@ -310,7 +310,7 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
     }
 
     // TODO(rmlarsen): Convert to absl::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    std::unique_ptr<GpuSolver> solver(new GpuSolver(context));
 
     // Reuse the input buffer or make a copy for the factorization step,
     // depending on whether this ops owns it exclusively.
@@ -406,8 +406,8 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
       }
       done();
     };
-    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(info_checker));
+    GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                   std::move(info_checker));
   }
 };
 

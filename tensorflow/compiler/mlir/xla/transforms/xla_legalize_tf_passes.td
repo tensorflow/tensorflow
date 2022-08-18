@@ -17,7 +17,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LegalizeTF : FunctionPass<"xla-legalize-tf"> {
+def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
   let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 
   let description = [{
@@ -48,15 +48,55 @@ def LegalizeTF : FunctionPass<"xla-legalize-tf"> {
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFPass()";
-  let dependentDialects = ["chlo::HloClientDialect", "memref::MemRefDialect",
-                           "mhlo::MhloDialect", "shape::ShapeDialect",
-                           "StandardOpsDialect"];
+  let dependentDialects = ["arith::ArithmeticDialect, chlo::ChloDialect",
+                           "memref::MemRefDialect", "mhlo::MhloDialect",
+                           "shape::ShapeDialect", "func::FuncDialect"];
+}
+
+def LegalizeTFModulePass : Pass<"xla-fallback-legalize-tf-module-pass", "ModuleOp"> {
+  let summary = "Legalize whitelisted Ops using TF2XLA fallback for ops that "
+      "must also be able to create new functions.";
+
+  let description = [{
+    Legalizes whitelisted Ops from TF dialect to HLO dialect using TF2XLA
+    fallback for ops that must be allowed to create new functions.
+  }];
+  let options = [
+    Option<"device_type_", "device-type", "std::string",
+        /*default=*/"\"INVALID_DEVICE_TYPE\"",
+        "The device type used by TF2XLA fallback. Required.">,
+  ];
+
+  let constructor = "mlir::mhlo::createLegalizeTFModulePass()";
+  let dependentDialects = ["arith::ArithmeticDialect, chlo::ChloDialect",
+                           "memref::MemRefDialect", "mhlo::MhloDialect",
+                           "shape::ShapeDialect", "func::FuncDialect"];
+}
+
+def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::FuncOp"> {
+  let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
+
+  let description = [{
+    Legalizes from TF dialect to HLO dialect. When allow_partial_conversion is
+    false, emits an error if there is any operation that can't be legalized.
+  }];
+  let options = [
+    Option<"allow_partial_conversion_", "allow-partial-conversion", "bool",
+        /*default=*/"false",
+        "Allow operations that can't be legalized.">
+  ];
+
+  let constructor = "mlir::mhlo::createLegalizeTFNoFallbackPass()";
+  let dependentDialects = ["arith::ArithmeticDialect", "chlo::ChloDialect",
+                           "memref::MemRefDialect", "mhlo::MhloDialect",
+                           "shape::ShapeDialect", "func::FuncDialect"];
 }
 
 def LegalizeTFControlFlow : Pass<"xla-legalize-tf-control-flow", "ModuleOp"> {
   let summary = "Legalize from TF dialect's to HLO dialect's control flow.";
 
   let constructor = "mlir::mhlo::createLegalizeTFControlFlowPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
 }
 
 def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
@@ -75,4 +115,11 @@ def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
   }];
 
   let constructor = "::mlir::mhlo::CreateLegalizeTfTypesPass()";
+}
+
+def LegalizeTFCollective : Pass<"xla-legalize-tf-collective", "ModuleOp"> {
+  let summary = "Legalize TF/XLA collective ops (TensorFlow dialect) to the HLO dialect";
+
+  let constructor = "mlir::mhlo::CreateLegalizeTFCollectivePass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
 }

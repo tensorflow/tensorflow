@@ -32,7 +32,7 @@ namespace {
 class CallOnceTest : public ControlFlowOpTest {
  protected:
   void SetUp() override {
-    interpreter_->AddSubgraphs(2);
+    AddSubgraphs(2);
     builder_->BuildCallOnceAndReadVariableSubgraph(
         &interpreter_->primary_subgraph());
     builder_->BuildAssignRandomValueToVariableSubgraph(

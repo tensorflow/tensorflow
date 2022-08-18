@@ -15,10 +15,6 @@
 """Gast compatibility library. Supports 0.2.2 and 0.3.2."""
 # TODO(mdan): Remove this file once it's safe to break compatibility.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 import gast

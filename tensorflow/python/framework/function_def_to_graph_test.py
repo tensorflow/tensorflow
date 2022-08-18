@@ -14,10 +14,7 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.function_def_to_graph."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -26,6 +23,7 @@ from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import op_def_library
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -98,6 +96,32 @@ class FunctionDefToGraphTest(test.TestCase):
     with self.assertRaises(ValueError):
       g = function_def_to_graph.function_def_to_graph(
           fdef, input_shapes=[tensor_shape.TensorShape([5, 7])])
+
+  def testResourceHandleInputShapes(self):
+    # Test that shape inference and validation with resource handles works as
+    # expected.
+
+    # Create a graph to generate the input and handle shape attributes in the
+    # FunctionDef.
+    with ops.Graph().as_default() as g:
+      v = variables.Variable(array_ops.ones((2, 3), dtype=dtypes.float32))
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec((None, 2, 2), dtypes.int32)])
+      def lookup(inp):
+        return {
+            # gather_nd expects a nonscalar shape for `v`, otherwise raises
+            # error when doing shape inference.
+            "shape inference": array_ops.gather_nd(v, inp),
+            # Triggers output shape validation. Expected shape must be [].
+            "handle": v.handle}
+
+      lookup.get_concrete_function().add_to_graph()
+      fdef = g.as_graph_def(add_shapes=True).library.function[0]
+
+    fg = function_def_to_graph.function_def_to_graph(fdef)
+    self.assertSequenceEqual(fg.inputs[0].shape.as_list(), [None, 2, 2])
+    self.assertSequenceEqual(fg.inputs[1].shape.as_list(), [])
 
 
 class FunctionDefToGraphDefTest(test.TestCase):

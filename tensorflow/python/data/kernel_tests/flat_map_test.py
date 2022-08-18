@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.flat_map()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 
 from absl.testing import parameterized
@@ -172,6 +168,15 @@ class FlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
       expected_output.append([i])
       expected_output.append([-i])
     self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+
+    def fn(x):
+      return dataset_ops.Dataset.from_tensors(x)
+
+    dataset = dataset_ops.Dataset.from_tensors(42).flat_map(fn, name="flat_map")
+    self.assertDatasetProduces(dataset, [42])
 
 
 class FlatMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,

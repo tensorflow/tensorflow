@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -66,7 +67,7 @@ class Calibrator {
       : node_ptr_opinfo_map_(node_ptr_opinfo_map),
         logging_op_resolver_(std::move(logging_op_resolver)),
         error_reporter_(error_reporter) {
-    logger_ = absl::make_unique<Logger>();
+    logger_ = std::make_unique<Logger>();
   }
 
   // Returns the wrapped kernel invoke function |TfLiteRegistration.invoke|.
@@ -85,6 +86,7 @@ class Calibrator {
 
   std::vector<const TfLiteNode*> GetNodesUnderCalibration() {
     std::vector<const TfLiteNode*> nodes;
+    nodes.reserve(node_ptr_opinfo_map_.size());
     for (const auto& entry : node_ptr_opinfo_map_) {
       nodes.push_back(entry.first);
     }
@@ -169,7 +171,7 @@ class GlobalCalibratorRegistry {
           "Failed to create calibrator, context already registered.");
       return kTfLiteError;
     }
-    auto calibrator = absl::make_unique<Calibrator>(
+    auto calibrator = std::make_unique<Calibrator>(
         node_to_opinfo, std::move(logging_op_resolver), reporter);
     calibrator_registry_[context] = std::move(calibrator);
     *calibrator_ptr = calibrator_registry_.at(context).get();
@@ -217,7 +219,7 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
   Calibrator* calibrator = GetCalibratorRegistry()->GetCalibrator(node);
 
   if (!calibrator) {
-    context->ReportError(context, "No calibrator found for context.");
+    TF_LITE_KERNEL_LOG(context, "No calibrator found for context.");
     return kTfLiteError;
   }
 
@@ -346,6 +348,8 @@ bool HasInputs(BuiltinOperator code) {
   switch (code) {
     case BuiltinOperator_CALL_ONCE:
     case BuiltinOperator_VAR_HANDLE:
+    // Custom ops, including Flex ops, might not have inputs.
+    case BuiltinOperator_CUSTOM:
       return false;
     default:
       return true;
@@ -356,6 +360,8 @@ bool HasOutputs(BuiltinOperator code) {
   switch (code) {
     case BuiltinOperator_ASSIGN_VARIABLE:
     case BuiltinOperator_CALL_ONCE:
+    // Custom ops, including Flex ops, might not have outputs.
+    case BuiltinOperator_CUSTOM:
       return false;
     default:
       return true;
@@ -418,17 +424,15 @@ TfLiteStatus BuildLoggingInterpreter(
       if (op_inputs) {
         op_info.inputs = std::vector<int>(op_inputs->begin(), op_inputs->end());
       } else if (HasInputs(op_info.builtin_op_code)) {
-        TF_LITE_REPORT_ERROR(error_reporter, "Op %s missing inputs",
-                             op_info.name.c_str());
-        return kTfLiteError;
+        TFLITE_LOG(TFLITE_LOG_WARNING, "Op %s missing inputs",
+                   op_info.name.c_str());
       }
       if (op_outputs) {
         op_info.outputs =
             std::vector<int>(op_outputs->begin(), op_outputs->end());
       } else if (HasOutputs(op_info.builtin_op_code)) {
-        TF_LITE_REPORT_ERROR(error_reporter, "Op %s missing outputs",
-                             op_info.name.c_str());
-        return kTfLiteError;
+        TFLITE_LOG(TFLITE_LOG_WARNING, "Op %s missing outputs",
+                   op_info.name.c_str());
       }
       op_info.loggable_inputs =
           GetLoggableTensorIndices(op_info.inputs, tensors, tensor_buffers);
@@ -452,7 +456,7 @@ TfLiteStatus BuildLoggingInterpreter(
 
   // Prepare the logging op resolver to use |LoggingEval| for kernel
   // invocations.
-  auto logging_op_resolver = absl::make_unique<LoggingOpResolver>(
+  auto logging_op_resolver = std::make_unique<LoggingOpResolver>(
       builtin_op_and_versions, custom_op_and_versions, op_resolver, LoggingEval,
       error_reporter);
   tflite::InterpreterBuilder(tflite_model, *logging_op_resolver,

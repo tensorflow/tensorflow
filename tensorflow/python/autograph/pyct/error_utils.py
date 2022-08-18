@@ -14,10 +14,6 @@
 # ==============================================================================
 """Code transformation exceptions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 from tensorflow.python.autograph.pyct import origin_info
@@ -187,9 +183,9 @@ class ErrorMetadataBase(object):
           not traceback_utils.include_frame(frame_info.filename)):
         continue
 
-      formatted_line = '    {}:{} {}'.format(frame_info.filename,
-                                             frame_info.lineno,
-                                             frame_info.function_name)
+      # Same format with Python traceback.
+      formatted_line = (f'    File "{frame_info.filename}", line '
+                        f'{frame_info.lineno}, in {frame_info.function_name}')
       if frame_info.is_converted:
         formatted_line += '  *'
       elif frame_info.is_allowlisted:
@@ -214,14 +210,18 @@ class ErrorMetadataBase(object):
     return '\n'.join(lines)
 
   def create_exception(self, source_error):
+    """Creates exception from source_error."""
     preferred_type = type(source_error)
+    to_ret = None
     if preferred_type.__init__ is Exception.__init__:
-      return preferred_type(self.get_message())
+      to_ret = preferred_type(self.get_message())
     if preferred_type in KNOWN_STRING_CONSTRUCTOR_ERRORS:
-      return preferred_type(self.get_message())
+      to_ret = preferred_type(self.get_message())
     elif preferred_type is KeyError:
-      return MultilineMessageKeyError(self.get_message(), self.cause_message)
-    return None
+      to_ret = MultilineMessageKeyError(self.get_message(), self.cause_message)
+
+    if to_ret is not None:
+      return to_ret.with_traceback(source_error.__traceback__)
 
   def to_exception(self, source_error):
     exc = self.create_exception(source_error)

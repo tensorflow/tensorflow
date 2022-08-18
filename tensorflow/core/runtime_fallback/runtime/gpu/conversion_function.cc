@@ -145,7 +145,7 @@ ConvertRuntimeFallbackTensorToDenseGpuTensor(
     // create DenseGpuTensor.
     tfrt::gpu::DenseGpuTensor gpu_tensor{
         tfrt::TensorShape(
-            std::vector<ssize_t>(tf_shape.begin(), tf_shape.end())),
+            std::vector<tfrt::Index>(tf_shape.begin(), tf_shape.end())),
         GetTfrtDtype(dtype),
         tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuBuffer>(
             std::move(*gpu_buffer))};

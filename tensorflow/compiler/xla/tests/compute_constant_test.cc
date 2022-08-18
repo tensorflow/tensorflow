@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -48,7 +47,7 @@ class ComputeConstantTest : public ::testing::Test {
   explicit ComputeConstantTest(se::Platform* platform = nullptr)
       : platform_(platform) {}
 
-  string TestName() const {
+  std::string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
@@ -99,10 +98,10 @@ TEST_F(ComputeConstantTest, ScalarInt32Literal) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
-    auto computation = ConstantR0<int32>(&b, 42);
+    auto computation = ConstantR0<int32_t>(&b, 42);
     EXPECT_TRUE(IsConstant(computation, &b));
 
-    auto value = ComputeConstantScalar<int32>(client, computation, &b);
+    auto value = ComputeConstantScalar<int32_t>(client, computation, &b);
     ASSERT_TRUE(value.ok()) << value.status();
     EXPECT_EQ(value.ValueOrDie(), 42);
   }
@@ -160,7 +159,7 @@ TEST_F(ComputeConstantTest, GetDimensionSize) {
     auto get_dimension_size = GetDimensionSize(add, 0);
     EXPECT_TRUE(IsConstant(get_dimension_size, &b));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto value, ComputeConstantScalar<int32>(
+    TF_ASSERT_OK_AND_ASSIGN(auto value, ComputeConstantScalar<int32_t>(
                                             client, get_dimension_size, &b));
     EXPECT_EQ(value, 1);
   }
@@ -178,7 +177,7 @@ TEST_F(ComputeConstantTest, MultipleGetDimensionSize) {
     EXPECT_TRUE(IsConstant(add_2, &b));
 
     TF_ASSERT_OK_AND_ASSIGN(auto value,
-                            ComputeConstantScalar<int32>(client, add_2, &b));
+                            ComputeConstantScalar<int32_t>(client, add_2, &b));
     EXPECT_EQ(value, 2);
   }
 }
@@ -217,12 +216,12 @@ TEST_F(ComputeConstantTest, NonScalarAdd) {
     XlaBuilder b(TestName());
 
     auto computation =
-        Add(ConstantR1<int32>(&b, {1, 2}), ConstantR1<int32>(&b, {3, 4}));
+        Add(ConstantR1<int32_t>(&b, {1, 2}), ConstantR1<int32_t>(&b, {3, 4}));
     EXPECT_TRUE(IsConstant(computation, &b));
 
     TF_ASSERT_OK_AND_ASSIGN(auto computed,
                             ComputeConstantLiteral(client, computation, &b));
-    Literal expected_literal = LiteralUtil::CreateR1<int32>({4, 6});
+    Literal expected_literal = LiteralUtil::CreateR1<int32_t>({4, 6});
     EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, computed));
   }
 }
@@ -231,12 +230,13 @@ TEST_F(ComputeConstantTest, IntegerDivide) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
-    auto computation = Div(ConstantR0<int32>(&b, 15), ConstantR0<int32>(&b, 3));
+    auto computation =
+        Div(ConstantR0<int32_t>(&b, 15), ConstantR0<int32_t>(&b, 3));
     EXPECT_TRUE(IsConstant(computation, &b));
 
     TF_ASSERT_OK_AND_ASSIGN(auto computed,
                             ComputeConstantLiteral(client, computation, &b));
-    Literal expected_literal = LiteralUtil::CreateR0<int32>(5);
+    Literal expected_literal = LiteralUtil::CreateR0<int32_t>(5);
     EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, computed));
   }
 }
@@ -252,11 +252,11 @@ XLA_TEST_F(ComputeConstantTest, Layout) {
       TF_ASSERT_OK_AND_ASSIGN(
           auto computed, ComputeConstantLiteral(
                              client,
-                             Add(ConstantR2<int32>(&b, {{1, 2}, {3, 4}}),
-                                 ConstantR2<int32>(&b, {{10, 20}, {30, 40}})),
+                             Add(ConstantR2<int32_t>(&b, {{1, 2}, {3, 4}}),
+                                 ConstantR2<int32_t>(&b, {{10, 20}, {30, 40}})),
                              &b, &layout_proto));
 
-      Literal expected_literal = LiteralUtil::CreateR2WithLayout<int32>(
+      Literal expected_literal = LiteralUtil::CreateR2WithLayout<int32_t>(
           {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(layout));
       ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
           expected_literal.shape(), computed.shape()));

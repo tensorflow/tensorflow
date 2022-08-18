@@ -19,12 +19,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel_test_base.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -371,7 +374,7 @@ TEST_F(OpKernelTest, InputDtype) {
   Tensor c(DT_UINT8, TensorShape({}));
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b),
                                             TensorValue(&c)};
-  params.inputs = &inputs;
+  params.inputs = inputs;
   auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   DataType dtype;
@@ -415,7 +418,7 @@ class ScopedAllocatorDevice : public DeviceBase {
                               StatusCallback done) override {
     CHECK(input_tensor->NumElements() == output_tensor->NumElements());
     tensor::DeepCopy(*input_tensor, output_tensor);
-    done(Status::OK());
+    done(OkStatus());
   }
 
   // Return the count of calls to GetAllocator or GetScopedAllocator, depending
@@ -475,120 +478,6 @@ TEST_F(OpKernelTest, ScopedAllocationTest) {
   EXPECT_EQ(sa_device->num_allocations(false), 2);
   EXPECT_EQ(sa_device->num_allocations(true), 1);
 }
-
-class OpKernelBuilderTest : public ::testing::Test {
- protected:
-  // Each attr is described by a "name|type|value".
-  NodeDef CreateNodeDef(const string& op_type,
-                        const std::vector<string>& attrs) {
-    NodeDef node_def;
-    node_def.set_name(op_type + "-op");
-    node_def.set_op(op_type);
-    for (const string& attr_desc : attrs) {
-      std::vector<string> parts = str_util::Split(attr_desc, '|');
-      CHECK_EQ(parts.size(), 3);
-      AttrValue attr_value;
-      CHECK(ParseAttrValue(parts[1], parts[2], &attr_value)) << attr_desc;
-      node_def.mutable_attr()->insert(
-          AttrValueMap::value_type(parts[0], attr_value));
-    }
-    return node_def;
-  }
-
-  std::unique_ptr<OpKernel> ExpectSuccess(const string& op_type,
-                                          const DeviceType& device_type,
-                                          const std::vector<string>& attrs,
-                                          DataTypeSlice input_types = {}) {
-    Status status;
-    NodeDef def = CreateNodeDef(op_type, attrs);
-    for (size_t i = 0; i < input_types.size(); ++i) {
-      def.add_input("a:0");
-    }
-
-    Env* env = Env::Default();
-    DeviceBase device(env);
-
-    // Test CreateOpKernel()
-    std::unique_ptr<OpKernel> op(CreateOpKernel(device_type, &device,
-                                                cpu_allocator(), def,
-                                                TF_GRAPH_DEF_VERSION, &status));
-    EXPECT_TRUE(status.ok()) << status;
-    EXPECT_TRUE(op != nullptr);
-    if (op != nullptr) {
-      EXPECT_EQ(input_types.size(), op->num_inputs());
-      EXPECT_EQ(0, op->num_outputs());
-    }
-
-    // Test SupportedDeviceTypesForNode()
-    PrioritizedDeviceTypeVector devices;
-    TF_EXPECT_OK(SupportedDeviceTypesForNode(DeviceTypes(), def, &devices));
-    bool found = false;
-    for (const auto& dt : devices) {
-      if (dt.first == device_type) {
-        found = true;
-      }
-    }
-    EXPECT_TRUE(found) << "Missing " << device_type << " from "
-                       << devices.size() << " devices.";
-
-    // In case the caller wants to use the OpKernel
-    return op;
-  }
-
-  void ExpectFailure(const string& op_type, const DeviceType& device_type,
-                     const std::vector<string>& attrs, error::Code code) {
-    Status status;
-    const NodeDef def = CreateNodeDef(op_type, attrs);
-    Env* env = Env::Default();
-    DeviceBase device(env);
-
-    // Test CreateOpKernel().
-    std::unique_ptr<OpKernel> op(CreateOpKernel(device_type, &device,
-                                                cpu_allocator(), def,
-                                                TF_GRAPH_DEF_VERSION, &status));
-    EXPECT_TRUE(op == nullptr);
-    EXPECT_FALSE(status.ok());
-    if (!status.ok()) {
-      LOG(INFO) << "Status message: " << status.error_message();
-      EXPECT_EQ(code, status.code());
-
-      // Test SupportedDeviceTypesForNode().
-      PrioritizedDeviceTypeVector devices;
-      if (errors::IsNotFound(status)) {
-        TF_EXPECT_OK(SupportedDeviceTypesForNode(DeviceTypes(), def, &devices));
-        for (const auto& dt : devices) {
-          EXPECT_NE(dt.first, device_type);
-        }
-      } else {
-        Status status2 =
-            SupportedDeviceTypesForNode(DeviceTypes(), def, &devices);
-        EXPECT_EQ(status.code(), status2.code());
-      }
-    }
-  }
-
-  string GetKernelClassName(const string& op_type,
-                            const DeviceType& device_type,
-                            const std::vector<string>& attrs,
-                            DataTypeSlice input_types = {}) {
-    NodeDef def = CreateNodeDef(op_type, attrs);
-    for (size_t i = 0; i < input_types.size(); ++i) {
-      def.add_input("a:0");
-    }
-
-    const KernelDef* kernel_def = nullptr;
-    string kernel_class_name;
-    const Status status =
-        FindKernelDef(device_type, def, &kernel_def, &kernel_class_name);
-    if (status.ok()) {
-      return kernel_class_name;
-    } else if (errors::IsNotFound(status)) {
-      return "not found";
-    } else {
-      return status.ToString();
-    }
-  }
-};
 
 REGISTER_OP("BuildCPU");
 REGISTER_KERNEL_BUILDER(Name("BuildCPU").Device(DEVICE_CPU), DummyKernel);
@@ -736,8 +625,6 @@ TEST_F(OpKernelBuilderTest, OpOutputList) {
       TF_GRAPH_DEF_VERSION, &status));
   EXPECT_TRUE(status.ok()) << status.ToString();
   params.op_kernel = op.get();
-  gtl::InlinedVector<TensorValue, 4> inputs{};
-  params.inputs = &inputs;
   auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   EXPECT_EQ(DT_INT32, ctx->expected_output_dtype(0));
@@ -900,7 +787,11 @@ TEST_F(GetAttrTest, Shape) {
        "b|list(shape)|[{ dim { size:2 } }, { dim { size: 4 } }]"});
   auto* get_attr_kernel = static_cast<GetAttrKernel*>(op_kernel.get());
   get_attr_kernel->ExpectOk({"shape", "shape_proto"});
-  EXPECT_EQ(get_attr_kernel->shape_proto.ShortDebugString(), "dim { size: 3 }");
+  TensorShapeProto expected_shape_proto;
+  protobuf::TextFormat::ParseFromString("dim { size: 3 }",
+                                        &expected_shape_proto);
+  EXPECT_EQ(get_attr_kernel->shape_proto.ShortDebugString(),
+            expected_shape_proto.ShortDebugString());
   EXPECT_EQ("[3]", get_attr_kernel->shape.DebugString());
 
   op_kernel = ExpectSuccess(
@@ -910,10 +801,14 @@ TEST_F(GetAttrTest, Shape) {
   get_attr_kernel = static_cast<GetAttrKernel*>(op_kernel.get());
   get_attr_kernel->ExpectOk({"shape_list", "shape_proto_list"});
   ASSERT_EQ(2, get_attr_kernel->shape_proto_list.size());
+  protobuf::TextFormat::ParseFromString("dim { size: 2 }",
+                                        &expected_shape_proto);
   EXPECT_EQ(get_attr_kernel->shape_proto_list[0].ShortDebugString(),
-            "dim { size: 2 }");
+            expected_shape_proto.ShortDebugString());
+  protobuf::TextFormat::ParseFromString("dim { size: 4 }",
+                                        &expected_shape_proto);
   EXPECT_EQ(get_attr_kernel->shape_proto_list[1].ShortDebugString(),
-            "dim { size: 4 }");
+            expected_shape_proto.ShortDebugString());
   ASSERT_EQ(2, get_attr_kernel->shape_list.size());
   EXPECT_EQ("[2]", get_attr_kernel->shape_list[0].DebugString());
   EXPECT_EQ("[4]", get_attr_kernel->shape_list[1].DebugString());
@@ -948,13 +843,6 @@ TEST_F(GetAttrTest, TypeList) {
   EXPECT_EQ(DT_INT32, get_attr_kernel->type_vector[0]);
   EXPECT_EQ(DT_BOOL, get_attr_kernel->type_vector[1]);
 }
-
-class BaseKernel : public ::tensorflow::OpKernel {
- public:
-  explicit BaseKernel(OpKernelConstruction* context) : OpKernel(context) {}
-  void Compute(::tensorflow::OpKernelContext* context) override {}
-  virtual int Which() const = 0;
-};
 
 template <int WHICH>
 class LabeledKernel : public BaseKernel {
@@ -997,6 +885,18 @@ TEST_F(LabelTest, Specified) {
 TEST_F(LabelTest, Duplicate) {
   ExpectFailure("LabeledKernel", DEVICE_CPU, {"_kernel|string|'dupe'"},
                 error::INVALID_ARGUMENT);
+}
+
+REGISTER_OP("JitKernel");
+REGISTER_KERNEL_BUILDER(
+    Name("JitKernel").Device(DEVICE_CPU).Label(kJitKernelLabel),
+    LabeledKernel<4>);
+
+TEST_F(LabelTest, Filter) {
+  ExpectSuccess("JitKernel", DEVICE_CPU, {absl::StrCat("_kernel|string|''")});
+  ExpectFailure("JitKernel", DEVICE_CPU,
+                {absl::StrCat("_kernel|string|'", kJitKernelLabel, "'")},
+                error::NOT_FOUND);
 }
 
 void BM_InputRangeHelper(::testing::benchmark::State& state,
@@ -1091,7 +991,7 @@ void BM_TraceString(::testing::benchmark::State& state) {
   Tensor a(DT_FLOAT, TensorShape({99000, 256}));
   Tensor b(DT_FLOAT, TensorShape({256, 256}));
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
-  params.inputs = &inputs;
+  params.inputs = inputs;
   auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   for (auto s : state) {

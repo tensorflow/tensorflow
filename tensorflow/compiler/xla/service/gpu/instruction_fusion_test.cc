@@ -36,11 +36,11 @@ TEST_F(InstructionFusionTest,
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0(5.0f)));
-  HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(F32, {}), HloOpcode::kExp, const0));
+  HloInstruction* log1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kLog, const0));
   HloInstruction* broadcast2 =
       builder.AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::MakeShape(F32, {1}), exp1, {}));
+          ShapeUtil::MakeShape(F32, {1}), log1, {}));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -467,7 +467,7 @@ TEST_F(InstructionFusionTest, FuseScalarConstant) {
 // Check that we limit the number of operands to fusions we create.
 TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
   constexpr int64_t kNumParams = 200;
-  ASSERT_GT(kNumParams, kMaxOperandsAndOutputsPerFusion);
+  ASSERT_GT(kNumParams, MaxOperandsAndOutputsPerFusion());
 
   // Compute p0 + p1 + ... + pN.
   HloComputation::Builder b(TestName());
@@ -488,7 +488,7 @@ TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
                   .ValueOrDie());
   SCOPED_TRACE(module->ToString());
   for (const HloInstruction* instr : computation->instructions()) {
-    EXPECT_LE(instr->operand_count(), kMaxOperandsAndOutputsPerFusion)
+    EXPECT_LE(instr->operand_count(), MaxOperandsAndOutputsPerFusion())
         << instr->ToString();
   }
 }
@@ -638,6 +638,61 @@ TEST_F(InstructionFusionTest, GpuIsExpensiveBroadcastS32) {
 
   EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*div));
   EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*rem));
+}
+
+TEST_F(InstructionFusionTest, FloatingPointExpIsCheap) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  Add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+  ENTRY TestComputation {
+    zero = f32[] constant(0)
+    p0 = f32[100] parameter(0)
+    recip = f32[100] exponential(p0)
+    sum1 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    sum2 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    ROOT root = (f32[], f32[]) tuple(sum1, sum2)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::Fusion(), op::Fusion()))
+      << module->ToString();
+}
+
+TEST_F(InstructionFusionTest, SmallReducedDimensionIsNotLoweredToLoop) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY FuseSmallReduction {
+      p0 = s32[1048576,4] parameter(0)
+      p1 = s32[1048576,4] parameter(1)
+      sum = s32[1048576,4] add(p0, p1)
+      init = s32[] constant(0)
+      ROOT reduce = s32[1048576] reduce(sum, init), dimensions={1}, to_apply=add
+    })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Fusion());
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kInput);
 }
 
 }  // namespace gpu

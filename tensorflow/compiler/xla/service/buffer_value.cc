@@ -16,12 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 
 #include <iosfwd>
+#include <ostream>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -33,8 +31,6 @@ BufferValue::BufferValue(HloInstruction* instruction, const ShapeIndex& index,
   is_tuple_ = shape.IsTuple();
 }
 
-BufferValue::~BufferValue() {}
-
 std::ostream& operator<<(std::ostream& out, const BufferValue& buffer) {
   out << buffer.ToString();
   return out;
@@ -43,11 +39,9 @@ std::ostream& operator<<(std::ostream& out, const BufferValue& buffer) {
 /*static*/ LogicalBufferProto::Location BufferValue::ToLocationProto(
     const HloInstruction& instruction, const ShapeIndex& index) {
   LogicalBufferProto::Location proto;
-  proto.set_computation_name(instruction.parent()->name());
-  proto.set_instruction_name(instruction.name());
-  for (const int64_t index_entry : index) {
-    proto.add_shape_index(index_entry);
-  }
+  proto.set_instruction_id(instruction.unique_id());
+  absl::c_copy(index, tensorflow::protobuf::RepeatedFieldBackInserter(
+                          proto.mutable_shape_index()));
   return proto;
 }
 
@@ -61,6 +55,11 @@ LogicalBufferProto BufferValue::ToProto(const SizeFunction& size_fn) const {
   if (has_color()) {
     proto.set_color(color());
   }
+  // TODO(b/239098765): Stop populating these fields and delete them when
+  // profiler finishes adaptation.
+  proto.mutable_defined_at()->set_computation_name(
+      instruction()->parent()->name());
+  proto.mutable_defined_at()->set_instruction_name(instruction()->name());
   return proto;
 }
 

@@ -17,18 +17,17 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "absl/base/dynamic_annotations.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
-
-using tensorflow::int32;
-using tensorflow::uint64;
 
 using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
-                                     int64_t*, uint64_t*);
+                                     void*, int64_t*, uint64_t*);
 
 // Dispatches 'num_partitions - 1' calls to 'function_ptr' in parallel.
 // Calls 'function_ptr' for first partition inline.
@@ -58,10 +57,11 @@ using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
 //   [partition1_dim2_start]
 //   [partition1_dim2_limit]
 //
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
     void* result_ptr, const void* run_options_ptr, const void** params,
-    void** buffer_table, uint64_t* prof_counters, int32_t num_partitions,
-    int64_t* partitions, int32_t num_partitioned_dims, void* function_ptr) {
+    void** buffer_table, void* status, uint64_t* prof_counters,
+    int32_t num_partitions, int64_t* partitions, int32_t num_partitioned_dims,
+    void* function_ptr) {
   VLOG(2) << "ParallelForkJoin ENTRY"
           << " num_partitions: " << num_partitions
           << " num_partitioned_dims: " << num_partitioned_dims;
@@ -80,24 +80,52 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
   // Compute partition stride in 'partitions' array.
   const int64_t stride = 2 * num_partitioned_dims;
 
+  std::vector<XlaCustomCallStatus> statuses(num_partitions);
+
   // Dispatch 'num_partitions - 1' compute functions to run in parallel.
   tensorflow::BlockingCounter bc(num_partitions - 1);
   for (int32_t i = 1; i < num_partitions; ++i) {
     const int64_t offset = i * stride;
     run_options->intra_op_thread_pool()->enqueueNoNotification(
         [i, function, result_ptr, run_options_ptr, buffer_table, prof_counters,
-         partitions, offset, &bc]() {
+         partitions, offset, &bc, &statuses]() {
           function(result_ptr, run_options_ptr, nullptr, buffer_table,
-                   &partitions[offset], prof_counters);
+                   &statuses[i], &partitions[offset], prof_counters);
           bc.DecrementCount();
           VLOG(3) << "ParallelForkJoin partition " << i << " done.";
         });
   }
 
   // Call first compute function inline.
-  function(result_ptr, run_options_ptr, params, buffer_table, &partitions[0],
-           prof_counters);
+  function(result_ptr, run_options_ptr, params, buffer_table, &statuses[0],
+           &partitions[0], prof_counters);
   VLOG(3) << "ParallelForkJoin partition 0 done.";
   bc.Wait();
+
+  // Collect all error messages (if any).
+  std::vector<std::pair<int32_t, absl::string_view>> error_messages;
+  for (int32_t i = 0; i < num_partitions; ++i) {
+    std::optional<absl::string_view> msg =
+        xla::CustomCallStatusGetMessage(&statuses[i]);
+    if (msg) {
+      error_messages.emplace_back(i, *msg);
+    }
+  }
+
+  if (!error_messages.empty()) {
+    // Join all error messages into a single string to serve as the message for
+    // the returned status.
+    std::string error_message = absl::StrJoin(
+        error_messages, "\n",
+        [](std::string* out, std::pair<int32_t, absl::string_view> p) {
+          int32_t idx = p.first;
+          absl::string_view msg = p.second;
+          absl::StrAppend(out,
+                          absl::StrFormat("Partition %d error: %s", idx, msg));
+        });
+    XlaCustomCallStatusSetFailure(
+        reinterpret_cast<XlaCustomCallStatus*>(status), error_message.data(),
+        error_message.length());
+  }
   VLOG(2) << "ParallelForkJoin EXIT";
 }

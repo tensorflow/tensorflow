@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
+#include <string>
+
 #include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
@@ -46,12 +49,28 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
         return wrapper;
       }))
       .def("Prepare",
+           [](CalibrationWrapper& self, py::handle& input_shapes,
+              std::string signature_key) {
+             return tensorflow::PyoOrThrow(
+                 self.Prepare(input_shapes.ptr(), signature_key));
+           })
+      .def("Prepare",
            [](CalibrationWrapper& self, py::handle& input_shapes) {
              return tensorflow::PyoOrThrow(self.Prepare(input_shapes.ptr()));
            })
       .def("Prepare",
+           [](CalibrationWrapper& self, std::string signature_key) {
+             return tensorflow::PyoOrThrow(self.Prepare(signature_key));
+           })
+      .def("Prepare",
            [](CalibrationWrapper& self) {
              return tensorflow::PyoOrThrow(self.Prepare());
+           })
+      .def("FeedTensor",
+           [](CalibrationWrapper& self, py::handle& input_value,
+              std::string signature_key) {
+             return tensorflow::PyoOrThrow(
+                 self.FeedTensor(input_value.ptr(), signature_key));
            })
       .def("FeedTensor",
            [](CalibrationWrapper& self, py::handle& input_value) {
@@ -59,11 +78,11 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
            })
       .def("QuantizeModel",
            [](CalibrationWrapper& self, int input_py_type, int output_py_type,
-              bool allow_float, int activations_py_type,
+              bool allow_float, int activations_py_type, int bias_py_type,
               bool disable_per_channel) {
-             return tensorflow::PyoOrThrow(
-                 self.QuantizeModel(input_py_type, output_py_type, allow_float,
-                                    activations_py_type, disable_per_channel));
+             return tensorflow::PyoOrThrow(self.QuantizeModel(
+                 input_py_type, output_py_type, allow_float,
+                 activations_py_type, bias_py_type, disable_per_channel));
            })
       .def("QuantizeModel",
            [](CalibrationWrapper& self, int input_py_type, int output_py_type,

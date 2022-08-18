@@ -1,6 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "if_portable")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 
 package(
@@ -18,6 +17,11 @@ flatbuffer_py_library(
     srcs = ["//tensorflow/lite/schema:schema.fbs"],
 )
 
+flatbuffer_py_library(
+    name = "conversion_metadata_schema_py",
+    srcs = ["//tensorflow/lite/schema:conversion_metadata.fbs"],
+)
+
 py_library(
     name = "interpreter",
     srcs = [
@@ -27,8 +31,8 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        ":metrics",
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
+        "//tensorflow/lite/python/metrics",
         "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -51,12 +55,13 @@ py_test(
     ],
     deps = [
         ":interpreter",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python/metrics",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -70,7 +75,6 @@ py_binary(
         ":tflite_convert_main_lib",
         "//tensorflow:tensorflow_py",
         "@absl_py//absl:app",
-        "@six_archive//:six",
     ],
 )
 
@@ -83,7 +87,6 @@ py_library(
         ":tflite_convert_lib",
         "//tensorflow:tensorflow_py",
         "@absl_py//absl:app",
-        "@six_archive//:six",
     ],
 )
 
@@ -98,7 +101,6 @@ py_library(
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
         "//tensorflow/python:util",
         "@absl_py//absl:app",
-        "@six_archive//:six",
     ],
 )
 
@@ -164,8 +166,8 @@ py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:training_util",
-        "//tensorflow/python/training/tracking",
         "//third_party/py/numpy",
     ],
 )
@@ -176,16 +178,19 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":conversion_metadata_schema_py",
         ":convert",
         ":convert_phase",
         ":convert_saved_model",
         ":interpreter",
         ":lite_constants",
-        ":metrics",
         ":op_hint",
         ":util",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
+        "//tensorflow/lite/python/metrics",
         "//tensorflow/lite/python/optimize:calibrator",
+        "//tensorflow/lite/tools:flatbuffer_utils",
+        "//tensorflow/lite/tools/optimize/debugging/python:debugger",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -203,7 +208,6 @@ py_library(
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
-        "@six_archive//:six",
     ],
 )
 
@@ -225,7 +229,6 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-        "@six_archive//:six",
     ],
 )
 
@@ -237,7 +240,7 @@ py_test(
         "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
     ],
     python_version = "PY3",
-    shard_count = 12,
+    shard_count = 18,
     srcs_version = "PY3",
     tags = [
         "no_windows",
@@ -251,7 +254,6 @@ py_test(
         "//tensorflow/lite/python/testdata:double_op",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-        "@six_archive//:six",
     ],
 )
 
@@ -267,7 +269,6 @@ py_library(
         ":lite",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-        "@six_archive//:six",
     ],
 )
 
@@ -279,6 +280,7 @@ py_test(
     deps = [
         ":lite",
         ":test_util",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python/testdata:double_op",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
@@ -291,11 +293,13 @@ py_library(
     srcs_version = "PY3",
     visibility = internal_visibility_allowlist(),
     deps = [
+        ":conversion_metadata_schema_py",
         ":op_hint",
         ":schema_py",
         ":schema_util",
         "//tensorflow/lite/python:tflite_keras_util",
         "//tensorflow/lite/toco:toco_flags_proto_py",
+        "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:error_interpolation",
@@ -305,7 +309,6 @@ py_library(
         "//tensorflow/python/training:saver",
         "@absl_py//absl/logging",
         "@flatbuffers//:runtime_py",
-        "@six_archive//:six",
     ],
 )
 
@@ -331,7 +334,6 @@ py_test(
         "//tensorflow/python:session",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 
@@ -380,7 +382,7 @@ py_library(
         ":lite_constants",
         ":util",
         ":wrap_toco",
-        "//tensorflow/lite/python/metrics_wrapper",
+        "//tensorflow/lite/python/metrics:metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/python:toco_from_protos",
@@ -390,7 +392,6 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
@@ -490,14 +491,6 @@ py_library(
     ],
 )
 
-pytype_strict_library(
-    name = "metrics_interface",
-    srcs = ["metrics_interface.py"],
-    compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
-    visibility = ["//visibility:private"],
-)
-
 # Use py_library since the metrics module is imported in a try-except block,
 # which doesn't work with the pytype_strict_library.
 py_library(
@@ -506,75 +499,9 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
-        ":metrics",
-        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
+        "//tensorflow/lite/python/metrics",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
     ],
-)
-
-pytype_strict_library(
-    name = "metrics_nonportable",
-    srcs = ["metrics_nonportable.py"],
-    srcs_version = "PY3",
-    visibility = ["//visibility:private"],
-    deps = [
-        ":metrics_interface",
-        "//tensorflow/lite/python/metrics_wrapper",
-        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
-        "//tensorflow/python/eager:monitoring",
-    ],
-)
-
-py_test(
-    name = "metrics_nonportable_test",
-    srcs = ["metrics_nonportable_test.py"],
-    data = [
-        "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
-    ],
-    python_version = "PY3",
-    tags = ["no_oss"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lite",
-        ":metrics_nonportable",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-pytype_strict_library(
-    name = "metrics_portable",
-    srcs = ["metrics_portable.py"],
-    compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
-    visibility = ["//visibility:private"],
-    deps = [
-        ":metrics_interface",
-    ],
-)
-
-py_test(
-    name = "metrics_portable_test",
-    srcs = ["metrics_portable_test.py"],
-    python_version = "PY3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":metrics_portable",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-pytype_strict_library(
-    name = "metrics",
-    compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
-    visibility = ["//tensorflow/lite:__subpackages__"],
-    deps = if_portable(
-        if_false = [":metrics_nonportable"],
-        if_true = [":metrics_portable"],
-    ),
 )
 
 py_library(
@@ -585,7 +512,9 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/lite/python:wrap_toco",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

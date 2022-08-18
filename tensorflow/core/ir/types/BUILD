@@ -1,5 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_compatible_with = get_compatible_with_cloud(),
@@ -17,11 +18,13 @@ td_library(
     ],
     includes = ["include"],
     deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:CallInterfacesTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+        "@llvm-project//mlir:SubElementInterfacesTdFiles",
     ],
 )
 
@@ -54,6 +57,14 @@ gentbl_cc_library(
         (
             ["-gen-attrdef-defs"],
             "attributes.cc.inc",
+        ),
+        (
+            ["-gen-enum-decls"],
+            "attributes_enum.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "attributes_enum.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
@@ -94,9 +105,23 @@ cc_library(
         ":AttributesIncGen",
         ":DialectIncGen",
         ":TypesIncGen",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "dialect_test",
+    size = "small",
+    srcs = ["dialect_test.cc"],
+    deps = [
+        ":Dialect",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
     ],
 )

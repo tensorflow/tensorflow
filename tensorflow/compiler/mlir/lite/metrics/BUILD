@@ -16,7 +16,7 @@ cc_library(
     hdrs = ["error_collector.h"],
     deps = [
         ":types_util",
-        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_cc",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_cc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -28,7 +28,7 @@ cc_library(
     deps = [
         ":error_collector",
         ":types_util",
-        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_cc",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_cc",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -50,6 +50,7 @@ tf_cc_test(
         "//tensorflow/stream_executor/lib",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -62,7 +63,7 @@ cc_library(
     srcs = ["types_util.cc"],
     hdrs = ["types_util.h"],
     deps = [
-        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_cc",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],

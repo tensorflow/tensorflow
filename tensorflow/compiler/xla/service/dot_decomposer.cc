@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 
+#include <utility>
+
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
@@ -78,20 +80,24 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   lhs_transpose.insert(lhs_transpose.end(),
                        original_dnums.lhs_contracting_dimensions().begin(),
                        original_dnums.lhs_contracting_dimensions().end());
-  HloInstruction* transposed_lhs =
-      computation->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::PermuteDimensions(lhs_transpose, lhs_shape),
-          original_dot->mutable_operand(0), lhs_transpose));
+  HloInstruction* lhs_operand = original_dot->mutable_operand(0);
+  HloInstruction* transposed_lhs = computation->AddInstruction(
+      HloInstruction::CreateTranspose(
+          ShapeUtil::PermuteDimensions(lhs_transpose, lhs_shape), lhs_operand,
+          lhs_transpose),
+      &lhs_operand->metadata());
+
   std::vector<int64_t> lhs_reshape_dims = batch_dim_sizes;
   if (lhs_non_contracting_size > 1) {
     lhs_reshape_dims.push_back(lhs_non_contracting_size);
   }
   lhs_reshape_dims.push_back(lhs_contracting_size);
   // Reshape the contracting and non-contracting dimensions together.
-  HloInstruction* reshaped_lhs =
-      computation->AddInstruction(HloInstruction::CreateReshape(
+  HloInstruction* reshaped_lhs = computation->AddInstruction(
+      HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(lhs_shape.element_type(), lhs_reshape_dims),
-          transposed_lhs));
+          transposed_lhs),
+      &transposed_lhs->metadata());
 
   const auto& rhs_shape = original_dot->operand(1)->shape();
   const int64_t rhs_rank = rhs_shape.rank();
@@ -112,7 +118,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   }
 
   // The canonical form of the rhs is
-  // [BatchDims, NonContractingDimsProduct, ContractingsDimsProduct]
+  // [BatchDims, ContractingsDimsProduct, NonContractingDimsProduct]
   // If NonContractingDimsProduct is 1, it is omitted.
   std::vector<int64_t> rhs_transpose;
   rhs_transpose.reserve(rhs_rank);
@@ -124,10 +130,12 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
                        original_dnums.rhs_contracting_dimensions().end());
   rhs_transpose.insert(rhs_transpose.end(), rhs_non_contracting_dims.begin(),
                        rhs_non_contracting_dims.end());
-  HloInstruction* transposed_rhs =
-      computation->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::PermuteDimensions(rhs_transpose, rhs_shape),
-          original_dot->mutable_operand(1), rhs_transpose));
+  HloInstruction* rhs_operand = original_dot->mutable_operand(1);
+  HloInstruction* transposed_rhs = computation->AddInstruction(
+      HloInstruction::CreateTranspose(
+          ShapeUtil::PermuteDimensions(rhs_transpose, rhs_shape), rhs_operand,
+          rhs_transpose),
+      &rhs_operand->metadata());
 
   std::vector<int64_t> rhs_reshape_dims = batch_dim_sizes;
   rhs_reshape_dims.push_back(rhs_contracting_size);
@@ -135,10 +143,11 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
     rhs_reshape_dims.push_back(rhs_non_contracting_size);
   }
   // Reshape the contracting and non-contracting dimensions together.
-  HloInstruction* reshaped_rhs =
-      computation->AddInstruction(HloInstruction::CreateReshape(
+  HloInstruction* reshaped_rhs = computation->AddInstruction(
+      HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(rhs_shape.element_type(), rhs_reshape_dims),
-          transposed_rhs));
+          transposed_rhs),
+      &transposed_rhs->metadata());
 
   std::vector<int64_t> dot_dims = batch_dim_sizes;
   if (lhs_non_contracting_size > 1) {
@@ -160,26 +169,33 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   HloInstruction* dot = computation->AddInstruction(HloInstruction::CreateDot(
       ShapeUtil::MakeShape(original_dot->shape().element_type(), dot_dims),
       reshaped_lhs, reshaped_rhs, dot_dnums, original_dot->precision_config()));
+  original_dot->SetupDerivedInstruction(dot);
 
-  return computation->ReplaceInstruction(
-      original_dot, computation->AddInstruction(HloInstruction::CreateReshape(
-                        original_dot->shape(), dot)));
+  std::unique_ptr<HloInstruction> replacement =
+      HloInstruction::CreateReshape(original_dot->shape(), dot);
+  VLOG(3) << "Canonicalizing dot:\n"
+          << "\t old: " << original_dot->ToString() << "\n"
+          << "\t new: " << dot->ToString() << "\n"
+          << "\t   -> " << replacement->ToString();
+  return computation->ReplaceWithNewInstruction(original_dot,
+                                                std::move(replacement));
 }
 
 }  // namespace
 
-StatusOr<bool> DotDecomposer::Run(HloModule* module) {
-  XLA_VLOG_LINES(2, "DotDecomposer ENTRY\n" + module->ToString());
+StatusOr<bool> DotDecomposer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Gather all Non-canonical Dot operations.
   std::vector<HloInstruction*> non_canonical_dots;
-  for (auto* computation : module->MakeNonfusionComputations()) {
+  for (auto* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kDot) {
         continue;
       }
       const DotDimensionNumbers& dnums = instruction->dot_dimension_numbers();
-      // A dot it not canonical if there are more than one contracting
-      // dimension.
+      // A dot it not canonical if there is more than one contracting dimension.
       if (dnums.lhs_contracting_dimensions_size() != 1) {
         non_canonical_dots.push_back(instruction);
         continue;
@@ -198,9 +214,7 @@ StatusOr<bool> DotDecomposer::Run(HloModule* module) {
         non_canonical_dots.push_back(instruction);
         continue;
       }
-      if (dnums.lhs_batch_dimensions().empty()) {
-        continue;
-      }
+      // Check that batch dims, if present, are canonical.
       std::vector<int64_t> canonical_batch_dims(
           dnums.lhs_batch_dimensions_size());
       absl::c_iota(canonical_batch_dims, 0);
@@ -215,7 +229,6 @@ StatusOr<bool> DotDecomposer::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(CanonicalizeDot(dot));
     changed = true;
   }
-  XLA_VLOG_LINES(2, "DotDecompose EXIT\n" + module->ToString());
   return changed;
 }
 

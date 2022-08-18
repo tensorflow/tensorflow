@@ -13,15 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -36,27 +37,15 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // This pass outlines the cond/body region of the TFL WhileOp into functions and
 // replaces the regions with calls to these outlined functions.
-class WhileOutlinePass
-    : public mlir::PassWrapper<WhileOutlinePass, OperationPass<ModuleOp>> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TF::TensorFlowDialect>();
-  }
-
+class WhileOutlinePass : public WhileOutlinePassBase<WhileOutlinePass> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(WhileOutlinePass)
   explicit WhileOutlinePass() {}
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-while-loop-outline";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Hoist while op regions into functions";
-  }
 
  private:
   void runOnOperation() override;
@@ -80,7 +69,7 @@ std::string WhileOutlinePass::GetName(Operation* op, StringRef suffix) {
 bool IsAlreadyOutlined(WhileOp while_op) {
   auto just_call = [](Region& region) {
     auto it = region.front().begin();
-    if (!isa<CallOp>(*it)) return false;
+    if (!isa<func::CallOp>(*it)) return false;
     ++it;
     if (!isa<YieldOp>(*it)) return false;
     return true;
@@ -93,9 +82,10 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
   // F32 and BF16 types are allowed.
   if (elemType.isBF16() || elemType.isF32()) return true;
 
-  // I1, I16, I32, I64 types are allowed.
-  if (elemType.isInteger(1) || elemType.isInteger(16) ||
-      elemType.isInteger(32) || elemType.isInteger(64))
+  // I1, I8 I16, I32, I64 types are allowed.
+  if (elemType.isInteger(1) || elemType.isInteger(8) ||
+      elemType.isInteger(16) || elemType.isInteger(32) ||
+      elemType.isInteger(64))
     return true;
 
   // Complex<F<32>> is allowed.
@@ -111,10 +101,11 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
   return false;
 }
 
-FuncOp CreateOutlineFunc(StringRef name, Region& region,
-                         bool passthru_extra_args, int num_loop_carried,
-                         const llvm::SetVector<Value>& extern_values,
-                         const SmallVectorImpl<Type>& types, Location loc) {
+func::FuncOp CreateOutlineFunc(StringRef name, Region& region,
+                               bool passthru_extra_args, int num_loop_carried,
+                               const llvm::SetVector<Value>& extern_values,
+                               const SmallVectorImpl<Type>& types,
+                               Location loc) {
   MLIRContext* context = loc.getContext();
   OpBuilder builder(context);
   FunctionType type;
@@ -127,7 +118,7 @@ FuncOp CreateOutlineFunc(StringRef name, Region& region,
     type = FunctionType::get(context, types, result_types);
   }
 
-  auto outlined_func = builder.create<FuncOp>(loc, name, type);
+  auto outlined_func = builder.create<func::FuncOp>(loc, name, type);
   outlined_func.getBody().takeBody(region);
   Region& func_region = outlined_func.getBody();
 
@@ -136,7 +127,7 @@ FuncOp CreateOutlineFunc(StringRef name, Region& region,
   new_args.reserve(extern_values.size());
   Block& block = func_region.front();
   for (Value value : extern_values) {
-    auto arg = block.addArgument(value.getType());
+    auto arg = block.addArgument(value.getType(), loc);
     replaceAllUsesInRegionWith(value, arg, func_region);
     new_args.push_back(arg);
   }
@@ -170,7 +161,7 @@ FuncOp CreateOutlineFunc(StringRef name, Region& region,
   } else {
     args.append(yield_op->operand_begin(), yield_op->operand_end());
   }
-  b.create<ReturnOp>(yield_op->getLoc(), args);
+  b.create<func::ReturnOp>(yield_op->getLoc(), args);
   yield_op->erase();
   SymbolTable(region.getParentOfType<ModuleOp>()).insert(outlined_func);
   outlined_func.setPrivate();
@@ -190,9 +181,9 @@ void ReplaceRegionWithCall(StringRef name, Region& region,
   SmallVector<Value, 4> new_operands;
   new_operands.reserve(types.size());
   for (Type t : llvm::makeArrayRef(types).drop_back(extern_values.size()))
-    new_operands.push_back(block->addArgument(t));
+    new_operands.push_back(block->addArgument(t, loc));
   for (Value v : extern_values) new_operands.push_back(v);
-  auto call = b.create<CallOp>(loc, func, new_operands);
+  auto call = b.create<func::CallOp>(loc, func, new_operands);
   b.create<YieldOp>(loc, call.getResults());
 }
 
@@ -212,7 +203,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   auto old_extern_values_size = extern_values.size();
 
   llvm::SmallVector<Region*, 2> regions{&while_op.cond(), &while_op.body()};
-  for (auto it : llvm::enumerate(regions)) {
+  for (const auto& it : llvm::enumerate(regions)) {
     llvm::SetVector<Value> region_extern_values;
     getUsedValuesDefinedAbove(*it.value(), region_extern_values);
 
@@ -295,8 +286,6 @@ void WhileOutlinePass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass() {
   return std::make_unique<WhileOutlinePass>();
 }
-
-static PassRegistration<WhileOutlinePass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

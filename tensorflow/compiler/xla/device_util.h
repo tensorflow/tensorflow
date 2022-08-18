@@ -29,7 +29,7 @@ namespace xla {
 
 // Returns a string that represents the device in terms of platform and ordinal;
 // e.g. the first CUDA device will be "cuda:0"
-string DeviceIdentifier(se::StreamExecutor* stream_exec) {
+std::string DeviceIdentifier(se::StreamExecutor* stream_exec) {
   return absl::StrCat(stream_exec->platform()->Name(), ":",
                       stream_exec->device_ordinal());
 }

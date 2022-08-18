@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-// TODO(ezhulenev): Add numerical tests that will compare results of default
+// TODO(intel-tf): Add numerical tests that will compare results of default
 // (aka Eigen) convolutions with MKL convolutions.
 
 // -------------------------------------------------------------------------- //

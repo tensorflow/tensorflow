@@ -27,11 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -86,16 +82,17 @@ class ExecutionTracker {
 
  private:
   // The next handle to assign to an execution.
-  int64_t next_handle_ TF_GUARDED_BY(execution_mutex_);
+  int64_t next_handle_ ABSL_GUARDED_BY(execution_mutex_);
 
   // Mapping from ExecutionHandle handle to the corresponding registered
   // AsyncExecution object.
   std::map<int64_t, std::unique_ptr<AsyncExecution>> handle_to_execution_
-      TF_GUARDED_BY(execution_mutex_);
+      ABSL_GUARDED_BY(execution_mutex_);
 
-  tensorflow::mutex execution_mutex_;  // Guards the execution mapping.
+  absl::Mutex execution_mutex_;  // Guards the execution mapping.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutionTracker);
+  ExecutionTracker(const ExecutionTracker&) = delete;
+  ExecutionTracker& operator=(const ExecutionTracker&) = delete;
 };
 
 }  // namespace xla

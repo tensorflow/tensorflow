@@ -1,0 +1,62 @@
+node {
+  name: "Add"
+  op: "Add"
+  input: "input0"
+  input: "input1"
+  device: "/job:localhost/replica:0/task:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "Mul"
+  op: "Mul"
+  input: "Add"
+  input: "Add"
+  device: ""
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "Sub"
+  op: "Sub"
+  input: "Add"
+  input: "Mul"
+  device: "/job:localhost/replica:0/task:0/device:CPU:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input0"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input1"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 27
+}

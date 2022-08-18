@@ -16,6 +16,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -70,7 +71,7 @@ void AnnotateParameterReplicationPass::runOnOperation() {
             mirrored_index.cast<IntegerAttr>().getInt());
       }
     }
-    auto func = llvm::cast<FuncOp>(m.lookupSymbol(cluster_func.func()));
+    auto func = llvm::cast<func::FuncOp>(m.lookupSymbol(cluster_func.func()));
     for (auto entry : llvm::enumerate(cluster_func.getOperands())) {
       auto operand = SkipIdentityAndReadVariable(entry.value());
       auto block_arg = operand.dyn_cast<BlockArgument>();

@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -66,67 +67,10 @@ std::string GetRandomStateVariableName() {
   return absl::StrCat("VariablesFormatState_", tensorflow::random::New64());
 }
 
-// A pass that takes advantage of a loop to add ops that allow the execution to
-// avoid repeatedly formatting variables back and forth. The desired formatting
-// is determined by TPU program compilation, so this pass does not include how
-// to reformat the variables, but only inserts general TPUReshardVariablesOps in
-// proper places, and TPUReshardVariablesOps interpret the compilation.
-//
-// The core idea of this optimization is to keep track of the formatting state
-// of variables, and when the next desired state does not change, it can avoid
-// reformatting. We associate a set of variables on a device with a formatting
-// state, and TPUReshardVariablesOps compares the current state with a desired
-// state (which can be the compilation result). If they mismatch,
-// TPUReshardVariablesOp reformats the variables to the desired state; if they
-// match, TPUReshardVariablesOp is a no-op.
-//
-// A major use of this pass is weight-update sharding in data parallelism, so we
-// require there is a tf_device.replicate in the loop.
-//
-// For example, suppose we have a training loop (for simplicity we write the
-// loop body inine):
-//
-//  %var0 = ...
-//  %var1 = ...
-//  tf.while (..., %var0, %var1) {
-//    tf_device.replicate ([%var0, %var1] as %rvar) {
-//      %compile:2 = "tf._TPUCompileMlir"()
-//      tf.TPUExecuteAndUpdateVariablesOp(%rvar, compile#1)
-//    }
-//  }
-//
-// This pass will transform it into
-//
-//  %var0 = ...
-//  %var1 = ...
-//  %state_var0 = ...
-//  %state_var1 = ...
-//  tf.while (..., %var0, %var1, %state_var0, %state_var1) {
-//    tf_device.replicate ([%var0, %var1] as %rvar,
-//                         [%state_var0, %state_var1] as %rstate) {
-//      %compile:2 = "tf._TPUCompileMlir"()
-//      tf.TPUReshardVariablesOp(%rvar, %compile#1, %rstate)
-//      tf.TPUExecuteAndUpdateVariablesOp(%rvar, compile#1)
-//    }
-//  }
-//  %default_format = tf.constant()
-//  tf_device.replicate ([%var0, %var1] as %rvar,
-//                       [%state_var0, %state_var1] as %rstate) {
-//    tf.TPUReshardVariablesOp(%rvar, %default_format, %rstate)
-//  }
 struct TPUVariableRuntimeReformattingPass
-    : public PassWrapper<TPUVariableRuntimeReformattingPass,
-                         OperationPass<ModuleOp>> {
-  void runOnOperation() override;
-
-  StringRef getArgument() const final {
-    return "tf-tpu-variable-runtime-reformatting";
-  }
-
-  StringRef getDescription() const final {
-    return "Adds device variable formatting op to allow compilation-guided "
-           "variable formatting.";
-  }
+    : public TF::TPUVariableRuntimeReformattingPassBase<
+          TPUVariableRuntimeReformattingPass> {
+  void runOnOperation() final;
 };
 
 // Returns the earlier value of which `v` is an identity. If `skipped` is
@@ -434,8 +378,8 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   devices.reserve(device_map.size());
 
   for (auto it : device_map) {
-    auto device_alias = it.first.strref();
-    auto device_list = it.second.cast<ArrayAttr>();
+    auto device_alias = it.getName().strref();
+    auto device_list = it.getValue().cast<ArrayAttr>();
     llvm::SmallVector<StringRef, 4> device_list_for_alias;
     device_list_for_alias.reserve(device_list.size());
 
@@ -551,11 +495,10 @@ void TPUVariableRuntimeReformattingPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUVariableRuntimeReformattingPass() {
   return std::make_unique<TPUVariableRuntimeReformattingPass>();
 }
-
-static PassRegistration<TPUVariableRuntimeReformattingPass> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

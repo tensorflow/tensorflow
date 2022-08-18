@@ -15,10 +15,6 @@
 # ==============================================================================
 """Tests for basic_session_run_hooks."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os.path
 import shutil
 import tempfile
@@ -1351,7 +1347,7 @@ class GlobalStepWaiterHookTest(test.TestCase):
       with session_lib.Session() as sess:
         # Mock out calls to time.sleep() to update the global step.
 
-        class Context(object):
+        class Context:
           counter = 0
 
         def mock_sleep_side_effect(seconds):

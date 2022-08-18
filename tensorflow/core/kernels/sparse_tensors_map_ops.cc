@@ -68,7 +68,7 @@ class SparseTensorsMap : public ResourceBase {
           gtl::InlinedVector<int64_t, 8>(sp.shape().begin(), sp.shape().end())};
       *handle = unique_st_handle;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status RetrieveAndClearSparseTensors(
@@ -95,7 +95,7 @@ class SparseTensorsMap : public ResourceBase {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -128,7 +128,7 @@ class SparseTensorAccessingOp : public OpKernel {
 
     if (sparse_tensors_map_) {
       *sparse_tensors_map = sparse_tensors_map_;
-      return Status::OK();
+      return OkStatus();
     }
 
     TF_RETURN_IF_ERROR(cinfo_.Init(ctx->resource_manager(), def(),
@@ -137,7 +137,7 @@ class SparseTensorAccessingOp : public OpKernel {
     CreatorCallback sparse_tensors_map_creator = [this](SparseTensorsMap** c) {
       SparseTensorsMap* map = new SparseTensorsMap(cinfo_.name());
       *c = map;
-      return Status::OK();
+      return OkStatus();
     };
 
     TF_RETURN_IF_ERROR(
@@ -146,7 +146,7 @@ class SparseTensorAccessingOp : public OpKernel {
             sparse_tensors_map_creator));
 
     *sparse_tensors_map = sparse_tensors_map_;
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -231,16 +231,29 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
                 errors::InvalidArgument(
                     "Input indices should be a matrix but received shape ",
                     input_indices->shape().DebugString()));
-
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_values->shape()),
                 errors::InvalidArgument(
                     "Input values should be a vector but received shape ",
                     input_values->shape().DebugString()));
-
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_shape->shape()),
                 errors::InvalidArgument(
                     "Input shape should be a vector but received shape ",
                     input_shape->shape().DebugString()));
+    OP_REQUIRES(
+        context,
+        input_values->shape().dim_size(0) == input_indices->shape().dim_size(0),
+        errors::InvalidArgument(
+            "Number of values must match first dimension of indices. ", "Got ",
+            input_values->shape().dim_size(0),
+            " values, indices shape: ", input_indices->shape().DebugString()));
+    OP_REQUIRES(
+        context,
+        input_shape->shape().dim_size(0) == input_indices->shape().dim_size(1),
+        errors::InvalidArgument(
+            "Number of dimensions must match second dimension of indices. ",
+            "Got ", input_shape->shape().dim_size(0),
+            " dimensions, indices shape: ",
+            input_indices->shape().DebugString()));
 
     int rank = input_shape->NumElements();
 
@@ -250,22 +263,10 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
             "Rank of input SparseTensor should be > 1, but saw rank: ", rank));
 
     auto input_shape_vec = input_shape->vec<int64_t>();
-    int new_num_elements = 1;
-    bool overflow_ocurred = false;
-    for (int i = 0; i < input_shape_vec.size(); i++) {
-      new_num_elements =
-          MultiplyWithoutOverflow(new_num_elements, input_shape_vec(i));
-      if (new_num_elements < 0) {
-        overflow_ocurred = true;
-        break;
-      }
-    }
 
-    OP_REQUIRES(
-        context, !overflow_ocurred,
-        errors::Internal("Encountered overflow from large input shape."));
-
-    TensorShape tensor_input_shape(input_shape_vec);
+    TensorShape tensor_input_shape;
+    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(input_shape_vec,
+                                                          &tensor_input_shape));
     gtl::InlinedVector<int64_t, 8> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
     SparseTensor input_st;

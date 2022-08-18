@@ -33,23 +33,30 @@ class GpuLayoutAssignment : public LayoutAssignment {
       ComputationLayout* entry_computation_layout,
       se::StreamExecutor* stream_executor,
       ChannelLayoutConstraints* channel_constraints = nullptr)
-      : LayoutAssignment(entry_computation_layout,
-                         channel_constraints),
+      : LayoutAssignment(entry_computation_layout, channel_constraints),
         stream_executor_(stream_executor) {}
   ~GpuLayoutAssignment() override {}
 
  protected:
   Status AddBackendConstraints(LayoutConstraints* constraints) override;
-  Status PropagateOperandConstraint(
-      const OperandLayoutConstraint& layout_constraint,
-      LayoutConstraints* constraints) override;
-  Status PropagateBufferConstraint(
-      const BufferLayoutConstraint& buffer_constraint,
-      LayoutConstraints* constraints) override;
 
  private:
   Status AddBackendConstraintsToDnnConvCustomCall(
       HloCustomCallInstruction* instr, LayoutConstraints* constraints);
+
+  Status SetOperandBatchRowsColsLayout(const HloInstruction* instruction,
+                                       int64_t operand,
+                                       absl::Span<const int64_t> batch_dims,
+                                       absl::Span<const int64_t> row_dims,
+                                       absl::Span<const int64_t> col_dims);
+
+  Status SetDotOperandLayout(const HloInstruction* instruction, int64_t operand,
+                             absl::Span<const int64_t> batch_dims,
+                             absl::Span<const int64_t> row_dims,
+                             absl::Span<const int64_t> col_dims);
+
+  Status SetDotLayout(const HloInstruction* instruction,
+                      LayoutConstraints* constraints);
 
   se::StreamExecutor* stream_executor_;
 };

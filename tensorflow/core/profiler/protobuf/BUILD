@@ -12,6 +12,18 @@ package_group(
     ],
 )
 
+package_group(
+    name = "memory_viewer_friends",
+    includes = [
+        "//tensorflow/core/profiler:friends",
+    ],
+    packages = [
+        "//learning/deepmind/jax/statix/...",
+        "//platforms/xla/tools/...",
+        "//smartass/brain/tpu_worker/...",
+    ],
+)
+
 tf_proto_library(
     name = "xplane_proto",
     srcs = ["xplane.proto"],
@@ -177,6 +189,13 @@ tf_proto_library(
     visibility = [":friends"],
 )
 
+tf_proto_library(
+    name = "memory_viewer_preprocess_proto",
+    srcs = ["memory_viewer_preprocess.proto"],
+    cc_api_version = 2,
+    visibility = [":memory_viewer_friends"],
+)
+
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "xplane_py_pb2",
@@ -190,5 +209,12 @@ tf_proto_library(
 #     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":trace_events_proto"],
+# )
+#
+# py_proto_library(
+#     name = "memory_viewer_preprocess_py_pb2",
+#     api_version = 2,
+#     visibility = [":memory_viewer_friends"],
+#     deps = [":memory_viewer_preprocess_proto"],
 # )
 # copybara:uncomment_end

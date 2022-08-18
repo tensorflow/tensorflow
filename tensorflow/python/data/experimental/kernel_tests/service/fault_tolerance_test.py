@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.data service ops where servers are started late or preempted."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import multiprocessing
 import threading
 import time
 
@@ -201,7 +198,7 @@ class FaultToleranceTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.eager_only_combinations())
   def testAddWorkerMidJob(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    num_elements = 100
+    num_elements = 2 * multiprocessing.cpu_count() + 100
     ds = self.make_distributed_range_dataset(num_elements, cluster)
     iterator = iter(ds)
     results = []
@@ -228,7 +225,7 @@ class FaultToleranceTest(data_service_test_base.TestBase,
         num_workers=1,
         work_dir=work_dir,
         fault_tolerant_mode=fault_tolerant_mode)
-    num_elements = 100
+    num_elements = 2 * multiprocessing.cpu_count() + 100
     ds = self.make_distributed_range_dataset(num_elements, cluster)
     iterator = iter(ds)
     # Read halfway through the dataset.

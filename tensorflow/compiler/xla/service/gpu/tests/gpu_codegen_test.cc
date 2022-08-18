@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -40,7 +39,7 @@ GpuCodegenTest::CreateNewVerifiedModuleWithFTZ(bool ftz) {
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   config.set_debug_options(debug_options);
 
-  return absl::make_unique<VerifiedHloModule>(
+  return std::make_unique<VerifiedHloModule>(
       TestName(), config, /*verifier_layout_sensitive=*/true,
       /*allow_mixed_precision_in_hlo_verifier=*/false,
       ShapeUtil::ByteSizeOfElements);
@@ -50,7 +49,7 @@ void GpuCodegenTest::CompileAndOptionallyVerifyPtx(
     std::unique_ptr<VerifiedHloModule> hlo_module, absl::string_view pattern) {
   std::unique_ptr<Executable> executable =
       std::move(CompileToExecutable(std::move(hlo_module)).ValueOrDie());
-  string ptx_str(static_cast<GpuExecutable*>(executable.get())->text());
+  std::string ptx_str(static_cast<GpuExecutable*>(executable.get())->text());
 
   // On the ROCM platform the "ptx" string is not populated for the compiled
   // executable, and hence the "ptx_str" will be empty. So disabling the

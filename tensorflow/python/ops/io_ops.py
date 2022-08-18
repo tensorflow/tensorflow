@@ -20,10 +20,6 @@ See the [Inputs and
 Readers](https://tensorflow.org/api_guides/python/io_ops) guide.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -36,7 +32,6 @@ from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops.gen_io_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import dispatch as _dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -98,7 +93,6 @@ def _restore_slice(file_pattern, tensor_name, shape_and_slice, tensor_type,
       preferred_shard, name=name)
 
 
-@_dispatch.add_dispatch_list
 @tf_export("io.read_file", v1=["io.read_file", "read_file"])
 def read_file(filename, name=None):
   """Reads the contents of file.
@@ -139,7 +133,6 @@ def read_file(filename, name=None):
   return gen_io_ops.read_file(filename, name)
 
 
-@_dispatch.add_dispatch_list
 @tf_export(
     "io.serialize_tensor", v1=["io.serialize_tensor", "serialize_tensor"])
 def serialize_tensor(tensor, name=None):
@@ -221,7 +214,7 @@ def serialize_tensor(tensor, name=None):
 
 
 @tf_export(v1=["ReaderBase"])
-class ReaderBase(object):
+class ReaderBase:
   """Base class for different Reader types, that produce a record every step.
 
   Conceptually, Readers convert string 'work units' into records (key,

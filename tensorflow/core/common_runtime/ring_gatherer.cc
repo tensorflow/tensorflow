@@ -71,9 +71,9 @@ void RingGatherer::Run(StatusCallback done) {
 
   if (VLOG_IS_ON(1)) {
     string buf;
-    for (int r = 0; r < col_params_->group.devices.size(); ++r) {
+    for (int r = 0; r < col_params_->group.members.size(); ++r) {
       strings::StrAppend(&buf, "dev ", r, " : ",
-                         col_params_->group.devices[r].name(), "\n");
+                         col_params_->group.members[r].device.name(), "\n");
     }
     for (int sd = 0;
          sd < col_params_->instance.impl_details.subdiv_permutations.size();
@@ -137,8 +137,8 @@ bool RingGatherer::RunAsyncParts() {
       ready_queue.Enqueue(&rfv_[rf_index]);
     }
   }
-  const DeviceBase::GpuDeviceInfo* gpu_info =
-      col_ctx_->device->tensorflow_gpu_device_info();
+  const DeviceBase::AcceleratorDeviceInfo* gpu_info =
+      col_ctx_->device->tensorflow_accelerator_device_info();
   if (gpu_info) {
     // Wait for all currently queued events on the CPU compute stream to
     // complete before proceeding.  The previous InitRingField calls allocated

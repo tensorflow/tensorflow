@@ -24,7 +24,6 @@ tpu_module = [
 ]
 
 keras_module = [
-    # TODO(scottzhu): Move the Keras docstring test to Keras repo.
     "keras.",
 ]
 
@@ -52,8 +51,8 @@ py_test(
     srcs = ["tf_doctest.py"],
     args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module + keras_module)],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
-        "no_oss_py2",
         "no_pip",
         "no_rocm",  # No need to rerun this test for ROCm config.
         "no_windows",  # numpy prints differently on windows.
@@ -64,6 +63,8 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python/distribute:distribute_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
@@ -103,7 +104,6 @@ py_test(
     main = "tf_doctest.py",
     python_version = "PY3",
     tags = [
-        "no_oss_py2",
         "no_pip",
         "no_rocm",
         "no_windows",  # numpy prints differently on windows.
@@ -114,6 +114,8 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python/distribute:distribute_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
@@ -125,7 +127,6 @@ py_test(
     srcs = ["tf_doctest_test.py"],
     python_version = "PY3",
     tags = [
-        "no_oss_py2",
         "no_pip",
         "noasan",
         "nomsan",
@@ -133,6 +134,33 @@ py_test(
     ],
     deps = [
         ":tf_doctest_lib",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "fenced_doctest_lib",
+    srcs = ["fenced_doctest_lib.py"],
+    deps = [
+        ":tf_doctest_lib",
+        "@astor_archive//:astor",
+    ],
+)
+
+py_test(
+    name = "fenced_doctest_test",
+    srcs = ["fenced_doctest_test.py"],
+    data = glob(["**/create_model.md"]),
+    tags = [
+        "no_oss",
+        "no_pip",
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":fenced_doctest_lib",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -162,6 +190,7 @@ py_test(
     ],
     deps = [
         ":generate2_lib",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
     ],
@@ -191,10 +220,20 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base_dir_oss",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
+)
+
+py_binary(
+    name = "build_cc_api_headers",
+    srcs = ["build_cc_api_headers.py"],
+    deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
     ],

@@ -7,8 +7,9 @@ load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 _cuda_version = %{cuda_version}
 
 def _gen_device_srcs_impl(ctx):
-    ops = ["sum", "prod", "min", "max"]
-    types = ["i8", "u8", "i32", "u32", "i64", "u64", "f16", "f32", "f64"]
+    ops = ["sum", "prod", "min", "max", "premulsum", "sumpostdiv"]
+    # TF uses CUDA version > 11.0, so enable bf16 type unconditionally.
+    types = ["i8", "u8", "i32", "u32", "i64", "u64", "f16", "bf16", "f32", "f64"]
     hdr_tail = "****************************************/"
     defines = "\n\n#define NCCL_OP %d\n#define NCCL_TYPE %d"
 
@@ -51,6 +52,8 @@ def _rdc_copts():
             "relocatable-device-code=true",
             "-nvcc_options",
             "ptxas-options=" + maxrregcount,
+            "-nvcc_options",
+            "extended-lambda",
         ],
         "@local_config_cuda//:is_cuda_compiler_clang": [
             "-fcuda-rdc",
@@ -100,6 +103,7 @@ def _device_link_impl(ctx):
                 "--output-file=%s" % cubin.path,
             ] + [file.path for file in inputs],
             mnemonic = "nvlink",
+            use_default_shell_env = True,
         )
         cubins.append(cubin)
         images.append("--image=profile=%s,file=%s" % (arch, cubin.path))
@@ -125,6 +129,7 @@ def _device_link_impl(ctx):
         arguments = arguments_list + images,
         tools = [bin2c],
         mnemonic = "fatbinary",
+        use_default_shell_env = True,
     )
 
     # Generate the source file #including the headers generated above.
@@ -203,6 +208,7 @@ def _prune_relocatable_code_impl(ctx):
             executable = ctx.file._nvprune,
             arguments = arguments,
             mnemonic = "nvprune",
+            use_default_shell_env = True,
         )
         outputs.append(output)
 
@@ -236,6 +242,7 @@ def _merge_archive_impl(ctx):
         inputs = ctx.files.srcs,  # + ctx.files._crosstool,
         outputs = [ctx.outputs.out],
         command = "echo -e \"%s\" | %s -M" % (mri_script, cc_toolchain.ar_executable),
+        use_default_shell_env = True,
     )
 
 _merge_archive = rule(

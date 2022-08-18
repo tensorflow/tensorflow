@@ -23,21 +23,19 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/compile_only_service.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
@@ -48,7 +46,7 @@ class LocalClientOptions {
   LocalClientOptions(
       se::Platform* platform = nullptr, int number_of_replicas = 1,
       int intra_op_parallelism_threads = -1,
-      const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
+      const std::optional<std::set<int>>& allowed_devices = std::nullopt);
 
   // Set the platform backing the service, or nullptr for the default platform.
   LocalClientOptions& set_platform(se::Platform* platform);
@@ -66,14 +64,14 @@ class LocalClientOptions {
   // Sets the allowed_devices set for selectively constructing stream executors
   // on the platform.
   LocalClientOptions& set_allowed_devices(
-      const absl::optional<std::set<int>>& allowed_devices);
-  const absl::optional<std::set<int>>& allowed_devices() const;
+      const std::optional<std::set<int>>& allowed_devices);
+  const std::optional<std::set<int>>& allowed_devices() const;
 
  private:
   se::Platform* platform_;
   int number_of_replicas_;
   int intra_op_parallelism_threads_;
-  absl::optional<std::set<int>> allowed_devices_;
+  std::optional<std::set<int>> allowed_devices_;
 };
 
 class ClientLibrary {
@@ -87,7 +85,7 @@ class ClientLibrary {
   //   created, for the given platform.
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       se::Platform* platform = nullptr,
-      const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
+      const std::optional<std::set<int>>& allowed_devices = std::nullopt);
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       const LocalClientOptions& options);
 
@@ -132,14 +130,15 @@ class ClientLibrary {
     std::unique_ptr<CompileOnlyClient> client;
   };
 
-  tensorflow::mutex service_mutex_;  // Guards the singleton creation state.
-  std::unordered_map<se::Platform::Id, std::unique_ptr<LocalInstance>>
-      local_instances_ TF_GUARDED_BY(service_mutex_);
+  absl::Mutex service_mutex_;  // Guards the singleton creation state.
+  absl::flat_hash_map<se::Platform::Id, std::unique_ptr<LocalInstance>>
+      local_instances_ ABSL_GUARDED_BY(service_mutex_);
 
-  std::unordered_map<se::Platform::Id, std::unique_ptr<CompileOnlyInstance>>
-      compile_only_instances_ TF_GUARDED_BY(service_mutex_);
+  absl::flat_hash_map<se::Platform::Id, std::unique_ptr<CompileOnlyInstance>>
+      compile_only_instances_ ABSL_GUARDED_BY(service_mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ClientLibrary);
+  ClientLibrary(const ClientLibrary&) = delete;
+  ClientLibrary& operator=(const ClientLibrary&) = delete;
 };
 
 }  // namespace xla

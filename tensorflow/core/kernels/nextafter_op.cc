@@ -24,8 +24,7 @@ REGISTER2(BinaryOp, CPU, "NextAfter", functor::nextafter, float, double);
 
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER2(BinaryOp, GPU, "NextAfter", functor::nextafter, float, double);
 #endif
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

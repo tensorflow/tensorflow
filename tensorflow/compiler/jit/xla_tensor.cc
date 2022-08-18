@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/xla_tensor.h"
+
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 namespace tensorflow {
 
@@ -40,13 +42,11 @@ namespace tensorflow {
 }
 
 Status XlaTensor::AllocateShapedBuffer(DataType dtype,
-                                       const xla::Shape& on_host_shape,
+                                       const xla::Shape& on_device_shape,
                                        xla::LocalClient* client,
                                        int device_ordinal) {
-  xla::Shape on_device_shape =
-      client->backend().transfer_manager()->HostShapeToDeviceShape(
-          on_host_shape);
-
+  xla::Shape on_host_shape =
+      xla::ShapeUtil::DeviceShapeToHostShape(on_device_shape);
   xla::ScopedShapedBuffer shaped_buffer(on_host_shape, on_device_shape,
                                         client->backend().memory_allocator(),
                                         device_ordinal);
@@ -66,7 +66,7 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype,
   VLOG(4) << shaped_buffer.ToString();
 
   set_shaped_buffer(std::move(shaped_buffer));
-  return Status::OK();
+  return OkStatus();
 }
 
 void XlaTensor::WaitForDefinitionEventOnStream(se::Stream* stream) {

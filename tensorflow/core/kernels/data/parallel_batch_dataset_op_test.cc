@@ -60,15 +60,18 @@ class ParallelBatchDatasetParams : public DatasetParams {
                     ParallelBatchDatasetOp::kBatchSize,
                     ParallelBatchDatasetOp::kNumParallelCalls,
                     ParallelBatchDatasetOp::kDropRemainder};
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{ParallelBatchDatasetOp::kParallelCopy, parallel_copy_},
-                    {ParallelBatchDatasetOp::kOutputTypes, output_dtypes_},
-                    {ParallelBatchDatasetOp::kOutputShapes, output_shapes_},
-                    {ParallelBatchDatasetOp::kDeterministic, deterministic_}};
-    return Status::OK();
+    *attr_vector = {
+        {"parallel_copy", parallel_copy_},
+        {"output_types", output_dtypes_},
+        {"output_shapes", output_shapes_},
+        {"deterministic", deterministic_},
+        {"metadata", ""},
+    };
+    return OkStatus();
   };
 
   string dataset_type() const override {

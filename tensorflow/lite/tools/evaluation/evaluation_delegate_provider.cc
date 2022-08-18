@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 
+#include <string>
+
 #include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
@@ -91,7 +93,7 @@ DelegateProviders::DelegateProviders()
 
 std::vector<Flag> DelegateProviders::GetFlags() {
   std::vector<Flag> flags;
-  delegate_list_util_.AppendCmdlineFlags(&flags);
+  delegate_list_util_.AppendCmdlineFlags(flags);
   return flags;
 }
 

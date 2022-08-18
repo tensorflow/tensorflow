@@ -1,0 +1,32 @@
+path: "tensorflow.experimental.dtensor.DTensorCheckpoint"
+tf_class {
+  is_instance: "<class \'tensorflow.dtensor.python.d_checkpoint.DTensorCheckpoint\'>"
+  is_instance: "<class \'tensorflow.python.checkpoint.checkpoint.Checkpoint\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "save_counter"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'mesh\', \'root\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "read"
+    argspec: "args=[\'self\', \'save_path\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "restore"
+    argspec: "args=[\'self\', \'save_path\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'self\', \'file_prefix\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "write"
+    argspec: "args=[\'self\', \'file_prefix\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

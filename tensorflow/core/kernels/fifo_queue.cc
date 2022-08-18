@@ -96,7 +96,7 @@ Status FIFOQueue::GetElementComponentFromBatch(const FIFOQueue::Tuple& tuple,
       ctx->allocate_temp(tuple[component].dtype(), element_shape, out_tensor));
   TF_RETURN_IF_ERROR(
       batch_util::CopySliceToElement(tuple[component], out_tensor, index));
-  return Status::OK();
+  return OkStatus();
 }
 
 void FIFOQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
@@ -363,7 +363,7 @@ Status FIFOQueue::MatchesNodeDef(const NodeDef& node_def) {
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
   TF_RETURN_IF_ERROR(MatchesNodeDefTypes(node_def));
   TF_RETURN_IF_ERROR(MatchesNodeDefShapes(node_def));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Defines a FIFOQueueOp, which produces a Queue (specifically, one

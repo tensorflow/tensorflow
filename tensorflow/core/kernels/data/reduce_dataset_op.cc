@@ -62,7 +62,7 @@ Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
 
   IteratorContext::Params params(ctx);
   auto function_handle_cache =
-      absl::make_unique<FunctionHandleCache>(params.flr);
+      std::make_unique<FunctionHandleCache>(params.flr);
   params.function_handle_cache = function_handle_cache.get();
   ResourceMgr resource_mgr;
   params.resource_mgr = &resource_mgr;
@@ -78,9 +78,9 @@ Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
   if (ctx->function_library()->device()->device_type() == DEVICE_CPU) {
     DatasetBase* finalized_dataset = nullptr;
     TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
+    core::ScopedUnref unref(finalized_dataset);
     TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
         &iter_ctx, /*parent=*/nullptr, "ReduceIterator", &iterator));
-    finalized_dataset->Unref();
   } else {
     TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, /*parent=*/nullptr,
                                              "ReduceIterator", &iterator));
@@ -124,7 +124,7 @@ Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
   for (size_t i = 0; i < state.size(); ++i) {
     ctx->set_output(i, state[i]);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {

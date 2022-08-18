@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TRANSFORMS_DEVICE_TRANSFORM_PATTERNS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TRANSFORMS_DEVICE_TRANSFORM_PATTERNS_H_
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -89,6 +89,22 @@ struct PadConcat : public OpRewritePattern<TFL::ConcatenationOp> {
   using OpRewritePattern<TFL::ConcatenationOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::ConcatenationOp concat_op,
+                                PatternRewriter& rewriter) const override;
+};
+
+// Convert reduce mean 4d to avg pool.
+struct ReduceMeanToAvgPool : public OpRewritePattern<TFL::MeanOp> {
+  using OpRewritePattern<TFL::MeanOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::MeanOp mean_op,
+                                PatternRewriter& rewriter) const override;
+};
+
+// Insert Requant ops for reduce_mean.
+struct InsertRequantForReduceMean : public OpRewritePattern<TFL::MeanOp> {
+  using OpRewritePattern<TFL::MeanOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::MeanOp mean_op,
                                 PatternRewriter& rewriter) const override;
 };
 

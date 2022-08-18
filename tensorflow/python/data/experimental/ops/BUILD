@@ -62,9 +62,11 @@ py_library(
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/compat",
         "//tensorflow/python/data/experimental/service:_pywrap_utils",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/data/ops:structured_function",
         "//tensorflow/python/data/util:nest",
     ],
 )
@@ -107,6 +109,15 @@ py_library(
 )
 
 py_library(
+    name = "from_list",
+    srcs = ["from_list.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+    ],
+)
+
+py_library(
     name = "get_single_element",
     srcs = ["get_single_element.py"],
     srcs_version = "PY3",
@@ -141,19 +152,13 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":random_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:stateless_random_ops_gen",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:structure",
-        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -165,10 +170,10 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -180,11 +185,11 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:basic_session_run_hooks",
-        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:saver",
         "//tensorflow/python:session_run_hook",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:optional_ops",
     ],
@@ -371,6 +376,7 @@ py_library(
     srcs = ["testing.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -412,6 +418,7 @@ py_library(
         ":distribute",
         ":enumerate_ops",
         ":error_ops",
+        ":from_list",
         ":get_single_element",
         ":grouping",
         ":interleave_ops",

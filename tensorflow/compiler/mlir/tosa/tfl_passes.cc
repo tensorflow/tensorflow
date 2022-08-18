@@ -46,7 +46,11 @@ void createTFLtoTOSALegalizationPipeline(
   // Perform main conversion.
   //----------------------------------------------------------------------------
   pm.addPass(mlir::tosa::createConvertTFLUint8Pass());
-  pm.addPass(mlir::tosa::createLegalizeTFLPass());
+  if (opts.dequantize_tfl_softmax) {
+    pm.addPass(mlir::tosa::createDequantizeTFLSoftmaxPass());
+  }
+  pm.addPass(mlir::tosa::createLegalizeTFLPass(opts.disabled_patterns,
+                                               opts.enabled_patterns));
 
   //----------------------------------------------------------------------------
   // Post conversion cleanup.
@@ -59,10 +63,11 @@ void createTFLtoTOSALegalizationPipeline(
   pm.addPass(mlir::createSymbolDCEPass());
 }
 
-static mlir::PassPipelineRegistration<TOSATFLLegalizationPipelineOptions>
-    tfl_tosa_pipeline("tfl-to-tosa-pipeline",
-                      "TensorFlow Lite to TOSA legalization pipeline",
-                      createTFLtoTOSALegalizationPipeline);
+void registerTFLtoTOSALegalizationPipeline() {
+  mlir::PassPipelineRegistration<TOSATFLLegalizationPipelineOptions>(
+      "tfl-to-tosa-pipeline", "TensorFlow Lite to TOSA legalization pipeline",
+      createTFLtoTOSALegalizationPipeline);
+}
 
 }  // namespace tosa
 }  // namespace mlir

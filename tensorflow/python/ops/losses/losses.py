@@ -17,10 +17,6 @@
 Note: All the losses are added to the `GraphKeys.LOSSES` collection by default.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.losses.losses_impl import *
 from tensorflow.python.ops.losses.util import *

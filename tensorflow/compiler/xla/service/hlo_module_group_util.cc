@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <list>
+#include <memory>
 #include <queue>
 #include <stack>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -207,8 +206,9 @@ std::vector<HloInstruction*> HloModuleGroupUtil::RootInstructions(
   return roots;
 }
 
-string HloModuleGroupUtil::CycleToString(HloInstruction* init_instruction) {
-  std::vector<string> names;
+std::string HloModuleGroupUtil::CycleToString(
+    HloInstruction* init_instruction) {
+  std::vector<std::string> names;
   absl::flat_hash_set<HloInstruction*> seen;
 
   std::function<bool(HloInstruction*)> helper =
@@ -306,7 +306,7 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloModuleGroupUtil::VerifyComputations(
@@ -314,7 +314,7 @@ Status HloModuleGroupUtil::VerifyComputations(
   auto visit_function =
       [&](HloInstruction* instruction,
           const std::vector<HloInstruction*>& instruction_group) {
-        return Status::OK();
+        return OkStatus();
       };
   int64_t instructions_count = 0;
   VisitStates visit_states;
@@ -336,7 +336,7 @@ Status HloModuleGroupUtil::VerifyComputations(
     TF_RET_CHECK(state.second == VisitState::kVisited);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<HloReachabilityMap>>
@@ -348,14 +348,14 @@ HloModuleGroupUtil::ComputeReachability(
           const std::vector<HloInstruction*>& instruction_group) {
         post_order.insert(post_order.end(), instruction_group.begin(),
                           instruction_group.end());
-        return Status::OK();
+        return OkStatus();
       };
   HloModuleGroupUtil::VisitStates visit_states;
   for (HloInstruction* root : RootInstructions(computations)) {
     TF_RETURN_IF_ERROR(
         VisitTopologicalOrder(&visit_states, visit_function, root));
   }
-  auto reachability = absl::make_unique<HloReachabilityMap>(post_order);
+  auto reachability = std::make_unique<HloReachabilityMap>(post_order);
   for (HloInstruction* hlo : post_order) {
     reachability->FastSetReachabilityToUnion(GlobalPredecessors(hlo), hlo);
   }

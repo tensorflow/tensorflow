@@ -15,10 +15,6 @@
 """Utility functions for internal use."""
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import inspect
 import numbers
 import os
@@ -511,6 +507,24 @@ def result_type(*arrays_and_dtypes):  # pylint: disable=missing-function-docstri
     # If arrays_and_dtypes is an empty list, let numpy decide what the dtype is.
     arrays_and_dtypes = [np.asarray([])]
   return np_dtypes._result_type(*arrays_and_dtypes)  # pylint: disable=protected-access
+
+
+def result_type_unary(a, dtype):  # pylint: disable=missing-function-docstring
+  """Find the result type from a single input and a dtype."""
+  if dtype:
+    # We need to let np_utils.result_type decide the dtype, not tf.zeros_like
+    return result_type(dtype)
+
+  # np_utils.result_type treats string inputs as dtype strings, not as strings.
+  # but for unary we want to treat it as a string input.
+  if isinstance(a, str):
+    return np.unicode_
+  elif isinstance(a, bytes):
+    return np.bytes_
+
+  # TF and numpy has different interpretations of Python types such as
+  # `float`, so we let `np_utils.result_type` decide.
+  return result_type(a)
 
 
 def _result_type_binary(t1, t2):  # pylint: disable=missing-function-docstring

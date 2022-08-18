@@ -123,7 +123,7 @@ class NcclTestBase : public ::testing::Test {
       VLOG(2) << device->name();
     }
     if (!dev_mgr_)
-      dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
+      dev_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(local_devices));
     col_exec_ =
         new BaseCollectiveExecutor(&col_exec_mgr_, /*remote_access=*/nullptr,
                                    kStepId, dev_mgr_.get(), work_queue_);
@@ -142,14 +142,13 @@ class NcclTestBase : public ::testing::Test {
     const string task_name = "/job:worker/replica:0/task:0";
     col_params_->group.num_devices_per_task[task_name] = num_ranks;
     for (int rank = 0; rank < num_ranks; ++rank) {
-      DeviceAttributes device;
-      device.set_name(device_names[rank % num_gpus]);
-      col_params_->group.devices.push_back(device);
-      col_params_->group.task_names.push_back(task_name);
+      CollGroupMember member;
+      member.device.set_name(device_names[rank % num_gpus]);
+      col_params_->group.members.push_back(member);
     }
     for (int rank = 0; rank < num_ranks; ++rank) {
-      instances_.push_back(absl::make_unique<DeviceInstance>(
-          rank, col_params_->group.devices[rank].name(), this));
+      instances_.push_back(std::make_unique<DeviceInstance>(
+          rank, col_params_->group.members[rank].device.name(), this));
     }
   }
 
@@ -216,7 +215,7 @@ class NcclTestBase : public ::testing::Test {
               << DMAHelper::base(output);
       Tensor actual(DT_FLOAT, TensorShape({output_length}));
       Device* dev = instances_[rank]->device_;
-      auto* dev_info = dev->tensorflow_gpu_device_info();
+      auto* dev_info = dev->tensorflow_accelerator_device_info();
       TF_CHECK_OK(dev_info->default_context->CopyDeviceTensorToCPUSync(
           output, /*tensor_name=*/"", dev, &actual));
       VLOG(3) << "rank " << rank << " got output tensor "
@@ -279,7 +278,7 @@ class NcclTestBase : public ::testing::Test {
       } else {
         VLOG(2) << "input tensor " << cpu_tensor.DebugString();
       }
-      auto* dev_info = device_->tensorflow_gpu_device_info();
+      auto* dev_info = device_->tensorflow_accelerator_device_info();
       TF_CHECK_OK(dev_info->default_context->CopyCPUTensorToDeviceSync(
           &cpu_tensor, device_, &input_));
     }
@@ -288,7 +287,7 @@ class NcclTestBase : public ::testing::Test {
       params->step_id = kStepId;
       params->device = device_;
       DeviceContext* dev_ctx = nullptr;
-      auto* dev_info = device_->tensorflow_gpu_device_info();
+      auto* dev_info = device_->tensorflow_accelerator_device_info();
       if (dev_info) {
         dev_ctx = dev_info->default_context;
         dev_ctx->Ref();
@@ -306,10 +305,10 @@ class NcclTestBase : public ::testing::Test {
       // Prepare inputs and outputs to OpKernel.
       gtl::InlinedVector<TensorValue, 4> inputs;
       inputs.push_back(TensorValue(&input_));
-      op_params.inputs = &inputs;
+      op_params.inputs = inputs;
       gtl::InlinedVector<AllocatorAttributes, 4> input_aa(
           {AllocatorAttributes()});
-      op_params.input_alloc_attrs = &input_aa;
+      op_params.input_alloc_attrs = input_aa;
       int forward_from = 0;
       op_params.forward_from_array = &forward_from;
       AllocatorAttributes generic_alloc_attr;

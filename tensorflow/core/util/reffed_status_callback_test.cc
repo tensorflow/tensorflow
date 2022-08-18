@@ -44,7 +44,7 @@ TEST(TestReffedStatusCallback, CallsBackOK) {
 
 TEST(TestReffedStatusCallback, CallsBackFail) {
   bool called = false;
-  Status status = Status::OK();
+  Status status = OkStatus();
   auto done = [&called, &status](const Status& s) {
     called = true;
     status = s;
@@ -55,8 +55,9 @@ TEST(TestReffedStatusCallback, CallsBackFail) {
   EXPECT_FALSE(called);
   cb->Unref();
   EXPECT_TRUE(called);
-  // Equal to the first error.
-  EXPECT_EQ(status.code(), error::INTERNAL);
+  // Should be one of the two given error codes.
+  EXPECT_THAT(status.code(),
+              ::testing::AnyOf(error::INTERNAL, error::INVALID_ARGUMENT));
   // Both errors are reported.
   EXPECT_TRUE(absl::StrContains(status.error_message(), "1"));
   EXPECT_TRUE(absl::StrContains(status.error_message(), "2"));
@@ -64,7 +65,7 @@ TEST(TestReffedStatusCallback, CallsBackFail) {
 
 TEST(TestReffedStatusCallback, RefMulti) {
   int called = false;
-  Status status = Status::OK();
+  Status status = OkStatus();
   auto done = [&called, &status](const Status& s) {
     called = true;
     status = s;

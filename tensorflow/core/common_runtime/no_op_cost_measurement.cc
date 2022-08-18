@@ -16,12 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/no_op_cost_measurement.h"
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/common_runtime/cost_constants.h"
 
 namespace tensorflow {
-
-namespace {
-constexpr char kNoOpCostName[] = "no_op";
-}  // namespace
 
 absl::Duration NoOpCostMeasurement::GetTotalCost() { return absl::Duration(); }
 

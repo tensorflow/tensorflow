@@ -27,7 +27,9 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> AllGatherBroadcastReorder::Run(HloModule *module) {
+StatusOr<bool> AllGatherBroadcastReorder::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedCollective(*module,
                                                      HloOpcode::kAllGather)) {
     VLOG(1) << "Skip AllGatherBroadcastReorder because the module contains "
@@ -38,7 +40,7 @@ StatusOr<bool> AllGatherBroadcastReorder::Run(HloModule *module) {
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
 
   bool changed = false;
-  for (auto computation : module->computations()) {
+  for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction *inst : computation->MakeInstructionPostOrder()) {
       // Check for all-gather with a broadcast operand.
       if (inst->opcode() != HloOpcode::kAllGather || !inst->shape().IsArray() ||
@@ -94,9 +96,7 @@ StatusOr<bool> AllGatherBroadcastReorder::Run(HloModule *module) {
         VLOG(2) << "All-gather along non uniform dimension";
 
         // Find the index of the all_gather dimension in the broadcast dims.
-        auto ag_dim_it = absl::c_find(bcast->dimensions(), ag_dim);
-        TF_RET_CHECK(ag_dim_it != bcast->dimensions().end());
-        size_t ag_dim_index = ag_dim_it - bcast->dimensions().begin();
+        auto ag_dim_index = PositionInContainer(bcast->dimensions(), ag_dim);
 
         // The new all-gather shape is just the shape of x, with the dimension
         // that was gathered multiplied by some factor.

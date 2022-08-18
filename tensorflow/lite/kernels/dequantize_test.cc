@@ -54,7 +54,7 @@ class DequantizeOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_DEQUANTIZE, BuiltinOptions_DequantizeOptions,
                  CreateDequantizeOptions(builder_).Union());
 
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_DEQUANTIZE, ops::builtin::Register_DEQUANTIZE(),
         version);
 
@@ -78,7 +78,7 @@ TEST(DequantizeOpTest, Uint8) {
   DequantizeOpModel m(TensorType_UINT8, {2, 5}, 0.5, 127, 1);
 
   m.SetInput<uint8_t>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64})));
@@ -89,7 +89,7 @@ TEST(DequantizeOpTest, Int8) {
   DequantizeOpModel m(TensorType_INT8, {2, 5}, 0.5, -1, 2);
 
   m.SetInput<int8_t>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64})));
@@ -103,7 +103,7 @@ TEST(DequantizeOpTest, Float16) {
                                 Eigen::half{1.0f},     Eigen::half{100.32f}};
   m.PopulateTensor(0, 0, reinterpret_cast<TfLiteFloat16*>(half.data()),
                    reinterpret_cast<TfLiteFloat16*>(half.data()) + half.size());
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {-535.54f, -100.0f, -1.0f, 0.f, 1.0f, 100.32f},
                                  /*max_abs_error=*/0.1f)));
@@ -112,7 +112,7 @@ TEST(DequantizeOpTest, Float16) {
 TEST(DequantizeOpTest, Int16) {
   DequantizeOpModel m(TensorType_INT16, {2, 5}, 0.5, 0, 4);
   m.SetInput<int16_t>({-129, -126, -125, -124, -123, 124, 125, 126, 127, 131});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {-64.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 65.5})));
@@ -134,7 +134,7 @@ class DequantizePerChannelOpModel : public DequantizeOpModel {
     SetBuiltinOp(BuiltinOperator_DEQUANTIZE, BuiltinOptions_DequantizeOptions,
                  CreateDequantizeOptions(builder_).Union());
 
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_DEQUANTIZE, ops::builtin::Register_DEQUANTIZE(),
         version);
 
@@ -148,7 +148,7 @@ TEST(DequantizePerChannelOpTest, Uint8) {
                                 {127, 127}, 0, 5);
 
   m.SetInput<uint8_t>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64})));
@@ -160,7 +160,7 @@ TEST(DequantizePerChannelOpTest, Int8) {
                                 0, 5);
 
   m.SetInput<int8_t>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64})));

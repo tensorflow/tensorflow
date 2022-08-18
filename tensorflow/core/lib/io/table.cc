@@ -104,7 +104,7 @@ Iterator* Table::BlockReader(void* arg, const StringPiece& index_value) {
   Table* table = reinterpret_cast<Table*>(arg);
   Cache* block_cache = table->rep_->options.block_cache;
   Block* block = nullptr;
-  Cache::Handle* cache_handle = NULL;
+  Cache::Handle* cache_handle = nullptr;
 
   BlockHandle handle;
   StringPiece input = index_value;

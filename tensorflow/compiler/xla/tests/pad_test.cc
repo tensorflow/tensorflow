@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
@@ -28,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -140,7 +138,7 @@ XLA_TEST_P(PadTestFloat, Pad4D_2x0x3x2_FloatArray) {
 
 TEST_P(PadTestFloat, Pad4DFloat_1x1x3x2_Array) {
   XlaBuilder b(TestName());
-  auto input = absl::make_unique<Array4D<float>>(1, 1, 3, 2);
+  auto input = std::make_unique<Array4D<float>>(1, 1, 3, 2);
   Array2D<float> input_xy({
       {1.0f, 2.0f},  // row 0
       {3.0f, 4.0f},  // row 1
@@ -151,7 +149,7 @@ TEST_P(PadTestFloat, Pad4DFloat_1x1x3x2_Array) {
   Pad(AddParam(*input, &b), AddParam(LiteralUtil::CreateR0<float>(1.5), &b),
       r4_padding_on_dim0_dim1_);
 
-  auto expected = absl::make_unique<Array4D<float>>(2, 3, 3, 2);
+  auto expected = std::make_unique<Array4D<float>>(2, 3, 3, 2);
   expected->Fill(1.5);
   (*expected)(1, 0, 0, 0) = 1.0f;
   (*expected)(1, 0, 0, 1) = 2.0f;
@@ -171,7 +169,7 @@ TEST_P(PadTestFloat, Pad4DFloatArrayWithInteriorPadding) {
       AddParam(LiteralUtil::CreateR0<float>(pad_value), &b),
       r4_padding_on_dim0_dim1_);
 
-  auto expected = absl::make_unique<Array4D<float>>(8, 5, 1, 1);
+  auto expected = std::make_unique<Array4D<float>>(8, 5, 1, 1);
   expected->Fill(pad_value);
   (*expected)(1, 0, 0, 0) = 1.0f;
   (*expected)(1, 2, 0, 0) = 2.0f;
@@ -269,18 +267,18 @@ XLA_TEST_P(PadTestFloat, Pad4DFloatArrayMinorFirstNonTrivialMinorDimensions) {
 
 XLA_TEST_F(PadTest, Pad4DU8Array) {
   XlaBuilder b(TestName());
-  auto input = absl::make_unique<Array4D<uint8>>(1, 1, 3, 2);
-  Array2D<uint8> input_xy({
+  auto input = std::make_unique<Array4D<uint8_t>>(1, 1, 3, 2);
+  Array2D<uint8_t> input_xy({
       {1, 2},  // row 0
       {3, 4},  // row 1
       {5, 6},  // row 2
   });
   input->FillWithYX(input_xy);
 
-  Pad(AddParam(*input, &b), ConstantR0<uint8>(&b, 35),
+  Pad(AddParam(*input, &b), ConstantR0<uint8_t>(&b, 35),
       r4_padding_on_dim0_dim1_);
 
-  auto expected = absl::make_unique<Array4D<uint8>>(2, 3, 3, 2);
+  auto expected = std::make_unique<Array4D<uint8_t>>(2, 3, 3, 2);
   expected->Fill(35);
   (*expected)(1, 0, 0, 0) = 1;
   (*expected)(1, 0, 0, 1) = 2;
@@ -288,7 +286,7 @@ XLA_TEST_F(PadTest, Pad4DU8Array) {
   (*expected)(1, 0, 1, 1) = 4;
   (*expected)(1, 0, 2, 0) = 5;
   (*expected)(1, 0, 2, 1) = 6;
-  ComputeAndCompareR4<uint8>(&b, *expected, {});
+  ComputeAndCompareR4<uint8_t>(&b, *expected, {});
 }
 
 XLA_TEST_F(PadTest, Pad4DPredArray) {
@@ -300,14 +298,14 @@ XLA_TEST_F(PadTest, Pad4DPredArray) {
   auto padded =
       Pad(input, ConstantR0<bool>(&b, false), r4_padding_on_dim0_dim1_);
 
-  // For the same reason, use Select to convert boolean values to int32.
-  auto zeros = absl::make_unique<Array4D<int32>>(2, 3, 3, 2);
-  auto ones = absl::make_unique<Array4D<int32>>(2, 3, 3, 2);
+  // For the same reason, use Select to convert boolean values to int32_t.
+  auto zeros = std::make_unique<Array4D<int32_t>>(2, 3, 3, 2);
+  auto ones = std::make_unique<Array4D<int32_t>>(2, 3, 3, 2);
   zeros->Fill(0);
   ones->Fill(1);
   Select(padded, AddParam(*ones, &b), AddParam(*zeros, &b));
 
-  auto expected = absl::make_unique<Array4D<int32>>(2, 3, 3, 2);
+  auto expected = std::make_unique<Array4D<int32_t>>(2, 3, 3, 2);
   expected->Fill(0);
   (*expected)(1, 0, 0, 0) = 1;
   (*expected)(1, 0, 0, 1) = 1;
@@ -315,13 +313,13 @@ XLA_TEST_F(PadTest, Pad4DPredArray) {
   (*expected)(1, 0, 1, 1) = 1;
   (*expected)(1, 0, 2, 0) = 1;
   (*expected)(1, 0, 2, 1) = 1;
-  ComputeAndCompareR4<int32>(&b, *expected, {});
+  ComputeAndCompareR4<int32_t>(&b, *expected, {});
 }
 
 XLA_TEST_P(PadTestFloat, Large2DPad) {
   XlaBuilder b(TestName());
 
-  auto ones = absl::make_unique<Array2D<float>>(4, 4);
+  auto ones = std::make_unique<Array2D<float>>(4, 4);
   ones->Fill(1.0f);
   auto input = AddParam(*ones, &b);
   PaddingConfig padding_config = MakeNoPaddingConfig(2);
@@ -342,7 +340,7 @@ XLA_TEST_P(PadTestFloat, AllTypes2DPad) {
 
   constexpr int64_t in_rows = 35;
   constexpr int64_t in_cols = 35;
-  auto operand = absl::make_unique<Array2D<float>>(in_rows, in_cols);
+  auto operand = std::make_unique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(0.0f);
   auto input = AddParam(*operand, &b);
 
@@ -367,7 +365,7 @@ XLA_TEST_P(PadTestFloat, High2DPad) {
   constexpr int64_t low_padding = 0;
   int64_t high_padding[2] = {5, 7};
   constexpr int64_t interior_padding = 0;
-  auto operand = absl::make_unique<Array2D<float>>(in_rows, in_cols);
+  auto operand = std::make_unique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(1.0f);
   auto input = AddParam(*operand, &b);
   PaddingConfig padding_config = MakeNoPaddingConfig(2);
@@ -394,7 +392,7 @@ XLA_TEST_P(PadTestFloat, NegativePadding2D) {
   int64_t low_padding[2] = {-1, -2};
   int64_t high_padding[2] = {-3, 4};
   constexpr int64_t interior_padding = 0;
-  auto operand = absl::make_unique<Array2D<float>>(in_rows, in_cols);
+  auto operand = std::make_unique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(1.0f);
   auto input = AddParam(*operand, &b);
   PaddingConfig padding_config = MakeNoPaddingConfig(2);
@@ -422,7 +420,7 @@ XLA_TEST_P(PadTestFloat, NegativeAndInteriorPadding2D) {
   int64_t low_padding[2] = {4, -1};
   int64_t high_padding[2] = {-2, -4};
   int64_t interior_padding[2] = {1, 2};
-  auto operand = absl::make_unique<Array2D<float>>(in_rows, in_cols);
+  auto operand = std::make_unique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(1.0f);
   auto input = AddParam(*operand, &b);
   PaddingConfig padding_config = MakeNoPaddingConfig(2);
@@ -445,7 +443,7 @@ XLA_TEST_P(PadTestFloat, NegativeAndInteriorPadding2D) {
 // Regression test for b/31827337.
 XLA_TEST_P(PadTestFloat, ReducePad) {
   XlaBuilder b(TestName());
-  auto ones = absl::make_unique<Array4D<float>>(2, 2, 2, 2);
+  auto ones = std::make_unique<Array4D<float>>(2, 2, 2, 2);
   ones->Fill(1.0);
   auto input = AddParam(*ones, &b);
 

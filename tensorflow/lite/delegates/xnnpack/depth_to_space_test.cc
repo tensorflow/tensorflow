@@ -46,7 +46,7 @@ TEST(DepthToSpace, SinglePixel) {
       .InputWidth(1)
       .OutputChannels(channel_rng())
       .BlockSize(block_rng())
-      .Test(xnnpack_delegate.get());
+      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
 }
 
 TEST(DepthToSpace, SingleRow) {
@@ -71,7 +71,7 @@ TEST(DepthToSpace, SingleRow) {
       .InputWidth(width_rng())
       .OutputChannels(channel_rng())
       .BlockSize(block_rng())
-      .Test(xnnpack_delegate.get());
+      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
 }
 
 TEST(DepthToSpace, SingleColumn) {
@@ -96,7 +96,7 @@ TEST(DepthToSpace, SingleColumn) {
       .InputWidth(1)
       .OutputChannels(channel_rng())
       .BlockSize(block_rng())
-      .Test(xnnpack_delegate.get());
+      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
 }
 
 TEST(DepthToSpace, FullImage) {
@@ -121,7 +121,7 @@ TEST(DepthToSpace, FullImage) {
       .InputWidth(size_rng())
       .OutputChannels(channel_rng())
       .BlockSize(block_rng())
-      .Test(xnnpack_delegate.get());
+      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
 }
 
 TEST(DepthToSpace, MultiThreading) {
@@ -149,7 +149,7 @@ TEST(DepthToSpace, MultiThreading) {
       .InputWidth(size_rng())
       .OutputChannels(channel_rng())
       .BlockSize(block_rng())
-      .Test(xnnpack_delegate.get());
+      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack

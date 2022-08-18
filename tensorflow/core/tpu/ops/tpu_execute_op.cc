@@ -26,6 +26,7 @@ REGISTER_OP("TPUExecute")
     .Output("results: Tresults")
     .Attr("Tresults: list(type) >= 0")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle key;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 1), 1, &key));
@@ -34,7 +35,7 @@ REGISTER_OP("TPUExecute")
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->UnknownShape());
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TPUExecuteAndUpdateVariables")
@@ -46,6 +47,7 @@ REGISTER_OP("TPUExecuteAndUpdateVariables")
     .Attr("device_var_reads_indices: list(int) >= 0")
     .Attr("device_var_updates_indices: list(int) >= 0")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle key;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 1), 1, &key));
@@ -54,7 +56,7 @@ REGISTER_OP("TPUExecuteAndUpdateVariables")
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->UnknownShape());
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

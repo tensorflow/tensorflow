@@ -13,6 +13,14 @@ tf_module {
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "approx_max_k"
+    argspec: "args=[\'operand\', \'k\', \'reduction_dimension\', \'recall_target\', \'reduction_input_size_override\', \'aggregate_to_topk\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.95\', \'-1\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "approx_min_k"
+    argspec: "args=[\'operand\', \'k\', \'reduction_dimension\', \'recall_target\', \'reduction_input_size_override\', \'aggregate_to_topk\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.95\', \'-1\', \'True\', \'None\'], "
+  }
+  member_method {
     name: "atrous_conv2d"
     argspec: "args=[\'value\', \'filters\', \'rate\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -358,7 +366,7 @@ tf_module {
   }
   member_method {
     name: "silu"
-    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'features\', \'beta\'], varargs=None, keywords=None, defaults=[\'1.0\'], "
   }
   member_method {
     name: "softmax"
@@ -410,7 +418,7 @@ tf_module {
   }
   member_method {
     name: "swish"
-    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'features\', \'beta\'], varargs=None, keywords=None, defaults=[\'1.0\'], "
   }
   member_method {
     name: "tanh"

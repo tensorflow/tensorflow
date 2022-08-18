@@ -20,14 +20,13 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/hash/hash.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -91,10 +90,14 @@ class LayoutUtil {
   // Clears the layout on all Shapes within the given ProgramShape.
   static void ClearLayout(ProgramShape* program_shape);
 
-  // Returns whether the given Shape is an array and has a dense format layout.
+  // Clears the tiling fields from the shape and/or all of its subshapes.
+  static void ClearTiles(Shape* shape);
+
+  // Returns whether the given Shape is an array and has a dense in-memory
+  // representation.
   static bool IsDenseArray(const Shape& shape);
 
-  // Returns whether the given Layout has a dense format.
+  // Returns whether the given Layout has a dense in-memory representation.
   static bool IsDense(const Layout& layout);
 
   // Returns whether the layout is monotonic and dim 0 is minor in the layout.
@@ -120,7 +123,7 @@ class LayoutUtil {
   static bool Equal(const Layout& lhs, const Layout& rhs);
 
   // Returns the minor_to_major array for the given Shape.  Requires that the
-  // shape is an array and has a dense layout.
+  // shape is an array.
   static absl::Span<const int64_t> MinorToMajor(const Shape& shape);
   static absl::Span<const int64_t> MinorToMajor(const Layout& layout);
 
@@ -160,7 +163,7 @@ class LayoutUtil {
   static std::vector<int64_t> MakeLogicalToPhysical(const Layout& layout);
 
   // Returns a human-readable string that represents the given layout.
-  static string HumanString(const Layout& layout);
+  static std::string HumanString(const Layout& layout);
 
   // Copies the layout from 'src' to 'dst'. Recursively copies layouts of
   // tuples.  'src' and 'dst' need not be compatible but the two shapes must
@@ -185,11 +188,21 @@ class LayoutUtil {
   // layout `layout` as the most major dimension.
   static Layout MoveDimToMajor(const Layout& layout, int64_t dim);
 
-  // Compute a hash for `layout`.
-  static size_t Hash(const Layout& layout);
+  // Returns the linearized index of the cell at the given indices. The unit
+  // of the offset is in elements of the shape.
+  //
+  // NOTE: this method only uses the top-level tile and disregards the sub-tile
+  // in the layout. This method is also performance critical.
+  static int64_t LinearIndex(const Shape& shape,
+                             absl::Span<const int64_t> indices);
+
+  // If the shape has a layout, returns the contained memory space.  Otherwise,
+  // returns Layout::kDefaultMemorySpace.
+  static int64_t MemorySpace(const Shape& shape);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
+  LayoutUtil(const LayoutUtil&) = delete;
+  LayoutUtil& operator=(const LayoutUtil&) = delete;
 };
 
 }  // namespace xla

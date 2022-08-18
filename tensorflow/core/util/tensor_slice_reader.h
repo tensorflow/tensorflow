@@ -181,6 +181,22 @@ bool TensorSliceReader::CopySliceData(const string& name,
               << slice_s.DebugString() << ": computed key = " << key;
       return false;
     }
+    // Ensure the TensorSlice contains the expected amount of data.
+    TensorShape shp_s;
+    Status s = slice_s.SliceTensorShape(tss->shape(), &shp_s);
+    if (!s.ok()) {
+      VLOG(1) << "Failed to slice tensor " << name << ", slice "
+              << slice_s.DebugString() << ": " << s;
+      return false;
+    }
+    if (checkpoint::TensorProtoDataSize<T>(sts.data().data()) !=
+        shp_s.num_elements()) {
+      VLOG(1) << "Tensor " << name << ", slice " << slice_s.DebugString()
+              << " had an unexpected amount of data: expected = "
+              << shp_s.num_elements() << ", got = "
+              << checkpoint::TensorProtoDataSize<T>(sts.data().data());
+      return false;
+    }
     CopyDataFromTensorSliceToTensorSlice(
         tss->shape(), slice_s, slice,
         checkpoint::TensorProtoData<T>(sts.data().data()), data);

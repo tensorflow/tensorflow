@@ -55,9 +55,8 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
     mutex_lock l(cache_mu_);
     auto& function_state = cache_[cache_key];
     if (function_state) {
-      *result =
-          FunctionCache::FunctionCacheResult{function_state.CopyRef(), false};
-      return tensorflow::Status::OK();
+      *result = FunctionCache::FunctionCacheResult{function_state, false};
+      return ::tensorflow::OkStatus();
     }
   }
 
@@ -130,7 +129,8 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
     tf_ret_types.push_back(ret_type);
   }
 
-  auto runner_table = absl::make_unique<tensorflow::tfd::OpKernelRunnerTable>();
+  auto runner_table =
+      std::make_unique<tensorflow::tfrt_stub::OpKernelRunnerTable>();
   RCReference<RequestContext> request_ctx;
   TF_RETURN_IF_ERROR(request_ctx_fn(runner_table.get(), &request_ctx));
 
@@ -145,9 +145,9 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
   mutex_lock l(cache_mu_);
   // Insert the new entry to cache. If an entry with the same key is already
   // present in the cache at this moment due to race condition, overwrites it.
-  cache_[cache_key] = entry.CopyRef();
+  cache_[cache_key] = entry;
   *result = FunctionCache::FunctionCacheResult{std::move(entry), true};
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace tf
