@@ -1031,7 +1031,7 @@ class MaterializeReductionIndices
     auto indices_shape = indices->getResult(0).getType().cast<ShapedType>();
     if (!indices_shape.hasRank()) return failure();
     if (!indices_shape.getElementType().isInteger(32) &&
-        indices_shape.getElementType().isInteger(64)) {
+        !indices_shape.getElementType().isInteger(64)) {
       return failure();
     }
 
@@ -1067,11 +1067,11 @@ class MaterializeReductionIndices
 
     // We know it's a full reduction. We can generate the full set of indices
     // to reduce as a constant node.
-    SmallVector<int> elements(indices_shape.getRank());
+    SmallVector<int> elements(input_shape.getRank());
     std::iota(elements.begin(), elements.end(), 0);
 
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
-        indices_shape.getElementType(), {indices_shape.getRank()},
+        indices_shape.getElementType(), {input_shape.getRank()},
         llvm::makeArrayRef(elements));
 
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
