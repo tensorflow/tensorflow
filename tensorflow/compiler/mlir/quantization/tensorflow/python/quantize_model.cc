@@ -172,7 +172,8 @@ absl::StatusOr<GraphDef> QuantizeQatModel(
       mlir::quant::QuantizationMethod::kQuantizationAwareTraining,
       quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      mlir::quant::QuantizationMethod::kQuantizationAwareTraining));
+      mlir::quant::QuantizationMethod::kQuantizationAwareTraining,
+      quantization_options.op_set()));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
@@ -317,7 +318,8 @@ absl::StatusOr<GraphDef> QuantizePtqModelPostCalibration(
       mlir::quant::QuantizationMethod::kPostTrainingQuantization,
       quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      mlir::quant::QuantizationMethod::kPostTrainingQuantization));
+      mlir::quant::QuantizationMethod::kPostTrainingQuantization,
+      quantization_options.op_set()));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
@@ -408,7 +410,8 @@ absl::StatusOr<GraphDef> QuantizePtqDynamicRange(
       mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
       quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      mlir::quant::QuantizationMethod::kDynamicRangeQuantization));
+      mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
+      quantization_options.op_set()));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
