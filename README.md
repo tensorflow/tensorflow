@@ -54,6 +54,9 @@ Windows)*:
 $ pip install tensorflow
 ```
 
+Other devices (DirectX and MacOS-metal) are supported using
+[Device plugins](https://www.tensorflow.org/install/gpu_plugins#available_devices).
+
 A smaller CPU-only package is also available:
 
 ```

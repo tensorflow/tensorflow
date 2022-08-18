@@ -166,17 +166,5 @@ int TfShapeInferenceContext::NumOutputs() const {
   return context_->num_outputs();
 }
 
-::tensorflow::Status FromAbslStatus(const absl::Status& s) {
-  if (s.ok()) return ::tensorflow::Status();
-  return ::tensorflow::Status(static_cast<::tensorflow::error::Code>(s.code()),
-                              s.message());
-}
-
-absl::Status ToAbslStatus(const ::tensorflow::Status& s) {
-  return s.ok() ? absl::OkStatus()
-                : absl::Status(static_cast<absl::StatusCode>(s.code()),
-                               s.error_message());
-}
-
 }  // namespace shim
 }  // namespace tflite

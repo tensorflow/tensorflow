@@ -188,6 +188,9 @@ limitations under the License.
 
 #if XLA_ENABLE_XLIR
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
+#include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 #endif  // XLA_ENABLE_XLIR
 
 namespace xla {
@@ -287,6 +290,24 @@ bool ConvIsLowerable(HloInstruction* conv) {
 
 using OwnedThunkSchedule = GpuExecutable::OwnedThunkSchedule;
 using OwnedJitRtProgram = GpuExecutable::OwnedJitRtProgram;
+
+StatusOr<std::unique_ptr<Executable>> JitRtAotCompilationResult::LoadExecutable(
+    Compiler* compiler, se::StreamExecutor* executor) const {
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig hlo_module_config,
+      HloModule::CreateModuleConfigFromProto(
+          jitrt_executable_.hlo_module_proto(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(jitrt_executable_.hlo_module_proto(),
+                                 hlo_module_config));
+  auto gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
+  return GpuExecutable::LoadFromObjFile(
+      std::move(hlo_module), jitrt_executable_.obj_file(),
+      jitrt_executable_.mlir_module(), jitrt_executable_.entry_func_attrs(),
+      GetDebugOptionsFromFlags(), gpu_compiler->GetGpuVersion(executor),
+      executor);
+}
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                          const char* target_triple, const char* data_layout)
@@ -839,7 +860,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 #if XLA_ENABLE_XLIR
 static StatusOr<OwnedJitRtProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
-    llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module) {
+    llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module,
+    se::StreamExecutor* stream_exec) {
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
   mlir::OpBuilder builder(mlir_module.getContext());
   mlir::IntegerAttr replica_count_attr =
@@ -851,10 +873,22 @@ static StatusOr<OwnedJitRtProgram> LowerToJitRt(
   func->setAttr("replica_count", replica_count_attr);
   func->setAttr("num_partitions", num_partitions_attr);
 
+  tensorflow::GpuBinaryOptions options;
+  if (stream_exec == nullptr) {
+    options = tensorflow::GpuBinaryOptions::DefaultGpuBinaryOptions();
+  } else {
+    options.platform_name = stream_exec->platform()->Name();
+    options.gpu_device_info = xla::gpu::GetGpuDeviceInfo(stream_exec);
+    options.cuda_compute_capability =
+        stream_exec->GetDeviceDescription().cuda_compute_capability();
+    options.rocm_compute_capability =
+        stream_exec->GetDeviceDescription().rocm_compute_capability();
+  }
+
   // Lower LMHLO operations to the JitRt compatible custom calls.
   TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToJitRt(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},
-      buffer_sizes));
+      buffer_sizes, options));
   // Serialize module to pass it to GpuExecutable for compilation.
   std::string serialized_module;
   llvm::raw_string_ostream os(serialized_module);
@@ -1027,7 +1061,7 @@ static Status CompileModuleToLlvmIrImpl(
         [](const BufferAllocation& allocation) { return allocation.size(); });
     TF_ASSIGN_OR_RETURN(results->executable,
                         LowerToJitRt(*mlir_module, entry_function.getName(),
-                                     buffer_sizes, hlo_module));
+                                     buffer_sizes, hlo_module, stream_exec));
     return OkStatus();
   }
 #endif  // XLA_ENABLE_XLIR
@@ -1355,30 +1389,81 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
 }
 
-GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec) {
-  GpuDeviceInfo gpu_device_info;
-  gpu_device_info.threads_per_block_limit =
-      stream_exec->GetDeviceDescription().threads_per_block_limit();
-  gpu_device_info.threads_per_warp =
-      stream_exec->GetDeviceDescription().threads_per_warp();
-  gpu_device_info.shared_memory_per_block =
-      stream_exec->GetDeviceDescription().shared_memory_per_block();
-  gpu_device_info.threads_per_core_limit =
-      stream_exec->GetDeviceDescription().threads_per_core_limit();
-  gpu_device_info.core_count = stream_exec->GetDeviceDescription().core_count();
-  gpu_device_info.block_dim_limit_x =
-      stream_exec->GetDeviceDescription().block_dim_limit().x;
-  gpu_device_info.block_dim_limit_y =
-      stream_exec->GetDeviceDescription().block_dim_limit().y;
-  gpu_device_info.block_dim_limit_z =
-      stream_exec->GetDeviceDescription().block_dim_limit().z;
-  return gpu_device_info;
-}
-
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& options) {
+#if XLA_ENABLE_XLIR
+  CHECK(options.PlatformId() == se::cuda::kCudaPlatformId);
+  CHECK(options.executor() != nullptr);
+  auto stream_exec = options.executor();
+
+  std::vector<std::unique_ptr<HloModule>> modules =
+      module_group->ConsumeModules();
+  std::vector<std::unique_ptr<AotCompilationResult>> results;
+
+  for (const auto& module : modules) {
+    llvm::LLVMContext llvm_context;
+    GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
+
+    // Compile the module
+    CompileModuleResults compile_module_results;
+    TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
+        module.get(), &llvm_context, target_triple_, data_layout_,
+        stream_exec->platform()->Name(), stream_exec->platform()->id(),
+        gpu_device_info,
+        stream_exec->GetDeviceDescription().cuda_compute_capability(),
+        stream_exec->GetDeviceDescription().rocm_compute_capability(),
+        GetCanShareBuffer(), pointer_size_, &compile_module_results));
+    auto& compiled_executable = compile_module_results.executable;
+
+    if (!std::holds_alternative<OwnedJitRtProgram>(compiled_executable)) {
+      return InternalError("JitRtProgram not provided");
+    }
+
+    const auto& program = std::get<OwnedJitRtProgram>(compiled_executable);
+
+    // Options for the default JitRt compilation pipeline.
+    runtime::CompilationPipelineOptions copts;
+
+    // Options for constructing JitRt JitExecutable.
+    runtime::JitExecutable::Options opts;
+    opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
+    opts.compiler.register_dialects =
+        runtime::RegisterDefaultXlaRuntimeDialects;
+
+    // Register JitRt Gpu runtime custom calls with the linker.
+    opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
+        JitRtGpuCustomCalls(), PopulateXlaTypeIdNames);
+
+    opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
+      runtime::CreateDefaultXlaRuntimeCompilationPipeline(pm, copts);
+    };
+
+    // Instantiate new JitExecutable from the MLIR source.
+    auto jit_executable = runtime::JitExecutable::Instantiate(
+        program->module, program->entry_point, opts);
+    if (auto err = jit_executable.takeError())
+      return InternalError("Failed to compile JitRt program: %s",
+                           tfrt::StrCat(err));
+
+    // For static shapes we can always serialize only the default executable.
+    runtime::Executable& executable = jit_executable->DefaultExecutable().get();
+
+    // Check if JitRt executable saved the compilation result.
+    std::unique_ptr<llvm::MemoryBuffer> obj_file = executable.obj_file();
+    if (!obj_file)
+      return InternalError("JitRt executable didn't save the obj file");
+
+    std::string data(obj_file->getBuffer().data(),
+                     obj_file->getBuffer().size());
+    results.emplace_back(std::make_unique<xla::gpu::JitRtAotCompilationResult>(
+        module->ToProto(), data, program->module,
+        compile_module_results.entry_func_attrs));
+  }
+  return std::move(results);
+#else
   return Unimplemented("");
+#endif  // XLA_ENABLE_XLIR
 }
 
 HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {

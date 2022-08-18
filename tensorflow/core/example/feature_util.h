@@ -338,19 +338,22 @@ void AppendFeatureValues(IteratorType first, IteratorType last,
                          Feature* feature) {
   using FeatureType = typename internal::FeatureTrait<
       typename std::iterator_traits<IteratorType>::value_type>::Type;
-  std::copy(first, last,
-            protobuf::RepeatedFieldBackInserter(
-                GetFeatureValues<FeatureType>(feature)));
+  auto& values = *GetFeatureValues<FeatureType>(feature);
+  values.Reserve(std::distance(first, last));
+  for (auto it = first; it != last; ++it) {
+    *values.Add() = *it;
+  }
 }
 
 template <typename ValueType>
 void AppendFeatureValues(std::initializer_list<ValueType> container,
                          Feature* feature) {
   using FeatureType = typename internal::FeatureTrait<ValueType>::Type;
-  auto* values = GetFeatureValues<FeatureType>(feature);
-  values->Reserve(container.size());
-  std::move(container.begin(), container.end(),
-            protobuf::RepeatedFieldBackInserter(values));
+  auto& values = *GetFeatureValues<FeatureType>(feature);
+  values.Reserve(container.size());
+  for (auto& elt : container) {
+    *values.Add() = std::move(elt);
+  }
 }
 
 namespace internal {

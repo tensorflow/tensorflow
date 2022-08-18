@@ -13,6 +13,19 @@ message CoordinatedTask {
   int32 task_id = 2;
 }
 
+// Represents the state of a remote worker
+enum CoordinatedTaskState {
+  // TASKSTATE_UNSPECIFIED is an invalid state such that indicates a bug.
+  TASKSTATE_UNSPECIFIED = 0;
+  // TASKSTATE_UNINITIALIZED is an agent-only state. While the agent is
+  // disconnected, the service has no way of knowing if the task is
+  // initialized/uninitialized.
+  TASKSTATE_UNINITIALIZED = 1;
+  TASKSTATE_DISCONNECTED = 2;
+  TASKSTATE_CONNECTED = 3;
+  TASKSTATE_ERROR = 4;
+}
+
 // Status payload for all coordination service errors.
 // Note: an empty proto may be set if the error is triggered by the task's own
 // agent calls (i.e. not propagated by the service from another remote task).

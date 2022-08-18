@@ -1076,30 +1076,32 @@ class GradientTape(object):
 
     flat_targets = []
     for t in nest.flatten(target):
-      if not backprop_util.IsTrainable(t):
-        logging.vlog(
-            logging.WARN, "The dtype of the target tensor must be "
-            "floating (e.g. tf.float32) when calling GradientTape.gradient, "
-            "got %r", t.dtype)
       flat_targets.append(_handle_or_self(t))
     flat_targets = composite_tensor_gradient.get_flat_tensors_for_gradients(
         flat_targets)
+    for t in flat_targets:
+      if not backprop_util.IsTrainable(t):
+        logging.vlog(
+            1, "The dtype of the target tensor must be "
+            "floating (e.g. tf.float32) when calling GradientTape.gradient, "
+            "got %r", t.dtype)
 
     flat_sources_raw = nest.flatten(sources)
     flat_sources = []
     for t in flat_sources_raw:
+      flat_sources.append(_handle_or_self(t))
+    flat_sources = composite_tensor_gradient.get_flat_tensors_for_gradients(
+        flat_sources)
+    for t in flat_sources:
       if not backprop_util.IsTrainable(t):
         logging.vlog(
-            logging.WARN, "The dtype of the source tensor must be "
+            1, "The dtype of the source tensor must be "
             "floating (e.g. tf.float32) when calling GradientTape.gradient, "
             "got %r", t.dtype)
       if getattr(t, "is_packed", False):
         raise ValueError(
             "GradientTape.gradient is not supported on packed EagerTensors yet."
         )
-      flat_sources.append(_handle_or_self(t))
-    flat_sources = composite_tensor_gradient.get_flat_tensors_for_gradients(
-        flat_sources)
 
     if output_gradients is not None:
       output_gradients = nest.flatten(

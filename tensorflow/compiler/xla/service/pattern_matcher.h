@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 
 #include <functional>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -64,8 +65,8 @@ namespace xla {
 //     - WithElementType: instr.shape().element_type() matches the given type
 //     - WithNumOperands
 //     - WithOperand: operand at the given index matches the given pattern
-//     - WithOperandIfPresent: instr has > i operands, and the i'th one matches
-//       the given pattern
+//     - WithOperandIfPresent: instr has fewer than i operands or the i'th one
+//       matches the given pattern
 //     - IsConstant
 //     - IsNonConstant
 //     - IsConstantScalar/IsEffectiveConstantScalar: Optionally accepts a value,
@@ -85,7 +86,6 @@ namespace xla {
 //     - IsScalar/IsEffectiveScalar/IsArray/IsTuple
 //     - IsDenseArray
 //     - WithLayout: layout shape's layout matches the given pattern (e.g.
-//       Layout().WithDenseFormat())
 //     - WithLayoutEqualTo: shape's layout equals the argument (i.e. another
 //       Layout, but not the result of Layout().foo())
 //     - WithSubshape: shape is a tuple whose subshape matches the given pattern
@@ -97,7 +97,6 @@ namespace xla {
 //
 //  Layout():
 //     - EqualTo
-//     - WithDenseFormat
 //
 // Op(), Shape(), and Layout() may be passed an argument of type
 // HloInstruction**, Shape**, or Layout**, respectively, or const versions of
@@ -167,6 +166,37 @@ bool Match(Value* value, const Pattern& pattern,
     }
   }
   return pattern.Match(value, option);
+}
+
+// If `enable_logging` is false, this is identical to Match(instr, pattern).
+//
+// If `enable_logging` is true and the match fails, we try to
+// Match(instr, filter_pattern). If this is true, then we log an explanation for
+// why the original Match(instr, pattern) failed.
+//
+// This function can be used aid in debugging passes with complex matchers.
+// For example, in the following snippet we're trying to match
+// m::Slice(m::Reshape(m::Pad())). Every time we encounter a slice that
+// doesn't match the larger pattern, we will log an explanation for why it
+// didn't match the larger pattern.
+//
+// if (MatchAndLogIfFailed(instr, "slice of reshape of pad",
+//                         m::Slice(m::Reshape(m::Pad())),
+//                         VLOG_IS_ON(3), m::Slice())
+//
+// TODO(jlebar): Log the caller's absl::SourceLocation once that's in OSS.
+template <typename FilterPattern, typename Pattern>
+bool MatchAndLogIfFailed(HloInstruction* instr, absl::string_view desc,
+                         const Pattern& pattern, bool enable_logging,
+                         const FilterPattern& filter_pattern) {
+  bool matched = Match(instr, pattern);
+  if (matched || !enable_logging || !Match(instr, filter_pattern)) {
+    return matched;
+  }
+  std::stringstream os;
+  CHECK(!Match(instr, pattern, {/*capture=*/false, /*explain_os=*/&os}));
+  LOG(ERROR) << "Failed to match " << desc << ":\n" << os.str();
+  return false;
 }
 
 namespace match {
@@ -432,29 +462,6 @@ class LayoutPatternEqualImpl {
   const ::xla::Layout* layout_;
 };
 
-// A LayoutPattern implementation that matches only if the layout has a given
-// format.
-class LayoutPatternFormatImpl {
- public:
-  explicit constexpr LayoutPatternFormatImpl(Format format) : format_(format) {}
-
-  bool Match(const ::xla::Layout* layout, MatchOption option) const {
-    if (layout->format() != format_) {
-      EXPLAIN << "Layout has format " << Format_Name(layout->format())
-              << " but expected " << Format_Name(format_);
-      return false;
-    }
-    return true;
-  }
-
-  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
-    *os << "with format " << Format_Name(format_);
-  }
-
- private:
-  Format format_;
-};
-
 // A pattern that matches Layouts.
 template <typename LayoutType, typename Impl>
 class LayoutPattern {
@@ -501,11 +508,6 @@ class LayoutPattern {
   // The layout must outlive the returned pattern.
   constexpr auto EqualTo(const ::xla::Layout* layout) const {
     return AppendImpl(LayoutPatternEqualImpl(layout));
-  }
-
-  // Modifies the pattern to match only if the layout has a dense format.
-  constexpr auto WithDenseFormat() const {
-    return AppendImpl(LayoutPatternFormatImpl(DENSE));
   }
 
  private:
@@ -803,6 +805,24 @@ class ShapePatternIsArrayImpl {
   }
 };
 
+// A ShapePattern implementation that matches only if the shape is an array
+class ShapePatternIsDenseArrayImpl {
+ public:
+  explicit constexpr ShapePatternIsDenseArrayImpl() {}
+
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
+    if (!LayoutUtil::IsDenseArray(*shape)) {
+      EXPLAIN << "Shape is not a dense array";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "that represents a dense array";
+  }
+};
+
 // A ShapePattern implementation that matches only if the shape is a tuple.
 class ShapePatternIsTupleImpl {
  public:
@@ -1060,8 +1080,9 @@ class ShapePattern {
     return WithLayout(Layout().EqualTo(layout));
   }
 
+  // Modifies the pattern to match only if the shape is a dense array.
   constexpr auto IsDenseArray() const {
-    return WithLayout(Layout().WithDenseFormat());
+    return AppendImpl(ShapePatternIsDenseArrayImpl());
   }
 
   // Modifies the pattern to match only if the shape has a subshape that matches

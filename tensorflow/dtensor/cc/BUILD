@@ -294,7 +294,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/dtensor/mlir:layout_parsing",
         "//tensorflow/dtensor/proto:layout_proto_cc",
-        "//tensorflow/stream_executor/tpu:c_api_decl",
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/stream_executor/tpu:tpu_topology_external",
     ] + tf_dtensor_tpu_dependencies(),

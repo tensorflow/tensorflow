@@ -110,7 +110,8 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.9, < 2.10', 'tb-nightly ~= 2.10.0.a'),
+    standard_or_nightly('tensorboard >= 2.10, < 2.11',
+                        'tb-nightly ~= 2.11.0.a'),
     standard_or_nightly('tensorflow_estimator >= 2.10.0rc0, < 2.11',
                         'tf-estimator-nightly ~= 2.11.0.dev'),
     standard_or_nightly('keras >= 2.10.0rc0, < 2.11',
@@ -271,6 +272,7 @@ headers = (
     list(find_files('*.h', 'tensorflow/python/client')) +
     list(find_files('*.h', 'tensorflow/python/framework')) +
     list(find_files('*.h', 'tensorflow/stream_executor')) +
+    list(find_files('*.h', 'tensorflow/tsl')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
     list(find_files('*', 'third_party/eigen3')) +

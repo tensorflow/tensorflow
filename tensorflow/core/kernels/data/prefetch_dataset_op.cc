@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
 
+#include <algorithm>
 #include <deque>
 
 #include "tensorflow/core/data/dataset_utils.h"
@@ -624,6 +625,7 @@ PrefetchDatasetOp::PrefetchDatasetOp(OpKernelConstruction* ctx)
   }
   if (GetExperiments().contains("autotune_buffer_optimization")) {
     legacy_autotune_ = false;
+    buffer_size_min_ = std::max(static_cast<int64_t>(1), buffer_size_min_);
   }
 }
 

@@ -37,21 +37,6 @@ namespace {
 
 namespace m = match;
 
-// If VLOG is on and `instr` matches `filter_pattern`, prints out why it doesn't
-// match `log_pattern`.  You can use this to explain "near-hits".
-template <typename FilterPattern, typename LogPattern>
-void VlogIfFailureToMatch(HloInstruction* instr, const LogPattern& log_pattern,
-                          absl::string_view desc,
-                          const FilterPattern& filter_pattern) {
-  if (!VLOG_IS_ON(3) || !Match(instr, filter_pattern)) {
-    return;
-  }
-  std::stringstream os;
-  if (!Match(instr, log_pattern, {/*capture=*/false, /*explain_os=*/&os})) {
-    VLOG(3) << "Failed to match " << desc << ":\n" << os.str();
-  }
-}
-
 bool IsConvCustomCall(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kCustomCall &&
          (instr->custom_call_target() == kCudnnConvForwardCallTarget ||
@@ -308,10 +293,12 @@ StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
     absl::InlinedVector<HloInstruction*, 4> new_operands(
         conv->operands().begin(), conv->operands().end());
     if (can_accept_bias && addend_may_be_rank1_bias) {
-      new_operands[2] = MakeConvertToHlo(addend->mutable_operand(0), bias_ty);
+      new_operands[2] = MakeConvertToHlo(addend->mutable_operand(0), bias_ty,
+                                         &addend->operand(0)->metadata());
     } else if (can_accept_bias && addend_may_be_rank0_bias) {
       new_operands[2] = MakeBroadcastHlo(
-          MakeConvertToHlo(addend->mutable_operand(0), bias_ty),
+          MakeConvertToHlo(addend->mutable_operand(0), bias_ty,
+                           &addend->operand(0)->metadata()),
           /*broadcast_dimensions=*/{},
           /*result_shape_bounds=*/
           {gte->shape().dimensions(conv->convolution_dimension_numbers()
@@ -499,27 +486,26 @@ StatusOr<bool> FuseConvertToF16(HloComputation* comp) {
     HloInstruction* gte = nullptr;
     HloInstruction* conv = nullptr;
 
-    auto f32_convertible_to_f16_pattern =
+    auto f32_convertible_to_f16_pat =
         m::Op().WithElementType(F32).WithPredicate(
             IsLosslesslyConvertibleToF16);
-    auto pattern =
-        m::Convert(
-            m::GetTupleElement(
-                &gte,
-                m::Op(&conv)
-                    .WithPredicate(IsConvCustomCall)
-                    .WithOperand(0, f32_convertible_to_f16_pattern)
-                    .WithOperand(1, f32_convertible_to_f16_pattern)
-                    .WithOperandIfPresent(2, f32_convertible_to_f16_pattern)
-                    .WithOperandIfPresent(3, f32_convertible_to_f16_pattern),
-                0)
-                .WithOneUse())
-            .WithElementType(F16);
-    if (!Match(instr, pattern)) {
-      VlogIfFailureToMatch(
-          instr, pattern, "fp16 conv",
-          m::Op().WithOperand(
-              0, m::GetTupleElement(m::Op().WithPredicate(IsConvCustomCall))));
+    if (!MatchAndLogIfFailed(
+            instr, "f16 conv",
+            m::Convert(
+                m::GetTupleElement(
+                    &gte,
+                    m::Op(&conv)
+                        .WithPredicate(IsConvCustomCall)
+                        .WithOperand(0, f32_convertible_to_f16_pat)
+                        .WithOperand(1, f32_convertible_to_f16_pat)
+                        .WithOperandIfPresent(2, f32_convertible_to_f16_pat)
+                        .WithOperandIfPresent(3, f32_convertible_to_f16_pat),
+                    0)
+                    .WithOneUse())
+                .WithElementType(F16),
+            VLOG_IS_ON(3),
+            m::Op().WithOperand(0, m::GetTupleElement(m::Op().WithPredicate(
+                                       IsConvCustomCall))))) {
       continue;
     }
     if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
@@ -536,7 +522,8 @@ StatusOr<bool> FuseConvertToF16(HloComputation* comp) {
     // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
     absl::InlinedVector<HloInstruction*, 4> new_operands;
     for (HloInstruction* operand : conv->operands()) {
-      new_operands.push_back(MakeConvertToHlo(operand, F16));
+      new_operands.push_back(
+          MakeConvertToHlo(operand, F16, &operand->metadata()));
     }
 
     Shape new_shape = conv->shape();
@@ -565,44 +552,36 @@ StatusOr<bool> FuseConvertToS8(HloComputation* comp) {
             .WithOperand(0, m::Op().WithPredicate(IsLosslesslyConvertibleToS8))
             .WithOperand(1, m::Op().WithPredicate(IsLosslesslyConvertibleToS8));
 
-    // int8 -> int8 conv
-    auto s8_pattern =
-        m::Convert(
-            m::Clamp(
-                m::Broadcast(m::ConstantEffectiveScalar(-128)),
-                m::GetTupleElement(
-                    &gte,
-                    conv_pattern.WithOperandIfPresent(
-                        3, m::Op().WithPredicate(IsLosslesslyConvertibleToS8)),
-                    0)
-                    .WithOneUse(),
-                m::Broadcast(m::ConstantEffectiveScalar(127))))
-            .WithElementType(S8);
-
-    // int8 -> fp32 conv
-    auto f32_pattern = m::GetTupleElement(&gte,
-                                          conv_pattern.WithOperandIfPresent(
-                                              3, m::Op().WithElementType(F32)),
-                                          0)
-                           .WithElementType(F32);
-
-    VlogIfFailureToMatch(
-        instr, s8_pattern, "s8->s8 conv",
-        m::Convert(m::Clamp(m::Op(),  //
-                            m::GetTupleElement(
-                                m::Op().WithPredicate(IsConvCustomCall)),  //
-                            m::Op()))
-            .WithElementType(S8));
-
-    VlogIfFailureToMatch(
-        instr, f32_pattern, "s8->f32 conv",
-        m::GetTupleElement(m::Op().WithPredicate(IsConvCustomCall))
-            .WithElementType(F32));
-
     PrimitiveType conv_output_ty;
-    if (Match(instr, s8_pattern)) {
+    if (MatchAndLogIfFailed(
+            instr, "s8->s8 conv",
+            m::Convert(m::Clamp(m::Broadcast(m::ConstantEffectiveScalar(-128)),
+                                m::GetTupleElement(
+                                    &gte,
+                                    conv_pattern.WithOperandIfPresent(
+                                        3, m::Op().WithPredicate(
+                                               IsLosslesslyConvertibleToS8)),
+                                    0)
+                                    .WithOneUse(),
+                                m::Broadcast(m::ConstantEffectiveScalar(127))))
+                .WithElementType(S8),
+            VLOG_IS_ON(3),
+            m::Convert(m::Clamp(m::Op(),
+                                m::GetTupleElement(
+                                    m::Op().WithPredicate(IsConvCustomCall)),
+                                m::Op()))
+                .WithElementType(S8))) {
       conv_output_ty = S8;
-    } else if (Match(instr, f32_pattern)) {
+    } else if (MatchAndLogIfFailed(
+                   instr, "s8->f32 conv",
+                   m::GetTupleElement(&gte,
+                                      conv_pattern.WithOperandIfPresent(
+                                          3, m::Op().WithElementType(F32)),
+                                      0)
+                       .WithElementType(F32),
+                   VLOG_IS_ON(3),
+                   m::GetTupleElement(m::Op().WithPredicate(IsConvCustomCall))
+                       .WithElementType(F32))) {
       conv_output_ty = F32;
     } else {
       continue;
@@ -615,14 +594,17 @@ StatusOr<bool> FuseConvertToS8(HloComputation* comp) {
 
     absl::InlinedVector<HloInstruction*, 4> new_operands(
         conv->operands().begin(), conv->operands().end());
-    new_operands[0] = MakeConvertToHlo(new_operands[0], S8);
-    new_operands[1] = MakeConvertToHlo(new_operands[1], S8);
+    new_operands[0] =
+        MakeConvertToHlo(new_operands[0], S8, &new_operands[0]->metadata());
+    new_operands[1] =
+        MakeConvertToHlo(new_operands[1], S8, &new_operands[1]->metadata());
     // Don't convert bias (operand 2); it's always f32 for s8 ops in cudnn.  See
     // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
     if (new_operands.size() >= 4) {
       // side-input always matches conv output type.  We checked in the patterns
       // above that it's losslessly-convertible to this type.
-      new_operands[3] = MakeConvertToHlo(new_operands[3], conv_output_ty);
+      new_operands[3] = MakeConvertToHlo(new_operands[3], conv_output_ty,
+                                         &new_operands[3]->metadata());
     }
 
     Shape new_shape = conv->shape();

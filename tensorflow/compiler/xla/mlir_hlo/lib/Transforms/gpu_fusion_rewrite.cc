@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BlockAndValueMapping.h"
-#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -137,11 +136,11 @@ static int64_t getElementsPerThread(TensorType type) {
   const int64_t kNumFp32AlusOnV100 = 5376;
   if (type.getNumElements() < kNumFp32AlusOnV100) return 1;
 
-  // Vectorize so that loads and stores are 128 bits per thread.
-  if (type.getElementType().isIntOrFloat())
-    return 128 / type.getElementType().getIntOrFloatBitWidth();
+  // Don't vectorize if element type is not int or float.
+  if (!type.getElementType().isIntOrFloat()) return 1;
 
-  return 1;  // Default to no vectorization.
+  // Vectorize so that loads and stores are 128 bits per thread.
+  return 128 / type.getElementType().getIntOrFloatBitWidth();
 }
 
 // Returns the number of threads per block to use for 'type', given the number
@@ -187,10 +186,6 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   if (!isRewritable(fusionOp))
     return rewriter.notifyMatchFailure(fusionOp, "not rewritable");
 
-  auto storeOps = fusionOp.getBody()->getOps<memref::TensorStoreOp>();
-  if (storeOps.empty())
-    return rewriter.notifyMatchFailure(fusionOp, "no memref.tensor_store ops");
-
   // Collect values in fusion region defined above.
   SetVector<Value> captures;
   getUsedValuesDefinedAbove(fusionOp->getRegions(), captures);
@@ -234,7 +229,8 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   });
 
   // Create and run the HLO to GPU pass pipeline.
-  auto resultType = (*storeOps.begin()).tensor().getType().cast<TensorType>();
+  auto resultType =
+      fusionOp.getFusionResults().front().getType().cast<TensorType>();
   int64_t unrollFactor = getElementsPerThread(resultType);
   int64_t tileSize = getThreadsPerBlock(resultType, unrollFactor);
   // Note: passManager.enableIRPrinting() doesn't do anything on dynamic pass
@@ -250,14 +246,8 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   for (auto gpuModuleOp : moduleOp.getBodyRegion().getOps<gpu::GPUModuleOp>()) {
     StringAttr symbol =
         symbolTable.insert(rewriter.clone(*gpuModuleOp.getOperation()));
-    if (symbol == gpuModuleOp.getNameAttr()) {
-      continue;
-    }
-    // gpu.module name changed, update symbol uses in gpu.launch_func.
-    funcOp->walk([&](gpu::LaunchFuncOp launch) {
-      launch.kernelAttr(
-          SymbolRefAttr::get(symbol, launch.kernel().getNestedReferences()));
-    });
+    if (failed(symbolTable.replaceAllSymbolUses(gpuModuleOp, symbol, funcOp)))
+      return rewriter.notifyMatchFailure(fusionOp, "failed to replace symbol");
   }
   // Add 'gpu.container_module' attribute to parent module.
   fusionOp->getParentOfType<ModuleOp>()->setAttr(
@@ -285,6 +275,8 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
 }
 
 bool FusionRewritePattern::isRewritable(lmhlo::FusionOp fusionOp) const {
+  if (fusionOp.getFusionResults().size() != 1)
+    return false;  // Only rewrite fusions with a single result.
   auto callback = [this](Operation* op) {
     if (rewritableTarget.isLegal(op)) return WalkResult::advance();
     return WalkResult::interrupt();
@@ -324,6 +316,9 @@ static bool isRewritableType(Type type) {
   // MemRef types need to have identity layout.
   if (auto memrefType = shapedType.dyn_cast<MemRefType>())
     return memrefType.getLayout().isIdentity();
+  // Unsigned integers are not yet supported.
+  if (auto intType = shapedType.getElementType().dyn_cast<IntegerType>())
+    return !intType.isUnsigned();
   return true;
 }
 
@@ -343,8 +338,12 @@ ConversionTarget FusionRewritePattern::getRewritableTarget(MLIRContext* ctx) {
       });
   // For now, use an explicit allow-list of hlo ops inside the fusion. If any
   // other op is present, the fusion will not be rewritten.
-  target.addLegalOp<mhlo::LogOp>();
-  target.addLegalOp<mhlo::AbsOp>();
+  target.addLegalOp<
+      mhlo::AddOp, mhlo::AbsOp, mhlo::CbrtOp, mhlo::CeilOp, mhlo::CosineOp,
+      mhlo::DivOp, mhlo::ExpOp, mhlo::Expm1Op, mhlo::FloorOp, mhlo::LogOp,
+      mhlo::Log1pOp, mhlo::LogisticOp, mhlo::MulOp, mhlo::NegOp, mhlo::RoundOp,
+      /*unsupported: mhlo::RoundNearestEvenOp,*/ mhlo::RsqrtOp, mhlo::SignOp,
+      mhlo::SineOp, mhlo::SqrtOp, mhlo::SubtractOp, mhlo::TanhOp>();
   return target;
 }
 

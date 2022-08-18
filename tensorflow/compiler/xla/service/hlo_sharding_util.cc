@@ -16,19 +16,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 
 #include <algorithm>
+#include <iostream>
+#include <iterator>
 #include <map>
+#include <memory>
 #include <optional>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -127,8 +132,8 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
       return false;
     }
   }
-  if (num_devices % Product(merged_tile_dims) != 0 ||
-      Product(merged_tile_dims) < minimum_tiles) {
+  const int64_t num_tiles = Product(merged_tile_dims);
+  if (num_devices % num_tiles != 0 || num_tiles < minimum_tiles) {
     return false;
   }
   int64_t to_merge_man_dim = to_merge.SubgroupManualDim();
@@ -1113,6 +1118,21 @@ std::optional<HloSharding> GatherDataOperandShardingFromOutput(
   return parallel_sharding;
 }
 
+std::vector<int64_t> GetScatterSliceSize(const Shape& operand_shape,
+                                         const Shape& update_shape,
+                                         const ScatterDimensionNumbers& dnums) {
+  std::vector<int64_t> slice_size(operand_shape.rank(), 1);
+  int64_t num_update_window_dims = 0;
+  for (int64_t i = 0; i < operand_shape.rank(); ++i) {
+    if (absl::c_linear_search(dnums.inserted_window_dims(), i)) {
+      continue;
+    }
+    slice_size[i] = update_shape.dimensions(
+        dnums.update_window_dims(num_update_window_dims++));
+  }
+  return slice_size;
+}
+
 std::optional<HloSharding> ScatterOutputShardingFromUpdate(
     const HloSharding& update_sharding, const HloScatterInstruction& scatter) {
   const auto& dnums = scatter.scatter_dimension_numbers();
@@ -1123,15 +1143,9 @@ std::optional<HloSharding> ScatterOutputShardingFromUpdate(
       dnums.scatter_dims_to_operand_dims().end());
   std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
                                           dnums.update_window_dims().end());
-  std::vector<int64_t> slice_size(scatter.shape().rank(), 1);
-  int64_t num_update_window_dims = 0;
-  for (int64_t i = 0; i < scatter.shape().rank(); ++i) {
-    if (absl::c_linear_search(dnums.inserted_window_dims(), i)) {
-      continue;
-    }
-    slice_size[i] = scatter.scatter_updates()[0]->shape().dimensions(
-        dnums.update_window_dims(num_update_window_dims++));
-  }
+  std::vector<int64_t> slice_size =
+      GetScatterSliceSize(scatter.scatter_operands()[0]->shape(),
+                          scatter.scatter_updates()[0]->shape(), dnums);
   return PassthroughGatherOutputOrScatterUpdateToOperand(
       scatter.shape(), update_sharding, inserted_window_dims,
       scatter_dims_to_operand_dims, update_window_dims, slice_size);
@@ -1148,20 +1162,11 @@ std::optional<HloSharding> ScatterUpdateShardingFromOutput(
       dnums.scatter_dims_to_operand_dims().end());
   std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
                                           dnums.update_window_dims().end());
-  const Shape& first_output_shape = scatter.shape().IsArray()
-                                        ? scatter.shape()
-                                        : scatter.shape().tuple_shapes(0);
-  std::vector<int64_t> slice_size(first_output_shape.rank(), 1);
-  int64_t num_update_window_dims = 0;
-  for (int64_t i = 0; i < first_output_shape.rank(); ++i) {
-    if (absl::c_linear_search(dnums.inserted_window_dims(), i)) {
-      continue;
-    }
-    slice_size[i] = scatter.scatter_updates()[0]->shape().dimensions(
-        dnums.update_window_dims(num_update_window_dims++));
-  }
+  std::vector<int64_t> slice_size =
+      GetScatterSliceSize(scatter.scatter_operands()[0]->shape(),
+                          scatter.scatter_updates()[0]->shape(), dnums);
   return PassthroughOperandToGatherOutputOrScatterUpdate(
-      first_output_shape, per_output_sharding,
+      scatter.scatter_operands()[0]->shape(), per_output_sharding,
       scatter.scatter_updates()[0]->shape(), inserted_window_dims,
       scatter_dims_to_operand_dims, update_window_dims, slice_size);
 }
@@ -1275,7 +1280,7 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
     return HloSharding::Replicate(sharding.metadata());
   }
   std::vector<int64_t> dim_permutation(sharding.TiledDataRank());
-  std::iota(dim_permutation.begin(), dim_permutation.end(), 0);
+  absl::c_iota(dim_permutation, 0);
   absl::c_stable_sort(dim_permutation, [&](const int64_t a, const int64_t b) {
     return absl::c_linear_search(valid_dims_to_replicate, a) <
            absl::c_linear_search(valid_dims_to_replicate, b);

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 /// \file
 /// Main abstraction controlling the tflite interpreter.
-/// See context.h for the API for defining operations (TfLiteRegistration).
+/// See c/common.h for the API for defining operations (TfLiteRegistration).
 #ifndef TENSORFLOW_LITE_INTERPRETER_H_
 #define TENSORFLOW_LITE_INTERPRETER_H_
 

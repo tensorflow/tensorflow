@@ -6,7 +6,6 @@
 // CHECK: tfrt_fallback_async.createop(%arg0) key(0) device("/device:CPU:0") "tf.ParseExampleV2"()
 // CHECK-SAME: Tdense = [f32, f32], dense_shapes = [#corert.shape<>, #corert.shape<>]
 // CHECK-SAME: num_sparse = 2 : i64, ragged_split_types = [], ragged_value_types = []
-// CHECK-SAME: result_segment_sizes = dense<[2, 2, 2, 2, 0, 0]> : vector<6xi32>
 // CHECK-SAME: sparse_types = [!corert.string, i64]}
 // CHECK-SAME: num_args(7)
 
@@ -35,7 +34,6 @@ func.func @main(%serialized: tensor<32x!tf_type.string>) -> (tensor<?x2xi64>) at
   // CHECK-SAME: num_sparse = 2 : i64
   // CHECK-SAME: ragged_split_types = []
   // CHECK-SAME: ragged_value_types = []
-  // CHECK-SAME: result_segment_sizes = dense<[2, 2, 2, 2, 0, 0]> : vector<6xi32>
   // CHECK-SAME: sparse_types = [!corert.string, i64]
   %outputs:8 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %dense_keys, %ragged_keys, %dense_default_0, %dense_default_1)
     {

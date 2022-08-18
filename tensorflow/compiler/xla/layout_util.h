@@ -90,10 +90,14 @@ class LayoutUtil {
   // Clears the layout on all Shapes within the given ProgramShape.
   static void ClearLayout(ProgramShape* program_shape);
 
-  // Returns whether the given Shape is an array and has a dense format layout.
+  // Clears the tiling fields from the shape and/or all of its subshapes.
+  static void ClearTiles(Shape* shape);
+
+  // Returns whether the given Shape is an array and has a dense in-memory
+  // representation.
   static bool IsDenseArray(const Shape& shape);
 
-  // Returns whether the given Layout has a dense format.
+  // Returns whether the given Layout has a dense in-memory representation.
   static bool IsDense(const Layout& layout);
 
   // Returns whether the layout is monotonic and dim 0 is minor in the layout.
@@ -119,7 +123,7 @@ class LayoutUtil {
   static bool Equal(const Layout& lhs, const Layout& rhs);
 
   // Returns the minor_to_major array for the given Shape.  Requires that the
-  // shape is an array and has a dense layout.
+  // shape is an array.
   static absl::Span<const int64_t> MinorToMajor(const Shape& shape);
   static absl::Span<const int64_t> MinorToMajor(const Layout& layout);
 
@@ -191,6 +195,10 @@ class LayoutUtil {
   // in the layout. This method is also performance critical.
   static int64_t LinearIndex(const Shape& shape,
                              absl::Span<const int64_t> indices);
+
+  // If the shape has a layout, returns the contained memory space.  Otherwise,
+  // returns Layout::kDefaultMemorySpace.
+  static int64_t MemorySpace(const Shape& shape);
 
  private:
   LayoutUtil(const LayoutUtil&) = delete;

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
@@ -50,6 +51,17 @@ tensor_spec = LazyLoader(
 tensor_util = LazyLoader(
     "tensor_util", globals(),
     "tensorflow.python.framework.tensor_util")
+
+
+class IndexedSlicesCompositeTensorGradient(
+    composite_tensor_gradient.CompositeTensorGradient):
+  """CompositeTensorGradient for IndexedSlices."""
+
+  def get_gradient_components(self, value):
+    return value.values
+
+  def replace_gradient_components(self, value, component_grads):
+    return IndexedSlices(component_grads, value.indices, value.dense_shape)
 
 
 # TODO(mdan): Should IndexedSlices be a "tensor"?
@@ -160,6 +172,8 @@ class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
+
+  __composite_gradient__ = IndexedSlicesCompositeTensorGradient()
 
   @property
   def _type_spec(self):

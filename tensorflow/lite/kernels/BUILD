@@ -2811,9 +2811,9 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        ":unsorted_segment_test_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
@@ -2824,9 +2824,9 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        ":unsorted_segment_test_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
@@ -2837,9 +2837,9 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        ":unsorted_segment_test_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
@@ -2850,9 +2850,27 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        ":unsorted_segment_test_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "unsorted_segment_test_utils",
+    testonly = 1,
+    srcs = [
+        "unsorted_segment_test.cc",
+    ],
+    hdrs = [
+        "unsorted_segment_test.h",
+    ],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//testing/base/public:gunit_for_library_testonly",
     ],
 )
 

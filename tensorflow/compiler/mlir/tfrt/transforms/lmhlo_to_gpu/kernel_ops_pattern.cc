@@ -38,6 +38,7 @@
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -50,11 +51,11 @@
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 
 #if TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
 #else
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
@@ -105,10 +106,15 @@ mlir::Value MakeBitPatternConstant(mlir::OpBuilder& builder, mlir::Location loc,
 
 // Replaces lmhlo ops within a module with gpu.launch_func and gpu.memcpy ops.
 struct KernelOpsPattern : mlir::OpRewritePattern<mlir::ModuleOp> {
+  KernelOpsPattern(mlir::MLIRContext* context, GpuBinaryOptions options)
+      : mlir::OpRewritePattern<mlir::ModuleOp>(context), options(options) {}
+
   using OpRewritePattern<mlir::ModuleOp>::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
       mlir::ModuleOp module_op, mlir::PatternRewriter& rewriter) const override;
+
+  GpuBinaryOptions options;
 };
 
 struct RewriteData {
@@ -210,40 +216,23 @@ static llvm::Expected<
     std::tuple<std::unique_ptr<ThunkSequence>, std::vector<ConstantInfo>>>
 Emit(mlir::func::FuncOp func_op,
      absl::Span<const xla::BufferAllocation> allocations,
-     const stream_executor::CudaComputeCapability& cuda_compute_capability,
-     const stream_executor::RocmComputeCapability& rocm_compute_capability,
+     const GpuBinaryOptions& gpu_options,
      const xla::HloModuleConfig& hlo_module_config, llvm::Module* llvm_module) {
 #if TENSORFLOW_USE_ROCM
-  const char target_triple[] = "amdgcn-amd-amdhsa";
-  const char data_layout[] =
-      "e-p:64:64-p1:64:64-p2:64:64-p3:32:32-p4:32:32-p5:32:32-i64:64-v16:16-"
-      "v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-"
-      "v2048:2048-n32:64-A5";
-  const char platform_name[] = "ROCm";
+  const char* target_triple = xla::gpu::amdgpu::TargetTriple();
+  const char* data_layout = xla::gpu::amdgpu::DataLayout();
 #else
-  const char target_triple[] = "nvptx64-nvidia-cuda";
-  const char data_layout[] = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
-  const char platform_name[] = "CUDA";
+  const char* target_triple = xla::gpu::nvptx::TargetTriple();
+  const char* data_layout = xla::gpu::nvptx::DataLayout();
 #endif
-  xla::gpu::GpuDeviceInfo gpu_device_info = {};
-  gpu_device_info.threads_per_block_limit = 1024;
-  gpu_device_info.threads_per_warp = 32;
-  gpu_device_info.shared_memory_per_block = 49152;  // static shmem limit.
-  // Should be 1024 for sm7.5, 1536 for sm8.6. This results in more blocks than
-  // SMs on those architectures, but doesn't hit any resource limit.
-  gpu_device_info.threads_per_core_limit = 2048;
-  // This is higher than any SKU, resulting in more blocks than SMs.
-  gpu_device_info.core_count = 128;
-  gpu_device_info.block_dim_limit_x = 2147483647;
-  gpu_device_info.block_dim_limit_y = 65535;
-  gpu_device_info.block_dim_limit_z = 65535;
 
   llvm_module->setTargetTriple(target_triple);
   llvm_module->setDataLayout(data_layout);
 
   IrEmitterContext ir_emitter_context(
-      /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, rocm_compute_capability,
+      /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr,
+      gpu_options.platform_name, gpu_options.gpu_device_info,
+      gpu_options.cuda_compute_capability, gpu_options.rocm_compute_capability,
       func_op->getContext(), llvm_module);
 
   ir_emitter_context.set_allocations(allocations);
@@ -260,7 +249,8 @@ Emit(mlir::func::FuncOp func_op,
 }
 
 // Returns the data to rewrite op without changing the IR.
-static llvm::Expected<RewriteData> Match(Operation* op) {
+static llvm::Expected<RewriteData> Match(Operation* op,
+                                         GpuBinaryOptions gpu_options) {
   mlir::SmallVector<Value> arguments;
   llvm::copy_if(
       op->getOperands(), std::back_inserter(arguments),
@@ -286,25 +276,12 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
   xla::HloModuleConfig hlo_module_config;
   xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
   hlo_module_config.set_debug_options(options);
-  // TODO(b/228163857): pass down capability from CompileModuleToLlvmIrImpl().
-  stream_executor::CudaComputeCapability cuda_compute_capability = {5, 2};
-  stream_executor::RocmComputeCapability rocm_compute_capability("gfx900");
-#if TENSORFLOW_USE_ROCM
-  auto platform = xla::PlatformUtil::GetPlatform("gpu");
-  if (!platform.ok()) return MakeError(platform.status());
-  auto stream_executors = xla::PlatformUtil::GetStreamExecutors(*platform);
-  if (!stream_executors.ok()) return MakeError(stream_executors.status());
-  if (stream_executors->empty()) return MakeError("No gpu stream executors");
-  rocm_compute_capability = stream_executors->front()
-                                ->GetDeviceDescription()
-                                .rocm_compute_capability();
-#endif
+
   llvm::LLVMContext llvm_context;
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
 
   auto emit_result = Emit(std::get<mlir::func::FuncOp>(module_op), *allocations,
-                          cuda_compute_capability, rocm_compute_capability,
-                          hlo_module_config, llvm_module.get());
+                          gpu_options, hlo_module_config, llvm_module.get());
   if (!emit_result) return emit_result.takeError();
   auto thunks = std::move(std::get<0>(*emit_result));
   auto constants = std::move(std::get<1>(*emit_result));
@@ -338,9 +315,9 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
   StatusOr<std::string> ptx(std::string(hsaco->begin(), hsaco->end()));
 #else
   auto libdevice_dir = xla::gpu::GetLibdeviceDir(hlo_module_config);
-  auto ptx =
-      xla::gpu::nvptx::CompileToPtx(llvm_module.get(), cuda_compute_capability,
-                                    hlo_module_config, libdevice_dir);
+  auto ptx = xla::gpu::nvptx::CompileToPtx(llvm_module.get(),
+                                           gpu_options.cuda_compute_capability,
+                                           hlo_module_config, libdevice_dir);
   if (!ptx.ok()) return MakeError(ptx.status());
 #endif
 
@@ -489,7 +466,7 @@ mlir::LogicalResult KernelOpsPattern::matchAndRewrite(
     return module_op.walk([&](OpTy op) -> mlir::WalkResult {
       if (!HasGpuEmitter(op)) return mlir::success();
 
-      auto data = Match(op);
+      auto data = Match(op, options);
       if (auto err = data.takeError())
         return rewriter.notifyMatchFailure(op, toString(std::move(err)));
 
@@ -528,8 +505,9 @@ mlir::LogicalResult KernelOpsPattern::matchAndRewrite(
   return mlir::success();
 }
 
-void populateKernelOpsPattern(mlir::RewritePatternSet& patterns) {
-  patterns.add<KernelOpsPattern>(patterns.getContext());
+void populateKernelOpsPattern(mlir::RewritePatternSet& patterns,
+                              GpuBinaryOptions options) {
+  patterns.add<KernelOpsPattern>(patterns.getContext(), options);
 }
 
 }  // namespace tensorflow

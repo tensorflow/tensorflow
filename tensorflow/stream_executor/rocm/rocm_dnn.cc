@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
@@ -584,7 +585,7 @@ class MIOpenAccess {
   absl::Mutex mutex_;
 
   // MIOpen library handle.
-  miopenHandle_t handle_ TF_GUARDED_BY(mutex_);  // Owned.
+  miopenHandle_t handle_ ABSL_GUARDED_BY(mutex_);  // Owned.
 };
 
 MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
@@ -4062,8 +4063,7 @@ port::Status MIOpenSupport::DoPoolForward(
         workspace = reinterpret_cast<uint8*>(
             pdesc->workspace->mutable_device_memory()->opaque());
       } else {
-        wsp_mem = stream->AllocateTemporaryArray<uint8>(workspace_size)
-                      .ConsumeValueOrDie();
+        wsp_mem = stream->AllocateTemporaryArray<uint8>(workspace_size).value();
         workspace = reinterpret_cast<uint8*>(
             wsp_mem->mutable_device_memory()->opaque());
         m_pooling_cache.insert(input_data.opaque(), input_dimensions,

@@ -1525,7 +1525,6 @@ TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
 // Sets the layout of the given ShapeProto to the default.
 void SetDefaultLayoutOnProto(ShapeProto* shape_proto) {
   CHECK(ShapeUtil::IsArrayPrimitiveType(shape_proto->element_type()));
-  shape_proto->mutable_layout()->set_format(DENSE);
   auto* minor_to_major =
       shape_proto->mutable_layout()->mutable_minor_to_major();
   minor_to_major->Resize(shape_proto->dimensions_size(), 0);

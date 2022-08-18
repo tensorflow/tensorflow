@@ -182,21 +182,19 @@ void FullyConnected::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
     args_.AddObject("weights",
                     std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
-    Texture2DDescriptor desc;
-    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc.size = int2(src_depth * 4, dst_depth);
-    desc.data.resize(float4_size * elements_count);
-
+    std::vector<uint8_t> data(float4_size * elements_count);
     if (f32_weights) {
-      float* ptr = reinterpret_cast<float*>(desc.data.data());
+      float* ptr = reinterpret_cast<float*>(data.data());
       RearrangeFCWeightsToOIO4I4(weights, ptr);
     } else {
-      half* ptr = reinterpret_cast<half*>(desc.data.data());
+      half* ptr = reinterpret_cast<half*>(data.data());
       RearrangeFCWeightsToOIO4I4(weights, ptr);
     }
 
-    args_.AddObject("weights",
-                    std::make_unique<Texture2DDescriptor>(std::move(desc)));
+    TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+        f32_weights ? DataType::FLOAT32 : DataType::FLOAT16,
+        TensorStorageType::TEXTURE_2D, src_depth * 4, dst_depth, data.data());
+    args_.AddObject("weights", std::make_unique<TensorDescriptor>(desc));
   }
 }
 

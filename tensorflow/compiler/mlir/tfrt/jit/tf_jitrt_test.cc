@@ -22,6 +22,9 @@
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "testing/base/public/benchmark.h"
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/xla/runtime/results.h"
+#include "tensorflow/compiler/xla/runtime/types.h"
+#include "tfrt/jitrt/results.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -30,10 +33,11 @@ using ::tfrt::DType;
 using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 
-using ::tfrt::jitrt::MemrefType;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConversion;
 using ::tfrt::jitrt::StaticRemainingResultsConverter;
+
+using ::xla::runtime::MemrefType;
 
 using ReturnTensorflowTensor =
     ReturnValueConversion<TensorflowConversionContext,

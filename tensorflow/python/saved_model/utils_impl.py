@@ -34,15 +34,15 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # TensorInfo helpers.
+_DEPRECATION_MSG = (
+    "This API was designed for TensorFlow v1. See "
+    "https://www.tensorflow.org/guide/migrate for instructions on how to "
+    "migrate your code to TensorFlow v2.")
 
 
-@tf_export(v1=["saved_model.build_tensor_info",
-               "saved_model.utils.build_tensor_info"])
-@deprecation.deprecated(
-    None,
-    "This function will only be available through the v1 compatibility "
-    "library as tf.compat.v1.saved_model.utils.build_tensor_info or "
-    "tf.compat.v1.saved_model.build_tensor_info.")
+@tf_export(
+    v1=["saved_model.build_tensor_info", "saved_model.utils.build_tensor_info"])
+@deprecation.deprecated(None, _DEPRECATION_MSG)
 def build_tensor_info(tensor):
   """Utility function to build TensorInfo proto from a Tensor.
 
@@ -144,11 +144,7 @@ def build_tensor_info_from_op(op):
 
 @tf_export(v1=["saved_model.get_tensor_from_tensor_info",
                "saved_model.utils.get_tensor_from_tensor_info"])
-@deprecation.deprecated(
-    None,
-    "This function will only be available through the v1 compatibility "
-    "library as tf.compat.v1.saved_model.utils.get_tensor_from_tensor_info or "
-    "tf.compat.v1.saved_model.get_tensor_from_tensor_info.")
+@deprecation.deprecated(None, _DEPRECATION_MSG)
 def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
   """Returns the Tensor or CompositeTensor described by a TensorInfo proto.
 

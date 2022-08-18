@@ -15,11 +15,11 @@
 """Tests for tf 2.0 upgrader."""
 
 import inspect
+import io
 import os
 import tempfile
 
 from absl.testing import parameterized
-import six
 import tensorflow.compat.v1 as tf
 # OSS TF V2 import placeholder.
 
@@ -35,7 +35,7 @@ from tensorflow.tools.compatibility import tf_upgrade_v2
 
 
 def get_symbol_for_name(root, name):
-  name_parts = six.ensure_str(name).split(".")
+  name_parts = name.split(".")
   symbol = root
   # Iterate starting with second item since 1st item is "tf.".
   for part in name_parts[1:]:
@@ -62,13 +62,12 @@ def get_func_and_args_from_str(call_str):
   Returns:
     (function_name, list of arg names) tuple.
   """
-  open_paren_index = six.ensure_str(call_str).find("(")
+  open_paren_index = call_str.find("(")
   close_paren_index = call_str.rfind(")")
 
-  function_name = call_str[:six.ensure_str(call_str).find("(")]
-  args = six.ensure_str(call_str[open_paren_index +
-                                 1:close_paren_index]).split(",")
-  args = [six.ensure_str(arg).split("=")[0].strip() for arg in args]
+  function_name = call_str[:call_str.find("(")]
+  args = call_str[open_paren_index + 1:close_paren_index].split(",")
+  args = [arg.split("=")[0].strip() for arg in args]
   args = [arg for arg in args if arg]  # filter out empty strings
   return function_name, args
 
@@ -93,7 +92,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
           _, attr = tf_decorator.unwrap(child[1])
           api_names_v2 = tf_export.get_v2_names(attr)
           for name in api_names_v2:
-            cls.v2_symbols["tf." + six.ensure_str(name)] = attr
+            cls.v2_symbols["tf." + name] = attr
 
       visitor = public_api.PublicAPIVisitor(symbol_collector)
       visitor.private_map["tf.compat"] = ["v1", "v2"]
@@ -106,7 +105,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
           _, attr = tf_decorator.unwrap(child[1])
           api_names_v1 = tf_export.get_v1_names(attr)
           for name in api_names_v1:
-            cls.v1_symbols["tf." + six.ensure_str(name)] = attr
+            cls.v1_symbols["tf." + name] = attr
 
       visitor = public_api.PublicAPIVisitor(symbol_collector_v1)
       visitor.private_map["tf.compat"] = ["v1", "v2"]
@@ -116,8 +115,8 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
                old_file_text,
                import_rename=False,
                upgrade_compat_v1_import=False):
-    in_file = six.StringIO(old_file_text)
-    out_file = six.StringIO()
+    in_file = io.StringIO(old_file_text)
+    out_file = io.StringIO()
     upgrader = ast_edits.ASTCodeUpgrader(
         tf_upgrade_v2.TFAPIChangeSpec(
             import_rename, upgrade_compat_v1_import=upgrade_compat_v1_import))
@@ -130,8 +129,8 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
     upgrader = ast_edits.ASTCodeUpgrader(tf_upgrade_v2.TFAPIChangeSpec())
     results = []
     for old_file_text in old_file_texts:
-      in_file = six.StringIO(old_file_text)
-      out_file = six.StringIO()
+      in_file = io.StringIO(old_file_text)
+      out_file = io.StringIO()
       count, report, errors = (
           upgrader.process_opened_file("test.py", in_file,
                                        "test_out.py", out_file))
@@ -141,7 +140,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testParseError(self):
     _, report, unused_errors, unused_new_text = self._upgrade(
         "import tensorflow as tf\na + \n")
-    self.assertNotEqual(six.ensure_str(report).find("Failed to parse"), -1)
+    self.assertNotEqual(report.find("Failed to parse"), -1)
 
   def testReport(self):
     text = "tf.angle(a)\n"
@@ -149,8 +148,8 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
     # This is not a complete test, but it is a sanity test that a report
     # is generating information.
     self.assertTrue(
-        six.ensure_str(report).find("Renamed function `tf.angle` to "
-                                    "`tf.math.angle`"))
+        report.find("Renamed function `tf.angle` to "
+                    "`tf.math.angle`"))
 
   def testRename(self):
     text = "tf.conj(a)\n"
@@ -173,7 +172,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
         _, attr = tf_decorator.unwrap(child[1])
         api_names = tf_export.get_v1_names(attr)
         for name in api_names:
-          _, _, _, text = self._upgrade("tf." + six.ensure_str(name))
+          _, _, _, text = self._upgrade("tf." + name)
           if (text and
               not text.startswith("tf.compat.v1") and
               not text.startswith("tf.compat.v2") and
@@ -204,9 +203,9 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
         api_names = tf_export.get_v1_names(attr)
         for name in api_names:
           if collect:
-            v1_symbols.add("tf." + six.ensure_str(name))
+            v1_symbols.add("tf." + name)
           else:
-            _, _, _, text = self._upgrade("tf." + six.ensure_str(name))
+            _, _, _, text = self._upgrade("tf." + name)
             if (text and
                 not text.startswith("tf.compat.v1") and
                 not text.startswith("tf.compat.v2") and
@@ -353,9 +352,9 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
         # Skip descending and fetching contrib methods during test. These are
         # not available in the repo anymore.
         continue
-      elif six.ensure_str(method_name).startswith("*."):
+      elif method_name.startswith("*."):
         # special case for optimizer methods
-        method = six.ensure_str(method_name).replace("*", "tf.train.Optimizer")
+        method = method_name.replace("*", "tf.train.Optimizer")
       else:
         method = method_name
 
@@ -363,7 +362,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
       arg_spec = tf_inspect.getfullargspec(method)
       for (arg, pos) in args:
         # to deal with the self argument on methods on objects
-        if six.ensure_str(method_name).startswith("*."):
+        if method_name.startswith("*."):
           pos += 1
         self.assertEqual(arg_spec[0][pos], arg)
 

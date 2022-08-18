@@ -14,7 +14,6 @@
 # ==============================================================================
 """Utilities for working with and creating SaveableObjects."""
 import functools
-import six
 
 from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.eager import context
@@ -38,6 +37,7 @@ from tensorflow.python.trackable import python_state
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.types import core
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
@@ -159,7 +159,7 @@ def saveable_objects_for_op(op, name):
     TypeError: If `name` is not a string.
     ValueError: For operations with no known conversion to SaveableObject.
   """
-  if not isinstance(name, six.string_types):
+  if not isinstance(name, str):
     raise TypeError(
         "names_to_saveables must be a dict mapping string names to "
         f"trackable operations. Name is not a string: {name}")
@@ -473,7 +473,7 @@ def validate_saveables_for_saved_model(saveables, obj):
 class RestoredSaveableObject(saveable_object.SaveableObject):
   """SaveableObject restored from SavedModel using the traced save/restore."""
 
-  def __init__(self, save_function, restore_function, name):
+  def __init__(self, names_and_slices, save_function, restore_function, name):
     self.save_function = save_function
     self.restore_function = restore_function
 
@@ -483,8 +483,10 @@ class RestoredSaveableObject(saveable_object.SaveableObject):
       with ops.init_scope():
         name_tensor = constant_op.constant(name)
     tensors = save_function(name_tensor)
-    specs = [saveable_object.SaveSpec(x["tensor"], x["slice_spec"], x["name"])
-             for x in tensors]
+    specs = []
+    for (str_name, str_slice), tensor_info in zip(names_and_slices, tensors):
+      specs.append(saveable_object.SaveSpec(tensor_info["tensor"], str_slice,
+                                            name + str_name))
     super(RestoredSaveableObject, self).__init__(None, specs, name)
 
   def restore(self, restored_tensors, restored_shapes):
@@ -495,11 +497,23 @@ class RestoredSaveableObject(saveable_object.SaveableObject):
 
 def recreate_saveable_objects(saveable_fn_by_name):
   """Returns a dict of SaveableObject factories generated from loaded fns."""
+
+  names_and_slices = []
+
+  with ops.init_scope():
+    for save_fn, _ in saveable_fn_by_name.values():
+      for tensor_info in save_fn(""):
+        names_and_slices.append((
+            _convert_to_string(tensor_info["name"]),
+            _convert_to_string(tensor_info["slice_spec"])))
+
   saveable_factories = {}
   for name, (save_fn, restore_fn) in saveable_fn_by_name.items():
-    saveable_factories[name] = functools.partial(RestoredSaveableObject,
-                                                 save_function=save_fn,
-                                                 restore_function=restore_fn)
+    saveable_factories[name] = functools.partial(
+        RestoredSaveableObject,
+        names_and_slices=names_and_slices,
+        save_function=save_fn,
+        restore_function=restore_fn)
   return saveable_factories
 
 
@@ -586,10 +600,16 @@ class TrackableSaveable(saveable_object.SaveableObject):
     specs = []
     self._local_names = []
     self._prefix = saveable_compat.get_saveable_name(self._trackable) or ""
-    for tensor_name, tensor in tensor_dict.items():
+    for tensor_name, maybe_tensor in tensor_dict.items():
       self._local_names.append(tensor_name)
       spec_name = name + trackable_utils.escape_local_name(tensor_name)
-      specs.append(saveable_object.SaveSpec(tensor, "", spec_name))
+
+      if not isinstance(maybe_tensor, dict):
+        maybe_tensor = {"": maybe_tensor}
+
+      # Create separate specs for each slice spec.
+      for slice_spec, tensor in maybe_tensor.items():
+        specs.append(saveable_object.SaveSpec(tensor, slice_spec, spec_name))
     super(TrackableSaveable, self).__init__(obj, specs, name)
 
   def restore(self, restored_tensors, restored_shapes):
@@ -674,6 +694,10 @@ def trackable_has_serialize_to_tensor(obj):
   # pylint: enable=protected-access
 
 
+def _convert_to_string(x):
+  return compat.as_str(tensor_util.constant_value(x))
+
+
 class SaveableCompatibilityConverter(trackable.Trackable):
   """Converts object's `SaveableObjects` to functions used in TF2 checkpointing.
 
@@ -745,15 +769,7 @@ class SaveableCompatibilityConverter(trackable.Trackable):
 
   def _serialize_to_tensors(self):
     """Returns a dict of tensors to serialize."""
-    tensor_dict = {}
-    for saveable in self._saveables:
-      for spec in saveable.specs:
-        tensor = spec.tensor
-        if spec.slice_spec:
-          tensor_dict[spec.name][spec.slice_spec] = tensor
-        else:
-          tensor_dict[spec.name] = tensor
-    return tensor_dict
+    return saveable_object_to_tensor_dict(self._saveables)
 
   def _restore_from_tensors(self, restored_tensors):
     """Returns the restore ops defined in the Saveables."""
@@ -769,16 +785,45 @@ class SaveableCompatibilityConverter(trackable.Trackable):
                        f"\n\tExpected: {expected_keys}"
                        f"\n\tGot: {list(restored_tensors.keys())}")
 
+    return saveable_object_to_restore_fn(self._saveables)(restored_tensors)
+
+
+def saveable_object_to_tensor_dict(saveables):
+  """Converts a list of SaveableObjects to a tensor dictionary."""
+  tensor_dict = {}
+  for saveable in saveables:
+    for spec in saveable.specs:
+      name = _convert_to_string(spec.name)
+      slice_spec = _convert_to_string(spec.slice_spec)
+      # Currently, tensor dict cannot handle callable tensor values (which
+      # are needed for uninitialized variables), so keep using SaveSpec.
+      tensor = spec if callable(spec._tensor) else spec._tensor  # pylint: disable=protected-access
+      if slice_spec:
+        tensor_dict.setdefault(name, {})[slice_spec] = tensor
+      else:
+        tensor_dict[name] = tensor
+  return tensor_dict
+
+
+def saveable_object_to_restore_fn(saveables):
+  """Generates `Trackable._restore_from_tensors` from SaveableObjects."""
+
+  def _restore_from_tensors(restored_tensors):
     restore_ops = {}
-    for saveable in self._saveables:
+
+    for saveable in saveables:
       saveable_restored_tensors = []
       for spec in saveable.specs:
-        if spec.slice_spec:
-          saveable_restored_tensors.append(
-              restored_tensors[spec.name][spec.slice_spec])
-        else:
-          saveable_restored_tensors.append(restored_tensors[spec.name])
+        name = _convert_to_string(spec.name)
+        slice_spec = _convert_to_string(spec.slice_spec)
 
+        maybe_tensor = restored_tensors[name]
+        if not isinstance(maybe_tensor, dict):
+          maybe_tensor = {"": maybe_tensor}
+
+        saveable_restored_tensors.append(maybe_tensor[slice_spec])
       restore_ops[saveable.name] = saveable.restore(
           saveable_restored_tensors, restored_shapes=None)
     return restore_ops
+
+  return _restore_from_tensors

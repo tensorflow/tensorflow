@@ -83,7 +83,8 @@ HloInstruction* MaybePaddedAndSlicedInput(
     PrimitiveType element_type = input->shape().element_type();
     HloInstruction* padding = computation->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
-    input = MakePadHlo(input, padding, padding_config).ValueOrDie();
+    input = MakePadHlo(input, padding, padding_config, &input->metadata())
+                .ValueOrDie();
   }
 
   if (window_util::HasNegativePadding(*conv_window)) {
@@ -143,7 +144,8 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
   PrimitiveType element_type = kernel->shape().element_type();
   HloInstruction* padding = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
-  return MakePadHlo(kernel, padding, padding_config).ValueOrDie();
+  return MakePadHlo(kernel, padding, padding_config, &kernel->metadata())
+      .ValueOrDie();
 }
 }  // namespace
 

@@ -388,13 +388,13 @@ struct ShapeVisitor {
         ShapeOrValueInfo::getShapeInfoOf(v.getDefiningOp()->getOperand(0)));
   }
   void backwardBlockArgumentShape(BlockArgument argument) {
-    // JitRT uses jitrt.symbolic_shape to describe identical dimensions. Make
+    // JitRT uses rt.symbolic_shape to describe identical dimensions. Make
     // use of that when it exists.
     //
     // Example:
     //   func @compute(
-    //     %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<-2> :
-    //     tensor<1xi64>}, %arg1: tensor<?xf32> {jitrt.symbolic_shape =
+    //     %arg0: tensor<?xf32> {rt.symbolic_shape = dense<-2> :
+    //     tensor<1xi64>}, %arg1: tensor<?xf32> {rt.symbolic_shape =
     //     dense<-2> : tensor<1xi64>})
     //   } { ... }
     //
@@ -407,7 +407,7 @@ struct ShapeVisitor {
     if (auto func = dyn_cast_or_null<func::FuncOp>(
             argument.getOwner()->getParentOp())) {
       if (auto shape = func.getArgAttrOfType<DenseIntElementsAttr>(
-              argument.getArgNumber(), "jitrt.symbolic_shape")) {
+              argument.getArgNumber(), "rt.symbolic_shape")) {
         auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(argument));
         auto id = getAffineSymbolExpr(0, argument.getContext());
         for (const auto &symbol : llvm::enumerate(shape.getValues<ssize_t>())) {

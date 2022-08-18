@@ -35,8 +35,8 @@ class HLO_ComparisonDirectionValue<string enumStr> :
 //   acos(x) = 2 * atan2(sqrt(1 - x^2), (1 + x))  if x != -1
 //           = pi                                 if x == -1
 //
-// TODO(hinsu): Support operands with complex element types separately using
-// the following formula.
+// TODO(b/237376133): Support operands with complex element types separately
+// using the following formula.
 //   acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
 def : Pat<(CHLO_AcosOp NonComplexElementType:$input),
   (HLO_SelectOp

@@ -18,6 +18,7 @@ import collections
 from functools import partial  # pylint: disable=g-importing-member
 import os
 import platform
+import sys
 import tempfile
 
 import numpy as np
@@ -111,9 +112,10 @@ class TrtPrecisionMode(object):
 # For TRT >= 8.4, the recommendation is MAX_INT.
 if (_pywrap_py_utils.is_tensorrt_enabled() and
     trt_utils.is_loaded_tensorrt_version_greater_equal(8, 4, 0)):
-  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = np.iinfo(np.int32).max
+  # We must use `sys.maxsize - 512` to avoid overflow during casting.
+  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = sys.maxsize - 512
 else:
-  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
+  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30  # 1,073,741,824
 
 PROFILE_STRATEGY_RANGE = "Range"
 PROFILE_STRATEGY_OPTIMAL = "Optimal"
@@ -956,9 +958,12 @@ def _apply_inlining(func):
 
 
 def _save_calibration_table(node):
-  calibration_table = gen_trt_ops.get_calibration_data_op(
-      _get_canonical_engine_name(node.name))
-  node.attr["calibration_data"].s = calibration_table.numpy()
+  try:
+    calibration_table = gen_trt_ops.get_calibration_data_op(
+        _get_canonical_engine_name(node.name))
+    node.attr["calibration_data"].s = calibration_table.numpy()
+  except errors.UnknownError:
+    logging.warning("Warning calibration error for %s", node.name)
 
 
 def _convert_to_tensor(inp):

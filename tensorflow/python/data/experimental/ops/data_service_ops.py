@@ -16,7 +16,6 @@
 
 import enum
 import functools
-import six
 
 from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python import tf2
@@ -182,7 +181,7 @@ def _get_validated_sharding_policy(processing_mode):
 def _validate_job_name(job_name):
   if job_name is None:
     return
-  if not isinstance(job_name, six.string_types):
+  if not isinstance(job_name, str):
     raise ValueError("`job_name` must be a string, but `job_name` was of type "
                      f"{type(job_name)}. job_name={job_name}")
   if not job_name:
@@ -439,7 +438,7 @@ def _parse_service(service):
   Returns:
     The (protocol, address) tuple
   """
-  if not isinstance(service, six.string_types):
+  if not isinstance(service, str):
     raise ValueError("`service` must be a string, but `service` was of type "
                      f"{type(service)}. service={service}")
   if not service:
@@ -1047,8 +1046,7 @@ def _from_dataset_id(processing_mode,
     protocol, address = _parse_service(service)
   _validate_compression(compression)
   if job_name is not None:
-    if not isinstance(job_name, six.string_types) and not isinstance(
-        job_name, ops.Tensor):
+    if not isinstance(job_name, str) and not isinstance(job_name, ops.Tensor):
       raise ValueError(
           "`job_name` must be a string or Tensor, but `job_name` was of type "
           f"{type(job_name)}. job_name={job_name}.")

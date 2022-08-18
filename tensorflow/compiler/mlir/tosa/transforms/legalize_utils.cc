@@ -557,7 +557,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // This should be investigate for whether it is still necessary due to quant
   // type stripping changing.
   func.walk([&](tosa::ConstOp op) {
-    auto ety = op.value().getType().getElementType();
+    auto ety = op.getValue().getType().getElementType();
     auto new_ty = op.getType().cast<ShapedType>().clone(ety);
     op.getResult().setType(new_ty);
   });

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/util.h"
 
 #if GOOGLE_CUDA
@@ -397,9 +398,61 @@ bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
   }
 }
 
+bool IsSupportedActivation(const NodeDef& node) {
+  bool is_default_supported =
+      IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
+  bool is_mkl_specific = IsMKLEnabled() && (IsTanh(node) || IsSigmoid(node));
+  return (is_default_supported || is_mkl_specific);
+}
+
+bool RuntimeFusionEnabled(const Cluster* cluster) {
+  static bool is_enabled = [&] {
+#if CUDNN_VERSION >= 8400
+    // Cudnn runtime fusion feature is recommended for Ampere GPUs or later.
+    // For pre-Ampere GPUs, the overhead of runtime compilation would be very
+    // large and there are more limitations of supported cases.
+    if (!cluster) return false;
+    auto devices = cluster->GetDevices();
+    int num_gpus = 0;
+    int num_ampere = 0;
+    for (const auto& d : devices) {
+      if (d.second.type() == "GPU") {
+        num_gpus++;
+        auto cc_it = d.second.environment().find("architecture");
+        if (cc_it != d.second.environment().end()) {
+          double compute_capability = 0.0;
+          if (absl::SimpleAtod(cc_it->second, &compute_capability) &&
+              compute_capability >= 8.0) {
+            num_ampere++;
+          }
+        }
+      }
+    }
+    bool runtime_fusion_enabled = CudnnUseRuntimeFusion() &&
+                                  CudnnUseFrontend() && num_gpus > 0 &&
+                                  num_gpus == num_ampere;
+
+    if (CudnnUseRuntimeFusion() && !runtime_fusion_enabled) {
+      VLOG(1) << "Enabling Cudnn with runtime compilation requires the "
+              << "Cudnn frontend and Ampere GPUs or later, but we got "
+              << "Cudnn frontend is "
+              << (CudnnUseFrontend() ? "enabled" : "disabled") << " and "
+              << num_ampere << " Ampere GPU(s) out of total " << num_gpus
+              << " GPU(s)";
+    }
+
+    return runtime_fusion_enabled;
+#else
+    return false;
+#endif
+  }();
+  return is_enabled;
+}
+
 // Checks if we can rewrite a pattern to the `_FusedConv2D` on GPU device.
 bool IsGpuCompatible(const RemapperContext& ctx,
-                     const ContractionWithBiasAddAndActivation& matched) {
+                     const ContractionWithBiasAddAndActivation& matched,
+                     const Cluster* cluster) {
 #if TENSORFLOW_USE_ROCM
   // ROCm does not support _FusedConv2D
   return false;
@@ -414,7 +467,7 @@ bool IsGpuCompatible(const RemapperContext& ctx,
 
   // We rely on cuDNN for fused convolution and cublasLt for fused matmul.
   const NodeDef& activation_node = graph->node(matched.activation);
-  if (!IsRelu(activation_node)) return false;
+  if (!IsSupportedActivation(activation_node)) return false;
 
   const NodeDef& contraction_node = graph->node(matched.contraction);
   if (IsConv2D(contraction_node)) {
@@ -432,7 +485,25 @@ bool IsGpuCompatible(const RemapperContext& ctx,
                            filter_shape.dim(0).size() != 1 &&  //
                            filter_shape.dim(1).size() != 1;
 
-    return is_spatial_conv && IsGpuCompatibleConv2D(ctx, &contraction_node);
+    // The CuDNN runtime compiled kernels support the activations of relu6,
+    // elu, leakrelu but require the in_channels and out_channels to be even and
+    // fp16 dtype.
+    bool act_requires_fp16 = IsRelu6(activation_node) ||
+                             IsElu(activation_node) ||
+                             IsLeakyRelu(activation_node);
+    DataType dtype = GetDataTypeFromAttr(activation_node, "T");
+    bool is_fp16 = dtype == DT_HALF;
+    bool valid_channels = Rank(filter_shape) == 4 &&              //
+                          IsKnown(filter_shape.dim(2)) &&         //
+                          IsKnown(filter_shape.dim(3)) &&         //
+                          filter_shape.dim(2).size() % 2 == 0 &&  //
+                          filter_shape.dim(3).size() % 2 == 0;
+    bool is_supported_conv =
+        is_spatial_conv &&
+        (!act_requires_fp16 ||
+         (is_fp16 && valid_channels && RuntimeFusionEnabled(cluster)));
+
+    return is_supported_conv && IsGpuCompatibleConv2D(ctx, &contraction_node);
   } else if (IsMatMul(contraction_node)) {
     return IsGpuCompatibleMatMul(ctx, &contraction_node);
   }
@@ -442,7 +513,8 @@ bool IsGpuCompatible(const RemapperContext& ctx,
 
 // Checks if we can rewrite a pattern to the `_FusedMatMul` on GPU device.
 bool IsGpuCompatible(const RemapperContext& ctx,
-                     const ContractionWithBiasAdd& matched) {
+                     const ContractionWithBiasAdd& matched,
+                     const Cluster* cluster) {
 #if TENSORFLOW_USE_ROCM
   // ROCm does not support _FusedMatMul
   return false;
@@ -461,21 +533,17 @@ bool IsGpuCompatible(const RemapperContext& ctx,
 }
 
 bool IsGpuCompatible(const RemapperContext& ctx,
-                     const ContractionWithSqueezeAndBiasAdd& matched) {
+                     const ContractionWithSqueezeAndBiasAdd& matched,
+                     const Cluster* cluster) {
   return false;
 }
 
 // Returns true if the given pattern is supported on the assigned device.
 template <typename Pattern>
-bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
-  return IsCpuCompatible(ctx, matched) || IsGpuCompatible(ctx, matched);
-}
-
-bool IsSupportedActivation(const NodeDef& node) {
-  bool is_default_supported =
-      IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
-  bool is_mkl_specific = IsMKLEnabled() && (IsTanh(node) || IsSigmoid(node));
-  return (is_default_supported || is_mkl_specific);
+bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched,
+                        Cluster* cluster = nullptr) {
+  return IsCpuCompatible(ctx, matched) ||
+         IsGpuCompatible(ctx, matched, cluster);
 }
 
 inline bool HasControlFaninOrFanout(const utils::MutableNodeView& node_view) {
@@ -573,35 +641,16 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
     return true;
   };
 
-  // This is used only for MatMul+Add fusion.
-  const auto is_matmul_supported_shape =
-      [](const TensorShapeProto& shape,
-         const TensorShapeProto& bcast_shape) -> bool {
-    if (shape.dim_size() < 2 || bcast_shape.dim_size() != 1) return false;
-    int channel_dim = shape.dim(shape.dim_size() - 1).size();
-    return (channel_dim == bcast_shape.dim(0).size());
-  };
-
   if (ShapesSymbolicallyEqual(prot0_shape, prot1_shape) ||
       !ShapesBroadcastable(prot0_shape, prot1_shape))
     return false;
 
-  // For now block MatMul+Add fusion if Bias dims are more than one.
-  // TODO(intel-tf): Enable this fusion once it is properly tested.
   if (IsConvOrMatMul(*node_def_0)) {
     bias_port = 1;
-    if (IsMatMul(*node_def_0)) {
-      return (is_matmul_supported_shape(prot0_shape, prot1_shape));
-    } else {
-      return (is_supported_shape(prot0_shape, prot1_shape));
-    }
+    return (is_supported_shape(prot0_shape, prot1_shape));
   } else if (IsConvOrMatMul(*node_def_1)) {
     bias_port = 0;
-    if (IsMatMul(*node_def_1)) {
-      return (is_matmul_supported_shape(prot1_shape, prot0_shape));
-    } else {
-      return (is_supported_shape(prot1_shape, prot0_shape));
-    }
+    return (is_supported_shape(prot1_shape, prot0_shape));
   }
   return false;
 }
@@ -650,7 +699,7 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
 }
 
 bool FindContractionWithBiasAndActivation(
-    const RemapperContext& ctx, int node_index,
+    const RemapperContext& ctx, Cluster* cluster, int node_index,
     ContractionWithBiasAddAndActivation* matched) {
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // Root of the pattern must be an activation node.
@@ -693,7 +742,7 @@ bool FindContractionWithBiasAndActivation(
   // Check that data type and data format are supported on assigned device.
   const ContractionWithBiasAddAndActivation pattern{
       base.contraction, base.bias_add, node_index, base.bias_port};
-  if (!IsDeviceCompatible(ctx, pattern)) return false;
+  if (!IsDeviceCompatible(ctx, pattern, cluster)) return false;
 
   // We successfully found a {Conv2D, MatMul}+BiasAdd+Activation pattern.
   *matched = pattern;
@@ -1260,6 +1309,92 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
   }
   *is_gelu_approximate = found_gelu_approximate ? true : false;
   return (found_gelu_exact || found_gelu_approximate);
+}
+
+bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
+                       std::map<string, int>* matched_nodes_map,
+                       std::set<int>* remove_node_indices) {
+  using utils::MatchingDirection;
+  using utils::NodeStatus;
+
+  // clang-format off
+  // Convert Mul+Maximum to LeakyRelu
+  // maximum(x, alpha * x) = LeakyRelu(x)
+  utils::OpTypePattern mulmax_pattern{
+    "Maximum", "max_to_leakyrelu", NodeStatus::kReplace,
+    {
+      { "Mul", "mul", NodeStatus::kRemove,
+        {
+          { "*", "input", NodeStatus::kRemain},
+          { "Const|Cast", "alpha", NodeStatus::kRemain}
+        }
+      },
+      { "*", "input", NodeStatus::kRemain}
+    }
+  };
+  // clang-format on
+  // Check for allowed datatypes
+  auto* max_node_def = ctx->graph_view.GetNode(node_index)->node();
+  if (!HasDataType(max_node_def, DT_HALF) &&
+      !HasDataType(max_node_def, DT_BFLOAT16) &&
+      !HasDataType(max_node_def, DT_FLOAT) &&
+      !HasDataType(max_node_def, DT_DOUBLE))
+    return false;
+
+  // Current implementation has support only
+  // for CPU when oneDNN is enabled.
+  // TODO(intel-tf): This will be removed when fully tested with GPU
+  if (!NodeIsOnCpu(max_node_def) && !IsMKLEnabled()) return false;
+
+  bool found_op_type_match = false;
+  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+      &(ctx->graph_view));
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+
+  found_op_type_match = graph_matcher.GetMatchedNodes(
+      mulmax_pattern, {}, ctx->graph_view.GetNode(node_index),
+      matched_nodes_map, remove_node_indices);
+
+  // Check if the value of alpha >= 0 as required for LeakyRelu
+  if (found_op_type_match) {
+    const auto* alpha_node_view =
+        ctx->graph_view.GetNode(matched_nodes_map->at("alpha"));
+    const auto* alpha_node_def = alpha_node_view->node();
+
+    float alpha_val;
+    Tensor alpha_tensor;
+    if (alpha_node_def->op() == "Cast") {
+      const auto& regular_fanin_0 = alpha_node_view->GetRegularFanin(0);
+      const auto* regular_node_view = regular_fanin_0.node_view();
+      const auto* const_node = regular_node_view->node();
+      if (const_node != nullptr && const_node->op() == "Const" &&
+          alpha_tensor.FromProto(const_node->attr().at("value").tensor())) {
+        // Only fusing if the const is a scalar value
+        if (alpha_tensor.shape().dims() > 0) {
+          return false;
+        }
+        alpha_val = alpha_tensor.flat<float>()(0);
+      } else {
+        return false;
+      }
+    } else if (alpha_node_def->op() == "Const" &&
+               alpha_tensor.FromProto(
+                   alpha_node_def->attr().at("value").tensor())) {
+      // Only fusing if the const is a scalar value
+      if (alpha_tensor.shape().dims() > 0) {
+        return false;
+      }
+      alpha_val = alpha_tensor.flat<float>()(0);
+    } else {
+      return false;
+    }
+
+    if (alpha_val < 0) {
+      return false;
+    }
+  }
+  return found_op_type_match;
 }
 
 bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
@@ -2538,6 +2673,62 @@ Status AddMklLayerNorm(RemapperContext* ctx,
   return OkStatus();
 }
 
+Status ReplaceMulMaximumWithLeakyRelu(
+    RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
+    const std::set<int>& remove_node_indices,
+    std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
+  const NodeDef* maximum =
+      ctx->graph_view.GetNode(matched_nodes_map.at("max_to_leakyrelu"))->node();
+  const NodeDef* input =
+      ctx->graph_view.GetNode(matched_nodes_map.at("input"))->node();
+  const auto* alpha_node_view =
+      ctx->graph_view.GetNode(matched_nodes_map.at("alpha"));
+  const auto* alpha_node_def = alpha_node_view->node();
+
+  NodeDef fused_op;
+  fused_op.set_name(maximum->name());
+  fused_op.set_op("LeakyRelu");
+  fused_op.set_device(maximum->device());
+  fused_op.add_input(input->name());
+
+  auto* attr = fused_op.mutable_attr();
+  (*attr)["T"] = maximum->attr().at("T");
+
+  // BF16 adds a cast before the const alpha, so accessing the const node
+  // using the cast node to retrieve the value of alpha.
+  float alpha_val;
+  Tensor alpha_tensor;
+  if (alpha_node_def->op() == "Cast") {
+    const auto& regular_fanin_0 = alpha_node_view->GetRegularFanin(0);
+    const auto* regular_node_view = regular_fanin_0.node_view();
+    const auto* const_node = regular_node_view->node();
+    if (const_node != nullptr && const_node->op() == "Const" &&
+        alpha_tensor.FromProto(const_node->attr().at("value").tensor())) {
+      alpha_val = alpha_tensor.flat<float>()(0);
+      SetAttrValue(alpha_val, &(*attr)["alpha"]);
+    }
+  } else if (alpha_node_def->op() == "Const" &&
+             alpha_tensor.FromProto(
+                 alpha_node_def->attr().at("value").tensor())) {
+    alpha_val = alpha_tensor.flat<float>()(0);
+    SetAttrValue(alpha_val, &(*attr)["alpha"]);
+  }
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_op), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+
+  (*invalidated_nodes)[matched_nodes_map.at("max_to_leakyrelu")] = true;
+
+  for (const auto& node_index : remove_node_indices) {
+    (*nodes_to_delete)[node_index] = true;
+  }
+
+  return Status::OK();
+}
+
 Status ReplaceSigmoidMulWithSwish(
     RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
     const std::set<int>& remove_node_indices,
@@ -3150,7 +3341,8 @@ Status ReplaceSoftplusTanhAndMulWithMish(
 //   (3) Fusing Conv2D biasadd and relu on GPU
 //   (4) INTEL_MKL specific: Conv2D -> Add or Conv2D -> BiasAdd -> Add.
 //   (5) Fusing side output and/or activation into FusedBatchNormGrad.
-bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
+bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
+                            const Cluster* cluster) {
   // Candidate for a FusedBatchNorm splitting.
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   const auto* node_def = node_view->node();
@@ -3165,10 +3357,20 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return true;
   };
 
-  const auto is_relu_biasadd_conv_candidate = [&]() -> bool {
-    if (!IsRelu(*node_def)) return false;
-    DataType act_dtype = GetDataTypeFromAttr(*node_def, "T");
-    if (act_dtype != DT_FLOAT && act_dtype != DT_HALF) return false;
+  const auto is_act_biasadd_conv_candidate = [&]() -> bool {
+    if (!IsSupportedActivation(*node_def)) return false;
+
+    if (!RuntimeFusionEnabled(cluster) && !IsRelu(*node_def)) return false;
+
+    const auto is_compatible_dtype = [&](const NodeDef& node) -> bool {
+      // The cuDNN fusion with relu6, elu, leakyrelu is realized by the runtime
+      // compiled kernels which only support fp16.
+      bool fp16_only =
+          IsRelu6(*node_def) || IsElu(*node_def) || IsLeakyRelu(*node_def);
+      DataType dtype = GetDataTypeFromAttr(node, "T");
+      return dtype == DT_HALF || (!fp16_only && dtype == DT_FLOAT);
+    };
+    if (!is_compatible_dtype(*node_def)) return false;
 
     if (node_view->NumRegularFanins() < 1) return false;
     const auto& relu_fanin_0 = node_view->GetRegularFanin(0);
@@ -3177,8 +3379,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
 
     if (!IsBiasAdd(*relu_fanin_0_node_def) && !IsAdd(*relu_fanin_0_node_def))
       return false;
-    DataType biasadd_dtype = GetDataTypeFromAttr(*relu_fanin_0_node_def, "T");
-    if (biasadd_dtype != DT_FLOAT && biasadd_dtype != DT_HALF) return false;
+    if (!is_compatible_dtype(*relu_fanin_0_node_def)) return false;
 
     if (relu_fanin_0_node_view->NumRegularFanins() < 1) return false;
 
@@ -3188,8 +3389,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     if (!IsConv2D(*biasadd_fanin_0_node_def) &&
         !IsConv3D(*biasadd_fanin_0_node_def))
       return false;
-    DataType conv_dtype = GetDataTypeFromAttr(*biasadd_fanin_0_node_def, "T");
-    if (conv_dtype != DT_FLOAT && conv_dtype != DT_HALF) return false;
+    if (!is_compatible_dtype(*biasadd_fanin_0_node_def)) return false;
     return true;
   };
 
@@ -3243,9 +3443,9 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
   if (IsMKLEnabled())
     return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
            IsContractionWithAdd(ctx, node_index) ||
-           is_relu_biasadd_conv_candidate();
+           is_act_biasadd_conv_candidate();
 
-  return is_relu_biasadd_conv_candidate() || is_batch_norm_candidate() ||
+  return is_act_biasadd_conv_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate() ||
          is_batch_norm_grad_fusion_candidate();
 }
@@ -3281,7 +3481,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
 
     // Infer properties lazily in case they are not needed.
-    if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
+    if (!ctx.inferred_graph_properties &&
+        RequiresInferredShapes(ctx, i, cluster)) {
       const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
       TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
           assume_valid_feeds,
@@ -3347,6 +3548,17 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
 
+      // Remap Maximum(x, alpha * x) pattern, fuse them into the LeakyRelu(x).
+      std::map<string, int> mulmax_matched_nodes_map;
+      std::set<int> mulmax_remove_node_indices;
+      if (FindMulAndMaximum(&ctx, i, &mulmax_matched_nodes_map,
+                            &mulmax_remove_node_indices)) {
+        TF_RETURN_IF_ERROR(ReplaceMulMaximumWithLeakyRelu(
+            &ctx, mulmax_matched_nodes_map, mulmax_remove_node_indices,
+            &invalidated_nodes, &nodes_to_delete));
+        continue;
+      }
+
       // Remap Mul(x, Sigmoid(x)) pattern, fuse them into the Swish(x).
       std::map<string, int> sigmoidmul_matched_nodes_map;
       std::set<int> sigmoidmul_remove_node_indices;
@@ -3396,7 +3608,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     ContractionWithBiasAddAndActivation contract_with_bias_and_activation;
     if (allow_non_differentiable_rewrites &&
         FindContractionWithBiasAndActivation(
-            ctx, i, &contract_with_bias_and_activation)) {
+            ctx, cluster, i, &contract_with_bias_and_activation)) {
       TF_RETURN_IF_ERROR(
           AddFusedContractionNode(&ctx, contract_with_bias_and_activation,
                                   &invalidated_nodes, &nodes_to_delete));
@@ -3418,6 +3630,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
+#ifndef DNNL_AARCH64_USE_ACL
     // Remap Conv2D+FusedBatchNorm into the _FusedConv2D;
     ContractionWithBatchNorm contract_with_batch_norm;
     if (allow_non_differentiable_rewrites &&
@@ -3439,6 +3652,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                              &invalidated_nodes, &nodes_to_delete));
       continue;
     }
+#endif  // !DNNL_AARCH64_USE_ACL
 
     // Remap FusedBatchNorm+<SideInput>+<Activation> into the _FusedBatchNormEx.
     FusedBatchNormEx fused_batch_norm_ex;

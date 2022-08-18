@@ -39,7 +39,7 @@ limitations under the License.
 #include <windows.h>
 #undef DeleteFile
 #undef CopyFile
-#include "tensorflow/core/platform/windows/wide_char.h"
+#include "tensorflow/tsl/platform/windows/wide_char.h"
 #define PATH_MAX MAX_PATH
 #else
 #include <fcntl.h>

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 // TODO(skyewm): remove when everything goes through C API
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -154,11 +155,7 @@ absl::string_view PjRtCApiClient::platform_version() const {
 
 StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
     const PjRtLoadedExecutable& executable) const {
-#ifdef PJRT_C_API_BYPASS
-  return wrapped_->ExecutableFingerprint(
-      *PjRtCApiExecutable::GetWrapped(&executable));
-#endif  // PJRT_C_API_BYPASS
-  return Unimplemented("PJRT C API does not support ExecutableFingerprint");
+  return {std::nullopt};
 }
 
 StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
@@ -489,28 +486,6 @@ Convert2DCBuffersToCppBuffers(PJRT_Buffer*** c_lists, size_t outer_size,
   return ret;
 }
 
-// TODO(jieying): expose a C API PJRT_Executable_NumOutputs which gets the
-// number of putputs from the HloModule inside the implementation.
-static StatusOr<int> GetNumOutputsPerDevice(
-    const PjRtCApiExecutable& executable, int num_devices) {
-  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
-                      executable.GetHloModules());
-  if (hlo_modules.empty()) {
-    return xla::InvalidArgument("Hlo modules is empty for executable %s.",
-                                executable.name());
-  }
-  if (hlo_modules.size() != 1) {
-    return xla::Unimplemented(
-        "MPMD execution not supported by PjRtCApiClient::Execute.");
-  }
-  xla::Shape shape = hlo_modules[0].get()->result_shape();
-  if (shape.IsTuple()) {
-    return shape.tuple_shapes_size();
-  }
-  // The output size is 1 is it is not a tuple.
-  return 1;
-}
-
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtCApiExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
@@ -540,10 +515,14 @@ PjRtCApiExecutable::Execute(
 
   // Allocates memory for output. `c_buffer_lists_holder` and `c_buffer_lists`
   // needs to stay alive during the call of `PJRT_Executable_Execute`.
-  TF_ASSIGN_OR_RETURN(int num_outputs_per_device,
-                      GetNumOutputsPerDevice(*this, args.num_devices));
+  PJRT_Executable_NumOutputs_Args numoutputs_args;
+  numoutputs_args.struct_size = PJRT_Executable_NumOutputs_Args_STRUCT_SIZE;
+  numoutputs_args.priv = nullptr;
+  numoutputs_args.executable = executable_;
+  RETURN_STATUS_IF_ERROR(
+      pjrt_c_api()->PJRT_Executable_NumOutputs(&numoutputs_args), pjrt_c_api());
   size_t outer_size = args.num_devices;
-  size_t inner_size = num_outputs_per_device;
+  size_t inner_size = numoutputs_args.num_outputs;
   std::vector<std::vector<PJRT_Buffer*>> c_buffer_lists_holder(outer_size);
   auto c_buffer_lists = std::vector<PJRT_Buffer**>(outer_size);
   for (int i = 0; i < outer_size; ++i) {
@@ -556,7 +535,7 @@ PjRtCApiExecutable::Execute(
                          pjrt_c_api());
 
   return Convert2DCBuffersToCppBuffers(args.output_lists, args.num_devices,
-                                       num_outputs_per_device, client_);
+                                       numoutputs_args.num_outputs, client_);
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -645,11 +624,11 @@ bool PjRtCApiExecutable::IsDeleted() {
 // ---------------------------------- Buffers ----------------------------------
 
 PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
-    : client_(client), buffer_(buffer), wrapped_(buffer->buffer.get()) {
+    : client_(client),
+      buffer_(buffer, ::pjrt::MakeBufferDeleter(client->pjrt_c_api())),
+      wrapped_(buffer_->buffer.get()) {
   set_shape();
 }
-
-PjRtCApiBuffer::~PjRtCApiBuffer() { delete buffer_; }
 
 const Shape& PjRtCApiBuffer::on_device_shape() const {
   CHECK(shape_.has_value())
@@ -661,7 +640,7 @@ void PjRtCApiBuffer::set_shape() {
   PJRT_Buffer_OnDeviceTrimmedShape_Args args;
   args.struct_size = PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.buffer = buffer_.get();
 
   pjrt::LogFatalIfPjrtError(
       client_->pjrt_c_api()->PJRT_Buffer_OnDeviceTrimmedShape(&args),
@@ -678,7 +657,7 @@ void PjRtCApiBuffer::set_shape() {
 
   Shape trimmed_shape = Shape(element_type, dims, dynamic_dims, {});
 
-  if (args.layout.format != xla::INVALID_FORMAT) {
+  if (args.has_layout) {
     *(trimmed_shape.mutable_layout()) = ApiConverter::FromC(&args.layout);
   }
 
@@ -693,7 +672,7 @@ void PjRtCApiBuffer::set_shape() {
     delete[] args.dynamic_dimensions.heap;
   }
 
-  if (args.layout.format != xla::INVALID_FORMAT) {
+  if (args.has_layout) {
     if (args.layout.minor_to_major.size > TPU_C_API_MAX_INLINED) {
       delete[] args.layout.minor_to_major.heap;
     }
@@ -708,7 +687,7 @@ StatusOr<size_t> PjRtCApiBuffer::GetOnDeviceSizeInBytes() const {
   PJRT_Buffer_OnDeviceSizeInBytes_Args args;
   args.struct_size = PJRT_Buffer_OnDeviceSizeInBytes_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.buffer = buffer_.get();
   RETURN_STATUS_IF_ERROR(
       client_->pjrt_c_api()->PJRT_Buffer_OnDeviceSizeInBytes(&args),
       client_->pjrt_c_api());
@@ -720,7 +699,7 @@ PjRtDevice* PjRtCApiBuffer::device() const {
   PJRT_Buffer_Device_Args args;
   args.struct_size = PJRT_Buffer_Device_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.buffer = buffer_.get();
   const PJRT_Api* api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_Device(&args), api);
   return client_->GetCppDevice(args.device);
@@ -730,7 +709,7 @@ void PjRtCApiBuffer::Delete() {
   PJRT_Buffer_Delete_Args args;
   args.struct_size = PJRT_Buffer_Delete_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.buffer = buffer_.get();
   const PJRT_Api* api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_Delete(&args), api);
 }
@@ -739,7 +718,7 @@ bool PjRtCApiBuffer::IsDeleted() {
   PJRT_Buffer_IsDeleted_Args args;
   args.struct_size = PJRT_Buffer_IsDeleted_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.buffer = buffer_.get();
   const PJRT_Api* api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_IsDeleted(&args), api);
   return args.is_deleted;
@@ -751,7 +730,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
     PJRT_Buffer_CopyToDevice_Args args;
     args.struct_size = PJRT_Buffer_CopyToDevice_Args_STRUCT_SIZE;
     args.priv = nullptr;
-    args.buffer = buffer_;
+    args.buffer = buffer_.get();
     args.dst_device =
         tensorflow::down_cast<PjRtCApiDevice*>(dst_device)->c_device();
     const PJRT_Api* api = pjrt_c_api();
@@ -769,7 +748,7 @@ bool PjRtCApiBuffer::IsOnCpu() const {
   PJRT_Buffer_IsOnCpu_Args args;
   args.struct_size = PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.buffer = buffer_.get();
   const PJRT_Api* api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_IsOnCpu(&args), api);
   return args.is_on_cpu;

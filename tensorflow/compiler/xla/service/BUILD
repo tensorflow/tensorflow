@@ -22,7 +22,7 @@ load("//tensorflow:tensorflow.bzl", "internal_hlo_deps")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "internal_cuda_deps")
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
@@ -651,7 +651,7 @@ cc_library(
         ":hlo",
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
@@ -1260,10 +1260,10 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
     ]) + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+        "//tensorflow/tsl/platform/default/build_config:stream_executor_cuda",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler",
-        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
+        "//tensorflow/tsl/platform/default/build_config:stream_executor_rocm",
     ]) + internal_cuda_deps(),
 )
 
@@ -1774,7 +1774,6 @@ tf_cc_test(
     name = "hlo_schedule_test",
     srcs = ["hlo_schedule_test.cc"],
     deps = [
-        ":heap_simulator",
         ":hlo",
         ":hlo_dce",
         ":hlo_memory_scheduler",
@@ -1891,7 +1890,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -4671,7 +4669,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -4686,8 +4683,6 @@ tf_cc_test(
         ":hlo_verifier",
         ":layout_assignment",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -4977,7 +4972,6 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -5564,6 +5558,7 @@ cc_library(
     hdrs = ["tuple_util.h"],
     deps = [
         ":hlo",
+        ":hlo_value",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -5578,6 +5573,7 @@ tf_cc_test(
         ":tuple_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/memory",
@@ -6571,8 +6567,11 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",  # fixdeps: keep
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -6599,7 +6598,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
     ],
 )
 

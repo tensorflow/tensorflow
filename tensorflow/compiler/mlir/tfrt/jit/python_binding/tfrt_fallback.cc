@@ -35,7 +35,7 @@ namespace tensorflow {
 
 namespace py = pybind11;
 
-using ::tfrt::jitrt::MemrefDesc;
+using ::xla::runtime::MemrefDesc;
 
 static py::array ConvertTensorToPyArray(const Tensor& tensor) {
   auto tensor_sizes = tensor.shape().dim_sizes();

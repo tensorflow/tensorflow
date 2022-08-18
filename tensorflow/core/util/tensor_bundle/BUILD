@@ -83,7 +83,6 @@ tf_cc_test(
     srcs = ["tensor_bundle_test.cc"],
     data = ["//tensorflow/core/util/tensor_bundle/testdata:old_string_tensors"],
     tags = [
-        "nomac",  # TODO(b/239076506) Fix this.
         "nomsan",
         "notsan",
     ],

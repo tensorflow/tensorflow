@@ -59,11 +59,6 @@ Status ConvertToTensorProto(mlir::ElementsAttr attr,
 // Converts an MLIR elements attribute to a TensorFlow tensor.
 Status ConvertToTensor(mlir::ElementsAttr attr, Tensor* output_tensor);
 
-// Decodes the given opaque elements attribute holding tensor content into a
-// human-readable elements attribute.
-StatusOr<mlir::ElementsAttr> DecodeOpaqueTensor(
-    mlir::OpaqueElementsAttr input_attr, mlir::Builder builder);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_CONVERT_TENSOR_H_

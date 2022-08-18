@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/stream_executor/gpu/gpu_types.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #endif
 
 #if CUDA_VERSION >= 10020

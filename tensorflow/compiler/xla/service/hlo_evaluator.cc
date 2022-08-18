@@ -419,13 +419,12 @@ Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
 }
 
 std::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
-  std::optional<tensorflow::StringPiece> error_detail =
-      error.GetPayload(kEvalErrorDetailUrl);
+  auto error_detail = error.GetPayload(kEvalErrorDetailUrl);
   if (!error_detail.has_value() && error_detail->empty()) {
     return std::nullopt;
   }
   return static_cast<EvalErrorDetail>(
-      absl::little_endian::Load32(error_detail->data()));
+      absl::little_endian::Load32(error_detail->Flatten().data()));
 }
 
 // A convenience wrapper to compute the while loop's argument's init value at
@@ -3860,10 +3859,16 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
   // Out of convenience the literal may have been produced with a different
   // layout. Relayout as indicated by the HLO instruction.
-  if (!Layout::Equal().MinorToMajorOnly()(
-          GetEvaluatedLiteralFor(hlo).shape().layout(),
-          hlo->shape().layout())) {
-    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo->shape());
+  auto evaluated_shape = GetEvaluatedLiteralFor(hlo).shape();
+  xla::Shape hlo_shape = hlo->shape();
+  if (hlo_shape.IsArray() && !hlo_shape.has_layout()) {
+    *hlo_shape.mutable_layout() =
+        LayoutUtil::GetDefaultLayoutForShape(hlo_shape);
+  }
+  if (evaluated_shape.has_layout() && hlo_shape.has_layout() &&
+      !Layout::Equal().MinorToMajorOnly()(evaluated_shape.layout(),
+                                          hlo_shape.layout())) {
+    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo_shape);
   }
   return OkStatus();
 }

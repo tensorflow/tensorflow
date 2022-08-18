@@ -19,6 +19,7 @@ import tempfile
 from typing import Callable, Collection, Dict, Mapping, Optional, Sequence
 import uuid
 import warnings
+from absl import logging
 
 import numpy as np
 
@@ -340,6 +341,26 @@ def _run_function_for_calibration_graph_mode(
     sess.run(output_tensor_names, feed_dict=feed_dict)
 
 
+def _replace_tensors_by_numpy_ndarrays(
+    repr_ds_map: repr_dataset.RepresentativeDatasetMapping) -> None:
+  """Replaces tf.Tensors by their evaluated numpy arrays.
+
+  This assumes that tf.Tensors in representative samples are created in the
+  default Graph. It will raise an error if tensors are created in a different
+  graph.
+
+  Args:
+    repr_ds_map: SignatureDef key -> RepresentativeDataset mapping.
+  """
+  with session.Session() as sess:
+    for signature_def_key in repr_ds_map:
+      # Replaces the dataset with a new dataset where tf.Tensors are replaced
+      # by their evaluated values.
+      ds = repr_ds_map[signature_def_key]
+      repr_ds_map[signature_def_key] = (
+          repr_dataset.replace_tensors_by_numpy_ndarrays(ds, sess))
+
+
 def _run_graph_for_calibration_graph_mode(
     model_dir: str,
     tags: Collection[str],
@@ -361,7 +382,13 @@ def _run_graph_for_calibration_graph_mode(
   Raises:
     ValueError: When running the function with the representative dataset fails.
   """
-  with session.Session() as sess:
+  # Replace tf.Tensors by numpy ndarrays in order to reuse the samples in a
+  # different graph when running the calibration.
+  _replace_tensors_by_numpy_ndarrays(representative_dataset_map)
+
+  # Run the calibration in a new graph to avoid name collision, which could
+  # happen when the same model is loaded multiple times in the default graph.
+  with ops.Graph().as_default(), session.Session() as sess:
     meta_graph: meta_graph_pb2.MetaGraphDef = saved_model_loader.load(
         sess, tags, export_dir=model_dir)
 
@@ -551,6 +578,11 @@ def _static_range_quantize(
     raise ValueError(
         'When `representative_dataset` is not provided, the model should be '
         'trained with quantization-aware training (QAT).')
+  if quantization_options.min_num_elements_for_weights > 0:
+    logging.warn(
+        'min_num_elements_for_weights is set but is not supported for the '
+        'Post-training static range quantization. '
+        'The flag is ignored.')
 
   if is_qat_saved_model:
     # Handle QAT models are supported.
@@ -678,6 +710,17 @@ def _dynamic_range_quantize(
   Raises:
     ValueError: when the model is QAT model.
   """
+
+  # Check default quantization option values for Post-training dynamic range
+  # quantization case
+  # TODO(b/242805842): Find good minimum_elements_for_weights number for server
+  if quantization_options.min_num_elements_for_weights == 0:
+    quantization_options.min_num_elements_for_weights = 1024
+    logging.warn(
+        'min_num_elements_for_weights is unset so is set to the default value'
+        '(1024).'
+    )
+
   is_qat_saved_model = _is_qat_saved_model(saved_model_path)
   signatures = _get_signatures_from_saved_model(saved_model_path,
                                                 signature_keys, tags)

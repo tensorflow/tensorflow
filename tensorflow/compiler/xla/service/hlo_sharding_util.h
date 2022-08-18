@@ -165,6 +165,11 @@ std::optional<HloSharding> GatherOutputShardingFromDataOperand(
 std::optional<HloSharding> GatherDataOperandShardingFromOutput(
     const HloSharding& output_sharding, const HloInstruction& hlo);
 
+// Returns the slice size for a scatter with given operand and update shapes.
+std::vector<int64_t> GetScatterSliceSize(const Shape& operand_shape,
+                                         const Shape& update_shape,
+                                         const ScatterDimensionNumbers& dnums);
+
 // Returns an output sharding of scatter by passing through the update operand's
 // sharding.
 std::optional<HloSharding> ScatterOutputShardingFromUpdate(

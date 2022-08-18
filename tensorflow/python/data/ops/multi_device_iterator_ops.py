@@ -216,7 +216,7 @@ def _create_device_dataset(prototype_ds, incarnation_id, prefetch_buffer_size,
   return ds
 
 
-class MultiDeviceIterator(object):
+class MultiDeviceIterator:
   """An iterator over multiple devices."""
 
   def __init__(self,

@@ -364,7 +364,7 @@ Status GraphDefImporter::ConvertFunctionAttributes(
     // TODO(b/230143351): `ConvertAttributeValue` is a little slow due to
     // `ConvertTensorProto` and `ConvertTensorShapeProto`.
     TF_ASSIGN_OR_RETURN(Attribute attr,
-                        ConvertAttributeValue(name_attr.second, b_, dialect_));
+                        ConvertAttributeValue(name_attr.second, b_));
     attrs.append(absl::StrCat("tf.", name_attr.first), attr);
   }
 
@@ -424,9 +424,8 @@ Status GraphDefImporter::ConvertArgumentAttributes(const OpDef::ArgDef &def,
     attrs.append(dialect_->getTfgHandleDataAttrIdentifier(), handle_data);
   }
   if (def.has_experimental_full_type()) {
-    TF_ASSIGN_OR_RETURN(
-        tf_type::FullTypeAttr full_type,
-        ConvertAttribute(def.experimental_full_type(), b_, dialect_));
+    TF_ASSIGN_OR_RETURN(tf_type::FullTypeAttr full_type,
+                        ConvertAttribute(def.experimental_full_type(), b_));
     attrs.append(dialect_->getTfgFullTypeAttrIdentifier(), full_type);
   }
   return ::tensorflow::OkStatus();
@@ -565,9 +564,8 @@ Status GraphDefImporter::ConvertFunctionDef(
     auto attr_it = function.arg_attr().find(it.index());
     if (attr_it != function.arg_attr().end()) {
       for (const auto &name_attr : attr_it->second.attr()) {
-        TF_ASSIGN_OR_RETURN(
-            Attribute attr,
-            ConvertAttributeValue(name_attr.second, b_, dialect_));
+        TF_ASSIGN_OR_RETURN(Attribute attr,
+                            ConvertAttributeValue(name_attr.second, b_));
         attrs.append("tf." + name_attr.first, attr);
       }
     }
@@ -778,7 +776,7 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
   // If the op doesn't have a FullType, try to infer one.
   const auto add_full_type = [&](const FullTypeDef &full_type_def) {
     TF_ASSIGN_OR_RETURN(tf_type::FullTypeAttr full_type,
-                        ConvertAttribute(full_type_def, b_, dialect_));
+                        ConvertAttribute(full_type_def, b_));
     state.addAttribute(dialect_->getFullTypeAttrIdentifier(), full_type);
     return ::tensorflow::OkStatus();
   };
@@ -795,7 +793,7 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
     if (name_attr.first.empty())
       return InvalidArgument("Node ", node.name(), " has an empty attr name");
     TF_ASSIGN_OR_RETURN(Attribute attr,
-                        ConvertAttributeValue(name_attr.second, b_, dialect_));
+                        ConvertAttributeValue(name_attr.second, b_));
     state.addAttribute(name_attr.first, attr);
   }
 
@@ -803,9 +801,8 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
   for (const auto &attr_def : op_def->attr()) {
     if (attr_def.has_default_value() &&
         !state.attributes.get(attr_def.name())) {
-      TF_ASSIGN_OR_RETURN(
-          Attribute attr,
-          ConvertAttributeValue(attr_def.default_value(), b_, dialect_));
+      TF_ASSIGN_OR_RETURN(Attribute attr,
+                          ConvertAttributeValue(attr_def.default_value(), b_));
       state.addAttribute(attr_def.name(), attr);
     }
   }

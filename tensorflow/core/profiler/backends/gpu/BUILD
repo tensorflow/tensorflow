@@ -21,7 +21,7 @@ load(
 )
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 

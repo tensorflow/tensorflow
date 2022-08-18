@@ -1096,19 +1096,8 @@ std::vector<ComputationToEmit> SubcomputationEmissionOrder(
 
 }  // namespace
 
-StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options) {
-  VLOG(1) << "Compiling: " << module->name();
-  XLA_SCOPED_LOGGING_TIMER(
-      absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
-  std::string slow_compilation_msg =
-      absl::StrCat("Compiling module ", module->name());
-  auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
-
-  absl::call_once(llvm_command_line_options_initialized,
-                  &InitializeLLVMCommandLineOptions, module->config());
-
+StatusOr<std::unique_ptr<CpuExecutable>>
+CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   ModuleHook pre_optimization_ir_hook;
   ModuleHook post_optimization_ir_hook;
   std::tie(pre_optimization_ir_hook, post_optimization_ir_hook) =
@@ -1280,6 +1269,27 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
         cpu_executable->buffer_assignment().ToProto();
     cpu_executable->set_hlo_proto(std::move(hlo_proto));
   }
+
+  return cpu_executable;
+}
+
+StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
+    std::unique_ptr<HloModule> module,
+    [[maybe_unused]] se::StreamExecutor* stream_exec,
+    [[maybe_unused]] const CompileOptions& options) {
+  VLOG(1) << "Compiling: " << module->name();
+  XLA_SCOPED_LOGGING_TIMER(
+      absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
+  std::string slow_compilation_msg =
+      absl::StrCat("Compiling module ", module->name());
+  auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
+
+  absl::call_once(llvm_command_line_options_initialized,
+                  &InitializeLLVMCommandLineOptions, module->config());
+
+  std::unique_ptr<CpuExecutable> cpu_executable;
+  TF_ASSIGN_OR_RETURN(cpu_executable,
+                      CompileLegacyCpuExecutable(std::move(module)));
 
   cpu_executable->set_debug_info(
       cpu_executable->buffer_assignment().GetStats().ToString());

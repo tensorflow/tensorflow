@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -212,6 +213,25 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
                                          bool is_constant = false,
                                          bool is_intermediate = false) {
   mlir::Type elem_type = ConvertElementType(tensor.type, builder);
+  if (tensor.type == tflite::TensorType_VARIANT) {
+    llvm::SmallVector<mlir::TensorType> tensor_types;
+    if (tensor.variant_tensors.size() > 1) {
+      return errors::InvalidArgument(
+          "Have more than one nested type in `variant_tensors`.");
+    }
+    for (const auto& nested_tensor : tensor.variant_tensors) {
+      mlir::Type nested_elem_type =
+          ConvertElementType(nested_tensor->type, builder);
+      if (nested_tensor->has_rank) {
+        llvm::SmallVector<int64_t> shape(nested_tensor->shape.begin(),
+                                         nested_tensor->shape.end());
+        tensor_types.push_back(RankedTensorType::get(shape, nested_elem_type));
+      } else {
+        tensor_types.push_back(UnrankedTensorType::get(nested_elem_type));
+      }
+    }
+    elem_type = mlir::TF::VariantType::get(tensor_types, builder.getContext());
+  }
   if (IsQuantized(tensor)) {
     TF_ASSIGN_OR_RETURN(elem_type,
                         GetQuantizedType(tensor, builder, is_constant));
@@ -662,11 +682,10 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
 
     value = mlir::DenseStringElementsAttr::get(shaped_type, refs);
   } else if (elem_type.isa<mlir::ComplexType, mlir::TF::TensorFlowType>()) {
-    auto dialect = elem_type.getContext()->getLoadedDialect("tf");
     tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
     std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
 
-    value = mlir::OpaqueElementsAttr::get(dialect, shaped_type, mangled);
+    value = mlir::TF::TensorProtoAttr::get(shaped_type, mangled);
   } else {
     return errors::Unimplemented("Constant of unsupported type");
   }

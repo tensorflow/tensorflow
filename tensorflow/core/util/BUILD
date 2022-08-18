@@ -468,7 +468,10 @@ cc_library(
     name = "reporter",
     srcs = ["reporter.cc"],
     hdrs = ["reporter.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
+    ],
     deps = [
         ":test_log_proto_impl_cc",
         "//tensorflow/core/platform:env",
@@ -688,9 +691,9 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/stream_executor/cuda:cublas_lib",
         "//tensorflow/stream_executor/cuda:cusolver_lib",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
     ],
 )
 
@@ -957,5 +960,9 @@ tf_proto_library(
     ],
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",
+    ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
     ],
 )

@@ -73,10 +73,13 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToArithmeticPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeHloShapeOpsToStandardPass();
 
-// Lowers from HLO dialect to Linalg dialect.
+/// Lowers from MHLO dialect to THLO dialect.
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass();
+
+/// Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass();
 
-// Lowers from HLO dialects dim operations.
+/// Lowers from HLO dialects dim operations.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeShapeComputationsPass();
 

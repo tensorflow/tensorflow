@@ -196,7 +196,10 @@ static bool IsUnnestedReductionFasterThanElemental(
     // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
     // along tile_size_x which needs to be large enough to make the tiling
     // implementation efficient.
-    return reduction_dimensions.dimensions[2] >= WarpSize();
+    // For very small reductions with a power-of-two size, we can fit multiple
+    // reductions inside a single warp, which is more efficient than a loop.
+    return (reduction_dimensions.dimensions[2] >= WarpSize()) ||
+           ((WarpSize() % reduction_dimensions.dimensions[2]) == 0);
   }
 
   // For column reduction, the tile block is tile_size_y x tile_size_x, and we
@@ -783,7 +786,7 @@ std::optional<TransposeDimsAndParams> FindTranspose021DimsAndParameters(
   std::optional<Vector3> reduced_dims_021;
   for (int64_t operand_idx = 0; operand_idx < operand_shapes.size();
        ++operand_idx) {
-    auto find_transpose_result =
+    std::optional<Vector3> find_transpose_result =
         ShapeUtil::FindTranspose021(operand_shapes[operand_idx], output_shape);
     if (!find_transpose_result.has_value()) {
       continue;

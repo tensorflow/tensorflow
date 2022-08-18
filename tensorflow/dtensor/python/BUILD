@@ -113,7 +113,6 @@ pytype_strict_library(
         "//tensorflow/python:util",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_options",
-        "//tensorflow/python/checkpoint:functional_saver",
         "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/checkpoint:restore",
         "//tensorflow/python/eager:context",

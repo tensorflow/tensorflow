@@ -21,6 +21,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -80,6 +81,14 @@ void PJRT_Error_Message(PJRT_Error_Message_Args* args) {
     args->message = status->error_message().data();
     args->message_size = status->error_message().size();
   }
+}
+
+PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Error_GetCode_Args", PJRT_Error_GetCode_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->code = StatusCodeToPjrtErrorCode(args->error->status.code());
+  return nullptr;
 }
 
 // ---------------------------------- Client -----------------------------------
@@ -418,6 +427,34 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_NumOutputs_Args",
+      PJRT_Executable_NumOutputs_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::vector<std::shared_ptr<xla::HloModule>> hlo_modules,
+      args->executable->executable->GetHloModules());
+  if (hlo_modules.empty()) {
+    return new PJRT_Error{
+        xla::InvalidArgument("Can't get number of executable outputs, Hlo "
+                             "modules is empty for executable %s.",
+                             args->executable->executable->name())};
+  }
+  if (hlo_modules.size() != 1) {
+    return new PJRT_Error{
+        xla::Unimplemented("MPMD execution not supported by PJRT C API (in "
+                           "function PJRT_Executable_NumOutputs).")};
+  }
+  xla::Shape shape = hlo_modules[0].get()->result_shape();
+  if (shape.IsTuple()) {
+    args->num_outputs = shape.tuple_shapes_size();
+  } else {
+    // The output size is 1 is it is not a tuple.
+    args->num_outputs = 1;
+  }
+  return nullptr;
+}
+
 // ---------------------------------- Buffers ----------------------------------
 // TODO(b/238999986): Replace this with decomposed shape methods.
 PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
@@ -433,11 +470,20 @@ PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
                              &args->dynamic_dimensions);
 
   if (shape.has_layout()) {
+    args->has_layout = true;
     ApiConverter::ToC(shape.layout(), &args->layout);
   } else {
-    args->layout.format = xla::INVALID_FORMAT;
+    args->has_layout = false;
   }
 
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_Destroy_Args", PJRT_Buffer_Destroy_Args_STRUCT_SIZE,
+      args->struct_size));
+  delete args->buffer;
   return nullptr;
 }
 
@@ -497,6 +543,80 @@ PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args) {
       "PJRT_Buffer_IsOnCpu_Args", PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE,
       args->struct_size));
   args->is_on_cpu = args->buffer->buffer->IsOnCpu();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_ReadyEvent_Args", PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE,
+      args->struct_size));
+  xla::PjRtFuture<xla::Status> wrapped_promise =
+      args->buffer->buffer->GetReadyFuture();
+  args->event = new PJRT_Event{std::move(wrapped_promise)};
+  return nullptr;
+}
+
+// -------------------------------- Events -------------------------------------
+
+PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Event_Destroy", PJRT_Event_Destroy_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  delete args->event;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Event_IsReady", PJRT_Event_IsReady_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->is_ready = args->event->future.IsReady();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Event_Await(PJRT_Event_Await_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Event_Await", PJRT_Event_Await_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  PJRT_Event* event = args->event;
+  event->status.emplace(event->future.Await());
+  PJRT_RETURN_IF_ERROR(event->status.value());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Event_Error(PJRT_Event_Error_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Event_Error", PJRT_Event_Error_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  PJRT_Event* event = args->event;
+  CHECK(event->future.IsReady());
+  if (!event->status.has_value()) {
+    PJRT_Event_Await_Args await_args;
+    await_args.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
+    await_args.priv = nullptr;
+    await_args.event = event;
+    return PJRT_Event_Await(&await_args);
+  }
+  PJRT_RETURN_IF_ERROR(event->status.value());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Event_OnReady", PJRT_Event_OnReady_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  PJRT_Event_OnReadyCallback callback = args->callback;
+  void* user_arg = args->user_arg;
+  auto impl_callback = [callback, user_arg](xla::Status status) -> void {
+    PJRT_Error* error = new PJRT_Error{status};
+    callback(error, user_arg);
+  };
+  args->event->future.OnReady(impl_callback);
   return nullptr;
 }
 

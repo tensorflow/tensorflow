@@ -173,11 +173,11 @@ void DepthwiseConv::UploadWeightsForDWConv2D(
     desc.data = std::move(data);
     args_.AddObject("weights", std::make_unique<BufferDescriptor>(desc));
   } else {
-    Texture2DDescriptor desc;
-    desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc.size = int2(kernel_x * kernel_y, dst_slices);
-    desc.data = std::move(data);
-    args_.AddObject("weights", std::make_unique<Texture2DDescriptor>(desc));
+    TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+        fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16,
+        TensorStorageType::TEXTURE_2D, kernel_x * kernel_y, dst_slices,
+        data.data());
+    args_.AddObject("weights", std::make_unique<TensorDescriptor>(desc));
   }
 }
 
@@ -246,12 +246,11 @@ void DepthwiseConv::UploadWeightsForDWConv3D(
     args_.AddObject("weights",
                     std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
-    Texture2DDescriptor desc;
-    desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc.size = int2(kernel_x * kernel_y * kernel_z, dst_slices);
-    desc.data = std::move(data);
-    args_.AddObject("weights",
-                    std::make_unique<Texture2DDescriptor>(std::move(desc)));
+    TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+        fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16,
+        TensorStorageType::TEXTURE_2D, kernel_x * kernel_y * kernel_z,
+        dst_slices, data.data());
+    args_.AddObject("weights", std::make_unique<TensorDescriptor>(desc));
   }
 }
 

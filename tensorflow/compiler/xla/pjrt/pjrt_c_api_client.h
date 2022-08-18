@@ -305,7 +305,6 @@ class PjRtCApiClient : public PjRtClient {
 class PjRtCApiBuffer : public PjRtBuffer {
  public:
   PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer);
-  ~PjRtCApiBuffer() override;
 
   const Shape& on_device_shape() const override;
 
@@ -389,7 +388,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   PjRtBuffer* wrapped() const { return wrapped_; }
 
-  PJRT_Buffer* c_buffer() const { return buffer_; }
+  PJRT_Buffer* c_buffer() const { return buffer_.get(); }
 
   static PjRtBuffer* GetWrapped(PjRtBuffer* c_api_buffer) {
     return tensorflow::down_cast<PjRtCApiBuffer*>(c_api_buffer)->wrapped();
@@ -409,7 +408,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
  private:
   PjRtCApiClient* client_;
-  PJRT_Buffer* buffer_;
+  std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer_;
   std::optional<xla::Shape> shape_;
 
   // TODO(amangu): _wrapped is a non-C API pointer that was used to bypass the

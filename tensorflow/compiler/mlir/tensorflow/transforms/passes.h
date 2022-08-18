@@ -269,6 +269,12 @@ CreatePrepareTpuComputationForTfExportPass();
 // Rewrites ops that require quantized inputs or outputs to ops that allow
 // non-quantized inputs and outputs.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerQuantizedPass();
+
+// Reorders ops so ops of the same dialect are next to each other.
+std::unique_ptr<Pass> CreateOrderByDialectPass();
+
+// Groups ops into functions that only contain one dialect.
+std::unique_ptr<Pass> CreateGroupByDialectPass();
 }  // namespace TF
 
 namespace tf_executor {

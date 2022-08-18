@@ -468,10 +468,10 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateViewOfDeviceBuffer(
   auto non_owning_buffer =
       std::make_shared<MaybeOwningCpuMemory>(device_ptr, byte_size);
   buffers.push_back(std::move(non_owning_buffer));
-  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> empty_definition_events;
   auto tracked_device_buffer = std::make_unique<TrackedTfrtCpuDeviceBuffer>(
       /*is_tuple=*/false, std::move(buffers),
-      std::move(empty_definition_events), std::move(on_delete_callback));
+      /*definition_event=*/tfrt::MakeAvailableAsyncValueRef<CpuEvent>(),
+      std::move(on_delete_callback));
   return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtCpuBuffer>(
       shape, std::move(tracked_device_buffer), this,
       tensorflow::down_cast<TfrtCpuDevice*>(device)));
@@ -753,17 +753,14 @@ void TfrtCpuBuffer::Delete() {
   absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> usage_events =
       device_buffer->LockUseAndTransferUsageEvents();
 
-  // We should also wait for the definition events.
-  auto definition_events = device_buffer->DefinitionEvents();
-
   std::vector<tfrt::AsyncValue*> event_avs;
-  event_avs.reserve(usage_events.size() + definition_events.size());
+  event_avs.reserve(usage_events.size() + 1);
   for (auto& event : usage_events) {
     event_avs.push_back(event.GetAsyncValue());
   }
-  for (auto& event : definition_events) {
-    event_avs.push_back(event.GetAsyncValue());
-  }
+
+  // We should also wait for the definition event.
+  event_avs.push_back(device_buffer->definition_event().GetAsyncValue());
 
   tfrt::RunWhenReady(event_avs,
                      [device_buffer = std::move(device_buffer)]() mutable {
@@ -873,12 +870,11 @@ StatusOr<Shape> TfrtCpuBuffer::logical_on_device_shape() {
   }
   MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
 
-  // Wait for definition events.
-  for (const auto& av : device_buffer->DefinitionEvents()) {
-    client_->GetHostContext()->Await(av.CopyRCRef());
-    if (auto* error = av.GetErrorIfPresent()) {
-      return InternalError("Error Execute: %s", error->message);
-    }
+  // Wait for the definition event.
+  const auto& av = device_buffer->definition_event();
+  client_->GetHostContext()->Await(av.CopyRCRef());
+  if (auto* error = av.GetErrorIfPresent()) {
+    return InternalError("Error Execute: %s", error->message);
   }
 
   ShapedBuffer shaped_buffer = AsShapedBuffer(
@@ -935,8 +931,8 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
 
   auto host_ctx = client_->GetHostContext();
 
-  std::vector<tfrt::RCReference<tfrt::AsyncValue>> device_buffer_wait_avs =
-      GetAsyncValues(device_buffer->DefinitionEvents());
+  std::vector<tfrt::RCReference<tfrt::AsyncValue>> device_buffer_wait_avs = {
+      device_buffer->definition_event().CopyRCRef()};
   std::vector<tfrt::RCReference<tfrt::AsyncValue>> device_buffer_wait_avs_copy =
       CopyAsyncValues(device_buffer_wait_avs);
 
@@ -1071,39 +1067,34 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
 
   // Wait for src buffer definition events to finish before d2d dispatch.
   // Errors are propagated asynchronously in dst buffer's definition events.
-  std::vector<tfrt::RCReference<tfrt::AsyncValue>>
-      src_device_buffer_definition_events_avs =
-          GetAsyncValues(src_device_buffer->DefinitionEvents());
-  std::vector<tfrt::RCReference<tfrt::AsyncValue>>
-      src_device_buffer_definition_events_avs_copy =
-          CopyAsyncValues(src_device_buffer_definition_events_avs);
+  const auto& src_definition_event = src_device_buffer->definition_event();
 
-  EnqueueWorkWhenReady(
-      client()->GetHostContext(), src_device_buffer_definition_events_avs,
-      [client = client_, num_leaf_buffers, src_buffers = std::move(src_buffers),
-       dst_buffers_copies = dst_buffers, dst_definition_events,
-       src_device_buffer_definition_events_avs =
-           std::move(src_device_buffer_definition_events_avs_copy),
-       ready_on_exit = std::move(ready_on_exit)]() mutable {
-        tensorflow::profiler::TraceMe traceme("D2D Dispatch");
-        for (const auto& av : src_device_buffer_definition_events_avs) {
-          if (auto* error = av->GetErrorIfPresent()) {
-            for (int i = 0; i < num_leaf_buffers; ++i) {
-              // Any error discovered in src buffer are propagated to dst buffer
-              // definition events, which will surface to users in
-              // dst_buffer->ToLiteral().
-              dst_definition_events[i].SetError(*error);
-            }
-            return;
-          }
-        }
-        auto copy_ready = GetOrCreateReadyEvent(client->GetHostContext());
-        for (int i = 0; i < num_leaf_buffers; ++i) {
-          std::memcpy(dst_buffers_copies[i]->data(), src_buffers[i]->data(),
-                      src_buffers[i]->size());
-          dst_definition_events[i].SetStateConcrete();
-        }
-      });
+  auto copy_task = [num_leaf_buffers, src_buffers = std::move(src_buffers),
+                    dst_buffers_copies = dst_buffers, dst_definition_events,
+                    src_definition_event,
+                    ready_on_exit = std::move(ready_on_exit)]() mutable {
+    tensorflow::profiler::TraceMe traceme("D2D Dispatch");
+    if (auto* error = src_definition_event.GetErrorIfPresent()) {
+      for (int i = 0; i < num_leaf_buffers; ++i) {
+        // Any error discovered in src buffer are propagated to dst buffer
+        // definition events, which will surface to users in
+        // dst_buffer->ToLiteral().
+        dst_definition_events[i].SetError(*error);
+      }
+      return;
+    }
+
+    for (int i = 0; i < num_leaf_buffers; ++i) {
+      std::memcpy(dst_buffers_copies[i]->data(), src_buffers[i]->data(),
+                  src_buffers[i]->size());
+      dst_definition_events[i].SetStateConcrete();
+    }
+  };
+
+  src_definition_event.AndThen([host_ctx = client()->GetHostContext(),
+                                copy_task = std::move(copy_task)]() mutable {
+    tfrt::EnqueueWork(host_ctx, std::move(copy_task));
+  });
 
   return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtCpuBuffer>(
       on_device_shape_,
@@ -1114,63 +1105,40 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
 }
 
 PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
-  tfrt::AsyncValueRef<Status> definition_event =
-      tfrt::MakeUnconstructedAsyncValueRef<Status>();
-  absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 2> events;
+  tfrt::AsyncValueRef<CpuEvent> definition_event;
   {
     absl::MutexLock lock(&mu_);
     if (!tracked_device_buffer_) {
       return PjRtFuture<Status>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
     }
-
-    events.reserve(tracked_device_buffer_->DefinitionEvents().size());
-    for (const auto& event : tracked_device_buffer_->DefinitionEvents()) {
-      events.push_back(event.CopyRCRef());
-    }
+    definition_event = tracked_device_buffer_->definition_event();
   }
-
-  if (events.size() == 1) {
-    auto& event = events[0];
-    if (event->IsAvailable()) {
-      if (auto* error = event->GetErrorIfPresent()) {
-        definition_event.emplace(
-            FailedPrecondition("Buffer Definition Event: %s", error->message));
-      } else {
-        definition_event.emplace(OkStatus());
-      }
-    } else {
-      event->AndThen([event = event.CopyRef(),
-                      definition_event = definition_event.CopyRef()]() {
-        if (auto* error = event->GetErrorIfPresent()) {
-          definition_event.emplace(FailedPrecondition(
-              "Buffer Definition Event: %s", error->message));
-        } else {
-          definition_event.emplace(OkStatus());
-        }
-      });
-    }
-  } else {
-    llvm::ArrayRef<tfrt::RCReference<tfrt::AsyncValue>> events_span(
-        events.data(), events.size());
-    tfrt::RunWhenReady(
-        events_span, [definition_event, events = std::move(events)]() {
-          Status s;
-          for (const auto& e : events) {
-            if (auto* error = e->GetErrorIfPresent()) {
-              s.Update(FailedPrecondition("Buffer Definition Event: %s",
-                                          error->message));
-            }
-          }
-          definition_event.emplace(std::move(s));
-        });
-  }
+  DCHECK(definition_event);
 
   if (definition_event.IsAvailable()) {
-    return PjRtFuture<Status>(*definition_event);
+    if (definition_event.IsError()) {
+      return PjRtFuture<Status>(FailedPrecondition(
+          "Buffer Definition Event: %s", definition_event.GetError().message));
+    }
+    return PjRtFuture<Status>(OkStatus());
   } else {
+    tfrt::AsyncValueRef<Status> status_event =
+        tfrt::MakeUnconstructedAsyncValueRef<Status>();
+
+    definition_event.AndThen(
+        [definition_event = definition_event.AsPtr(), status_event]() {
+          if (definition_event.IsError()) {
+            status_event.emplace(
+                FailedPrecondition("Buffer Definition Event: %s",
+                                   definition_event.GetError().message));
+          } else {
+            status_event.emplace(OkStatus());
+          }
+        });
+
     return PjRtFuture<Status>(
-        definition_event.CopyRef(),
+        std::move(status_event),
         /*on_block_start=*/
         []() {
           tensorflow::profiler::TraceMeProducer traceme("TfrtCpuBuffer::Await");
@@ -1433,10 +1401,9 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     }
 
     // Definition events are never modified after buffer construction.
-    for (const auto& ev : tracked_buffer->DefinitionEvents()) {
-      if (!ev.IsAvailable()) {
-        input_deps.push_back(ev.CopyRCRef());
-      }
+    const auto& definition_event = tracked_buffer->definition_event();
+    if (!definition_event.IsAvailable()) {
+      input_deps.push_back(definition_event.CopyRCRef());
     }
   }
 
@@ -1455,11 +1422,9 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
     // Tuplize into a single input.
     tracked_buffers.clear();
-    absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4>
-        empty_definition_events;
     tuplized_arg = std::make_unique<TrackedTfrtCpuDeviceBuffer>(
         /*is_tuple=*/true, std::move(leaf_buffers),
-        std::move(empty_definition_events));
+        /*definition_event=*/tfrt::MakeAvailableAsyncValueRef<CpuEvent>());
     tracked_buffers.push_back(tuplized_arg.get());
   }
 
@@ -1622,11 +1587,9 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     }
   } else {
     // Program execution writes to output buffers so it's a definition event.
-    absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events;
-    definition_events.push_back(execute_event.CopyRef());
     auto tracked_device_buffer = std::make_unique<TrackedTfrtCpuDeviceBuffer>(
         /*is_tuple=*/result_shape.IsTuple(), std::move(result_buffers),
-        std::move(definition_events));
+        /*definition_event=*/execute_event);
     auto tfrt_output_buffer = std::make_unique<TfrtCpuBuffer>(
         result_shape, std::move(tracked_device_buffer), client_, device);
     res.push_back(std::move(tfrt_output_buffer));

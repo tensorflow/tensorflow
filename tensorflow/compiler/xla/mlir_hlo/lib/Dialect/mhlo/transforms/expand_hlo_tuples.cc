@@ -42,7 +42,7 @@ class ExpandHloTuplesPass
     : public ExpandHloTuplesPassBase<ExpandHloTuplesPass> {
  public:
   ExpandHloTuplesPass() = default;
-  ExpandHloTuplesPass(const ExpandHloTuplesPass&) {}
+  ExpandHloTuplesPass(const ExpandHloTuplesPass&) = default;
   explicit ExpandHloTuplesPass(const std::string& entryFunctionName) {
     entry_function_name_ = entryFunctionName;
   }

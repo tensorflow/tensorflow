@@ -58,6 +58,11 @@ monitoring::SamplerCell& CheckpointReadDuration(absl::string_view api_label);
 // field `api_label`.
 monitoring::SamplerCell& CheckpointWriteDuration(absl::string_view api_label);
 
+// Returns "/tensorflow/core/checkpoint/write/async_write_durations" cell
+// belonging to field `api_label`.
+monitoring::SamplerCell& AsyncCheckpointWriteDuration(
+    absl::string_view api_label);
+
 // Returns  "/tensorflow/core/checkpoint/write/training_time_saved" cell
 // belonging to field `api_label`.
 monitoring::CounterCell& TrainingTimeSaved(absl::string_view api_label);

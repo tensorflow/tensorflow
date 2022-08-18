@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
-#include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
@@ -118,15 +117,6 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
     RETURN_IF_ERROR(
         gpu_texture.CreateFromTexture2DDescriptor(*texture_desc, context));
     *result = std::make_unique<Texture2D>(std::move(gpu_texture));
-    return absl::OkStatus();
-  }
-
-  const auto* linear_desc = dynamic_cast<const TensorLinearDescriptor*>(desc);
-  if (linear_desc) {
-    LinearStorage gpu_storage;
-    RETURN_IF_ERROR(
-        gpu_storage.CreateFromTensorLinearDescriptor(*linear_desc, context));
-    *result = std::make_unique<LinearStorage>(std::move(gpu_storage));
     return absl::OkStatus();
   }
 

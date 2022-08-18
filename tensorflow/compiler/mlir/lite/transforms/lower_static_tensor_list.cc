@@ -246,12 +246,12 @@ struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
   LogicalResult matchAndRewrite(
       TF::ConstOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    // Verify that the opaque elements attribute contains tensor of type variant
-    // and scalar shape. The variant type should hold a TensorList.
-    auto opaque_attr = op.value().dyn_cast<OpaqueElementsAttr>();
-    if (!opaque_attr) return failure();
+    // Verify that the tensor proto contains tensor of type variant and scalar
+    // shape. The variant type should hold a TensorList.
+    auto proto_attr = op.value().dyn_cast<TF::TensorProtoAttr>();
+    if (!proto_attr) return failure();
     tensorflow::Tensor tensor;
-    if (!tensorflow::ConvertToTensor(opaque_attr, &tensor).ok())
+    if (!tensorflow::ConvertToTensor(proto_attr, &tensor).ok())
       return failure();
     if (tensor.dtype() != tensorflow::DT_VARIANT) return failure();
     if (!tensorflow::TensorShapeUtils::IsScalar(tensor.shape()))

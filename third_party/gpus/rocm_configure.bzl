@@ -476,7 +476,7 @@ def _create_dummy_repository(repository_ctx):
     )
 
     # Create dummy files for the ROCm toolkit since they are still required by
-    # tensorflow/core/platform/default/build_config:rocm.
+    # tensorflow/tsl/platform/default/build_config:rocm.
     repository_ctx.file("rocm/hip/include/hip/hip_runtime.h", "")
 
     # Set up rocm_config.h, which is used by

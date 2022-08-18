@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// RUN: tf-quant-opt %s -split-input-file -quant-prepare-quantize -quant-test-post-training-quantize | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-prepare-quantize='post-training-quantize=true' | FileCheck %s
 
 // -----
 

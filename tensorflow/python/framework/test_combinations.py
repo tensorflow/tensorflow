@@ -50,14 +50,13 @@ import types
 import unittest
 
 from absl.testing import parameterized
-import six
 
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("__internal__.test.combinations.TestCombination", v1=[])
-class TestCombination(object):
+class TestCombination:
   """Customize the behavior of `generate()` and the tests that it executes.
 
   Here is sequence of steps for executing a test combination:
@@ -111,7 +110,7 @@ class TestCombination(object):
 
 
 @tf_export("__internal__.test.combinations.ParameterModifier", v1=[])
-class ParameterModifier(object):
+class ParameterModifier:
   """Customizes the behavior of a particular parameter.
 
   Users should override `modified_arguments()` to modify the parameter they
@@ -144,7 +143,6 @@ class ParameterModifier(object):
         initialized with a unique `parameter_name` will be executed.
         See `__eq__` and `__hash__`.
     """
-    object.__init__(self)
     self._parameter_name = parameter_name
 
   def modified_arguments(self, kwargs, requested_parameters):
@@ -268,7 +266,7 @@ def generate(combinations, test_combinations=()):
     if isinstance(test_method_or_class, type):
       class_object = test_method_or_class
       class_object._test_method_ids = test_method_ids = {}
-      for name, test_method in six.iteritems(class_object.__dict__.copy()):
+      for name, test_method in class_object.__dict__.copy().items():
         if (name.startswith(unittest.TestLoader.testMethodPrefix) and
             isinstance(test_method, types.FunctionType)):
           delattr(class_object, name)
@@ -279,7 +277,7 @@ def generate(combinations, test_combinations=()):
                   _augment_with_special_arguments(
                       test_method, test_combinations=test_combinations),
                   named_combinations, parameterized._NAMED, name))
-          for method_name, method in six.iteritems(methods):
+          for method_name, method in methods.items():
             setattr(class_object, method_name, method)
 
       return class_object
@@ -437,11 +435,10 @@ def times(*combined):
 
 
 @tf_export("__internal__.test.combinations.NamedObject", v1=[])
-class NamedObject(object):
+class NamedObject:
   """A class that translates an object into a good test name."""
 
   def __init__(self, name, obj):
-    object.__init__(self)
     self._name = name
     self._obj = obj
 

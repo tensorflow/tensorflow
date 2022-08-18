@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
+#include <string>
 #include <utility>
 
 #include "absl/base/casts.h"
@@ -24,16 +25,70 @@ limitations under the License.
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
+namespace {
+
+// Returns an AsyncValueRef<CpuEvent> that will be ready after all the async
+// values in `events` are ready. If errors occurs, one of the errors will be
+// propagated through the returned async value.
+tfrt::AsyncValueRef<CpuEvent> AfterAll(
+    absl::Span<const tfrt::AsyncValueRef<CpuEvent>> events) {
+  if (events.empty()) return tfrt::MakeAvailableAsyncValueRef<CpuEvent>();
+
+  struct State {
+    State(int count, tfrt::AsyncValueRef<CpuEvent> after_all)
+        : count(count), after_all(std::move(after_all)) {}
+    std::atomic<int> count;
+    tfrt::AsyncValueRef<CpuEvent> after_all;
+
+    absl::Mutex mutex;
+    std::string error_message;
+  };
+
+  auto after_all = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto* state = new State(events.size(), after_all);
+
+  for (auto& event : events) {
+    event.AndThen([state, event = event.AsPtr()]() {
+      if (event.IsError()) {
+        absl::MutexLock lock(&state->mutex);
+        state->error_message = event.GetError().message;
+      }
+
+      if (state->count.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+        if (!state->error_message.empty()) {
+          state->after_all.SetError(state->error_message);
+        } else {
+          state->after_all.SetStateConcrete();
+        }
+        delete state;
+      }
+    });
+  }
+
+  return after_all;
+}
+
+}  // namespace
 
 TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
     bool is_tuple,
     absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
     absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events,
     std::function<void()> on_delete_callback)
+    : TrackedTfrtCpuDeviceBuffer(is_tuple, std::move(buffers),
+                                 AfterAll(definition_events),
+                                 std::move(on_delete_callback)) {}
+
+TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
+    bool is_tuple,
+    absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
+    tfrt::AsyncValueRef<CpuEvent> definition_event,
+    std::function<void()> on_delete_callback)
     : is_tuple_(is_tuple),
       buffers_(std::move(buffers)),
-      definition_events_(std::move(definition_events)),
+      definition_event_(std::move(definition_event)),
       on_delete_callback_(std::move(on_delete_callback)) {
+  DCHECK(definition_event_);
   if (is_tuple) {
     size_t index_table_byte_size = buffers_.size() * sizeof(void*);
     // We assume tuple table allocations will not fail.
@@ -97,7 +152,7 @@ TrackedTfrtCpuDeviceBuffer::LockUseAndTransferUsageEvents() {
 void TrackedTfrtCpuDeviceBuffer::ReleaseDeviceMemory() {
   tuple_index_table_.reset();
   buffers_.clear();
-  definition_events_.clear();
+  definition_event_.reset();
   usage_events_.clear();
 }
 

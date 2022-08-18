@@ -49,7 +49,6 @@ std::string Tile::ToString() const {
 
 /* static */ Layout Layout::CreateFromProto(const LayoutProto& proto) {
   Layout layout;
-  layout.set_format(proto.format());
   layout.minor_to_major_.reserve(proto.minor_to_major_size());
   for (const int64_t dimension : proto.minor_to_major()) {
     layout.add_minor_to_major(dimension);
@@ -64,7 +63,6 @@ std::string Tile::ToString() const {
 
 LayoutProto Layout::ToProto() const {
   LayoutProto proto;
-  proto.set_format(format_);
   proto.mutable_minor_to_major()->Reserve(minor_to_major_size());
   for (const int64_t dimension : minor_to_major()) {
     proto.add_minor_to_major(dimension);
@@ -78,30 +76,28 @@ LayoutProto Layout::ToProto() const {
 }
 
 std::string Layout::ToString() const {
-  if (format() == DENSE) {
-    std::string colon_string = tiles().empty() ? "" : "T";
-    for (const Tile& tile : tiles()) {
-      absl::StrAppend(&colon_string, tile.ToString());
-    }
-    if (element_size_in_bits() != 0) {
-      absl::StrAppend(&colon_string, "E(", element_size_in_bits(), ")");
-    }
-    if (memory_space() != 0) {
-      absl::StrAppend(&colon_string, "S(", memory_space(), ")");
-    }
-    return absl::StrCat("{", absl::StrJoin(minor_to_major(), ","),
-                        colon_string.empty() ? "" : ":", colon_string, "}");
-  } else {
-    CHECK_EQ(format(), INVALID_FORMAT);
-    return "invalid{}";
+  CHECK(LayoutUtil::IsDense(*this));
+  std::string colon_string = tiles().empty() ? "" : "T";
+  for (const Tile& tile : tiles()) {
+    absl::StrAppend(&colon_string, tile.ToString());
   }
+  if (element_size_in_bits() != 0) {
+    absl::StrAppend(&colon_string, "E(", element_size_in_bits(), ")");
+  }
+  if (memory_space() != 0) {
+    absl::StrAppend(&colon_string, "S(", memory_space(), ")");
+  }
+  return absl::StrCat("{", absl::StrJoin(minor_to_major(), ","),
+                      colon_string.empty() ? "" : ":", colon_string, "}");
 }
 
 bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
-  if (lhs.format() != rhs.format()) {
-    return false;
+  if (!LayoutUtil::IsDense(lhs) || !LayoutUtil::IsDense(rhs)) {
+    if (lhs.dim_level_types() != rhs.dim_level_types()) {
+      return false;
+    }
   }
-  if (lhs.format() == DENSE && lhs.minor_to_major() != rhs.minor_to_major()) {
+  if (lhs.minor_to_major() != rhs.minor_to_major()) {
     return false;
   }
   if (!ignore_tiles_ && lhs.tiles() != rhs.tiles()) {

@@ -48,6 +48,7 @@ limitations under the License.
 #include "mlir-hlo/utils/convert_op_folder.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -616,6 +617,19 @@ unsigned potentiallyComplexBitwidth(Type type) {
 }  // namespace
 
 //===----------------------------------------------------------------------===//
+// AllReduceOp
+//===----------------------------------------------------------------------===//
+
+void AllReduceOp::build(
+    ::mlir::OpBuilder& ods_builder, ::mlir::OperationState& ods_state,
+    ::mlir::Type result_type, ::mlir::Value operand,
+    ::mlir::DenseIntElementsAttr replica_groups,
+    /*optional*/ ::mlir::mhlo::ChannelHandleAttr channel_handle) {
+  AllReduceOp::build(ods_builder, ods_state, result_type, operand,
+                     replica_groups, channel_handle, nullptr);
+}
+
+//===----------------------------------------------------------------------===//
 // ReduceScatterOp
 //===----------------------------------------------------------------------===//
 
@@ -717,13 +731,18 @@ void ConstantOp::build(OpBuilder& /*builder*/, OperationState& result,
   Type type;
   if (auto elemAttr = value.dyn_cast<ElementsAttr>()) {
     type = elemAttr.getType();
-  } else if (value.isa<BoolAttr>() || value.isa<FloatAttr>() ||
-             value.isa<IntegerAttr>()) {
+  } else if (value.isa<BoolAttr, FloatAttr, IntegerAttr>()) {
     // All XLA types must be tensor types. In the build() method, we want to
     // provide more flexibility by allowing attributes of scalar types. But we
     // need to wrap it up with ElementsAttr to construct valid XLA constants.
-    type = RankedTensorType::get(/*shape=*/{}, value.getType());
+    type =
+        RankedTensorType::get(/*shape=*/{}, value.cast<TypedAttr>().getType());
     value = DenseElementsAttr::get(type.cast<TensorType>(), value);
+  } else if (auto complexAttr = value.dyn_cast<complex::NumberAttr>()) {
+    type = RankedTensorType::get(/*shape=*/{},
+                                 complexAttr.cast<TypedAttr>().getType());
+    value =
+        DenseElementsAttr::get(type.cast<TensorType>(), complexAttr.getValue());
   }
 
   // TODO: support other XLA specific types.
@@ -733,9 +752,11 @@ void ConstantOp::build(OpBuilder& /*builder*/, OperationState& result,
 }
 
 LogicalResult ConstantOp::inferReturnTypes(
-    MLIRContext*, Optional<Location>, ValueRange, DictionaryAttr attributes,
-    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-  Type type = attributes.get("value").getType();
+    MLIRContext*, Optional<Location>, ValueRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  ConstantOpAdaptor adaptor(operands, attributes);
+  Type type = adaptor.value().getType();
   inferredReturnTypes.push_back(type);
   return success();
 }
@@ -866,8 +887,8 @@ LogicalResult CustomCallOp::verify() {
   };
 
   // At this point both `operand_layouts` and `result_layouts` are defined.
-  ArrayAttr operandLayouts = this->operand_layouts().getValue();
-  ArrayAttr resultLayouts = this->result_layouts().getValue();
+  ArrayAttr operandLayouts = this->operand_layouts().value();
+  ArrayAttr resultLayouts = this->result_layouts().value();
 
   // Full support for layouts for arbitrary nesting of tuples is not
   // supported yet.
@@ -1148,8 +1169,7 @@ struct DotGeneralToDot : public OpRewritePattern<DotGeneralOp> {
     if (rhsContract.front() != 0) return failure();
 
     rewriter.replaceOpWithNewOp<mhlo::DotOp>(
-        dot, dot.getType(), lhs, rhs,
-        dot.precision_config().getValueOr(nullptr));
+        dot, dot.getType(), lhs, rhs, dot.precision_config().value_or(nullptr));
 
     return success();
   }
@@ -1202,89 +1222,106 @@ LogicalResult DotGeneralOp::reifyReturnTypeShapes(
 // FftOp
 //===----------------------------------------------------------------------===//
 
-// TODO(atondwal): add shape ineference for FFT that generates a return type
-
 // We intend to verify the following properties
 // P1. 1 <= rank <= 3
-// P2. operand shape dimensions agree with fft_length for the given fft_type
-// P3. Element types agree with fft_type
-LogicalResult FftOp::verify() {
+// P2. Element types agree with fft_type
+// P3. Operand shape dimensions agree with fft_length for the given fft_type
+LogicalResult FftOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  FftOp::Adaptor adaptor(operands, attributes, regions);
+  auto fftLength = adaptor.fft_length().getValues<int64_t>();
+  int64_t fftRank = fftLength.size();
+
   // P1.
-  int64_t fftRank = fft_length().size();
   if (fftRank > 3 || fftRank < 1) {
-    return emitOpError() << "rank must be between 1 and 3, but got " << fftRank
-                         << ".";
+    return emitOptionalError(location, "rank must be between 1 and 3, but got ",
+                             fftRank, ".");
   }
 
-  // P2.
-  auto operandType = operand().getType().dyn_cast<RankedTensorType>();
-  if (!operandType) return success();
-  auto operandShape = operandType.getShape();
-  if (static_cast<int64_t>(operandShape.size()) < fftRank) {
-    return emitOpError() << "operand rank must be greater than fft rank of "
-                         << fftRank << " for operand of type " << operandType
-                         << ".";
-  }
-
-  if (fft_type() == FftType::RFFT) {
-    auto shapeBack = operandShape.take_back(fftRank);
-    for (auto it : llvm::zip(shapeBack, fft_length().getValues<int64_t>())) {
-      if (std::get<0>(it) != std::get<1>(it)) {
-        return emitError()
-               << "RFFT requires innermost dimensions match fft_length. Got: "
-               << operandShape << " but wanted " << fft_length() << ".";
-      }
-    }
-  }
-  if (fft_type() == FftType::IRFFT) {
-    auto shapeBack = operandShape.take_back(fftRank).drop_back();
-    for (auto it : llvm::zip(shapeBack, fft_length().getValues<int64_t>())) {
-      if (std::get<0>(it) != std::get<1>(it)) {
-        return emitError() << "IRFFT requires non-final dimensions "
-                              "match fft_length. Got: "
-                           << operandShape << " but wanted " << fft_length()
-                           << ", and " << std::get<0>(it)
-                           << " != " << std::get<1>(it) << ".";
-      }
-    }
-    if (operandShape[operandShape.size() - 1] !=
-        fft_length().getValues<int64_t>()[fftRank - 1] / 2 + 1)
-      return emitError() << "IRFFT requires innermost dimension match "
-                            "fft_length[-1]/2+1. Got: "
-                         << operandShape << " but fft_length is "
-                         << fft_length() << ".";
-  }
-
-  // P3. Element type agreement
+  // P2. Element type agreement
   // FFT : C -> C
-  // IFF : C -> C
+  // IFFT : C -> C
   // RFFT : R -> C
   // IRFFT : C -> R
-  if (fft_type() == FftType::RFFT) {
-    if (operandType.getElementType().isa<ComplexType>()) {
-      return emitError() << "RFFT takes a real tensor as input, but is given "
-                         << operandType << ".";
+  auto fftType = adaptor.fft_type();
+  auto operandType = adaptor.operand().getType().cast<TensorType>();
+  Type operandElementType = operandType.getElementType();
+  // Check the input element type and infer return element type
+  if (fftType == FftType::RFFT) {
+    if (!operandElementType.isF32() && !operandElementType.isF64()) {
+      return emitOptionalError(
+          location, "RFFT requires f32 or f64 input type, but is given ",
+          operandElementType, ".");
     }
-  } else if (!operandType.getElementType().isa<ComplexType>()) {
-    return emitError() << stringifyFftType(fft_type())
-                       << " takes a complex tensor as input, but is given "
-                       << operandType << ".";
+  } else {
+    if (!operandElementType.isa<ComplexType>()) {
+      return emitOptionalError(
+          location, stringifyFftType(fftType),
+          " takes a complex tensor as input, but is given ", operandType, ".");
+    }
+  }
+  // Generate the output element type
+  Type resultElementType = operandElementType;
+  if (fftType == FftType::RFFT) {  // RFFT : R -> C
+    resultElementType = ComplexType::get(resultElementType);
+  } else if (fftType == FftType::IRFFT) {  // IRFFT : C -> R
+    resultElementType = operandElementType.cast<ComplexType>().getElementType();
   }
 
-  auto resultType = getResult().getType().dyn_cast<RankedTensorType>();
-  if (!resultType) return success();
-  if (fft_type() == FftType::IRFFT) {
-    if (resultType.getElementType().isa<ComplexType>()) {
-      return emitError()
-             << "IRFFT produces a real tensor as output, but is given "
-             << resultType << ".";
-    }
-  } else if (!resultType.getElementType().isa<ComplexType>()) {
-    return emitError() << stringifyFftType(fft_type())
-                       << " produces a complex tensor as output, but is given "
-                       << resultType << ".";
+  // P3. Check input shape and infer return shape
+  operandType = operandType.dyn_cast<RankedTensorType>();
+  if (!operandType) {
+    inferredReturnShapes.emplace_back(resultElementType);
+    return success();
+  }
+  auto operandShape = operandType.getShape();
+  if (static_cast<int64_t>(operandShape.size()) < fftRank) {
+    return emitOptionalError(
+        location, "operand rank must not be less than fft rank of ", fftRank,
+        " for operand of type ", operandType, ".");
   }
 
+  SmallVector<int64_t> resultShape = to_vector(operandShape);
+
+  if (fftType == FftType::RFFT) {
+    auto shapeBack = operandShape.take_back(fftRank);
+    for (auto [operandDim, fftDim] : llvm::zip(shapeBack, fftLength)) {
+      if (operandDim != fftDim) {
+        return emitOptionalError(
+            location,
+            "RFFT requires innermost dimensions match fft_length. Got: ",
+            operandShape, " but wanted ", fftLength, ".");
+      }
+    }
+    if (fftLength[fftRank - 1] != 0) {
+      resultShape[resultShape.size() - 1] = fftLength[fftRank - 1] / 2 + 1;
+    }
+  }
+  if (fftType == FftType::IRFFT) {
+    auto shapeBack = operandShape.take_back(fftRank).drop_back();
+    for (auto [operandDim, fftDim] : llvm::zip(shapeBack, fftLength)) {
+      if (operandDim != fftDim) {
+        return emitOptionalError(location,
+                                 "IRFFT requires non-final dimensions "
+                                 "match fft_length. Got: ",
+                                 operandShape, " but wanted ", fftLength,
+                                 ", and ", operandDim, " != ", fftDim, ".");
+      }
+    }
+    if ((operandShape[operandShape.size() - 1] != 0 ||
+         fftLength[fftRank - 1] != 0) &&
+        operandShape[operandShape.size() - 1] != fftLength[fftRank - 1] / 2 + 1)
+      return emitOptionalError(location,
+                               "IRFFT requires innermost dimension match "
+                               "fft_length[-1]/2+1. Got: ",
+                               operandShape, " but fft_length is ", fftLength,
+                               ".");
+    resultShape[resultShape.size() - 1] = fftLength[fftRank - 1];
+  }
+
+  inferredReturnShapes.emplace_back(resultShape, resultElementType);
   return success();
 }
 
@@ -1728,7 +1765,7 @@ LogicalResult GatherOp::inferReturnTypeComponents(
   // This can get called before other op verify methods, so we have to do a
   // bunch of verification up front. With a better story for ordering and/or
   // multi-phase op verification, this should hopefully all go away.
-  Location loc = location.getValueOr(UnknownLoc::get(context));
+  Location loc = location.value_or(UnknownLoc::get(context));
   auto errorEmitter = [&loc]() {
     return mlir::emitError(loc)
            << "'" << GatherOp::getOperationName() << "' op ";
@@ -1774,7 +1811,7 @@ LogicalResult DynamicGatherOp::inferReturnTypeComponents(
   // This can get called before other op verify methods, so we have to do a
   // bunch of verification up front. With a better story for ordering and/or
   // multi-phase op verification, this should hopefully all go away.
-  Location loc = location.getValueOr(UnknownLoc::get(context));
+  Location loc = location.value_or(UnknownLoc::get(context));
   auto errorEmitter = [&loc]() {
     return mlir::emitError(loc)
            << "'" << DynamicGatherOp::getOperationName() << "' op ";
@@ -2350,6 +2387,7 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
     auto rhs = op.rhs();
     auto lhsTy = lhs.getType().cast<RankedTensorType>();
     auto rhsTy = rhs.getType().cast<RankedTensorType>();
+    auto resultTy = op.getType().cast<RankedTensorType>();
 
     if (lhsTy.getRank() != 2) return failure();
     if (rhsTy.getRank() != 2) return failure();
@@ -2361,6 +2399,8 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
     assert(!op.padding() || op.padding()->empty());
     assert(dNums.getKernelSpatialDimensions().empty());
 
+    auto lhsBatchDim = dNums.getInputBatchDimension();
+    auto rhsBatchDim = dNums.getKernelOutputFeatureDimension();
     auto lhsContractDim = dNums.getInputFeatureDimension();
     auto rhsContractDim = dNums.getKernelInputFeatureDimension();
     auto outBatchDim = dNums.getOutputBatchDimension();
@@ -2380,13 +2420,58 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
           op.getContext(), {}, {}, {lhsContractDim}, {rhsContractDim});
       auto dotOp = rewriter.create<mhlo::DotGeneralOp>(
           op.getLoc(), op.getType(), lhs, rhs, dotNums,
-          op.precision_config().getValueOr(nullptr));
+          op.precision_config().value_or(nullptr));
 
       rewriter.replaceOp(op, dotOp.getResult());
       return success();
     }
 
-    return failure();
+    int64_t featureGroupCount = op.feature_group_count();
+    int64_t lhsBatchSize = lhsTy.getDimSize(lhsBatchDim);
+    int64_t lhsContractSize = lhsTy.getDimSize(lhsContractDim);
+    int64_t rhsBatchSize = rhsTy.getDimSize(rhsBatchDim);
+    int64_t rhsContractSize = rhsTy.getDimSize(rhsContractDim);
+
+    llvm::SmallVector<int64_t> lhsShape;
+    llvm::SmallVector<int64_t> rhsShape;
+    lhsShape.resize(3, lhsBatchSize);
+    rhsShape.resize(3, rhsContractSize);
+    lhsShape[lhsContractDim] = featureGroupCount;
+    lhsShape[lhsContractDim + 1] = lhsContractSize / featureGroupCount;
+    rhsShape[rhsContractDim] = featureGroupCount;
+    rhsShape[rhsContractDim + 1] = rhsBatchSize / featureGroupCount;
+
+    lhsTy = RankedTensorType::get(lhsShape, lhsTy.getElementType());
+    rhsTy = RankedTensorType::get(rhsShape, rhsTy.getElementType());
+
+    lhs = rewriter.create<mhlo::ReshapeOp>(op.getLoc(), lhsTy, lhs);
+    rhs = rewriter.create<mhlo::ReshapeOp>(op.getLoc(), rhsTy, rhs);
+
+    auto dotTy = RankedTensorType::get(
+        {featureGroupCount, lhsBatchSize, rhsBatchSize / featureGroupCount},
+        resultTy.getElementType());
+
+    auto dotNums = DotDimensionNumbersAttr::get(
+        op.getContext(), {lhsContractDim}, {rhsContractDim},
+        {lhsContractDim + 1}, {rhsContractDim == 0 ? 2 : 0});
+    auto dotOp = rewriter.create<mhlo::DotGeneralOp>(
+        op.getLoc(), dotTy, lhs, rhs, dotNums,
+        op.precision_config().value_or(nullptr));
+
+    llvm::SmallVector<int64_t> perms;
+    perms.resize(3, dNums.getOutputBatchDimension() == 0 ? 0 : 2);
+    perms[0] = dNums.getOutputFeatureDimension();
+    perms[2] = dNums.getOutputFeatureDimension() + 1;
+
+    auto transposeTy = RankedTensorType::get(
+        {dotTy.getDimSize(perms[0]), dotTy.getDimSize(perms[1]),
+         dotTy.getDimSize(perms[2])},
+        dotTy.getElementType());
+    auto transposeOp = rewriter.create<mhlo::TransposeOp>(
+        op.getLoc(), transposeTy, dotOp, rewriter.getI64TensorAttr(perms));
+
+    rewriter.replaceOpWithNewOp<mhlo::ReshapeOp>(op, resultTy, transposeOp);
+    return success();
   }
 };
 
@@ -5041,8 +5126,8 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
     for (auto argAndLoc :
          llvm::zip(result.regions.front()->front().getArguments(), reducerLocs))
       if (std::get<1>(argAndLoc))
-        std::get<0>(argAndLoc).setLoc(std::get<1>(argAndLoc).getValue());
-    result.location = trailingLoc.getValueOr(currLocation);
+        std::get<0>(argAndLoc).setLoc(std::get<1>(argAndLoc).value());
+    result.location = trailingLoc.value_or(currLocation);
     return success();
   }
 
@@ -5089,7 +5174,7 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
 
   // If location of reduce-op is explicitly provided, then use it; Else use
   // the parser's current location.
-  Location reduceOpLoc = explicitLoc.getValueOr(currLocation);
+  Location reduceOpLoc = explicitLoc.value_or(currLocation);
 
   // Derive the SSA-values for reduce-op's operands.
   if (parser.resolveOperands(operands, reduceOpFntype.getInputs(), loc,
@@ -5428,18 +5513,23 @@ LogicalResult XlaRngGetAndUpdateStateOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult SelectOp::verify() {
-  // Either, all operands could be the same shape ...
-  if (succeeded(verifyCompatibleShapes(getOperandTypes()))) return success();
+  // The operands 'on_true' and 'on_false' should have compatible types, i.e.,
+  //   (a) have the same element type, and
+  //   (b) have compatible shapes (i.e. the same shape and/or at least one
+  //       dynamic shape)
+  if (!compatibleShapeAndElementType(on_true().getType(), on_false().getType()))
+    return emitOpError()
+           << "requires compatible types for non-predicate operands";
 
-  // ... or the predicate could be a scalar and the remaining two operands could
-  // be of the same shape.
+  // The predicate, if not-scalar, should have the same shape as the remaining
+  // operands.
   auto predTy = pred().getType().dyn_cast<RankedTensorType>();
   bool predMayBeScalar = !predTy || predTy.getRank() == 0;
-  if (!predMayBeScalar || failed(verifyCompatibleShapes(
-                              {on_true().getType(), on_false().getType()}))) {
-    return emitOpError()
-           << "requires the same type for all operands and results";
-  }
+  if (predMayBeScalar) return success();
+
+  if (failed(verifyCompatibleShape(pred().getType(), on_true().getType())))
+    return emitOpError() << "requires the same shape for all operands";
+
   return success();
 }
 
@@ -5494,18 +5584,7 @@ LogicalResult SelectOp::inferReturnTypeComponents(
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   SelectOp::Adaptor op(operands, attributes);
   auto trueType = op.on_true().getType().cast<TensorType>();
-  auto falseType = op.on_true().getType().cast<TensorType>();
-
-  // Check for type compatibility in the select op. This requires that the two
-  // non-predicate operands:
-  //   (a) have the same element type
-  //   (b) have compatible shapes (i.e. the same shape and/or at least one
-  //       dynamic shape)
-  if (trueType.getElementType() != falseType.getElementType() ||
-      failed(mlir::verifyCompatibleShape(trueType, falseType))) {
-    return emitOptionalError(location, "incompatible operand types: ", trueType,
-                             " and ", falseType);
-  }
+  auto falseType = op.on_false().getType().cast<TensorType>();
 
   // The output shape should be the most general of the operand shapes at each
   // dimension.
@@ -5570,7 +5649,7 @@ LogicalResult SetDimensionSizeOp::inferReturnTypes(
     MLIRContext* context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  Location loc = location.getValueOr(UnknownLoc::get(context));
+  Location loc = location.value_or(UnknownLoc::get(context));
 
   SetDimensionSizeOp::Adaptor adaptor(operands, attributes, regions);
   if (failed(adaptor.verify(loc))) return failure();
@@ -8386,6 +8465,19 @@ void WhileOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add(&whileCanonicalization);
 }
 
+LogicalResult UniformDequantizeOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> /*location*/, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  UniformDequantizeOp::Adaptor adaptor(operands, attributes, regions);
+  auto operandType = (*operands.begin()).getType().cast<ShapedType>();
+  // Trait HLO_QuantizedIntTensor in ODS guarantees QuantizedType;
+  auto quantType = operandType.getElementType().cast<quant::QuantizedType>();
+  auto shape = operandType.dyn_cast<ShapedType>().getShape();
+  inferredReturnShapes.emplace_back(shape, quantType.getExpressedType());
+  return success();
+}
+
 using mlir::hlo::parseWindowAttributes;
 using mlir::hlo::printWindowAttributes;
 
@@ -9185,6 +9277,33 @@ Type getExpressedTypeOrSelf(Type type) {
   return quantType ? quantType.getExpressedType() : type;
 }
 
+LogicalResult verifyCompatibleShapeWithBounds(Type type1, Type type2) {
+  if (failed(verifyCompatibleShape(type1, type2))) return failure();
+
+  // Verify shapes against bounds
+  auto isCompatible = [](ArrayRef<int64_t> shape,
+                         TypeExtensionsAttr extensionAttr) {
+    if (shape.empty() || !extensionAttr) return true;
+    auto bounds = extensionAttr.getBounds();
+    for (auto [dim_size, bound] : llvm::zip(shape, bounds))  // NOLINT
+      if (bound != ShapedType::kDynamicSize && bound < dim_size) return false;
+    return true;
+  };
+
+  RankedTensorType rankedType1 = type1.dyn_cast<RankedTensorType>();
+  RankedTensorType rankedType2 = type2.dyn_cast<RankedTensorType>();
+  if (rankedType1 && rankedType2) {
+    TypeExtensionsAttr extensionAttr1 =
+        rankedType1.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>();
+    TypeExtensionsAttr extensionAttr2 =
+        rankedType2.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>();
+    return LogicalResult::success(
+        isCompatible(rankedType1.getShape(), extensionAttr2) &&
+        isCompatible(rankedType2.getShape(), extensionAttr1));
+  }
+  return success();
+}
+
 bool isCompatibleForMhloTypeInference(Type tp1, Type tp2) {
   // Dynamism: We don't require shapes to be the same, we only require them
   // to be compatible, which means that:
@@ -9195,12 +9314,10 @@ bool isCompatibleForMhloTypeInference(Type tp1, Type tp2) {
   //       2.2) Or both dimensions are equal.
   // These relaxed rules simplify the implementation of type inference, allowing
   // ops with partially inferred types to pass verification.
-  // No additional code is needed to check bounded cases.
-  // Individual ops may introduce additional constraints.
   auto stp1 = tp1.dyn_cast<ShapedType>();
   auto stp2 = tp2.dyn_cast<ShapedType>();
   if (stp1 && stp2) {
-    return succeeded(verifyCompatibleShape(stp1, stp2)) &&
+    return succeeded(verifyCompatibleShapeWithBounds(stp1, stp2)) &&
            isCompatibleForMhloTypeInference(stp1.getElementType(),
                                             stp2.getElementType());
   }
@@ -9259,7 +9376,7 @@ static void buildSortComparisonBody(llvm::ArrayRef<Type> elementTypes,
 
   ComparisonType typeAttr;
   if (compareType)
-    typeAttr = symbolizeComparisonType(*compareType).getValue();
+    typeAttr = symbolizeComparisonType(*compareType).value();
   else
     typeAttr = ComparisonType::NOTYPE;
   Value compare = builder->create<mhlo::CompareOp>(
@@ -9313,13 +9430,14 @@ LogicalResult deriveShapeFromOperand(
 
 Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
                                             Type type, Location loc) {
-  // HLO dialect constants require the type of value and result to match.
-  if (type != value.getType()) return nullptr;
+  auto elementsAttr = value.dyn_cast<ElementsAttr>();
   // HLO dialect constants only support ElementsAttr unlike standard dialect
   // constant which supports all attributes.
-  if (auto elementsAttr = value.dyn_cast<ElementsAttr>())
-    return builder.create<mhlo::ConstantOp>(loc, type, elementsAttr);
-  return nullptr;
+  if (!elementsAttr) return nullptr;
+  // HLO dialect constants require the type of value and result to match.
+  if (type != elementsAttr.getType()) return nullptr;
+
+  return builder.create<mhlo::ConstantOp>(loc, type, elementsAttr);
 }
 
 LogicalResult MhloDialect::verifyRegionArgAttribute(Operation* op,

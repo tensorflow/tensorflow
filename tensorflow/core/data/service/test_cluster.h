@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_TEST_CLUSTER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_TEST_CLUSTER_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -127,7 +128,7 @@ class DatasetClient {
   StatusOr<int64_t> CreateIteration(const DatasetDef& dataset);
   // Gets the tasks for iteration `iteration_client_id`. The iteration has one
   // task processed by every worker.
-  StatusOr<std::vector<TaskInfo>> GetTasks(int64 iteration_client_id);
+  StatusOr<std::vector<TaskInfo>> GetTasks(int64_t iteration_client_id);
 
  private:
   // Registers the dataset and returns the dataset ID.
@@ -169,7 +170,7 @@ StatusOr<typename DatasetClient<T>::WorkerResultMap> DatasetClient<T>::Read(
     TargetWorkers target_workers) {
   TF_ASSIGN_OR_RETURN(const std::string dataset_id, RegisterDataset(dataset));
   TF_ASSIGN_OR_RETURN(
-      const int64 iteration_client_id,
+      const int64_t iteration_client_id,
       CreateIteration(dataset_id, sharding_policy, target_workers));
   TF_ASSIGN_OR_RETURN(const std::vector<TaskInfo> tasks,
                       GetTasks(iteration_client_id));
@@ -213,7 +214,7 @@ StatusOr<int64_t> DatasetClient<T>::CreateIteration(const DatasetDef& dataset) {
 
 template <class T>
 StatusOr<std::vector<TaskInfo>> DatasetClient<T>::GetTasks(
-    const int64 iteration_client_id) {
+    const int64_t iteration_client_id) {
   ClientHeartbeatRequest request;
   ClientHeartbeatResponse response;
   request.set_iteration_client_id(iteration_client_id);

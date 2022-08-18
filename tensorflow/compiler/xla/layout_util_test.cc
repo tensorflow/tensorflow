@@ -371,6 +371,25 @@ TEST_F(LayoutUtilTest, ValidateLayout_InvalidArrayLayout) {
                                    "contains 3 elements, but shape is rank 2"));
 }
 
+TEST_F(LayoutUtilTest, ValidateLayout_InvalidDimLevelTypes) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
+  *shape.mutable_layout()->mutable_dim_level_types() = {DIM_DENSE, DIM_DENSE,
+                                                        DIM_DENSE};
+  auto status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("layout dim_level_types field "
+                                   "contains 3 elements, but shape is rank 2"));
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("layout dim_level_types field "
+                                   "contains 3 elements, but shape is rank 2"));
+}
+
 TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   LayoutUtil::ClearLayout(&shape);
@@ -382,21 +401,6 @@ TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
   status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
   EXPECT_TRUE(status.ok());
-}
-
-TEST_F(LayoutUtilTest, ValidateLayout_TupleWithLayout) {
-  Shape shape = ShapeUtil::MakeTupleShape({});
-  *shape.mutable_layout() = LayoutUtil::MakeLayout({0});
-  auto status =
-      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
-  EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("tuple should not have a layout field"));
-  status =
-      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
-  EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("tuple should not have a layout field"));
 }
 
 TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {

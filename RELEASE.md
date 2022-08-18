@@ -2,7 +2,8 @@
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
-# Breaking Changes
+* `tensorflow::StatusOr::ConsumeValueOrDie`, deprecated in TF 2.10 has been
+  removed.
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
@@ -15,14 +16,20 @@
 
 # Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+*   `tf.lite`:
+
+    *   New operations supported:
+          * tf.unsortedsegmentmin op is supported.
+          * tf.atan2 op is supported.
+    *   Updates to existing operations:
+          * tfl.mul now supports complex32 inputs.
 
 # Bug Fixes and Other Changes
 
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
+*   `tf.image`
+    *   Added an optional parameter `return_index_map` to `tf.image.ssim` which
+        causes the returned value to be the local SSIM map instead of the global
+        mean.
 
 # Thanks to our Contributors
 
@@ -54,6 +61,7 @@ This release contains contributions from many people at Google, as well as:
     *   Updates to existing operations:
           * tfl.scatter_nd now supports I1 for update arg.
     *   Upgrade Flatbuffers v2.0.5 from v1.12.0
+    *   Better supporting `tf_type.variant` type in flatbuffer import/export.
 
 *   `tf.keras`:
 

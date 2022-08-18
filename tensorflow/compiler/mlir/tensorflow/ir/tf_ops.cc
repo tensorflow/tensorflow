@@ -57,7 +57,6 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Interfaces/DecodeAttributesInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -90,15 +89,6 @@ struct TFConstantFoldInterface : public DialectFoldInterface {
   LogicalResult fold(Operation *op, ArrayRef<Attribute> operands,
                      SmallVectorImpl<OpFoldResult> &results) const final {
     return TensorFlowDialect::constantFold(op, operands, results);
-  }
-};
-
-struct TFDecodeAttributesInterface : public DialectDecodeAttributesInterface {
-  TFDecodeAttributesInterface(Dialect *dialect)
-      : DialectDecodeAttributesInterface(dialect) {}
-  LogicalResult decode(OpaqueElementsAttr input,
-                       ElementsAttr &output) const override {
-    return TensorFlowDialect::decode(input, output);
   }
 };
 
@@ -311,7 +301,6 @@ void TensorFlowDialect::RegisterAdditionalOperationHook(
 }
 
 TensorFlowDialect::ConstantFoldHook TensorFlowDialect::constant_fold_hook_;
-TensorFlowDialect::DecodeConstantHook TensorFlowDialect::decode_constant_hook_;
 
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context, TypeID::get<TensorFlowDialect>()) {
@@ -324,8 +313,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
       >();
-  addInterfaces<TFInlinerInterface, TFDecodeAttributesInterface,
-                TFConstantFoldInterface>();
+  addInterfaces<TFInlinerInterface, TFConstantFoldInterface>();
   fallback_effect_op_interface_ =
       new TensorFlowRegistryEffectInterfaceFallback();
 

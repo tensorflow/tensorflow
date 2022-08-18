@@ -10,7 +10,7 @@ load(
     "tf_cc_binary",
 )
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
@@ -203,10 +203,10 @@ cc_library(
         "//tensorflow/stream_executor:stream_header",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+        "//tensorflow/tsl/platform/default/build_config:stream_executor_cuda",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
-        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
+        "//tensorflow/tsl/platform/default/build_config:stream_executor_rocm",
     ]),
 )
 

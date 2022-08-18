@@ -109,8 +109,7 @@ upper_tabs:
 
       - heading: "Text"
       - title: "Text classification"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/text_classification/android
-        status: external
+        path: /lite/android/tutorials/text_classification
       - title: "Smart reply"
         path: https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android
         status: external
@@ -240,6 +239,8 @@ upper_tabs:
           path: /lite/models/modify/model_maker/speech_recognition
 
       - heading: "Design and build models"
+      - title: "Overview"
+        path: /lite/models/build/
       - title: "Performance best practices"
         path: /lite/performance/best_practices
       - title: "Performance measurement"

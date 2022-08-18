@@ -193,6 +193,7 @@ py_library(
         ":string_ops",
         ":tensor_array_ops",
         ":training",
+        ":uniform_quant_ops_gen",
         ":weights_broadcast_ops",
         ":while_v2",
         "//tensorflow/core:protos_all_py",
@@ -963,6 +964,16 @@ tf_gen_op_wrapper_private_py(
     ],
     deps = [
         "//tensorflow/core/tpu/ops:tpu_partitioned_ops",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "uniform_quant_ops_gen",
+    visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/core:uniform_quant_ops_op_lib",
     ],
 )
 
@@ -3308,6 +3319,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:stacktrace_handler",
+        "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
@@ -3408,6 +3420,7 @@ filegroup(
         "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
+        "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",  # profiler
         "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/core/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
@@ -3420,7 +3433,7 @@ filegroup(
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
         "//tensorflow/python/client:tf_session_helper",  # tf_session
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
-        "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",  # quantization
         "//tensorflow/dtensor/cc:dtensor_device_cc",  # DTensor
@@ -3883,10 +3896,6 @@ cuda_py_test(
     name = "factory_ops_test",
     size = "small",
     srcs = ["ops/factory_ops_test.py"],
-    tags = [
-        "no_gpu",  # TODO(b/213596871): a similar test times out (delete
-        # the "no_gpu" tag once this is bug is fully resolved)
-    ],
     deps = [
         ":sparse_ops",
         "//tensorflow/python:platform_test",

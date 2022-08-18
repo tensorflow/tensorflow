@@ -39,22 +39,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-
-// NOLINTNEXTLINE
-static llvm::cl::opt<bool> post_training_quantize_flag(
-    "quant-test-post-training-quantize", llvm::cl::value_desc("bool"),
-    llvm::cl::desc("enable post training quantization. Only used in tests"),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-static llvm::cl::opt<bool> disable_per_channel(
-    "quant-disable-per-channel", llvm::cl::value_desc("bool"),
-    llvm::cl::desc("Whether disable per-channel quantized weights."),
-    llvm::cl::init(false));
 
 //===----------------------------------------------------------------------===//
 // The prepare-quantize Pass.
@@ -83,18 +71,25 @@ class PrepareQuantizePass
   // This is only used by test.
   explicit PrepareQuantizePass() {
     quant_specs_.inference_type = tensorflow::DT_QINT8;
-    quant_specs_.post_training_quantization = post_training_quantize_flag;
   }
 
   explicit PrepareQuantizePass(QuantizationMethod quantization_method) {
     quant_specs_.inference_type = tensorflow::DT_QINT8;
-    quant_specs_.post_training_quantization =
+    enable_post_training_quantize_ =
         (quantization_method == QuantizationMethod::kPostTrainingQuantization);
+  }
+
+  PrepareQuantizePass(const PrepareQuantizePass& other) {
+    quant_specs_ = other.quant_specs_;
+    enable_post_training_quantize_ = other.enable_post_training_quantize_;
+    disable_per_channel_ = other.disable_per_channel_;
   }
 
   // Constructor used by manually creating the pass.
   explicit PrepareQuantizePass(const QuantizationSpecs& quant_specs)
-      : quant_specs_(quant_specs) {}
+      : quant_specs_(quant_specs) {
+    enable_post_training_quantize_ = quant_specs.post_training_quantization;
+  }
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -151,6 +146,14 @@ class PrepareQuantizePass
   bool ContainsQuantizeOps(func::FuncOp func);
 
   QuantizationSpecs quant_specs_;
+
+  Option<bool> enable_post_training_quantize_{
+      *this, "post-training-quantize", llvm::cl::init(false),
+      llvm::cl::desc("Enable post training quantization. Only used in tests.")};
+
+  Option<bool> disable_per_channel_{
+      *this, "disable-per-channel", llvm::cl::init(false),
+      llvm::cl::desc("Whether disable per-channel quantized weights.")};
 };
 
 bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
@@ -226,40 +229,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
   return false;
 }
 
-// TODO(b/213253905): set appropriate quant spec getter
-std::unique_ptr<OpQuantSpec> GetOpQuantSpec(Operation* op) {
-  auto spec = std::make_unique<OpQuantSpec>();
-  if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
-    StringRef function_name =
-        call_op.fAttr().cast<FlatSymbolRefAttr>().getValue();
-    if (!function_name.startswith("composite_")) {
-      return spec;
-    }
-    if (function_name.contains("depthwise_conv2d")) {
-      spec->coeff_op_quant_dim[1] = 3;
-      if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
-      }
-    } else if (function_name.contains("conv2d")) {
-      spec->coeff_op_quant_dim[1] = 3;
-      if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
-      }
-    } else if (function_name.contains("matmul")) {
-      spec->coeff_op_quant_dim[1] = -1;
-      if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
-      }
-    }
-  }
-  return spec;
-}
-
 bool PrepareQuantizePass::RemoveRedundantStats(func::FuncOp func) {
-  return RemoveRedundantStatsOps(func, GetOpQuantSpec, GetTfQuantScaleSpec);
+  return RemoveRedundantStatsOps(func, GetTFOpQuantSpec, GetTfQuantScaleSpec);
 }
 
 static Value Quantized(Operation* user) {
@@ -357,6 +328,7 @@ void PrepareQuantizePass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
 
+  quant_specs_.post_training_quantization = enable_post_training_quantize_;
   if (quant_specs_.post_training_quantization) {
     RemoveRedundantStats(func);
   } else {
@@ -397,8 +369,8 @@ void PrepareQuantizePass::runOnOperation() {
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
   ApplyQuantizationParamsPropagation(
-      func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
-      GetOpQuantSpec, GetTfQuantScaleSpec, infer_tensor_range,
+      func, is_signed, disable_per_channel_ || quant_specs_.disable_per_channel,
+      GetTFOpQuantSpec, GetTfQuantScaleSpec, infer_tensor_range,
       quant_specs_.legacy_float_scale);
 }
 

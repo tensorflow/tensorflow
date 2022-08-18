@@ -911,6 +911,18 @@ xla_test(
 )
 
 xla_test(
+    name = "fft_test",
+    srcs = ["fft_test.cc"],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
     name = "dot_operation_test",
     srcs = ["dot_operation_test.cc"],
     shard_count = 20,
@@ -977,6 +989,7 @@ xla_test(
 # Run dot tests with dot canonicalization after the layout assignment pass.
 xla_test(
     name = "dot_operation_test_canonicalization_after_layout",
+    timeout = "long",
     srcs = ["dot_operation_test.cc"],
     args = [
         "--xla_tpu_order_dot_after_layout=true",

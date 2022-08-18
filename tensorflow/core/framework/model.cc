@@ -1772,21 +1772,29 @@ Node::NodeVector Node::CollectNodes(
   return CollectNodesLocked(order, collect_node);
 }
 
-void Node::TryDownsizeBuffer() {
-  Node::ModelParameters buffer_size_parameters;
+bool Node::TryDownsizeBuffer() {
+  if (!IsAsync()) {
+    return false;
+  }
+  Node::ModelParameters tunable_parameters;
   {
     tf_shared_lock l(mu_);
     if (buffered_elements_low_ > buffered_elements_high_) {
       // No element is stored in the buffer yet. Do nothing.
-      return;
+      return false;
     }
-    CollectTunableParametersHelper(&buffer_size_parameters);
+    CollectTunableParametersHelper(&tunable_parameters);
   }
-  // Sync buffer state values to parameter values
-  for (auto& [node_name, parameter] : buffer_size_parameters) {
-    if (parameter->name != kBufferSize) {
+  Node::ModelParameters buffer_size_parameters;
+  for (auto& parameter : tunable_parameters) {
+    if (parameter.second->name != kBufferSize) {
       continue;
     }
+    buffer_size_parameters.push_back(std::move(parameter));
+  }
+  bool downsized = false;
+  // Sync buffer state values to parameter values
+  for (auto& [node_name, parameter] : buffer_size_parameters) {
     tf_shared_lock l(*parameter->state->mu);
     parameter->value = parameter->state->value;
   }
@@ -1794,22 +1802,31 @@ void Node::TryDownsizeBuffer() {
     // Downsize buffers
     tf_shared_lock l(mu_);
     for (auto& [node_name, parameter] : buffer_size_parameters) {
-      if (parameter->name != kBufferSize) {
-        continue;
-      }
       if (buffered_elements_low_ > 0 &&
-          buffered_elements_high_ <= parameter->value) {
+          (buffered_elements_high_ - buffered_elements_low_ + 1) <
+              parameter->value) {
         double old_value = parameter->value;
-        parameter->value = buffered_elements_high_ - buffered_elements_low_ + 1;
-        VLOG(2) << "Downsize buffer " << long_name() << "::" << parameter->name
-                << " from " << old_value << " to " << parameter->value;
-        ResetBufferWatermarks();
+        // By default, we double buffer sizes if there is enough RAM in
+        // upsize. We cap the downsize by 1/4 of the current size to avoid
+        // undoing the previous upsize.
+        parameter->value =
+            std::max(buffered_elements_high_ - buffered_elements_low_ + 1,
+                     static_cast<int64_t>(old_value * 0.75));
+        if (old_value != parameter->value) {
+          VLOG(2) << "Downsize buffer " << long_name()
+                  << "::" << parameter->name << " from " << old_value << " to "
+                  << parameter->value;
+          downsized = true;
+        }
       }
     }
   }
   // Since SharedState locks are the same as the Ops iterator locks, locking of
   // the SharedState locks should be minimized in the optimization thread.
-  UpdateStateValues(&buffer_size_parameters);
+  if (downsized) {
+    UpdateStateValues(&buffer_size_parameters);
+  }
+  return downsized;
 }
 
 void Node::CollectBufferParametersToUpsize(
@@ -1918,6 +1935,8 @@ std::shared_ptr<Node> Node::SnapshotHelper(
     cloned_current->autotune_.store(autotune_);
     cloned_current->buffered_bytes_.store(buffered_bytes_);
     cloned_current->buffered_elements_.store(buffered_elements_);
+    cloned_current->buffered_elements_low_.store(buffered_elements_low_);
+    cloned_current->buffered_elements_high_.store(buffered_elements_high_);
     cloned_current->bytes_consumed_.store(bytes_consumed_);
     cloned_current->bytes_produced_.store(bytes_produced_);
     cloned_current->num_elements_.store(num_elements_);
@@ -2203,15 +2222,17 @@ Model::ModelParameters Model::CollectTunableParameters(
   return node->CollectTunableParameters();
 }
 
-void Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
+bool Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
   Node::NodeVector nodes =
       snapshot->CollectNodes(TraversalOrder::BFS, IsAsyncNode);
-  if (snapshot->IsAsync()) {
-    snapshot->TryDownsizeBuffer();
-  }
+  nodes.push_back(snapshot);
+  bool downsized = false;
   for (auto& node : nodes) {
-    node->TryDownsizeBuffer();
+    if (node->TryDownsizeBuffer()) {
+      downsized = true;
+    }
   }
+  return downsized;
 }
 
 absl::flat_hash_map<Node*, Parameter*> Model::CollectBufferParametersToUpsize(
@@ -2529,14 +2550,24 @@ void Model::OptimizeStageBasedParallelism(
         optimization_params.ram_budget()) {
       // Increasing the parallelism by 1 exceeded ram budget. Reduce it back and
       // stop optimization because we cannot improve the most critical stage.
+      // There is also a decent chance that the current optimization iteration
+      // is under-optimized. For that reason, return immediately without
+      // updating the parameter state values.
       parallelism_parameter->value -= 1.0;
-      break;
+      return;
     }
     // Compute the new total time and put the node back in the queue after its
     // parallelism value has been increased by 1.
     model_timing.ComputeNodeTotalTime(*critical_root.second);
-    priority_queue.Push(critical_root.second,
-                        *model_timing.GetTiming(critical_root.second));
+    const ModelTiming::NodeTiming* root_timing =
+        model_timing.GetTiming(critical_root.second);
+    // If timing has not improved, stop optimizing.
+    if (critical_root.first <= root_timing->total_time_nsec) {
+      parallelism_parameter->value -= 1.0;
+      break;
+    }
+    // Push it back to the priority queue.
+    priority_queue.Push(critical_root.second, *root_timing);
     // Get the next critical stage root.
     critical_root_status = priority_queue.PopSlowestStageRoot();
     if (!critical_root_status.ok()) {
@@ -2554,11 +2585,19 @@ void Model::OptimizeBuffers(std::shared_ptr<Node> snapshot,
   LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
       << "Starting optimization of buffer_size parameters (message logged "
          "every 10 minutes).";
-  DownsizeBuffers(snapshot);
-  UpsizeBuffers(snapshot, ram_budget);
+  // Reset node watermarks if any node's buffer is upsized or downsized. We
+  // reset the watermarks of not only those nodes whose sizes change but all
+  // nodes. The reason is that the optimization algorithm works on a snapshot of
+  // nodes. There is no back references from snapshot of nodes to nodes. We
+  // could add these back references but it is probably not necessary.
+  bool downsized = DownsizeBuffers(snapshot);
+  bool upsized = UpsizeBuffers(snapshot, ram_budget);
+  if (downsized || upsized) {
+    ResetBufferWatermarks();
+  }
 }
 
-void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
+bool Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
   // Find buffers that should be up-sized.
   absl::flat_hash_map<Node*, Parameter*> node_parameters =
       CollectBufferParametersToUpsize(snapshot);
@@ -2567,7 +2606,7 @@ void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
   double available_ram_bytes =
       static_cast<double>(ram_budget) - TotalMaximumBufferedBytes(snapshot);
 
-  // Compute memory used by all buffers that should be upsized.
+  // Compute the max memory used by all buffers that should be upsized.
   double max_buffered_bytes = 0;
   for (auto& [node, parameter] : node_parameters) {
     if (node->buffered_elements() == 0) {
@@ -2585,6 +2624,7 @@ void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
         1.0 + std::min(1.0, available_ram_bytes / max_buffered_bytes);
   }
 
+  bool upsized = false;
   // Up-size all buffers by the scaling factor.
   for (auto& [node, parameter] : node_parameters) {
     double old_value = parameter->value;
@@ -2601,9 +2641,18 @@ void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
         parameter->state->value = parameter->value;
         parameter->state->cond_var->notify_all();
       }
-      // Reset node buffer watermarks
-      node->ResetBufferWatermarks();
+      upsized = true;
     }
+  }
+  return upsized;
+}
+
+void Model::ResetBufferWatermarks() {
+  Node::NodeVector nodes =
+      output()->CollectNodes(TraversalOrder::BFS, IsAsyncNode);
+  nodes.push_back(output());
+  for (auto& node : nodes) {
+    node->ResetBufferWatermarks();
   }
 }
 
@@ -2840,8 +2889,16 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
   // bottleneck. We exclude the timing of the first input in the throughput
   // computation of the remaining input. It also excluded from the total time
   // computation of the async interleave node.
-  auto input = inputs.begin();
-  while ((input = std::next(input)) != inputs.end()) {
+  auto input = std::next(inputs.begin());
+  // `num_active_inputs` holds the number of inputs that the
+  // `ParallelInterleave` is reading from, not including those that are warm
+  // starting, which can be detected by checking the value of `autotune()`. It
+  // also does not count async inputs because they would be in their own
+  // stages. This number is typically the same as `cycle_length`. It will be
+  // used below to scale the throughput of inputs if `cycle_length` is smaller
+  // than `num_active_inputs`.
+  int num_active_inputs = 0;
+  for (; input != inputs.end(); ++input) {
     if ((*input)->IsAsync()) {
       continue;
     }
@@ -2857,19 +2914,43 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
     if (input_total_time_nsec > 0.0) {
       sum_input_throughput += 1.0 / input_total_time_nsec;
     }
+    ++num_active_inputs;
   }
-  double input_total_time_nsec = 0.0;
-  auto deterministic = node.ParameterValue(kDeterministic);
+  auto parallelism_param = node.ParameterValue(kParallelism);
+  double parallelism = num_active_inputs;
+  if (parallelism_param.ok()) {
+    parallelism = parallelism_param.ValueOrDie();
+  }
   // After cl/445005635, there should always be `deterministic` parameter for an
   // ASYNC_INTERLEAVE_MANY node. The "not-ok" check is to allow the code to work
-  // with protos saved and restored before that CL.
-  if (!deterministic.ok() || deterministic.ValueOrDie() == 1.0) {
-    // If deterministic = true, then the total time is `1/worst input throughput
-    // * cycle_length`, or `max input total time / cycle_length`.
-    input_total_time_nsec = max_input_total_time_nsec * node.Ratio();
+  // with protos saved and restored before that CL. Similarly for `cycle_length`
+  // with cl/436244658.
+  auto deterministic_param = node.ParameterValue(kDeterministic);
+  bool deterministic = false;
+  if (deterministic_param.ok()) {
+    deterministic = deterministic_param.ValueOrDie() == 1.0;
+  }
+  auto cycle_length_param = node.ParameterValue(kCycleLength);
+  double cycle_length = num_active_inputs;
+  if (cycle_length_param.ok()) {
+    cycle_length = cycle_length_param.ValueOrDie();
+  }
+  double input_total_time_nsec = 0.0;
+  if (deterministic) {
+    // If deterministic = true, then the total time is `max input total time /
+    // min(parallelism, cycle_length)`.
+    input_total_time_nsec =
+        max_input_total_time_nsec / std::min(parallelism, cycle_length);
   } else if (sum_input_throughput > 0.0) {
     // If deterministic = false, then the total time is
-    // `1/sum_input_throughput`.
+    // `1/sum_input_throughput`. Scale the throughput according to `parallelism`
+    // and `cycle_length` if `cycle_length` or `parallelism` is smaller than
+    // active inputs. `cycle_length` and `parallelism` could theoretically be
+    // larger than active inputs when some inputs are async and some are sync.
+    if (std::min(cycle_length, parallelism) < num_active_inputs) {
+      sum_input_throughput *=
+          std::min(parallelism, cycle_length) / num_active_inputs;
+    }
     input_total_time_nsec = 1.0 / sum_input_throughput;
   }
   node_timing.total_time_nsec =

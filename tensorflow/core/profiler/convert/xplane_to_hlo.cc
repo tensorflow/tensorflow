@@ -41,6 +41,11 @@ constexpr char kHloProtoSuffix[] = ".hlo_proto.pb";
 
 }  // namespace
 
+std::string GetHloProtoFileName(const absl::string_view base_dir,
+                                const absl::string_view module_name) {
+  return ProfilerJoinPath(base_dir, absl::StrCat(module_name, kHloProtoSuffix));
+}
+
 Status GetHloProtoFromMultiXSpaceAndSaveToFile(
     const std::vector<XSpace>& xspaces,
     const std::vector<std::string>& xspace_file_names) {

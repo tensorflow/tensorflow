@@ -4,6 +4,10 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -177,25 +181,34 @@ cc_library(
     ],
 )
 
-tf_cc_test(
-    name = "pjrt_client_test_cpu",
+cc_library(
+    name = "pjrt_client_test_common",
+    testonly = 1,
     srcs = ["pjrt_client_test.cc"],
-    defines = ["PJRT_CLIENT_TEST_CPU"],
+    hdrs = ["pjrt_client_test.h"],
     deps = [
         ":pjrt_client",
-        ":tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:test_main",
         "@com_google_absl//absl/synchronization",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "pjrt_client_test_cpu",
+    srcs = ["pjrt_client_test_cpu.cc"],
+    deps = [
+        ":pjrt_client_test_common",
+        ":tfrt_cpu_pjrt_client",
+        "//tensorflow/core:test_main",
     ],
 )
 
 tf_cc_test(
     name = "pjrt_client_test_gpu",
-    srcs = ["pjrt_client_test.cc"],
-    defines = ["PJRT_CLIENT_TEST_GPU"],
+    srcs = ["pjrt_client_test_gpu.cc"],
     tags = [
         "no_oss",
         "notap",
@@ -203,13 +216,9 @@ tf_cc_test(
     ],
     deps = [
         ":gpu_device",
-        ":pjrt_client",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/client:xla_builder",
+        ":pjrt_client_test_common",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:test_main",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -534,6 +543,16 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "tracked_tfrt_cpu_device_buffer_test",
+    srcs = ["tracked_tfrt_cpu_device_buffer_test.cc"],
+    deps = [
+        ":tracked_tfrt_cpu_device_buffer",
+        "@com_google_googletest//:gtest_main",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
 cc_library(
     name = "tfrt_cpu_pjrt_client",
     srcs = ["tfrt_cpu_pjrt_client.cc"],
@@ -620,6 +639,7 @@ cc_library(
         "transpose_kernels.h",
     ],
     hdrs = ["transpose.h"],
+    visibility = [":friends"],
     deps = [
         ":lru_cache",
         "//tensorflow/compiler/xla:permutation_util",
@@ -713,4 +733,15 @@ tf_cc_test(
         "//tensorflow/core:test",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+tf_proto_library(
+    name = "compile_options_proto",
+    srcs = ["compile_options.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_proto",
+    ],
+    visibility = ["//visibility:public"],
 )

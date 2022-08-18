@@ -204,6 +204,7 @@ cc_library(
         "//tensorflow/stream_executor/gpu:gpu_timer_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/stream_executor/platform:dso_loader",
         "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",

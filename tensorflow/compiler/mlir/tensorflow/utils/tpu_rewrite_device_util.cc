@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -503,6 +504,14 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
   if (!topology_attr)
     return cluster.emitOpError("cluster op missing `topology` attribute");
 
+  auto num_cores_per_replica_attr = cluster->getAttrOfType<mlir::IntegerAttr>(
+      tensorflow::kNumCoresPerReplicaAttr);
+  if (!num_cores_per_replica_attr)
+    return cluster.emitOpError(
+        llvm::formatv("requires attribute '{0}'",
+                      tensorflow::kNumCoresPerReplicaAttr)
+            .str());
+
   auto device_assignment_attr = cluster->getAttrOfType<mlir::ArrayAttr>(
       tensorflow::kDeviceAssignmentAttr);
   if (!device_assignment_attr)
@@ -522,7 +531,7 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
   auto status_or_tpu_device_assignment =
       tensorflow::GetTPUCompilationAndExecutionDevices(
           devices.device_names(), /*num_replicas=*/1,
-          /*num_cores_per_replica=*/1, topology_attr.getValue(),
+          num_cores_per_replica_attr.getInt(), topology_attr.getValue(),
           std::move(status_or_device_coodinates).value());
   if (!status_or_tpu_device_assignment.ok())
     return cluster.emitError()

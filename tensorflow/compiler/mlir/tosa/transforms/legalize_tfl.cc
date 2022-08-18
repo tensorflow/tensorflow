@@ -86,6 +86,7 @@ struct ConvertConstantOp : public RewritePattern {
                                   PatternRewriter& rewriter) const override; \
   }
 DECL_CONVERT_OP(Relu);
+DECL_CONVERT_OP(Relu1);
 DECL_CONVERT_OP(Relu6);
 DECL_CONVERT_OP(Equal);
 DECL_CONVERT_OP(NotEqual);
@@ -219,6 +220,61 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
       rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
       rewriter.getF32FloatAttr(0.0f),
       rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
+
+  return success();
+}
+
+LogicalResult ConvertTFLRelu1Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_relu1_op = cast<TFL::Relu1Op>(op);
+
+  ShapedType input_type = tfl_relu1_op.x().getType().dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_relu1_op.getResult().getType().dyn_cast<ShapedType>();
+  // Not a ranked tensor output
+  if (!input_type || !output_type) return failure();
+
+  bool input_is_qtype =
+      input_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+  bool output_is_qtype =
+      output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+
+  if (input_is_qtype != output_is_qtype) {
+    return op->emitOpError(
+        "ConvertTFLRelu1Op: input/output tensor should "
+        "be all quantized or all floating-point.");
+  }
+
+  int64_t clamp_min = -1;
+  int64_t clamp_max = 1;
+  Value clamp_in = tfl_relu1_op.x();
+
+  if (output_is_qtype && input_is_qtype) {
+    UniformQuantizedType input_qtype =
+        input_type.getElementType()
+            .dyn_cast<mlir::quant::UniformQuantizedType>();
+    UniformQuantizedType output_qtype =
+        output_type.getElementType()
+            .dyn_cast<mlir::quant::UniformQuantizedType>();
+
+    clamp_min = output_qtype.getZeroPoint() -
+                std::llround(1.0f / output_qtype.getScale());
+
+    clamp_max = std::llround(1.0f / output_qtype.getScale()) +
+                output_qtype.getZeroPoint();
+
+    clamp_in =
+        buildRescale(rewriter, op, output_type, tfl_relu1_op.x(),
+                     input_qtype.getScale() / output_qtype.getScale(),
+                     input_qtype.getZeroPoint(), output_qtype.getZeroPoint(),
+                     /*double_round=*/false, /*scale32=*/true);
+  }
+
+  CreateReplaceOpAndInfer<tosa::ClampOp>(rewriter, op, output_type, clamp_in,
+                                         rewriter.getI64IntegerAttr(clamp_min),
+                                         rewriter.getI64IntegerAttr(clamp_max),
+                                         rewriter.getF32FloatAttr(-1.0f),
+                                         rewriter.getF32FloatAttr(1.0f));
 
   return success();
 }
@@ -3323,6 +3379,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLPow);
 
   DEF_PATTERN_INSERT(TFLRelu);
+  DEF_PATTERN_INSERT(TFLRelu1);
   DEF_PATTERN_INSERT(TFLRelu6);
   DEF_PATTERN_INSERT(TFLEqual);
   DEF_PATTERN_INSERT(TFLNotEqual);

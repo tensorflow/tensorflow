@@ -6,8 +6,8 @@ func.func @main(%arg0: tensor<1x1xf32>, %arg1: tensor<1x8x8x16xf32>) -> tuple<te
   %2 = "mhlo.reshape"(%arg1) : (tensor<1x8x8x16xf32>) -> tensor<1024xf32>
   %3 = "mhlo.tuple"(%2, %1) {name = "tuple.374"} : (tensor<1024xf32>, tensor<1xf32>) -> tuple<tensor<1024xf32>, tensor<1xf32>>
   func.return %3 : tuple<tensor<1024xf32>, tensor<1xf32>>
-  // CHECK: %[[RES0:.*]] = "mhlo.reshape"(%arg0) : (tensor<1x1xf32>) -> tensor<1xf32>
-  // CHECK: %[[RES1:.*]] = "mhlo.reshape"(%arg1) : (tensor<1x8x8x16xf32>) -> tensor<1024xf32>
+  // CHECK: %[[RES0:.*]] = mhlo.reshape %arg0 : (tensor<1x1xf32>) -> tensor<1xf32>
+  // CHECK: %[[RES1:.*]] = mhlo.reshape %arg1 : (tensor<1x8x8x16xf32>) -> tensor<1024xf32>
   // CHECK: return %[[RES1]], %[[RES0]] : tensor<1024xf32>, tensor<1xf32>
 }
 

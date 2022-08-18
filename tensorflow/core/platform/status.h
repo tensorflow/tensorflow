@@ -24,6 +24,8 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
@@ -172,8 +174,7 @@ class Status {
   //
   // Returns the payload of a status given its unique `type_url` key, if
   // present.
-  absl::optional<absl::string_view> GetPayload(
-      absl::string_view type_url) const;
+  absl::optional<absl::Cord> GetPayload(absl::string_view type_url) const;
 
   // Sets the payload for a non-ok status using a `type_url` key, overwriting
   // any existing payload for that `type_url`.
@@ -224,6 +225,9 @@ class Status {
 // Returns an OK status, equivalent to a default constructed instance. Prefer
 // usage of `OkStatus()` when constructing such an OK status.
 Status OkStatus();
+
+Status FromAbslStatus(const absl::Status& s);
+absl::Status ToAbslStatus(const ::tensorflow::Status& s);
 
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {

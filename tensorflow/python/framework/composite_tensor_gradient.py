@@ -17,9 +17,7 @@
 import abc
 import sys
 
-from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
@@ -34,7 +32,7 @@ else:
 
 
 # TODO(xjun): Add CompositeTensorGradient support for SparseTensor,
-# IndexedSlices, StructuredTensor, and MaskedTensor.
+# StructuredTensor, and MaskedTensor.
 class CompositeTensorGradient(object, metaclass=abc.ABCMeta):
   """Class used to help compute gradients for CompositeTensors.
 
@@ -167,22 +165,7 @@ def get_flat_tensors_for_gradients(xs):
     left as-is, and `CompositeTensor`s are replaced with
     `_get_tensors_for_gradient(x)`.
   """
-  # Note: we could just return
-  # nest.flatten([_get_tensors_for_gradient(x) for x in xs]), but we
-  # manually walk over the results to give better warning messages.
-  result = []
-  for x in xs:
-    if not isinstance(x, composite_tensor.CompositeTensor):
-      result.append(x)
-    else:
-      x_tensors = nest.flatten(_get_tensors_for_gradient(x))
-      for t in x_tensors:
-        if not backprop_util.IsTrainable(t):
-          logging.log_first_n(
-              logging.WARN, "The dtype of differentiable component %s in %s "
-              "must be floating (e.g., tf.float32), got %r.", 5, t, x, t.dtype)
-      result.extend(x_tensors)
-  return result
+  return nest.flatten([_get_tensors_for_gradient(x) for x in xs])
 
 
 def replace_flat_tensors_for_gradients(xs, flat_grads):
