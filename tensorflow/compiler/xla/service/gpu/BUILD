@@ -1469,14 +1469,12 @@ cc_library(
     hdrs = ["cudnn_vectorize_convolutions.h"],
     deps = [
         ":cudnn_support_utils",
-        ":ir_emission_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/stream_executor:device_description",
-        "//tensorflow/stream_executor:stream_header",
     ],
 )
 
@@ -1495,6 +1493,44 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "cudnn_simplify_padding",
+    srcs = ["cudnn_simplify_padding.cc"],
+    hdrs = ["cudnn_simplify_padding.h"],
+    deps = [
+        ":cublas_cudnn",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+    ],
+)
+
+tf_cc_test(
+    name = "cudnn_simplify_padding_test",
+    srcs = ["cudnn_simplify_padding_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":cublas_cudnn",
+        ":cudnn_pad_for_convolutions",
+        ":cudnn_simplify_padding",
+        ":cudnn_vectorize_convolutions",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "//tensorflow/core:test",
         "//tensorflow/core/platform:statusor",
     ],
 )
@@ -1786,20 +1822,20 @@ cc_library(
         ":cublas_pad_for_gemms",
         ":cudnn_fused_conv_rewriter",
         ":cudnn_pad_for_convolutions",
+        ":cudnn_simplify_padding",
         ":cudnn_vectorize_convolutions",
         ":cusolver_rewriter",
         ":gemm_algorithm_picker",
         ":gpu_asm_opts_util",
-        ":gpu_executable",
         ":gpu_compiler",
         ":gpu_conv_padding_legalization",
         ":gpu_conv_rewriter",
+        ":gpu_executable",
         ":gpu_layout_assignment",
         ":ir_emission_utils",
         ":metrics",
         ":nvptx_helper",
         ":target_constants",
-        ":triangular_solve_rewriter",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:node_hash_map",
         "@llvm-project//llvm:IRReader",
@@ -1828,8 +1864,9 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor/cuda:cuda_diagnostics",
         "//tensorflow/stream_executor/gpu:asm_compiler",
-        "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/gpu:gpu_driver_header",
+        "//tensorflow/stream_executor:stream_executor_headers",
+        ":triangular_solve_rewriter",
     ]),
 )
 
