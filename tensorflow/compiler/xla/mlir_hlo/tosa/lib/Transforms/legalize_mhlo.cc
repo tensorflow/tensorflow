@@ -42,6 +42,36 @@ struct LegalizeMhlo : TosaLegalizeMhloPassBase<LegalizeMhlo> {
   FrozenRewritePatternSet patterns;
 };
 
+struct ConvertMhloCompareOp : public OpRewritePattern<mhlo::CompareOp> {
+  using OpRewritePattern<mhlo::CompareOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::CompareOp op,
+                                PatternRewriter& rewriter) const override {
+    auto direction = op.comparison_direction();
+    auto resultType = op->getResultTypes().front();
+
+    switch (direction) {
+      case mlir::mhlo::ComparisonDirection::EQ: {
+        rewriter.replaceOpWithNewOp<tosa::EqualOp>(op, resultType, op.lhs(),
+                                                   op.rhs());
+        break;
+      }
+      case mlir::mhlo::ComparisonDirection::NE: {
+        auto equalOp = rewriter.create<tosa::EqualOp>(op->getLoc(), resultType,
+                                                      op.lhs(), op.rhs());
+        rewriter.replaceOpWithNewOp<tosa::LogicalNotOp>(op, resultType,
+                                                        equalOp);
+        break;
+      }
+      default: {
+        return rewriter.notifyMatchFailure(
+            op, "comparison direction not yet implemented");
+      }
+    }
+    return success();
+  }
+};
+
 struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
   using OpRewritePattern<mhlo::ReduceOp>::OpRewritePattern;
 
@@ -106,6 +136,7 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
 LogicalResult LegalizeMhlo::initialize(MLIRContext* ctx) {
   RewritePatternSet patternList(ctx);
   populateGeneratedPDLLPatterns(patternList);
+  patternList.addWithLabel<ConvertMhloCompareOp>({"MhloCompare"}, ctx);
   patternList.addWithLabel<ConvertMhloReduceOp>({"MhloReduce"}, ctx);
   patterns = std::move(patternList);
   return success();

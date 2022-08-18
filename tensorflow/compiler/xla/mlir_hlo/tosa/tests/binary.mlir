@@ -7,6 +7,28 @@ func.func @add(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32>
   return %0 : tensor<10xf32>
 }
 
+// CHECK-LABEL: @compare_eq
+func.func @compare_eq(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xi1> {
+  // CHECK: tosa.equal
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xi1>
+  return %0 : tensor<10xi1>
+}
+
+// CHECK-LABEL: @compare_lt
+func.func @compare_lt(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xi1> {
+  // CHECK: mhlo.compare
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xi1>
+  return %0 : tensor<10xi1>
+}
+
+// CHECK-LABEL: @compare_ne
+func.func @compare_ne(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi1> {
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.equal"(%arg0, %arg1)
+  // CHECK-DAG: %[[VAR1:.*]] = "tosa.logical_not"(%[[VAR0]])
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi1>
+  return %0 : tensor<10xi1>
+}
+
 // CHECK-LABEL: @maximum
 func.func @maximum(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
   // CHECK: tosa.maximum
