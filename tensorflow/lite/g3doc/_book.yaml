@@ -109,8 +109,7 @@ upper_tabs:
 
       - heading: "Text"
       - title: "Text classification"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/text_classification/android
-        status: external
+        path: /lite/android/tutorials/text_classification
       - title: "Smart reply"
         path: https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android
         status: external

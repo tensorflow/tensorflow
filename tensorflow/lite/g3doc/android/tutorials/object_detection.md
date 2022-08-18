@@ -264,8 +264,8 @@ TensorFlow Lite models is recommended, but not required.
 The object detector is initialized using the current settings on the thread that
 is using it. You can use CPU and [NNAPI](../../android/delegates/nnapi)
 delegates with detectors that are created on the main thread and used on a
-background thread, but the the thread that initialized the detector must use the
-GPU delegate.
+background thread, but the thread that initialized the detector must use the GPU
+delegate.
 
 The delegates are set within the `ObjectDetectionHelper.setupObjectDetector()`
 function:
