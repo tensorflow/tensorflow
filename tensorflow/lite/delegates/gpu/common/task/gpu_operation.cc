@@ -392,13 +392,6 @@ void GPUOperation::AddSrcBuffer(const std::string& buffer_name,
   args_.AddObjectRef(buffer_name, AccessType::READ, std::move(desc_new));
 }
 
-void GPUOperation::AddSrcTexture2D(const std::string& texture_name,
-                                   const Texture2DDescriptor& desc) {
-  src_tensors_names_.push_back(texture_name);
-  auto desc_new = std::make_unique<Texture2DDescriptor>(desc);
-  args_.AddObjectRef(texture_name, AccessType::READ, std::move(desc_new));
-}
-
 void GPUOperation::AddDstTensor(const std::string& tensor_name,
                                 const TensorDescriptor& desc) {
   dst_tensors_names_.push_back(tensor_name);

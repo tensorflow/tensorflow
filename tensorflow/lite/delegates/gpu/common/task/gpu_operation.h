@@ -159,8 +159,6 @@ class GPUOperation {
                     const TensorDescriptor& desc);
   void AddSrcBuffer(const std::string& buffer_name,
                     const BufferDescriptor& desc);
-  void AddSrcTexture2D(const std::string& texture_name,
-                       const Texture2DDescriptor& desc);
   void AddDstTensor(const std::string& tensor_name,
                     const TensorDescriptor& desc);
 
