@@ -273,8 +273,10 @@ cc_library(
 
 cc_library(
     name = "gpu_device_info",
+    srcs = ["gpu_device_info.cc"],
     hdrs = ["gpu_device_info.h"],
     compatible_with = get_compatible_with_cloud(),
+    deps = ["//tensorflow/stream_executor:stream_header"],
 )
 
 cc_library(

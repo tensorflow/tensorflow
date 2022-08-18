@@ -19,14 +19,14 @@
 
 #include "mlir/Pass/PassManager.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_jitrt.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
 Status ConvertLmhloToJitRt(mlir::ModuleOp module,
                            mlir::StringRef entry_function_name,
-                           llvm::ArrayRef<int64_t> buffer_sizes) {
+                           llvm::ArrayRef<int64_t> buffer_sizes,
+                           GpuBinaryOptions options) {
   if (!module) {
     return errors::FailedPrecondition("No MLIR module to lower.");
   }
@@ -34,7 +34,7 @@ Status ConvertLmhloToJitRt(mlir::ModuleOp module,
                        mlir::PassManager::Nesting::Implicit);
 
   tensorflow::applyTensorflowAndCLOptions(pm);
-  populateLmhloToJitRtPasses(pm);
+  populateLmhloToJitRtPasses(pm, options);
 
   if (pm.run(module).failed()) {
     return errors::Internal(

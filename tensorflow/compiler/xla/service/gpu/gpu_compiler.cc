@@ -860,7 +860,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 #if XLA_ENABLE_XLIR
 static StatusOr<OwnedJitRtProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
-    llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module) {
+    llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module,
+    se::StreamExecutor* stream_exec) {
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
   mlir::OpBuilder builder(mlir_module.getContext());
   mlir::IntegerAttr replica_count_attr =
@@ -872,10 +873,22 @@ static StatusOr<OwnedJitRtProgram> LowerToJitRt(
   func->setAttr("replica_count", replica_count_attr);
   func->setAttr("num_partitions", num_partitions_attr);
 
+  tensorflow::GpuBinaryOptions options;
+  if (stream_exec == nullptr) {
+    options = tensorflow::GpuBinaryOptions::DefaultGpuBinaryOptions();
+  } else {
+    options.platform_name = stream_exec->platform()->Name();
+    options.gpu_device_info = xla::gpu::GetGpuDeviceInfo(stream_exec);
+    options.cuda_compute_capability =
+        stream_exec->GetDeviceDescription().cuda_compute_capability();
+    options.rocm_compute_capability =
+        stream_exec->GetDeviceDescription().rocm_compute_capability();
+  }
+
   // Lower LMHLO operations to the JitRt compatible custom calls.
   TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToJitRt(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},
-      buffer_sizes));
+      buffer_sizes, options));
   // Serialize module to pass it to GpuExecutable for compilation.
   std::string serialized_module;
   llvm::raw_string_ostream os(serialized_module);
@@ -1048,7 +1061,7 @@ static Status CompileModuleToLlvmIrImpl(
         [](const BufferAllocation& allocation) { return allocation.size(); });
     TF_ASSIGN_OR_RETURN(results->executable,
                         LowerToJitRt(*mlir_module, entry_function.getName(),
-                                     buffer_sizes, hlo_module));
+                                     buffer_sizes, hlo_module, stream_exec));
     return OkStatus();
   }
 #endif  // XLA_ENABLE_XLIR
@@ -1374,26 +1387,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }
   gpu_executable->set_debug_info(buffer_assignment->GetStats().ToString());
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
-}
-
-GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec) {
-  GpuDeviceInfo gpu_device_info;
-  gpu_device_info.threads_per_block_limit =
-      stream_exec->GetDeviceDescription().threads_per_block_limit();
-  gpu_device_info.threads_per_warp =
-      stream_exec->GetDeviceDescription().threads_per_warp();
-  gpu_device_info.shared_memory_per_block =
-      stream_exec->GetDeviceDescription().shared_memory_per_block();
-  gpu_device_info.threads_per_core_limit =
-      stream_exec->GetDeviceDescription().threads_per_core_limit();
-  gpu_device_info.core_count = stream_exec->GetDeviceDescription().core_count();
-  gpu_device_info.block_dim_limit_x =
-      stream_exec->GetDeviceDescription().block_dim_limit().x;
-  gpu_device_info.block_dim_limit_y =
-      stream_exec->GetDeviceDescription().block_dim_limit().y;
-  gpu_device_info.block_dim_limit_z =
-      stream_exec->GetDeviceDescription().block_dim_limit().z;
-  return gpu_device_info;
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
