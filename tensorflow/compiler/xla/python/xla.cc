@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/weakref_lru_cache.h"
 #include "tensorflow/compiler/xla/python/xla_compiler.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -193,6 +194,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("IMMUTABLE_UNTIL_TRANSFER_COMPLETES",
              PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes)
       .value("ZERO_COPY", PjRtClient::HostBufferSemantics::kZeroCopy);
+
+  jax::BuildWeakrefLRUCacheAPI(m);
 
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)

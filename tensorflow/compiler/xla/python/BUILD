@@ -625,6 +625,25 @@ cc_library(
 )
 
 cc_library(
+    name = "weakref_lru_cache",
+    srcs = ["weakref_lru_cache.cc"],
+    hdrs = ["weakref_lru_cache.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt:lru_cache",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/synchronization",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "xla_compiler",
     srcs = ["xla_compiler.cc"],
     hdrs = ["xla_compiler.h"],
@@ -718,6 +737,7 @@ pybind_extension(
                ":mlir",
                ":ops",
                ":pmap_lib",
+               ":weakref_lru_cache",
                ":pprof_profile_builder",
                ":profiler",
                ":transfer_guard_lib",
