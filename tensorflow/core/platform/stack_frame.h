@@ -16,24 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_STACK_TRACE_H_
 #define TENSORFLOW_CORE_PLATFORM_STACK_TRACE_H_
 
-#include <string>
+#include "tensorflow/tsl/platform/stack_frame.h"
 
 namespace tensorflow {
-
-// A struct representing a frame in a stack trace.
-struct StackFrame {
-  std::string file_name;
-  int line_number;
-  std::string function_name;
-
-  bool operator==(const StackFrame& other) const {
-    return line_number == other.line_number &&
-           function_name == other.function_name && file_name == other.file_name;
-  }
-
-  bool operator!=(const StackFrame& other) const { return !(*this == other); }
-};
-
+typedef tsl::StackFrame StackFrame;
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_STACK_TRACE_H_

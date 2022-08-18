@@ -95,6 +95,31 @@ func.func @asin_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>>
 
 // -----
 
+// CHECK-LABEL:  func.func @asin_complex_f64_dynamic(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<?xcomplex<f64>>) -> tensor<?xcomplex<f64>>
+// CHECK:  %[[TWO:.*]] = mhlo.constant dense<(2.000000e+00,0.000000e+00)>
+// CHECK:  %[[SHAPE:.*]] = shape.shape_of %[[ARG0]]
+// CHECK:  %[[TWO_BROADCASTED:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[TWO]], %[[SHAPE]])
+// CHECK:  %[[ONE:.*]] = mhlo.constant dense<(1.000000e+00,0.000000e+00)>
+// CHECK:  %[[SHAPE2:.*]] = shape.shape_of %[[ARG0]]
+// CHECK:  %[[ONE_BROADCASTED:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ONE]], %[[SHAPE2]])
+// CHECK:  %[[ONE2:.*]] = mhlo.constant dense<(1.000000e+00,0.000000e+00)>
+// CHECK:  %[[SHAPE3:.*]] = shape.shape_of %[[ARG0]]
+// CHECK:  %[[ONE_BROADCASTED2:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ONE2]], %[[SHAPE3]])
+// CHECK:  %[[SQUARE:.*]] = mhlo.multiply %[[ARG0]], %[[ARG0]]
+// CHECK:  %[[SUB:.*]] = mhlo.subtract %[[ONE_BROADCASTED2]], %[[SQUARE]]
+// CHECK:  %[[SQRT:.*]] = mhlo.sqrt %[[SUB]]
+// CHECK:  %[[ADD:.*]] = mhlo.add %[[ONE_BROADCASTED]], %[[SQRT]]
+// CHECK:  %[[ATAN2:.*]] = mhlo.atan2 %[[ARG0]], %[[ADD]]
+// CHECK:  %[[MUL:.*]] = mhlo.multiply %[[TWO_BROADCASTED]], %[[ATAN2]]
+// CHECK:  return %[[MUL]]
+func.func @asin_complex_f64_dynamic(%arg : tensor<?xcomplex<f64>>) -> tensor<?xcomplex<f64>> {
+  %result = "chlo.asin"(%arg) : (tensor<?xcomplex<f64>>) -> tensor<?xcomplex<f64>>
+  func.return %result : tensor<?xcomplex<f64>>
+}
+
+// -----
+
 // CHECK-LABEL: @asinh_bf16
 // CHECK-SAME: %[[ARG:.*]]: tensor<bf16>
 func.func @asinh_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
@@ -408,7 +433,7 @@ func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
 func.func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK-DAG: %[[TMP_0:.*]] = mhlo.constant dense<-4.000000e+00>
   // CHECK-DAG: %[[TMP_1:.*]] = mhlo.constant dense<4.000000e+00>
-  // CHECK: %[[TMP_2:.*]] = "mhlo.clamp"(%[[TMP_0]], %[[ARG]], %[[TMP_1]])
+  // CHECK: %[[TMP_2:.*]] = mhlo.clamp %[[TMP_0]], %[[ARG]], %[[TMP_1]]
   // CHECK: %[[TMP_3:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_2]]
   // CHECK: %[[TMP_4:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK: %[[TMP_5:.*]] = mhlo.multiply %[[TMP_4]], %[[TMP_3]]
@@ -2282,11 +2307,8 @@ func.func @polygamma_f16(%lhs : tensor<f16>, %rhs : tensor<f16>) -> tensor<f16> 
 // CHECK-LABEL: @sinh_f32
 // CHECK-SAME: (%[[X:.*]]: tensor<f32>)
 func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
-  // CHECK: %[[TWO:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
-  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[X]] : tensor<f32> -> tensor<0xindex>
-  // CHECK: %[[BROADCASTED_TWO:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[TWO]], %[[SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<0xindex>) -> tensor<f32>
-  // CHECK: %[[LOG_TWO:.*]] = mhlo.log %[[BROADCASTED_TWO]] : tensor<f32>
-  // CHECK: %[[LOG_HALF:.*]] = mhlo.negate %[[LOG_TWO]] : tensor<f32>
+  // CHECK: %[[HALF:.*]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
+  // CHECK: %[[LOG_HALF:.*]] = mhlo.log %[[HALF]] : tensor<f32>
   // CHECK: %[[X_PLUS_LOG_HALF:.*]] = mhlo.add %[[X]], %[[LOG_HALF]] : tensor<f32>
   // CHECK: %[[EXP_1:.*]] = mhlo.exponential %[[X_PLUS_LOG_HALF]] : tensor<f32>
   // CHECK: %[[LOG_HALF_MINUS_X:.*]] = mhlo.subtract %[[LOG_HALF]], %[[X]] : tensor<f32>
@@ -2324,11 +2346,8 @@ func.func @sinh_f16(%x : tensor<f16>) -> tensor<f16> {
 // CHECK-LABEL: @sinh_complex
 // CHECK-SAME: (%[[X:.*]]: tensor<2xcomplex<f32>>)
 func.func @sinh_complex(%x : tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
-  // CHECK: %[[TWO:.*]] = mhlo.constant dense<(2.000000e+00,0.000000e+00)> : tensor<complex<f32>>
-  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[X]] : tensor<2xcomplex<f32>> -> tensor<1xindex>
-  // CHECK: %[[BROADCASTED_TWO:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[TWO]], %[[SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<complex<f32>>, tensor<1xindex>) -> tensor<2xcomplex<f32>>
-  // CHECK: %[[LOG_TWO:.*]] = mhlo.log %[[BROADCASTED_TWO]] : tensor<2xcomplex<f32>>
-  // CHECK: %[[LOG_HALF:.*]] = mhlo.negate %[[LOG_TWO]] : tensor<2xcomplex<f32>>
+  // CHECK: %[[HALF:.*]] = mhlo.constant dense<(5.000000e-01,0.000000e+00)> : tensor<2xcomplex<f32>>
+  // CHECK: %[[LOG_HALF:.*]] = mhlo.log %[[HALF]] : tensor<2xcomplex<f32>>
   // CHECK: %[[X_PLUS_LOG_HALF:.*]] = mhlo.add %[[X]], %[[LOG_HALF]] : tensor<2xcomplex<f32>>
   // CHECK: %[[EXP_1:.*]] = mhlo.exponential %[[X_PLUS_LOG_HALF]] : tensor<2xcomplex<f32>>
   // CHECK: %[[LOG_HALF_MINUS_X:.*]] = mhlo.subtract %[[LOG_HALF]], %[[X]] : tensor<2xcomplex<f32>>
@@ -2344,11 +2363,8 @@ func.func @sinh_complex(%x : tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
 // CHECK-LABEL: @cosh_f32
 // CHECK-SAME: (%[[X:.*]]: tensor<f32>)
 func.func @cosh_f32(%x : tensor<f32>) -> tensor<f32> {
-  // CHECK: %[[TWO:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
-  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[X]] : tensor<f32> -> tensor<0xindex>
-  // CHECK: %[[BROADCASTED_TWO:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[TWO]], %[[SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<0xindex>) -> tensor<f32>
-  // CHECK: %[[LOG_TWO:.*]] = mhlo.log %[[BROADCASTED_TWO]] : tensor<f32>
-  // CHECK: %[[LOG_HALF:.*]] = mhlo.negate %[[LOG_TWO]] : tensor<f32>
+  // CHECK: %[[HALF:.*]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
+  // CHECK: %[[LOG_HALF:.*]] = mhlo.log %[[HALF]] : tensor<f32>
   // CHECK: %[[X_PLUS_LOG_HALF:.*]] = mhlo.add %[[X]], %[[LOG_HALF]] : tensor<f32>
   // CHECK: %[[EXP_1:.*]] = mhlo.exponential %[[X_PLUS_LOG_HALF]] : tensor<f32>
   // CHECK: %[[LOG_HALF_MINUS_X:.*]] = mhlo.subtract %[[LOG_HALF]], %[[X]] : tensor<f32>
@@ -2376,11 +2392,8 @@ func.func @cosh_f16(%x : tensor<f16>) -> tensor<f16> {
 // CHECK-LABEL: @cosh_complex_f32
 // CHECK-SAME: (%[[X:.*]]: tensor<complex<f32>>)
 func.func @cosh_complex_f32(%x : tensor<complex<f32>>) -> tensor<complex<f32>> {
-  // CHECK: %[[TWO:.*]] = mhlo.constant dense<(2.000000e+00,0.000000e+00)> : tensor<complex<f32>>
-  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[X]] : tensor<complex<f32>> -> tensor<0xindex>
-  // CHECK: %[[BROADCASTED_TWO:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[TWO]], %[[SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<complex<f32>>, tensor<0xindex>) -> tensor<complex<f32>>
-  // CHECK: %[[LOG_TWO:.*]] = mhlo.log %[[BROADCASTED_TWO]] : tensor<complex<f32>>
-  // CHECK: %[[LOG_HALF:.*]] = mhlo.negate %[[LOG_TWO]] : tensor<complex<f32>>
+  // CHECK: %[[HALF:.*]] = mhlo.constant dense<(5.000000e-01,0.000000e+00)> : tensor<complex<f32>>
+  // CHECK: %[[LOG_HALF:.*]] = mhlo.log %[[HALF]] : tensor<complex<f32>>
   // CHECK: %[[X_PLUS_LOG_HALF:.*]] = mhlo.add %[[X]], %[[LOG_HALF]] : tensor<complex<f32>>
   // CHECK: %[[EXP_1:.*]] = mhlo.exponential %[[X_PLUS_LOG_HALF]] : tensor<complex<f32>>
   // CHECK: %[[LOG_HALF_MINUS_X:.*]] = mhlo.subtract %[[LOG_HALF]], %[[X]] : tensor<complex<f32>>
@@ -2433,13 +2446,13 @@ func.func @atanh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>
 // CHECK-LABEL: @next_after_f32
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<2xf32>, %[[ARG1:.*]]: tensor<2xf32>)
 func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: %[[X_AS_INT:.*]] = "mhlo.bitcast_convert"(%[[ARG0]]) : (tensor<2xf32>) -> tensor<2xi32>
-  // CHECK: %[[Y_AS_INT:.*]] = "mhlo.bitcast_convert"(%[[ARG1]]) : (tensor<2xf32>) -> tensor<2xi32>
+  // CHECK: %[[X_AS_INT:.*]] = mhlo.bitcast_convert %[[ARG0]] : (tensor<2xf32>) -> tensor<2xi32>
+  // CHECK: %[[Y_AS_INT:.*]] = mhlo.bitcast_convert %[[ARG1]] : (tensor<2xf32>) -> tensor<2xi32>
   // CHECK: %[[X_IS_NAN:.*]] = mhlo.compare NE, %[[ARG0]], %[[ARG0]], NOTYPE : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
   // CHECK: %[[Y_IS_NAN:.*]] = mhlo.compare NE, %[[ARG1]], %[[ARG1]], NOTYPE : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
   // CHECK: %[[INPUT_IS_NAN:.*]] = mhlo.or %[[X_IS_NAN]], %[[Y_IS_NAN]] : tensor<2xi1>
   // CHECK: %[[NAN:.*]] = mhlo.constant dense<0x7FC00000> : tensor<2xf32>
-  // CHECK: %[[NAN_AS_INT:.*]] = "mhlo.bitcast_convert"(%[[NAN]]) : (tensor<2xf32>) -> tensor<2xi32>
+  // CHECK: %[[NAN_AS_INT:.*]] = mhlo.bitcast_convert %[[NAN]] : (tensor<2xf32>) -> tensor<2xi32>
   // CHECK-DAG: %[[SIGN_MASK:.*]] = mhlo.constant dense<-2147483648> : tensor<2xi32>
   // CHECK-DAG: %[[NEGATED_SIGN_MASK:.*]] = mhlo.constant dense<2147483647> : tensor<2xi32>
   // CHECK: %[[X_ABS:.*]] = mhlo.and %[[X_AS_INT]], %[[NEGATED_SIGN_MASK]] : tensor<2xi32>
@@ -2462,7 +2475,7 @@ func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32>
   // CHECK: %[[RESULT2:.*]] = "mhlo.select"(%[[X_ABS_IS_ZERO]], %[[RESULT1]], %[[RESULT0]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   // CHECK: %[[RESULT3:.*]] = "mhlo.select"(%[[X_AND_Y_ARE_EQUAL]], %[[Y_AS_INT]], %[[RESULT2]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   // CHECK: %[[RESULT4:.*]] = "mhlo.select"(%[[INPUT_IS_NAN]], %[[NAN_AS_INT]], %[[RESULT3]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  // CHECK: %[[FINAL_RESULT:.*]] = "mhlo.bitcast_convert"(%[[RESULT4]]) : (tensor<2xi32>) -> tensor<2xf32>
+  // CHECK: %[[FINAL_RESULT:.*]] = mhlo.bitcast_convert %[[RESULT4]] : (tensor<2xi32>) -> tensor<2xf32>
   // CHECK: return %[[FINAL_RESULT]]
   %1 = chlo.broadcast_next_after %x, %y : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   func.return %1 : tensor<2xf32>
@@ -2505,7 +2518,7 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
   // CHECK-NEXT: %[[SORT:.*]]:2 = "mhlo.sort"(%[[ARG]], %[[IOTA]]) ({
   // CHECK-NEXT: ^{{.*}}(%[[LHS:.*]]: tensor<f32>, %[[RHS:.*]]: tensor<f32>, %{{.*}}: tensor<i32>, %{{.*}}: tensor<i32>):
   // CHECK-NEXT:   %[[CMP:.*]] = mhlo.compare GT, %[[LHS]], %[[RHS]], TOTALORDER
-  // CHECK-NEXT:   "mhlo.return"(%[[CMP]])
+  // CHECK-NEXT:   mhlo.return %[[CMP]]
   // CHECK-NEXT: }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   // CHECK-NEXT: %[[VAL:.*]] = "mhlo.slice"(%[[SORT]]#0) {limit_indices = dense<[16, 8]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}
   // CHECK-NEXT: %[[IDX:.*]] = "mhlo.slice"(%[[SORT]]#1) {limit_indices = dense<[16, 8]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}

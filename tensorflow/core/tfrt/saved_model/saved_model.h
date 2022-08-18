@@ -132,8 +132,9 @@ class SavedModel {
     // will be loaded along with the saved model.
     int32_t lazy_loading_threshold = std::numeric_limits<int32_t>::max();
 
-    // If true, the loading path points to an MLArchive containing a SavedModel.
-    bool load_from_mla = false;
+    // If true, we'll attempt to find MLArchive within the given loading path.
+    // If not found, will use the path as a normal SavedModel directory.
+    bool maybe_load_from_mla = false;
 
     GraphExecutionOptions graph_execution_options;
   };
@@ -211,8 +212,8 @@ class SavedModelImpl final : public SavedModel {
   // http://g3doc/learning/serving/g3doc/saved_model/overview.md
   // for explanations on SavedModel.
   //
-  // If `options.load_from_mla` is true, treat `saved_model_dir` as an MLA path
-  // that wraps the saved model path.
+  // If `options.maybe_load_from_mla` is true, tries opening `saved_model_dir`
+  // as an MLA. If it's not an MLA, uses it as a normal SavedModel directory.
   static std::unique_ptr<SavedModel> LoadSavedModel(
       Options options, absl::string_view saved_model_dir,
       const std::unordered_set<std::string>& tags, tensorflow::Status* status);

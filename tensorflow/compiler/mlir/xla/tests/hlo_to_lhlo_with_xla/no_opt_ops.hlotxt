@@ -23,7 +23,7 @@ HloModule indexed_conditional
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
 // CHECK:   %{{.*}} = memref.view
-// CHECK:   "mhlo.copy"
+// CHECK:   mhlo.copy
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
 // CHECK:   %{{.*}} = memref.view

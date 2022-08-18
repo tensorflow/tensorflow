@@ -127,7 +127,7 @@ class ApproximateTanhLowering
     // small values of x (|x| < 1e-37), the other approximation would evaluate
     // tanh(x) = 0.
     constexpr float kUseIdentityApprox = 0.0004;
-    Value absInput = rewriter.create<math::AbsOp>(loc, input);
+    Value absInput = rewriter.create<math::AbsFOp>(loc, input);
     Value useIdentityApprox = rewriter.create<arith::CmpFOp>(
         loc, arith::CmpFPredicate::OLT, absInput,
         rewriter.create<arith::ConstantOp>(

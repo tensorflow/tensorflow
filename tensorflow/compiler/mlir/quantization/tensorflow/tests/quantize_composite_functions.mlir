@@ -145,6 +145,7 @@ module {
   }
 
 // CHECK-LABEL: func @conv_with_maxpool
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>} : () -> tensor<f32>
 // CHECK: %[[quantize:.*]] = "tf.PartitionedCall"(%arg0
 // CHECK-SAME: f = @quantize_i8
 // CHECK: %[[conv_quant:.*]] = "tf.PartitionedCall"(%[[quantize]]
@@ -152,8 +153,9 @@ module {
 // CHECK-SAME: (tensor<1x2x2x3xi8>, tensor<2x2x3x2xi8>, tensor<2xi32>, tensor<f32>, tensor<i32>, tensor<2xf32>, tensor<2xi32>, tensor<2xf32>, tensor<2xi32>, tensor<f32>, tensor<i32>) -> tensor<*xi8>
 // CHECK: %[[cast_1:.*]] = "tf.Cast"(%[[conv_quant]]) {Truncate = false} : (tensor<*xi8>) -> tensor<*xf32>
 // CHECK: %[[avgpool:.*]] = "tf.AvgPool"(%[[cast_1]]) {data_format = "NHWC", ksize = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK: %[[round:.*]] = "tf.Round"(%[[avgpool]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK: %[[cast_2:.*]] = "tf.Cast"(%[[round]]) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
+// CHECK: %[[add:.*]] = "tf.AddV2"(%[[avgpool]], %[[cst]]) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+// CHECK: %[[floor:.*]] = "tf.Floor"(%[[add]]) : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK: %[[cast_2:.*]] = "tf.Cast"(%[[floor]]) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
 // CHECK: %[[dequantize:.*]] = "tf.PartitionedCall"(%[[cast_2]]
 // CHECK-SAME: f = @dequantize_i8
 // CHECK: return %[[dequantize]]

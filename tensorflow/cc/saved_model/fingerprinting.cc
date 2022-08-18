@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -31,30 +32,51 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
 
 namespace tensorflow::fingerprinting {
 
+// Version of the code that produced the fingerprint.
+const int kFingerprintProducer = 0;
 namespace {
 
-// This function mutates the GraphDef, changing the names and config_proto's
+// Returns the suffix UID of `function_name`.
+StatusOr<int> GetSuffixUID(absl::string_view function_name) {
+  std::vector<std::string> v = absl::StrSplit(function_name, '_');
+  int uid;
+  if (!strings::safe_strto32(v.back(), &uid)) {
+    return errors::InvalidArgument(absl::StrCat(
+        "Function name: `", function_name, "` does not end in an integer."));
+  }
+  return uid;
+}
+
+// This function mutates `graph_def`, changing the names and config_proto's
 // of the Function nodes.
-void CanonicalizeNodes(GraphDef* orig_graph_def) {
-  for (NodeDef& node : *orig_graph_def->mutable_node()) {
+void CanonicalizeNodes(GraphDef* graph_def) {
+  for (NodeDef& node : *graph_def->mutable_node()) {
     // Check if this is a function call.
     if (grappler::IsPartitionedCall(node) ||
         grappler::IsStatefulPartitionedCall(node)) {
-      // TODO(b/240174577): Strip UID from the end of function names.
       // Regularize "f" attribute, the function name for PartitionedCall and
-      // and StatefulPartitionedCall ops.
-      node.mutable_attr()->find("f")->second.mutable_func()->set_name(
-          "FINGERPRINT_PASS");
+      // and StatefulPartitionedCall ops, by stripping the suffix UID if it
+      // has one.
+      std::string function_name = node.attr().find("f")->second.func().name();
+      StatusOr<int> uid = GetSuffixUID(function_name);
+      if (uid.ok()) {
+        node.mutable_attr()->find("f")->second.mutable_func()->set_name(
+            std::string(
+                absl::StripSuffix(function_name, std::to_string(*uid))));
+      }
       // Erase the "config_proto" attribute which contains device-specific
       // information.
       node.mutable_attr()->find("config_proto")->second.mutable_s()->erase();
@@ -68,15 +90,18 @@ void CanonicalizeNodes(GraphDef* orig_graph_def) {
   }
 }
 
-// Returns the suffix UID of `function_name`.
-StatusOr<int> GetSuffixUID(absl::string_view function_name) {
-  std::vector<std::string> v = absl::StrSplit(function_name, '_');
-  int uid;
-  if (!strings::safe_strto32(v.back(), &uid)) {
-    return errors::InvalidArgument(absl::StrCat(
-        "Function name: `", function_name, "` does not end in an integer."));
+// Returns the hash of the checkpoint .index file, 0 if there is none.
+uint64 HashCheckpointIndexFile(absl::string_view model_dir) {
+  std::string meta_filename = MetaFilename(io::JoinPath(
+      model_dir, kSavedModelVariablesDirectory, kSavedModelVariablesFilename));
+  std::string data;
+  Status read_status = ReadFileToString(Env::Default(), meta_filename, &data);
+  if (read_status.ok()) {
+    return tensorflow::Fingerprint64(data);
+  } else {
+    LOG(WARNING) << read_status.error_message();
+    return 0;
   }
-  return uid;
 }
 
 }  // namespace
@@ -87,7 +112,8 @@ uint64 ComputeHash(const GraphDef& graph_def) {
   return tensorflow::Fingerprint64(graph_def_string);
 }
 
-FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph) {
+FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
+                                    absl::string_view export_dir) {
   // Create a copy of `metagraph` which will be used and mutated for fingerprint
   // computation.
   MetaGraphDef metagraph_copy = metagraph;
@@ -107,6 +133,12 @@ FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph) {
       RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def());
   fingerprint_def.set_saved_object_graph_hash(
       RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def()));
+  // Set fingerprint field #5.
+  fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));
+  // Set version of the fingerprint.
+  VersionDef* version = fingerprint_def.mutable_version();
+  version->set_producer(kFingerprintProducer);
+
   return fingerprint_def;
 }
 

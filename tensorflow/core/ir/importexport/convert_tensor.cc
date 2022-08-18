@@ -111,8 +111,7 @@ tensorflow::StatusOr<ElementsAttr> ConvertStringTensor(
 }
 
 tensorflow::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
-                                                 Builder builder,
-                                                 TFGraphDialect* tfgDialect) {
+                                                 Builder builder) {
   const auto& input_dtype = input_tensor.dtype();
   const auto& input_shape = input_tensor.shape();
   Type elt_type;
@@ -201,8 +200,7 @@ static int NumberOfMaterializedElements(const TensorProto& tensor) {
 }
 
 tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
-    const TensorProto& input_tensor, Builder builder,
-    TFGraphDialect* tfgDialect) {
+    const TensorProto& input_tensor, Builder builder) {
   // If there is only one actual element in the proto, but its shape would
   // indicate there are more values, then this is representing a splat tensor.
   // We can create an MLIR Attribute more efficiently in this case.
@@ -220,7 +218,7 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
     shape->add_dim()->set_size(1);
 
     TF_ASSIGN_OR_RETURN(ElementsAttr single_attr,
-                        ConvertTensorProto(tensor_copy, builder, tfgDialect));
+                        ConvertTensorProto(tensor_copy, builder));
 
     std::vector<int64_t> original_dimensions;
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
@@ -234,7 +232,7 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
     return InvalidArgument("Failed to parse input_tensor: ",
                            input_tensor.DebugString());
   }
-  return ConvertTensor(t, builder, tfgDialect);
+  return ConvertTensor(t, builder);
 }
 
 void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,

@@ -18,57 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TRACE_LISTENER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TRACE_LISTENER_H_
 
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/kernel.h"
-#include "tensorflow/stream_executor/launch_dim.h"
-#include "tensorflow/stream_executor/lib/status.h"
-
-namespace stream_executor {
-
-class Stream;
-
-// Traces StreamExecutor PIMPL-level events.
-// The few StreamExecutor interfaces that are synchronous have both Begin and
-// Complete versions of their trace calls. Asynchronous operations only have
-// Submit calls, as execution of the underlying operations is device-specific.
-// As all tracing calls mirror StreamExecutor routines, documentation here is
-// minimal.
-//
-// All calls have default implementations that perform no work; subclasses
-// should override functionality of interest. Keep in mind that these routines
-// are not called on a dedicated thread, so callbacks should execute quickly.
-//
-// Note: This API is constructed on an as-needed basis. Users should add
-// support for further StreamExecutor operations as required. By enforced
-// convention (see SCOPED_TRACE in stream_executor_pimpl.cc), synchronous
-// tracepoints should be named NameBegin and NameComplete.
-class TraceListener {
- public:
-  virtual ~TraceListener() {}
-
-  virtual void LaunchSubmit(Stream* stream, const ThreadDim& thread_dims,
-                            const BlockDim& block_dims,
-                            const KernelBase& kernel,
-                            const KernelArgsArrayBase& args) {}
-
-  virtual void SynchronousMemcpyH2DBegin(int64_t correlation_id,
-                                         const void* host_src, int64_t size,
-                                         DeviceMemoryBase* gpu_dst) {}
-  virtual void SynchronousMemcpyH2DComplete(int64_t correlation_id,
-                                            const port::Status* result) {}
-
-  virtual void SynchronousMemcpyD2HBegin(int64_t correlation_id,
-                                         const DeviceMemoryBase& gpu_src,
-                                         int64_t size, void* host_dst) {}
-  virtual void SynchronousMemcpyD2HComplete(int64_t correlation_id,
-                                            const port::Status* result) {}
-
-  virtual void BlockHostUntilDoneBegin(int64_t correlation_id, Stream* stream) {
-  }
-  virtual void BlockHostUntilDoneComplete(int64_t correlation_id,
-                                          const port::Status* result) {}
-};
-
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TRACE_LISTENER_H_

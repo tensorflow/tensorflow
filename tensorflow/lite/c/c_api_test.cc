@@ -21,6 +21,8 @@ limitations under the License.
 #include <array>
 #include <cmath>
 #include <fstream>
+#include <ios>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -275,6 +277,28 @@ TEST(CApiSimple, InvalidModelFromFile) {
   ASSERT_EQ(model, nullptr);
 }
 
+struct SinhParams {
+  bool use_cosh_instead = false;
+};
+
+void* FlexSinhInit(TfLiteOpaqueContext* context, const char* buffer,
+                   size_t length) {
+  auto sinh_params = new SinhParams;
+  // The buffer that is passed into here is the custom_options
+  // field from the flatbuffer (tensorflow/lite/schema/schema.fbs)
+  // `Operator` for this node.
+  // Typically it should be stored as a FlexBuffer, but for this test
+  // we assume that it is just a string.
+  if (std::string(buffer, length) == "use_cosh") {
+    sinh_params->use_cosh_instead = true;
+  }
+  return sinh_params;
+}
+
+void FlexSinhFree(TfLiteOpaqueContext* context, void* data) {
+  delete static_cast<SinhParams*>(data);
+}
+
 TfLiteStatus FlexSinhPrepare(TfLiteOpaqueContext* context,
                              TfLiteOpaqueNode* node) {
   return kTfLiteOk;
@@ -282,6 +306,8 @@ TfLiteStatus FlexSinhPrepare(TfLiteOpaqueContext* context,
 
 TfLiteStatus FlexSinhEval(TfLiteOpaqueContext* context,
                           TfLiteOpaqueNode* node) {
+  auto sinh_params =
+      static_cast<SinhParams*>(TfLiteOpaqueNodeGetUserData(node));
   const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
   size_t input_bytes = TfLiteOpaqueTensorByteSize(input);
   void* data_ptr = TfLiteOpaqueTensorData(input);
@@ -289,7 +315,8 @@ TfLiteStatus FlexSinhEval(TfLiteOpaqueContext* context,
   memcpy(&input_value, data_ptr, input_bytes);
 
   TfLiteOpaqueTensor* output = TfLiteOpaqueNodeGetOutput(context, node, 0);
-  float output_value = std::sinh(input_value);
+  float output_value = sinh_params->use_cosh_instead ? std::cosh(input_value)
+                                                     : std::sinh(input_value);
   TfLiteOpaqueTensorCopyFromBuffer(output, &output_value, sizeof(output_value));
   return kTfLiteOk;
 }
@@ -300,6 +327,8 @@ TEST(CApiSimple, CustomOpSupport) {
   ASSERT_NE(model, nullptr);
 
   TfLiteRegistrationExternal* reg = TfLiteRegistrationExternalCreate("Sinh", 1);
+  TfLiteRegistrationExternalSetInit(reg, &FlexSinhInit);
+  TfLiteRegistrationExternalSetFree(reg, &FlexSinhFree);
   TfLiteRegistrationExternalSetPrepare(reg, &FlexSinhPrepare);
   TfLiteRegistrationExternalSetInvoke(reg, &FlexSinhEval);
 

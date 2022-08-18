@@ -47,7 +47,7 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
 
  public:
   LhloFuseLinalgPass() = default;
-  LhloFuseLinalgPass(const LhloFuseLinalgPass&) {}
+  LhloFuseLinalgPass(const LhloFuseLinalgPass&) = default;
   LhloFuseLinalgPass(bool useParallelLoops,
                      llvm::ArrayRef<unsigned> tileSizes) {
     tile_sizes_ = tileSizes;

@@ -140,6 +140,8 @@ Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
         stream, fft_rank, fft_length, input_embed, input_stride, input_distance,
         output_embed, output_stride, output_distance, fft_type, kInPlaceFft,
         batch_size, &scratch_allocator);
+    TF_RET_CHECK(fft_plan != nullptr)
+        << "Failed to create cuFFT batched plan with scratch allocator";
     fft_plan_ptr->scale_factor = 1.0f / output_distance;
   } else {
     stream->parent()->AsFft()->UpdatePlanWithScratchAllocator(

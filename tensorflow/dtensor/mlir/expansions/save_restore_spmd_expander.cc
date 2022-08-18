@@ -832,12 +832,19 @@ StatusOr<llvm::SmallVector<Layout>> GetLayoutsFromAssignVariableOps(
 
 StatusOr<llvm::DenseMap<int, Layout>>
 SaveRestoreSPMDExpander::ComputeLayoutForward(
-    mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
+    mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts,
+    const llvm::DenseMap<int, Layout>& output_layouts) {
   // Save op doesn't have return values.
   if (llvm::isa<mlir::TF::SaveV2Op, mlir::TF::MergeV2CheckpointsOp>(op)) {
     return llvm::DenseMap<int, Layout>();
   }
   if (llvm::isa<mlir::TF::RestoreV2Op>(op)) {
+    // If there are already output layouts specified, this means that
+    // we are in the Late Variable Creation restoration. For this path,
+    // the output layout is already specified, through the default layout
+    // scope. So just return that layout.
+    if (!output_layouts.empty()) return output_layouts;
+
     mlir::ModuleOp module_op = op->getParentOfType<mlir::ModuleOp>();
     mlir::TF::RestoreV2Op restore_v2 = mlir::cast<mlir::TF::RestoreV2Op>(op);
     TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));

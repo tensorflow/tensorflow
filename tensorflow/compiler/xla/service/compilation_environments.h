@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_SERVICE_XLA_COMPILATION_ENVIRONMENTS_H_
 #define TENSORFLOW_COMPILER_SERVICE_XLA_COMPILATION_ENVIRONMENTS_H_
 
+#include <cstdint>
 #include <memory>
+#include <string_view>
 #include <typeindex>
 #include <utility>
 
@@ -49,7 +51,12 @@ class CompilationEnvironments {
   // Users of CompilationEnvironments must specialize this method for each type
   // of CompilationEnvironment they wish to use in code.
   //
-  // T must be a type of proto message.
+  // Users are requested to call
+  // DefaultEnvCreated(T::descriptor()->full_name()); from their
+  // implementations, to track the number of calls to the default creator.
+  //
+  // REQUIRES:
+  // - T must be a type of proto message.
   template <typename T>
   static std::unique_ptr<T> CreateDefaultEnv() = delete;
 
@@ -74,6 +81,20 @@ class CompilationEnvironments {
   void Clear() { environments_.clear(); }
 
  private:
+  // Called by implementations of CreateDefaultEnv(), to globally track stats
+  // about default environment creation.
+  static void DefaultEnvCreated(std::string_view env_type);
+
+  // Called by GetEnv() when it calls CreateDefaultEnv(), to globally track
+  // stats about how many of the created default environments are created by
+  // CompilationEnvironments.
+  static void DefaultEnvCreatedByCompilationEnvironments(
+      std::string_view env_type);
+
+  // Called by AddEnv(), to globally track stats about how many environments
+  // are added to CompilationEnvironments.
+  static void EnvAdded(std::string_view env_type);
+
   absl::flat_hash_map<const tensorflow::protobuf::Descriptor*,
                       std::unique_ptr<tensorflow::protobuf::Message>>
       environments_;
@@ -94,6 +115,7 @@ const T& CompilationEnvironments::GetEnv() {
   auto it = environments_.find(descriptor);
   if (it == environments_.end()) {
     AddEnv(CreateDefaultEnv<T>());
+    DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
     it = environments_.find(descriptor);
   }
   return tensorflow::down_cast<const T&>(*it->second);

@@ -14,7 +14,9 @@ tf_native_cc_binary(
     srcs = ["xla_runtime_opt.cc"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:rt_transforms",
+        "//tensorflow/compiler/xla/mlir/transforms/math:passes",
+        "//tensorflow/compiler/xla/mlir/transforms/memref:passes",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
     ],

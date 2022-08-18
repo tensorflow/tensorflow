@@ -156,7 +156,8 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
   // If 'producer' is a fusion node as well, also evaluate it. Pass the
   // evaluated duplication of the fusion node if it is merged into consumer.
   FusionNodeIndexingEvaluation eval_producer(
-      &producer, eval_consumer.EvaluateEmittedInstructions(&producer));
+      &producer, eval_consumer.EvaluateEmittedInstructions(&producer),
+      eval_consumer.fusion_instructions());
   return eval_producer.MaxCodeDuplicationTooHigh();
 }
 

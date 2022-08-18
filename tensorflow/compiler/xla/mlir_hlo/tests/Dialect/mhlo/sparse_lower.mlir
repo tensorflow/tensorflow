@@ -27,7 +27,7 @@
 // CHECK:         %[[OUT:.*]] = bufferization.alloc_tensor() : tensor<10x20xf32, #{{.*}}>
 // CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}} ins(%[[ARG0]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>) outs(%[[OUT]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>)
 // CHECK:         ^bb0(%[[A:.*]]: f32, %[[B:.*]]: f32):
-// CHECK:           %[[ABS:.*]] = math.abs %[[A]] : f32
+// CHECK:           %[[ABS:.*]] = math.absf %[[A]] : f32
 // CHECK:           linalg.yield %[[ABS]] : f32
 // CHECK:         } -> tensor<10x20xf32, #{{.*}}>
 // CHECK:         return %[[VAL:.*]] : tensor<10x20xf32, #{{.*}}>
@@ -82,7 +82,7 @@ func.func @sparse_mul_eltwise(%arg0: tensor<10x20xf32, #CSR>,
 // CHECK-LABEL: func @sparse_math(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x20x30xf64, #{{.*}}>) -> tensor<10x20x30xf64, #{{.*}}> {
 // CHECK:         %[[T0:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ], {{.*}} }>>) outs
-// CHECK:            math.abs
+// CHECK:            math.absf
 // CHECK:         }
 // CHECK:         %[[T1:.*]] = linalg.generic {{{.*}}} ins(%[[T0]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ], {{.*}} }>>) outs
 // CHECK:            math.expm1

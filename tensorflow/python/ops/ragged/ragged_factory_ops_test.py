@@ -207,7 +207,7 @@ class RaggedFactoryOpsTest(test_util.TensorFlowTestCase,
 
   @parameterized.named_parameters(
       ('DenseDrop', dense_str, True),
-      # ('RaggedDrop', ragged_str, True),  # TODO(b/241425197)
+      ('RaggedDrop', ragged_str, True),
       ('DenseNoDrop', dense_str, False),
       ('RaggedNoDrop', ragged_str, False),
   )

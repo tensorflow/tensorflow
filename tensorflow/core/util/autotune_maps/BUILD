@@ -126,10 +126,10 @@ tf_cuda_library(
         ":conv_parameters",
         ":conv_parameters_proto_cc",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/stream_executor:lazy_op_runner",
         "//tensorflow/stream_executor:stream_header",
     ],
 )

@@ -21,6 +21,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_STREAM_H_
 #define TENSORFLOW_STREAM_EXECUTOR_STREAM_H_
 
+<<<<<<< HEAD
 #include <complex>
 #include <functional>
 #include <memory>
@@ -2313,5 +2314,8 @@ struct Quantization<int32> {
 };
 
 }  // namespace stream_executor
+=======
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+>>>>>>> google_upstream/master
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_STREAM_H_

@@ -309,6 +309,8 @@ static StatusOr<bool> TryRevectorizeConv(
   // We use XlaBuilder because it's a lot easier to get these tricky
   // reshape/transposes correct using that API.
   XlaBuilder b(absl::StrCat(conv->name(), ".revectorized"));
+  b.SetOpMetadata(conv->metadata());
+
   absl::InlinedVector<XlaOp, 4> new_operands = {
       RevectorizeInstr(Parameter(&b, 0, conv->operand(0)->shape(), "input"),
                        dnums.input_feature_dimension(), *input_vect_dim,
@@ -433,6 +435,7 @@ static StatusOr<bool> TryVectorizeConv(
   // We use XlaBuilder because it's a lot easier to get these tricky
   // reshape/transposes correct using that API.
   XlaBuilder b(absl::StrCat(conv->name(), ".revectorized"));
+  b.SetOpMetadata(conv->metadata());
 
   absl::InlinedVector<XlaOp, 4> new_operands = {
       SplitAtDim(Parameter(&b, 0, conv->operand(0)->shape(), "input"),

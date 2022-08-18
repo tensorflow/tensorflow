@@ -128,8 +128,20 @@ Operation *getDefiningBroadcastArgsOp(Value operand) {
   }
   return parent_of_defining_op;
 }
-
 }  // namespace
+
+// Returns true when the given type lists contain a single element of shaped
+// type with compatible shapes (unranked shape is compatible with any ranked
+// shape, ranked shapes are compatible if their respective dimensions are
+// compatible, dynamic dimensions are compatible with any size, static
+// dimensions must be equal to be compatible) and identical element types.
+bool VerifyCompatibleShapesSameElementType(TypeRange lhs, TypeRange rhs) {
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  auto lhsShaped = lhs[0].cast<ShapedType>();
+  auto rhsShaped = rhs[0].cast<ShapedType>();
+  return lhsShaped.getElementType() == rhsShaped.getElementType();
+}
 
 // Returns true when the given operand arguments have the same shape or
 // broadcastable shape within the given rank. If any given shapes are
@@ -356,7 +368,8 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
   // Allows I32, I64, QI16 and F32 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to four dimension or have same shapes.
   if (IsI32Type(element_type) || IsI64Type(element_type) ||
-      IsQI16Type(element_type) || element_type.isF32()) {
+      IsQI16Type(element_type) || element_type.isa<ComplexType>() ||
+      element_type.isF32()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -835,8 +848,9 @@ DenseElementsAttr ConstFoldConcatenateOpDense(ArrayRef<Attribute> operands,
   int64_t out = 0;
   for (int64_t outer = 0; outer < outer_size; ++outer) {
     for (auto op : operands) {
+      auto typed_attr = op.cast<TypedAttr>();
       const int64_t dim_size =
-          op.getType().cast<RankedTensorType>().getDimSize(axis);
+          typed_attr.getType().cast<RankedTensorType>().getDimSize(axis);
       const int64_t inner_size = dim_size * base_inner_size;
 
       auto input_attrs = op.cast<DenseElementsAttr>().getValues<Attribute>();
@@ -910,15 +924,10 @@ OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
 // CustomOp
 //===----------------------------------------------------------------------===//
 
+// TODO(b/241745316): Confirm that this is always valid
 mlir::LogicalResult CustomOp::verify() {
-  CustomOp op = *this;
-  ConstBytesAttr const_bytes_attr = op.custom_option().cast<ConstBytesAttr>();
-  const int attribute_size = const_bytes_attr.getValue().size();
-  if (const_bytes_attr.getType().isa<ShapedType>() &&
-      attribute_size !=
-          const_bytes_attr.getType().cast<ShapedType>().getDimSize(0))
-    return op.emitOpError(
-        "custom_option should have the same length of content with shape.");
+  // Currently, this is always valid as it is a wrapper around a StringRef of 0
+  // or more characters.
   return success();
 }
 
@@ -4011,7 +4020,8 @@ Operation *TFLDialect::materializeConstant(OpBuilder &builder, Attribute value,
   // If this is a constant bytes attribute or the result type doesn't match the
   // attribute type, then generate a tfl.pseudo_const.
   if (value.isa<ConstBytesAttr>() ||
-      (value.isa<ElementsAttr>() && value.getType() != type))
+      (value.isa<ElementsAttr>() &&
+       value.cast<ElementsAttr>().getType() != type))
     return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
   if (arith::ConstantOp::isBuildableWith(value, type))
     return builder.create<arith::ConstantOp>(loc, type, value);

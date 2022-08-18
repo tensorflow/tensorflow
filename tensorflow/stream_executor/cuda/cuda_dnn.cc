@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -234,10 +236,10 @@ class CudnnAccess {
 
   // If set, indicates the stream currently active on handle_, to avoid the
   // overhead of re-setting the same stream unnecessarily.
-  std::optional<CUstream> current_stream_ TF_GUARDED_BY(mutex_);
+  std::optional<CUstream> current_stream_ ABSL_GUARDED_BY(mutex_);
 
   // cuDNN library handle.
-  cudnnHandle_t handle_ TF_GUARDED_BY(mutex_);  // Owned.
+  cudnnHandle_t handle_ ABSL_GUARDED_BY(mutex_);  // Owned.
 };
 
 namespace {
@@ -729,6 +731,7 @@ class CudnnFilterDescriptor {
 // We skip a non-existing eng999 in the static filter as a placeholder.
 // Additionally, users can specify an additional errata JSON file via
 // CUDNN_ERRATA_JSON_FILE at runtime.
+// We are also excluding two flavors of ConvFwd_eng42 due to b/234183340.
 const json* CudnnExecutionPlanEngineFilterStatic() {
   static absl::string_view filter_str = R"({
       "version" : 1,
@@ -737,6 +740,34 @@ const json* CudnnExecutionPlanEngineFilterStatic() {
             "operation"           : "ConvFwd",
             "engine"              : 999,
             "knob"                : [],
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvFwd_eng42_k2=2_k4=3_k5=0_k6=0_k7=0",
+            "operation"           : "ConvFwd",
+            "engine"              : 42,
+            "knob"                :
+            {
+                                    "k2" : "2",
+                                    "k4" : "3",
+                                    "k5" : "0",
+                                    "k6" : "0",
+                                    "k7" : "0"
+            },
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvFwd_eng42_k2=1_k4=3_k5=1_k6=0_k7=0",
+            "operation"           : "ConvFwd",
+            "engine"              : 42,
+            "knob"                :
+            {
+                                    "k2" : "1",
+                                    "k4" : "3",
+                                    "k5" : "1",
+                                    "k6" : "0",
+                                    "k7" : "0"
+            },
             "cudnn_version_start" : 8000,
             "cudnn_version_end"   : -1
           }

@@ -2538,3 +2538,37 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     func.return %arg0: tensor<i32>
   }
 }
+
+// -----
+
+// The following xla.OpSharding is used:
+// Proto debug string:
+//   type : TUPLE
+//   tuple_shardings: {
+//     type: OTHER
+//     tile_assignment_dimensions: [ 2, 1 ]
+//     tile_assignment_devices   : [ 0, 1 ]
+//   }
+//   tuple_shardings: {
+//     type: OTHER
+//     tile_assignment_dimensions: [ 2, 1 ]
+//     tile_assignment_devices   : [ 0, 1 ]
+//   }
+// Serialized string:
+//   "\08\02*\0A\08\03\1A\02\02\01\22\02\00\01*\0A\08\03\1A\02\02\01\22\02\00\01"
+
+// Test that an attempt to map an invalid cluster output index to core program
+// index is caught. The output has sharding type TUPLE, which causes the
+// cluster output index to be invalid for core 0.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
+  func.func @cluster_to_core_index_check() -> tensor<128xf32> {
+    // expected-error@+1 {{Attempted to map cluster_func output index 0 to program assigned to core 0}}
+    %0 = "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], input_sharding_configuration = [], output_sharding_configuration = ["\08\02*\0A\08\03\1A\02\02\01\22\02\00\01*\0A\08\03\1A\02\02\01\22\02\00\01"], use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> tensor<128xf32>
+    func.return %0 : tensor<128xf32>
+  }
+  func.func @_func() -> tensor<128xf32> {
+    %0 = "tf.Const"() {value = dense<0.0> : tensor<128xf32>} : () -> tensor<128xf32>
+    func.return %0 : tensor<128xf32>
+  }
+}

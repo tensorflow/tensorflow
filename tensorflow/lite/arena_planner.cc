@@ -45,7 +45,10 @@ ArenaPlanner::ArenaPlanner(TfLiteContext* context,
       preserve_all_tensors_(preserve_all_tensors),
       tensor_alignment_(tensor_alignment) {}
 
-ArenaPlanner::~ArenaPlanner() {}
+ArenaPlanner::~ArenaPlanner() {
+  arena_.ReleaseBuffer();
+  persistent_arena_.ReleaseBuffer();
+}
 
 std::intptr_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
   if (type == kTfLiteArenaRwPersistent) {

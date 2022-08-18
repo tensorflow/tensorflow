@@ -717,6 +717,9 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
         HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
     TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
+  fusion_instruction->set_called_computations_execution_thread(
+      computation->execution_thread(),
+      /*skip_async_execution_thread_overwrite=*/false);
   return fusion_instruction;
 }
 

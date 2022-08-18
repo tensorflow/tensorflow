@@ -325,6 +325,16 @@ class Array {
     }
   }
 
+  // Fills the array with random uniform variables that's either True or False.
+  // Defined for boolean type.
+  void FillRandomBool(int seed = 12345) {
+    std::mt19937 g(seed);
+    std::uniform_int_distribution<int32_t> distribution(0, 1);
+    for (int64_t i = 0; i < num_elements(); ++i) {
+      values_[i] = static_cast<bool>(distribution(g));
+    }
+  }
+
   // Sets all the values in the array to values specified in the container.
   template <typename Container = std::initializer_list<T>>
   void SetValues(const Container& container) {

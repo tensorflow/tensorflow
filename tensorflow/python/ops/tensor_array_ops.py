@@ -955,11 +955,18 @@ class _EagerTensorArray:
 # pylint:disable=line-too-long
 @tf_export("TensorArray")
 class TensorArray:
-  """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
+  """Class wrapping dynamic-sized, per-time-step, Tensor arrays.
 
   This class is meant to be used with dynamic iteration primitives such as
   `while_loop` and `map_fn`.  It supports gradient back-propagation via special
   "flow" control flow dependencies.
+
+  Note that although the array can be read multiple times and positions can be
+  overwritten, behavior may be undefined when storing multiple references to
+  the same array and clear_after_read is False. In particular, avoid using
+  methods like concat() to convert an intermediate TensorArray to a Tensor,
+  then further modifying the TensorArray, particularly if you need to backprop
+  through it later.
 
   Example 1: Plain reading and writing.
 

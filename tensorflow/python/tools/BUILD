@@ -511,9 +511,10 @@ tf_cc_test(
         ":aot_compiled_x_matmul_y_small",
         ":aot_compiled_x_plus_y",
         # LINT.ThenChange(//tensorflow/tools/pip_package/xla_build/pip_test/run_xla_aot_test.sh)
+        "//tensorflow/compiler/xla/service/cpu:runtime_matmul_acl",
         "//tensorflow/core:test",
-        "//third_party/eigen3",
         "//tensorflow/core/platform:logging",
+        "//third_party/eigen3",
     ]),
 )
 

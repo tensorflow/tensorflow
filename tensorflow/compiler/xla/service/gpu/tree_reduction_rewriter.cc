@@ -14,28 +14,26 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
 
+#include <array>
+#include <cmath>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -150,8 +148,11 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
         Shape padded_shape =
             ShapeUtil::MakeShape(in->shape().element_type(), padded_dimensions);
         VLOG(3) << "Generated padded shape: " << padded_shape.ToString();
-        out.push_back(hlo->parent()->AddInstruction(HloInstruction::CreatePad(
-            padded_shape, in, reduce->init_values()[i], padding_config)));
+        HloInstruction *pad =
+            hlo->parent()->AddInstruction(HloInstruction::CreatePad(
+                padded_shape, in, reduce->init_values()[i], padding_config));
+        pad->set_metadata(in->metadata());
+        out.push_back(pad);
       }
       return out;
     }();
@@ -198,6 +199,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
           ShapeUtil::MakeShape(p->shape().element_type(), reshaped_dimensions);
       HloInstruction *reshaped_padded_input = hlo->parent()->AddInstruction(
           HloInstruction::CreateBitcast(reshaped_shape, p));
+      reshaped_padded_input->set_metadata(p->metadata());
       VLOG(2) << "Generated reshape: " << reshaped_padded_input->ToString();
       reshaped_padded_inputs.push_back(reshaped_padded_input);
       Shape inner_reduce_shape = ShapeUtil::MakeShape(p->shape().element_type(),
@@ -210,6 +212,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
             ShapeUtil::MakeMaybeTupleShape(inner_reduce_shapes),
             reshaped_padded_inputs, reduce->init_values(), dims_to_reduce,
             hlo->to_apply()));
+    inner_reduce->set_metadata(reduce->metadata());
     VLOG(1) << "Generated inner reduction: " << inner_reduce->ToString();
     absl::InlinedVector<int64_t, 3> outer_reduce_dimensions =
         inner_reduce_dimensions;

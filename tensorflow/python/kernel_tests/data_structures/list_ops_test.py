@@ -95,9 +95,9 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.evaluate(l)
 
   def testTensorListReserveWithNonScalarNumElements(self):
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        r"The num_elements to reserve must be a tensor size 1, but got \[2\]"):
+    # list_kernels.cc in tf/core/kernels raises InvalidArgumentError, and
+    # tf_ops_n_z.cc in tf/compiler/mlir/tf/ir raises UnknownError.
+    with self.assertRaises((errors.InvalidArgumentError, errors.UnknownError)):
       l = list_ops.tensor_list_reserve(
           element_dtype=dtypes.float32,
           element_shape=[2, 3],

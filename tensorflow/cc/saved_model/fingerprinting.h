@@ -37,8 +37,10 @@ uint64 RegularizeAndHashSignatureDefs(
 uint64 RegularizeAndHashSavedObjectGraph(
     const SavedObjectGraph& object_graph_def);
 
-// Creates a FingerprintDef proto from a MetaGraph.
-FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph);
+// Creates a FingerprintDef proto from a MetaGraph and the checkpoint meta file
+// (.index) in `export_dir`.
+FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
+                                    absl::string_view export_dir);
 
 // Canonicalizes the GraphDef in order to remove sources of non-determinism.
 void CanonicalizeGraphDef(GraphDef& graph_def);

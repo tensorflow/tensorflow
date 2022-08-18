@@ -696,6 +696,8 @@ cc_library(
 cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["//tensorflow/tsl/platform:stack_frame"],
 )
 
 cc_library(
@@ -716,6 +718,7 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -745,7 +748,6 @@ cc_library(
         ":macros",
         ":status",
         "//tensorflow/core/lib/core:errors",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",

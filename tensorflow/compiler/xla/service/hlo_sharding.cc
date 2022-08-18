@@ -16,9 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
 #include <algorithm>
+#include <iterator>
+#include <map>
 #include <numeric>
+#include <optional>
+#include <ostream>
+#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -30,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 

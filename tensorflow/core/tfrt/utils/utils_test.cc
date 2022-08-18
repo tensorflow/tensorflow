@@ -109,7 +109,7 @@ TEST(UtilsTest, ReturnIfErrorInCompile) {
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(status.error_message().c_str(),
                "TF dialect -> TFRT dialect, compiler issue, please contact "
-               "MLIR team: msg");
+               "the TFRT team: msg");
   EXPECT_EQ(status.GetPayload("a"), "b");
 }
 
@@ -148,7 +148,7 @@ TEST(UtilsTest, AssignOrReturnInCompile) {
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(status.error_message().c_str(),
                "TF dialect -> TFRT dialect, compiler issue, please contact "
-               "MLIR team: msg");
+               "the TFRT team: msg");
   EXPECT_EQ(status.GetPayload("a"), "b");
 }
 

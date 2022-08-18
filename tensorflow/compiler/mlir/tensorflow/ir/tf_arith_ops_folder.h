@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_ARITH_OPS_FOLDER_H_
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -71,13 +72,13 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
     bool scalar_identity = identity_ty.hasRank() && identity_ty.getRank() == 0;
     if (scalar_identity) return operand_ty == result_ty;
 
-    // If identity is not a scalar, we must verify that all shapes are equal
-    // and statically known.
-    //
-    // TODO(ezhulenev): Fold if identity shape is statically know to be
-    // broadcastable to the operand shape.
-    return operand_ty == result_ty && identity_ty == result_ty &&
-           result_ty.hasStaticShape();
+    // If identity is not a scalar, we must verify that identity shape is
+    // statically known to be broadcastable to the operand shape and the operand
+    // and result shape are equal.
+    return operand_ty == result_ty && identity_ty.hasStaticShape() &&
+           result_ty.hasStaticShape() &&
+           OpTrait::util::staticallyKnownBroadcastable(operand_ty.getShape(),
+                                                       identity_ty.getShape());
   };
 
   // Check that we have a constant operand on one side (candidate for identity).

@@ -45,6 +45,17 @@ PJRT_ErrorDeleter MakeErrorDeleter(const PJRT_Api* api) {
   };
 }
 
+PJRT_BufferDeleter MakeBufferDeleter(const PJRT_Api* api) {
+  return [api](PJRT_Buffer* buffer) -> void {
+    PJRT_Buffer_Destroy_Args destroy_args;
+    destroy_args.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
+    destroy_args.priv = nullptr;
+    destroy_args.buffer = buffer;
+
+    pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_Destroy(&destroy_args), api);
+  };
+}
+
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   xla::Status status;
   if (error != nullptr) {

@@ -606,18 +606,18 @@ TEST_F(GemmRewriteTest, BF16GemmCodeGen) {
 HloModule bf16codegendgemm
 
 ENTRY bf16gemm {
-  %parameter.1 = bf16[2]{0} parameter(0)
-  %parameter.2 = bf16[2]{0} parameter(1)
-  ROOT %dot.3 = bf16[] dot(bf16[2]{0} %parameter.1, bf16[2]{0} %parameter.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}, operand_precision={highest,highest}
+  %parameter.1 = bf16[3]{0} parameter(0)
+  %parameter.2 = bf16[3]{0} parameter(1)
+  ROOT %dot.3 = bf16[] dot(bf16[3]{0} %parameter.1, bf16[3]{0} %parameter.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}, operand_precision={highest,highest}
 }
   )";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK:  [[P1:%[^ ]+]] = bf16[2]{0} parameter(1)
-; CHECK:  [[INSTR_1:%[^ ]+]] = f32[2]{0} convert([[P1]])
-; CHECK:  [[P0:%[^ ]+]] = bf16[2]{0} parameter(0)
-; CHECK:  [[INSTR_3:%[^ ]+]] = f32[2]{0} convert([[P0]])
-; CHECK:  [[INSTR_4:%[^ ]+]] = f32[2]{0} multiply([[INSTR_1]], [[INSTR_3]])
+; CHECK:  [[P1:%[^ ]+]] = bf16[3]{0} parameter(1)
+; CHECK:  [[INSTR_1:%[^ ]+]] = f32[3]{0} convert([[P1]])
+; CHECK:  [[P0:%[^ ]+]] = bf16[3]{0} parameter(0)
+; CHECK:  [[INSTR_3:%[^ ]+]] = f32[3]{0} convert([[P0]])
+; CHECK:  [[INSTR_4:%[^ ]+]] = f32[3]{0} multiply([[INSTR_1]], [[INSTR_3]])
 ; CHECK:  [[INSTR_5:%[^ ]+]] = f32[] constant(0)
 ; CHECK:  [[INSTR_6:%[^ ]+]] = f32[] reduce([[INSTR_4]], [[INSTR_5]]), dimensions={0}, to_apply=[[INSTR_7:%[^ ]+]]
 ; CHECK:  ROOT [[INSTR_8:%[^ ]+]] = bf16[] convert([[INSTR_6]])

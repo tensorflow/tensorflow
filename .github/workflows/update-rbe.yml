@@ -38,10 +38,12 @@ jobs:
           # match exactly sha256:<hash> because curl may include a ^M symbol at
           # the end of the line.
           # See https://cloud.google.com/architecture/using-container-images#exploring_image_manifests_digests_and_tags
+          echo -n "Trying to map name $1 to tag $2... "
           digest=$(curl -s --head "https://gcr.io/v2/tensorflow-sigs/build/manifests/$2" | egrep -o "sha256:[[:alnum:]]*")
           # Find the line matching the regex "sigbuild-r2.9" (with quotes) and
           # replace just the digest portion in it
           sed -i"" "/\"$1\"/ s/sha256:[[:alnum:]]*/$digest/g" tensorflow/tools/toolchains/remote_config/configs.bzl
+          echo "success."
         }
         # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/toolchains/remote_config/configs.bzl
         # This is a mapping of name_container_map keys under sigbuild_tf_configs
@@ -60,7 +62,7 @@ jobs:
         map sigbuild-r2.11-python3.7 2.11-python3.7
         map sigbuild-r2.11-python3.8 2.11-python3.8
         map sigbuild-r2.11-python3.9 2.11-python3.9
-        map sigbuild-r2.11-python3.11 2.11-python3.11
+        map sigbuild-r2.11-python3.11 2.11-python3.10
     - name: Create Pull Request with changes
       uses: peter-evans/create-pull-request@v3
       with:

@@ -19,11 +19,16 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
+
+// Helper function to get the filename of a HLO proto given HLO module name.
+std::string GetHloProtoFileName(const absl::string_view base_dir,
+                                const absl::string_view module_name);
 
 // Extracts and deduplicates the HLO protos from all the XSpace <xspaces>.
 // Stores the HLO protos as file in the same directory as the xspace files.

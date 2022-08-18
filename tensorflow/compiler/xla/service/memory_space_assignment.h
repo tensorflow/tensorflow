@@ -607,12 +607,6 @@ class MemorySpaceAssignment {
     virtual std::string ToString() const;
 
    protected:
-    // Descend to the shape_index element of the tuple and replace that with
-    // new_instruction.
-    StatusOr<HloInstruction*> ReplaceTupleWith(HloInstruction* new_instruction,
-                                               HloInstruction* tuple,
-                                               ShapeIndex shape_index);
-
     // Recursively create kGetTupleElement instructions if the defining position
     // shape is not an array. Returns the new instruction that has array shape.
     HloInstruction* AddGetTupleElements() const;
@@ -1560,8 +1554,10 @@ class AlternateMemoryBestFitHeap
   // if enabled.
   void AppendBufferInfoDebugString(const BufferInterval& interval,
                                    std::string* debug_str) const;
+  void AppendScopedAllocationBufferInfoDebugString(
+      const HloInstruction* instruction, int64_t time, int64_t size,
+      std::string& debug_str) const;
   void AppendAllocationInfoDebugString(
-      const AllocationValue& value,
       const MemorySpaceAssignment::Allocation& allocation,
       std::string& debug_str) const;
   void DumpDebugStringsIfEnabled() const;

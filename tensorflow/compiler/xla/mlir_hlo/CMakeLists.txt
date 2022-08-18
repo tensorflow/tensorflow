@@ -95,7 +95,6 @@ if(MHLO_EXTERNAL_PROJECT_BUILD)
   set(MLIR_MAIN_SRC_DIR ${LLVM_MAIN_SRC_DIR}/../mlir ) # --src-root
   set(MLIR_INCLUDE_DIR ${MLIR_MAIN_SRC_DIR}/include ) # --includedir
   set(MLIR_GENERATED_INCLUDE_DIR ${LLVM_BINARY_DIR}/tools/mlir/include)
-  set(MLIR_TABLEGEN_EXE $<TARGET_FILE:mlir-tblgen>)
   set(MLIR_PDLL_TABLEGEN_EXE $<TARGET_FILE:mlir-pdll>)
   include_directories(SYSTEM ${MLIR_INCLUDE_DIR})
   include_directories(SYSTEM ${MLIR_GENERATED_INCLUDE_DIR})

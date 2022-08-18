@@ -109,7 +109,8 @@ void AddTraceMe(bool is_allocating, TfLiteTensor* tensor,
 
 }  // namespace
 
-void OnTfLiteOpPrepare(const char* op_name, const int node_index) {
+void OnTfLiteOpPrepare(const char* op_name, int subgraph_index,
+                       int node_index) {
   snprintf(g_current_op_name, sizeof(g_current_op_name), "%sPrepare_%d",
            op_name, node_index);
   // Updates TF's current annotation object by creating scoped annotation obj.
@@ -117,12 +118,46 @@ void OnTfLiteOpPrepare(const char* op_name, const int node_index) {
       g_current_op_name);
 }
 
-void OnTfLiteOpInvoke(const char* op_name, const int node_index) {
+tensorflow::profiler::TraceMe* OnTfLiteSubgraphInvoke(const char* name,
+                                                      int index) {
+  tensorflow::profiler::TraceMe* trace_me =
+      new tensorflow::profiler::TraceMe([name, index]() {
+        char eventName[256];
+        snprintf(eventName, sizeof(eventName), "Subgraph%d", index);
+        return tensorflow::profiler::TraceMeEncode(
+            eventName, {{"subgraph_name", name}, {"subgraph_index", index}});
+      });
+  return trace_me;
+}
+
+void OnTfLiteSubgraphInvokeEnd(tensorflow::profiler::TraceMe* trace_me) {
+  delete trace_me;
+}
+
+tensorflow::profiler::TraceMe* OnTfLiteOpInvoke(const char* op_name,
+                                                int subgraph_index,
+                                                int node_index) {
   snprintf(g_current_op_name, sizeof(g_current_op_name), "%s_%d", op_name,
            node_index);
   // Updates TF's current annotation object by creating scoped annotation obj.
   tensorflow::profiler::ScopedMemoryDebugAnnotation annotation(
       g_current_op_name);
+
+  tensorflow::profiler::TraceMe* trace_me = new tensorflow::profiler::TraceMe(
+      [op_name, subgraph_index, node_index]() {
+        char eventName[256];
+        // TF ops should have "<detail>:<op_name>" format.
+        snprintf(eventName, sizeof(eventName), "%s:%s", op_name, op_name);
+        return tensorflow::profiler::TraceMeEncode(
+            eventName, {{"is_eager", 0},
+                        {"subgraph_index", subgraph_index},
+                        {"node_index", node_index}});
+      });
+  return trace_me;
+}
+
+void OnTfLiteOpInvokeEnd(tensorflow::profiler::TraceMe* trace_me) {
+  delete trace_me;
 }
 
 void OnTfLiteTensorAlloc(TfLiteTensor* tensor, size_t num_bytes) {

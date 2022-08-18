@@ -17,7 +17,6 @@ import collections
 import functools
 import itertools
 
-import six
 import wrapt
 
 from tensorflow.python.data.util import nest
@@ -461,7 +460,7 @@ def type_spec_from_value(element, use_fallback=True):
   if isinstance(element, tuple):
     if hasattr(element, "_fields") and isinstance(
         element._fields, collections_abc.Sequence) and all(
-            isinstance(f, six.string_types) for f in element._fields):
+            isinstance(f, str) for f in element._fields):
       if isinstance(element, wrapt.ObjectProxy):
         element_type = type(element.__wrapped__)
       else:

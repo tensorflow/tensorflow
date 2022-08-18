@@ -401,7 +401,7 @@ void WhileOp::getSuccessorRegions(Optional<unsigned> index,
                                   SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the WhileOp or the body region, branch into the
   // cond region.
-  if (!index.has_value() || index.getValue() == 1) {
+  if (!index.has_value() || index.value() == 1) {
     regions.push_back(RegionSuccessor(&getCond(), getCond().getArguments()));
     return;
   }
@@ -441,7 +441,7 @@ void FusionOp::getSuccessorRegions(Optional<unsigned> index,
                                    SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the fusion region, jump back to the parent op.
   if (index.has_value()) {
-    assert(index.getValue() == 0 && "expected fusion region");
+    assert(index.value() == 0 && "expected fusion region");
     regions.push_back(RegionSuccessor());
   } else {
     // If the predecessor is the FusionOp, branch into the region.

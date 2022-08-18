@@ -112,6 +112,10 @@ struct OpQuantSpec {
   // from the tensor content and op property. A "-1" value indicates the
   // operand doesn't support per-channel quantization.
   llvm::DenseMap<int, int> coeff_op_quant_dim;
+
+  // Indices of quantizable operands. Biases are not included in this field,
+  // the indices of biases can be found in the `biases_params`.
+  absl::flat_hash_set<int> quantizable_operands;
 };
 
 // Quantization scale spec of an op. The information defined in the MLIR

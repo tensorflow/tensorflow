@@ -57,11 +57,11 @@ class SimpleDevice : public tensorflow::DeviceBase {
 
 // Attempts to evaluates an MLIR Operation with the op registered kernel. The op
 // is always executed on the local host CPU irrespective of the device attribute
-// of the given op. The results will be filled in the results vecotr.
+// of the given op. The results will be filled in the results vector.
 LogicalResult EvaluateOperation(tensorflow::DeviceBase* cpu_device,
                                 tensorflow::ResourceMgr* resource_mgr, TFOp op,
                                 ArrayRef<ElementsAttr> operands,
-                                SmallVectorImpl<Attribute>& results);
+                                SmallVectorImpl<TypedAttr>& results);
 }  // namespace util
 }  // namespace tfg
 }  // namespace mlir

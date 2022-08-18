@@ -416,15 +416,27 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
 @tf_export("experimental.dtensor.client_id", v1=[])
 def client_id() -> int:
   """Returns this client's ID."""
-  # If missing, likely in unit tests and local runs, 0 is a good default.
-  return int(os.environ.get(_DT_CLIENT_ID, "0"))
+  # If missing, assume running with a single client with client_id of 0.
+  client_id_value = int(os.environ.get(_DT_CLIENT_ID, "0"))
+  if client_id_value < 0:
+    raise ValueError(f"Environment variable {_DT_CLIENT_ID} "
+                     f"must be >= 0, got {client_id_value}. ")
+  if client_id_value >= num_clients():
+    raise ValueError(f"Environment variable {_DT_CLIENT_ID} "
+                     f"must be < {num_clients()}, got {client_id_value}")
+  return client_id_value
 
 
 @tf_export("experimental.dtensor.num_clients", v1=[])
 def num_clients() -> int:
   """Returns the number of clients in this DTensor cluster."""
-  # If missing, likely in unit tests and local runs, 1 is a good default.
-  return int(os.environ.get(_DT_NUM_CLIENTS, "1"))
+  # If missing, assume running with a single client with num_clients of 1.
+  num_clients_value = int(os.environ.get(_DT_NUM_CLIENTS, "1"))
+  if num_clients_value <= 0:
+    raise ValueError(f"Environment variable {_DT_NUM_CLIENTS} "
+                     f"must be > 0, got {num_clients_value}.")
+
+  return num_clients_value
 
 
 @tf_export("experimental.dtensor.local_devices", v1=[])
@@ -476,8 +488,10 @@ def num_global_devices(device_type: str) -> int:
 @tf_export("experimental.dtensor.job_name", v1=[])
 def job_name() -> str:
   """Returns the job name used by all clients in this DTensor cluster."""
-  # If missing, the program is likely running locally or in a unit test.
-  return os.environ.get(_DT_JOB_NAME, "localhost")
+  # If missing, assumes the program runs locally and use localhost as job name
+  # per TensorFlow convention.
+  return os.environ.get(_DT_JOB_NAME,
+                        "localhost" if num_clients() == 1 else "worker")
 
 
 @tf_export("experimental.dtensor.full_job_name", v1=[])

@@ -855,7 +855,7 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
   let hasCanonicalizer = 1;
 
   let builders = [
-    OpBuilder<(ins "Attribute":$value),
+    OpBuilder<(ins "TypedAttr":$value),
     [{
       $_state.addAttribute("value", value);
       $_state.addTypes(value.getType());
@@ -886,7 +886,7 @@ def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [
   let results = (outs AnyTensor:$output);
 
   let builders = [
-    OpBuilder<(ins "Attribute":$value, "SparsityParameterAttr":$s_param,
+    OpBuilder<(ins "TypedAttr":$value, "SparsityParameterAttr":$s_param,
       "Attribute":$compressed_data),
     [{
       $_state.addTypes(value.getType());
@@ -2463,11 +2463,11 @@ def TFL_MulOp : TFL_Op<"mul", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$lhs,
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$rhs,
+    ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16, Complex<F<32>>]>:$lhs,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16, Complex<F<32>>]>:$rhs,
     TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16, Complex<F<32>>]>:$output);
 
   let hasFolder = 1;
 
@@ -4865,6 +4865,31 @@ def TFL_UnsortedSegmentMaxOp: TFL_Op<"unsorted_segment_max", [
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 }
 
+def TFL_UnsortedSegmentMinOp: TFL_Op<"unsorted_segment_min", [
+    NoSideEffect, PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+
+  let summary = "UnsortedSegmentMin operator";
+
+  let description = [{
+    Computes the minimum value along segments of a tensor such that
+    output[i] = min(data[j....]) where segment_ids[j...] = i
+    if the minimum is empty for a given segment ID i,
+    it outputs the largest possible value for the specific numeric type,
+    output[i] = numeric_limits::max().
+    Note the values of segment_ids are always validated to be less than
+    num_segments and an error is thrown for out-of-bound indices.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, I32]>:$input,
+    TFL_I32Tensor:$segment_ids,
+    TFL_I32Tensor:$num_segments
+  );
+
+  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+}
+
 def TFL_UnsortedSegmentSumOp: TFL_Op<"unsorted_segment_sum", [
     NoSideEffect, PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
@@ -4888,6 +4913,27 @@ def TFL_UnsortedSegmentSumOp: TFL_Op<"unsorted_segment_sum", [
   );
 
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+}
+
+def TFL_Atan2Op: TFL_Op<"atan2", [
+  NoSideEffect,
+  SameOperandsAndResultShape,
+  SameOperandsAndResultElementType]> {
+
+  let summary = "Atan2 operation";
+  let description = [{
+    The "atan2" operation computes the arctangent of y/x element-wise, 
+    respecting signs of the arguments.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, F64]>:$y,
+    TFL_TensorOf<[F32, F64]>:$x
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, F64]>:$output
+  );
 }
 
 def TFL_YieldOp : Op<TFL_Dialect, "yield",

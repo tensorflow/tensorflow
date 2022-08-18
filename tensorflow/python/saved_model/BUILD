@@ -624,7 +624,6 @@ py_strict_library(
         "//tensorflow/python/ops/ragged:row_partition",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
@@ -645,7 +644,6 @@ py_strict_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 

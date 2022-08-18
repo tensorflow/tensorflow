@@ -31,6 +31,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_query_of_death.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
+#include "tensorflow/compiler/xla/runtime/arguments.h"
+#include "tensorflow/compiler/xla/runtime/async_runtime.h"
+#include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/runtime/types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -38,10 +44,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tfrt/jitrt/async_runtime.h"  // from @tf_runtime
-#include "tfrt/jitrt/async_runtime_api.h"  // from @tf_runtime
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
+#include "tfrt/jitrt/results.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
@@ -100,22 +104,22 @@ using ::tfrt::StrCat;
 using ::tfrt::StringAttribute;
 using ::tfrt::TaskFunction;
 
-using ::tfrt::jitrt::ArgumentsRef;
-using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
-using ::tfrt::jitrt::EigenThreadPoolAsyncTaskRunner;
-using ::tfrt::jitrt::Executable;
-using ::tfrt::jitrt::JitExecutable;
-using ::tfrt::jitrt::JitExecutableCache;
-using ::tfrt::jitrt::MemrefDesc;
-using ::tfrt::jitrt::OperandConstraint;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnErrors;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConversion;
-using ::tfrt::jitrt::SpecializationListener;
 using ::tfrt::jitrt::StaticRemainingResultsConverter;
+
+using ::xla::runtime::ArgumentConstraint;
+using ::xla::runtime::ArgumentsRef;
+using ::xla::runtime::AsyncValuesCache;
+using ::xla::runtime::EigenThreadPoolAsyncTaskRunner;
+using ::xla::runtime::Executable;
+using ::xla::runtime::JitExecutable;
+using ::xla::runtime::MemrefDesc;
+using ::xla::runtime::SpecializationListener;
 
 using ::tensorflow::profiler::TraceMe;
 using ::tensorflow::profiler::TraceMeEncode;
@@ -125,6 +129,8 @@ using ::tensorflow::thread::ThreadPool;
 
 template <typename T>
 using KernelArgument = ::tfrt::Argument<T>;
+
+using JitExecutableCache = AsyncValuesCache<size_t, JitExecutable>;
 
 // -------------------------------------------------------------------------- //
 // Dedicated thread pool for running compilation tasks.
@@ -334,7 +340,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // Custom runner for compiling specializations that schedules compilation task
   // into the dedicated thread pool and adds tracing.
   auto runner = [kernel_info](size_t specialization,
-                              ArrayRef<OperandConstraint> constraints,
+                              ArrayRef<ArgumentConstraint> constraints,
                               ArgumentsRef arguments, TaskFunction compile,
                               JitExecutable::UserData user_data) {
     assert(arguments.size() == constraints.size());
@@ -356,7 +362,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Trace content of all operands that require value specializations.
     for (size_t i = 0; i < constraints.size(); ++i) {
-      if (constraints[i] != OperandConstraint::kValue) continue;
+      if (constraints[i] != ArgumentConstraint::kValue) continue;
       args.emplace_back(StrCat("%arg", i, " value"),
                         AsTensorContent(cast<MemrefDesc>(arguments[i])));
     }
@@ -434,19 +440,19 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
         GetJitRtFlags().cost_driven_async_parallel_for;
 
     // Options for the JitRt JitExecutable compilation.
-    CompilationOptions opts;
+    JitExecutable::Options opts;
     opts.specialization = GetJitRtFlags().always_specialize
-                              ? CompilationOptions::Specialization::kAlways
-                              : CompilationOptions::Specialization::kEnabled;
+                              ? JitExecutable::Specialization::kAlways
+                              : JitExecutable::Specialization::kEnabled;
 
     // Register dialects and interfaces required for the compilation pipeline.
-    opts.register_dialects = [](mlir::DialectRegistry& registry) {
+    opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
       mlir::RegisterAllTensorFlowDialects(registry);
       RegisterDefaultJitRtDialects(registry);
     };
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
-    opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
+    opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
       if (GetJitRtFlags().enable_crash_reproducer)
         SetCrashReproducer(pm, kCrashReproducerStdErr);
 
@@ -466,7 +472,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     };
 
     // Register a custom pipeline to propagate specialization information.
-    opts.create_specialization_pipeline = [=](mlir::PassManager& pm) {
+    opts.compiler.create_specialization_pipeline = [=](mlir::PassManager& pm) {
       if (GetJitRtFlags().enable_crash_reproducer)
         SetCrashReproducer(pm, kCrashReproducerStdErr);
       CreateJitRtSpecializationPipeline(pm);
@@ -474,7 +480,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.
-    opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+    opts.compiler.calling_convention = xla::runtime::DefaultCallingConvention(
         mlir::bufferization::BufferizeTypeConverter());
 
     // Instantiate new JitExecutable from the MLIR source.
@@ -681,7 +687,6 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
 
   Executable::ExecuteOpts opts;
   opts.async_task_runner = &async_task_runner;
-  opts.kernel_context = &ctx;
 
   // Execution error automatically forwarded to all results, we only need to
   // notify the HostContext to emit the diagnostics for the kernel invocation.

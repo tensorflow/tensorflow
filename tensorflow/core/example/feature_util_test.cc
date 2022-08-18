@@ -380,6 +380,37 @@ TEST(AppendFeatureValuesTest, StringVariablesUsingInitializerList) {
   EXPECT_EQ("BAZ", tag_ro.Get(2));
 }
 
+TEST(AppendFeatureValuesTest, StringViewVariablesUsingInitializerList) {
+  Example example;
+
+  AppendFeatureValues({absl::string_view("FOO"), absl::string_view("BAR"),
+                       absl::string_view("BAZ")},
+                      "tag", &example);
+
+  auto tag_ro = GetFeatureValues<std::string>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_EQ("FOO", tag_ro.Get(0));
+  EXPECT_EQ("BAR", tag_ro.Get(1));
+  EXPECT_EQ("BAZ", tag_ro.Get(2));
+}
+
+TEST(AppendFeatureValuesTest, StringViewVariablesUsingIterators) {
+  Example example;
+
+  std::vector<absl::string_view> strings;
+  strings.push_back("FOO");
+  strings.push_back("BAR");
+  strings.push_back("BAZ");
+
+  AppendFeatureValues(strings.begin(), strings.end(), "tag", &example);
+
+  auto tag_ro = GetFeatureValues<std::string>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_EQ("FOO", tag_ro.Get(0));
+  EXPECT_EQ("BAR", tag_ro.Get(1));
+  EXPECT_EQ("BAZ", tag_ro.Get(2));
+}
+
 TEST(GetFeatureTest, WritesAVectorToFeature) {
   Example example;
 
