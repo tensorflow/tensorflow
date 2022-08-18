@@ -21,6 +21,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -81,8 +82,6 @@ void PJRT_Error_Message(PJRT_Error_Message_Args* args) {
     args->message_size = status->error_message().size();
   }
 }
-
-PJRT_Error_Code StatusCodeToPjrtErrorCode(tensorflow::error::Code code);
 
 PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
