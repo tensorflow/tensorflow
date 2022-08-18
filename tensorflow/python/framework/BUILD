@@ -968,6 +968,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":composite_tensor",
+        ":composite_tensor_gradient",
         ":dtypes",
         ":tensor_conversion_registry",
         ":tensor_shape",
@@ -1208,10 +1209,6 @@ py_library(
     srcs = ["composite_tensor_gradient.py"],
     deps = [
         ":composite_tensor",
-        ":for_generated_wrappers",
-        ":indexed_slices",
-        "//tensorflow/python/eager:backprop_util",
-        "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
 )
