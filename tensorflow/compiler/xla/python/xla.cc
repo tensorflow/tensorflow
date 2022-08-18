@@ -399,6 +399,9 @@ PYBIND11_MODULE(xla_extension, m) {
                              });
   py::class_<PyToken> token(m, "Token");
   token.def("block_until_ready", &PyToken::Await);
+  py::class_<PyShardedToken> sharded_token(m, "ShardedToken");
+  sharded_token.def("block_until_ready", &PyShardedToken::Await);
+  sharded_token.def("get_token", &PyShardedToken::GetPyToken);
 
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
         py::arg("buffer"), py::arg("take_ownership") = true);
