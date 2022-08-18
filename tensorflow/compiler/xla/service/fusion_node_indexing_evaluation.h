@@ -24,10 +24,8 @@ limitations under the License.
 namespace xla {
 class FusionNodeIndexingEvaluation {
  public:
-  explicit FusionNodeIndexingEvaluation(
-      const HloInstruction* fusion, int64_t root_usage_count = 1,
-      const absl::flat_hash_set<const HloInstruction*>*
-          other_fusion_instructions = nullptr);
+  explicit FusionNodeIndexingEvaluation(const HloInstruction* fusion,
+                                        int64_t root_usage_count = 1);
 
   // Evaluate the number of times 'producer' would be emitted if it is fused
   // into 'fusion_'. If the duplication is "too high" (some arbitrary chosen
@@ -60,14 +58,6 @@ class FusionNodeIndexingEvaluation {
   absl::flat_hash_set<const HloInstruction*> RemoveFusionOperand(
       HloInstruction* fusion_operand);
 
-  // All instructions which would appear in a potential fusion. Normally
-  // this is identical to the keys in 'index_usage_count_', but can contain
-  // nodes from a different fusion when evaluating whether to merge two fusions.
-  const absl::flat_hash_set<const HloInstruction*>* fusion_instructions()
-      const {
-    return &fusion_instructions_;
-  }
-
  private:
   static const int64_t kAllowedCodeDuplication;
 
@@ -96,11 +86,6 @@ class FusionNodeIndexingEvaluation {
   // fusion node. The fusion emitter caches access with the same index, so this
   // value indicates how many times a specific instruction will be emitted.
   absl::flat_hash_map<const HloInstruction*, int64_t> index_usage_count_;
-
-  // Stores all instructions which would appear in a potential fusion. Normally
-  // this is identical to the keys in 'index_usage_count_', but can contain
-  // nodes from a different fusion when evaluating whether to merge two fusions.
-  absl::flat_hash_set<const HloInstruction*> fusion_instructions_;
 
   // The fusion instruction.
   const HloInstruction* fusion_;
