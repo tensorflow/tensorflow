@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
-#include "third_party/gpus/cuda/include/cusolverSp.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 
