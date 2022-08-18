@@ -16,9 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 
 #include <algorithm>
+#include <iostream>
+#include <iterator>
 #include <map>
+#include <memory>
 #include <optional>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -127,8 +132,8 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
       return false;
     }
   }
-  if (num_devices % Product(merged_tile_dims) != 0 ||
-      Product(merged_tile_dims) < minimum_tiles) {
+  const int64_t num_tiles = Product(merged_tile_dims);
+  if (num_devices % num_tiles != 0 || num_tiles < minimum_tiles) {
     return false;
   }
   int64_t to_merge_man_dim = to_merge.SubgroupManualDim();
@@ -1275,7 +1280,7 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
     return HloSharding::Replicate(sharding.metadata());
   }
   std::vector<int64_t> dim_permutation(sharding.TiledDataRank());
-  std::iota(dim_permutation.begin(), dim_permutation.end(), 0);
+  absl::c_iota(dim_permutation, 0);
   absl::c_stable_sort(dim_permutation, [&](const int64_t a, const int64_t b) {
     return absl::c_linear_search(valid_dims_to_replicate, a) <
            absl::c_linear_search(valid_dims_to_replicate, b);
