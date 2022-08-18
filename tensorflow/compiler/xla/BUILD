@@ -22,6 +22,7 @@ package_group(
         # copybara:uncomment "//learning/infra/mira/...",
         "//third_party/auroraml/...",
         "//third_party/iree/...",
+        "//third_party/mlcompass/...",
         "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
         "//tensorflow/compiler/...",
