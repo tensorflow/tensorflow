@@ -2479,7 +2479,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
 
   Raises:
     AttributeError: Raises an attribute error when dtype is neither
-    float nor integer
+    float nor integer.
   """
   image = ops.convert_to_tensor(image, name='image')
   dtype = dtypes.as_dtype(dtype)
