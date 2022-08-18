@@ -1188,14 +1188,11 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
       if (auto* caz =
               llvm::dyn_cast<llvm::ConstantAggregateZero>(initializer)) {
         num_elements = caz->getElementCount().getFixedValue();
-      }
-      else if (auto* cds =
-              llvm::dyn_cast<llvm::ConstantDataSequential>(initializer)) {
+      } else if (auto* cds = llvm::dyn_cast<llvm::ConstantDataSequential>(
+                     initializer)) {
         num_elements = cds->getNumElements();
       }
-      // Here we only select constant global variables with small number of
-      // elements
-      if (num_elements > 0 && num_elements <= 128) {
+      if (num_elements > 0) {
         const_initializer_map[gv.getName()] = initializer;
       }
     }
