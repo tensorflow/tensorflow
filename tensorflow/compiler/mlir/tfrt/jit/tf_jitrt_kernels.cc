@@ -102,7 +102,6 @@ using ::tfrt::RequestContext;
 using ::tfrt::SharedContext;
 using ::tfrt::StrCat;
 using ::tfrt::StringAttribute;
-using ::tfrt::TaskFunction;
 
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
@@ -341,7 +340,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // into the dedicated thread pool and adds tracing.
   auto runner = [kernel_info](size_t specialization,
                               ArrayRef<ArgumentConstraint> constraints,
-                              ArgumentsRef arguments, TaskFunction compile,
+                              ArgumentsRef arguments,
+                              JitExecutable::CompilationTask compile,
                               JitExecutable::UserData user_data) {
     assert(arguments.size() == constraints.size());
 

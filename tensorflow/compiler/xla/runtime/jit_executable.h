@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/jit_compiler.h"
 #include "tensorflow/compiler/xla/runtime/async_values_cache.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
-#include "tfrt/host_context/task_function.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -57,6 +56,10 @@ class JitExecutable {
     JitCompiler::Options compiler;
   };
 
+  // We use `llvm::unique_function` to represent compilation task because it
+  // allows to capture move-only values.
+  using CompilationTask = llvm::unique_function<void()>;
+
   // Compilation task runner called at runtime when specialization compilation
   // is required with the `TaskFunction` that does the compilation, and updates
   // the internal state of the `JitExecutable`. This runner can be used by the
@@ -70,13 +73,13 @@ class JitExecutable {
   //
   using CompilationTaskRunner =
       llvm::unique_function<void(size_t, llvm::ArrayRef<ArgumentConstraint>,
-                                 ArgumentsRef, tfrt::TaskFunction, UserData)>;
+                                 ArgumentsRef, CompilationTask, UserData)>;
 
   // Inline compilation task runner runs compilation task in the caller thread.
   static void InlineCompilationTaskRunner(
       size_t num_specializations,
       llvm::ArrayRef<ArgumentConstraint> constraints, ArgumentsRef arguments,
-      tfrt::TaskFunction task, UserData user_data);
+      CompilationTask task, UserData user_data);
 
   static llvm::Expected<JitExecutable> Instantiate(
       std::string_view mlir_module, std::string_view entrypoint, Options opts,
