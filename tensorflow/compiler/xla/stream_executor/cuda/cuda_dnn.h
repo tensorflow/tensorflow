@@ -20,7 +20,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 
 #include "absl/base/thread_annotations.h"
-#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
@@ -38,6 +37,13 @@ class CudnnCtcLossDescriptor;
 
 // Opaque and unique identifier for the cuDNN plugin.
 extern const PluginId kCuDnnPlugin;
+
+using BatchDescriptorSlice =
+    port::ArraySlice<dnn::BatchDescriptor>;  // non-absl ok
+
+template <typename T>
+using DeviceMemorySlice =
+    port::ArraySlice<const DeviceMemory<T>*>;  // non-absl ok
 
 // cudnn-library based DNN support. For details on overridden interface
 // functions, see dnn.h.
@@ -462,17 +468,15 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<float>* raw_variable_gradient,
       ScratchAllocator* workspace_allocator) override;
 
-  bool DoDepthConcatenate(
-      Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float>* const> input_data,
-      DeviceMemory<float>* output_data) override;
+  bool DoDepthConcatenate(Stream* stream, BatchDescriptorSlice input_dimensions,
+                          DeviceMemorySlice<float> input_data,
+                          DeviceMemory<float>* output_data) override;
 
-  bool DoElementwiseOperate(
-      Stream* stream, dnn::ElementwiseOperation operation,
-      absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float>* const> input_data,
-      const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<float>* output_data) override;
+  bool DoElementwiseOperate(Stream* stream, dnn::ElementwiseOperation operation,
+                            BatchDescriptorSlice input_dimensions,
+                            DeviceMemorySlice<float> input_data,
+                            const dnn::BatchDescriptor& output_dimensions,
+                            DeviceMemory<float>* output_data) override;
 
   bool DoXYPad(Stream* stream, const dnn::BatchDescriptor& dimensions,
                const DeviceMemory<float>& input_data, int64_t left_pad,

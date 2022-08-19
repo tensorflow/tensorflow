@@ -266,8 +266,9 @@ class StreamExecutor {
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <class T>
-  port::Status SynchronousMemcpyH2D(absl::Span<const T> host_src,
-                                    DeviceMemoryBase* device_dst) {
+  port::Status SynchronousMemcpyH2D(
+      port::ArraySlice<T> host_src,  // non-absl ok
+      DeviceMemoryBase* device_dst) {
     auto host_size = host_src.size() * sizeof(T);
     CHECK(device_dst->size() == 0 || device_dst->size() >= host_size);
     return SynchronousMemcpyH2D(host_src.begin(), host_size, device_dst);
@@ -282,7 +283,7 @@ class StreamExecutor {
   // slice size.
   template <typename T>
   port::Status SynchronousMemcpyD2H(const DeviceMemory<T>& device_src,
-                                    absl::Span<T> host_dst) {
+                                    port::MutableArraySlice<T> host_dst) {
     auto host_size = host_dst.size() * sizeof(T);
     CHECK(device_src.size() == 0 || host_size >= device_src.size());
     return SynchronousMemcpyD2H(device_src, host_size, host_dst.begin());

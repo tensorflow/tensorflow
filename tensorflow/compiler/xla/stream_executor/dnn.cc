@@ -595,7 +595,7 @@ int64_t BatchDescriptor::FullyConnectedBiasCount(
 }
 
 BatchDescriptor BatchDescriptor::DepthConcatenateOutputDescriptor(
-    absl::Span<const dnn::BatchDescriptor> inputs) {
+    port::ArraySlice<dnn::BatchDescriptor> inputs) {  // non-absl ok
   if (inputs.empty()) {
     return BatchDescriptor();
   }

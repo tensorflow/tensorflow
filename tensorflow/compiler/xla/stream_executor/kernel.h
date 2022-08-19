@@ -76,9 +76,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel_cache_config.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/array_slice.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -361,7 +361,8 @@ class KernelArgsArrayBase {
   virtual uint64_t number_of_shared_bytes() const = 0;
 
   // Gets the list of argument addresses.
-  virtual absl::Span<const void *const> argument_addresses() const = 0;
+  virtual port::ArraySlice<const void *> argument_addresses()  // non-absl ok
+      const = 0;
 
   // Gets an iterator to the arguments in the array.
   virtual KernelArgIterator arg_iterator() const = 0;
@@ -447,9 +448,10 @@ class KernelArgsArray : public KernelArgsArrayBase {
   }
 
   // Gets the list of argument addresses.
-  absl::Span<const void *const> argument_addresses() const override {
-    return absl::Span<const void *const>(argument_addresses_.data(),
-                                         number_of_argument_addresses_);
+  port::ArraySlice<const void *> argument_addresses()  // non-absl ok
+      const override {
+    return port::ArraySlice<const void *>(  // non-absl ok
+        argument_addresses_.data(), number_of_argument_addresses_);
   }
 
   // Gets an iterator to the arguments in the array.

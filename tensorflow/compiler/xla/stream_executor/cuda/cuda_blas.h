@@ -41,6 +41,8 @@ namespace cuda {
 // Opaque and unique identifier for the cuBLAS plugin.
 extern const PluginId kCuBlasPlugin;
 
+template <typename T>
+using DeviceMemorySlice = port::ArraySlice<DeviceMemory<T> *>;  // non-absl ok
 
 // BLAS plugin for CUDA platform via cuBLAS library.
 //
@@ -107,10 +109,10 @@ class CUDABlas : public blas::BlasSupport {
   port::Status DoBlasGemmBatchedInternal(
       FuncT cublas_func, Stream *stream, blas::Transpose transa,
       blas::Transpose transb, uint64_t m, uint64 n, uint64 k, Scalar alpha,
-      const absl::Span<DeviceMemory<T> *const> a_array, int lda,
-      const absl::Span<DeviceMemory<T> *const> b_array, int ldb, Scalar beta,
-      const absl::Span<DeviceMemory<T> *const> c_array, int ldc,
-      int batch_count, ScratchAllocator *scratch_allocator);
+      const DeviceMemorySlice<T> &a_array, int lda,
+      const DeviceMemorySlice<T> &b_array, int ldb, Scalar beta,
+      const DeviceMemorySlice<T> &c_array, int ldc, int batch_count,
+      ScratchAllocator *scratch_allocator);
 
   // Helper function for implementing DoBlasGemmWithProfiling.
   template <typename T, typename ParamType>

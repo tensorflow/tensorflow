@@ -6428,10 +6428,10 @@ bool CudnnSupport::DoNormalizeBackwardWithDimensions(
   return IsStatusOk(status, /*report_error=*/true);
 }
 
-bool CudnnSupport::DoDepthConcatenate(
-    Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
-    absl::Span<const DeviceMemory<float>* const> input_data,
-    DeviceMemory<float>* output_data) {
+bool CudnnSupport::DoDepthConcatenate(Stream* stream,
+                                      BatchDescriptorSlice input_dimensions,
+                                      DeviceMemorySlice<float> input_data,
+                                      DeviceMemory<float>* output_data) {
   CHECK_EQ(input_dimensions.size(), input_data.size());
 
   for (const auto& dimensions : input_dimensions) {
@@ -6486,10 +6486,11 @@ bool CudnnSupport::DoDepthConcatenate(
   return true;
 }
 
-bool CudnnSupport::DoElementwiseOperate(
-    Stream*, dnn::ElementwiseOperation, absl::Span<const dnn::BatchDescriptor>,
-    absl::Span<const DeviceMemory<float>* const>, const dnn::BatchDescriptor&,
-    DeviceMemory<float>*) {
+bool CudnnSupport::DoElementwiseOperate(Stream*, dnn::ElementwiseOperation,
+                                        BatchDescriptorSlice,
+                                        DeviceMemorySlice<float>,
+                                        const dnn::BatchDescriptor&,
+                                        DeviceMemory<float>*) {
   LOG(FATAL) << "not yet implemented";  // TODO(leary)
   return false;
 }
