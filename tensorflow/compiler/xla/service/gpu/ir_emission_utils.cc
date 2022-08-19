@@ -790,12 +790,9 @@ std::optional<TransposeDimsAndParams> FindTranspose021DimsAndParameters(
         ShapeUtil::FindTranspose021(operand_shapes[operand_idx], output_shape);
     if (!find_transpose_result.has_value()) {
       continue;
-    }
-    const Vector3& curr_reduced_dims_021 = *find_transpose_result;
-    if (!reduced_dims_021.has_value()) {
-      reduced_dims_021 = curr_reduced_dims_021;
-    }
-    if (!absl::c_equal(*reduced_dims_021, curr_reduced_dims_021)) {
+    } else if (!reduced_dims_021.has_value()) {
+      reduced_dims_021 = *find_transpose_result;
+    } else if (!absl::c_equal(*reduced_dims_021, *find_transpose_result)) {
       // There is more than one possible transpose. Instead of picking one
       // transpose, we simply give up here.
       VLOG(3) << "021 transpose not matched; More than one possible "
