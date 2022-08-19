@@ -73,6 +73,22 @@ TEST(GatherNdOpTest, ElementIndexingIntoMatrix) {
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({1.1, 2.2}));
 }
 
+TEST(GatherNdOpTest, ErrorOnOutOfBoundsTooLarge) {
+  GatherNdOpModel m({TensorType_FLOAT32, {2, 2}}, {TensorType_INT32, {2, 2}});
+  m.SetInput<float>({1.1, 1.2, 2.1, 2.2});
+  m.SetPositions<int32_t>({0, 0, 2, 0});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+  m.SetPositions<int32_t>({0, 0, 1, 2});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(GatherNdOpTest, ErrorOnOutOfBoundsNegative) {
+  GatherNdOpModel m({TensorType_FLOAT32, {2, 2}}, {TensorType_INT32, {2, 2}});
+  m.SetInput<float>({1.1, 1.2, 2.1, 2.2});
+  m.SetPositions<int32_t>({1, -1, 1, 1});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
 TEST(GatherNdOpTest, SliceIndexingIntoMatrix) {
   GatherNdOpModel m({TensorType_FLOAT32, {2, 2}}, {TensorType_INT32, {2, 1}});
   m.SetInput<float>({1.1, 1.2, 2.1, 2.2});
