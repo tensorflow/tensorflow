@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -129,6 +130,14 @@ class UpperBoundOp : public OpKernel {
     auto output = output_t->template flat<OutType>();
     const auto sorted_inputs = sorted_inputs_t.template flat<T>();
     const auto values = values_t.template flat<T>();
+
+    // For empty inputs, all values will be placed at the zeroth position.
+    if (sorted_inputs.size() == 0) {
+      functor::SetZeroFunctor<Device, OutType> set_zero;
+      set_zero(ctx->eigen_device<Device>(), output);
+      return;
+    }
+
     OP_REQUIRES_OK(
         ctx, functor::UpperBoundFunctor<Device, T, OutType>::Compute(
                  ctx, sorted_inputs, values, sorted_inputs_t.dim_size(0),
@@ -174,6 +183,14 @@ class LowerBoundOp : public OpKernel {
     auto output = output_t->template flat<OutType>();
     const auto sorted_inputs = sorted_inputs_t.template flat<T>();
     const auto values = values_t.template flat<T>();
+
+    // For empty inputs, all values will be placed at the zeroth position.
+    if (sorted_inputs.size() == 0) {
+      functor::SetZeroFunctor<Device, OutType> set_zero;
+      set_zero(ctx->eigen_device<Device>(), output);
+      return;
+    }
+
     OP_REQUIRES_OK(
         ctx, functor::LowerBoundFunctor<Device, T, OutType>::Compute(
                  ctx, sorted_inputs, values, sorted_inputs_t.dim_size(0),
