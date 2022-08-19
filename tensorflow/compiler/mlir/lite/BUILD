@@ -580,6 +580,7 @@ cc_library(
         "transforms/legalize_variables.cc",
         "transforms/lower_static_tensor_list.cc",
         "transforms/optimize_functional_ops.cc",
+        "transforms/partitioned_topological_sort.cc",
         "transforms/pin_ops_with_side_effects.cc",
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",

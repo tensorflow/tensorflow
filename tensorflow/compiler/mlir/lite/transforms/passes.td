@@ -208,6 +208,21 @@ def OptimizeOpOrderPass : Pass<"tfl-optimize-op-order", "mlir::func::FuncOp"> {
   let constructor = "CreateOptimizeOpOrderPass()";
 }
 
+def PartitionedTopologicalSortPass : Pass<"tfl-partitioned-topological-sort", "mlir::func::FuncOp"> {
+  let summary = "Re-sort execution order such that delegated ops stay together";
+  let constructor = "CreatePartitionedTopologicalSortPass()";
+    let description = [{
+      This transformation reorders operations such that operations that will be
+      executed by the Flex delegate will be followed by another Flex delegated
+      operator, if possible. The reordering uses the same greedy procedure that
+      is executed at runtime (in tensorflow/lite/graph_info.cc.)
+      This allows us to have an IR of the model that is in the same execution order
+      as it will have at runtime (provided Flex is the only delegate present); this
+      allows us to do optimizations such as rematerialization.
+    }];
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}
+
 def PinOpsWithSideEffectsPass : Pass<"tfl-pin-ops-with-side-effects", "mlir::func::FuncOp"> {
   let summary = "Pin operators with side effects";
   let description = [{
