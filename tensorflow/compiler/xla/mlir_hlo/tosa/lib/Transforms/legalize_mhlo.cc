@@ -72,6 +72,97 @@ struct ConvertMhloCompareOp : public OpRewritePattern<mhlo::CompareOp> {
   }
 };
 
+struct ConvertMhloDotOp : public OpRewritePattern<mhlo::DotOp> {
+  using OpRewritePattern<mhlo::DotOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::DotOp op,
+                                PatternRewriter& rewriter) const override {
+    auto lhsType = op.lhs().getType().dyn_cast<RankedTensorType>();
+    auto rhsType = op.rhs().getType().dyn_cast<RankedTensorType>();
+    if (!lhsType | !rhsType) {
+      return rewriter.notifyMatchFailure(op, "input tensors are not ranked");
+    }
+
+    auto resultType = op.getResult().getType().dyn_cast<ShapedType>();
+    if (!resultType) {
+      return rewriter.notifyMatchFailure(op,
+                                         "result tensor does not have shape");
+    }
+
+    if (lhsType.getElementType() != rhsType.getElementType()) {
+      return rewriter.notifyMatchFailure(op,
+                                         "lhs and rhs elemt types must match");
+    }
+
+    auto lhsShape = lhsType.getShape();
+    auto rhsShape = rhsType.getShape();
+    auto resultShape = resultType.getShape();
+    llvm::SmallVector<int64_t, 3> lhsReshape;
+    llvm::SmallVector<int64_t, 3> rhsReshape;
+    llvm::SmallVector<int64_t, 3> matMulShape;
+
+    // tosa.matmul requires input tensors to have a rank of 3, so lhs and rhs
+    // need to be reshaped first.
+    if (lhsType.getRank() == 1) {
+      // Reshape lhs to [1, 1, N].
+      lhsReshape = {1, 1, lhsShape[0]};
+      if (rhsType.getRank() == 1) {
+        // Reshape rhs to [1, N, 1].
+        rhsReshape = {1, rhsShape[0], 1};
+        // MatMul shape is [1, 1, N].
+        matMulShape = {1, 1, lhsShape[0]};
+      } else if (rhsType.getRank() == 2) {
+        // Reshape rhs to [1, N, K].
+        rhsReshape = {1, rhsShape[0], rhsShape[1]};
+        // MatMul shape is [1, 1, K].
+        matMulShape = {1, 1, rhsShape[1]};
+      } else {
+        return rewriter.notifyMatchFailure(op, "rhs must have rank of 1 or 2");
+      }
+    } else if (lhsType.getRank() == 2) {
+      // Reshape lhs to [1, M, K].
+      lhsReshape = {1, lhsShape[0], lhsShape[1]};
+      if (rhsType.getRank() == 1) {
+        // Reshape rhs to [1, K, 1].
+        rhsReshape = {1, rhsShape[0], 1};
+        // MatMul shape is [1, M, 1].
+        matMulShape = {1, lhsShape[0], 1};
+      } else if (rhsType.getRank() == 2) {
+        // Reshape rhs to [1, K, N].
+        rhsReshape = {1, rhsShape[0], rhsShape[1]};
+        // MatMul shape is [1, M, N].
+        matMulShape = {1, lhsShape[0], rhsShape[1]};
+      } else {
+        return rewriter.notifyMatchFailure(op, "rhs must have rank of 1 or 2");
+      }
+    } else {
+      return rewriter.notifyMatchFailure(op, "lhs must have rank of 1 or 2");
+    }
+
+    auto lhsReshapeType =
+        RankedTensorType::get(lhsReshape, lhsType.getElementType());
+    auto lhsReshapeOp =
+        rewriter.create<tosa::ReshapeOp>(op->getLoc(), lhsReshapeType, op.lhs(),
+                                         rewriter.getI64ArrayAttr(lhsReshape));
+
+    auto rhsReshapeType =
+        RankedTensorType::get(rhsReshape, rhsType.getElementType());
+    auto rhsReshapeOp =
+        rewriter.create<tosa::ReshapeOp>(op->getLoc(), rhsReshapeType, op.rhs(),
+                                         rewriter.getI64ArrayAttr(rhsReshape));
+
+    auto matMulType =
+        RankedTensorType::get(matMulShape, lhsType.getElementType());
+    auto matMulOp = rewriter.create<tosa::MatMulOp>(op->getLoc(), matMulType,
+                                                    lhsReshapeOp, rhsReshapeOp);
+
+    // Reshape the matmul result back to the original result shape.
+    rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
+        op, resultType, matMulOp, rewriter.getI64ArrayAttr(resultShape));
+    return success();
+  }
+};
+
 struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
   using OpRewritePattern<mhlo::ReduceOp>::OpRewritePattern;
 
@@ -137,6 +228,7 @@ LogicalResult LegalizeMhlo::initialize(MLIRContext* ctx) {
   RewritePatternSet patternList(ctx);
   populateGeneratedPDLLPatterns(patternList);
   patternList.addWithLabel<ConvertMhloCompareOp>({"MhloCompare"}, ctx);
+  patternList.addWithLabel<ConvertMhloDotOp>({"MhloDot"}, ctx);
   patternList.addWithLabel<ConvertMhloReduceOp>({"MhloReduce"}, ctx);
   patterns = std::move(patternList);
   return success();
