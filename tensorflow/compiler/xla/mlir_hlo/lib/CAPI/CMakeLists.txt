@@ -14,6 +14,7 @@ add_mlir_public_c_api_library(MLIRHLOCAPIDialects
   MhloToArithmeticConversion
   MhloToMemrefConversion
   MhloToStandard
+  MhloToThloConversion
   MhloToLinalg
   MhloShapeOpsToStandard
 )
