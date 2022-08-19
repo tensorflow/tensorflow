@@ -407,6 +407,7 @@ cc_library(
         ":status_codes",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
