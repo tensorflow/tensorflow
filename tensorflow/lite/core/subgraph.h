@@ -238,6 +238,12 @@ class Subgraph {
   // AllocateTensors needs to be called before next invocation.
   TfLiteStatus ReleaseNonPersistentMemory();
 
+  // WARNING: Experimental interface, subject to change
+  // This API releases memory held by the given subgraph. This method is
+  // designed to release memory of control flow subgraphs.
+  // AllocateTensors needs to be called before next invocation.
+  TfLiteStatus ReleaseMemory();
+
   // Update allocations for all tensors. This will redim dependent tensors using
   // the input tensor dimensionality as given. This is relatively expensive.
   // If you know that your sizes are not changing, you need not call this.

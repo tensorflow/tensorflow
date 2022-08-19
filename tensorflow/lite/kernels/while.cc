@@ -605,8 +605,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (!this_subgraph->ShouldPreserveAllTensors()) {
-    TF_LITE_ENSURE_OK(context, cond_subgraph->ReleaseNonPersistentMemory());
-    TF_LITE_ENSURE_OK(context, body_subgraph->ReleaseNonPersistentMemory());
+    TF_LITE_ENSURE_OK(context, cond_subgraph->ReleaseMemory());
+    TF_LITE_ENSURE_OK(context, body_subgraph->ReleaseMemory());
   }
 
   return kTfLiteOk;

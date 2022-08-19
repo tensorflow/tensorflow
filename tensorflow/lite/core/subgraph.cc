@@ -959,6 +959,34 @@ TfLiteStatus Subgraph::ReleaseNonPersistentMemory() {
   return kTfLiteOk;
 }
 
+TfLiteStatus Subgraph::ReleaseMemory() {
+  state_ = kStateUninvokable;
+  ReleaseNonPersistentMemory();
+
+  // Free dynamic input tensors.
+  for (const int input_tensor_idx : inputs_) {
+    if (input_tensor_idx == kTfLiteOptionalTensor) continue;
+    TfLiteTensor* input_tensor = tensor(input_tensor_idx);
+    if (!input_tensor || input_tensor->allocation_type != kTfLiteDynamic)
+      continue;
+    if (input_tensor->data.raw) {
+      TfLiteTensorDataFree(input_tensor);
+    }
+  }
+  // Free dynamic output tensors.
+  for (const int output_tensor_idx : outputs_) {
+    if (output_tensor_idx == kTfLiteOptionalTensor) continue;
+    TfLiteTensor* output_tensor = tensor(output_tensor_idx);
+    if (!output_tensor || output_tensor->allocation_type != kTfLiteDynamic)
+      continue;
+    if (output_tensor->data.raw) {
+      TfLiteTensorDataFree(output_tensor);
+    }
+  }
+
+  return kTfLiteOk;
+}
+
 // Give 'op_reg' a chance to initialize itself using the contents of
 // 'buffer'. If registration_external is valid, use the 'init' callback from
 // that.
