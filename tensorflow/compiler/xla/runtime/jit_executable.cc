@@ -97,18 +97,18 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
     std::string_view mlir_module, std::string_view entrypoint, Options opts,
     std::string_view memory_region_name, CompilationTaskRunner runner) {
   // Try to instantiate compilation context from the mlir source.
-  Expected<std::unique_ptr<JitCompiler>> ctx =
+  Expected<std::unique_ptr<JitCompiler>> compiler =
       JitCompiler::Instantiate(opts.compiler, mlir_module, entrypoint);
-  if (auto err = ctx.takeError()) return std::move(err);
+  if (auto err = compiler.takeError()) return std::move(err);
 
   // Get resolved operands constraints for the entrypoint function.
-  auto constraints = GetArgumentsConstraints((*ctx)->entrypoint());
+  auto constraints = GetArgumentsConstraints((*compiler)->entrypoint());
   if (auto err = constraints.takeError()) return std::move(err);
 
   // Get the entrypoint function signature, it will be later required to
   // compute the specialized function signature from the operands at runtime.
   auto signature = opts.compiler.type_converter.Convert(
-      (*ctx)->entrypoint().getFunctionType());
+      (*compiler)->entrypoint().getFunctionType());
   if (auto err = signature.takeError()) return std::move(err);
 
   // If all of the operands have static shape, then we can always use default
@@ -137,7 +137,7 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
 
   // Otherwise try to compile the default executable.
   Expected<Executable> executable =
-      JitCompiler::Compile(std::move(*ctx), memory_region_name);
+      JitCompiler::Compile(std::move(*compiler), memory_region_name);
   if (auto err = executable.takeError()) return std::move(err);
 
   return JitExecutable(mlir_module, entrypoint, memory_region_name,
