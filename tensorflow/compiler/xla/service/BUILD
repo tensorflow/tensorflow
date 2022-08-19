@@ -2440,6 +2440,16 @@ tf_cc_test(
     ],
 )
 
+xla_test(
+    name = "algebraic_simplifier_overflow_test",
+    srcs = ["algebraic_simplifier_overflow_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 cc_library(
     name = "simplify_fp_conversions",
     srcs = ["simplify_fp_conversions.cc"],
