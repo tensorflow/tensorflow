@@ -2172,7 +2172,6 @@ cc_library(
     deps = [
         ":mlir_hlo",
         ":transforms_pass_inc_gen",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:kernel_gen_passes_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithmeticDialect",
