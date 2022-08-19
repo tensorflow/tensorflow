@@ -762,7 +762,6 @@ LogicalResult Rewrite(
 
   // Create compile op.
   auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
-  builder->setInsertionPoint(cluster_func);
 
   // Create the TPUCompileMlir and TPUCompileSucceededAssert outside of
   // the parallel_execute.
