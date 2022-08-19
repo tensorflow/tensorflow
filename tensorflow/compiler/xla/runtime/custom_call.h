@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/dynamic_annotations.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/Any.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/support/map_by_type.h"  // from @tf_runtime
-#include "tfrt/support/msan.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -693,8 +693,8 @@ class CustomCallHandler : public CustomCall {
   call(void** args, void** attrs, const UserData* user_data,
        const DiagnosticEngine* diagnostic) const final {
     // Unpoison the first pointer to get the args and attrs sizes.
-    TFRT_MSAN_MEMORY_IS_INITIALIZED(args, sizeof(void*));
-    TFRT_MSAN_MEMORY_IS_INITIALIZED(attrs, sizeof(void*));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(args, sizeof(void*));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(attrs, sizeof(void*));
 
     // Decode arguments and attributes from the opaque pointers.
     internal::DecodedArgs decoded_args(args);
@@ -704,8 +704,10 @@ class CustomCallHandler : public CustomCall {
     int64_t num_attrs = decoded_attrs.size();
 
     // Unpoison the rest of the of args and attrs data.
-    TFRT_MSAN_MEMORY_IS_INITIALIZED(args, (1 + 2 * num_args) * sizeof(void*));
-    TFRT_MSAN_MEMORY_IS_INITIALIZED(attrs, (1 + 3 * num_attrs) * sizeof(void*));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(args,
+                                        (1 + 2 * num_args) * sizeof(void*));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(attrs,
+                                        (1 + 3 * num_attrs) * sizeof(void*));
 
     if (LLVM_UNLIKELY(diagnostic == nullptr))
       diagnostic = DiagnosticEngine::DefaultDiagnosticEngine();
@@ -862,8 +864,8 @@ struct CustomCallArgDecoding<StridedMemrefView, checks> {
       return mlir::failure();
 
     auto* encoded = reinterpret_cast<EncodedMemref*>(value);
-    TFRT_MSAN_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
-    TFRT_MSAN_MEMORY_IS_INITIALIZED(
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
         encoded, sizeof(EncodedMemref) + encoded->rank * sizeof(int64_t));
 
     tfrt::DType dtype = static_cast<tfrt::DType>(encoded->dtype);
@@ -884,8 +886,8 @@ struct CustomCallArgDecoding<MemrefView, checks> {
       return mlir::failure();
 
     auto* encoded = reinterpret_cast<EncodedMemref*>(value);
-    TFRT_MSAN_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
-    TFRT_MSAN_MEMORY_IS_INITIALIZED(
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
         encoded, sizeof(EncodedMemref) + encoded->rank * sizeof(int64_t));
 
     tfrt::DType dtype = static_cast<tfrt::DType>(encoded->dtype);
@@ -903,8 +905,8 @@ struct CustomCallArgDecoding<FlatMemrefView, checks> {
       return mlir::failure();
 
     auto* encoded = reinterpret_cast<EncodedMemref*>(value);
-    TFRT_MSAN_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
-    TFRT_MSAN_MEMORY_IS_INITIALIZED(
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
         encoded, sizeof(EncodedMemref) + encoded->rank * sizeof(int64_t));
 
     tfrt::DType dtype = static_cast<tfrt::DType>(encoded->dtype);

@@ -246,8 +246,8 @@ Error Executable::InitializeCallFrame(ArgumentsRef arguments,
   call_frame->results.resize_for_overwrite(results_memory_layout_.size);
 
   // Mark results memory initialized to supress potential msan errors.
-  TFRT_MSAN_MEMORY_IS_INITIALIZED(call_frame->results.data(),
-                                  call_frame->results.size());
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(call_frame->results.data(),
+                                      call_frame->results.size());
 
   return Error::success();
 }
