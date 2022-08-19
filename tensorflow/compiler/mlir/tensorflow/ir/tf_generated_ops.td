@@ -20237,6 +20237,27 @@ https://www.tensorflow.org/performance/xla/operation_semantics#reduce .
   let hasCanonicalizer = 1;
 }
 
+def TF_XlaReducePrecisionOp : TF_Op<"XlaReducePrecision", [NoSideEffect]> {
+  let summary = "Wraps the XLA ReducePrecision operator";
+
+  let description = [{
+documented at https://www.tensorflow.org/xla/operation_semantics#reduceprecision.
+  }];
+
+  let arguments = (ins
+    Arg<TF_FloatTensor, [{array of floating-point type.}]>:$operand,
+
+    I64Attr:$exponent_bits,
+    I64Attr:$mantissa_bits
+  );
+
+  let results = (outs
+    TF_FloatTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_XlaReduceScatterOp : TF_Op<"XlaReduceScatter", [NoSideEffect]> {
   let summary = "Wraps the XLA ReduceScatter operator";
 

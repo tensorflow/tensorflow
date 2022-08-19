@@ -593,3 +593,7 @@ def scatter(operand, scatter_indices, updates, update_computation,
 
 def optimization_barrier(*args):
   return gen_xla_ops.xla_optimization_barrier(args)
+
+
+def reduce_precision(operand, exponent_bits, mantissa_bits):
+  return gen_xla_ops.xla_reduce_precision(operand, exponent_bits, mantissa_bits)

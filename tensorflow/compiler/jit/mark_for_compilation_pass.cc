@@ -2240,6 +2240,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "XlaPad",
       "XlaRecv",
       "XlaReduce",
+      "XlaReducePrecision",
       "XlaReduceWindow",
       "XlaRemoveDynamicDimensionSize",
       "XlaReplicaId",
