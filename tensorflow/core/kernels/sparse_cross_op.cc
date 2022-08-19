@@ -24,12 +24,14 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/strong_hash.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -832,6 +834,10 @@ class SparseCrossV2Op : public OpKernel {
 
     const Tensor* sep_t;
     OP_REQUIRES_OK(context, context->input("sep", &sep_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(sep_t->shape()),
+                errors::InvalidArgument("Input separator should be a scalar. "
+                                        "Received: ",
+                                        sep_t->DebugString()));
     const tstring separator = sep_t->scalar<tstring>()();
 
     std::vector<std::unique_ptr<ColumnInterface<tstring>>> columns =
