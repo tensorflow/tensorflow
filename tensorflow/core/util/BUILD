@@ -9,6 +9,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "check_deps",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
@@ -661,15 +662,36 @@ cc_library(
 # kernels (e.g. _pywrap_tensorflow_internal.so) must not contain the global
 # variable in determinism.cc, since the global variable is already in
 # libtensorflow_framework.so.
+#
+# To test that determinism.cc is not improperly included in the shared object
+# which contains the kernels, you can run the "determinism_check_deps" rule
+# below.
 alias(
     name = "determinism_for_kernels",
     actual = if_static(":determinism", ":determinism_hdr_lib"),
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+check_deps(
+    name = "determinism_check_deps",
+    disallowed_deps = if_static(
+        [],
+        otherwise = [":determinism"],
+    ),
+    deps = [
+        "//tensorflow:tensorflow_cc",
+        "//tensorflow/python:pywrap_tensorflow_internal",
+    ],
+)
+
 cc_library(
     name = "determinism_test_util",
     hdrs = [":determinism_test_util.h"],
+    data = [
+        # Adding this data dependency ensures determinism_check_deps is run
+        # whenever determinism tests are run.
+        ":determinism_check_deps",
+    ],
     deps = [":determinism"],
 )
 
