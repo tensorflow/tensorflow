@@ -271,11 +271,11 @@ void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
     getenv("TMP"),
 
 #if defined(__ANDROID__)
-    "/data/local/tmp",
+    "/data/local/tmp/",
 #endif
 
     // If all else fails
-    "/tmp",
+    "/tmp/",
   };
 
   std::vector<std::string> paths;  // Only in case of errors.
