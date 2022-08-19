@@ -105,6 +105,12 @@ tf_proto {
       type: TYPE_BOOL
     }
     field {
+      name: "device_finder_timeout_in_micros"
+      number: 18
+      label: LABEL_OPTIONAL
+      type: TYPE_UINT64
+    }
+    field {
       name: "experimental"
       number: 16
       label: LABEL_OPTIONAL
