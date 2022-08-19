@@ -184,6 +184,18 @@ struct XlaCompilationResult {
     int group_key;
     int group_size;
     int next_id;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const CollectiveInfo& info) {
+      return H::combine(std::move(h), info.group_key, info.group_size,
+                        info.next_id);
+    }
+
+    friend bool operator==(const CollectiveInfo& lhs,
+                           const CollectiveInfo& rhs) {
+      return lhs.group_key == rhs.group_key &&
+             lhs.group_size == rhs.group_size && lhs.next_id == rhs.next_id;
+    }
   };
 
   // Information of the collectives encountered during the translation.
