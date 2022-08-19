@@ -472,14 +472,14 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* workspace_allocator = nullptr) override;
 
   bool DoDepthConcatenate(
-      Stream* stream, port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
-      port::ArraySlice<const DeviceMemory<float>*> input_data,
+      Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float>* const> input_data,
       DeviceMemory<float>* output_data) override;
 
   bool DoElementwiseOperate(
       Stream* stream, dnn::ElementwiseOperation operation,
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
-      port::ArraySlice<const DeviceMemory<float>*> input_data,
+      absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float>* const> input_data,
       const dnn::BatchDescriptor& output_dimensions,
       DeviceMemory<float>* output_data) override;
 
