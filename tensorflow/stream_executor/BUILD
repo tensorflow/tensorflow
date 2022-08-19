@@ -375,10 +375,7 @@ cc_library(
 
 cc_library(
     name = "stream_executor_impl",
-    deps = [
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
-    ],
+    deps = ["//tensorflow/compiler/xla/stream_executor:stream_executor_impl"],
 )
 
 cc_library(

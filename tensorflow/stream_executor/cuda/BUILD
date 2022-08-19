@@ -126,7 +126,7 @@ alias(
     name = "cublas_lib",
     actual = select({
         "//tensorflow:oss": ":cublas_stub",
-        "//conditions:default": "@local_config_cuda//cuda:cublas",
+        "//conditions:default": "//third_party/gpus/cuda:cublas_static",
     }),
     visibility = ["//visibility:public"],
 )
@@ -154,7 +154,7 @@ alias(
     name = "cublas_lt_lib",
     actual = select({
         "//tensorflow:oss": ":cublas_lt_stub",
-        "//conditions:default": "@local_config_cuda//cuda:cublasLt",
+        "//conditions:default": "//third_party/gpus/cuda:cublas_lt_static",
     }),
     visibility = ["//visibility:public"],
 )
@@ -191,7 +191,7 @@ alias(
     name = "cufft_lib",
     actual = select({
         "//tensorflow:oss": ":cufft_stub",
-        "//conditions:default": "@local_config_cuda//cuda:cufft",
+        "//conditions:default": "//third_party/gpus/cuda:cufft_static",
     }),
     visibility = ["//visibility:public"],
 )
@@ -217,7 +217,7 @@ alias(
     name = "cudnn_lib",
     actual = select({
         "//tensorflow:oss": ":cudnn_stub",
-        "//conditions:default": "@local_config_cuda//cuda:cudnn",
+        "//conditions:default": "//third_party/gpus/cudnn:cudnn",
     }),
     visibility = ["//visibility:public"],
 )
@@ -252,7 +252,7 @@ alias(
     name = "curand_lib",
     actual = select({
         "//tensorflow:oss": ":curand_stub",
-        "//conditions:default": "@local_config_cuda//cuda:curand",
+        "//conditions:default": "//third_party/gpus/cuda:curand_static",
     }),
     visibility = ["//visibility:public"],
 )
@@ -268,7 +268,6 @@ cc_library(
 
 cc_library(
     name = "cupti_stub",
-    data = if_cuda_is_configured(["@local_config_cuda//cuda:cupti_dsos"]),
     deps = [
         "//tensorflow/compiler/xla/stream_executor/cuda:cupti_stub",
     ],
@@ -285,7 +284,7 @@ alias(
     name = "cusolver_lib",
     actual = select({
         "//tensorflow:oss": ":cusolver_stub",
-        "//conditions:default": "@local_config_cuda//cuda:cusolver",
+        "//conditions:default": "//third_party/gpus/cuda:cusolver_static",
     }),
     visibility = ["//visibility:public"],
 )
@@ -301,7 +300,7 @@ alias(
     name = "cusparse_lib",
     actual = select({
         "//tensorflow:oss": ":cusparse_stub",
-        "//conditions:default": "@local_config_cuda//cuda:cusparse",
+        "//conditions:default": "//third_party/gpus/cuda:cusparse_static",
     }),
     visibility = ["//visibility:public"],
 )
