@@ -19,8 +19,6 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include <cmath>
-
 #include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 
@@ -191,8 +189,8 @@ struct Int64List {
 
 struct FloatList {
   union {
-    float_t* heap;  // owned
-    float_t inlined[TPU_C_API_MAX_INLINED];
+    float* heap;  // owned
+    float inlined[TPU_C_API_MAX_INLINED];
   };
   int64_t size;
 };
@@ -206,7 +204,7 @@ struct BoolList {
 };
 
 struct FloatListRef {
-  float_t* ptr;  // not owned
+  float* ptr;  // not owned
   int64_t size;
 };
 
