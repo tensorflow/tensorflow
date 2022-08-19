@@ -108,6 +108,14 @@ class SvdOpTest(test.TestCase):
     for i in range(0, len(val), 2):
       self.assertAllEqual(val[i], val[i + 1])
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testEmptyBatches(self):
+    matrices = constant_op.constant(1.0, shape=[0, 2, 2])
+    s, u, v = self.evaluate(linalg_ops.svd(matrices))
+    self.assertAllEqual(s, np.zeros([0, 2]))
+    self.assertAllEqual(u, np.zeros([0, 2, 2]))
+    self.assertAllEqual(v, np.zeros([0, 2, 2]))
+
 
 def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
                   full_matrices_):
