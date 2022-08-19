@@ -1714,7 +1714,6 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
     } else {
       dims_021 = {normalized_dims[0], normalized_dims[2], normalized_dims[1]};
     }
-
     return dims_021;
   }
 
