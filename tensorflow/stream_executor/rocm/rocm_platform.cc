@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/rocm/rocm_platform.h"
 
+#include <memory>
+
 #include "absl/base/call_once.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
@@ -140,8 +141,8 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = absl::make_unique<StreamExecutor>(
-      this, absl::make_unique<GpuExecutor>(config.plugin_config),
+  auto executor = std::make_unique<StreamExecutor>(
+      this, std::make_unique<GpuExecutor>(config.plugin_config),
       config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {

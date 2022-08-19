@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DNN_H_
 
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "rocm/include/miopen/miopen.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -472,14 +473,14 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* workspace_allocator = nullptr) override;
 
   bool DoDepthConcatenate(
-      Stream* stream, port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
-      port::ArraySlice<const DeviceMemory<float>*> input_data,
+      Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float>* const> input_data,
       DeviceMemory<float>* output_data) override;
 
   bool DoElementwiseOperate(
       Stream* stream, dnn::ElementwiseOperation operation,
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
-      port::ArraySlice<const DeviceMemory<float>*> input_data,
+      absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float>* const> input_data,
       const dnn::BatchDescriptor& output_dimensions,
       DeviceMemory<float>* output_data) override;
 

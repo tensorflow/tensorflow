@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "rocm/include/miopen/miopen.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -571,7 +572,7 @@ class MIOpenAccess {
   // therefore a bad idea (performance wise) to call any MIOpen APIs that
   // enqueue work in the stream.
   MIOpenHandle GetHandle(GpuExecutor* executor, Stream* stream) {
-    auto lock = absl::make_unique<absl::MutexLock>(&mutex_);
+    auto lock = std::make_unique<absl::MutexLock>(&mutex_);
     mutex_.AssertHeld();
     gpu::ScopedActivateExecutorContext context(executor);
     hipStream_t hip_stream = stream ? AsGpuStreamValue(stream) : nullptr;
@@ -4417,8 +4418,8 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
 }
 
 bool MIOpenSupport::DoDepthConcatenate(
-    Stream* stream, port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
-    port::ArraySlice<const DeviceMemory<float>*> input_data,
+    Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
+    absl::Span<const DeviceMemory<float>* const> input_data,
     DeviceMemory<float>* output_data) {
   CHECK_EQ(input_dimensions.size(), input_data.size());
 
@@ -4476,8 +4477,8 @@ bool MIOpenSupport::DoDepthConcatenate(
 
 bool MIOpenSupport::DoElementwiseOperate(
     Stream* stream, dnn::ElementwiseOperation operation,
-    port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
-    port::ArraySlice<const DeviceMemory<float>*> input_data,
+    absl::Span<const dnn::BatchDescriptor> input_dimensions,
+    absl::Span<const DeviceMemory<float>* const> input_data,
     const dnn::BatchDescriptor& output_dimensions,
     DeviceMemory<float>* output_data) {
   LOG(FATAL) << "not yet implemented";  // TODO(leary)
