@@ -21,7 +21,10 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
@@ -221,6 +224,16 @@ class RandomGammaTest(test.TestCase):
         self.assertEqual(0, math_ops.reduce_sum(math_ops.cast(
             math_ops.less_equal(x, 0.), dtype=dtypes.int64)).eval())
 
+  def testSizeTooLarge(self):
+    # Grappler asserts on size overflow, so this error is only caught when
+    # running eagerly.
+    if context.executing_eagerly():
+      with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                  "overflow"):
+        rate = constant_op.constant(1.0, shape=(4, 4, 4, 4, 4))
+        self.evaluate(
+            random_ops.random_gamma(
+                shape=[46902, 51188, 34063, 59195], alpha=rate))
 
 if __name__ == "__main__":
   test.main()
