@@ -43,8 +43,8 @@ objc_library(
     testonly = 1,
     srcs = ["buffer_test.mm"],
     sdk_frameworks = [
-        "XCTest",
         "Metal",
+        "XCTest",
     ],
     deps = [
         ":buffer",
@@ -57,9 +57,7 @@ objc_library(
     srcs = ["buffer_convert.mm"],
     hdrs = ["buffer_convert.h"],
     copts = DEFAULT_COPTS,
-    sdk_frameworks = [
-        "Metal",
-    ],
+    sdk_frameworks = ["Metal"],
     deps = [
         ":common",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -72,9 +70,7 @@ objc_library(
     srcs = ["common.mm"],
     hdrs = ["common.h"],
     copts = DEFAULT_COPTS,
-    sdk_frameworks = [
-        "Metal",
-    ],
+    sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -87,9 +83,7 @@ objc_library(
     testonly = 1,
     srcs = ["common_test.mm"],
     sdk_frameworks = ["XCTest"],
-    deps = [
-        ":common",
-    ],
+    deps = [":common"],
 )
 
 ios_unit_test(
@@ -248,8 +242,8 @@ objc_library(
     testonly = 1,
     srcs = ["metal_spatial_tensor_test.mm"],
     sdk_frameworks = [
-        "XCTest",
         "Metal",
+        "XCTest",
     ],
     deps = [
         ":metal_spatial_tensor",
