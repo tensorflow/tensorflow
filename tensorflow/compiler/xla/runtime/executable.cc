@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/utils/runtime/c_runner_utils.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
+#include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/runtime.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
-#include "tfrt/support/error_util.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -41,7 +41,6 @@ using llvm::Expected;
 using llvm::orc::MangleAndInterner;
 using llvm::orc::SymbolMap;
 
-using tfrt::MakeStringError;
 
 // KernelContext encapsulates all the data that is required to implement XLA
 // Runtime <-> XLA Executable integration API.

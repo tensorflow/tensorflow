@@ -17,6 +17,7 @@ cc_library(
     hdrs = ["arguments.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":errors",
         ":types",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:type_converter",
         "@llvm-project//llvm:Support",
@@ -72,6 +73,7 @@ cc_library(
     hdrs = ["constraints.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":errors",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:support",
     ],
@@ -132,6 +134,15 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "errors",
+    hdrs = ["errors.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = ["executable.h"],
@@ -142,6 +153,7 @@ cc_library(
         ":custom_call",
         ":custom_call_registry",
         ":diagnostics",
+        ":errors",
         ":execution_engine",
         ":logical_result",
         ":memory_mapper",
@@ -163,6 +175,7 @@ cc_library(
     hdrs = ["execution_engine.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":errors",
         "@llvm-project//llvm:ARMAsmParser",
         "@llvm-project//llvm:ARMCodeGen",
         "@llvm-project//llvm:Core",
