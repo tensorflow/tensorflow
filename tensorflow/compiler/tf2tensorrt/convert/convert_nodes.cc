@@ -303,6 +303,8 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
   // -> W: 1 1 1  1 3 5 1
   // ***************************************************************************
   if (!operand_l.is_tensor() && !operand_r.is_tensor()) {
+    // TODO(lsugy): remove this check in dynamic shapes mode. This should work
+    // if both inputs are weights.
     return errors::InvalidArgument(
         "Broadcasting requires at least one of the operands be tensors");
   }
@@ -880,6 +882,21 @@ StatusOr<OpConverter> TrtNodeValidator::GetValidator(const std::string& op) {
 Status TrtNodeValidator::ConvertToTensorOrWeights(
     const NodeDef& node_def, int output_port,
     TRT_TensorOrWeights* tensor_or_weights) {
+  // Treat handles separately.
+  if (node_def.op() == "VarHandleOp" || node_def.op() == "Placeholder") {
+    AttrSlice attrs(node_def);
+    DataType dtype;
+    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "dtype", &dtype));
+    if (dtype == DataType::DT_RESOURCE) {
+      // The converter doesn't use the input resource at the validation stage
+      // (it gets the dtype and shape from attributes). A fake resource can be
+      // used.
+      ResourceHandle fake_resource;
+      *tensor_or_weights = TRT_TensorOrWeights(fake_resource);
+      return Status::OK();
+    }
+  }
+
   if (node_def.op() == "Const" || node_def.op() == "VariableV2") {
     // The output of the conversion will be used as input to other nodes to
     // determine whether TRT supports those nodes. If it cannot convert the
@@ -893,6 +910,15 @@ Status TrtNodeValidator::ConvertToTensorOrWeights(
                                      " node should only have one output.");
     }
     std::vector<TRT_TensorOrWeights> inputs;
+    return ConvertConstToWeights(node_def, inputs, tensor_or_weights);
+  }
+  if (node_def.op() == "ReadVariableOp") {
+    // Similar treatment to Const and VariableV2, but we provide a fake
+    // resource input to the converter.
+    const std::vector<TRT_TensorOrWeights> inputs{
+        TRT_TensorOrWeights(ResourceHandle())};
+
+    // Convert the variable to weights.
     return ConvertConstToWeights(node_def, inputs, tensor_or_weights);
   }
   if (!graph_properties_.HasOutputProperties(node_def.name())) {
@@ -1109,6 +1135,17 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
   if (!status.ok()) {
     return errors::CreateWithUpdatedMessage(
         status, StrCat("Failed to add input tensor ", name, ": ",
+                       status.error_message()));
+  }
+  return Status::OK();
+}
+
+Status Converter::AddInputResource(const string& name,
+                                   const ResourceHandle& resource) {
+  Status status = AddTensorOrWeights(name, TRT_TensorOrWeights(resource));
+  if (!status.ok()) {
+    return errors::CreateWithUpdatedMessage(
+        status, StrCat("Failed to add input resource ", name, ": ",
                        status.error_message()));
   }
   return Status::OK();
@@ -1633,7 +1670,7 @@ Status CheckInputsWeights(
   TFTRT_CHECK_INPUT_SIZE(inputs.size(), expected_inputs.size(), node_def);
   for (int i = 0; i < inputs.size(); i++) {
     if (expected_inputs[i].second == TrtInputArg::kWeight &&
-        inputs.at(i).is_tensor()) {
+        !inputs.at(i).is_weights()) {
       return errors::Unimplemented("The input \"", expected_inputs[i].first,
                                    "\" for ", node_def.op(),
                                    " must be a constant");
@@ -1643,10 +1680,16 @@ Status CheckInputsWeights(
     // was originally a weight. We will want a caching mechanism to prevent many
     // duplicate constants from being created.
     if (expected_inputs[i].second == TrtInputArg::kTensor &&
-        inputs.at(i).is_weights()) {
+        !inputs.at(i).is_tensor()) {
       return errors::Unimplemented("The input \"", expected_inputs[i].first,
                                    "\" for ", node_def.op(),
                                    " must be a tensor");
+    }
+    if (expected_inputs[i].second == TrtInputArg::kResource &&
+        !inputs.at(i).is_resource()) {
+      return errors::Unimplemented("The input \"", expected_inputs[i].first,
+                                   "\" for ", node_def.op(),
+                                   " must be a resource handle");
     }
   }
   return Status::OK();
@@ -1670,7 +1713,19 @@ Status CheckInputsWeights(
 }
 
 Status GetNodeDefTfType(const NodeDef& node_def, DataType* tf_type,
-                        const char* type_attr_name) {
+                        const string type_attr_name_in = "") {
+  string type_attr_name;
+  if (type_attr_name_in.empty()) {
+    if (node_def.op() == "ReadVariableOp" ||
+        node_def.op() == "ResourceGather") {
+      type_attr_name = "dtype";
+    } else {
+      type_attr_name = "T";
+    }
+  } else {
+    type_attr_name = type_attr_name_in;
+  }
+
   AttrSlice attrs(node_def);
   if (attrs.FindByString(type_attr_name) == nullptr) {
     return errors::InvalidArgument("Attribute with name ", type_attr_name,
@@ -1690,15 +1745,13 @@ Status GetInputTfType(const OpConverterParams& params, DataType* tf_type,
   return inputs[pos].GetTfType(tf_type);
 }
 
-constexpr const char kOutputTypeAttrName[] = "T";
-
 Status GetOutputTfType(const OpConverterParams& params, DataType* tf_type) {
-  return GetNodeDefTfType(params.node_def, tf_type, kOutputTypeAttrName);
+  return GetNodeDefTfType(params.node_def, tf_type);
 }
 
 Status AllowDataTypes(const OpConverterParams& params,
                       const std::set<DataType>& allowed_types,
-                      const char* type_attr_name = kOutputTypeAttrName) {
+                      const char* type_attr_name = "") {
   const auto& node_def = params.node_def;
   DataType tf_type;
   TF_RETURN_IF_ERROR(GetNodeDefTfType(node_def, &tf_type, type_attr_name));
@@ -3272,6 +3325,8 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
 
   if (inputs[0].is_weights() && inputs[1].is_weights()) {
+    // TODO(lsugy): don't assume that if all inputs are weights, grappler
+    // should fold them, because variables are weights.
     return errors::InvalidArgument(
         "All inputs are weights, but Grappler is expected to fold them.");
   }
@@ -4643,6 +4698,8 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
+    // TODO(lsugy): don't assume that if all inputs are weights, grappler
+    // should fold them, because variables are weights.
     return errors::InvalidArgument(
         "All inputs are weights, but Grappler is expected to fold them.");
   }
@@ -5853,28 +5910,36 @@ Status ConvertGraphDefToEngine(
             "Node ", node_name,
             " with is neither Placeholder nor Arg, instead ", node_def.op());
       }
-      nvinfer1::DataType trt_dtype;
-      nvinfer1::Dims trt_dims;
-      int batch_size = -1;
-      auto shape = input_shapes.at(slot_number);
-      auto status = ValidateTensorProperties(
-          node_def.op(), node_def.attr().at(type_key).type(), shape,
-          use_implicit_batch, /*validation_only=*/false, &trt_dtype, &trt_dims,
-          &batch_size);
-      if (!status.ok()) {
-        const string error_message =
-            StrCat("Validation failed for ", node_name, " and input slot ",
-                   slot_number, ": ", status.error_message());
-        LOG_WARNING_WITH_PREFIX << error_message;
-        return errors::CreateWithUpdatedMessage(status, error_message);
+      DataType tf_dtype = node_def.attr().at(type_key).type();
+      if (tf_dtype == DT_RESOURCE) {
+        VLOG(2) << "Adding engine input resource " << node_name;
+        TF_RETURN_IF_ERROR(converter->AddInputResource(
+            node_name, ctx->input(slot_number).flat<ResourceHandle>()(0)));
+      } else {
+        nvinfer1::DataType trt_dtype;
+        nvinfer1::Dims trt_dims;
+        int batch_size = -1;
+        const auto shape = input_shapes.at(slot_number);
+        const auto status = ValidateTensorProperties(
+            node_def.op(), node_def.attr().at(type_key).type(), shape,
+            use_implicit_batch, /*validation_only=*/false, &trt_dtype,
+            &trt_dims, &batch_size);
+        if (!status.ok()) {
+          const string error_message =
+              StrCat("Validation failed for ", node_name, " and input slot ",
+                     slot_number, ": ", status.error_message());
+          LOG_WARNING_WITH_PREFIX << error_message;
+          return errors::CreateWithUpdatedMessage(status, error_message);
+        }
+        VLOG(2) << "Adding engine input tensor " << node_name << " with shape "
+                << DebugString(trt_dims);
+        // TODO(laigd): the conversion should always happen at runtime where all
+        // the shapes are known, and we can provide a mode to generate the
+        // engines offline, by calling sess.run() and cache/serialize the
+        // engines.
+        TF_RETURN_IF_ERROR(converter->AddInputTensor(node_name, trt_dtype,
+                                                     trt_dims, batch_size));
       }
-      VLOG(2) << "Adding engine input tensor " << node_name << " with shape "
-              << DebugString(trt_dims);
-      // TODO(laigd): the conversion should always happen at runtime where all
-      // the shapes are known, and we can provide a mode to generate the
-      // engines offline, by calling sess.run() and cache/serialize the engines.
-      TF_RETURN_IF_ERROR(converter->AddInputTensor(node_name, trt_dtype,
-                                                   trt_dims, batch_size));
     } else if (IsEngineOutput(node_name)) {
       int32 slot_number = -1;
       if (node_def.op() == "Identity") {
@@ -5894,8 +5959,16 @@ Status ConvertGraphDefToEngine(
             node_def.op());
       }
       // Get output type that TensorFlow expects
+      string out_type_key;
+      if (node_def.op() == "ReadVariableOp" ||
+          node_def.op() == "ResourceGather") {
+        out_type_key = "dtype";
+      } else {
+        out_type_key = "T";
+      }
       DataType tf_dtype;
-      TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node_def), "T", &tf_dtype));
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(AttrSlice(node_def), out_type_key, &tf_dtype));
       nvinfer1::DataType trt_dtype;
       TF_RETURN_IF_ERROR(TfTypeToTrtType(tf_dtype, &trt_dtype));
       if (output_tensors.size() <= slot_number) {
@@ -6068,12 +6141,8 @@ Status ConvertSegmentToGraphDef(
                   << " from subgraph.";
           ++input_idx;
           continue;
-        } else {
-          return errors::InvalidArgument(
-              "Found non control input outside the segment that is not an "
-              "engine connection to ",
-              snode->name(), ": ", input.first);
         }
+        /// TODO(lsugy): throw error when it's not a resource input.
       }
       if (actual_input_idx != input_idx) {
         snode->set_input(actual_input_idx, snode->input(input_idx));

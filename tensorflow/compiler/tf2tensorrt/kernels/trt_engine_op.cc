@@ -263,6 +263,13 @@ class TRTEngineOp : public AsyncOpKernel {
   // could be unknown. During inference time this information is not available
   // otherwise (all shapes are known (concrete) shapes when we run inference).
   std::vector<PartialTensorShape> input_partial_shapes_;
+  // Shapes, excluding resource inputs.
+  std::vector<PartialTensorShape> input_partial_shapes_filtered_;
+
+  // The TF node can have more inputs than the TRT engine: resource inputs are
+  // saved as weight in the engine, instead of passing that as engine input.
+  // Input mask is true for those TF input that are TRT engine inputs.
+  std::vector<bool> input_mask_;
 
   // Whether to use explicit precision (QDQ) mode.
   bool use_explicit_precision_;
@@ -420,6 +427,21 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     OP_REQUIRES_OK(context, status);
   }
 
+  // Get a mask of non-resource inputs.
+  std::vector<DataType> in_types;
+  input_mask_.resize(input_partial_shapes_.size());
+  OP_REQUIRES_OK(context, context->GetAttr("InT", &in_types));
+  for (int i = 0; i < input_mask_.size(); i++) {
+    input_mask_[i] = (in_types[i] != DataType::DT_RESOURCE);
+  }
+
+  // Filter the shapes to exclude resources.
+  for (int i = 0; i < input_partial_shapes_.size(); i++) {
+    if (input_mask_[i]) {
+      input_partial_shapes_filtered_.push_back(input_partial_shapes_[i]);
+    }
+  }
+
   status = context->GetAttr("_allow_soft_placement", &allow_soft_placement_);
   if (status.code() == tensorflow::error::NOT_FOUND) {
     allow_soft_placement_ = true;
@@ -504,7 +526,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     }
   }
   has_dynamic_shape_input_ = absl::c_any_of(
-      input_partial_shapes_,
+      input_partial_shapes_filtered_,
       [](PartialTensorShape shape) { return !shape.IsFullyDefined(); });
   VLOG(2) << "TRTEngineOp has_dynamic_shape_input_: "
           << has_dynamic_shape_input_;
@@ -685,7 +707,7 @@ Status TRTEngineOp::VerifyInputShapes(
     return errors::InvalidArgument("Input shapes are empty, for ", name());
   }
 
-  if (input_partial_shapes_.empty()) {
+  if (input_partial_shapes_filtered_.empty()) {
     if (!use_implicit_batch_) {
       return errors::InvalidArgument(
           "Explicit batch mode requires input_partial_shapes_ ",
@@ -702,20 +724,21 @@ Status TRTEngineOp::VerifyInputShapes(
     const string error_msg = StrCat(
         "Input shapes do not match input partial shapes stored in graph, for ",
         name(), ": ", DebugString(input_concrete_shapes),
-        " != ", DebugString(input_partial_shapes_));
-    if (input_concrete_shapes.size() != input_partial_shapes_.size()) {
+        " != ", DebugString(input_partial_shapes_filtered_));
+    if (input_concrete_shapes.size() != input_partial_shapes_filtered_.size()) {
       return errors::InvalidArgument(error_msg);
     }
     for (int i = 0; i < input_concrete_shapes.size(); i++) {
-      if (input_concrete_shapes[i].dims() != input_partial_shapes_[i].dims()) {
+      if (input_concrete_shapes[i].dims() !=
+          input_partial_shapes_filtered_[i].dims()) {
         return errors::InvalidArgument(error_msg);
       }
     }
     for (int i = 0; i < input_concrete_shapes.size(); i++) {
       for (int d = 0; d < input_concrete_shapes[i].dims(); d++) {
-        if (input_partial_shapes_[i].dim_size(d) != -1) {
+        if (input_partial_shapes_filtered_[i].dim_size(d) != -1) {
           if (input_concrete_shapes[i].dim_size(d) !=
-              input_partial_shapes_[i].dim_size(d)) {
+              input_partial_shapes_filtered_[i].dim_size(d)) {
             return errors::InvalidArgument(error_msg);
           }
         }
@@ -782,11 +805,17 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   // Get shapes of inputs to engine.
   std::vector<TensorShape> input_concrete_shapes;
   input_concrete_shapes.reserve(ctx->num_inputs());
+  std::vector<TensorShape> input_concrete_shapes_filtered;
   for (int i = 0; i < ctx->num_inputs(); ++i) {
     input_concrete_shapes.push_back(ctx->input(i).shape());
+    if (ctx->input(i).dtype() != DataType::DT_RESOURCE) {
+      input_concrete_shapes_filtered.push_back(ctx->input(i).shape());
+    }
   }
 
-  Status verify_input_shape_status = VerifyInputShapes(input_concrete_shapes);
+  /// TODO(lsugy): fix case of engine with only resource inputs.
+  Status verify_input_shape_status =
+      VerifyInputShapes(input_concrete_shapes_filtered);
   // TODO(bixia): Fix the segmentation.
   if (!verify_input_shape_status.ok()) {
     LOG_FIRST_FEW_WARNING_WITH_PREFIX
@@ -801,6 +830,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       (has_dynamic_shape_input_ || cache_res->profiles_.HasShapeTensor())) {
     OP_REQUIRES_OK_ASYNC(ctx, cache_res->profiles_.CollectShapeValues(ctx),
                          dummy_async_helper);
+    cache_res->profiles_.SetInputMask(input_mask_);
     if (profile_generation_mode_) {
       // Collecting new shapes for profiles can be only done once. After the
       // shapes are converted to TRT profiles, no shapes can be collected
@@ -1247,6 +1277,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
   auto* cres = cache_res->calib_ctx_.get();
 
   // Get the input shapes.
+  /// TODO(lsugy): support INT8 calibration in non-frozen mode.
   const int batch_size = ctx->input(0).dim_size(0);
   const int num_inputs = ctx->num_inputs();
   std::vector<TensorShape> shapes;
