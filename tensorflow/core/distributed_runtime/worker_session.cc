@@ -48,17 +48,28 @@ class WorkerFreeListCache : public WorkerCacheInterface {
   }
 
   WorkerInterface* GetOrCreateWorker(const string& target) override {
-    mutex_lock l(mu_);
-    auto p = workers_.find(target);
-    if (p != workers_.end()) {
-      return p->second.worker;
+    {
+      // Fast path if worker has been created.
+      tf_shared_lock l(mu_);
+      auto p = workers_.find(target);
+      if (p != workers_.end()) {
+        return p->second.worker;
+      }
     }
-    WorkerState state;
-    state.worker = wrapped_->GetOrCreateWorker(target);
-    if (state.worker != nullptr) {
-      workers_.insert(std::make_pair(target, state));
+    {
+      // Slow path if worker hasn't been created.
+      mutex_lock l(mu_);
+      auto p = workers_.find(target);
+      if (p != workers_.end()) {
+        return p->second.worker;
+      }
+      WorkerState state;
+      state.worker = wrapped_->GetOrCreateWorker(target);
+      if (state.worker != nullptr) {
+        workers_.insert(std::make_pair(target, state));
+      }
+      return state.worker;
     }
-    return state.worker;
   }
 
   Status GetEagerClientCache(
