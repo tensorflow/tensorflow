@@ -9,6 +9,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/lite/...",
+        "//third_party/cloud_tpu/inference_converter/...",  # TPU Inference Converter V1
     ] + internal_visibility_allowlist(),
 )
 
