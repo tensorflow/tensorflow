@@ -846,7 +846,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     // Const op can have a result of dynamic shaped type (e.g. due to constant
     // folding), but we can still derive the shape of a constant tensor for
     // its attribute type.
-    mlir::Attribute tensor_attr = inst->getAttr("value");
+    auto tensor_attr = inst->getAttr("value").cast<mlir::TypedAttr>();
     llvm::ArrayRef<int64_t> shape_ref =
         tensor_attr.getType().cast<TensorType>().getShape();
     if (mlir::failed(check_shape(shape_ref))) return llvm::None;
@@ -1981,14 +1981,8 @@ Optional<std::string> Translator::TranslateInternal() {
       mac_str = absl::StrFormat("%.3f G ",
                                 static_cast<double>(ops_count / 2) / billion);
     }
-    std::string mac_out_str;
-    llvm::raw_string_ostream os(mac_out_str);
-    os << "Estimated count of arithmetic ops: " << flops_str
-       << " ops, equivalently " << mac_str << " MACs"
-       << "\n";
-    os.flush();
-    LOG(INFO) << mac_out_str;
-    std::cout << mac_out_str;
+    LOG(INFO) << "Estimated count of arithmetic ops: " << flops_str
+              << " ops, equivalently " << mac_str << " MACs";
   }
 
   std::string model_description;

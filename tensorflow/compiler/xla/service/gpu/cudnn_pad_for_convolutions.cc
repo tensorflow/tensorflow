@@ -44,9 +44,6 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
   HloComputation* comp = instr->parent();
 
   const Shape& shape = instr->shape();
-  auto* zero = comp->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
-
   PaddingConfig pad_config = MakeNoPaddingConfig(shape.rank());
 
   bool added_padding = false;
@@ -59,12 +56,16 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
         new_shape.dimensions(dim) - shape.dimensions(dim));
     added_padding = true;
   }
-
   if (!added_padding) {
     return instr;
   }
-  return comp->AddInstruction(
+
+  auto* zero = comp->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
+  auto* pad = comp->AddInstruction(
       HloInstruction::CreatePad(new_shape, instr, zero, pad_config));
+  pad->set_metadata(instr->metadata());
+  return pad;
 }
 
 // Modifies the given convolution to have the given input and result shapes.

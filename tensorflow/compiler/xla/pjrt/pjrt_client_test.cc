@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client_test.h"
 
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -24,23 +25,45 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 
-#if defined(PJRT_CLIENT_TEST_CPU)
-#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
-
-static xla::StatusOr<std::unique_ptr<xla::PjRtClient>> GetClient() {
-  return xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/4);
-}
-#elif defined(PJRT_CLIENT_TEST_GPU)
-#include "tensorflow/compiler/xla/pjrt/gpu_device.h"
-
-static xla::StatusOr<std::unique_ptr<xla::PjRtClient>> GetClient() {
-  return xla::GetGpuClient(/*asynchronous=*/true, xla::GpuAllocatorConfig{},
-                           /*distributed_client=*/nullptr,
-                           /*node_id=*/0);
-}
-#endif
-
 namespace xla {
+namespace {
+
+class TestClientFactory {
+ public:
+  void Register(
+      std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
+    absl::MutexLock lock(&mu_);
+    CHECK(!factory_);
+    factory_ = std::move(factory);
+  }
+
+  std::function<StatusOr<std::unique_ptr<PjRtClient>>()> Get() const {
+    absl::MutexLock lock(&mu_);
+    return factory_;
+  }
+
+ private:
+  mutable absl::Mutex mu_;
+  std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory_
+      ABSL_GUARDED_BY(mu_);
+};
+
+TestClientFactory& GetGlobalTestClientFactory() {
+  static auto* const factory = new TestClientFactory;
+  return *factory;
+}
+
+StatusOr<std::unique_ptr<PjRtClient>> GetClient() {
+  return GetGlobalTestClientFactory().Get()();
+}
+
+}  // namespace
+
+void RegisterTestClientFactory(
+    std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
+  GetGlobalTestClientFactory().Register(std::move(factory));
+}
+
 namespace {
 
 std::unique_ptr<PjRtLoadedExecutable> MakeIncrementProgram(
@@ -375,11 +398,11 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
 }
 
 TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
-#if defined(PJRT_CLIENT_TEST_GPU)
-  return;
-#endif
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
   ASSERT_GT(client->addressable_devices().size(), 1);
+
+  // Skip non-CPU platforms.
+  if (client->platform_id() != CpuId()) return;
 
   std::vector<int32_t> data(4, 0);
   auto* data_ptr = data.data();

@@ -1607,6 +1607,9 @@ Status LayoutAssignment::PropagateOperandConstraint(
         continue;
       }
       const HloInstruction* sibling = user->operand(operand_no);
+      if (!sibling->shape().IsArray()) {
+        continue;
+      }
       const int64_t sibling_rank = sibling->shape().rank();
       if (sibling_rank <= 1) {
         continue;

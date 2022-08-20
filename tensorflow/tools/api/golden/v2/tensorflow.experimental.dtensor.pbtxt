@@ -50,7 +50,7 @@ tf_module {
   }
   member_method {
     name: "create_distributed_mesh"
-    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'num_global_devices\', \'num_clients\', \'client_id\', \'device_type\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'None\', \'None\', \'CPU\'], "
+    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'local_devices\', \'device_type\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'None\'], "
   }
   member_method {
     name: "create_mesh"

@@ -233,7 +233,6 @@ cuda_py_test(
     shard_count = 50,
     tags = [
         "no_windows",  # TODO(b/207048097): re-enable
-	"no_rocm"
     ],
     # b/140155706: nans in result
     xla_enable_strict_auto_jit = False,

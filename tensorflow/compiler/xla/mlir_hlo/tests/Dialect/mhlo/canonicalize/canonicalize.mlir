@@ -400,7 +400,7 @@ func.func @dynamic_update_slice_fold_fail_dynamic_shapes(%arg0: tensor<?x?xi64>,
   %1 = "mhlo.dynamic_update_slice"(%arg0, %arg1, %0, %0) : (tensor<?x?xi64>, tensor<?x?xi64>, tensor<i64>, tensor<i64>) -> tensor<?x?xi64>
   func.return %1 : tensor<?x?xi64>
   // CHECK: %[[CST:.*]] = mhlo.constant dense<0> : tensor<i64>
-  // CHECK: %[[VAL:.*]] = "mhlo.dynamic_update_slice"(%arg0, %arg1, %[[CST]], %[[CST]]) : (tensor<?x?xi64>, tensor<?x?xi64>, tensor<i64>, tensor<i64>) -> tensor<?x?xi64>
+  // CHECK: %[[VAL:.*]] = mhlo.dynamic_update_slice %arg0, %arg1, %[[CST]], %[[CST]] : (tensor<?x?xi64>, tensor<?x?xi64>, tensor<i64>, tensor<i64>) -> tensor<?x?xi64>
   // CHECK: return %[[VAL]] : tensor<?x?xi64>
 }
 
@@ -1503,7 +1503,7 @@ func.func @gather_to_slice_reshape(%arg0: tensor<5x6x7xf32>) -> tensor<3x6xf32> 
     slice_sizes = dense<[3, 6, 1]> : tensor<3xi64>} : (tensor<5x6x7xf32>, tensor<2xi32>) -> tensor<3x6xf32>
   func.return %1 : tensor<3x6xf32>
   // CHECK:  %[[V0:.*]] = "mhlo.slice"(%arg0) {limit_indices = dense<[4, 6, 3]> : tensor<3xi64>, start_indices = dense<[1, 0, 2]> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<5x6x7xf32>) -> tensor<3x6x1xf32>
-  // CHECK:  %[[V1:.*]] = "mhlo.reshape"(%[[V0]]) : (tensor<3x6x1xf32>) -> tensor<3x6xf32>
+  // CHECK:  %[[V1:.*]] = mhlo.reshape %[[V0]] : (tensor<3x6x1xf32>) -> tensor<3x6xf32>
   // CHECK: return %[[V1]] : tensor<3x6xf32>
 }
 
@@ -1520,7 +1520,7 @@ func.func @gather_to_slice_indices_clamp_upperbound(%arg0 : tensor<4x2xui32>) ->
     slice_sizes = dense<[1, 2]> : tensor<2xi64>} : (tensor<4x2xui32>, tensor<1xi32>) -> tensor<2xui32>
   func.return %1 : tensor<2xui32>
   // CHECK:  %[[V0:.*]] = "mhlo.slice"(%arg0) {limit_indices = dense<[4, 2]> : tensor<2xi64>, start_indices = dense<[3, 0]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<4x2xui32>) -> tensor<1x2xui32>
-  // CHECK:  %[[V1:.*]] = "mhlo.reshape"(%[[V0]]) : (tensor<1x2xui32>) -> tensor<2xui32>
+  // CHECK:  %[[V1:.*]] = mhlo.reshape %[[V0]] : (tensor<1x2xui32>) -> tensor<2xui32>
   // CHECK: return %[[V1]] : tensor<2xui32>
 }
 
@@ -1537,7 +1537,7 @@ func.func @gather_to_slice_indices_clamp_lowerbound(%arg0 : tensor<4x2xui32>) ->
     slice_sizes = dense<[1, 2]> : tensor<2xi64>} : (tensor<4x2xui32>, tensor<1xi32>) -> tensor<2xui32>
   func.return %1 : tensor<2xui32>
   // CHECK:  %[[V0:.*]] = "mhlo.slice"(%arg0) {limit_indices = dense<[1, 2]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<4x2xui32>) -> tensor<1x2xui32>
-  // CHECK:  %[[V1:.*]] = "mhlo.reshape"(%[[V0]]) : (tensor<1x2xui32>) -> tensor<2xui32>
+  // CHECK:  %[[V1:.*]] = mhlo.reshape %[[V0]] : (tensor<1x2xui32>) -> tensor<2xui32>
   // CHECK: return %[[V1]] : tensor<2xui32>
 }
 
@@ -2372,7 +2372,7 @@ func.func @broadcast_of_reshape(%arg: tensor<?xf32>,
   } : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   func.return %1 : tensor<?x?xf32>
 }
-// CHECK: [[RESHAPE:%.*]] = "mhlo.dynamic_reshape"
+// CHECK: [[RESHAPE:%.*]] = mhlo.dynamic_reshape
 // CHECK: return [[RESHAPE]]
 
 // CHECK-LABEL: @permutation_broadcast_of_reshape
@@ -2430,7 +2430,7 @@ func.func @sort_drop_second_arg(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> t
 // CHECK:         %[[RES:.+]] = "mhlo.sort"(%[[ARG0]])
 // CHECK:         ^bb0(%[[ARG2:.+]]: tensor<i32>, %[[ARG3:.+]]: tensor<i32>)
 // CHECK:           %[[CMP:.+]] = mhlo.compare GT, %[[ARG2]], %[[ARG3]] : (tensor<i32>, tensor<i32>) -> tensor<i1>
-// CHECK:           "mhlo.return"(%[[CMP]]) : (tensor<i1>) -> ()
+// CHECK:           mhlo.return %[[CMP]] : tensor<i1>
 // CHECK:         {dimension = 0 : i64, is_stable = false} : (tensor<3xi32>) -> tensor<3xi32>
 // CHECK:         return %[[RES]] : tensor<3xi32>
 

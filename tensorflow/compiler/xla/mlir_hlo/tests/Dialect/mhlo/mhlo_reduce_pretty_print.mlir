@@ -34,7 +34,7 @@ func.func @reduce_one_op_all_locs_same(%arg0: tensor<?x?xf32>, %arg1 : tensor<f3
 // CHECK-SAME:      : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
 // CHECK-NEXT:     reducer(%arg[[x:.+]]: tensor<f32> loc("foo"), %arg[[y:.+]]: tensor<f32> loc("foo"))
 // CHECK-NEXT:       mhlo.add %arg[[x]], %arg[[y]] : tensor<f32> loc("foo")
-// CHECK-NEXT:       "mhlo.return"(%{{[0-9]+}}) : (tensor<f32>) -> () loc("foo")
+// CHECK-NEXT:       mhlo.return %{{[0-9]+}} : tensor<f32> loc("foo")
 // CHECK-NEXT:     loc("not_foo")
 
 func.func @reduce_one_op_all_locs_not_same_1(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>) -> (tensor<?xf32>) {

@@ -462,7 +462,7 @@ def TFType_GpuDeviceMetadata : TFType_Attr<"GpuDeviceMetadata"> {
 // TensorProtoAttr
 //===----------------------------------------------------------------------===//
 
-def TF_TensorProtoAttr : TFType_Attr<"TensorProto", [ElementsAttrInterface]> {
+def TF_TensorProtoAttr : TFType_Attr<"TensorProto", [ElementsAttrInterface, TypedAttrInterface]> {
   let mnemonic = "tensor_proto";
 
   let summary = "Attribute that stores TensorFlow TensorProto debug string";

@@ -70,7 +70,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
           model_path=model_path, experimental_use_mlir=True)
     mlir = mock_stdout.getvalue()
     self.assertIn(
-        '%1 = "tfl.pseudo_const"() {value = opaque<"elided_large_const", "0xDEADBEEF"> : '
+        '%1 = "tfl.pseudo_const"() {value = dense_resource<__elided__> : '
         'tensor<3x3x3x8xf32>} : () -> tensor<3x3x3x8xf32>', mlir)
 
   def testTxtWithFlatBufferModel(self):

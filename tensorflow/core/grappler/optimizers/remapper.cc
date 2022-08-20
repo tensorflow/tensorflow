@@ -573,35 +573,16 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
     return true;
   };
 
-  // This is used only for MatMul+Add fusion.
-  const auto is_matmul_supported_shape =
-      [](const TensorShapeProto& shape,
-         const TensorShapeProto& bcast_shape) -> bool {
-    if (shape.dim_size() < 2 || bcast_shape.dim_size() != 1) return false;
-    int channel_dim = shape.dim(shape.dim_size() - 1).size();
-    return (channel_dim == bcast_shape.dim(0).size());
-  };
-
   if (ShapesSymbolicallyEqual(prot0_shape, prot1_shape) ||
       !ShapesBroadcastable(prot0_shape, prot1_shape))
     return false;
 
-  // For now block MatMul+Add fusion if Bias dims are more than one.
-  // TODO(intel-tf): Enable this fusion once it is properly tested.
   if (IsConvOrMatMul(*node_def_0)) {
     bias_port = 1;
-    if (IsMatMul(*node_def_0)) {
-      return (is_matmul_supported_shape(prot0_shape, prot1_shape));
-    } else {
-      return (is_supported_shape(prot0_shape, prot1_shape));
-    }
+    return (is_supported_shape(prot0_shape, prot1_shape));
   } else if (IsConvOrMatMul(*node_def_1)) {
     bias_port = 0;
-    if (IsMatMul(*node_def_1)) {
-      return (is_matmul_supported_shape(prot1_shape, prot0_shape));
-    } else {
-      return (is_supported_shape(prot1_shape, prot0_shape));
-    }
+    return (is_supported_shape(prot1_shape, prot0_shape));
   }
   return false;
 }
@@ -3571,6 +3552,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
+#ifndef DNNL_AARCH64_USE_ACL
     // Remap Conv2D+FusedBatchNorm into the _FusedConv2D;
     ContractionWithBatchNorm contract_with_batch_norm;
     if (allow_non_differentiable_rewrites &&
@@ -3592,6 +3574,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                              &invalidated_nodes, &nodes_to_delete));
       continue;
     }
+#endif  // !DNNL_AARCH64_USE_ACL
 
     // Remap FusedBatchNorm+<SideInput>+<Activation> into the _FusedBatchNormEx.
     FusedBatchNormEx fused_batch_norm_ex;

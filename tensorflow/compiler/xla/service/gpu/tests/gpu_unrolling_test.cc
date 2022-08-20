@@ -67,39 +67,35 @@ TEST_F(GpuUnrollingTest, UnrollFourTimes) {
   // We request a factor of 8, but the computation works on 4 elements, limiting
   // the maximum unroll factor.
   debug_options.set_xla_gpu_max_kernel_unroll_factor(8);
+  debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
   auto hlo_module =
       ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
-  const std::string pattern1 = R"(
-; CHECK-LABEL: @fusion
-; CHECK: fadd
-; CHECK: fadd
-; CHECK: fadd
-; CHECK: fadd
-; CHECK-NOT: fadd
-; CHECK: }
-      )";
-
-  const std::string pattern2 = R"(
-; CHECK-LABEL: @fusion
-; CHECK: fadd <2 x float>
-; CHECK: fadd <2 x float>
-; CHECK-NOT: fadd
-; CHECK: }
-      )";
 
   CompileAndVerifyIr(std::move(hlo_module),
-                     std::vector<std::string>{pattern1,pattern2},
+                     R"(
+; CHECK-LABEL: @fusion
+; CHECK: fadd
+; CHECK: fadd
+; CHECK: fadd
+; CHECK: fadd
+; CHECK-NOT: fadd
+; CHECK: }
+      )",
                      /*match_optimized_ir=*/true);
 }
 
 TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   // The default unrolling factor is 4.
   HloModuleConfig config;
-  config.set_debug_options(GetDebugOptionsFromFlags());
+  auto debug_options = GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_enable_mlir_lowering(false);
+  config.set_debug_options(debug_options);
   auto hlo_module =
       ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
-  const std::string pattern1 = R"(
+
+    CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
 ; CHECK-LABEL: @fusion
 ; CHECK: load <4 x float>
 ; CHECK: fadd
@@ -109,18 +105,7 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
 ; CHECK-NOT: fadd
 ; CHECK: store <4 x float>
 ; CHECK: }
-      )";
-
-  const std::string pattern2 = R"(
-; CHECK-LABEL: @fusion
-; CHECK: fadd <2 x float>
-; CHECK: fadd <2 x float>
-; CHECK-NOT: fadd
-; CHECK: store <4 x float>
-; CHECK: }
-      )";
-  CompileAndVerifyIr(std::move(hlo_module),
-                     std::vector<std::string>{pattern1,pattern2},
+      )",
                      /*match_optimized_ir=*/true);
 }
 
@@ -128,6 +113,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
   debug_options.set_xla_gpu_max_kernel_unroll_factor(4);
+  debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
 
   const char *const kUnfusedAddModule = R"(
@@ -140,7 +126,9 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
     })";
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
-  const std::string pattern1 = R"(
+
+    CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
 ; CHECK-LABEL: @add
 ; CHECK: load <4 x float>
 ; CHECK: fadd
@@ -150,20 +138,8 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
 ; CHECK-NOT: fadd
 ; CHECK: store <4 x float>
 ; CHECK: }
-      )";
-
-  const std::string pattern2 = R"(
-; CHECK-LABEL: @add
-; CHECK: fadd <2 x float>
-; CHECK: fadd <2 x float>
-; CHECK-NOT: fadd
-; CHECK: store <4 x float>
-; CHECK: }
-      )";
-
-  CompileAndVerifyIr(std::move(hlo_module),
-                     std::vector<std::string>{pattern1,pattern2},
-                    /*match_optimized_ir=*/true);
+      )",
+                     /*match_optimized_ir=*/true);
 }
 
 TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
@@ -182,15 +158,7 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
 
-  // Note: On ROCm side, we do bare minimal to make the test pass.
-  // "sine" function is in different code generation path from nvptx: on
-  // ROCm platform, it get pulled in from ROCm-Device-Libs, whereas in
-  // Cuda, generated llvm IR is compiled PTX.
-  auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK: __ocml_sin_f32
-; CHECK-NOT: load float
-)"
-                                         : R"(
+  auto expected_ir = R"(
 ; CHECK: load float
 ; CHECK-NOT: load float
 }
@@ -222,6 +190,7 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
   // Cuda, generated llvm IR is compiled PTX.
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK: __ocml_cos_f32
+; CHECK: load float
 ; CHECK-NOT: load float
 )"
                                          : R"(

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
+#include <memory>
+
 #include "absl/base/call_once.h"
 #include "absl/container/fixed_array.h"
 #include "absl/strings/str_format.h"
@@ -182,7 +184,7 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
     DeviceMemoryBase redzone, DeviceMemoryBase user_allocation,
     absl::string_view name, Stream* stream, uint8 redzone_pattern) {
   uint64_t size = redzone.size();
-  auto redzone_data = absl::make_unique<uint8[]>(size);
+  auto redzone_data = std::make_unique<uint8[]>(size);
   TF_RETURN_IF_ERROR(stream->ThenMemcpy(redzone_data.get(), redzone, size)
                          .BlockHostUntilDone());
 

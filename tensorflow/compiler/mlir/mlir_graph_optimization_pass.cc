@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -178,12 +179,7 @@ Status MlirFunctionOptimizationPass::Run(
   tensorflow::metrics::ScopedCounter<2> timings(
       tensorflow::metrics::GetGraphOptimizationCounter(),
       {kTfMlirCategory, "graph_analysis"});
-  // Capture stats on graph properties analyzed before running the MLIR bridge.
-  // We set `uses_uninitialized_resource_args` to false here because function
-  // optimization is not affected by uninitialized resource args.
-  GetMlirBridgeRolloutPolicy(**graph, flib_def, config_proto,
-                             /*uses_uninitialized_resource_args=*/false,
-                             /*record_stats=*/true);
+
   timings.ReportAndStop();
 
   if (overall_state == MlirOptimizationPassState::Disabled) {
@@ -192,6 +188,13 @@ Status MlirFunctionOptimizationPass::Run(
           << "None of the MLIR Optimization Passes are enabled "
           << "(registered " << registry_->passes().size() << ")";
     }
+    // Capture stats on graph properties analyzed before running the MLIR
+    // bridge. We set `uses_uninitialized_resource_args` to false here because
+    // function optimization is not affected by uninitialized resource args.
+    // TODO(b/241853328): Remove LogGraphFeatures when fixed
+    LogGraphFeatures(**graph, flib_def, config_proto,
+                     /*uses_uninitialized_resource_args=*/false,
+                     /*is_v1_compat=*/false);
     return OkStatus();
   }
 
@@ -243,6 +246,14 @@ Status MlirFunctionOptimizationPass::Run(
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       std::move(module_ref_status.ValueOrDie());
   AddDevicesToOp(*module_ref, &device_set);
+
+  // Capture stats on graph properties analyzed before running the MLIR
+  // bridge. We set `uses_uninitialized_resource_args` to false here because
+  // function optimization is not affected by uninitialized resource args.
+  // TODO (b/241853328) Remove LogGraphFeatures when fixed
+  LogGraphFeatures(**graph, flib_def, config_proto,
+                   /*uses_uninitialized_resource_args=*/false,
+                   /*is_v1_compat=*/false);
 
   int per_pass_state_index = 0;
   for (auto& pass_registration : registry_->passes()) {
@@ -381,11 +392,18 @@ Status MlirV1CompatGraphOptimizationPass::Run(
 
   llvm::StringRef name = pass->name();
   VLOG(2) << "Run MLIR V1 graph optimization pass: " << StringRefToView(name);
+  // If we ever have more than one MlirV1CompatOptimization pass we need to
+  // ensure the logging only happens once per graph to avoid redundant logging
+  // (see how it is used in the MLIRFunctionOptimizationPass as an example)
+  // TODO(b/241853328): Remove LogGraphFeatures when fixed
+  LogGraphFeatures(**options.graph, options.flib_def,
+                   options.session_options->config,
+                   /*uses_uninitialized_resource_args=*/false,
+                   /*is_v1_compat=*/true);
 
   if (VLOG_IS_ON(1)) {
     DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
   }
-
   Status pass_status = pass->Run(options, *module_ref);
 
   if (!pass_status.ok()) {

@@ -47,14 +47,3 @@ cc_library(
         "@llvm-project//mlir:IR",
     ],
 )
-
-cc_library(
-    name = "quant_spec",
-    srcs = ["quant_spec.cc"],
-    hdrs = ["quant_spec.h"],
-    compatible_with = get_compatible_with_cloud(),
-    deps = [
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
-        "//tensorflow/compiler/mlir/tensorflow",
-    ],
-)

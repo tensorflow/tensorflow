@@ -249,16 +249,42 @@ func.func @transpose_dims_of_space(
 // -----
 
 // CHECK-LABEL: @drop_dims_of_space
-// CHECK-SAME:  %[[ARG:.*]]: tensor<?x10xf32>, %[[SIZE:.*]]: index
-func.func @drop_dims_of_space(
-    %arg : tensor<?x10xf32>, %size: index) -> tensor<?x10xf32> {
-// CHECK: %[[SPACE:.*]] = gml_st.space [%[[SIZE]], 10] : !gml_st.tile<?x10>
-// CHECK: %[[RES:.*]] = gml_st.materialize %arg0[%[[SPACE]]] : tensor<?x10xf32>[!gml_st.tile<?x10>]
-// CHECK: return %[[RES]] : tensor<?x10xf32>
-  %s = gml_st.space [%size, 5, 10] : !gml_st.tile<?x5x10>
-  %tt = gml_st.drop_dims %s, [0, 2]
+// CHECK-SAME:  %[[ARG0:.*]]: index
+func.func @drop_dims_of_space(%a: index) -> !gml_st.tile<?x10> {
+  // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [%[[ARG0]], 10]
+  // CHECK:     return %[[SPACE]]
+  %space = gml_st.space [%a, 5, 10] : !gml_st.tile<?x5x10>
+  %space_ = gml_st.drop_dims %space, [0, 2]
       : !gml_st.tile<?x5x10> to !gml_st.tile<?x10>
-  %res = gml_st.materialize %arg[%tt]
-      : tensor<?x10xf32>[!gml_st.tile<?x10>]
-  func.return %res : tensor<?x10xf32>
+  func.return %space_ : !gml_st.tile<?x10>
+}
+
+//-----
+
+// CHECK-LABEL: @drop_dims_of_tile
+// CHECK-SAME:  %[[ARG0:.*]]: index
+func.func @drop_dims_of_tile(%a: index) -> !gml_st.tile<2x2> {
+  // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [%[[ARG0]], 10]
+  // CHECK-DAG: %[[TILE:.*]] = gml_st.tile %[[SPACE]] [2, 4] [2, 2] [1, 1]
+  // CHECK:     return %[[TILE]]
+  %space = gml_st.space [%a, 5, 10] : !gml_st.tile<?x5x10>
+  %tile = gml_st.tile %space [2, 0, 4] [2, 4, 2] [1, 1, 1]
+      : !gml_st.tile<?x5x10> to !gml_st.tile<2x4x2>
+  %tile_ = gml_st.drop_dims %tile, [0, 2]
+      : !gml_st.tile<2x4x2> to !gml_st.tile<2x2>
+  func.return %tile_ : !gml_st.tile<2x2>
+}
+
+//-----
+
+// CHECK-LABEL: @drop_dims_of_point
+// CHECK-SAME:  %[[ARG0:.*]]: index
+func.func @drop_dims_of_point(%a: index) -> !gml_st.point {
+  // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [%[[ARG0]], 10]
+  // CHECK-DAG: %[[POINT:.*]] = gml_st.point %[[SPACE]] [1, 3]
+  // CHECK:     return %[[POINT]]
+  %space = gml_st.space [%a, 5, 10] : !gml_st.tile<?x5x10>
+  %point = gml_st.point %space [1, 2, 3] : !gml_st.tile<?x5x10> to !gml_st.point
+  %point_ = gml_st.drop_dims %point, [0, 2] : !gml_st.point to !gml_st.point
+  func.return %point_ : !gml_st.point
 }

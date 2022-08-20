@@ -441,8 +441,10 @@ LogicalResult BuildExecuteOp(
   // TODO(b/139377366): Need to snapshot all resource variable inputs in
   // follow-up CLs.
   llvm::SmallVector<Type, 4> output_types;
+  llvm::SmallVector<int, 4> cluster_to_core_index;
   auto result = tensorflow::GetOutputTypesForLogicalDeviceComputation(
-      core_id, output_sharding_config, cluster_func, &output_types);
+      core_id, output_sharding_config, cluster_func, &output_types,
+      &cluster_to_core_index);
   if (failed(result)) return failure();
 
   // TPUExecute has same output types as cluster_func.
@@ -504,6 +506,7 @@ LogicalResult AddToParallelExecuteOp(
     llvm::ArrayRef<llvm::SmallVector<tensorflow::TPUDeviceAndHost, 8>>
         tpu_devices,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
+    llvm::SmallVectorImpl<llvm::SmallVector<int, 4>>* cluster_to_core_index,
     Operation* compile_op, tf_device::ClusterFuncOp cluster_func,
     OpBuilder* builder, tf_device::ParallelExecuteOp old_parallel_execute,
     tf_device::ParallelExecuteOp* new_parallel_execute, int* cluster_idx) {
@@ -519,9 +522,11 @@ LogicalResult AddToParallelExecuteOp(
                                     num_cores_per_replica);
 
   for (int core = 0; core < num_cores_per_replica; ++core) {
+    cluster_to_core_index->emplace_back(llvm::SmallVector<int, 4>());
     llvm::SmallVector<Type, 4> output_types;
     auto result = tensorflow::GetOutputTypesForLogicalDeviceComputation(
-        core, output_sharding_config, cluster_func, &output_types);
+        core, output_sharding_config, cluster_func, &output_types,
+        &(*cluster_to_core_index)[core]);
     if (failed(result)) return failure();
 
     for (Type t : output_types) concatenated_output_types.emplace_back(t);
@@ -822,10 +827,12 @@ LogicalResult Rewrite(
   // concurrent device execution across multiple logical devices.
   tf_device::ParallelExecuteOp new_parallel_execute;
   int cluster_idx;
-  result = AddToParallelExecuteOp(tpu_device_assignment.tpu_devices,
-                                  output_shardings, compile_op, cluster_func,
-                                  builder, old_parallel_execute,
-                                  &new_parallel_execute, &cluster_idx);
+  llvm::SmallVector<llvm::SmallVector<int, 4>, 4> cluster_to_core_index;
+  cluster_to_core_index.reserve(num_cores_per_replica);
+  result = AddToParallelExecuteOp(
+      tpu_device_assignment.tpu_devices, output_shardings,
+      &cluster_to_core_index, compile_op, cluster_func, builder,
+      old_parallel_execute, &new_parallel_execute, &cluster_idx);
   if (failed(result)) return failure();
 
   // As tf_device.parallel_execute wraps # logical cores number of TPUExecute
@@ -833,8 +840,8 @@ LogicalResult Rewrite(
   // cluster_func op. As such, each return value of parallel_execute op must
   // be mapped with corresponding return value usages of cluster_func.
   result = tensorflow::RemapOutputsFromLogicalDevices(
-      cluster_func.getLoc(), output_shardings, old_parallel_execute,
-      cluster_idx, new_parallel_execute, builder);
+      cluster_func.getLoc(), output_shardings, cluster_to_core_index,
+      old_parallel_execute, cluster_idx, new_parallel_execute, builder);
   if (failed(result)) return failure();
 
   return RemoveSingletonParallelExecuteOp(new_parallel_execute, builder);

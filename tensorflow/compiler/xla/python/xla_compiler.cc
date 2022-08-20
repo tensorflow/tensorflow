@@ -597,6 +597,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_readwrite("argument_layouts", &CompileOptions::argument_layouts)
       .def_readwrite("parameter_is_tupled_arguments",
                      &CompileOptions::parameter_is_tupled_arguments)
+      .def_readwrite("compile_portable_executable",
+                     &CompileOptions::compile_portable_executable)
       .def_readonly("executable_build_options",
                     &CompileOptions::executable_build_options)
       // TODO(phawkins): the following fields exist for backward compatibility.

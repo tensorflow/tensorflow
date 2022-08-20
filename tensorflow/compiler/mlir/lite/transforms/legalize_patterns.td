@@ -223,6 +223,7 @@ def LegalizeSegmentSum : Pat<(TF_SegmentSumOp $data, $segment_ids),
 foreach UnsortedSegmentOp = [
   [TF_UnsortedSegmentSumOp, TFL_UnsortedSegmentSumOp],
   [TF_UnsortedSegmentMaxOp, TFL_UnsortedSegmentMaxOp],
+  [TF_UnsortedSegmentMinOp, TFL_UnsortedSegmentMinOp],
   [TF_UnsortedSegmentProdOp, TFL_UnsortedSegmentProdOp]] in {
   def Legalize#UnsortedSegmentOp[0] :
      Pat<(UnsortedSegmentOp[0] $data, $segment_ids, $num_segments),
@@ -570,3 +571,5 @@ def LegalizeMultinomial : Pat<
 def LegalizeXlaDynamicUpdateSlice : Pat<
   (TF_XlaDynamicUpdateSliceOp $operand, $update, $start_indices),
   (TFL_DynamicUpdateSliceOp $operand, $update, $start_indices)>;
+
+def LegalizeAtan2 : Pat<(TF_Atan2Op $y, $x), (TFL_Atan2Op $y, $x)>;

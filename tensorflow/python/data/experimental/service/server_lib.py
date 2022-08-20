@@ -99,7 +99,7 @@ class DispatcherConfig(
 
 
 @tf_export("data.experimental.service.DispatchServer", v1=[])
-class DispatchServer(object):
+class DispatchServer:
   """An in-process tf.data service dispatch server.
 
   A `tf.data.experimental.service.DispatchServer` coordinates a cluster of
@@ -294,7 +294,7 @@ class WorkerConfig(
 
 
 @tf_export("data.experimental.service.WorkerServer", v1=[])
-class WorkerServer(object):
+class WorkerServer:
   """An in-process tf.data service worker server.
 
   A `tf.data.experimental.service.WorkerServer` performs `tf.data.Dataset`

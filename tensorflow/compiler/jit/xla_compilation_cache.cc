@@ -719,11 +719,13 @@ Status XlaCompilationCache::CompileImpl(
   {
     mutex_lock lock(compile_cache_mu_);
     // Find or create a cache entry.
-    std::unique_ptr<Entry>& e = cache_[signature];
-    if (!e) {
-      e.reset(new Entry);
+    auto cache_entry = cache_.find(signature);
+    if (cache_entry == cache_.end()) {
+      auto inserted_entry =
+          cache_.emplace(signature, std::make_unique<Entry>());
+      cache_entry = inserted_entry.first;
     }
-    entry = e.get();
+    entry = cache_entry->second.get();
   }
 
   // We always compile a cluster the very first time it is executed.  This is an

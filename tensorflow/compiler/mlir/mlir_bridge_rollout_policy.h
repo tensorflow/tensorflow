@@ -56,12 +56,24 @@ MlirBridgeRolloutPolicy GetMlirBridgeRolloutPolicy(
     const tensorflow::Graph& graph,
     const FunctionLibraryDefinition* function_library,
     std::optional<tensorflow::ConfigProto> config_proto,
-    bool uses_uninitialized_resource_args, bool record_stats = false);
+    bool uses_uninitialized_resource_args, bool is_v1_compat,
+    bool record_stats);
 
 static inline MlirBridgeRolloutPolicy GetMlirBridge2ndPhaseRolloutPolicy(
     mlir::ModuleOp module) {
   return MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis;
 }
+
+// Explicit Interface for when we want to log features vs test the validity of
+// the graph for MLIR bridge processing.  Note that right now the logging
+// which is done in the logic used by GraphHasFeaturesUnsupportedByMlirBridge
+// has diverged and logs supported features as well.  Parameters are the same
+// as for GetMlirBridgeRolloutPolicy with the exception of
+// record_stats, which isn't needed because this interface will always record.
+void LogGraphFeatures(const Graph& graph,
+                      const FunctionLibraryDefinition* function_library,
+                      std::optional<ConfigProto> config_proto,
+                      bool uses_uninitialized_resource_args, bool is_v1_compat);
 
 }  // namespace tensorflow
 

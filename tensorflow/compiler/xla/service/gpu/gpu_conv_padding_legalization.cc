@@ -39,6 +39,15 @@ bool IsForwardConvolutionCanonical(const HloInstruction& conv) {
          !window_util::HasDilation(conv.window());
 }
 
+// Make pad instruction and copy over the metadata.
+HloInstruction* MakePadWithMetadata(HloInstruction* hlo,
+                                    HloInstruction* padding,
+                                    const PaddingConfig& config) {
+  HloInstruction* out = MakePadHlo(hlo, padding, config).ValueOrDie();
+  out->set_metadata(hlo->metadata());
+  return out;
+}
+
 // If the (positive and negative) padding on the input operand of a convolution
 // can't be folded into a cuDNN convolution libcall (e.g. uneven padding and
 // dilation), returns kPad and/or kSlice instructions that explicitly apply the
@@ -83,7 +92,7 @@ HloInstruction* MaybePaddedAndSlicedInput(
     PrimitiveType element_type = input->shape().element_type();
     HloInstruction* padding = computation->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
-    input = MakePadHlo(input, padding, padding_config).ValueOrDie();
+    input = MakePadWithMetadata(input, padding, padding_config);
   }
 
   if (window_util::HasNegativePadding(*conv_window)) {
@@ -143,7 +152,7 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
   PrimitiveType element_type = kernel->shape().element_type();
   HloInstruction* padding = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
-  return MakePadHlo(kernel, padding, padding_config).ValueOrDie();
+  return MakePadWithMetadata(kernel, padding, padding_config);
 }
 }  // namespace
 

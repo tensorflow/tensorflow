@@ -17,7 +17,6 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         "nomsan",  # TODO(b/131773093): Re-enable.
-	"no_rocm"
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -143,7 +142,6 @@ cuda_py_test(
     tags = [
         "noasan",  # times out, b/63678675
         "optonly",  # times out
-	"no_rocm"
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -182,7 +180,6 @@ cuda_py_test(
     tags = [
         "noasan",
         "optonly",
-	"no_rocm"
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -205,7 +202,6 @@ cuda_py_test(
     tags = [
         "noasan",
         "optonly",
-	"no_rocm"
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -228,7 +224,6 @@ cuda_py_test(
     tags = [
         "noasan",  # times out, b/63678675
         "optonly",  # times out
-	"no_rocm"
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -252,7 +247,6 @@ cuda_py_test(
         "no_cuda11",  # TODO(b/197522782): reenable test after fixing.
         "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
-	"no_rocm"
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -276,7 +270,6 @@ cuda_py_test(
     tags = [
         "noasan",
         "optonly",
-	"no_rocm"
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -319,7 +312,6 @@ cuda_py_test(
     tags = [
         "noasan",
         "optonly",
-	"no_rocm"
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -342,7 +334,6 @@ cuda_py_test(
     tags = [
         "noasan",
         "optonly",
-	"no_rocm"
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -364,7 +355,6 @@ cuda_py_test(
     tags = [
         "noasan",  # times out, b/63678675
         "optonly",  # times out
-	"no_rocm"
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -387,7 +377,6 @@ cuda_py_test(
     tags = [
         "noasan",
         "optonly",
-	"no_rocm"
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -411,7 +400,6 @@ cuda_py_test(
     tags = [
         "noasan",  # times out
         "optonly",
-	"no_rocm"
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -432,7 +420,6 @@ cuda_py_test(
     tags = [
         "noasan",
         "optonly",
-	"no_rocm"
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -453,7 +440,6 @@ cuda_py_test(
     tags = [
         "noasan",
         "optonly",
-	"no_rocm"
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -519,7 +505,6 @@ cuda_py_test(
         "no_windows_gpu",
         "noasan",
         "optonly",
-	"no_rocm"
     ],
     xla_enable_strict_auto_jit = True,
     deps = [

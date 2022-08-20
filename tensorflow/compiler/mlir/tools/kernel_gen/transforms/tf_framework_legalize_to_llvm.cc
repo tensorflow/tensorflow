@@ -154,7 +154,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
                                     output_index,
                                     candidates_count_and_ptr.first,
                                     candidates_count_and_ptr.second}))
-            .getResult(0);
+            .getResult();
 
     MemRefDescriptor memRefDescriptor = CreateMemRefDescriptor(
         loc, rewriter, memref_type, allocated_byte_ptr, sizes);

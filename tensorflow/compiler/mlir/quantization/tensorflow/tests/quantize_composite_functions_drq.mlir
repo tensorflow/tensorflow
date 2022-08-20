@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions --quant-insert-library-quantization-method="drq"  -quant-quantize-composite-functions --quant-composite-quantization-method="drq" -symbol-dce | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions='quantization-method=drq target-opset=UNIFORM_QUANTIZED' -quant-quantize-composite-functions --quant-composite-quantization-method="drq" -symbol-dce | FileCheck %s
 
 module {
   func.func @matmul(%arg0: tensor<2x512xf32>) -> (tensor<*xf32>) {

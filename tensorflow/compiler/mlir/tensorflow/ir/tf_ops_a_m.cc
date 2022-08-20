@@ -1539,7 +1539,8 @@ void ConstOp::build(OpBuilder &builder, OperationState &result,
     // we want to provide more flexibility by allowing attributes of scalar
     // types. But we need to wrap it up with ElementsAttr to construct
     // valid TensorFlow constants.
-    type = RankedTensorType::get(/*shape=*/{}, value.getType());
+    auto typed_attr = value.cast<TypedAttr>();
+    type = RankedTensorType::get(/*shape=*/{}, typed_attr.getType());
     return ConstOp::build(builder, result, DenseElementsAttr::get(type, value));
   }
   // TODO(jpienaar): support other TensorFlow specific types.

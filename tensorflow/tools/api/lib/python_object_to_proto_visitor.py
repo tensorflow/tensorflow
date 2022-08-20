@@ -18,8 +18,6 @@
 import enum
 import sys
 
-import six
-
 from google.protobuf import message
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
@@ -200,7 +198,7 @@ def _IsProtoClass(obj):
   return isinstance(obj, type) and issubclass(obj, message.Message)
 
 
-class PythonObjectToProtoVisitor(object):
+class PythonObjectToProtoVisitor:
   """A visitor that summarizes given python objects as protobufs."""
 
   def __init__(self, default_path='tensorflow'):
@@ -225,8 +223,7 @@ class PythonObjectToProtoVisitor(object):
       if (_SkipMember(parent, member_name) or
           isinstance(member_obj, deprecation.HiddenTfApiAttribute)):
         return
-      if member_name == '__init__' or not six.ensure_str(
-          member_name).startswith('_'):
+      if member_name == '__init__' or not member_name.startswith('_'):
         if tf_inspect.isroutine(member_obj):
           new_method = proto.member_method.add()
           new_method.name = member_name

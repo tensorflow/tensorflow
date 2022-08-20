@@ -41,6 +41,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 from tensorflow.lite.testing.op_tests.abs import make_abs_tests
 from tensorflow.lite.testing.op_tests.add_n import make_add_n_tests
 from tensorflow.lite.testing.op_tests.arg_min_max import make_arg_min_max_tests
+from tensorflow.lite.testing.op_tests.atan2 import make_atan2_tests
 from tensorflow.lite.testing.op_tests.batch_to_space_nd import make_batch_to_space_nd_tests
 from tensorflow.lite.testing.op_tests.batchmatmul import make_batchmatmul_tests
 from tensorflow.lite.testing.op_tests.binary_op import make_add_tests, make_div_tests, make_sub_tests, make_mul_tests, make_pow_tests, make_floor_div_tests, make_floor_mod_tests, make_squared_difference_tests
@@ -186,7 +187,7 @@ from tensorflow.lite.testing.op_tests.unfused_gru import make_unfused_gru_tests
 from tensorflow.lite.testing.op_tests.unique import make_unique_tests
 from tensorflow.lite.testing.op_tests.unpack import make_unpack_tests
 from tensorflow.lite.testing.op_tests.unroll_batch_matmul import make_unroll_batch_matmul_tests
-from tensorflow.lite.testing.op_tests.unsorted_segment import make_unsorted_segment_max_tests, make_unsorted_segment_prod_tests, make_unsorted_segment_sum_tests
+from tensorflow.lite.testing.op_tests.unsorted_segment import make_unsorted_segment_max_tests, make_unsorted_segment_min_tests, make_unsorted_segment_prod_tests, make_unsorted_segment_sum_tests
 from tensorflow.lite.testing.op_tests.where import make_where_tests
 from tensorflow.lite.testing.op_tests.where_v2 import make_where_v2_tests
 from tensorflow.lite.testing.op_tests.while_loop import make_while_tests

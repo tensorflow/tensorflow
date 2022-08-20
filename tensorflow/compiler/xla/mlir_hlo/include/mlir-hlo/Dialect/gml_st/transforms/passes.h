@@ -24,9 +24,6 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
-/// Pass to lower MHLO to destination-style ops in GML and linalg.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToGMLPass();
-
 /// Pass to fuse producers into `gml_st.materialize` ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass();
 

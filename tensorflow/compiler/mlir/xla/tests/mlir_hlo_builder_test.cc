@@ -85,8 +85,7 @@ TEST_F(XlaBuilderTest, CreateToken) {
 
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
 
-  ExpectHasSubstr(GetMlirOpString(token),
-                  R"("mhlo.create_token"() : () -> !mhlo.token)");
+  ExpectHasSubstr(GetMlirOpString(token), R"(mhlo.create_token : !mhlo.token)");
 }
 
 TEST_F(XlaBuilderTest, Infeed) {

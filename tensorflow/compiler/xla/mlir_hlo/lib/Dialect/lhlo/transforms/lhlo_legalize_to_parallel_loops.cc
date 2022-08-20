@@ -101,12 +101,12 @@ MappedIvs mapWindowIvsToInput(OpTy op, Value operand, ValueRange ivs,
   if (!op.getWindowStrides().has_value()) {
     op.emitOpError("No window strides specified.");
   }
-  auto windowStrides = op.getWindowStrides().getValue();
+  auto windowStrides = op.getWindowStrides().value();
 
   if (!op.getPadding().has_value()) {
     op.emitOpError("No padding specified.");
   }
-  auto padding = op.getPadding().getValue();
+  auto padding = op.getPadding().value();
 
   auto loc = op.getLoc();
   auto operandShape = operand.getType().template cast<MemRefType>().getShape();

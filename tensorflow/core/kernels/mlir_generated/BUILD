@@ -1544,9 +1544,8 @@ gpu_kernel_library(
         "f16",
         "f32",
         "f64",
-        # TODO(b/190374484): Enable it for complex types once it is supported.
-        # "c64",
-        # "c128",
+        "c64",
+        "c128",
     ],
 )
 
@@ -1568,9 +1567,8 @@ gpu_kernel_library(
         "f16",
         "f32",
         "f64",
-        # TODO(b/190374484): Enable it for complex types once it is supported.
-        # "c64",
-        # "c128",
+        "c64",
+        "c128",
     ],
 )
 

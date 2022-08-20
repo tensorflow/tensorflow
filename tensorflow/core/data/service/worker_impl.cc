@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "grpcpp/create_channel.h"
 #include "absl/algorithm/container.h"

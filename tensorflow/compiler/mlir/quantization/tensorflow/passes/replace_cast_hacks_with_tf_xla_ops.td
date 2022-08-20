@@ -110,35 +110,3 @@ def ConvertTFDepthwiseConv2DWithNoZeroPointToXLAConvOp : Pat<
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
   (addBenefit 10)>;
-
-// TODO(b/241478226): Remove these rules after these binary ops support folding
-// with broadcastable shapes.
-// Fold the Add/Sub op if the rhs is 0.
-foreach BinaryOp = [TF_AddV2Op, TF_SubOp] in {
-  def FoldI32#BinaryOp : Pat<
-    (BinaryOp $x, (TF_ConstOp:$cst $cst_value)),
-    (replaceWithValue $x),
-    [(TensorOf<[I32]> $x),
-     (IsIntSplatValueEqual<"int32_t", "0"> $cst)]>;
-
-  def FoldF32#BinaryOp : Pat<
-    (BinaryOp $x, (TF_ConstOp:$cst $cst_value)),
-    (replaceWithValue $x),
-    [(TensorOf<[F32]> $x),
-     (IsSplatValueEqual<"0.f"> $cst)]>;
-}
-
-// Fold the Add/Sub op if the rhs is 1.
-foreach BinaryOp = [TF_MulOp, TF_DivOp] in {
-  def FoldI32#BinaryOp : Pat<
-    (BinaryOp $x, (TF_ConstOp:$cst $cst_value)),
-    (replaceWithValue $x),
-    [(TensorOf<[I32]> $x),
-     (IsIntSplatValueEqual<"int32_t", "1"> $cst)]>;
-
-  def FoldF32#BinaryOp : Pat<
-    (BinaryOp $x, (TF_ConstOp:$cst $cst_value)),
-    (replaceWithValue $x),
-    [(TensorOf<[F32]> $x),
-     (IsSplatValueEqual<"1.f"> $cst)]>;
-}

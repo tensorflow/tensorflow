@@ -35,7 +35,6 @@ struct OpData {
   bool cond_has_dynamic_output_tensors;
   bool body_has_dynamic_output_tensors;
   bool body_use_shallow_copy;
-  bool subgraphs_allocated;
   // set when Prepare_impl() is called.
   bool subgraphs_prepared;
 };
@@ -212,7 +211,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   op_data->cond_has_dynamic_output_tensors = false;
   op_data->body_has_dynamic_output_tensors = false;
   op_data->body_use_shallow_copy = false;
-  op_data->subgraphs_allocated = false;
   op_data->subgraphs_prepared = false;
   return op_data;
 }
@@ -298,7 +296,6 @@ TfLiteStatus Prepare_impl(TfLiteContext* context, TfLiteNode* node) {
   }
 
   TF_LITE_ENSURE_OK(context, body_subgraph->AllocateTensors());
-  op_data->subgraphs_allocated = true;
   if (body_subgraph->HasDynamicTensors()) {
     op_data->body_has_dynamic_output_tensors = true;
   } else {
@@ -596,7 +593,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   if (op_data->subgraphs_prepared == false) {
     TF_LITE_ENSURE_OK(context, Prepare_lazy(context, node));
-  } else if (op_data->subgraphs_allocated == false) {
+  } else {
     TF_LITE_ENSURE_OK(context, cond_subgraph->AllocateTensors());
     TF_LITE_ENSURE_OK(context, body_subgraph->AllocateTensors());
   }
@@ -610,7 +607,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (!this_subgraph->ShouldPreserveAllTensors()) {
     TF_LITE_ENSURE_OK(context, cond_subgraph->ReleaseNonPersistentMemory());
     TF_LITE_ENSURE_OK(context, body_subgraph->ReleaseNonPersistentMemory());
-    op_data->subgraphs_allocated = false;
   }
 
   return kTfLiteOk;

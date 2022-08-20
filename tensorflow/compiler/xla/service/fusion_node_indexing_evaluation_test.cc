@@ -68,8 +68,17 @@ class InstructionFusionForTesting : public InstructionFusion {
       fusion_node_evaluations_.emplace(consumer,
                                        FusionNodeIndexingEvaluation(consumer));
     }
-    return fusion_node_evaluations_.at(consumer).EvaluateEmittedInstructions(
+    return GetFusionNodeEvaluation(consumer)->EvaluateEmittedInstructions(
         producer);
+  }
+
+  const FusionNodeIndexingEvaluation* GetFusionNodeEvaluation(
+      const HloInstruction* consumer) {
+    auto it = fusion_node_evaluations_.find(consumer);
+    if (it == fusion_node_evaluations_.end()) {
+      return nullptr;
+    }
+    return &it->second;
   }
 
  private:
@@ -175,6 +184,24 @@ TEST_F(FusionNodeIndexingEvaluationTest, ExponentialDuplicationPattern) {
   // If we fuse add0 into 'fusion', it needs to be emitted four times.
   EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(add0, fusion), 4);
   instruction_fusion.Fuse(add0, fusion, module->entry_computation());
+  // Check that the fusion_instructions hash map is up to date.
+  const FusionNodeIndexingEvaluation* eval =
+      instruction_fusion.GetFusionNodeEvaluation(fusion);
+  EXPECT_NE(eval, nullptr);
+  EXPECT_TRUE(eval->fusion_instructions()->contains(fusion));
+  // CHECK that all non-parameter instructions from the fusion computation
+  // appear in the fusion_instructions hash map from the
+  // FusionNodeIndexingEvaluation.
+  for (const HloInstruction* instr :
+       fusion->fused_instructions_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      continue;
+    }
+    EXPECT_TRUE(eval->fusion_instructions()->contains(instr));
+  }
+  EXPECT_EQ(eval->fusion_instructions()->size(),
+            fusion->fused_instruction_count() + 1 -
+                fusion->fused_parameters().size());
 }
 
 TEST_F(FusionNodeIndexingEvaluationTest, RecomputeCache) {

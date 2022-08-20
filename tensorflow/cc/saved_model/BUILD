@@ -381,8 +381,10 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     deps = [
+        ":constants",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/util/tensor_bundle:naming",
         "@com_google_protobuf//:protobuf_headers",
         "//tensorflow/core/grappler:op_types",
         "@com_google_absl//absl/container:btree",

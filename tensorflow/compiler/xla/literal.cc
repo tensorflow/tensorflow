@@ -183,7 +183,7 @@ const Shape* TryInternShape(const Shape& shape) {
     return &NilShape();
   }
   if (shape.IsArray() && shape.dimensions_size() == 0 && shape.is_static() &&
-      shape.layout().tiles_size() == 0) {
+      shape.layout().tiles_size() == 0 && shape.layout().memory_space() == 0) {
     return &ScalarShape(shape.element_type());
   }
   return nullptr;

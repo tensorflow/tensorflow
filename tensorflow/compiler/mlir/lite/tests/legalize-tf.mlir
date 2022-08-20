@@ -184,11 +184,11 @@ func.func @fakeQuantVarsTrue(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<f32>, %ar
 }
 
 func.func @const() -> tensor<2xi32> {
-  %0 = "tf.Const"() {device = "", name = "weights_quant/min", dtype = "tfdtype$DT_INT32", value = opaque<"tf", "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %0 = "tf.Const"() {device = "", name = "weights_quant/min", dtype = "tfdtype$DT_INT32", value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<2xi32>} : () -> (tensor<2xi32>)
   func.return %0: tensor<2xi32>
 
 // CHECK-LABEL: @const
-// CHECK: "tfl.pseudo_const"() {value = opaque<"tf", "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK: "tfl.pseudo_const"() {value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<2xi32>} : () -> tensor<2xi32>
 }
 
 func.func @shape(%arg0: tensor<?x1001xf32>) -> tensor<2xi32> {
@@ -2082,6 +2082,42 @@ func.func @unsorted_segment_max_i64(%arg0: tensor<9xf32>, %arg1: tensor<9xi64>) 
 
 // -----
 
+func.func @unsorted_segment_min(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>) -> tensor<8xf32> {
+  %num_segments = "tf.Const"() {value = dense<8> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tf.UnsortedSegmentMin"(%arg0, %arg1, %num_segments) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+  // CHECK-LABEL: unsorted_segment_min
+  // CHECK: %[[CST:.*]] = arith.constant dense<8> : tensor<i32>
+  // CHECK: %[[BCT:.*]] = "tfl.unsorted_segment_min"(%arg0, %arg1, %[[CST]]) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
+  // CHECK: return %[[BCT]] : tensor<8xf32>
+}
+
+// -----
+
+func.func @unsorted_segment_min_3arg(%arg0: tensor<5xi32>, %arg1: tensor<5xi32>, %arg2: tensor<i64>) -> tensor<5xi32>{
+  %0 = "tf.UnsortedSegmentMin"(%arg0, %arg1, %arg2) : (tensor<5xi32>, tensor<5xi32>, tensor<i64>) -> tensor<5xi32>
+  func.return %0 : tensor<5xi32>
+  // CHECK-LABEL: unsorted_segment_min_3arg
+  // CHECK: %[[BCT:.*]] = "tfl.cast"(%arg2) : (tensor<i64>) -> tensor<i32>
+  // CHECK: %[[RES:.*]] = "tfl.unsorted_segment_min"(%arg0, %arg1, %[[BCT]]) : (tensor<5xi32>, tensor<5xi32>, tensor<i32>) -> tensor<5xi32>
+  // CHECK: return %[[RES]] : tensor<5xi32>
+}
+
+// -----
+
+func.func @unsorted_segment_min_i64(%arg0: tensor<9xf32>, %arg1: tensor<9xi64>) -> tensor<9xf32> {
+  %num_segments = "tf.Const"() {value = dense<9> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tf.UnsortedSegmentMin"(%arg0, %arg1, %num_segments) : (tensor<9xf32>, tensor<9xi64>, tensor<i32>) -> tensor<9xf32>
+  func.return %0 : tensor<9xf32>
+  // CHECK-LABEL: unsorted_segment_min_i64
+  // CHECK: %[[CST:.*]] = arith.constant dense<9> : tensor<i32>
+  // CHECK: %[[CAST:.*]] = "tfl.cast"(%arg1) : (tensor<9xi64>) -> tensor<9xi32>
+  // CHECK: %[[RES:.*]] = "tfl.unsorted_segment_min"(%arg0, %[[CAST]], %[[CST]]) : (tensor<9xf32>, tensor<9xi32>, tensor<i32>) -> tensor<9xf32>
+  // CHECK: return %[[RES]] : tensor<9xf32>
+}
+
+// -----
+
 func.func @unsorted_segment_sum(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>) -> tensor<8xf32> {
   %num_segments = "tf.Const"() {value = dense<8> : tensor<i32>} : () -> tensor<i32>
   %0 = "tf.UnsortedSegmentSum"(%arg0, %arg1, %num_segments) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
@@ -2240,6 +2276,15 @@ func.func @mul_i64(%arg0: tensor<14xi64>, %arg1: tensor<14xi64>) -> tensor<14xi6
 // CHECK:  return
 }
 
+func.func @mul_complex32(%arg0: tensor<14xcomplex<f32>>, %arg1: tensor<14xcomplex<f32>>) -> tensor<14xcomplex<f32>> {
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xcomplex<f32>>, tensor<14xcomplex<f32>>) -> tensor<14xcomplex<f32>>
+  func.return %0: tensor<14xcomplex<f32>>
+
+// CHECK-LABEL: mul_complex32
+// CHECK:  tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<14xcomplex<f32>>
+// CHECK:  return
+}
+
 func.func @broadcast_args(%arg0: tensor<3xi32>, %arg1: tensor<1xi32>) -> tensor<3xi32> {
   %0 = "tf.BroadcastArgs"(%arg0, %arg1) : (tensor<3xi32>, tensor<1xi32>) -> tensor<3xi32>
   func.return %0 : tensor<3xi32>
@@ -2388,4 +2433,13 @@ func.func @testReluI64(%arg0: tensor<1xi64>) -> tensor<1xi64> {
 // CHECK:  %[[CONST_0:.*]] = arith.constant dense<0> : tensor<i64>
 // CHECK:  %[[RES0:.*]] = "tfl.maximum"(%arg0, %[[CONST_0]]) : (tensor<1xi64>, tensor<i64>) -> tensor<1xi64>
 // CHECK:  return %[[RES0]] : tensor<1xi64>
+}
+
+func.func @atan2(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = "tf.Atan2"(%arg0, %arg1) : (tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+
+// CHECK-LABEL: atan2
+// CHECK: %[[RES0:.*]] = "tfl.atan2"(%arg0, %arg1) : (tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
+// CHECK:  return %[[RES0]] : tensor<8xf32>
 }

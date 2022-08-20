@@ -70,6 +70,19 @@ cuda_py_test(
     ],
 )
 
+py_test(
+    name = "profiler_wrapper_test",
+    srcs = ["profiler_wrapper_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+    ],
+)
+
 py_library(
     name = "option_builder",
     srcs = ["option_builder.py"],

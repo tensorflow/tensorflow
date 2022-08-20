@@ -34,10 +34,10 @@ ENTRY %tfcompile.0 {
 
   // CHECK: [[R2:%.+]] = "mhlo.if"([[R1]]) ({
   // CHECK:   [[R3:%.+]] = mhlo.log [[A0]]
-  // CHECK:   "mhlo.return"([[R3]])
+  // CHECK:   mhlo.return [[R3]]
   // CHECK: },  {
   // CHECK:   [[R3:%.+]] = mhlo.exponential [[A0]]
-  // CHECK:   "mhlo.return"([[R3]])
+  // CHECK:   mhlo.return [[R3]]
   // CHECK: })
   %conditional.16 = (f32[]) conditional(%compare.4, %tuple.5, %tuple.5), true_computation=%then_branch0, false_computation=%else_branch0, metadata={op_type="If" op_name="cond/Merge_if"}
 
@@ -85,12 +85,12 @@ ENTRY %tfcompile.0 {
 //CHECK-NEXT:    %[[IF:.*]]:3 = "mhlo.if"(%[[CMP]]) ({
 //CHECK-NEXT:      %[[LOG0:.*]] = mhlo.log %[[A0]] : tensor<f32>
 //CHECK-NEXT:      %[[LOG1:.*]] = mhlo.log %[[A1]] : tensor<f32>
-//CHECK-NEXT:      "mhlo.return"(%[[LOG0]], %[[LOG1]], %[[A0]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> ()
+//CHECK-NEXT:      mhlo.return %[[LOG0]], %[[LOG1]], %[[A0]] : tensor<f32>, tensor<f32>, tensor<f32>
 //CHECK-NEXT:    },  {
 //CHECK-NEXT:      %[[EXP0:.*]] = mhlo.exponential %[[A0]] : tensor<f32>
 //CHECK-NEXT:      %[[EXP1:.*]] = mhlo.exponential %[[A1]] : tensor<f32>
 //CHECK-NEXT:      %[[EXP2:.*]] = mhlo.exponential %[[A2]] : tensor<f32>
-//CHECK-NEXT:      "mhlo.return"(%[[EXP0]], %[[EXP1]], %[[EXP2]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> ()
+//CHECK-NEXT:      mhlo.return %[[EXP0]], %[[EXP1]], %[[EXP2]] : tensor<f32>, tensor<f32>, tensor<f32>
 //CHECK-NEXT:    }) : (tensor<i1>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
 //CHECK-NEXT:    %[[R0:.*]] = "mhlo.tuple"(%[[IF]]#0, %[[IF]]#1)
 //CHECK-NEXT:    %[[R1:.*]] = "mhlo.tuple"(%[[R0]], %[[IF]]#2)
@@ -131,10 +131,10 @@ ENTRY %tfcompile.0 {
 // CHECK-NEXT:    %[[CMP:.*]] = mhlo.compare LT, %[[A0]], %[[CST]]
 // CHECK-NEXT:    %[[IF:.*]] = "mhlo.if"(%[[CMP]]) ({
 // CHECK-NEXT:      %[[LOG0:.*]] = mhlo.log %[[A0]] : tensor<f32>
-// CHECK-NEXT:      "mhlo.return"(%[[LOG0]]) : (tensor<f32>) -> ()
+// CHECK-NEXT:      mhlo.return %[[LOG0]] : tensor<f32>
 // CHECK-NEXT:    },  {
 // CHECK-NEXT:      %[[EXP0:.*]] = mhlo.exponential %[[A0]] : tensor<f32>
-// CHECK-NEXT:      "mhlo.return"(%[[EXP0]]) : (tensor<f32>) -> ()
+// CHECK-NEXT:      mhlo.return %[[EXP0]] : tensor<f32>
 // CHECK-NEXT:    }) : (tensor<i1>) -> tensor<f32>
 // CHECK-NEXT:    return %[[IF]] : tensor<f32>
 
@@ -183,14 +183,14 @@ ENTRY %tfcompile.0 {
 // CHECK-NEXT:      %[[PRED1:.*]] = mhlo.constant
 // CHECK-NEXT:      %[[CST2:.*]] = mhlo.constant
 // CHECK-NEXT:      %[[INNER_IF:.+]] = "mhlo.if"(%[[PRED1]]) ({
-// CHECK-NEXT:         "mhlo.return"(%[[CST2]]) : (tensor<f32>) -> ()
+// CHECK-NEXT:         mhlo.return %[[CST2]] : tensor<f32>
 // CHECK-NEXT:       },  {
 // CHECK-NEXT:         %[[CST3:.*]] = mhlo.constant
-// CHECK-NEXT:         "mhlo.return"(%[[CST3]]) : (tensor<f32>) -> ()
+// CHECK-NEXT:         mhlo.return %[[CST3]] : tensor<f32>
 // CHECK-NEXT:       }) : (tensor<i1>) -> tensor<f32>
-// CHECK-NEXT:       "mhlo.return"(%[[INNER_IF]], %[[INNER_IF]]) : (tensor<f32>, tensor<f32>) -> ()
+// CHECK-NEXT:       mhlo.return %[[INNER_IF]], %[[INNER_IF]] : tensor<f32>, tensor<f32>
 // CHECK-NEXT:     },  {
-// CHECK-NEXT:       "mhlo.return"(%[[A1]], %[[A2]]) : (tensor<f32>, tensor<f32>) -> ()
+// CHECK-NEXT:       mhlo.return %[[A1]], %[[A2]] : tensor<f32>, tensor<f32>
 // CHECK-NEXT:     }) : (tensor<i1>) -> (tensor<f32>, tensor<f32>)
 // CHECK-NEXT:     return %[[OUTER_IF]]#1 : tensor<f32>
 

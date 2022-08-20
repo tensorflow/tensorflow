@@ -48,6 +48,7 @@ limitations under the License.
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -189,6 +190,26 @@ static bool hasCanonicalDimensionNumbers(
 
   return true;
 }
+
+llvm::Optional<Value> scalarToTensor(OpBuilder& builder, Type /*type*/,
+                                     ValueRange inputs, Location loc) {
+  assert(inputs.size() == 1);
+  if (inputs.front().getType().isa<ShapedType>()) {
+    return llvm::None;
+  }
+  return builder
+      .create<tensor::FromElementsOp>(
+          loc, RankedTensorType::get({}, inputs.front().getType()),
+          inputs.front())
+      .getResult();
+}
+
+class HloTypeConverter : public mhlo::RemoveSignTypeConverter {
+ public:
+  HloTypeConverter() : mhlo::RemoveSignTypeConverter() {
+    addArgumentMaterialization(scalarToTensor);
+  }
+};
 
 //===----------------------------------------------------------------------===//
 // mhlo.RngOp conversion patterns.
@@ -1543,7 +1564,8 @@ class MapOpConverter : public OpConversionPattern<mhlo::MapOp> {
     }
     signatureConverter.addInputs(resultType.getElementType());
 
-    rewriter.applySignatureConversion(&region, signatureConverter);
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
     rewriter.replaceOp(op, linalgOp.getResults());
     return success();
   }
@@ -1554,40 +1576,6 @@ bool isInBodyOfLinalgOps(Operation* op) {
   return parentOp->getDialect() ==
          parentOp->getContext()->getLoadedDialect<linalg::LinalgDialect>();
 }
-
-template <typename OpTy>
-struct ReduceRegionXLAOpConversion : public OpConversionPattern<OpTy> {
-  using OpConversionPattern<OpTy>::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      OpTy op, typename OpTy::Adaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    if (!isInBodyOfLinalgOps(op)) {
-      return failure();
-    }
-    if (!op.getResult().getType().template isa<TensorType>()) return failure();
-    if (llvm::all_of(adaptor.getOperands(), [](Value arg) {
-          return arg.getType().template isa<TensorType>();
-        })) {
-      return failure();
-    }
-    // RemoveSignTypeConverter would give us a tensor. We also have to scalarize
-    // so do it manually.
-    Type resultType = getElementTypeOrSelf(op.getType());
-    if (resultType.isUnsignedInteger()) {
-      resultType = IntegerType::get(resultType.getContext(),
-                                    resultType.getIntOrFloatBitWidth());
-    }
-    // The scalar mapper has to know the original type. At this point the
-    // operands have been converted from `tensor<ui32>` to `i32` so recreate
-    // `ui32` from the original operands.
-    auto operandTypes = llvm::to_vector(llvm::map_range(
-        op->getOperandTypes(), [](Type t) { return getElementTypeOrSelf(t); }));
-    Value result = mhlo::MhloOpToStdScalarOp::mapOpWithArgTypes(
-        op, resultType, operandTypes, adaptor.getOperands(), &rewriter);
-    rewriter.replaceOp(op, result);
-    return success();
-  }
-};
 
 SmallVector<Value, 8> getReduceOpInitTensorDynSizes(
     OpBuilder& b, Location loc, Value arg, ShapedType resultType,
@@ -1705,15 +1693,24 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
     rewriter.inlineRegionBefore(op.body(), region, region.end());
     TypeConverter::SignatureConversion signatureConverter(numOperands * 2);
 
-    // map operand and init values's types
-    for (const auto& it : llvm::enumerate(op.getOperation()->getOperands())) {
+    // Reduce requires that the seed be used as a LHS operand inside the
+    // region, and the seed is encoded in linalg in the intial out value, so
+    // modify the signature of the block and the value mappings, so the output
+    // args will correlate with the LHS and the inputs correlate with the RHS.
+    for (const auto& [idx, val] : llvm::enumerate(op.init_values())) {
       signatureConverter.addInputs(
-          it.index(),
+          idx + numOperands,
           typeConverter->convertType(
-              it.value().getType().cast<ShapedType>().getElementType()));
+              val.getType().cast<ShapedType>().getElementType()));
+    }
+    for (const auto& [idx, val] : llvm::enumerate(op.operands())) {
+      signatureConverter.addInputs(
+          idx, typeConverter->convertType(
+                   val.getType().cast<ShapedType>().getElementType()));
     }
 
-    rewriter.applySignatureConversion(&region, signatureConverter);
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
     rewriter.replaceOp(op, linalgOp.getResults());
     return success();
   }
@@ -2048,10 +2045,10 @@ struct ConvolutionOpGeneralConversion
 
     // Decompose the reversal dims into its own step
     auto reversals = op.window_reversal();
-    if (reversals.hasValue()) {
+    if (reversals.value()) {
       llvm::SmallVector<int64_t> reversedDims;
       for (auto& idxAndBool :
-           llvm::enumerate(reversals.getValue().getValues<bool>()))
+           llvm::enumerate(reversals.value().getValues<bool>()))
         if (idxAndBool.value())
           reversedDims.push_back(
               op.dimension_numbers()
@@ -2223,9 +2220,8 @@ struct ConvolutionOpGeneralConversion
       auto dim1 = mlir::getAffineDimExpr(nextDim++, ctx);
 
       auto stride = dim0;
-      if (op.window_strides().hasValue())
-        stride =
-            stride * op.window_strides().getValue().getValues<int64_t>()[i];
+      if (op.window_strides().value())
+        stride = stride * op.window_strides().value().getValues<int64_t>()[i];
       AffineExpr srcExpr = stride + dim1;
 
       srcExprs[lhsIndexMapping[inputSpatialDimensions[i]]] = srcExpr;
@@ -2311,7 +2307,7 @@ struct DepthwiseConvolutionOpConversion
 
     Attribute windowStrides;
     if (op.window_strides()) {
-      windowStrides = op.window_strides().getValue();
+      windowStrides = op.window_strides().value();
     } else {
       windowStrides = SplatElementsAttr::get(
           VectorType::get({spatialRank}, rewriter.getI64Type()),
@@ -2320,7 +2316,7 @@ struct DepthwiseConvolutionOpConversion
 
     Attribute rhsDilation;
     if (op.rhs_dilation()) {
-      rhsDilation = op.rhs_dilation().getValue();
+      rhsDilation = op.rhs_dilation().value();
     } else {
       rhsDilation = SplatElementsAttr::get(
           VectorType::get({spatialRank}, rewriter.getI64Type()),
@@ -2606,7 +2602,6 @@ struct ReduceWindowOpOnTensorsGenericConversion
     inputs.push_back(rewriter.create<linalg::InitTensorOp>(
         loc, filteredWindowDims, rewriter.getF32Type()));
 
-    rewriter.setInsertionPoint(op);
     auto linalgOp = rewriter.create<linalg::GenericOp>(
         loc, /*resultTensors=*/resultTypes,
         /*inputs=*/inputs,
@@ -2624,21 +2619,27 @@ struct ReduceWindowOpOnTensorsGenericConversion
     TypeConverter::SignatureConversion signatureConverter(
         inputs.size() + op->getNumResults() - 1);
 
-    for (uint64_t i = 0, s = inputs.size(); i < s - 1; i++) {
-      signatureConverter.addInputs(
-          i, inputs[i].getType().cast<ShapedType>().getElementType());
+    // ReduceWindow requires that the seed be used as a LHS operand inside the
+    // region, and the seed is encoded in linalg in the intial out value, so
+    // modify the signature of the block and the value mappings, so the output
+    // args will correlate with the LHS and the inputs correlate with the RHS.
+    for (const auto& [i, type] : llvm::enumerate(resultTypes)) {
+      auto idx = inputs.size() + i - 1;
+      signatureConverter.addInputs(idx,
+                                   type.cast<ShapedType>().getElementType());
     }
 
     signatureConverter.addInputs(
         inputs.back().getType().cast<ShapedType>().getElementType());
 
-    for (uint64_t i = 0, s = resultTypes.size(); i < s; i++) {
-      auto idx = inputs.size() + i - 1;
+    for (const auto& [i, input] :
+         llvm::enumerate(ArrayRef<Value>(inputs).drop_back())) {
       signatureConverter.addInputs(
-          idx, resultTypes[i].cast<ShapedType>().getElementType());
+          i, input.getType().cast<ShapedType>().getElementType());
     }
 
-    rewriter.applySignatureConversion(&region, signatureConverter);
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
     rewriter.replaceOp(op, linalgOp.getResults());
     return success();
   }
@@ -2702,8 +2703,8 @@ struct ReduceWindowOpConversion
     }
 
     if (op.window_strides() &&
-        (op.window_strides().getValue().getValues<int64_t>()[0] != 1 ||
-         op.window_strides().getValue().getValues<int64_t>()[lastDim] != 1)) {
+        (op.window_strides().value().getValues<int64_t>()[0] != 1 ||
+         op.window_strides().value().getValues<int64_t>()[lastDim] != 1)) {
       return rewriter.notifyMatchFailure(
           op, "expected window_strides to be [1,x,y,(z),1]");
     }
@@ -2718,7 +2719,7 @@ struct ReduceWindowOpConversion
     SmallVector<int64_t> vec;
     if (op.window_stridesAttr()) {
       for (int i = 1; i < lastDim; ++i) {
-        vec.push_back(op.window_strides().getValue().getValues<int64_t>()[i]);
+        vec.push_back(op.window_strides().value().getValues<int64_t>()[i]);
       }
     } else {
       vec.assign(rank - 2, 1);
@@ -2729,7 +2730,7 @@ struct ReduceWindowOpConversion
     vec.clear();
     if (op.window_dilations()) {
       for (int i = 1; i < lastDim; ++i) {
-        vec.push_back(op.window_dilations().getValue().getValues<int64_t>()[i]);
+        vec.push_back(op.window_dilations().value().getValues<int64_t>()[i]);
       }
     } else {
       vec.assign(rank - 2, 1);
@@ -3411,7 +3412,7 @@ struct HloLegalizeToLinalgPass
 
     target.addLegalOp<UnrealizedConversionCastOp>();
 
-    mhlo::RemoveSignTypeConverter typeConverter;
+    HloTypeConverter typeConverter;
     auto func = getOperation();
     mhlo::populateHloToLinalgConversionPattern(&ctx, typeConverter, &patterns);
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
@@ -3494,7 +3495,8 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       ReduceWindowOpConversion,
       RngUniformConversion,
       ScatterUpdateConversion,
-      TorchIndexSelectOpConversion>(typeConverter, context);
+      TorchIndexSelectOpConversion,
+      ReduceRegionReturnOpConversion>(typeConverter, context);
   // Ensure specialized patterns are higher priority than their generic
   // versions.
   patterns->add<
@@ -3510,19 +3512,6 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       ConvolutionOpGeneralConversion,
       DotGeneralOpConversion>(typeConverter, context, PatternBenefit(1));
   // clang-format on
-  patterns->add<ReduceRegionXLAOpConversion<mhlo::AddOp>,
-                ReduceRegionXLAOpConversion<mhlo::AndOp>,
-                ReduceRegionXLAOpConversion<mhlo::CompareOp>,
-                ReduceRegionXLAOpConversion<mhlo::ConvertOp>,
-                ReduceRegionXLAOpConversion<mhlo::ImagOp>,
-                ReduceRegionXLAOpConversion<mhlo::MaxOp>,
-                ReduceRegionXLAOpConversion<mhlo::MinOp>,
-                ReduceRegionXLAOpConversion<mhlo::MulOp>,
-                ReduceRegionXLAOpConversion<mhlo::OrOp>,
-                ReduceRegionXLAOpConversion<mhlo::RealOp>,
-                ReduceRegionXLAOpConversion<mhlo::SelectOp>,
-                ReduceRegionXLAOpConversion<mhlo::XorOp>,
-                ReduceRegionReturnOpConversion>(context, PatternBenefit(1000));
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass() {

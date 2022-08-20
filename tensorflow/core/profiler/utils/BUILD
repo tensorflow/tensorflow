@@ -427,6 +427,7 @@ cc_library(
         ":tf_op_utils",
         ":tf_xplane_visitor",
         ":timespan",
+        ":tpu_xplane_utils",
         ":trace_utils",
         ":xplane_builder",
         ":xplane_schema",

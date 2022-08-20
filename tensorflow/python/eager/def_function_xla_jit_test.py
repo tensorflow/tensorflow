@@ -738,6 +738,9 @@ class DefFunctionTest(xla_test.XLATestCase):
       initial_usage = context.context().get_memory_info(
           v.device)['current'] if on_gpu else 0
       update_var(constant_op.constant([1024, 1024]), arg)
+      # Need to do update_var for a second time so that BFC Allocator could
+      # defragment the GPU memory.
+      update_var(constant_op.constant([1024, 1024]), arg)
       gc.collect()
       final_usage = context.context().get_memory_info(
           v.device)['current'] if on_gpu else 0

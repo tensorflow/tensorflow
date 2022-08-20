@@ -233,7 +233,6 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
@@ -246,7 +245,6 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
@@ -259,7 +257,6 @@ py_library(
         "//tensorflow/python:device",
         "//tensorflow/python:platform",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
@@ -342,7 +339,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/summary",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
@@ -403,7 +399,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
@@ -574,7 +569,6 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
@@ -918,7 +912,6 @@ cuda_py_test(
         "//tensorflow/python/summary",
         "//tensorflow/python/trackable:base",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -978,7 +971,6 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -1138,7 +1130,6 @@ cuda_py_test(
 
 TRAINING_TEST_DEPS = [
     "//third_party/py/numpy",
-    "@six_archive//:six",
     "//tensorflow/core:protos_all_py",
     "//tensorflow/python:array_ops",
     "//tensorflow/python:client",
@@ -1519,7 +1510,6 @@ py_library(
         "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/summary",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
