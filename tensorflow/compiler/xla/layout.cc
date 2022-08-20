@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout.h"
 
+#include <string_view>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -75,12 +78,42 @@ LayoutProto Layout::ToProto() const {
   return proto;
 }
 
-std::string Layout::ToString() const {
-  CHECK(LayoutUtil::IsDense(*this));
-  std::string colon_string = tiles().empty() ? "" : "T";
-  for (const Tile& tile : tiles()) {
-    absl::StrAppend(&colon_string, tile.ToString());
+namespace {
+absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
+  switch (dim_level_type) {
+    case DIM_DENSE:
+      return "D";
+    case DIM_COMPRESSED:
+      return "C";
+    case DIM_SINGLETON:
+      return "S";
+    default:
+      LOG(FATAL) << "Invalid DimLevelType value: " << dim_level_type;
   }
+}
+}  // namespace
+
+std::string Layout::ToString() const {
+  std::string colon_string;
+
+  if (!tiles().empty()) {
+    absl::StrAppend(&colon_string, "T");
+    for (const Tile& tile : tiles()) {
+      absl::StrAppend(&colon_string, tile.ToString());
+    }
+  }
+
+  if (!dim_level_types().empty()) {
+    absl::StrAppend(
+        &colon_string, "D(",
+        absl::StrJoin(dim_level_types(), ",",
+                      [](std::string* out, DimLevelType dim_level_type) {
+                        absl::StrAppend(out,
+                                        DimLevelTypeAbbrev(dim_level_type));
+                      }),
+        ")");
+  }
+
   if (element_size_in_bits() != 0) {
     absl::StrAppend(&colon_string, "E(", element_size_in_bits(), ")");
   }
