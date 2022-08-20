@@ -649,7 +649,7 @@ HloSharding GatherIndexSharding(const HloSharding& output_sharding,
   }
   int64_t index_rank = hlo->operand(1)->shape().rank();
 
-  // Vector indices sharding is not supported yet.
+  // Indices sharding on `index_vector_dim` is not supported yet.
   if (index_rank > index_tile_assignment_dims.size()) {
     index_tile_assignment_dims.insert(
         index_tile_assignment_dims.begin() + dnums.index_vector_dim(), 1);
@@ -748,9 +748,11 @@ HloSharding ScatterIndexSharding(const HloSharding& data_sharding,
       relevant_data_dims.push_back(i);
     }
   }
+  // Indices sharding on `index_vector_dim` is not supported yet.
   if (index_tile_assignment_dims.size() <
       scatter->scatter_indices()->shape().rank()) {
-    index_tile_assignment_dims.push_back(1);
+    index_tile_assignment_dims.insert(
+        index_tile_assignment_dims.begin() + dnums.index_vector_dim(), 1);
   }
   HloSharding relevant_data_sharding =
       PartiallyReplicateTiledShardingOnAllDimsExcept(data_sharding,
