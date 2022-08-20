@@ -117,8 +117,11 @@ message PaddingConfig {
 enum DimLevelType {
   // The corresponding dimension is Dense, every entry is stored.
   DIM_DENSE = 0;
-  // TODO(b/238453885): Add compressed, singleton, etc. as required for
-  // SparseTensor.
+  // The corresponding dimension is Compressed, only nonzeros are stored.
+  DIM_COMPRESSED = 1;
+  // The corresponding dimension contains a single coordinate, no sibling
+  // elements for each parent.
+  DIM_SINGLETON = 2;
 }
 
 // Describes a tile used in tiling-based layout. Refer to

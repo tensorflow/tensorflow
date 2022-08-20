@@ -5127,7 +5127,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   for (int i = 0; i < tiles.size(); i++) {
     vec_tiles[i] = Tile(tiles[i]);
   }
-  *layout = LayoutUtil::MakeLayout(minor_to_major, vec_tiles,
+  *layout = LayoutUtil::MakeLayout(minor_to_major, {}, vec_tiles,
                                    element_size_in_bits, memory_space);
   return true;
 }

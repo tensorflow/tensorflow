@@ -179,6 +179,14 @@ typedef struct SE_MaybeOwningDeviceMemory {
   SE_DeviceMemoryAllocator allocator;
 } SE_MaybeOwningDeviceMemory;
 
+struct IntList {
+  union {
+    int* heap;  // owned
+    int inlined[TPU_C_API_MAX_INLINED];
+  };
+  int64_t size;
+};
+
 struct Int64List {
   union {
     int64_t* heap;  // owned
@@ -227,6 +235,7 @@ struct TileList {
 
 typedef struct XLA_Layout {
   Int64List minor_to_major;
+  IntList dim_level_types;
   TileList tiles;
   int64_t element_size_in_bits;
   int64_t memory_space;

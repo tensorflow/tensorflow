@@ -183,6 +183,7 @@ cc_library(
         ":cpu_instruction_fusion",
         ":cpu_layout_assignment",
         ":cpu_options",
+        ":cpu_shape_verifier",
         ":dot_op_emitter",
         "@com_google_absl//absl/base:dynamic_annotations",
         ":ir_emission_utils",
@@ -1167,6 +1168,15 @@ cc_library(
         "//tensorflow/compiler/xla/service:layout_assignment",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "cpu_shape_verifier",
+    srcs = ["cpu_shape_verifier.cc"],
+    hdrs = ["cpu_shape_verifier.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_verifier",
     ],
 )
 

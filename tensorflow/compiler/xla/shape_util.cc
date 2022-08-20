@@ -98,8 +98,10 @@ namespace {
 // its Layout.
 StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-    absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
-    int64_t element_size_in_bits, int64_t memory_space) {
+    absl::Span<const int64_t> minor_to_major,
+    absl::Span<const DimLevelType> dim_level_types,
+    absl::Span<const Tile> tiles, int64_t element_size_in_bits,
+    int64_t memory_space) {
   if (dimensions.size() != minor_to_major.size()) {
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
                            dimensions.size(), minor_to_major.size());
@@ -116,8 +118,9 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     // Only set element_size_in_bits if it's different from the default value.
     element_size_in_bits = 0;
   }
-  *shape.mutable_layout() = LayoutUtil::MakeLayout(
-      minor_to_major, tiles, element_size_in_bits, memory_space);
+  *shape.mutable_layout() =
+      LayoutUtil::MakeLayout(minor_to_major, dim_level_types, tiles,
+                             element_size_in_bits, memory_space);
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
@@ -308,11 +311,13 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
 
 /* static */ Shape ShapeUtil::MakeShapeWithLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-    absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
-    int64_t element_size_in_bits, int64_t memory_space) {
-  auto ret =
-      MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major,
-                                  tiles, element_size_in_bits, memory_space);
+    absl::Span<const int64_t> minor_to_major,
+    absl::Span<const DimLevelType> dim_level_types,
+    absl::Span<const Tile> tiles, int64_t element_size_in_bits,
+    int64_t memory_space) {
+  auto ret = MakeShapeWithLayoutInternal(element_type, dimensions,
+                                         minor_to_major, dim_level_types, tiles,
+                                         element_size_in_bits, memory_space);
   if (!ret.ok()) LOG(ERROR) << ret.status();
   return ret.ValueOrDie();
 }
@@ -1603,30 +1608,30 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
 /* static */ bool ShapeUtil::DynamicShapeIsCompatible(
     const xla::Shape& dynamic_shape, const xla::Shape& bounded_shape) {
   bool compatible = true;
-  xla::ShapeUtil::ForEachSubshape(dynamic_shape, [&](const Shape& sub_shape,
-                                                     const ShapeIndex& index) {
-    if (compatible) {
-      auto subshape_result = TryGetSubshape(bounded_shape, index);
-      if (subshape_result.ok()) {
-        const Shape* bounded_sub_shape = std::move(subshape_result).value();
-        if (sub_shape.IsTuple()) {
-          if (!bounded_sub_shape->IsTuple()) {
-            compatible = false;
-          }
-        } else {
-          if (bounded_sub_shape->IsTuple()) {
-            compatible = false;
-          } else if (!sub_shape.is_static() &&
-                     !DynamicArrayShapeIsCompatible(sub_shape,
-                                                    *bounded_sub_shape)) {
+  xla::ShapeUtil::ForEachSubshape(
+      dynamic_shape, [&](const Shape& sub_shape, const ShapeIndex& index) {
+        if (compatible) {
+          auto subshape_result = TryGetSubshape(bounded_shape, index);
+          if (subshape_result.ok()) {
+            const Shape* bounded_sub_shape = std::move(subshape_result).value();
+            if (sub_shape.IsTuple()) {
+              if (!bounded_sub_shape->IsTuple()) {
+                compatible = false;
+              }
+            } else {
+              if (bounded_sub_shape->IsTuple()) {
+                compatible = false;
+              } else if (!sub_shape.is_static() &&
+                         !DynamicArrayShapeIsCompatible(sub_shape,
+                                                        *bounded_sub_shape)) {
+                compatible = false;
+              }
+            }
+          } else {
             compatible = false;
           }
         }
-      } else {
-        compatible = false;
-      }
-    }
-  });
+      });
   return compatible;
 }
 

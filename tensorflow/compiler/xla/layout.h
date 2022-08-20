@@ -88,11 +88,14 @@ class Layout {
   explicit Layout(absl::Span<const int64_t> minor_to_major)
       : minor_to_major_(minor_to_major.begin(), minor_to_major.end()) {}
 
-  // Constructs a dense tiled layout with the given minor-to-major order and
-  // tiles.
-  Layout(absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
-         int64_t element_size_in_bits = 0, int64_t memory_space = 0)
-      : minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
+  // Constructs a dense tiled layout with the given minor-to-major order, dim
+  // level types, and tiles.
+  Layout(absl::Span<const int64_t> minor_to_major,
+         absl::Span<const DimLevelType> dim_level_types,
+         absl::Span<const Tile> tiles, int64_t element_size_in_bits = 0,
+         int64_t memory_space = 0)
+      : dim_level_types_(dim_level_types.begin(), dim_level_types.end()),
+        minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
         tiles_(tiles.begin(), tiles.end()),
         element_size_in_bits_(element_size_in_bits),
         memory_space_(memory_space) {}

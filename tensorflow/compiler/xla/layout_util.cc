@@ -54,11 +54,16 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 }  // namespace
 
 /* static */ Layout LayoutUtil::MakeLayout(
-    absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
-    int64_t element_size_in_bits, int64_t memory_space) {
+    absl::Span<const int64_t> minor_to_major,
+    absl::Span<const DimLevelType> dim_level_types,
+    absl::Span<const Tile> tiles, int64_t element_size_in_bits,
+    int64_t memory_space) {
   Layout layout;
   for (int64_t dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
+  }
+  for (DimLevelType dim_level_type : dim_level_types) {
+    layout.add_dim_level_type(dim_level_type);
   }
   for (const Tile& tile : tiles) {
     for (int64_t dim : tile.dimensions()) {
@@ -251,6 +256,13 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
                         }),
           shape.ShortDebugString());
     }
+    if (LayoutUtil::IsSparse(layout)) {
+      if (layout.tiles_size() > 0) {
+        return InvalidArgument(
+            "layout has tiles, but the shape is a sparse array: %s",
+            shape.ShortDebugString());
+      }
+    }
   }
 
   return OkStatus();
@@ -285,10 +297,53 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   return shape.IsArray() && (!shape.has_layout() || IsDense(shape.layout()));
 }
 
+/* static */ bool LayoutUtil::IsSparseArray(const Shape& shape) {
+  return shape.IsArray() && shape.has_layout() && IsSparse(shape.layout());
+}
+
+/* static */ bool LayoutUtil::IsCOOArray(const Shape& shape) {
+  return shape.IsArray() && shape.has_layout() && IsCOO(shape.layout());
+}
+
+/* static */ bool LayoutUtil::IsCSRArray(const Shape& shape) {
+  return shape.IsArray() && shape.rank() == 2 && shape.has_layout() &&
+         IsCSR(shape.layout());
+}
+
+/* static */ bool LayoutUtil::IsCSCArray(const Shape& shape) {
+  return shape.IsArray() && shape.rank() == 2 && shape.has_layout() &&
+         IsCSC(shape.layout());
+}
+
 /* static */ bool LayoutUtil::IsDense(const Layout& layout) {
   return absl::c_all_of(
       layout.dim_level_types(),
       [](DimLevelType dim_level_type) { return dim_level_type == DIM_DENSE; });
+}
+
+/* static */ bool LayoutUtil::IsSparse(const Layout& layout) {
+  return !IsDense(layout);
+}
+
+/* static */ bool LayoutUtil::IsCOO(const Layout& layout) {
+  return !layout.dim_level_types().empty() &&
+         layout.dim_level_type(0) == DIM_COMPRESSED &&
+         absl::c_all_of(layout.dim_level_types().subspan(1),
+                        [](DimLevelType dim_level_type) {
+                          return dim_level_type == DIM_SINGLETON;
+                        });
+}
+
+/* static */ bool LayoutUtil::IsCSR(const Layout& layout) {
+  return IsMonotonicWithDim0Major(layout) &&
+         layout.dim_level_types() ==
+             absl::Span<const DimLevelType>{DIM_DENSE, DIM_COMPRESSED};
+}
+
+/* static */ bool LayoutUtil::IsCSC(const Layout& layout) {
+  return IsMonotonicWithDim0Minor(layout) &&
+         layout.dim_level_types() ==
+             absl::Span<const DimLevelType>{DIM_DENSE, DIM_COMPRESSED};
 }
 
 /* static */ bool LayoutUtil::IsMonotonicWithDim0Minor(const Layout& layout) {

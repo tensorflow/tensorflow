@@ -1641,6 +1641,7 @@ cc_library(
         ":gpu_reduce_scatter_creator",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
+        ":gpu_shape_verifier",
         ":matmul_utils",
         "@llvm-project//mlir:FuncDialect",
         "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
@@ -2032,6 +2033,15 @@ cc_library(
         "//tensorflow/stream_executor/gpu:gpu_executor_header",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "gpu_shape_verifier",
+    srcs = ["gpu_shape_verifier.cc"],
+    hdrs = ["gpu_shape_verifier.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_verifier",
     ],
 )
 

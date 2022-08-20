@@ -170,6 +170,9 @@ static void CreateVectorBase(const absl::Span<Src> src, DstList* dst) {
   }
 }
 
+void CreateVector(const absl::Span<const int> src, IntList* dst) {
+  return CreateVectorBase<const int, int, IntList>(src, dst);
+}
 void CreateVector(const absl::Span<const int64_t> src, Int64List* dst) {
   return CreateVectorBase<const int64_t, int64_t, Int64List>(src, dst);
 }
@@ -178,6 +181,10 @@ void CreateVector(const absl::Span<const float> src, FloatList* dst) {
 }
 void CreateVector(const absl::Span<const bool> src, BoolList* dst) {
   return CreateVectorBase<const bool, bool, BoolList>(src, dst);
+}
+static void CreateVector(const absl::Span<const xla::DimLevelType> src,
+                         IntList* dst) {
+  CreateVectorBase<const xla::DimLevelType, int, IntList>(src, dst);
 }
 
 static void CreateVector(const absl::Span<const xla::Tile> src, TileList* dst) {
@@ -206,6 +213,10 @@ static absl::Span<const Dst> MakeSpanBase(const SrcList& src_list) {
                                                          : &src_list.inlined[0];
   return absl::Span<const Dst>(reinterpret_cast<const Dst*>(src),
                                src_list.size);
+}
+
+absl::Span<const int> MakeSpan(const IntList& src_list) {
+  return MakeSpanBase<int, int, IntList>(src_list);
 }
 
 absl::Span<const int64_t> MakeSpan(const Int64List& src_list) {
@@ -279,6 +290,7 @@ void Destroy(XLA_Shape* c_shape) {
 
 void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   CreateVector(layout.minor_to_major(), &c_layout->minor_to_major);
+  CreateVector(layout.dim_level_types(), &c_layout->dim_level_types);
   c_layout->element_size_in_bits = layout.element_size_in_bits();
   c_layout->memory_space = layout.memory_space();
   CreateVector(layout.tiles(), &c_layout->tiles);
@@ -286,20 +298,31 @@ void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
 
 xla::Layout FromC(const XLA_Layout* c_layout) {
   absl::Span<const int64_t> minor_to_major = MakeSpan(c_layout->minor_to_major);
+  absl::Span<const int> dim_level_type_ints =
+      MakeSpan(c_layout->dim_level_types);
+  xla::DimLevelTypeVector dim_level_types;
+  dim_level_types.reserve(dim_level_type_ints.size());
+  for (int dim_level_type : dim_level_type_ints) {
+    dim_level_types.push_back(static_cast<xla::DimLevelType>(dim_level_type));
+  }
   absl::InlinedVector<xla::Tile, 1> tiles;
   const XLA_Tile* c_tiles = c_layout->tiles.size > TPU_C_API_MAX_INLINED
                                 ? c_layout->tiles.heap
                                 : c_layout->tiles.inlined;
+  tiles.reserve(c_layout->tiles.size);
   for (int i = 0; i < c_layout->tiles.size; ++i) {
     tiles.push_back(FromC(&c_tiles[i]));
   }
-  return xla::Layout(minor_to_major, tiles, c_layout->element_size_in_bits,
-                     c_layout->memory_space);
+  return xla::Layout(minor_to_major, dim_level_types, tiles,
+                     c_layout->element_size_in_bits, c_layout->memory_space);
 }
 
 void Destroy(XLA_Layout* c_layout) {
   if (c_layout->minor_to_major.size > TPU_C_API_MAX_INLINED) {
     delete[] c_layout->minor_to_major.heap;
+  }
+  if (c_layout->dim_level_types.size > TPU_C_API_MAX_INLINED) {
+    delete[] c_layout->dim_level_types.heap;
   }
   if (c_layout->tiles.size > TPU_C_API_MAX_INLINED) {
     delete[] c_layout->tiles.heap;
