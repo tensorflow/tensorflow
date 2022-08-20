@@ -598,8 +598,6 @@ tf_cc_test(
     ],
     tags = ["no_oss"],
     deps = [
-        "//tensorflow/cc/saved_model:loader",
-        "//tensorflow/cc/saved_model:reader",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

@@ -16,6 +16,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -27,55 +31,42 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/cc/saved_model/reader.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
+#include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/common_runtime/function_def_utils.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/enable_tf2_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
-#include "tensorflow/core/runtime_fallback/util/tensor_util.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/mla/mla_utils.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
-#include "tensorflow/core/tfrt/tpu/tpu_resources.h"
+#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tensorflow/core/tfrt/utils/tensor_util.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
-#include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
-#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/metrics/common_metrics.h"  // from @tf_runtime
-#include "tfrt/support/error_util.h"  // from @tf_runtime
-#include "tfrt/support/logging.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -644,10 +635,10 @@ const tensorflow::MetaGraphDef& SavedModelImpl::GetMetaGraphDef() const {
   return meta_graph_def_;
 }
 
-absl::optional<FunctionMetadata> SavedModelImpl::GetFunctionMetadata(
+std::optional<FunctionMetadata> SavedModelImpl::GetFunctionMetadata(
     absl::string_view func_name) const {
   auto iter = signatures_.find(func_name);
-  if (iter == signatures_.end()) return absl::nullopt;
+  if (iter == signatures_.end()) return std::nullopt;
   return FunctionMetadata(&iter->second);
 }
 

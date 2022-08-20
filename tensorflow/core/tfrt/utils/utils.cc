@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/utils.h"
 
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/eager/context.h"

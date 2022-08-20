@@ -20,39 +20,28 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
-#include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
-#include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
+#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tfrt {
-
 class BEFFile;
 class HostContext;
-
-namespace tpu {
-class TpuModelResource;
-}  // namespace tpu
-
 }  // namespace tfrt
 
 namespace tensorflow {
@@ -164,7 +153,7 @@ class SavedModel {
 
   // Returns the `FunctionMetadata` for a function. If the function is not
   // found, returns nullopt instead.
-  virtual absl::optional<FunctionMetadata> GetFunctionMetadata(
+  virtual std::optional<FunctionMetadata> GetFunctionMetadata(
       absl::string_view func_name) const = 0;
 
   // Runs the signature specified by `name`. Both `inputs` and `outputs`
@@ -236,7 +225,7 @@ class SavedModelImpl final : public SavedModel {
 
   std::vector<std::string> GetFunctionNames() const override;
 
-  absl::optional<FunctionMetadata> GetFunctionMetadata(
+  std::optional<FunctionMetadata> GetFunctionMetadata(
       absl::string_view func_name) const override;
 
   tensorflow::Status Run(const RunOptions& run_options, absl::string_view name,
