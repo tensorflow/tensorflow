@@ -222,6 +222,26 @@ TEST_F(OpenCLOperationTest, NotEqual) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, CosBroadcast) {
+  auto status = CosBroadcastTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, MaximumScalarBroadcastInput) {
+  auto status = MaximumScalarBroadcastInputTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, MulLinearBroadcastInput) {
+  auto status = MulLinearBroadcastInputTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, MulBroadcastBothInputs) {
+  auto status = MulBroadcastBothInputsTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 }  // namespace
 }  // namespace cl
 }  // namespace gpu
