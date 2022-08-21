@@ -96,34 +96,33 @@ def get_full_name(var):
   # pylint: enable=protected-access
 
 
-def add_checkpoint_values_check(trackable_objects, object_graph_proto):
-  """Determines which objects have checkpoint values and saves to the proto.
+def add_checkpoint_values_check(object_graph_proto):
+  """Determines which objects have checkpoint values and save this to the proto.
 
   Args:
-    trackable_objects: A list of all trackable objects.
     object_graph_proto: A `TrackableObjectGraph` proto.
   """
   # Trackable -> set of all trackables that depend on it (the "parents").
   # If a trackable has checkpoint values, then all of the parents can be
   # marked as having checkpoint values.
-  parents = object_identity.ObjectIdentityDictionary()
+  parents = {}
   checkpointed_trackables = object_identity.ObjectIdentitySet()
 
   # First pass: build dictionary of parent objects and initial set of
   # checkpointed trackables.
-  for trackable, object_proto in zip(trackable_objects,
-                                     object_graph_proto.nodes):
+  checkpointed_trackables = set()
+  for node_id, object_proto in enumerate(object_graph_proto.nodes):
     if (object_proto.attributes or object_proto.slot_variables or
         object_proto.HasField("registered_saver")):
-      checkpointed_trackables.add(trackable)
+      checkpointed_trackables.add(node_id)
     for child_proto in object_proto.children:
-      child = trackable_objects[child_proto.node_id]
+      child = child_proto.node_id
       if child not in parents:
-        parents[child] = object_identity.ObjectIdentitySet()
-      parents[child].add(trackable)
+        parents[child] = set()
+      parents[child].add(node_id)
 
   # Second pass: add all connected parents to set of checkpointed trackables.
-  to_visit = object_identity.ObjectIdentitySet()
+  to_visit = set()
   to_visit.update(checkpointed_trackables)
 
   while to_visit:
@@ -137,9 +136,9 @@ def add_checkpoint_values_check(trackable_objects, object_graph_proto):
       if parent in parents:
         to_visit.add(parent)
 
-  for node_id, trackable in enumerate(trackable_objects):
-    object_graph_proto.nodes[node_id].has_checkpoint_values.value = bool(
-        trackable in checkpointed_trackables)
+  for node_id, object_proto in enumerate(object_graph_proto.nodes):
+    object_proto.has_checkpoint_values.value = bool(
+        node_id in checkpointed_trackables)
 
 
 def objects_ids_and_slot_variables_and_paths(graph_view):

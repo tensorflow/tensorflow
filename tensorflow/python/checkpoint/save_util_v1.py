@@ -277,7 +277,7 @@ def serialize_gathered_objects(graph_view,
           saveables_cache=saveables_cache))
   # Gather all trackables that have checkpoint values or descendants with
   # checkpoint values, and add that info to the proto.
-  util.add_checkpoint_values_check(trackable_objects, object_graph_proto)
+  util.add_checkpoint_values_check(object_graph_proto)
   return (named_saveable_objects, object_graph_proto, feed_additions,
           registered_savers)
 
