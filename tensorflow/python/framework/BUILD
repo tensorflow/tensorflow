@@ -979,6 +979,16 @@ py_library(
     ],
 )
 
+tf_py_test(
+    name = "indexed_slices_test",
+    srcs = ["indexed_slices_test.py"],
+    deps = [
+        ":composite_tensor_gradient",
+        "//tensorflow/python:ops",
+        "//tensorflow/python/platform:test",
+    ],
+)
+
 py_library(
     name = "tensor_conversion_registry",
     srcs = ["tensor_conversion_registry.py"],

@@ -21,7 +21,6 @@ from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import indexed_slices
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
@@ -206,24 +205,6 @@ class VariableWatcherTest(test.TestCase):
       var2.assign_add(2.0)
 
     self.assertAllEqual(variable_watcher.watched_variables(), (var1, var2))
-
-
-class IndexedSlicesGradientsTest(test.TestCase):
-
-  def testIndexedSlicesInput(self):
-    x = indexed_slices.IndexedSlices(
-        values=constant_op.constant([[1., 1., 1.], [1., 1., 1.]]),
-        indices=constant_op.constant([1, 3]),
-        dense_shape=constant_op.constant([4, 3]))
-
-    with backprop.GradientTape() as t:
-      t.watch(x)
-      y = math_ops.multiply(x, 3.)
-
-    result = t.gradient(y, x)
-    self.assertAllEqual(result.values, [[3., 3., 3.], [3., 3., 3.]])
-    self.assertAllEqual(result.indices, [1, 3])
-    self.assertAllEqual(result.dense_shape, [4, 3])
 
 
 if __name__ == '__main__':
