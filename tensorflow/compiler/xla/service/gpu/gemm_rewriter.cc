@@ -135,26 +135,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       CHECK(!rhs->IsRank2Transpose());
       const Shape &output_shape = instr->shape();
 
-      const char *const target = [](const auto *instr, const auto *lhs,
-                                    const auto *rhs) {
-        if (!instr->GetModule()
-                 ->config()
-                 .debug_options()
-                 .xla_gpu_enable_cublaslt()) {
-          // cublasLt is not enabled
-          return kGemmCallTarget;
-        }
-
-        // cublasLt is enabled
-        if (lhs->shape().element_type() == S8 ||
-            rhs->shape().element_type() == S8) {
-          // TODO(b/241446501) The XLA usage of cublasLt does not yet handle
-          // int8 matmuls. Fallback and do a legacy gemm.
-          return kGemmCallTarget;
-        }
-
-        return kCublasLtMatmulCallTarget;
-      }(instr, lhs, rhs);
+      const char *const target =
+          instr->GetModule()->config().debug_options().xla_gpu_enable_cublaslt()
+              ? kCublasLtMatmulCallTarget
+              : kGemmCallTarget;
 
       std::unique_ptr<HloInstruction> gemm_call =
           HloInstruction::CreateCustomCall(output_shape, {lhs, rhs}, target);
@@ -176,11 +160,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   Status HandleMultiply(HloInstruction *instr) override {
     HloInstruction *alpha, *existing_gemm;
-    if (Match(instr, m::MultiplyAnyOrder(
-                         m::Op(&existing_gemm)
-                             .WithCustomCallTarget(
-                                 {kGemmCallTarget, kCublasLtMatmulCallTarget}),
-                         m::Broadcast(m::ConstantScalar(&alpha))))) {
+    if (Match(instr,
+              m::MultiplyAnyOrder(
+                  m::Op(&existing_gemm).WithCustomCallTarget(kGemmCallTarget),
+                  m::Broadcast(m::ConstantScalar(&alpha))))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
 
@@ -258,15 +241,14 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   Status HandleConvert(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm;
-    if (Match(instr,
-              m::Convert(m::AddAnyOrder(
-                             m::Convert(m::Op(&existing_gemm)
-                                            .WithCustomCallTarget(
-                                                {kGemmCallTarget,
-                                                 kCublasLtMatmulCallTarget})
-                                            .WithElementType(BF16)),
-                             m::Convert(m::Op(&bias).WithElementType(BF16))))
-                  .WithElementType(BF16))) {
+    if (Match(
+            instr,
+            m::Convert(m::AddAnyOrder(
+                           m::Convert(m::Op(&existing_gemm)
+                                          .WithCustomCallTarget(kGemmCallTarget)
+                                          .WithElementType(BF16)),
+                           m::Convert(m::Op(&bias).WithElementType(BF16))))
+                .WithElementType(BF16))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
     return OkStatus();
@@ -284,8 +266,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // BLAS GeMM overwrites bias matrix, so fusion is only possible if the GeMM
     // is the only user. cublasLt matmul can operate out-of-place.
-    const bool have_other_bias_users = (bias->user_count() > 1);
-    bool can_fuse_bias = !have_other_bias_users || IsCublasLtMatmul(*gemm);
+    bool can_fuse_bias = (bias->user_count() == 1) || IsCublasLtMatmul(*gemm);
 
     auto config = gemm->backend_config<GemmBackendConfig>().ValueOrDie();
 
@@ -310,10 +291,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm->CloneWithNewOperands(instr->shape(), operands);
 
     TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
-    if (IsLegacyCublasMatmul(*fused_op) || !have_other_bias_users) {
-      // Force bias input to alias with output. Legacy cublas GEMMs operate
-      // in-place. CublasLt GEMMS can choose to operate in-place, if there are
-      // no other users of the bias, then we will.
+    if (IsCublasGemm(*fused_op)) {
+      // Force bias input to alias with output, as GEMM operates in-place.
       xla::Cast<HloCustomCallInstruction>(fused_op.get())
           ->set_output_to_operand_aliasing({{{}, {2, {}}}});
     }

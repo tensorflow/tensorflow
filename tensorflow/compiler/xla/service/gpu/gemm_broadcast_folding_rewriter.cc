@@ -41,12 +41,10 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
     HloInstruction *existing_gemm;
     HloInstruction *bcast;
     if (Match(instr, m::Op(&existing_gemm)
-                         .WithCustomCallTarget(
-                             {kGemmCallTarget, kCublasLtMatmulCallTarget})
+                         .WithCustomCallTarget(kGemmCallTarget)
                          .WithOperand(0, m::Broadcast(&bcast, m::Op()))) ||
         (Match(instr, m::Op(&existing_gemm)
-                          .WithCustomCallTarget(
-                              {kGemmCallTarget, kCublasLtMatmulCallTarget})
+                          .WithCustomCallTarget(kGemmCallTarget)
                           .WithOperand(1, m::Broadcast(&bcast, m::Op()))))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
