@@ -723,8 +723,14 @@ absl::Status GPUOperationFromNodePart0(
     case OperationType::SQRT:
     case OperationType::SQUARE:
     case OperationType::TANH: {
-      GPUOperation operation =
-          CreateElementwiseOneInput(gpu_info, op_def, op_type);
+      GPUOperation operation;
+      if (inputs[0]->tensor.shape != outputs[0]->tensor.shape) {
+        operation = CreateElementwiseOneInputWithBroadcast(
+            gpu_info, op_def, op_type, inputs[0]->tensor.shape,
+            outputs[0]->tensor.shape);
+      } else {
+        operation = CreateElementwiseOneInput(gpu_info, op_def, op_type);
+      }
       *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
       return absl::OkStatus();
     }
@@ -761,15 +767,28 @@ absl::Status GPUOperationFromNodePart0(
       }
 
       if (inputs.size() == 2) {
-        GPUOperation operation =
-            CreateElementwiseTwoInput(op_def, op_type, inputs[1]->tensor.shape);
+        GPUOperation operation;
+        if (inputs[0]->tensor.shape != outputs[0]->tensor.shape) {
+          operation = CreateElementwiseTwoInputWithBroadcast(
+              op_def, op_type, inputs[0]->tensor.shape, inputs[1]->tensor.shape,
+              outputs[0]->tensor.shape);
+        } else {
+          operation = CreateElementwiseTwoInput(op_def, op_type,
+                                                inputs[1]->tensor.shape);
+        }
         *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
         auto attr =
             absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-        GPUOperation operation =
-            CreateElementwise(gpu_info, op_def, op_type, attr);
+        GPUOperation operation;
+        if (inputs[0]->tensor.shape != outputs[0]->tensor.shape) {
+          operation = CreateElementwiseWithBroadcast(
+              gpu_info, op_def, op_type, attr, inputs[0]->tensor.shape,
+              outputs[0]->tensor.shape);
+        } else {
+          operation = CreateElementwise(gpu_info, op_def, op_type, attr);
+        }
         *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       }
