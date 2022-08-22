@@ -50,7 +50,7 @@ class GlobalCompEnvStats {
       absl::MutexLock l(&mu_);
       ++stats_[std::string(env_type)].default_env_created;
     }
-    LOG(INFO) << "New GlobalCompEnvStats value: " << ToString();
+    VLOG(1) << "New GlobalCompEnvStats value: " << ToString();
   }
 
   void DefaultEnvCreatedByCompilationEnvironments(std::string_view env_type)
@@ -60,7 +60,7 @@ class GlobalCompEnvStats {
       ++stats_[std::string(env_type)]
             .default_env_created_by_compilation_environments;
     }
-    LOG(INFO) << "New GlobalCompEnvStats value: " << ToString();
+    VLOG(1) << "New GlobalCompEnvStats value: " << ToString();
   }
 
   void EnvAdded(std::string_view env_type) ABSL_LOCKS_EXCLUDED(mu_) {
@@ -68,7 +68,7 @@ class GlobalCompEnvStats {
       absl::MutexLock l(&mu_);
       ++stats_[std::string(env_type)].env_added;
     }
-    LOG(INFO) << "New GlobalCompEnvStats value: " << ToString();
+    VLOG(1) << "New GlobalCompEnvStats value: " << ToString();
   }
 
   std::string ToString() const ABSL_LOCKS_EXCLUDED(mu_) {
