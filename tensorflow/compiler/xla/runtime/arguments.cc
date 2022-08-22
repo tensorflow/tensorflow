@@ -242,5 +242,43 @@ Error VerifyMemrefArgument(unsigned index, const Type& type,
   return Error::success();
 }
 
+// -------------------------------------------------------------------------- //
+// BufferDesc.
+// -------------------------------------------------------------------------- //
+
+raw_ostream& BufferDesc::print(raw_ostream& os) const {
+  return os << "BufferDesc: data: " << data() << " size: " << size();
+}
+
+static Error VerifyBufferDesc(DType element_type,
+                              Optional<ArrayRef<int64_t>> sizes,
+                              const BufferDesc& buffer) {
+  size_t n_elem = !sizes.hasValue() || sizes->empty() ? 1 : (*sizes)[0];
+  size_t expected_buffer_size = tfrt::GetHostSize(element_type) * n_elem;
+  if (LLVM_UNLIKELY(expected_buffer_size != buffer.size())) {
+    return MakeStringError(
+        "buffer size is not equal to that expected from the element type: got ",
+        buffer.size(), " vs expected ", expected_buffer_size, ".");
+  }
+  return Error::success();
+}
+
+Error BufferDesc::Verify(const Type& type) const {
+  // BufferDesc doesn't have its own type signature; it works with MemrefType.
+  if (auto* memref = dyn_cast<MemrefType>(&type))
+    return VerifyBufferDesc(memref->element_type(), memref->sizes(), *this);
+  return MakeStringError("unsupported memref type: ", type);
+}
+
+size_t BufferDesc::Pack(MutableArrayRef<void*> args, size_t offset) const {
+  auto cast = [](const void* ptr) { return const_cast<void*>(ptr); };
+  // Write into the arguments data starting from the given offset.
+  void** p = &args[offset];
+  p[0] = cast(&data_);
+  p[1] = cast(&data_);
+  p[2] = cast(&size_);
+  return offset + 3;
+}
+
 }  // namespace runtime
 }  // namespace xla

@@ -307,6 +307,28 @@ MemrefDesc::MemrefDesc(unsigned rank, tfrt::DType dtype, void* data,
 llvm::Error VerifyMemrefArgument(unsigned index, const Type& type,
                                  const MemrefDesc& arg);
 
+//===----------------------------------------------------------------------===//
+// BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
+//===----------------------------------------------------------------------===//
+
+class BufferDesc final : public llvm::RTTIExtends<BufferDesc, Argument> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  BufferDesc(void* data, size_t size) : data_(data), size_(size) {}
+
+  void* data() const { return data_; }
+  size_t size() const { return size_; }
+
+  llvm::Error Verify(const Type& type) const final;
+  size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
+  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+
+ private:
+  void* data_;
+  size_t size_;
+};
+
 }  // namespace runtime
 }  // namespace xla
 

@@ -54,6 +54,27 @@ static void BM_CreateMemrefDesc_1d(benchmark::State& state) {
 
 BENCHMARK(BM_CreateMemrefDesc_1d)->Arg(1)->Arg(4)->Arg(8)->Arg(12)->Arg(16);
 
+// -------------------------------------------------------------------------- //
+// Benchmarks for constructing BufferDesc.
+// -------------------------------------------------------------------------- //
+
+static void BM_CreateBufferDesc_1d(benchmark::State& state) {
+  void* ptr = reinterpret_cast<void*>(0xdeadbeef);
+  int64_t size = 123;
+
+  int64_t num_descs = state.range(0);
+
+  for (auto _ : state) {
+    Arguments<BufferDesc> descs(num_descs);
+    for (unsigned i = 0; i < num_descs; ++i) {
+      descs.emplace_back(ptr, size);
+    }
+    benchmark::DoNotOptimize(descs);
+  }
+}
+
+BENCHMARK(BM_CreateBufferDesc_1d)->Arg(1)->Arg(4)->Arg(8)->Arg(12)->Arg(16);
+
 //===----------------------------------------------------------------------===//
 // Run benchmarks for verifying operands.
 //===----------------------------------------------------------------------===//
