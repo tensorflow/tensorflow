@@ -225,6 +225,46 @@ cc_library(
 )
 
 cc_library(
+    name = "asm_compiler_header",
+    hdrs = if_gpu_is_configured(["asm_compiler.h"]),
+    copts = tf_copts(),
+    visibility = [
+        "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
+        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
+    ],
+    deps = if_gpu_is_configured([
+        ":gpu_asm_opts",
+        ":gpu_driver_header",
+        ":gpu_helpers_header",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/base:core_headers",
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:subprocess",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:cuda_libdevice_path",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/platform",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ]) + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
+    ]) + if_rocm_is_configured([
+        "//tensorflow/stream_executor/rocm:rocm_driver",  # TODO(ddunleavy) update once cl/468101393 lands
+    ]),
+)
+
+cc_library(
     name = "asm_compiler",
     srcs = if_gpu_is_configured(["asm_compiler.cc"]),
     hdrs = if_gpu_is_configured(["asm_compiler.h"]),
@@ -257,13 +297,14 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ]) + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
         "//tensorflow/compiler/xla/stream_executor/cuda:ptxas_wrapper",
         "//tensorflow/compiler/xla/stream_executor/cuda:fatbinary_wrapper",
     ]) + if_rocm_is_configured([
         "//tensorflow/stream_executor/rocm:rocm_driver",  # TODO(ddunleavy) update once cl/468101393 lands
-    ]) + ["@com_google_absl//absl/container:flat_hash_set"],
+    ]),
 )
 
 cc_library(
