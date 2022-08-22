@@ -135,17 +135,77 @@ static FailureOr<TFOp> CreateConstantTensorOp(
   return TFOp(builder.create(state));
 }
 
-// Add control operand to `op` if it doesn't exist.
-static void AddControlOperand(OperationState &state, TFOp source) {
-  if (llvm::is_contained(state.operands, source.controlRet())) return;
-  state.addOperands(source.controlRet());
+static bool IsControlAnchor(TFOp op, TFGraphDialect const *const dialect) {
+  return (dialect->IsIdentity(op) || dialect->IsIdentityNSingleInput(op)) &&
+         op->getResults().drop_back().use_empty();
 }
 
-static void AddControlOperand(Operation *op, TFOp source,
+// We can't anchor control dependencies directly on the switch node: unlike
+// other nodes only one of the outputs of the switch node will be generated
+// when the switch node is executed, and we need to make sure the control
+// dependency is only triggered when the corresponding output is triggered.
+// We start by looking for an identity node connected to the output of the
+// switch node, and use it to anchor the control dependency.
+// @param builder Builder, used for creating the anchor if necessary
+// @param value   Output of a switch operation to be replaced
+// @param dialect TFG dialect (passed in to avoid cost of looking it up)
+static TFOp GetControlAnchorForSwitchResult(
+    OpBuilder &builder, OpResult value, TFGraphDialect const *const dialect) {
+  assert(builder.getContext()->getLoadedDialect<TFGraphDialect>() == dialect);
+  TFOp switch_op = value.getDefiningOp();
+  assert(dialect->IsSwitch(switch_op));
+  // We cannot get the control edge from the parent op. We instead create a
+  // control anchor i.e. an Identity op without non-control uses and get the
+  // edge from there.
+
+  // Try to find an existing control anchor
+  if (auto it = llvm::find_if(
+          value.getUsers(),
+          [&](Operation *op) { return IsControlAnchor(op, dialect); });
+      it != value.getUsers().end())
+    return TFOp(*it);
+
+  // If it doesn't exist, create a new control anchor.
+  OperationState identity_op_state(value.getLoc(), "tfg.Identity");
+  identity_op_state.addOperands(value);
+  identity_op_state.addTypes(
+      {value.getType(), ControlType::get(builder.getContext())});
+  assert(switch_op->hasAttr("T"));
+  identity_op_state.addAttribute("T", switch_op->getAttr("T"));
+  TFOp identity_op = builder.create(identity_op_state);
+  if (StringAttr device_attr = switch_op.deviceAttr())
+    identity_op.setRequestedDevice(device_attr);
+  identity_op.setName(Twine(switch_op.name(), "/ControlDependencyCtrl_") +
+                      Twine(value.cast<OpResult>().getResultNumber()));
+  return identity_op;
+}
+
+// Same as LookupControlDependency, except when value originates from a switch
+// op. In such cases, we cannot add a control dependency to the parent op since
+// the output does not necessarily activate when the switch op activates. We
+// add a "control anchor" in the form of an identity op instead.
+static Value GetControlDependency(OpBuilder &builder, Value value) {
+  if (value.getType().isa<ControlType>()) return value;
+
+  TFGraphDialect *dialect =
+      builder.getContext()->getLoadedDialect<TFGraphDialect>();
+  assert(dialect);
+  if (OpResult result = value.dyn_cast<OpResult>();
+      result && dialect->IsSwitch(result.getOwner())) {
+    return GetControlAnchorForSwitchResult(builder, result, dialect)
+        .controlRet();
+  } else {
+    return LookupControlDependency(value);
+  }
+}
+
+// Add control operand to `op` if it doesn't exist.
+static void AddControlOperand(Operation *op, Value control,
                               PatternRewriter &rewriter) {
-  if (llvm::is_contained(op->getOperands(), source.controlRet())) return;
+  assert(control.getType().isa<ControlType>());
+  if (llvm::is_contained(op->getOperands(), control)) return;
   rewriter.startRootUpdate(op);
-  op->insertOperands(op->getNumOperands(), source.controlRet());
+  op->insertOperands(op->getNumOperands(), control);
   rewriter.finalizeRootUpdate(op);
 }
 
@@ -182,10 +242,10 @@ static FailureOr<TFOp> ReplaceOpWithIdentity(OpBuilder &builder, TFOp owner,
 
   Value kept_value = owner->getOperand(idx);
   state.addOperands(kept_value);
-  Value kept_value_control_ret = LookupControlDependency(kept_value);
   auto [non_control_operands, control_operands] = owner.splitOperands();
-  for (Value control_ret : OperandControlRetRange(non_control_operands)) {
-    if (control_ret != kept_value_control_ret) state.addOperands(control_ret);
+  for (Value value : non_control_operands) {
+    if (value != kept_value)
+      state.addOperands(GetControlDependency(builder, value));
   }
   state.addOperands(control_operands);
 
@@ -246,22 +306,26 @@ static FailureOr<TFOp> ReplaceOperationWithBroadcastTo(OpBuilder &builder,
                                                        int idx_to_replace) {
   ShapedType tensor_type = (*op->result_type_begin()).cast<ShapedType>();
   if (!tensor_type.hasStaticShape()) return failure();
-
   ElementsAttr const_attr = ConvertShapeToAttr(tensor_type);
+
+  // Create a vector of control operands. We should not fail beyond this point
+  // since GetControlDependency may create a control anchor (a new op).
   SmallVector<Value> control_operands;
   for (auto &it : llvm::enumerate(op.getNonControlOperands())) {
     int idx = it.index();
     Value v = it.value();
     if (idx == idx_to_replace) continue;
-    control_operands.push_back(LookupControlDependency(v));
+    if (llvm::is_contained(control_operands, v)) continue;
+    control_operands.push_back(GetControlDependency(builder, v));
   }
-  FailureOr<TFOp> const_op = CreateConstantTensorOp(
+  // CreateConstantTensorOp cannot fail; it only fails for variant types and
+  // const_attr is a tensor of i32.
+  TFOp const_op = *CreateConstantTensorOp(
       builder, op->getLoc(),
       (Twine(op.name(), "/broadcastto_shape_") + std::to_string(idx_to_replace))
           .str(),
       const_attr.getType(), control_operands, const_attr);
-  if (failed(const_op)) return failure();
-  if (!op.device().empty()) const_op->setRequestedDevice(op.device());
+  if (!op.device().empty()) const_op.setRequestedDevice(op.device());
 
   OperationState state(op->getLoc(), "tfg.BroadcastTo");
 
@@ -271,13 +335,8 @@ static FailureOr<TFOp> ReplaceOperationWithBroadcastTo(OpBuilder &builder,
       "T", TypeAttr::get(GetDataTypeFromOp(builder, op.getOperation())));
   state.addAttribute("Tidx", TypeAttr::get(builder.getI32Type()));
 
-  state.addOperands(
-      {op->getOperand(idx_to_replace), (*const_op)->getResult(0)});
-  for (Value v : op.getNonControlOperands())
-    // TODO(tlongeri): Handle Switch op special case (see Grappler's
-    // AddControlDependency).
-    if (v != op->getOperand(idx_to_replace))
-      AddControlOperand(state, v.getDefiningOp());
+  state.addOperands({op->getOperand(idx_to_replace), const_op->getResult(0)});
+  state.addOperands(control_operands);
   state.addTypes(op->getResultTypes());
 
   Operation *broadcast_to_op = builder.create(state);
@@ -744,13 +803,12 @@ class MaterializeShapeOp : public FolderPatternBase<MaterializeShapeOp> {
     // Add the control edge to `input` to ensure that the constant value will
     // only be run in the cases where Shape would have been run in the original
     // graph.
-    FailureOr<TFOp> const_op = CreateConstantTensorOp(
+    TFOp const_op = *CreateConstantTensorOp(
         rewriter, op->getLoc(), /*name_prefix=*/"", const_attr.getType(),
-        LookupControlDependency(input), const_attr, op->getAttrs());
-    if (failed(const_op)) return failure();
-    (*const_op).setName(TFOp(op).nameAttr());
+        GetControlDependency(rewriter, input), const_attr, op->getAttrs());
+    const_op.setName(TFOp(op).nameAttr());
 
-    rewriter.replaceOp(op, (*const_op)->getResults());
+    rewriter.replaceOp(op, const_op->getResults());
 
     return success();
   }
@@ -780,13 +838,12 @@ class MaterializeSizeOp : public FolderPatternBase<MaterializeSizeOp> {
     // Add the control edge to `input` to ensure that the constant value will
     // only be run in the cases where Size would have been run in the original
     // graph.
-    FailureOr<TFOp> const_op = CreateConstantTensorOp(
+    TFOp const_op = *CreateConstantTensorOp(
         rewriter, op->getLoc(), /*name_prefix=*/"", const_attr.getType(),
-        LookupControlDependency(input), const_attr, op->getAttrs());
-    if (failed(const_op)) return failure();
-    (*const_op).setName(TFOp(op).nameAttr());
+        GetControlDependency(rewriter, input), const_attr, op->getAttrs());
+    const_op.setName(TFOp(op).nameAttr());
 
-    rewriter.replaceOp(op, (*const_op)->getResults());
+    rewriter.replaceOp(op, const_op->getResults());
 
     return success();
   }
@@ -815,13 +872,12 @@ class MaterializeRankOp : public FolderPatternBase<MaterializeRankOp> {
     // Add the control edge to `input` to ensure that the constant value will
     // only be run in the cases where Rank would have been run in the original
     // graph.
-    FailureOr<TFOp> const_op = CreateConstantTensorOp(
+    TFOp const_op = *CreateConstantTensorOp(
         rewriter, op->getLoc(), /*name_prefix=*/"", const_attr.getType(),
-        LookupControlDependency(input), const_attr, op->getAttrs());
-    if (failed(const_op)) return failure();
-    (*const_op).setName(TFOp(op).nameAttr());
+        GetControlDependency(rewriter, input), const_attr, op->getAttrs());
+    const_op.setName(TFOp(op).nameAttr());
 
-    rewriter.replaceOp(op, (*const_op)->getResults());
+    rewriter.replaceOp(op, const_op->getResults());
 
     return success();
   }
@@ -856,14 +912,15 @@ class MaterializeTensorArraySizeV3Op
 
     SmallVector<Value> control_operands;
     control_operands.push_back(TFOp(handle_op).controlRet());
-    control_operands.push_back(LookupControlDependency(op->getOperand(1)));
-    FailureOr<TFOp> const_op = CreateConstantTensorOp(
+    control_operands.push_back(
+        GetControlDependency(rewriter, op->getOperand(1)));
+    // CreateConstantTensorOp cannot fail; its type is tensor of i32
+    TFOp const_op = *CreateConstantTensorOp(
         rewriter, op->getLoc(), /*name_prefix=*/"", size_attr.getType(),
         control_operands, size_attr, op->getAttrs());
-    if (failed(const_op)) return failure();
-    (*const_op).setName(TFOp(op).nameAttr());
+    const_op.setName(TFOp(op).nameAttr());
 
-    rewriter.replaceOp(op, (*const_op)->getResults());
+    rewriter.replaceOp(op, const_op->getResults());
 
     return success();
   }
@@ -1744,14 +1801,14 @@ class SimplifyPackOp : public FolderPatternBase<SimplifyPackOp> {
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
         rewriter.getIntegerType(32), /*shape=*/{},
         ArrayRef<int>(axis ? axis.getInt() : 0));
-    FailureOr<TFOp> const_op = CreateConstantTensorOp(
+    // CreateConstantTensorOp cannot fail
+    TFOp const_op = *CreateConstantTensorOp(
         rewriter, op->getLoc(), TFOp(op).name(), const_attr.getType(),
-        LookupControlDependency(op->getOperand(0)), const_attr);
-    if (failed(const_op)) return failure();
+        GetControlDependency(rewriter, op->getOperand(0)), const_attr);
 
-    (*const_op).setName(Twine(TFOp(op).name(), "/_const_axis"));
+    const_op.setName(Twine(TFOp(op).name(), "/_const_axis"));
     if (!TFOp(op).device().empty())
-      (*const_op).setRequestedDevice(TFOp(op).deviceAttr());
+      const_op.setRequestedDevice(TFOp(op).deviceAttr());
 
     OperationState state(op->getLoc(), "tfg.ExpandDims");
     state.addTypes(op->getResultTypes());
@@ -1761,7 +1818,7 @@ class SimplifyPackOp : public FolderPatternBase<SimplifyPackOp> {
     state.attributes.erase("N");
     state.addAttribute("Tdim", TypeAttr::get(rewriter.getI32Type()));
 
-    state.addOperands({op->getOperand(0), (*const_op)->getResult(0)});
+    state.addOperands({op->getOperand(0), const_op->getResult(0)});
     state.addOperands(control_operands);
     Operation *expand_dims_op = rewriter.create(state);
     rewriter.replaceOp(op, expand_dims_op->getResults());
@@ -1837,53 +1894,23 @@ class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
     // If the optimization was already applied, the switch would have exactly
     // one Identity node consuming each of its outputs, each without any
     // non-control outputs.
-    auto is_switch_control_anchor = [&](Operation *control_op) {
-      if (!dialect_->IsIdentity(control_op) &&
-          !dialect_->IsIdentityNSingleInput(control_op)) {
-        return false;
-      }
-
-      for (Value v : control_op->getResults().drop_back())
-        if (!v.use_empty()) return false;
-      return true;
-    };
-
+    // TODO(tlongeri): This does not hold anymore as other patterns may need to
+    // introduce an anchor. Fix this check, and handle both sides independently.
     if (llvm::any_of(op->getResults().drop_back(), [&](Value res) {
           return res.hasOneUse() &&
-                 is_switch_control_anchor(*res.getUsers().begin());
+                 IsControlAnchor(*res.getUsers().begin(), dialect_);
         })) {
       return failure();
     }
 
-    // We can't anchor control dependencies directly on the switch node: unlike
-    // other nodes only one of the outputs of the switch node will be generated
-    // when the switch node is executed, and we need to make sure the control
-    // dependency is only triggered when the corresponding output is triggered.
-    // We start by looking for an identity node connected to the output of the
-    // switch node, and use it to anchor the control dependency.
-    auto get_control_identity_of_switch = [&](TFOp switch_op, int res_index) {
-      OperationState identity_op_state(switch_op->getLoc(), "tfg.Identity");
-      identity_op_state.addAttribute("T", switch_op->getAttr("T"));
-      identity_op_state.addOperands(switch_op->getResult(res_index));
-      identity_op_state.addTypes({switch_op->getResult(res_index).getType(),
-                                  ControlType::get(rewriter.getContext())});
-      Operation *identity_op = rewriter.create(identity_op_state);
-      TFOp(identity_op)
-          .setName(Twine(switch_op.name(), "/ControlDependencyCtrl_") +
-                   Twine(res_index));
-      if (!switch_op.device().empty())
-        TFOp(identity_op).setRequestedDevice(switch_op.deviceAttr());
-      StringRef device = switch_op.device();
-      if (!device.empty()) TFOp(identity_op).setRequestedDevice(device);
-      return identity_op;
-    };
-
-    Operation *true_control_identity = get_control_identity_of_switch(op, 1);
-    Operation *false_control_identity = get_control_identity_of_switch(op, 0);
+    TFOp true_control_identity =
+        GetControlAnchorForSwitchResult(rewriter, op->getResult(1), dialect_);
+    TFOp false_control_identity =
+        GetControlAnchorForSwitchResult(rewriter, op->getResult(0), dialect_);
 
     FailureOr<TFOp> true_op = CreateConstantTensorOp(
         rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[1],
-        TFOp(true_control_identity).controlRet(),
+        true_control_identity.controlRet(),
         DenseElementsAttr::get(zero_dim_i1_tensor_type_, true));
     if (failed(true_op)) return failure();
 
@@ -1893,7 +1920,7 @@ class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
 
     FailureOr<TFOp> false_op = CreateConstantTensorOp(
         rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[0],
-        TFOp(false_control_identity).controlRet(),
+        false_control_identity.controlRet(),
         DenseElementsAttr::get(zero_dim_i1_tensor_type_, false));
     if (failed(false_op)) return failure();
 
@@ -1905,7 +1932,7 @@ class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
     // replace the user of control identity.
     for (OpOperand &user :
          llvm::make_early_inc_range(op->getResult(1).getUses())) {
-      if (user.getOwner() == true_control_identity) continue;
+      if (user.getOwner() == &(*true_control_identity)) continue;
 
       rewriter.startRootUpdate(user.getOwner());
       user.set((*true_op)->getResult(0));
@@ -1913,7 +1940,7 @@ class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
     }
     for (OpOperand &user :
          llvm::make_early_inc_range(op->getResult(0).getUses())) {
-      if (user.getOwner() == false_control_identity) continue;
+      if (user.getOwner() == &(*false_control_identity)) continue;
 
       rewriter.startRootUpdate(user.getOwner());
       user.set((*false_op)->getResult(0));
@@ -2060,7 +2087,7 @@ class SimplifyReductionOp : public FolderPatternBase<SimplifyReductionOp> {
     state.addAttribute("T", TypeAttr::get(t_attr_type));
     state.addTypes(op->getResultTypes());
     state.addOperands(
-        {op->getOperand(0), LookupControlDependency(op->getOperand(1))});
+        {op->getOperand(0), GetControlDependency(builder, op->getOperand(1))});
 
     Operation *identity_op = builder.create(state);
     TFOp(identity_op).setName(TFOp(op).nameAttr());
@@ -2101,7 +2128,7 @@ class SimplifyReshapeOp : public FolderPatternBase<SimplifyReshapeOp> {
     OperationState state(op->getLoc(), "tfg.Identity");
     state.addTypes(op->getResultTypes());
     state.addOperands(
-        {op->getOperand(0), LookupControlDependency(op->getOperand(1))});
+        {op->getOperand(0), GetControlDependency(rewriter, op->getOperand(1))});
     state.addOperands(TFOp(op).getControlOperands());
 
     state.attributes = op->getAttrDictionary();
@@ -2175,8 +2202,8 @@ class SimplifyArithmeticOp
     if (y_matches_output_shape && (is_sub && x_is_zero)) {
       // Replace 0 - y with Neg(y).
       OperationState state(op->getLoc(), "tfg.Neg");
-      state.addOperands(
-          {op->getOperand(1), LookupControlDependency(op->getOperand(0))});
+      state.addOperands({op->getOperand(1),
+                         GetControlDependency(rewriter, op->getOperand(0))});
       state.addOperands(TFOp(op).getControlOperands());
       state.attributes = op->getAttrDictionary();
       state.addTypes(op->getResultTypes());
@@ -2193,8 +2220,8 @@ class SimplifyArithmeticOp
       if (type_attr.getValue().isa<FloatType>() ||
           type_attr.getValue().isa<ComplexType>()) {
         OperationState state(op->getLoc(), "tfg.Reciprocal");
-        state.addOperands(
-            {op->getOperand(1), LookupControlDependency(op->getOperand(0))});
+        state.addOperands({op->getOperand(1),
+                           GetControlDependency(rewriter, op->getOperand(0))});
         state.addOperands(TFOp(op).getControlOperands());
         state.attributes = op->getAttrDictionary();
         state.addTypes(op->getResultTypes());
@@ -2920,7 +2947,8 @@ class MulConvPushDown : public ConstantPatternBase<MulConvPushDown, FolderTrait,
       const_node = new_const_op;
 
       // Add a control dep from c1 to c2 to ensure c2 is in the right frame
-      AddControlOperand(const_node, conv_const_node, rewriter);
+      AddControlOperand(const_node, TFOp(conv_const_node).controlRet(),
+                        rewriter);
     }
 
     StringRef conv_node_name = TFOp(conv_node).name();
@@ -3403,7 +3431,7 @@ class SimplifySelectOpBase : public FolderPatternBase<ConcreteType> {
       for (Value operand : non_control_operands) {
         if (operand == live_operand) continue;
         // Add the remaining operands as control operands.
-        state.addOperands(LookupControlDependency(operand));
+        state.addOperands(GetControlDependency(rewriter, operand));
       }
       // Append control operands
       state.addOperands(control_operands);
