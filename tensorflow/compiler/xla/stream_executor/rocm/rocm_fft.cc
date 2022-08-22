@@ -13,24 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/rocm/rocm_fft.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_fft.h"
 
 #include <complex>
 
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/gpu/gpu_activation.h"
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/stream_executor/gpu/gpu_helpers.h"
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/stream_executor/lib/env.h"
-#include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
-#include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/plugin_registry.h"
-#include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
-#include "tensorflow/stream_executor/stream_executor_internal.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_helpers.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
 namespace gpu {

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 
 namespace stream_executor {
 namespace rocm {

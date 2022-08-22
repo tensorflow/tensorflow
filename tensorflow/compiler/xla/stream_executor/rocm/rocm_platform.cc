@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/rocm/rocm_platform.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform.h"
 
 #include <memory>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 
 namespace stream_executor {
 namespace gpu {

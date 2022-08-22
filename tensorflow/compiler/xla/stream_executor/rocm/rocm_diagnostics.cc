@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_diagnostics.h"
 
 #include <dirent.h>
 #include <limits.h>
@@ -34,11 +34,11 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/numbers.h"
-#include "tensorflow/stream_executor/lib/process_state.h"
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/platform/logging.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/numbers.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/process_state.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 
 namespace stream_executor {
 namespace rocm {
