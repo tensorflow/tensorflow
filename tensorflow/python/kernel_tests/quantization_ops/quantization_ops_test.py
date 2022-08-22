@@ -154,6 +154,72 @@ class QuantizedInstanceNormOpTest(test_util.TensorFlowTestCase):
               x=inputs, x_min=[[1.0], [2.0], [4.0]], x_max=1.0))
 
 
+class QuantizedAvgPoolingOpTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_inputs(self):
+    inputs = constant_op.constant(
+        np.uint8(0), shape=[3, 3, 3, 3], dtype=dtypes.quint8)
+    ksize = [1, 1, 1, 1]
+    strides = [1, 1, 1, 1]
+    padding = "SAME"
+
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "must be.* rank 0"):
+      self.evaluate(
+          nn_ops.quantized_avg_pool(
+              input=inputs,
+              min_input=[],
+              max_input=1.0,
+              ksize=ksize,
+              strides=strides,
+              padding=padding))
+
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "must be.* rank 0"):
+      self.evaluate(
+          nn_ops.quantized_avg_pool(
+              input=inputs,
+              min_input=0.0,
+              max_input=[],
+              ksize=ksize,
+              strides=strides,
+              padding=padding))
+
+
+class QuantizedMaxPoolingOpTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_inputs(self):
+    inputs = constant_op.constant(
+        np.uint8(0), shape=[3, 3, 3, 3], dtype=dtypes.quint8)
+    ksize = [1, 1, 1, 1]
+    strides = [1, 1, 1, 1]
+    padding = "SAME"
+
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "must be.* rank 0"):
+      self.evaluate(
+          nn_ops.quantized_max_pool(
+              input=inputs,
+              min_input=[],
+              max_input=1.0,
+              ksize=ksize,
+              strides=strides,
+              padding=padding))
+
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "must be.* rank 0"):
+      self.evaluate(
+          nn_ops.quantized_max_pool(
+              input=inputs,
+              min_input=0.0,
+              max_input=[],
+              ksize=ksize,
+              strides=strides,
+              padding=padding))
+
+
 class RequantizeOpTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
