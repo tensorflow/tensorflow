@@ -4160,14 +4160,8 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + if_cuda([
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
-<<<<<<< HEAD
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
-        "//tensorflow/core/platform/default/build_config:cudnn_plugin",
-    ]) + if_cuda_or_rocm([
-=======
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/tsl/platform/default/build_config:cudnn_plugin",
->>>>>>> google_upstream/master
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/core/platform:stream_executor",

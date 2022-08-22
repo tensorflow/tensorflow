@@ -29,13 +29,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer.h"
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer_factory.h"
 #include "tensorflow/core/lib/core/errors.h"
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
 #include "tensorflow/stream_executor/rocm/rocm_dnn.h"
 #endif
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
-=======
->>>>>>> google_upstream/master
 
 namespace tensorflow {
 namespace grappler {
@@ -68,7 +64,7 @@ inline std::pair<int, int> GetNumGPUs(const Cluster& cluster) {
     bool is_enabled = se::gpu::UseNhwcLayoutForRocm();
     if ((compute_capability_it->second == "gfx908" ||
          compute_capability_it->second == "gfx90a") && is_enabled) {
-       gpu_stats.num_voltas++;
+       num_volta++;
     }
 #endif
     if (compute_capability_it == device.second.environment().end()) {
