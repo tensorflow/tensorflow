@@ -720,6 +720,11 @@ bool TFGraphDialect::IsRestore(TFOp op) const {
          op_name == restore_slice_;
 }
 
+bool TFGraphDialect::IsReturn(TFOp op) const {
+  StringAttr op_name = op->getName().getIdentifier();
+  return op_name == return_;
+}
+
 bool TFGraphDialect::IsRetval(TFOp op) const {
   StringAttr op_name = op->getName().getIdentifier();
   return op_name == retval_ || op_name == device_retval_;

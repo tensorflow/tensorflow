@@ -583,7 +583,14 @@ bool OpPropertyHelper::IsFoldable(TFOp op) {
   return IsFoldableUncached(op);
 }
 
-bool OpPropertyHelper::ShouldPreserveOp(TFOp op) { return false; }
+bool OpPropertyHelper::ShouldPreserveOp(TFOp op) {
+  // TODO(tlongeri): Find a better way to identify preserved ops. A node has its
+  // control output returned if it is a node-to-be-preserved (in
+  // LiftGraphToFunc) - *not* iff, so the following check is overly broad:
+  return llvm::any_of(op.controlRet().getUsers(), [&](TFOp child_op) {
+    return dialect_->IsReturn(child_op);
+  });
+}
 
 bool OpPropertyHelper::DisableCompressedTensorOptimization() {
   return disable_compressed_tensor_optimization_;
