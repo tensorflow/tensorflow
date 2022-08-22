@@ -48,3 +48,18 @@ cc_library(
         "@llvm-project//mlir:IR",
     ],
 )
+
+cc_library(
+    name = "tf_to_xla_attribute_utils",
+    srcs = ["tf_to_xla_attribute_utils.cc"],
+    hdrs = ["tf_to_xla_attribute_utils.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/lite/kernels:padding",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
