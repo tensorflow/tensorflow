@@ -16,7 +16,7 @@
 
 import collections.abc
 import tempfile
-from typing import Callable, Collection, Dict, Mapping, Optional, Sequence
+from typing import Callable, Collection, Dict, Mapping, Optional, Sequence, Tuple
 import uuid
 import warnings
 from absl import logging
@@ -53,6 +53,9 @@ _INIT_OP_SIGNATURE_KEY = '__saved_model_init_op'
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 
+# Mapping of signature def key -> SignatureDef.
+_SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
+
 
 def _legalize_tensor_name(tensor_name: str) -> str:
   """Converts tensor name from 'name:index' to 'name__index' format."""
@@ -73,12 +76,9 @@ def _is_qat_saved_model(saved_model_path: str):
 
 
 def _get_signatures_from_saved_model(saved_model_path: str,
-                                     signature_keys=None,
-                                     tags=None):
+                                     signature_keys: Sequence[str],
+                                     tags: Collection[str]) -> _SignatureDefMap:
   """Gets a map from signature keys to their SignatureDef from a saved model."""
-  if tags is None:
-    tags = set([tag_constants.SERVING])
-
   loader = saved_model_loader.SavedModelLoader(saved_model_path)
   try:
     meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
@@ -87,18 +87,18 @@ def _get_signatures_from_saved_model(saved_model_path: str,
         f'Failed to retrieve MetaGraphDef with tags {tags}'
         f' from a SavedModel in {saved_model_path}.') from runtime_error
 
-  signatures = {}
+  signature_def_map = {}
   for key, signature_def in meta_graphdef.signature_def.items():
-    if key == _INIT_OP_SIGNATURE_KEY:
+    if key == _INIT_OP_SIGNATURE_KEY or key not in signature_keys:
       continue
-    if signature_keys is not None and key not in signature_keys:
-      continue
-    signatures[key] = signature_def
 
-  return signatures
+    signature_def_map[key] = signature_def
+
+  return signature_def_map
 
 
-def _fix_tensor_names(signatures, exported_graph):
+def _fix_tensor_names(signature_def_map: _SignatureDefMap,
+                      exported_graph: ops.Graph) -> Optional[_SignatureDefMap]:
   """Tries fixing tensor names in the signatures to match the exported graph.
 
   The output tensor names in the original graph usually become names of the
@@ -106,15 +106,12 @@ def _fix_tensor_names(signatures, exported_graph):
   if the input tensor names are found in the exported graph.
 
   Args:
-    signatures: the signatures of the original graph.
+    signature_def_map: the signatures of the original graph.
     exported_graph: The PTQ-exported GraphDef.
 
   Returns:
     Fixed signatures or None if it couldn't be fixed.
   """
-  if signatures is None:
-    return None
-
   # The InsertMainFunctionPass populates input and output nodes of the newly
   # inserted main function with "tf_saved_model.index_path" attributes. These
   # attributes can be used to identify outputs in the exported graph.
@@ -126,7 +123,7 @@ def _fix_tensor_names(signatures, exported_graph):
       index_path_name = index_path_name.decode('utf-8')
       output_index_path_map[index_path_name] = op.inputs[0].name
 
-  for signature_def in signatures.values():
+  for signature_def in signature_def_map.values():
     for tensor_info in signature_def.inputs.values():
       try:
         exported_graph.get_tensor_by_name(tensor_info.name)
@@ -153,7 +150,7 @@ def _fix_tensor_names(signatures, exported_graph):
             tensor_info.name)
         return None
 
-  return signatures
+  return signature_def_map
 
 
 def _create_sample_validator(
@@ -534,6 +531,183 @@ def _create_empty_output_dir(output_directory: str) -> None:
   file_io.recursive_create_dir_v2(output_directory)
 
 
+def _run_static_range_qat(
+    saved_model_path: str, signature_def_keys: Sequence[str],
+    tags: Collection[str],
+    quant_opts: quant_opts_pb2.QuantizationOptions) -> graph_pb2.GraphDef:
+  """Runs static-range quantization for a Quantization-Aware Trained model.
+
+  Runs the quantization for a model trained using QAT.
+
+  Args:
+    saved_model_path: Path to SavedModel.
+    signature_def_keys: Keys of the signatures of the functions that are the
+      target for quantization.
+    tags: Tags identifying the MetaGraphDef.
+    quant_opts: Quantization options.
+
+  Returns:
+    The static-range quantized graph.
+  """
+  graph_def_serialized = (
+      quantize_model_wrapper.quantize_qat_model(saved_model_path,
+                                                ','.join(signature_def_keys),
+                                                ','.join(tags),
+                                                quant_opts.SerializeToString()))
+
+  graph_def = graph_pb2.GraphDef()
+  graph_def.ParseFromString(graph_def_serialized)
+
+  return graph_def
+
+
+def _run_static_range_ptq(
+    saved_model_path: str,
+    signature_def_keys: Sequence[str],
+    tags: Collection[str],
+    quant_opts: quant_opts_pb2.QuantizationOptions,
+    representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
+    signature_def_map: _SignatureDefMap,
+) -> Tuple[graph_pb2.GraphDef, _SignatureDefMap]:
+  """Runs static-range Post-Training Quantization.
+
+  Runs static-range PTQ for the model. Runs the calibration step with
+  `representative_dataset` to collect statistics required for quantization. This
+  produces the quantized GraphDef along with the SignatureDefs which might have
+  been modified according to the changes in the graph.
+
+  Args:
+    saved_model_path: Path to SavedModel.
+    signature_def_keys: Keys of the signature defs of the functions that are the
+      target for quantization.
+    tags: Tags to identify the MetaGraphDef to be used for quantization.
+    quant_opts: Quantization options.
+    representative_dataset: Representative dataset used for the calibration
+      step. Representative datasets should exist for each signature def key in
+      `signature_def_keys`.
+    signature_def_map: Signature def key -> SignatureDef mapping.
+
+  Raises:
+    ValueError if the graph doesn't contain a valid signature.
+
+  Returns:
+    (graph_def, signature_def_map) where graph_def is the quantized graph and
+    the signature_def_map contains the SignatureDefs, possibly modified
+    according to the quantized graph to match the original signature defs.
+  """
+  graph_def_serialized = (
+      quantize_model_wrapper.quantize_ptq_model_pre_calibration(
+          saved_model_path, ','.join(signature_def_keys), ','.join(tags)))
+
+  graph_def = graph_pb2.GraphDef()
+  graph_def.ParseFromString(graph_def_serialized)
+
+  float_model_dir = tempfile.mkdtemp()
+  v1_builder = builder.SavedModelBuilder(float_model_dir)
+
+  with session.Session(graph=ops.Graph()) as sess:
+    for function_def in graph_def.library.function:
+      for node_def in function_def.node_def:
+        if node_def.op == 'CustomAggregator':
+          node_def.attr['id'].s = uuid.uuid4().hex.encode('ascii')
+
+    importer.import_graph_def(graph_def, name='')
+    working_graph = ops.get_default_graph()
+    graph_def = working_graph.as_graph_def()
+
+    signature_def_map = _fix_tensor_names(signature_def_map, working_graph)
+    if signature_def_map is None:
+      raise ValueError("The input SavedModel doesn't contain a valid signature")
+
+    v1_builder.add_meta_graph_and_variables(
+        sess, tags, signature_def_map=signature_def_map)
+
+  v1_builder.save()
+
+  # Uses the representative dataset to collect statistics for calibration.
+  # Handles the graph mode execution separately in case TF2 is disabled or
+  # eager execution is disabled. The min & max values are stored separately
+  # in a global CalibratorSingleton instance.
+  _run_graph_for_calibration(float_model_dir, signature_def_keys, tags,
+                             representative_dataset)
+
+  for function_def in graph_def.library.function:
+    for node_def in function_def.node_def:
+      if node_def.op == 'CustomAggregator':
+        node_id = node_def.attr['id'].s
+        try:
+          min_val = quantize_model_wrapper.get_min_from_calibrator(node_id)
+          max_val = quantize_model_wrapper.get_max_from_calibrator(node_id)
+          quantize_model_wrapper.clear_data_from_calibrator(node_id)
+          node_def.attr['min'].f = float(min_val)
+          node_def.attr['max'].f = float(max_val)
+        except ValueError:
+          warnings.warn(
+              f'CustomAggregator id "{node_id.decode("utf-8")}" from '
+              f'FunctionDef "{function_def.signature.name}" does not have '
+              'min or max values. This function may not be quantized.')
+
+  calibrated_model_dir = tempfile.mkdtemp()
+  v1_builder = builder.SavedModelBuilder(calibrated_model_dir)
+
+  with session.Session(graph=ops.Graph()) as sess:
+    importer.import_graph_def(graph_def, name='')
+    working_graph = ops.get_default_graph()
+    graph_def = working_graph.as_graph_def()
+
+    v1_builder.add_meta_graph_and_variables(
+        sess, tags, signature_def_map=signature_def_map)
+
+  v1_builder.save()
+
+  signature_def_map = _get_signatures_from_saved_model(calibrated_model_dir,
+                                                       signature_def_keys, tags)
+
+  graph_def_serialized = (
+      quantize_model_wrapper.quantize_ptq_model_post_calibration(
+          calibrated_model_dir, ','.join(signature_def_keys), ','.join(tags),
+          quant_opts.SerializeToString()))
+
+  graph_def = graph_pb2.GraphDef()
+  graph_def.ParseFromString(graph_def_serialized)
+
+  return graph_def, signature_def_map
+
+
+def _save_model_v1(graph_def: graph_pb2.GraphDef, output_dir: str,
+                   signature_def_map: _SignatureDefMap,
+                   tags: Collection[str]) -> None:
+  """Saves the model.
+
+  Saves the provided graph def as SavedModel.
+  Uses TF1 SavedModel semantics (i.e. no object graph).
+
+  Args:
+    graph_def: Graph to save.
+    output_dir: Output directory for the SavedModel.
+    signature_def_map: Mapping of signature def key -> SignatureDef.
+    tags: Tags for the meta graph def.
+
+  Raises:
+    ValueError iff the graph does not contain a valid signature.
+  """
+  _create_empty_output_dir(output_dir)
+  v1_builder = builder.SavedModelBuilder(output_dir)
+
+  with session.Session(graph=ops.Graph()) as sess:
+    importer.import_graph_def(graph_def, name='')
+
+    signature_def_map = _fix_tensor_names(signature_def_map,
+                                          ops.get_default_graph())
+    if signature_def_map is None:
+      raise ValueError("The input SavedModel doesn't contain a valid signature")
+
+    v1_builder.add_meta_graph_and_variables(
+        sess, tags, signature_def_map=signature_def_map)
+
+  v1_builder.save()
+
+
 def _static_range_quantize(
     saved_model_path: str,
     signature_keys: Sequence[str],
@@ -544,6 +718,11 @@ def _static_range_quantize(
         repr_dataset.RepresentativeDatasetOrMapping] = None
 ) ->...:
   """Quantizes the given SavedModel via static range quantization.
+
+  If the model is not trained with Quantization-Aware Training (QAT) technique,
+  it requires `representative_dataset` to collect statistics required for
+  quantization. If non-None `representative_dataset` is provided with a QAT
+  model input, `representative_dataset` will be ignored.
 
   Args:
     saved_model_path: Path to the saved model. When representative_dataset is
@@ -570,8 +749,8 @@ def _static_range_quantize(
       in the SavedModel.
   """
   is_qat_saved_model = _is_qat_saved_model(saved_model_path)
-  signatures = _get_signatures_from_saved_model(saved_model_path,
-                                                signature_keys, tags)
+  signature_def_map = _get_signatures_from_saved_model(saved_model_path,
+                                                       signature_keys, tags)
 
   # Checks if the model is from QAT
   if representative_dataset is None and not is_qat_saved_model:
@@ -585,104 +764,14 @@ def _static_range_quantize(
         'The flag is ignored.')
 
   if is_qat_saved_model:
-    # Handle QAT models are supported.
-    graph_def_serialized = (
-        quantize_model_wrapper.quantize_qat_model(
-            saved_model_path, ','.join(signature_keys), ','.join(tags),
-            quantization_options.SerializeToString()))
+    graph_def = _run_static_range_qat(saved_model_path, signature_keys, tags,
+                                      quantization_options)
   else:
-    # Handle PTQ models are supported with mocking calibration.
-    graph_def_serialized = (
-        quantize_model_wrapper.quantize_ptq_model_pre_calibration(
-            saved_model_path, ','.join(signature_keys), ','.join(tags)))
+    graph_def, signature_def_map = _run_static_range_ptq(
+        saved_model_path, signature_keys, tags, quantization_options,
+        representative_dataset, signature_def_map)
 
-    graph_def = graph_pb2.GraphDef()
-    graph_def.ParseFromString(graph_def_serialized)
-
-    float_model_dir = tempfile.mkdtemp()
-    v1_builder = builder.SavedModelBuilder(float_model_dir)
-
-    with session.Session(graph=ops.Graph()) as sess:
-      for function_def in graph_def.library.function:
-        for node_def in function_def.node_def:
-          if node_def.op == 'CustomAggregator':
-            node_def.attr['id'].s = uuid.uuid4().hex.encode('ascii')
-
-      importer.import_graph_def(graph_def, name='')
-      working_graph = ops.get_default_graph()
-      graph_def = working_graph.as_graph_def()
-
-      signatures = _fix_tensor_names(signatures, working_graph)
-      if signatures is None:
-        raise ValueError(
-            "The input SavedModel doesn't contain a valid signature")
-
-      v1_builder.add_meta_graph_and_variables(
-          sess, tags, signature_def_map=signatures)
-
-    v1_builder.save()
-
-    # Uses the representative dataset to collect statistics for calibration.
-    # Handles the graph mode execution separately in case TF2 is disabled or
-    # eager execution is disabled. The min & max values are stored separately
-    # in a global CalibratorSingleton instance.
-    _run_graph_for_calibration(float_model_dir, signature_keys, tags,
-                               representative_dataset)
-
-    for function_def in graph_def.library.function:
-      for node_def in function_def.node_def:
-        if node_def.op == 'CustomAggregator':
-          node_id = node_def.attr['id'].s
-          try:
-            min_val = quantize_model_wrapper.get_min_from_calibrator(node_id)
-            max_val = quantize_model_wrapper.get_max_from_calibrator(node_id)
-            quantize_model_wrapper.clear_data_from_calibrator(node_id)
-            node_def.attr['min'].f = float(min_val)
-            node_def.attr['max'].f = float(max_val)
-          except ValueError:
-            warnings.warn(
-                f'CustomAggregator id "{node_id.decode("utf-8")}" from '
-                f'FunctionDef "{function_def.signature.name}" does not have '
-                'min or max values. This function may not be quantized.')
-
-    calibrated_model_dir = tempfile.mkdtemp()
-    v1_builder = builder.SavedModelBuilder(calibrated_model_dir)
-
-    with session.Session(graph=ops.Graph()) as sess:
-      importer.import_graph_def(graph_def, name='')
-      working_graph = ops.get_default_graph()
-      graph_def = working_graph.as_graph_def()
-
-      v1_builder.add_meta_graph_and_variables(
-          sess, tags, signature_def_map=signatures)
-
-    v1_builder.save()
-    signatures = _get_signatures_from_saved_model(calibrated_model_dir,
-                                                  signature_keys, tags)
-
-    graph_def_serialized = (
-        quantize_model_wrapper.quantize_ptq_model_post_calibration(
-            calibrated_model_dir, ','.join(signature_keys), ','.join(tags),
-            quantization_options.SerializeToString()))
-
-  graph_def = graph_pb2.GraphDef()
-  graph_def.ParseFromString(graph_def_serialized)
-
-  _create_empty_output_dir(output_directory)
-  v1_builder = builder.SavedModelBuilder(output_directory)
-
-  with session.Session(graph=ops.Graph()) as sess:
-    importer.import_graph_def(graph_def, name='')
-    working_graph = ops.get_default_graph()
-
-    signatures = _fix_tensor_names(signatures, working_graph)
-    if signatures is None:
-      raise ValueError("The input SavedModel doesn't contain a valid signature")
-
-    v1_builder.add_meta_graph_and_variables(
-        sess, tags, signature_def_map=signatures)
-
-  v1_builder.save()
+  _save_model_v1(graph_def, output_directory, signature_def_map, tags)
 
   return saved_model_load(output_directory)
 
@@ -718,12 +807,11 @@ def _dynamic_range_quantize(
     quantization_options.min_num_elements_for_weights = 1024
     logging.warn(
         'min_num_elements_for_weights is unset so is set to the default value'
-        '(1024).'
-    )
+        '(1024).')
 
   is_qat_saved_model = _is_qat_saved_model(saved_model_path)
-  signatures = _get_signatures_from_saved_model(saved_model_path,
-                                                signature_keys, tags)
+  signature_def_map = _get_signatures_from_saved_model(saved_model_path,
+                                                       signature_keys, tags)
 
   # Checks if the model is from QAT.
   if is_qat_saved_model:
@@ -740,21 +828,11 @@ def _dynamic_range_quantize(
   graph_def = graph_pb2.GraphDef()
   graph_def.ParseFromString(graph_def_serialized)
 
-  _create_empty_output_dir(output_directory)
-  v1_builder = builder.SavedModelBuilder(output_directory)
-
-  with session.Session(graph=ops.Graph()) as sess:
-    importer.import_graph_def(graph_def, name='')
-    working_graph = ops.get_default_graph()
-
-    signatures = _fix_tensor_names(signatures, working_graph)
-    if signatures is None:
-      raise ValueError("The input SavedModel doesn't contain a valid signature")
-
-    v1_builder.add_meta_graph_and_variables(
-        sess, [tag_constants.SERVING], signature_def_map=signatures)
-
-  v1_builder.save()
+  _save_model_v1(
+      graph_def,
+      output_directory,
+      signature_def_map,
+      tags={tag_constants.SERVING})
 
   return saved_model_load(output_directory)
 
