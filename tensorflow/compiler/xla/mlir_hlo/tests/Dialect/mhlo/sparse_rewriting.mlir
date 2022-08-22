@@ -78,3 +78,14 @@ func.func @rewrite_transpose(%arg0: tensor<100x200xf64, #CSR>) -> tensor<200x100
   %1 = sparse_tensor.convert %0 : tensor<200x100xf64> to tensor<200x100xf64, #CSR>
   return %1 : tensor<200x100xf64, #CSR>
 }
+
+// CHECK-LABEL:  func.func @concatenate_sparse(
+// CHECK-SAME:     %[[TMP_arg0:.*0]]: tensor<100x100xf64,
+// CHECK-SAME:     %[[TMP_arg1:.*1]]: tensor<100x100xf64,
+// CHECK-SAME:     -> tensor<200x100xf64,
+// CHECK:          %[[TMP_0:.*]] = sparse_tensor.concatenate %[[TMP_arg0]], %[[TMP_arg1]] {dimension = 0
+// CHECK:          return %[[TMP_0]] : tensor<200x100xf64,
+func.func @concatenate_sparse(%arg0: tensor<100x100xf64, #CSR>, %arg1: tensor<100x100xf64, #CSR>) -> tensor<200x100xf64, #CSR> attributes {llvm.emit_c_interface} {
+  %0 = "mhlo.concatenate"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<100x100xf64, #CSR>, tensor<100x100xf64, #CSR>) -> tensor<200x100xf64, #CSR>
+  return %0 : tensor<200x100xf64, #CSR>
+}

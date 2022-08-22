@@ -3814,7 +3814,21 @@ LogicalResult ConcatenateOp::inferReturnTypes(
     outShape[dimension] += dim;
   }
 
-  inferredReturnTypes.push_back(RankedTensorType::get(outShape, outElement));
+  bool allSparse = llvm::all_of(operands.getTypes(), [](Type t) -> bool {
+    return sparse_tensor::getSparseTensorEncoding(t) != nullptr;
+  });
+
+  sparse_tensor::SparseTensorEncodingAttr enc;
+  if (allSparse) {
+    // Picks the encoding from an abitrary input is fine and it will be lowered
+    // correctly by the sparse compiler (though efficiency might vary).
+    // TODO: Extra rules are needed to infer sparse encoding when inputs have
+    // different encodings for better efficiency.
+    enc = sparse_tensor::getSparseTensorEncoding(operands.getTypes()[0]);
+  }
+
+  inferredReturnTypes.push_back(
+      RankedTensorType::get(outShape, outElement, enc));
 
   return success();
 }

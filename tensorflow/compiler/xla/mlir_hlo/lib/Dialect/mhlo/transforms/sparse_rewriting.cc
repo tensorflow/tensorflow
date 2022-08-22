@@ -72,6 +72,35 @@ struct SparseConvertConverter
   }
 };
 
+/// Converts a mhlo::concatenate operation into a sparse_tensor::concatenate
+/// directly when there is any sparse input/ouput.
+struct SparseConcatenateConverter
+    : public OpRewritePattern<mhlo::ConcatenateOp> {
+  explicit SparseConcatenateConverter(MLIRContext *context)
+      : OpRewritePattern(context) {}
+
+  LogicalResult matchAndRewrite(mhlo::ConcatenateOp op,
+                                PatternRewriter &rewriter) const override {
+    auto resultType = op.getResult().getType();
+    bool anySparse = llvm::any_of(op.getOperands().getTypes(), [](Type t) {
+      return sparse_tensor::getSparseTensorEncoding(t) != nullptr;
+    });
+    bool sparseOut =
+        sparse_tensor::getSparseTensorEncoding(resultType) != nullptr;
+    if (anySparse || sparseOut) {
+      // If there is any sparse input, lower to sparse_tensor.concatenate
+      // directly.
+      rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
+          op, resultType, op.getOperands(),
+          rewriter.getIndexAttr(op.dimension()));
+      return success();
+    }
+    // Pass to mhlo lowering pipeline if all input and output tensors
+    // are dense.
+    return failure();
+  }
+};
+
 struct SparseRewritingPass
     : public SparseRewritingPassBase<SparseRewritingPass> {
   void runOnOperation() override {
@@ -88,7 +117,7 @@ struct SparseRewritingPass
 
 void populateSparseRewritingPatterns(RewritePatternSet *patterns,
                                      MLIRContext *ctx) {
-  patterns->add<SparseConvertConverter>(ctx);
+  patterns->add<SparseConvertConverter, SparseConcatenateConverter>(ctx);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createSparseRewritingPass() {
