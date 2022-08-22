@@ -56,7 +56,8 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
                        I64ArrayAttr:$static_sizes);
   let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
-    custom<OperandsOrIntegersSizesList>($dynamic_sizes, $static_sizes)
+    custom<DynamicIndexList>($dynamic_sizes, $static_sizes,
+                               "ShapedType::kDynamicSize")
     attr-dict `:` qualified(type($result))
   }];
   let builders = [
@@ -79,7 +80,8 @@ def GMLST_PointOp : GMLST_Op<"point", [
   let results = (outs GMLST_PointType:$result);
   let assemblyFormat = [{
     $superset
-    custom<OperandsOrIntegersOffsetsOrStridesList>($dynamic_indices, $static_indices)
+    custom<DynamicIndexList>($dynamic_indices, $static_indices,
+                               "ShapedType::kDynamicStrideOrOffset")
     attr-dict `:` qualified(type($superset)) `to` qualified(type($result))
   }];
   let builders = [
@@ -108,9 +110,12 @@ def GMLST_TileOp : GMLST_Op<"tile", [
   let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
     $superset
-    custom<OperandsOrIntegersOffsetsOrStridesList>($offsets, $static_offsets)
-    custom<OperandsOrIntegersSizesList>($sizes, $static_sizes)
-    custom<OperandsOrIntegersOffsetsOrStridesList>($strides, $static_strides)
+    custom<DynamicIndexList>($offsets, $static_offsets,
+                               "ShapedType::kDynamicStrideOrOffset")
+    custom<DynamicIndexList>($sizes, $static_sizes,
+                               "ShapedType::kDynamicSize")
+    custom<DynamicIndexList>($strides, $static_strides,
+                               "ShapedType::kDynamicStrideOrOffset")
     attr-dict `:` qualified(type($superset)) `to` qualified(type($result))
   }];
   let builders = [

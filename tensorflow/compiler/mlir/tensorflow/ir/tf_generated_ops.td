@@ -55,6 +55,12 @@ an output element, this operation computes \\(y = |x|\\).
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_AcosOp : TF_Op<"Acos", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
@@ -362,8 +368,8 @@ def TF_AnonymousIteratorOp : TF_Op<"AnonymousIterator", [TF_UniqueResourceAlloca
   let summary = "A container for an iterator resource.";
 
   let arguments = (ins
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
   );
 
   let results = (outs
@@ -378,8 +384,8 @@ def TF_AnonymousIteratorV2Op : TF_Op<"AnonymousIteratorV2", [TF_UniqueResourceAl
   let summary = "A container for an iterator resource.";
 
   let arguments = (ins
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
   );
 
   let results = (outs
@@ -395,8 +401,8 @@ def TF_AnonymousIteratorV3Op : TF_Op<"AnonymousIteratorV3", [TF_UniqueResourceAl
   let summary = "A container for an iterator resource.";
 
   let arguments = (ins
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
   );
 
   let results = (outs
@@ -422,9 +428,9 @@ def TF_AnonymousMultiDeviceIteratorOp : TF_Op<"AnonymousMultiDeviceIterator", [T
   let summary = "A container for a multi device iterator resource.";
 
   let arguments = (ins
-    Confined<StrArrayAttr, [ArrayMinCount<1>]>:$devices,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    ConfinedAttr<StrArrayAttr, [ArrayMinCount<1>]>:$devices,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
   );
 
   let results = (outs
@@ -440,9 +446,9 @@ def TF_AnonymousMultiDeviceIteratorV3Op : TF_Op<"AnonymousMultiDeviceIteratorV3"
   let summary = "A container for a multi device iterator resource.";
 
   let arguments = (ins
-    Confined<StrArrayAttr, [ArrayMinCount<1>]>:$devices,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    ConfinedAttr<StrArrayAttr, [ArrayMinCount<1>]>:$devices,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
   );
 
   let results = (outs
@@ -524,7 +530,7 @@ This op is only optimized on TPU currently.
   let arguments = (ins
     Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{Array to search. Must be at least 1-D of the floating type}]>:$input,
 
-    Confined<I64Attr, [IntMinValue<0>]>:$k,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$k,
     DefaultValuedAttr<I64Attr, "-1">:$reduction_dimension,
     DefaultValuedAttr<F32Attr, "0.95f">:$recall_target,
     DefaultValuedAttr<BoolAttr, "true">:$is_max_k,
@@ -928,8 +934,8 @@ window in `value`.
   let arguments = (ins
     Arg<TF_FloatTensor, [{4-D with shape `[batch, height, width, channels]`.}]>:$value,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
     DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format
   );
@@ -952,8 +958,8 @@ Each entry in `output` is the mean of the corresponding size `ksize` window in
   let arguments = (ins
     Arg<TF_FloatTensor, [{Shape `[batch, depth, rows, cols, channels]` tensor to pool over.}]>:$input,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
     DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format
   );
@@ -972,8 +978,8 @@ def TF_AvgPool3DGradOp : TF_Op<"AvgPool3DGrad", [NoSideEffect]> {
     Arg<TF_Int32Tensor, [{The original input dimensions.}]>:$orig_input_shape,
     Arg<TF_FloatTensor, [{Output backprop of shape `[batch, depth, rows, cols, channels]`.}]>:$grad,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
     DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format
   );
@@ -993,8 +999,8 @@ def TF_AvgPoolGradOp : TF_Op<"AvgPoolGrad", [NoSideEffect]> {
     Arg<TF_FloatTensor, [{4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t.
 the output of `avg_pool`.}]>:$grad,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
     DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format
   );
@@ -1018,8 +1024,8 @@ Creates a dataset that batches `batch_size` elements from `input_dataset`.
 is smaller than desired.}]>:$drop_remainder,
 
     DefaultValuedAttr<BoolAttr, "false">:$parallel_copy,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
@@ -1290,7 +1296,7 @@ dimensions as follows:
 
     crops = [[crop_top, crop_bottom], [crop_left, crop_right]]}]>:$crops,
 
-    Confined<I64Attr, [IntMinValue<2>]>:$block_size
+    ConfinedAttr<I64Attr, [IntMinValue<2>]>:$block_size
   );
 
   let results = (outs
@@ -2006,8 +2012,8 @@ def TF_CacheDatasetV2Op : TF_Op<"CacheDatasetV2", []> {
     TF_StrTensor:$filename,
     Arg<TF_ResourceTensor, "", [TF_DatasetMemoryCacheRead, TF_DatasetMemoryCacheWrite]>:$cache,
 
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
@@ -2758,7 +2764,7 @@ Our Conv3D implements a form of cross-correlation.
     Arg<TF_FloatTensor, [{Shape `[filter_depth, filter_height, filter_width, in_channels,
 out_channels]`. `in_channels` must match between `input` and `filter`.}]>:$filter,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
     DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
@@ -2795,7 +2801,7 @@ tensor.}]>:$filter_sizes,
     Arg<TF_FloatTensor, [{Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
 out_channels]`.}]>:$out_backprop,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
     DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
@@ -2822,7 +2828,7 @@ where `input` is a 5-D
     Arg<TF_FloatTensor, [{Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
 out_channels]`.}]>:$out_backprop,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
     DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
@@ -3473,7 +3479,7 @@ x = [[[ [1],   [2],  [5],  [6]],
   let arguments = (ins
     TF_Tensor:$input,
 
-    Confined<I64Attr, [IntMinValue<2>]>:$block_size,
+    ConfinedAttr<I64Attr, [IntMinValue<2>]>:$block_size,
     DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "\"NHWC\"">:$data_format
   );
 
@@ -4762,9 +4768,9 @@ Extract `patches` from `images` and put them in the "depth" output dimension.
   let arguments = (ins
     Arg<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.}]>:$images,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksizes,
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$rates,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$ksizes,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$rates,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding
   );
 
@@ -5141,8 +5147,8 @@ Creates a dataset by applying `tf.data.Options` to `input_dataset`.
     Arg<TF_VariantTensor, [{A variant tensor representing the input dataset.}]>:$input_dataset,
 
     DefaultValuedAttr<BoolAttr, "false">:$has_captured_ref,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
   );
 
   let results = (outs
@@ -5180,8 +5186,8 @@ into a single Dataset.
     Variadic<TF_Tensor>:$other_arguments,
 
     SymbolRefAttr:$f,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
@@ -5770,8 +5776,8 @@ Creates a dataset that invokes a function to generate elements.
     SymbolRefAttr:$init_func,
     SymbolRefAttr:$next_func,
     SymbolRefAttr:$finalize_func,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
@@ -6375,9 +6381,9 @@ Where to extract the key and value from a line is specified by `key_index` and
     Arg<TF_StrTensor, [{Handle to a table which will be initialized.}], [TF_LookupTableWrite]>:$table_handle,
     Arg<TF_StrTensor, [{Filename of a vocabulary text file.}]>:$filename,
 
-    Confined<I64Attr, [IntMinValue<-2>]>:$key_index,
-    Confined<I64Attr, [IntMinValue<-2>]>:$value_index,
-    Confined<DefaultValuedAttr<I64Attr, "-1">, [IntMinValue<-1>]>:$vocab_size,
+    ConfinedAttr<I64Attr, [IntMinValue<-2>]>:$key_index,
+    ConfinedAttr<I64Attr, [IntMinValue<-2>]>:$value_index,
+    ConfinedAttr<DefaultValuedAttr<I64Attr, "-1">, [IntMinValue<-1>]>:$vocab_size,
     DefaultValuedAttr<StrAttr, "\"\\t\"">:$delimiter,
     DefaultValuedAttr<I64Attr, "0">:$offset
   );
@@ -6405,9 +6411,9 @@ Where to extract the key and value from a line is specified by `key_index` and
     Arg<TF_ResourceTensor, [{Handle to a table which will be initialized.}], [TF_LookupTableWrite]>:$table_handle,
     Arg<TF_StrTensor, [{Filename of a vocabulary text file.}]>:$filename,
 
-    Confined<I64Attr, [IntMinValue<-2>]>:$key_index,
-    Confined<I64Attr, [IntMinValue<-2>]>:$value_index,
-    Confined<DefaultValuedAttr<I64Attr, "-1">, [IntMinValue<-1>]>:$vocab_size,
+    ConfinedAttr<I64Attr, [IntMinValue<-2>]>:$key_index,
+    ConfinedAttr<I64Attr, [IntMinValue<-2>]>:$value_index,
+    ConfinedAttr<DefaultValuedAttr<I64Attr, "-1">, [IntMinValue<-1>]>:$vocab_size,
     DefaultValuedAttr<StrAttr, "\"\\t\"">:$delimiter,
     DefaultValuedAttr<I64Attr, "0">:$offset
   );
@@ -6672,8 +6678,8 @@ def TF_IteratorOp : TF_Op<"Iterator", []> {
   let arguments = (ins
     StrAttr:$shared_name,
     StrAttr:$container,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
   );
 
   let results = (outs
@@ -6737,8 +6743,8 @@ Gets the next output from the given iterator as an Optional variant.
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_DatasetIteratorRead, TF_DatasetIteratorWrite]>:$iterator,
 
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
   );
 
   let results = (outs
@@ -6788,8 +6794,8 @@ def TF_IteratorV2Op : TF_Op<"IteratorV2", []> {
   let arguments = (ins
     StrAttr:$shared_name,
     StrAttr:$container,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
   );
 
   let results = (outs
@@ -7621,6 +7627,11 @@ tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_Log1pOp : TF_Op<"Log1p", [NoSideEffect, SameOperandsAndResultType, TF_CwiseUnary]> {
@@ -7699,6 +7710,11 @@ def TF_LogicalNotOp : TF_Op<"LogicalNot", [Involution, NoSideEffect, SameOperand
   );
 
   let hasCanonicalizer = 1;
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_LogicalOrOp : TF_Op<"LogicalOr", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
@@ -7977,8 +7993,8 @@ the potential to improve input pipeline throughput.}]>:$num_parallel_calls,
 is smaller than desired.}]>:$drop_remainder,
 
     SymbolRefAttr:$f,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
@@ -8000,8 +8016,8 @@ Creates a dataset that applies `f` to the outputs of `input_dataset`.
     Variadic<TF_Tensor>:$other_arguments,
 
     SymbolRefAttr:$f,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
     DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata
@@ -8975,8 +8991,8 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect, TF_FoldOperandsTransposeInter
   let arguments = (ins
     Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint8, TF_Uint16, TF_Uint8]>, [{4-D input to pool over.}]>:$input,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
     DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "\"NHWC\"">:$data_format
@@ -9005,8 +9021,8 @@ def TF_MaxPool3DOp : TF_Op<"MaxPool3D", [NoSideEffect]> {
   let arguments = (ins
     Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{Shape `[batch, depth, rows, cols, channels]` tensor to pool over.}]>:$input,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
     DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format
   );
@@ -9026,8 +9042,8 @@ def TF_MaxPool3DGradOp : TF_Op<"MaxPool3DGrad", [NoSideEffect]> {
     Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{The original output tensor.}]>:$orig_output,
     Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{Output backprop of shape `[batch, depth, rows, cols, channels]`.}]>:$grad,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
     DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format
   );
@@ -9048,8 +9064,8 @@ def TF_MaxPool3DGradGradOp : TF_Op<"MaxPool3DGradGrad", [NoSideEffect]> {
     Arg<TF_IntOrFpTensor, [{The original output tensor.}]>:$orig_output,
     Arg<TF_IntOrFpTensor, [{Output backprop of shape `[batch, depth, rows, cols, channels]`.}]>:$grad,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
     DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "\"NDHWC\"">:$data_format
   );
@@ -9069,8 +9085,8 @@ def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
     Arg<TF_IntOrFpTensor, [{The original output tensor.}]>:$orig_output,
     Arg<TF_IntOrFpTensor, [{4-D.  Gradients w.r.t. the output of `max_pool`.}]>:$grad,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
     DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format
@@ -9093,8 +9109,8 @@ def TF_MaxPoolGradGradOp : TF_Op<"MaxPoolGradGrad", [NoSideEffect]> {
     Arg<TF_IntOrFpTensor, [{The original output tensor.}]>:$orig_output,
     Arg<TF_IntOrFpTensor, [{4-D.  Gradients of gradients w.r.t. the input of `max_pool`.}]>:$grad,
 
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
-    Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
     DefaultValuedAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format
   );
@@ -9526,8 +9542,8 @@ Identity transformation that models performance.
     DefaultValuedAttr<I64Attr, "0">:$algorithm,
     DefaultValuedAttr<I64Attr, "0">:$cpu_budget,
     DefaultValuedAttr<I64Attr, "0">:$ram_budget,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
   );
 
   let results = (outs
@@ -9587,11 +9603,11 @@ def TF_MultiDeviceIteratorOp : TF_Op<"MultiDeviceIterator", []> {
   let summary = "Creates a MultiDeviceIterator resource.";
 
   let arguments = (ins
-    Confined<StrArrayAttr, [ArrayMinCount<1>]>:$devices,
+    ConfinedAttr<StrArrayAttr, [ArrayMinCount<1>]>:$devices,
     StrAttr:$shared_name,
     StrAttr:$container,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
   );
 
   let results = (outs
@@ -9791,6 +9807,12 @@ I.e., \\(y = -x\\).
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_NextAfterOp : TF_Op<"NextAfter", [NoSideEffect, ResultsBroadcastableShape]>,
@@ -10163,8 +10185,8 @@ times by rerunning "MakeIterator".
 
   let arguments = (ins
     SymbolRefAttr:$dataset_factory,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrAttr, "\"\"">:$container,
     DefaultValuedAttr<StrAttr, "\"\"">:$shared_name
   );
@@ -10204,8 +10226,8 @@ Creates a dataset by applying related optimizations to `input_dataset`.
     Arg<TF_StrTensor, [{A `tf.string` vector `tf.Tensor` identifying user disabled optimizations.}]>:$optimizations_disabled,
     Arg<TF_StrTensor, [{A `tf.string` vector `tf.Tensor` identifying optimizations by default.}]>:$optimizations_default,
 
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrArrayAttr, "{}">:$optimization_configs
   );
 
@@ -10520,8 +10542,8 @@ to `num_parallel_calls` copies of `f` in parallel.
 elements from `input_dataset` in parallel.}]>:$num_parallel_calls,
 
     SymbolRefAttr:$f,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
     DefaultValuedAttr<BoolAttr, "false">:$sloppy,
     DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality,
@@ -10552,8 +10574,8 @@ to `num_parallel_calls` copies of `f` in parallel.
 elements from `input_dataset` in parallel.}]>:$num_parallel_calls,
 
     SymbolRefAttr:$f,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
     DefaultValuedAttr<StrAttr, "\"default\"">:$deterministic,
     DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality,
@@ -10734,8 +10756,8 @@ Creates a dataset that asynchronously prefetches elements from `input_dataset`.
     Arg<TF_Int64Tensor, [{The maximum number of elements to buffer in an iterator over
 this dataset.}]>:$buffer_size,
 
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<I64Attr, "0">:$slack_period,
     DefaultValuedAttr<BoolAttr, "true">:$legacy_autotune,
     DefaultValuedAttr<I64Attr, "0">:$buffer_size_min,
@@ -11730,8 +11752,8 @@ Creates a dataset with a range of values. Corresponds to python's xrange.
     Arg<TF_Int64Tensor, [{corresponds to stop in python's xrange().}]>:$stop,
     Arg<TF_Int64Tensor, [{corresponds to step in python's xrange().}]>:$step,
 
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata,
     DefaultValuedAttr<BoolAttr, "false">:$replicate_on_split
   );
@@ -12004,6 +12026,11 @@ array([0., 0., 3.], dtype=float32)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_Relu6Op : TF_Op<"Relu6", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
@@ -12081,8 +12108,8 @@ Creates a dataset that emits the outputs of `input_dataset` `count` times.
     Arg<TF_Int64Tensor, [{A scalar representing the number of times that `input_dataset` should
 be repeated. A value of `-1` indicates that it should be repeated infinitely.}]>:$count,
 
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
@@ -15051,8 +15078,8 @@ def TF_ShuffleAndRepeatDatasetV2Op : TF_Op<"ShuffleAndRepeatDatasetV2", []> {
     Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorRead, TF_DatasetSeedGeneratorWrite]>:$seed_generator,
 
     DefaultValuedAttr<BoolAttr, "true">:$reshuffle_each_iteration,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
@@ -15069,8 +15096,8 @@ def TF_ShuffleDatasetV2Op : TF_Op<"ShuffleDatasetV2", []> {
     TF_Int64Tensor:$buffer_size,
     Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorRead, TF_DatasetSeedGeneratorWrite]>:$seed_generator,
 
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
@@ -15090,8 +15117,8 @@ def TF_ShuffleDatasetV3Op : TF_Op<"ShuffleDatasetV3", []> {
     Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorRead, TF_DatasetSeedGeneratorWrite]>:$seed_generator,
 
     DefaultValuedAttr<BoolAttr, "true">:$reshuffle_each_iteration,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
@@ -15508,7 +15535,7 @@ regular convolution.
       height_pad = pad_top + height + pad_bottom
       width_pad = pad_left + width + pad_right}]>:$paddings,
 
-    Confined<I64Attr, [IntMinValue<2>]>:$block_size
+    ConfinedAttr<I64Attr, [IntMinValue<2>]>:$block_size
   );
 
   let results = (outs
@@ -15756,7 +15783,7 @@ x = [[[[1, 2, 3, 4],
   let arguments = (ins
     TF_Tensor:$input,
 
-    Confined<I64Attr, [IntMinValue<2>]>:$block_size,
+    ConfinedAttr<I64Attr, [IntMinValue<2>]>:$block_size,
     DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "\"NHWC\"">:$data_format
   );
 
@@ -16413,6 +16440,11 @@ I.e., \\(y = x * x = x^2\\).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_SquaredDifferenceOp : TF_Op<"SquaredDifference", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
@@ -17406,7 +17438,7 @@ array([0, 2, 2])
   let arguments = (ins
     Arg<TF_StrTensor, [{The strings to assign a hash bucket.}]>:$input,
 
-    Confined<I64Attr, [IntMinValue<1>]>:$num_buckets
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_buckets
   );
 
   let results = (outs
@@ -17598,8 +17630,8 @@ libraries.
     Arg<TF_Float32Tensor, [{A trainable variable, enabling optimizers to find this op.}]>:$embedding_variable,
     Arg<TF_Float32Tensor, [{The embedding activations Tensor to return.}]>:$sliced_activations,
 
-    Confined<I64Attr, [IntMinValue<0>]>:$table_id,
-    Confined<I64Attr, [IntMinValue<0>]>:$lookup_id
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$table_id,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$lookup_id
   );
 
   let results = (outs
@@ -17707,7 +17739,7 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
   }];
 
   let arguments = (ins
-    Confined<I64Attr, [IntMinValue<0>]>:$num_replicas,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_replicas,
     DefaultValuedAttr<I64Attr, "1">:$num_cores_per_replica,
     DefaultValuedAttr<StrAttr, "\"\"">:$topology,
     DefaultValuedAttr<BoolAttr, "true">:$use_tpu,
@@ -17838,8 +17870,8 @@ Creates a dataset that contains `count` elements from the `input_dataset`.
 that should be taken. A value of `-1` indicates that all of `input_dataset`
 is taken.}]>:$count,
 
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
@@ -17867,8 +17899,8 @@ following arguments:
 building a closure for `predicate`.}]>:$other_arguments,
 
     SymbolRefAttr:$predicate,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata
   );
 
@@ -18785,7 +18817,7 @@ Creates a dataset that emits each dim-0 slice of `components` once.
   let arguments = (ins
     Variadic<TF_Tensor>:$components,
 
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "false">:$is_files,
     DefaultValuedAttr<StrAttr, "\"\"">:$metadata,
     DefaultValuedAttr<BoolAttr, "false">:$replicate_on_split

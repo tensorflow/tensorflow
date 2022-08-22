@@ -90,7 +90,7 @@ An n-way switch statement, implementing the following:
     I32Tensor:$branch_index,
     Variadic<TF_Tensor>:$input,
 
-    Confined<SymbolRefArrayAttr, [ArrayMinCount<1>]>:$branches,
+    ConfinedAttr<SymbolRefArrayAttr, [ArrayMinCount<1>]>:$branches,
 
     // Used to map StatelessCase and Case op defined in TensorFlow to a common
     // op.
@@ -471,7 +471,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
     TF_StrTensor:$ragged_keys,
     Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
-    Confined<I64Attr, [IntMinValue<0>]>:$num_sparse,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_sparse,
     TF_ShapeAttrArray:$dense_shapes,
     DenseI32ArrayAttr:$result_segment_sizes
   );
@@ -612,7 +612,7 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
-    Confined<DefaultValuedAttr<I64Attr, "10">, [IntMinValue<1>]>:$parallel_iterations,
+    ConfinedAttr<DefaultValuedAttr<I64Attr, "10">, [IntMinValue<1>]>:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
@@ -700,7 +700,7 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
   let arguments = (ins
     Variadic<AnyTensor>:$input,
 
-    Confined<DefaultValuedAttr<I64Attr, "10">, [IntMinValue<1>]>:$parallel_iterations,
+    ConfinedAttr<DefaultValuedAttr<I64Attr, "10">, [IntMinValue<1>]>:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
@@ -831,7 +831,7 @@ Feeds multiple Tensor values into the computation as an XLA tuple.
   let arguments = (ins
     Arg<Variadic<TF_Tensor>, [{A list of tensors that will be provided using the infeed mechanism.}]>:$inputs,
 
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$dtypes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$dtypes,
     TF_ShapeAttrArray:$shapes,
     DefaultValuedAttr<I64ArrayAttr, "{}">:$layouts,
     DefaultValuedAttr<I64Attr, "-1">:$device_ordinal
@@ -879,10 +879,10 @@ def TF_ReduceDatasetOp : TF_Op<"ReduceDataset", [SameVariadicOperandSize]> {
     Variadic<TF_Tensor>:$other_arguments,
 
     SymbolRefAttr:$f,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$Tstate,
-    Confined<TypeArrayAttr, [ArrayMinCount<0>]>:$Targuments,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$Tstate,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<0>]>:$Targuments,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism
   );
 
@@ -1224,7 +1224,7 @@ max_outputs: Max number of batch elements to generate audio for.
     TF_Float32Tensor:$tensor,
     TF_Float32Tensor:$sample_rate,
 
-    Confined<DefaultValuedAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_outputs
+    ConfinedAttr<DefaultValuedAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_outputs
   );
 
   let results = (outs);
@@ -1330,7 +1330,7 @@ bad_color: Color to use for pixels with non-finite values.
     TensorOf<[TF_Float16, TF_Float32, TF_Uint8]>:$tensor,
     TF_Uint8Tensor:$bad_color,
 
-    Confined<DefaultValuedAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_images
+    ConfinedAttr<DefaultValuedAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_images
   );
 
   let results = (outs);

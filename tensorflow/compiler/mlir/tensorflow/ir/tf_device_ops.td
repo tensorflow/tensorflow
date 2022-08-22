@@ -271,7 +271,7 @@ For example:
     Variadic<AnyType>:$packed_inputs,
 
     DenseI32ArrayAttr:$operand_segment_sizes,
-    Confined<I32Attr, [IntMinValue<2>]>:$n,
+    ConfinedAttr<I32Attr, [IntMinValue<2>]>:$n,
     OptionalAttr<DictionaryAttr>:$devices
   );
 
