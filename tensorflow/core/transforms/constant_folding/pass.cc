@@ -2070,12 +2070,14 @@ class SimplifyReshapeOp : public FolderPatternBase<SimplifyReshapeOp> {
     if (!shape_op || !dialect_->IsConstant(shape_op)) return failure();
 
     auto shape_attr = shape_op->getAttrOfType<ElementsAttr>("value");
-    SmallVector<int32_t> new_shape(shape_attr.getValues<int32_t>());
+    // TODO(tlongeri): only reason for SmallVector instead of range directly is
+    // that llvm::zip implementation requires copy assignment (it shouldn't)
+    SmallVector<APInt> new_shape(shape_attr.getValues<APInt>());
 
     if (input_shape.getRank() != new_shape.size()) return failure();
     for (const auto &it : llvm::zip(input_shape.getShape(), new_shape)) {
-      int32_t dim_0 = std::get<0>(it);
-      int32_t dim_1 = std::get<1>(it);
+      int64_t dim_0 = std::get<0>(it);
+      int64_t dim_1 = std::get<1>(it).getSExtValue();
       if (dim_0 >= 0 && dim_1 >= 0 && dim_0 != dim_1) return failure();
     }
 
