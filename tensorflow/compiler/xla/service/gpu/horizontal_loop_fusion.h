@@ -96,6 +96,7 @@ namespace gpu {
 class GpuHorizontalLoopFusion : public HloModulePass {
  public:
   GpuHorizontalLoopFusion() {}
+  GpuHorizontalLoopFusion(absl::string_view prefix) : prefix_(prefix) {}
 
   absl::string_view name() const override {
     return "gpu_horizontal_loop_fusion";
@@ -108,6 +109,7 @@ class GpuHorizontalLoopFusion : public HloModulePass {
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation*);
+  std::string prefix_;
 };
 
 }  // namespace gpu

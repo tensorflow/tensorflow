@@ -50,8 +50,9 @@ PrimitiveType GetUniqueOutputTypeOfFusible(const HloInstruction& fusible) {
 
 class HorizontalLoopFusionImpl {
  public:
-  explicit HorizontalLoopFusionImpl(HloComputation* computation)
-      : computation_(computation) {}
+  explicit HorizontalLoopFusionImpl(HloComputation* computation,
+                                    absl::string_view prefix)
+      : computation_(computation), prefix_(prefix) {}
 
   ~HorizontalLoopFusionImpl() {}
 
@@ -95,6 +96,7 @@ class HorizontalLoopFusionImpl {
   };
 
   HloComputation* computation_;
+  std::string prefix_;
 };  // HorizontalLoopFusionImpl
 
 bool IsFusibleCandidate(const HloInstruction& instr) {
@@ -328,7 +330,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
     std::unique_ptr<HloComputation>* uniq_computation,
     std::vector<HloInstruction*>* bound_operands) {
   // First, build a computation with only params.
-  HloComputation::Builder b("horizontally_fused_computation");
+  HloComputation::Builder b(prefix_ + "horizontally_fused_computation");
   size_t fused_comp_param_id = 0;
   for (size_t i = 0; i < fused_fusion_instrs.size(); ++i) {
     auto old_params = fused_fusion_instrs[i]->fused_parameters();
@@ -452,7 +454,7 @@ Status HorizontalLoopFusionImpl::Fuse(
   HloInstruction* hori_fusion_instr = computation_->AddInstruction(
       HloInstruction::CreateFusion(fused_comp->root_instruction()->shape(),
                                    HloInstruction::FusionKind::kInput,
-                                   bound_operands, fused_comp),
+                                   bound_operands, fused_comp, prefix_),
       &fused_comp->root_instruction()->metadata());
   fused_comp->SetFusionInstruction(hori_fusion_instr);
 
@@ -532,7 +534,7 @@ StatusOr<bool> HorizontalLoopFusionImpl::Run() {
 
 StatusOr<bool> GpuHorizontalLoopFusion::RunOnComputation(
     HloComputation* computation) {
-  HorizontalLoopFusionImpl horizontal_fusion_impl(computation);
+  HorizontalLoopFusionImpl horizontal_fusion_impl(computation, prefix_);
   return horizontal_fusion_impl.Run();
 }
 
