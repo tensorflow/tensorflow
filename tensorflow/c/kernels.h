@@ -63,8 +63,14 @@ typedef struct TF_Tensor TF_Tensor;
 // kernels when necessary.
 
 typedef struct TF_KernelBuilder TF_KernelBuilder;
+typedef struct TF_AsyncKernelBuilder TF_AsyncKernelBuilder;
 typedef struct TF_OpKernelConstruction TF_OpKernelConstruction;
 typedef struct TF_OpKernelContext TF_OpKernelContext;
+typedef struct TF_AsyncOpKernelDoneCallback TF_AsyncOpKernelDoneCallback;
+
+// Run callback function for async kernel.
+TF_CAPI_EXPORT extern void TF_RunAsyncOpKernelDoneCallback(
+    TF_AsyncOpKernelDoneCallback*);
 
 // TF_InitKernel to do op/kernel registration.
 // Plugin should implement TF_InitKernel to register kernels. This function
@@ -145,6 +151,45 @@ TF_CAPI_EXPORT extern void TF_RegisterKernelBuilderWithKernelDef(
 // Deletes the given TF_KernelBuilder. This should be called only if the kernel
 // builder is not registered with TensorFlow via TF_RegisterKernelBuilder.
 TF_CAPI_EXPORT extern void TF_DeleteKernelBuilder(TF_KernelBuilder* builder);
+
+// Allocates a new kernel builder and returns a pointer to it.
+//
+// It is similar as TF_NewKernelBuilder, except compute_async_func.
+// It will create an AsyncOpKernel, and perform an async computation through
+// compute_async_func.
+TF_CAPI_EXPORT extern TF_AsyncKernelBuilder* TF_NewAsyncKernelBuilder(
+    const char* op_name, const char* device_name,
+    void* (*create_func)(TF_OpKernelConstruction*),
+    void (*compute_async_func)(void*, TF_OpKernelContext*,
+                               TF_AsyncOpKernelDoneCallback* done),
+    void (*delete_func)(void*));
+
+// Specifies that this async kernel's attribute only supports the given type.
+TF_CAPI_EXPORT extern void TF_AsyncKernelBuilder_TypeConstraint(
+    TF_AsyncKernelBuilder* kernel_builder, const char* attr_name,
+    const TF_DataType type, TF_Status* status);
+
+// Specify that this async kernel requires/provides an input/output arg
+// in host memory (instead of the default, device memory).
+TF_CAPI_EXPORT extern void TF_AsyncKernelBuilder_HostMemory(
+    TF_AsyncKernelBuilder* kernel_builder, const char* arg_name);
+
+// Specify a priority number for this async kernel.
+TF_CAPI_EXPORT extern void TF_AsyncKernelBuilder_Priority(
+    TF_AsyncKernelBuilder* kernel_builder, int32_t priority_number);
+
+// Register the given async kernel builder with the TensorFlow runtime. If
+// registration fails, the given status will be populated.
+//
+// This call takes ownership of the `builder` pointer.
+TF_CAPI_EXPORT extern void TF_RegisterAsyncKernelBuilder(
+    const char* kernel_name, TF_AsyncKernelBuilder* builder, TF_Status* status);
+
+// Deletes the given TF_AsyncKernelBuilder. This should be called only if the
+// kernel builder is not registered with TensorFlow via
+// TF_RegisterKernelBuilder.
+TF_CAPI_EXPORT extern void TF_DeleteAsyncKernelBuilder(
+    TF_AsyncKernelBuilder* builder);
 
 // --------------------------------------------------------------------------
 // OpKernelContext routines

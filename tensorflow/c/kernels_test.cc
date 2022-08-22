@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_format.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 struct MyCustomKernel {
   bool created;
@@ -60,6 +60,7 @@ struct MyCustomKernel {
 };
 
 static bool delete_called = false;
+static bool async_kernel_done = false;
 
 static void* MyCreateFunc(TF_OpKernelConstruction* ctx) {
   struct MyCustomKernel* s = new struct MyCustomKernel;
@@ -85,6 +86,16 @@ static void* MyCreateFunc(TF_OpKernelConstruction* ctx) {
 
 static void MyComputeFunc(void* kernel, TF_OpKernelContext* ctx) {
   struct MyCustomKernel* s = static_cast<struct MyCustomKernel*>(kernel);
+  s->compute_called = true;
+  if (ctx != nullptr) {
+    EXPECT_EQ(43, TF_StepId(ctx));
+  }
+}
+
+static void MyAsyncComputeFunc(void* kernel, TF_OpKernelContext* ctx,
+                               TF_AsyncOpKernelDoneCallback* done) {
+  struct MyCustomKernel* s = static_cast<struct MyCustomKernel*>(kernel);
+  TF_RunAsyncOpKernelDoneCallback(done);
   s->compute_called = true;
   if (ctx != nullptr) {
     EXPECT_EQ(43, TF_StepId(ctx));
@@ -232,6 +243,50 @@ TEST(TestKernel, TF_RegisterKernelBuilderWithKernelDef) {
     kernel->Compute(nullptr);
   }
 
+  ASSERT_TRUE(delete_called);
+}
+
+// Tests registration of a single C async kernel and checks that calls through
+// the C/C++ boundary are being made.
+TEST(TestKernel, TestRegisterAsyncKernelBuilder) {
+  const char* node_name = "SomeNodeName";
+  const char* op_name = "AsyncFooOp";
+  const char* device_name = "FakeDeviceName1";
+
+  REGISTER_OP(op_name)
+      .Input("input1: double")
+      .Input("input2: uint8")
+      .Output("output1: uint8")
+      .Attr("SomeDataTypeAttr: type");
+
+  TF_AsyncKernelBuilder* builder = TF_NewAsyncKernelBuilder(
+      op_name, device_name, &MyCreateFunc, &MyAsyncComputeFunc, &MyDeleteFunc);
+
+  {
+    TF_Status* status = TF_NewStatus();
+    TF_RegisterAsyncKernelBuilder(node_name, builder, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    KernelList list;
+    list.ParseFromArray(buf->data, buf->length);
+    ASSERT_EQ(1, list.kernel_size());
+    ASSERT_EQ(device_name, list.kernel(0).device_type());
+    TF_DeleteBuffer(buf);
+    TF_DeleteStatus(status);
+  }
+
+  {
+    Status status;
+    std::unique_ptr<OpKernel> kernel =
+        GetFakeKernel(device_name, op_name, node_name, &status);
+    TF_EXPECT_OK(status);
+    ASSERT_NE(nullptr, kernel.get());
+    auto done = []() { async_kernel_done = true; };
+    down_cast<AsyncOpKernel*>(kernel.get())->ComputeAsync(nullptr, done);
+  }
+
+  ASSERT_TRUE(async_kernel_done);
   ASSERT_TRUE(delete_called);
 }
 
@@ -838,9 +893,30 @@ TEST(TestKernel, DeleteKernelBuilderIsOkOnNull) {
   TF_DeleteKernelBuilder(nullptr);
 }
 
+TEST(TestKernel, DeleteAsyncKernelBuilderIsOkOnNull) {
+  TF_DeleteAsyncKernelBuilder(nullptr);
+}
+
 std::string ExpectedString(const char* type) {
   const auto format_str = R"str(kernel {
   op: "TypeOp%s"
+  device_type: "FakeDeviceName1"
+  constraint {
+    name: "T"
+    allowed_values {
+      list {
+        type: %s
+      }
+    }
+  }
+}
+)str";
+  return absl::StrFormat(format_str, type, type);
+}
+
+std::string AsyncExpectedString(const char* type) {
+  const auto format_str = R"str(kernel {
+  op: "AsyncTypeOp%s"
   device_type: "FakeDeviceName1"
   constraint {
     name: "T"
@@ -888,6 +964,38 @@ std::string ExpectedString(const char* type) {
     TF_DeleteBuffer(buf);                                                    \
     TF_DeleteStatus(status);                                                 \
     TF_DeleteKernelBuilder(builder);                                         \
+    ASSERT_TRUE(delete_called);                                              \
+  }                                                                          \
+  TEST(TestKernel, TestAsyncTypeConstraint##tf_type) {                       \
+    const char* node_name = "SomeNodeName";                                  \
+    const char* op_name = "AsyncTypeOp" #dtype;                              \
+    const char* device_name = "FakeDeviceName1";                             \
+                                                                             \
+    REGISTER_OP(op_name)                                                     \
+        .Input("input1: double")                                             \
+        .Input("input2: uint8")                                              \
+        .Output("output1: uint8")                                            \
+        .Attr("T: type");                                                    \
+                                                                             \
+    TF_AsyncKernelBuilder* builder =                                         \
+        TF_NewAsyncKernelBuilder(op_name, device_name, &MyCreateFunc,        \
+                                 &MyAsyncComputeFunc, &MyDeleteFunc);        \
+    TF_Status* status = TF_NewStatus();                                      \
+    TF_AsyncKernelBuilder_TypeConstraint(builder, "T", TF_DataType::tf_type, \
+                                         status);                            \
+    EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
+    TF_RegisterAsyncKernelBuilder(node_name, builder, status);               \
+    EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
+                                                                             \
+    TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);          \
+    EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
+    KernelList list;                                                         \
+    list.ParseFromArray(buf->data, buf->length);                             \
+    ASSERT_EQ(AsyncExpectedString(#dtype), list.DebugString());              \
+                                                                             \
+    TF_DeleteBuffer(buf);                                                    \
+    TF_DeleteStatus(status);                                                 \
+    TF_DeleteAsyncKernelBuilder(builder);                                    \
     ASSERT_TRUE(delete_called);                                              \
   }
 
@@ -988,6 +1096,44 @@ TEST(TestKernel, TestHostMemory) {
   TF_DeleteBuffer(buf);
   TF_DeleteStatus(status);
   TF_DeleteKernelBuilder(builder);
+  ASSERT_TRUE(delete_called);
+}
+
+TEST(TestKernel, TestAsyncHostMemory) {
+  const char* node_name = "SomeNodeName";
+  const char* op_name = "AsyncHostMemoryOp";
+  const char* device_name = "FakeDeviceName1";
+
+  REGISTER_OP(op_name)
+      .Input("input1: double")
+      .Input("input2: uint8")
+      .Output("output1: uint8")
+      .Attr("T: type");
+
+  TF_AsyncKernelBuilder* builder = TF_NewAsyncKernelBuilder(
+      op_name, device_name, &MyCreateFunc, &MyAsyncComputeFunc, &MyDeleteFunc);
+  TF_AsyncKernelBuilder_HostMemory(builder, "input2");
+  TF_AsyncKernelBuilder_HostMemory(builder, "output1");
+  TF_Status* status = TF_NewStatus();
+  TF_RegisterAsyncKernelBuilder(node_name, builder, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+  TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+  KernelList list;
+  list.ParseFromArray(buf->data, buf->length);
+  const auto expected_str = R"str(kernel {
+  op: "AsyncHostMemoryOp"
+  device_type: "FakeDeviceName1"
+  host_memory_arg: "input2"
+  host_memory_arg: "output1"
+}
+)str";
+  ASSERT_EQ(expected_str, list.DebugString());
+
+  TF_DeleteBuffer(buf);
+  TF_DeleteStatus(status);
+  TF_DeleteAsyncKernelBuilder(builder);
   ASSERT_TRUE(delete_called);
 }
 
