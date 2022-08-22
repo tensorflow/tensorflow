@@ -94,7 +94,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -112,7 +111,7 @@ ENTRY %test {
 
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK: selected_algorithm
+; CHECK:    custom_call_target="__cublas$gemm"
       )");
 }
 
@@ -141,26 +140,14 @@ ENTRY AddDotsFunc {
           *get_module(), backend().default_stream_executor(),
           backend().default_stream_executor()->GetAllocator()));
   DebugOptions debug_options = GetDebugOptionsForTest();
-  if (!debug_options.xla_gpu_enable_cublaslt()) {
-    StatusOr<bool> filecheck_result_cublas =
-        RunFileCheck(optimized_module->ToString(),
-                     R"(
-; CHECK:    \"selected_algorithm\":\"-1\"
-      )");
-    TF_ASSERT_OK(filecheck_result_cublas.status());
-    EXPECT_TRUE(filecheck_result_cublas.ValueOrDie());
-    EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-5, 1e-5}));
-  } else {
-    // With cublaslt enabled, selected_algorithm is se::blas::kNoAlgorithm
-    StatusOr<bool> filecheck_result_cublas =
-        RunFileCheck(optimized_module->ToString(),
-                     R"(
-; CHECK:    \"selected_algorithm\":\"-4\"
-      )");
-    TF_ASSERT_OK(filecheck_result_cublas.status());
-    EXPECT_TRUE(filecheck_result_cublas.ValueOrDie());
-    EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-3, 1e-5}));
-  }
+  StatusOr<bool> filecheck_result_cublas =
+      RunFileCheck(optimized_module->ToString(),
+                   R"(
+; CHECK:    custom_call_target="__cublas$gemm"
+    )");
+  TF_ASSERT_OK(filecheck_result_cublas.status());
+  EXPECT_TRUE(filecheck_result_cublas.ValueOrDie());
+  EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(GemmRewriteTest, MultipleContractingDims) {
@@ -194,7 +181,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -227,7 +213,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -260,7 +245,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -293,7 +277,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"1\"],\"rhs_batch_dimensions\":[\"0\"]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -326,7 +309,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"beta\":0
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -359,7 +341,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -392,7 +373,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,5,4]{2,1,0} bitcast([[GEMM]])
       )");
 }
@@ -426,7 +406,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4,5]{2,1,0} [[OP:[^ ]+]]([[GEMM]])
       )");
 }
@@ -462,7 +441,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -502,7 +480,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -534,7 +511,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -568,7 +544,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -608,7 +583,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -647,7 +621,6 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -923,13 +896,13 @@ ENTRY BF16GemmWithBias {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
 #if GOOGLE_CUDA
 
 class CublasLtMatmulRewriteTest : public GpuCodegenTest {
+ public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
@@ -963,8 +936,42 @@ ENTRY test {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, SimpleRewriteDeterministic) {
+  const char* hlo_text = R"(
+HloModule SimpleGemm
+
+ENTRY AddDotsFunc {
+  x = f32[128,128] parameter(0)
+  y = f32[128,128] parameter(1)
+  ROOT dot_a = f32[128,128] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  auto get_module = [&]() -> StatusOr<std::unique_ptr<HloModule>> {
+    HloModuleConfig config;
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_deterministic_ops(true);
+    config.set_debug_options(debug_options);
+    return ParseAndReturnVerifiedModule(hlo_text, config);
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      backend().compiler()->RunHloPasses(
+          *get_module(), backend().default_stream_executor(),
+          backend().default_stream_executor()->GetAllocator()));
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  StatusOr<bool> filecheck_result_cublas =
+      RunFileCheck(optimized_module->ToString(),
+                   R"(
+; CHECK:    custom_call_target="__cublas$lt$matmul"
+    )");
+  TF_ASSERT_OK(filecheck_result_cublas.status());
+  EXPECT_TRUE(filecheck_result_cublas.ValueOrDie());
+  EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-3, 1e-5}));
 }
 
 TEST_F(CublasLtMatmulRewriteTest, MatrixBias) {
@@ -996,7 +1003,6 @@ ENTRY test {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -1030,7 +1036,6 @@ ENTRY test {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"BIAS\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -1065,7 +1070,6 @@ ENTRY test {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"DEFAULT\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
@@ -1100,7 +1104,6 @@ ENTRY test {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"BIAS\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,2]{1,0} bitcast([[MATMUL]])
       )");
 }
@@ -1138,7 +1141,6 @@ ENTRY test {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"BIAS\"
-; CHECK-DAG:       \"selected_algorithm\":\"{{-?[0-9]+}}\"
       )");
 }
 
