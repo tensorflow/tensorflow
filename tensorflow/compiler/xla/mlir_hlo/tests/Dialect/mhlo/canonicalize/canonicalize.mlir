@@ -1720,24 +1720,6 @@ func.func @fold_not_i32() -> tensor<2x2xi32> {
   func.return %1 : tensor<2x2xi32>
 }
 
-// CHECK-LABEL: func @fold_sqrt_f16_constants
-func.func @fold_sqrt_f16_constants() -> tensor<4xf16> {
-  %0 = mhlo.constant dense<[1.0, 4.0, 9.0, 16.0]> : tensor<4xf16>
-  %1 = "mhlo.sqrt"(%0) : (tensor<4xf16>) -> tensor<4xf16>
-  //     CHECK: mhlo.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf16>
-  // CHECK-NOT: mhlo.sqrt
-  func.return %1 : tensor<4xf16>
-}
-
-// CHECK-LABEL: func @fold_sqrt_bf16_constants
-func.func @fold_sqrt_bf16_constants() -> tensor<4xbf16> {
-  %0 = mhlo.constant dense<[1.0, 4.0, 9.0, 16.0]> : tensor<4xbf16>
-  %1 = "mhlo.sqrt"(%0) : (tensor<4xbf16>) -> tensor<4xbf16>
-  //     CHECK: mhlo.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
-  // CHECK-NOT: mhlo.sqrt
-  func.return %1 : tensor<4xbf16>
-}
-
 // CHECK-LABEL: func @fold_sqrt_f32_constants
 func.func @fold_sqrt_f32_constants() -> tensor<4xf32> {
   %0 = mhlo.constant dense<1.0> : tensor<4xf32>
@@ -1754,15 +1736,6 @@ func.func @fold_sqrt_f64_constants() -> tensor<4xf64> {
   //     CHECK: mhlo.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf64>
   // CHECK-NOT: mhlo.sqrt
   func.return %1 : tensor<4xf64>
-}
-
-// CHECK-LABEL: func @fold_rsqrt
-func.func @fold_rsqrt() -> tensor<4xbf16> {
-  %0 = mhlo.constant dense<[1.0, 4.0, 16.0, 64.0]> : tensor<4xbf16>
-  %1 = "mhlo.rsqrt"(%0) : (tensor<4xbf16>) -> tensor<4xbf16>
-  //     CHECK: mhlo.constant dense<[1.000000e+00, 5.000000e-01, 2.500000e-01, 1.250000e-01]> : tensor<4xbf16>
-  // CHECK-NOT: mhlo.rsqrt
-  func.return %1 : tensor<4xbf16>
 }
 
 // CHECK-LABEL: func @not_fold_sqrt_neg_constants
