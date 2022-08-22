@@ -813,6 +813,36 @@ TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
   EXPECT_EQ(a, ShapeUtil::MakeShapeWithLayout(F32, {5, 9}, {0, 1}));
 }
 
+TEST(ShapeUtilTest, FindTranspose021NoTranspose) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {128, 64}, {1, 0});
+  Shape transposed = ShapeUtil::MakeShapeWithLayout(F32, {64, 128}, {0, 1});
+  EXPECT_EQ(std::nullopt, ShapeUtil::FindTranspose021(shape, transposed));
+}
+
+TEST(ShapeUtilTest, FindTranspose021) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {128, 64}, {1, 0});
+  Shape transposed = ShapeUtil::MakeShapeWithLayout(F32, {128, 64}, {0, 1});
+  EXPECT_EQ(std::make_optional(Vector3{1, 64, 128}),
+            ShapeUtil::FindTranspose021(shape, transposed));
+}
+
+TEST(ShapeUtilTest, FindTranspose021Batched) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {32, 3, 64}, {2, 1, 0});
+  Shape transposed =
+      ShapeUtil::MakeShapeWithLayout(F32, {32, 3, 64}, {1, 0, 2});
+  EXPECT_EQ(std::make_optional(Vector3{1, 64, 96}),
+            ShapeUtil::FindTranspose021(shape, transposed));
+}
+
+TEST(ShapeUtilTest, FindTranspose021Large) {
+  Shape shape =
+      ShapeUtil::MakeShapeWithLayout(F32, {8, 31, 31, 65}, {3, 2, 1, 0});
+  Shape transposed =
+      ShapeUtil::MakeShapeWithLayout(F32, {8, 31, 31, 65}, {2, 1, 3, 0});
+  EXPECT_EQ(std::make_optional(Vector3{8, 65, 961}),
+            ShapeUtil::FindTranspose021(shape, transposed));
+}
+
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {
   EXPECT_FALSE(ShapeUtil::ReshapeIsBitcast(
       ShapeUtil::MakeShapeWithLayout(F32, {3, 2, 2}, {0, 1, 2}),

@@ -3,7 +3,7 @@
 This tutorial shows you how to build an Android app using TensorFlow Lite
 to analyze a live camera feed and identify objects using a machine learning
 model, using a minimal amount of code. If you are updating an existing project
-you can use the code sample as a reference and skip ahead to the instructions
+you can use the example app as a reference and skip ahead to the instructions
 for [modifying your project](#add_dependencies).
 
 
@@ -21,11 +21,11 @@ size of data being processed, and the size of the machine learning model.
 
 ## Setup and run example
 
-For the first part of this tutorial, download the sample from GitHub and run it
-using [Android Studio](https://developer.android.com/studio/). The following
-sections of this tutorial explore the relevant sections of the code example, so
-you can apply them to your own Android apps. You need the following versions
-of these tools installed:
+For the first part of this tutorial, download the example app from GitHub and
+run it using [Android Studio](https://developer.android.com/studio/). The
+following sections of this tutorial explore the relevant sections of the code
+example, so you can apply them to your own Android apps. You need the following
+versions of these tools installed:
 
 * Android Studio 4.2.2 or higher
 * Android SDK version 31 or higher
@@ -36,7 +36,7 @@ device.
 ### Get the example code
 
 Create a local copy of the example code. You will use this code to create a
-project in Android Studio and run the sample application.
+project in Android Studio and run the example application.
 
 To clone and setup the example code:
 

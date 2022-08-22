@@ -265,7 +265,7 @@ class CheckpointPosition(object):
         existing_restore_ops.append(existing_op)
         continue
 
-      if any(name.startswith(serialized_tensor.name)
+      if any(serialized_tensor.name.startswith(name)
              for name in created_compat_names):
         continue  # Saveable has already been created for this tensor.
 

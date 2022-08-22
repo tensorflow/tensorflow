@@ -16,19 +16,68 @@ limitations under the License.
 #ifndef XLA_MLIR_RUNTIME_RT_PASSES_H_
 #define XLA_MLIR_RUNTIME_RT_PASSES_H_
 
+#include <functional>
 #include <memory>
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 
 namespace xla {
 namespace runtime {
 
+//===-----------------------------------------------------------------------===/
+// Transformations targeting `rt` dialect.
+//===-----------------------------------------------------------------------===/
+
 static constexpr char const* kEntrypointAttrName = "rt.entrypoint";
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateConvertToEntrypoint();
+
+//===-----------------------------------------------------------------------===/
+// Conversions targeting `rt` dialect.
+//===-----------------------------------------------------------------------===/
+
+class TypeIDNameRegistry;
+class CustomCallArgEncodingSet;
+class CustomCallAttrEncodingSet;
+
+// Extension points for converting `rt` dialect to the LLVM dialect.
+//
+// Runtime custom calls is an extension mechanism for enabling compiled programs
+// to call into the APIs provided by the user. It relies on converting
+// values and attributes to the LLVM types (structs and pointers) with a
+// well-defined memory layout, so that they can be passed across the function
+// boundary and safely decoded (without dependency on C++ ABI).
+//
+// All user-defined types (values and attributes) that are passed to the custom
+// calls must define the argument or attribute encoding.
+struct ConvertRuntimeToLLvmOpts {
+  // Register names for the TypeIDs used for encoding types of custom arguments
+  // and attributes.
+  std::function<void(TypeIDNameRegistry&)> populate_type_id_names;
+
+  // Add type conversions for user-defined types to the corresponding LLVM
+  // types. Conversion pass uses these extra conversions to convert arguments
+  // of the entrypoint function and values passed to the custom calls. Custom
+  // call argument encoding can further refine how values of LLVM types passed
+  // to the custom call handlers by passing custom encoding (see below).
+  std::function<void(mlir::TypeConverter&)> populate_type_conversions;
+
+  // Add user-defined arguments encoding to the custom call lowering.
+  std::function<void(CustomCallArgEncodingSet&)> populate_arg_encodings;
+
+  // Add user-defined attributes type encoding to the custom call lowering.
+  std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
+};
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateConvertRuntimeToLLVMPass(ConvertRuntimeToLLvmOpts opts = {});
+
+//===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"

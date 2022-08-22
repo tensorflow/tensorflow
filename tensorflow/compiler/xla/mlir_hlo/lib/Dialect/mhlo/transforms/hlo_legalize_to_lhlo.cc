@@ -205,7 +205,7 @@ struct HloToLhloCustomCallOpConverter
         static_cast<int32_t>(adaptor.getOperands().size()),
         static_cast<int32_t>(op->getNumResults())};
     lhloOp->setAttr(lhloOp.getOperandSegmentSizeAttr(),
-                    rewriter.getI32VectorAttr(segments));
+                    rewriter.getDenseI32ArrayAttr(segments));
 
     rewriter.replaceOp(
         op, ArrayRef<Value>(bufferArgs).slice(adaptor.getOperands().size()));

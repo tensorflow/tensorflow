@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 
@@ -85,8 +85,8 @@ class BenchmarkPerformanceOptions {
   virtual ~BenchmarkPerformanceOptions() {}
 
   // Just run the benchmark just w/ default parameter values.
-  void Run();
-  void Run(int argc, char** argv);
+  TfLiteStatus Run();
+  TfLiteStatus Run(int argc, char** argv);
 
  protected:
   static BenchmarkParams DefaultParams();
@@ -97,10 +97,10 @@ class BenchmarkPerformanceOptions {
 
   // Unparsable flags will remain in 'argv' in the original order and 'argc'
   // will be updated accordingly.
-  bool ParseFlags(int* argc, char** argv);
+  TfLiteStatus ParseFlags(int* argc, char** argv);
   virtual std::vector<Flag> GetFlags();
 
-  bool ParsePerfOptions();
+  TfLiteStatus ParsePerfOptions();
   virtual std::vector<std::string> GetValidPerfOptions() const;
   bool HasOption(const std::string& option) const;
 

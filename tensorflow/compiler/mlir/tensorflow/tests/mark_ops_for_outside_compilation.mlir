@@ -82,7 +82,7 @@ func.func @ignore_embedding_ops() -> () {
     // CHECK: "tf.SendTPUEmbeddingGradients"
     // CHECK-NOT: _xla_outside_compilation
     %2:2 = "tf.RecvTPUEmbeddingActivations"() {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D"} : () -> (tensor<2x2xf32>, tensor<4x4xf32>)
-    "tf.SendTPUEmbeddingGradients"(%2#0, %2#1) {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D", operand_segment_sizes = dense<[2, 0]> : vector<2xi32>} : (tensor<2x2xf32>, tensor<4x4xf32>) -> ()
+    "tf.SendTPUEmbeddingGradients"(%2#0, %2#1) {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D", operand_segment_sizes = array<i32: 2, 0>} : (tensor<2x2xf32>, tensor<4x4xf32>) -> ()
     tf_device.return
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
   func.return

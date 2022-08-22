@@ -471,7 +471,10 @@ void ThinPointwiseFuser::AddDepthwiseConvNode(
 }
 
 void ThinPointwiseFuser::AddElementwiseNode(ElementwiseDescriptor&& op_desc) {
-  auto status = args_.Merge(std::move(op_desc.args), "");
+  std::string unique_postfix = absl::StrCat("_link_internal", link_counter_);
+  link_counter_++;
+  op_desc.args.RenameArgs(unique_postfix, &op_desc.code);
+  auto status = args_.Merge(std::move(op_desc.args), unique_postfix);
   for (int i = 0; i < outputs_.size(); ++i) {
     const std::string elementwise_new_code =
         absl::StrReplaceAll(op_desc.code, {{"in_value", outputs_[i]},
@@ -533,7 +536,7 @@ void ThinPointwiseFuser::AddConvNode(const GpuInfo& gpu_info,
       code_ += "  if(" + std::to_string(d) + " < args.dst_tensor.Slices()) {\n";
       code_ += "    args.dst_tensor.Write(" + dst + ", X, Y, " +
                std::to_string(d) + ");\n";
-      code_ += "  };\n";
+      code_ += "  }\n";
     }
   }
 }

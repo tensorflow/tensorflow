@@ -71,7 +71,8 @@ StatusOr<bool> TupleSimplifier::Run(
     }
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kTuple) {
-        TF_ASSIGN_OR_RETURN(changed, RemoveWholeTuple(instruction));
+        TF_ASSIGN_OR_RETURN(bool c, RemoveWholeTuple(instruction));
+        changed |= c;
       } else {
         auto ancestor = instruction->LatestNonGteAncestorAndIndex();
         if (ancestor.first == instruction) {

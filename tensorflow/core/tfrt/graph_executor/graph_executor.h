@@ -19,14 +19,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/core/common_runtime/graph_execution_state.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/core/tfrt/tpu/tpu_resources.h"
+#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime

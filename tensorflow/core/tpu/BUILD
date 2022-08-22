@@ -393,8 +393,8 @@ cc_library(
     deps = [
         ":libtftpu_header",
         "//tensorflow/c:tf_tstring",
-        "//tensorflow/stream_executor/tpu:c_api_decl",
-        "//tensorflow/stream_executor/tpu:proto_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
+        "//tensorflow/compiler/xla/stream_executor/tpu:proto_helper",
         "@com_google_absl//absl/types:optional",
     ],
     alwayslink = True,

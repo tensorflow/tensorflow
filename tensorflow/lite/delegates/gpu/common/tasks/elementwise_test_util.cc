@@ -1221,5 +1221,131 @@ absl::Status NotEqualTest(TestExecutionEnvironment* env) {
   return absl::OkStatus();
 }
 
+absl::Status CosBroadcastTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 2, 1, 1);
+  src_tensor.data = {0.7f, -1.5f};
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      const float eps = precision == CalculationsPrecision::F32 ? 5e-5f : 1e-3f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      BHWC output_shape(1, 2, 1, 2);
+      GPUOperation operation = CreateElementwiseOneInputWithBroadcast(
+          env->GetGpuInfo(), op_def, OperationType::COS, src_tensor.shape,
+          output_shape);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
+          output_shape, &dst_tensor));
+      RETURN_IF_ERROR(PointWiseNear(
+          {std::cos(0.7f), std::cos(0.7f), std::cos(-1.5f), std::cos(-1.5f)},
+          dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status MaximumScalarBroadcastInputTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor_0;
+  src_tensor_0.shape = BHWC(1, 2, 1, 1);
+  src_tensor_0.data = {2.0f, -3.0f};
+
+  ElementwiseAttributes attr;
+  attr.param = -2.0f;
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      BHWC output_shape(1, 2, 1, 2);
+      GPUOperation operation = CreateElementwiseWithBroadcast(
+          env->GetGpuInfo(), op_def, OperationType::MAXIMUM, attr,
+          src_tensor_0.shape, output_shape);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor_0, std::make_unique<GPUOperation>(std::move(operation)),
+          output_shape, &dst_tensor));
+      RETURN_IF_ERROR(
+          PointWiseNear({2.0f, 2.0f, -2.0f, -2.0f}, dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status MulLinearBroadcastInputTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor_0;
+  src_tensor_0.shape = BHWC(1, 2, 1, 1);
+  src_tensor_0.data = {2.0f, -3.0f};
+
+  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> linear_tensor;
+  linear_tensor.shape = Linear(2);
+  linear_tensor.data = {0.5f, 2.0f};
+  ElementwiseAttributes attr;
+  attr.param = linear_tensor;
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      BHWC output_shape(1, 2, 1, 2);
+      GPUOperation operation = CreateElementwiseWithBroadcast(
+          env->GetGpuInfo(), op_def, OperationType::MUL, attr,
+          src_tensor_0.shape, output_shape);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor_0, std::make_unique<GPUOperation>(std::move(operation)),
+          output_shape, &dst_tensor));
+      RETURN_IF_ERROR(
+          PointWiseNear({1.0f, 4.0f, -1.5f, -6.0f}, dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status MulBroadcastBothInputsTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor_0, src_tensor_1;
+  src_tensor_0.shape = BHWC(1, 1, 2, 1);
+  src_tensor_1.shape = BHWC(1, 1, 1, 2);
+  src_tensor_0.data = {1.0f, 2.0f};
+  src_tensor_1.data = {3.0f, 4.0f};
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      BHWC output_shape(1, 1, 2, 2);
+      GPUOperation operation = CreateElementwiseTwoInputWithBroadcast(
+          op_def, OperationType::MUL, src_tensor_0.shape, src_tensor_1.shape,
+          output_shape);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          {src_tensor_0, src_tensor_1},
+          std::make_unique<GPUOperation>(std::move(operation)), output_shape,
+          &dst_tensor));
+      RETURN_IF_ERROR(
+          PointWiseNear({3.0f, 4.0f, 6.0f, 8.0f}, dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace tflite

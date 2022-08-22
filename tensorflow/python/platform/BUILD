@@ -59,7 +59,6 @@ py_library(
         "@absl_py//absl/flags",
         "@absl_py//absl/logging",
         "@rules_python//python/runfiles",
-        "@six_archive//:six",
     ],
 )
 
@@ -70,7 +69,6 @@ py_library(
     deps = [
         ":platform",
         "//tensorflow/python:client",
-        "@six_archive//:six",
     ],
 )
 

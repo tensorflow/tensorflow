@@ -1,9 +1,9 @@
 // RUN: mlir-hlo-opt --split-input-file %s \
-// RUN:     --gml-st-pipeline="tile-sizes=64,4 fuse" | \
+// RUN:     --gml-st-pipeline="tile-sizes=[64,4] fuse" | \
 // RUN: FileCheck %s --check-prefix=TILE-CHECK
 
 // RUN: mlir-hlo-opt --split-input-file %s \
-// RUN:     --gml-st-pipeline="tile-sizes=1,1 fuse" | \
+// RUN:     --gml-st-pipeline="tile-sizes=[1,1] fuse" | \
 // RUN: FileCheck %s --check-prefix=POINT-CHECK
 
 // TODO(akuegel): Also run with the option lower-to-loops. This fails currently

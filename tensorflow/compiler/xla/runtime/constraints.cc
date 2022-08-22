@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
-#include "tfrt/support/error_util.h"  // from @tf_runtime
+#include "tensorflow/compiler/xla/runtime/errors.h"
 
 namespace xla {
 namespace runtime {
@@ -28,8 +28,6 @@ using llvm::ArrayRef;
 using llvm::Expected;
 using llvm::raw_ostream;
 using llvm::StringRef;
-
-using tfrt::MakeStringError;
 
 raw_ostream& operator<<(raw_ostream& os, const ArgumentConstraint& constraint) {
   auto str = [](ArgumentConstraint constraint) {

@@ -44,7 +44,7 @@ namespace tensorflow {
 //
 // `has_ref_vars`: whether the input computation can have reference variables.
 // TODO(cheshire): instead derive this information from the input graph.
-class XlaLocalLaunchBase : public OpKernel {
+class XlaLocalLaunchBase : public AsyncOpKernel {
  public:
   XlaLocalLaunchBase(OpKernelConstruction* ctx,
                      const std::vector<int>& constants,
@@ -54,7 +54,7 @@ class XlaLocalLaunchBase : public OpKernel {
   XlaLocalLaunchBase& operator=(const XlaLocalLaunchBase&) = delete;
   ~XlaLocalLaunchBase() override = default;
 
-  void Compute(OpKernelContext* ctx) override;
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
  protected:
   // Indexes of compile-time constant inputs

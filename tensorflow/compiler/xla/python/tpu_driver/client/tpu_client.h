@@ -321,6 +321,13 @@ class PyTpuToken {
   Status Await() { return Status::OK(); }
 };
 
+class PyShardedTpuToken {
+ public:
+  PyShardedTpuToken() {}
+  Status Await() { return Status::OK(); }
+  PyTpuToken GetPyToken(int i) { return PyTpuToken(); }
+};
+
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. Wraps an XLA LocalExecutable.
 class PyTpuExecutable {
@@ -399,18 +406,15 @@ class PyTpuExecutable {
       absl::Span<const std::vector<PyTpuBuffer*>> args);
 
   StatusOr<std::pair<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>,
-                     std::vector<PyTpuToken>>>
+                     PyShardedTpuToken>>
   ExecuteShardedOnLocalDevicesWithTokens(
       absl::Span<const std::vector<PyTpuBuffer*>> args) {
     TF_ASSIGN_OR_RETURN(auto results, ExecuteShardedOnLocalDevices(args));
 
     TF_RET_CHECK(!args.empty());
-    int num_computations = args.front().size();
-    std::vector<PyTpuToken> tokens(num_computations);
-
     return std::pair<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>,
-                     std::vector<PyTpuToken>>(std::move(results),
-                                              std::move(tokens));
+                     PyShardedTpuToken>(std::move(results),
+                                        PyShardedTpuToken());
   }
 
   void Delete() { executables_.clear(); }

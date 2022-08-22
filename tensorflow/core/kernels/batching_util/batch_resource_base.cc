@@ -257,21 +257,35 @@ Status BatchResourceBase::RegisterInput(
     batch_components->inputs.push_back(tensor);
   }
   RecordInputBatchSize(tensors[0].shape().dim_size(0), GetModelName(context),
-                       context->op_kernel().name_view().data());
+                       context->op_kernel().name());
   RecordInputBatchSizeV2(tensors[0].shape().dim_size(0), GetModelName(context),
                          context->op_kernel().name());
-  RecordBatchParamBatchTimeoutMicros(
-      batcher_queue_options_.batch_timeout_micros, GetModelName(context),
-      context->op_kernel().name_view().data());
-  RecordBatchParamMaxBatchSize(batcher_queue_options_.max_execution_batch_size,
-                               GetModelName(context),
-                               context->op_kernel().name_view().data());
-  RecordBatchParamMaxEnqueuedBatches(
-      batcher_queue_options_.max_enqueued_batches, GetModelName(context),
-      context->op_kernel().name_view().data());
+  if (batcher_) {
+    RecordBatchParamBatchTimeoutMicros(
+        batcher_queue_options_.batch_timeout_micros, GetModelName(context),
+        context->op_kernel().name());
+    RecordBatchParamMaxBatchSize(
+        batcher_queue_options_.max_execution_batch_size, GetModelName(context),
+        context->op_kernel().name());
+    RecordBatchParamMaxEnqueuedBatches(
+        batcher_queue_options_.max_enqueued_batches, GetModelName(context),
+        context->op_kernel().name());
+  } else if (adaptive_batcher_) {
+    RecordBatchParamBatchTimeoutMicros(
+        adaptive_batcher_queue_options_.batch_timeout_micros,
+        GetModelName(context), context->op_kernel().name());
+    RecordBatchParamMaxBatchSize(adaptive_batcher_queue_options_.max_batch_size,
+                                 GetModelName(context),
+                                 context->op_kernel().name());
+    RecordBatchParamMaxEnqueuedBatches(
+        adaptive_batcher_queue_options_.max_enqueued_batches,
+        GetModelName(context), context->op_kernel().name());
+  } else {
+    return errors::Internal("No batcher defined.");
+  }
   RecordBatchParamAllowedBatchSizes(allowed_batch_sizes_str_,
                                     GetModelName(context),
-                                    context->op_kernel().name_view().data());
+                                    context->op_kernel().name());
 
   // Degenerate case where the input is empty. Just return an empty tensor.
   if (tensors[0].shape().dim_size(0) == 0) {
@@ -419,15 +433,15 @@ Status BatchResourceBase::ConcatInputTensors(
                                {"padding_amount", padding_amount}});
   });
   RecordPaddingSize(padding_amount, GetModelName(context), padded_batch_size,
-                    context->op_kernel().name_view().data());
+                    context->op_kernel().name());
   RecordPaddingSizeV2(padding_amount, GetModelName(context), padded_batch_size,
                       context->op_kernel().name());
   RecordProcessedBatchSize(padded_batch_size, GetModelName(context),
-                           context->op_kernel().name_view().data());
+                           context->op_kernel().name());
   RecordProcessedBatchSizeV2(padded_batch_size, GetModelName(context),
-                             string(context->op_kernel().name_view()));
+                             context->op_kernel().name());
   RecordBatchSize(batch.size(), GetModelName(context),
-                  string(context->op_kernel().name_view()));
+                  context->op_kernel().name());
 
   // All tasks should have the same number of input edges.
   const int num_inputs = batch.task(0).inputs.size();

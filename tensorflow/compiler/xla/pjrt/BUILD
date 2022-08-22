@@ -4,6 +4,10 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -499,8 +503,8 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:legalize_trigonometric_to_approximation",
+        "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo_pass",
+        "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -635,6 +639,7 @@ cc_library(
         "transpose_kernels.h",
     ],
     hdrs = ["transpose.h"],
+    visibility = [":friends"],
     deps = [
         ":lru_cache",
         "//tensorflow/compiler/xla:permutation_util",
@@ -728,4 +733,15 @@ tf_cc_test(
         "//tensorflow/core:test",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+tf_proto_library(
+    name = "compile_options_proto",
+    srcs = ["compile_options.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_proto",
+    ],
+    visibility = ["//visibility:public"],
 )

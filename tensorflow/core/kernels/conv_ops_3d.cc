@@ -43,6 +43,7 @@ limitations under the License.
 using stream_executor::dnn::DimIndex;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
@@ -345,8 +346,8 @@ struct LaunchConvOp<GPUDevice, T> {
     }
 
 #if GOOGLE_CUDA
-    const bool compute_in_nhwc = ComputeInNhwcEnabled(
-        DataTypeToEnum<T>::value, stream, /*is_conv2d=*/false);
+    const bool compute_in_nhwc =
+        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
 #else
     // fast NHWC implementation is a CUDA only feature
     const bool compute_in_nhwc = false;

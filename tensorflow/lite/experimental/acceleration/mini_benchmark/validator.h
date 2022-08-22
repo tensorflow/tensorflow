@@ -62,8 +62,16 @@ class Validator {
     std::vector<int64_t> execution_time_us;
     // Any possible error from the delegate.
     int delegate_error = 0;
-    // Number of delegated kernels
+    // Number of delegated kernels.
     int delegated_kernels = 0;
+    // Model output without the delegate.
+    // key: output tensor name.
+    // value: output tensor data in byte format.
+    std::map<std::string, std::vector<char>> golden_inference_output;
+    // Model output with the delegate.
+    // key: output tensor name;
+    // value: output tensor data in byte format.
+    std::map<std::string, std::vector<char>> actual_inference_output;
   };
 
   // Run the validation graph and return validation results.
@@ -87,8 +95,9 @@ class Validator {
   MinibenchmarkStatus CreateInterpreter(int* delegate_error_out,
                                         int* delegated_kernels_out);
 
-  // Check if the golden output exists. If not, run Model on CPU.
-  MinibenchmarkStatus CheckGoldenOutput();
+  // Check if the golden output exists. If not, run Model on CPU and add golden
+  // output to model_. Also fills results_out with the golden output.
+  MinibenchmarkStatus CheckGoldenOutput(Results* results_out);
 
   std::unique_ptr<ModelLoader> model_loader_;
   const ComputeSettings* compute_settings_;

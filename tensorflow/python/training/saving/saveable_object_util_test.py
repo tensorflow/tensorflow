@@ -29,7 +29,15 @@ from tensorflow.python.trackable import resource
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 
-_VAR_SAVEABLE = saveable_object_util.ResourceVariableSaveable
+
+class _VarSaveable(saveable_object.SaveableObject):
+
+  def __init__(self, var, slice_spec, name):
+    specs = [saveable_object.SaveSpec(var.read_value(), slice_spec, name)]
+    super().__init__(var, specs, name)
+
+  def restore(self, restored_tensors, restored_shapes):
+    return self.op.assign(restored_tensors[0])
 
 
 class SaveableCompatibilityConverterTest(test.TestCase):
@@ -51,7 +59,7 @@ class SaveableCompatibilityConverterTest(test.TestCase):
         self.a = variables.Variable(5.0)
 
       def _gather_saveables_for_checkpoint(self):
-        return {"a": lambda name: _VAR_SAVEABLE(self.a, "", name)}
+        return {"a": lambda name: _VarSaveable(self.a, "", name)}
 
     t = MyTrackable()
     converter = saveable_object_util.SaveableCompatibilityConverter(t)
@@ -78,7 +86,7 @@ class SaveableCompatibilityConverterTest(test.TestCase):
         self.a = variables.Variable(15.0)
 
       def _gather_saveables_for_checkpoint(self):
-        return {"a": lambda name: _VAR_SAVEABLE(self.a, "", name + "-value")}
+        return {"a": lambda name: _VarSaveable(self.a, "", name + "-value")}
 
     t = MyTrackable()
     converter = saveable_object_util.SaveableCompatibilityConverter(t)
@@ -105,8 +113,8 @@ class SaveableCompatibilityConverterTest(test.TestCase):
 
       def _gather_saveables_for_checkpoint(self):
         return {
-            "a": lambda name: _VAR_SAVEABLE(self.a, "", name + "-1"),
-            "b": lambda name: _VAR_SAVEABLE(self.b, "", name + "-2")}
+            "a": lambda name: _VarSaveable(self.a, "", name + "-1"),
+            "b": lambda name: _VarSaveable(self.b, "", name + "-2")}
 
     t = MyTrackable()
     converter = saveable_object_util.SaveableCompatibilityConverter(t)
@@ -144,8 +152,8 @@ class SaveableCompatibilityConverterTest(test.TestCase):
     serialized_tensors = converter._serialize_to_tensors()
 
     self.assertLen(serialized_tensors, 2)
-    self.assertEqual(25, self.evaluate(serialized_tensors["a"]))
-    self.assertIsNone(serialized_tensors["b"])
+    self.assertEqual(25, self.evaluate(serialized_tensors["a"].tensor))
+    self.assertIsNone(serialized_tensors["b"].tensor)
 
     with self.assertRaisesRegex(ValueError, "Could not restore object"):
       converter._restore_from_tensors({"a": 5.})

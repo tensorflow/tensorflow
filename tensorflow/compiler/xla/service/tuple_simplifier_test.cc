@@ -37,14 +37,12 @@ namespace {
 class TupleSimplifierTest : public HloTestBase {
  protected:
   void Run(HloModule* module, bool change_expected) {
-    TupleSimplifier simplifier;
-    auto changed_status = simplifier.Run(module);
+    auto changed_status = RunHloPass(TupleSimplifier(), module);
     TF_ASSERT_OK(changed_status.status());
     EXPECT_EQ(change_expected, changed_status.ValueOrDie());
   }
   void Run(HloModule* module, bool change_expected, bool exclude_entry) {
-    TupleSimplifier simplifier(exclude_entry);
-    auto changed_status = simplifier.Run(module);
+    auto changed_status = RunHloPass(TupleSimplifier(exclude_entry), module);
     TF_ASSERT_OK(changed_status.status());
     EXPECT_EQ(change_expected, changed_status.ValueOrDie());
   }

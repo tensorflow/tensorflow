@@ -961,7 +961,8 @@ class HloCallableInstruction : public HloInstruction {
 
   HloCallableInstruction(HloOpcode opcode, const Shape& shape,
                          absl::Span<HloInstruction* const> operands,
-                         HloComputation* called_computation);
+                         HloComputation* called_computation,
+                         absl::string_view prefix = "");
 
   HloCallableInstruction(HloOpcode opcode, const Shape& shape,
                          absl::Span<HloInstruction* const> operands,
@@ -1017,7 +1018,8 @@ class HloFusionInstruction : public HloCallableInstruction {
 
   explicit HloFusionInstruction(const Shape& shape, FusionKind fusion_kind,
                                 absl::Span<HloInstruction* const> operands,
-                                HloComputation* fusion_computation);
+                                HloComputation* fusion_computation,
+                                absl::string_view prefix = "");
 
   ~HloFusionInstruction() override;
 

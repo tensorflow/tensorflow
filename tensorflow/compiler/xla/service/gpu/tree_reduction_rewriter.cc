@@ -148,11 +148,10 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
         Shape padded_shape =
             ShapeUtil::MakeShape(in->shape().element_type(), padded_dimensions);
         VLOG(3) << "Generated padded shape: " << padded_shape.ToString();
-        HloInstruction *pad =
-            hlo->parent()->AddInstruction(HloInstruction::CreatePad(
-                padded_shape, in, reduce->init_values()[i], padding_config));
-        pad->set_metadata(in->metadata());
-        out.push_back(pad);
+        out.push_back(hlo->parent()->AddInstruction(
+            HloInstruction::CreatePad(padded_shape, in,
+                                      reduce->init_values()[i], padding_config),
+            &in->metadata()));
       }
       return out;
     }();
@@ -198,8 +197,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       Shape reshaped_shape =
           ShapeUtil::MakeShape(p->shape().element_type(), reshaped_dimensions);
       HloInstruction *reshaped_padded_input = hlo->parent()->AddInstruction(
-          HloInstruction::CreateBitcast(reshaped_shape, p));
-      reshaped_padded_input->set_metadata(p->metadata());
+          HloInstruction::CreateBitcast(reshaped_shape, p), &p->metadata());
       VLOG(2) << "Generated reshape: " << reshaped_padded_input->ToString();
       reshaped_padded_inputs.push_back(reshaped_padded_input);
       Shape inner_reduce_shape = ShapeUtil::MakeShape(p->shape().element_type(),
@@ -207,12 +205,12 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       inner_reduce_shapes.push_back(inner_reduce_shape);
     }
 
-    HloInstruction *inner_reduce =
-        hlo->parent()->AddInstruction(HloInstruction::CreateReduce(
+    HloInstruction *inner_reduce = hlo->parent()->AddInstruction(
+        HloInstruction::CreateReduce(
             ShapeUtil::MakeMaybeTupleShape(inner_reduce_shapes),
             reshaped_padded_inputs, reduce->init_values(), dims_to_reduce,
-            hlo->to_apply()));
-    inner_reduce->set_metadata(reduce->metadata());
+            hlo->to_apply()),
+        &reduce->metadata());
     VLOG(1) << "Generated inner reduction: " << inner_reduce->ToString();
     absl::InlinedVector<int64_t, 3> outer_reduce_dimensions =
         inner_reduce_dimensions;

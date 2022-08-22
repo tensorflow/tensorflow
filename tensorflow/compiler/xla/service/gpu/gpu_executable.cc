@@ -54,11 +54,11 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform.h"
 
 #if XLA_ENABLE_XLIR
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
-#include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 #endif  // XLA_ENABLE_XLIR
 
@@ -90,40 +90,39 @@ bool NeedsAsyncCommsStream(Thunk& thunk) {
 }  // namespace
 
 #if XLA_ENABLE_XLIR
-namespace jitrt = ::tfrt::jitrt;
 
 class GpuExecutable::JitRtExecutable {
  public:
   static StatusOr<JitRtExecutable*> Create(OwnedJitRtProgram program) {
     // Options for the default JitRt compilation pipeline.
-    jitrt::CompilationPipelineOptions copts;
-    // We do not expect any parallel loops on the GPU program, so we disable
-    // all concurrency (async parallel for loops).
-    copts.num_worker_threads = 1;
+    runtime::CompilationPipelineOptions copts;
 
-    // For passing LMHLO attributes as XLA(SE) enums/structs to custom calls.
+    // Populate mapping from XLA (SE) enums/structs type id to symbol names.
+    copts.populate_type_id_names = PopulateXlaTypeIdNames;
+
+    // For passing LMHLO attributes as XLA (SE) enums/structs to custom calls.
     copts.populate_attr_encodings = PopulateLmhloToXlaAttrEncoding;
 
-    // Options for constructing JitRt JitExecutable.
+    // Options for constructing XLA runtime JitExecutable.
     runtime::JitExecutable::Options opts;
     opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
     opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-      jitrt::RegisterDefaultJitRtDialects(registry);
+      runtime::RegisterDefaultXlaRuntimeDialects(registry);
       // For the encoding of attributes to custom calls.
       registry.insert<mlir::lmhlo_gpu::LmhloGpuDialect>();
     };
 
-    // Register JitRt Gpu runtime custom calls with the linker.
-    opts.compiler.runtime_symbol_map =
-        runtime::GetSymbolsBinding(JitRtGpuCustomCalls());
+    // Register XLA Gpu runtime custom calls with the linker.
+    opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
+        JitRtGpuCustomCalls(), PopulateXlaTypeIdNames);
 
-    // We just use the default compilation pipeline provided by the JitRt.
+    // We just use the default compilation pipeline provided by the XLA runtime.
     // Alternatively instead of having a separate JitRtProgram (LMHLO lowered to
-    // JitRt dialects), we can assemble a pipeline that will compile starting
-    // from the LMHLO dialect. However this intermediate step helps with
-    // debugging, by materializing IR with XLA runtime custom calls.
+    // canonical dialects), we can assemble a pipeline that will compile
+    // starting from the LMHLO dialect. However this intermediate step helps
+    // with debugging, by materializing IR with XLA runtime custom calls.
     opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
-      jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
+      runtime::CreateDefaultXlaRuntimeCompilationPipeline(pm, copts);
     };
 
     // TODO(b/241296710): LLVM optimizations interact badly with the memory
@@ -157,10 +156,16 @@ class GpuExecutable::JitRtExecutable {
         std::move(debug_options));
   }
 
-  runtime::Executable& default_executable() { return *default_executable_; }
   JitRtKernelsCache& kernels_cache() { return kernels_cache_; }
   JitRtGemmConfigCache& gemm_configs_cache() { return gemm_configs_cache_; }
   JitRtCollectiveSupport& collectives() { return collectives_; }
+
+  runtime::Executable& executable() {
+    // Exactly one kind of `Executable` should be available at run time.
+    assert((default_executable_ || executable_) &&
+           !(default_executable_ && executable_));
+    return default_executable_ ? *default_executable_ : *executable_;
+  }
 
   // We pass a pointer to the buffer size to the compiled function, so we return
   // a reference to a stable memory location.
@@ -184,16 +189,18 @@ class GpuExecutable::JitRtExecutable {
                   DebugOptions debug_options)
       : buffer_sizes_(std::move(buffer_sizes)),
         aot_executable_(std::move(aot_executable)),
-        executable_(aot_executable.get()),
+        executable_(aot_executable_.get()),
         debug_options_(std::move(debug_options)) {}
 
   std::vector<int64_t> buffer_sizes_;
 
+  // In JIT compilation mode the `JitExecutable` owns the default `Executable`.
   std::unique_ptr<runtime::JitExecutable> jit_executable_;
-  runtime::Executable* default_executable_;  // owned by `jit_executable`
+  runtime::Executable* default_executable_ = nullptr;
 
+  // In AOT compilation mode we directly own the `Executable`.
   std::unique_ptr<runtime::Executable> aot_executable_;
-  runtime::Executable* executable_;
+  runtime::Executable* executable_ = nullptr;
 
   DebugOptions debug_options_;
 
@@ -698,12 +705,10 @@ static Status ExecuteJitRt(const std::string& module_name,
 
   opts.diagnostic_engine = &diagnostic_engine;
 
-  // Get the default executable. We do not support specialization because
-  // all shapes are static. Default executable is guaranteed to be available.
-  runtime::Executable& executable = jitrt_executable->default_executable();
-
   // Execute with the prepared call frame.
+  runtime::Executable& executable = jitrt_executable->executable();
   executable.Execute(call_frame, opts);
+
   if (auto err = executable.ReturnResults(converter, &call_frame)) {
     return InternalError(
         "Failed to execute JitRt executable: %s.",
@@ -1119,7 +1124,8 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   runtime::FunctionType signature(std::move(args), /*results=*/{});
   runtime::FunctionType rt_signature(std::move(rt_args), /*results=*/{});
 
-  auto symbol_map = runtime::GetSymbolsBinding(JitRtGpuCustomCalls());
+  auto symbol_map =
+      runtime::ToSymbolsBinding(JitRtGpuCustomCalls(), PopulateXlaTypeIdNames);
 
   // Load JitRt executable from an object file, and link it with Gpu runtime
   // intrinsics implementing Gpu custom calls.
@@ -1131,7 +1137,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     return InternalError("Failed to load JitRt executable: %s",
                          tfrt::StrCat(err));
 
-  // Move jitrt::Executable ownership to the JitRtExecutable.
+  // Move runtime::Executable ownership to the JitRtExecutable.
   TF_ASSIGN_OR_RETURN(
       JitRtExecutable * jitrt_executable,
       JitRtExecutable::Create(buffer_sizes, std::move(*executable),

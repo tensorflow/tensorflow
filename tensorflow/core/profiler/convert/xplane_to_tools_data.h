@@ -18,12 +18,11 @@ limitations under the License.
 
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/variant.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -31,14 +30,12 @@ namespace profiler {
 
 // Convert XSpace proto to a tool specific data. Pass in additional
 // filenames to fall back in case proto does not contain hostnames field.
-// Return the serialized string of tool specific data and whether the conversion
-// is successful.
-std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
+// Return the serialized string of tool specific data when the conversion is
+// successful, else return error status.
+StatusOr<std::string> ConvertMultiXSpacesToToolData(
     const std::vector<XSpace>& xspaces,
     const std::vector<std::string>& filenames,
-    const absl::string_view tool_name,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options);
+    const absl::string_view tool_name, const ToolOptions& options);
 
 }  // namespace profiler
 }  // namespace tensorflow

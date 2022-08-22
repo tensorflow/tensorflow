@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_simplify_padding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
@@ -90,12 +91,21 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<TupleSimplifier>();
 
-  // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
-  // introduces reshapes and transposes that can be eliminated using
-  // AlgebraicSimplifier  We run algsimp to a fixed point.
-  AlgebraicSimplifierOptions options;
-  options.set_enable_conv_operand_swap(false);
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+  AlgebraicSimplifierOptions algsimp_options;
+  algsimp_options.set_enable_conv_operand_swap(false);
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
+
+  // CudnnSimplifyPadding gets rid of some padding introduced by
+  // CudnnPadForConvolutions and used by CudnnVectorizeConvolutions.  The
+  // pattern-matches in this pass need to be run after inlining and simplifying
+  // tuples from CudnnVectorizeConvolutions.  We also need to run algsimp to
+  // e.g. clean up unnecessary nop `convert`s.
+  pipeline.AddPass<CudnnSimplifyPadding>();
+
+  // tf2xla bridge, DepthwiseConvolutionConverter, GpuConvRewriter, and
+  // CudnnSimplifyPadding introduce reshapes and transposes that can be
+  // eliminated using AlgebraicSimplifier  We run algsimp to a fixed point.
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
   // GpuConvRewriter, GpuConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified

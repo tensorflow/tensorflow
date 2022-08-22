@@ -7223,6 +7223,31 @@ class ConvertXlaVariadicSortOp
     return success();
   }
 };
+
+// Convert tf.XlaReducePrecision to mhlo.ReducePrecision
+class ConvertXlaReducePrecisionOp
+    : public OpRewritePattern<TF::XlaReducePrecisionOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaReducePrecisionOp op,
+                                PatternRewriter &rewriter) const override {
+    IntegerType int32_type = rewriter.getIntegerType(32);
+    APInt exponent_bits = op.exponent_bitsAttr().getValue();
+    // Truncating to 32-bits is safe, since pasing any number above the dtype
+    // size (which is at most 64, for float64) is equivalent to passing the
+    // dtype size.
+    IntegerAttr new_exponent_attr =
+        IntegerAttr::get(int32_type, exponent_bits.truncSSat(32));
+    APInt mantissa_bits = op.mantissa_bitsAttr().getValue();
+    IntegerAttr new_mantissa_attr =
+        IntegerAttr::get(int32_type, mantissa_bits.truncSSat(32));
+    rewriter.replaceOpWithNewOp<mhlo::ReducePrecisionOp>(
+        op, op.getType(), op.operand(), new_exponent_attr, new_mantissa_attr);
+    return success();
+  }
+};
+
 }  // end namespace
 
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
@@ -7308,6 +7333,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaShardingOp,
     ConvertXlaDynamicUpdateSliceOp,
     ConvertXlaConvV2Op,
+    ConvertXlaReducePrecisionOp,
     ConvertXlaReduceScatterOp,
     ConvertXlaReduceWindowOp,
     ConvertXlaRngBitGeneratorOp,

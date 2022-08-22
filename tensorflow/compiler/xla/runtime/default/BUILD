@@ -11,9 +11,9 @@ cc_library(
     hdrs = ["async_values_cache.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
     ],
 )
 

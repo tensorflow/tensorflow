@@ -613,6 +613,7 @@ cc_library(
     includes = ["include"],
     deps = [
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -1643,6 +1644,7 @@ cc_library(
         ":copy_removal",
         ":expand_hlo_tuples",
         ":generic_host_to_llvm",
+        ":gml_st_collapse_materialize_ops",
         ":gml_st_compose_set_ops",
         ":gml_st_fusion",
         ":gml_st_passes_inc_gen",
@@ -2170,7 +2172,6 @@ cc_library(
     deps = [
         ":mlir_hlo",
         ":transforms_pass_inc_gen",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:kernel_gen_passes_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithmeticDialect",
@@ -2755,6 +2756,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:Transforms",
     ],
@@ -2778,6 +2780,27 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "gml_st_collapse_materialize_ops",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
+        "lib/Dialect/gml_st/transforms/collapse_materialize_ops.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        ":gml_st_passes_inc_gen",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
 )

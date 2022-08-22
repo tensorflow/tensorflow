@@ -249,7 +249,7 @@ int ValidatorRunner::TriggerMissingValidation(
             args.push_back(nnapi_sl_path);
           }
           std::string output;
-          status = runner.Run(args, &output, &exitcode, &signal);
+          status = runner.Run(nullptr, args, &output, &exitcode, &signal);
         }
       }
       if (status != kMinibenchmarkSuccess) {

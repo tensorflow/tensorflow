@@ -28,9 +28,9 @@ cc_library(
         "nobuilder",
     ],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor:platform",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
-        "//tensorflow/stream_executor:platform",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",

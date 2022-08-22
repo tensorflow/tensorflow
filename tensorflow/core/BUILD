@@ -417,7 +417,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
-        "//tensorflow/core/platform/default/build_config:gtest",
+        "//tensorflow/tsl/platform/default/build_config:gtest",
         "//tensorflow/core/kernels:required",
         "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
@@ -559,8 +559,8 @@ cc_library(
         "//tensorflow/core/framework:tensor_types.h",
         "//tensorflow/core/framework:type_traits.h",
         "//tensorflow/core/platform:framework_lite_hdrs",
-        "//tensorflow/core/platform/default:integral_types.h",
-        "//tensorflow/core/platform/default:logging.h",
+        "//tensorflow/tsl/platform/default:integral_types.h",
+        "//tensorflow/tsl/platform/default:logging.h",
     ],
     visibility = ["//visibility:public"],
     deps =
@@ -575,7 +575,7 @@ cc_library(
             "//tensorflow/core/platform:platform_port",
             "//tensorflow/core/platform:thread_annotations",
             "//tensorflow/core/platform:mutex",
-            "//tensorflow/core/platform/default/build_config:minimal",
+            "//tensorflow/tsl/platform/default/build_config:minimal",
             "//tensorflow/core/platform:types",
         ],
 )
@@ -791,7 +791,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tensorflow_opensource",
-        "//tensorflow/core/platform/default/build_config:tensorflow_platform_specific",
+        "//tensorflow/tsl/platform/default/build_config:tensorflow_platform_specific",
     ],
 )
 
@@ -1148,6 +1148,7 @@ cc_library(
     deps = tf_additional_lib_deps() + [
         ":platform_base",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -1209,7 +1210,7 @@ cc_library(
     deps = [
         ":portable_tensorflow_lib",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
-        "//tensorflow/core/platform/default/build_config:gtest",
+        "//tensorflow/tsl/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
 )
@@ -1324,9 +1325,10 @@ cc_library(
     deps = tf_additional_lib_deps() + [
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/status",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/core/platform/default/build_config:platformlib",
+        "//tensorflow/tsl/platform/default/build_config:platformlib",
     ] + if_static([":lib_internal_impl"]),
 )
 
@@ -1352,7 +1354,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/core/platform/default/build_config:platformlib",
+        "//tensorflow/tsl/platform/default/build_config:platformlib",
     ],
 )
 
@@ -1507,7 +1509,7 @@ cc_library(
         "//tensorflow/core/platform:tracing",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:unbounded_work_queue",
-        "//tensorflow/core/platform/default/build_config:platformlib",
+        "//tensorflow/tsl/platform/default/build_config:platformlib",
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util:reporter",  # TODO(gunan): REMOVE as soon as cc_shared_library is supported.
         "@snappy",
@@ -1545,8 +1547,8 @@ cc_library(
     name = "tflite_portable_logging",
     hdrs = [
         "//tensorflow/core/platform:tflite_portable_logging_hdrs",
-        "//tensorflow/core/platform/default:integral_types.h",
-        "//tensorflow/core/platform/default:logging.h",
+        "//tensorflow/tsl/platform/default:integral_types.h",
+        "//tensorflow/tsl/platform/default:logging.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
@@ -1663,7 +1665,7 @@ cc_header_only_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/framework:bounds_check",
-        "//tensorflow/core/platform/default/build_config:platformlib",
+        "//tensorflow/tsl/platform/default/build_config:platformlib",
     ],
 )
 
@@ -1729,7 +1731,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:fingerprint",
-        "//tensorflow/core/platform/default/build_config:platformlib",
+        "//tensorflow/tsl/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",

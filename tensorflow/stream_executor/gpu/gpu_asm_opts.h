@@ -16,39 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_ASM_OPTS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_ASM_OPTS_H_
 
-#include <string>
-#include <tuple>
-#include <vector>
-
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-
-namespace stream_executor {
-// Compilation options for compiling ptxas.
-struct GpuAsmOpts {
-  // Disable Cuda ptxas optimizations.
-  bool disable_gpuasm_optimizations;
-
-  // Cuda directory which would be searched first.
-  std::string preferred_cuda_dir;
-
-  std::vector<std::string> extra_flags;
-
-  explicit GpuAsmOpts(bool disable_gpuasm_optimizations = false,
-                      absl::string_view preferred_cuda_dir = "",
-                      absl::Span<const std::string> extra_flags = {})
-      : disable_gpuasm_optimizations(disable_gpuasm_optimizations),
-        preferred_cuda_dir(preferred_cuda_dir),
-        extra_flags(extra_flags.begin(), extra_flags.end()) {}
-
-  using PtxOptionsTuple =
-      std::tuple<bool, std::string, std::vector<std::string>>;
-
-  PtxOptionsTuple ToTuple() {
-    return std::make_tuple(disable_gpuasm_optimizations, preferred_cuda_dir,
-                           extra_flags);
-  }
-};
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_ASM_OPTS_H_

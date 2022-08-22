@@ -154,6 +154,7 @@ tf_kernel_library(
         "xla_optimization_barrier_op.cc",
         "xla_pad_op.cc",
         "xla_reduce_op.cc",
+        "xla_reduce_precision_op.cc",
         "xla_select_and_scatter_op.cc",
         "xla_self_adjoint_eig_op.cc",
         "xla_svd_op.cc",

@@ -35,12 +35,21 @@ bool Traceback::enabled_ = true;
 
 Traceback::Traceback() {
   DCHECK(PyGILState_Check());
-  const PyThreadState* thread_state = PyThreadState_GET();
+  PyThreadState* thread_state = PyThreadState_GET();
+
+#if PY_VERSION_HEX < 0x030b0000
   for (PyFrameObject* py_frame = thread_state->frame; py_frame != nullptr;
        py_frame = py_frame->f_back) {
     Py_INCREF(py_frame->f_code);
     frames_.emplace_back(py_frame->f_code, py_frame->f_lasti);
   }
+#else   // PY_VERSION_HEX < 0x030b0000
+  for (PyFrameObject* py_frame = PyThreadState_GetFrame(thread_state);
+       py_frame != nullptr; py_frame = PyFrame_GetBack(py_frame)) {
+    frames_.emplace_back(PyFrame_GetCode(py_frame), PyFrame_GetLasti(py_frame));
+    Py_XDECREF(py_frame);
+  }
+#endif  // PY_VERSION_HEX < 0x030b0000
 }
 
 Traceback::~Traceback() {
@@ -183,6 +192,7 @@ void BuildTracebackSubmodule(py::module& m) {
       },
       "Python wrapper around the Python C API function PyCode_Addr2Line");
 
+#if PY_VERSION_HEX < 0x030b0000
   // This function replaces the exception traceback associated with the current
   // Python thread.
   m.def(
@@ -204,6 +214,6 @@ void BuildTracebackSubmodule(py::module& m) {
         Py_XDECREF(old_exc_traceback);
       },
       py::arg("traceback"));
+#endif  // PY_VERSION_HEX < 0x30b0000
 }
-
 }  // namespace xla

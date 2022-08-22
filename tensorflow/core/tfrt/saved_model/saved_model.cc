@@ -16,6 +16,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -23,61 +27,46 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "third_party/mira/mlarchive/env.h"
-#include "third_party/mira/mlarchive/mla.h"
-#include "third_party/mira/mlarchive/posix_env.h"
-#include "third_party/mira/mlarchive/status_macro.h"
-#include "tensorflow/cc/experimental/tfa/saved_model_converter.h"
 #include "tensorflow/cc/saved_model/reader.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
+#include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/common_runtime/function_def_utils.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/enable_tf2_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
-#include "tensorflow/core/runtime_fallback/util/tensor_util.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
+#include "tensorflow/core/tfrt/mla/mla_utils.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
-#include "tensorflow/core/tfrt/tpu/tpu_resources.h"
+#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tensorflow/core/tfrt/utils/tensor_util.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
-#include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
-#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/metrics/common_metrics.h"  // from @tf_runtime
-#include "tfrt/support/error_util.h"  // from @tf_runtime
-#include "tfrt/support/logging.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -111,6 +100,11 @@ auto* saved_model_grappler_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
         "/tensorflow/tfrt/saved_model/grappler_time",
         "Record the grappler time for the savedmodel.", "model_name");
+
+auto* saved_model_mla_check_time_milli_seconds =
+    tensorflow::monitoring::Gauge<int64_t, 1>::New(
+        "/tensorflow/tfrt/saved_model/mla_check_time",
+        "Record the MLA check time for the savedmodel.", "model_name");
 
 auto* saved_model_import_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
@@ -436,36 +430,17 @@ void UpdateCompileOptions(SavedModel::Options& options) {
   }
 }
 
-StatusOr<std::string> GetSavedModelDirFromMlaDir(absl::string_view mla_dir) {
-  auto dir = [&]() -> absl::StatusOr<std::string> {
-    ASSIGN_OR_RETURN(const auto mla, mlarchive::Mla::FromArchiveRoot(
-                                         mla_dir, mlarchive::GetPosixEnv()));
-    ASSIGN_OR_RETURN(const auto* saved_model_module,
-                     mla.GetModule("saved_model"));
-    ASSIGN_OR_RETURN(const auto saved_model_path,
-                     tfa::GetSavedModelProtoPath(mla, *saved_model_module));
-    const auto saved_model_dir =
-        std::string(tensorflow::io::Dirname(saved_model_path));
-    return saved_model_dir;
-  }();
-
-  if (!dir.ok()) {
-    return tfrt::TfStatusFromAbslStatus(dir.status());
-  }
-  return *dir;
-}
-
 StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags) {
   LOG(INFO) << "TFRT reading v1 savedmodel: " << saved_model_dir;
-  auto read_start_time = absl::Now();
+  const auto read_start_time = absl::Now();
 
   tensorflow::MetaGraphDef meta_graph_def;
   TF_RETURN_IF_ERROR(tensorflow::ReadMetaGraphDefFromSavedModel(
       std::string(saved_model_dir), tags, &meta_graph_def));
 
-  auto read_meta_graph_duration = absl::Now() - read_start_time;
+  const auto read_meta_graph_duration = absl::Now() - read_start_time;
   saved_model_read_meta_graph_time_seconds
       ->GetCell(std::string(saved_model_dir))
       ->Set(absl::ToInt64Seconds(read_meta_graph_duration));
@@ -481,8 +456,15 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     const std::unordered_set<std::string>& tags, tensorflow::Status* status) {
   std::string saved_model_dir_str = "unused";
   if (options.maybe_load_from_mla) {
-    if (mlarchive::Mla::IsMlarchive(saved_model_dir,
-                                    mlarchive::GetPosixEnv())) {
+    const auto mla_check_start_time = absl::Now();
+    const bool is_mla = IsMlarchive(saved_model_dir);
+    const auto mla_check_duration = absl::Now() - mla_check_start_time;
+    saved_model_mla_check_time_milli_seconds
+        ->GetCell(std::string(saved_model_dir))
+        ->Set(absl::ToInt64Milliseconds(mla_check_duration));
+    LOG(INFO) << "TFRT finished checking MLA. Took "
+              << absl::ToInt64Milliseconds(mla_check_duration) << " ms.";
+    if (is_mla) {
       LOG(INFO) << "TFRT got an MLArchive dir: " << saved_model_dir
                 << ". Continuing to find the actual saved_model_dir in it.";
       const auto statusor_saved_model_dir =
@@ -519,7 +501,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
         meta_graph_def->signature_def_size() > options.lazy_loading_threshold;
 
     // Step 1: Import saved model from a proto to an MLIR module.
-    auto import_start_time = absl::Now();
+    const auto import_start_time = absl::Now();
     auto session_options =
         CreateDefaultSessionOptions(options.graph_execution_options);
     // Set optimize_for_static_graph to true since we won't extend the graph
@@ -544,14 +526,14 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
             options.graph_execution_options.run_placer_grappler_on_functions,
             options.graph_execution_options.enable_tfrt_gpu));
 
-    auto import_duration = absl::Now() - import_start_time;
+    const auto import_duration = absl::Now() - import_start_time;
     saved_model_import_time_seconds->GetCell(std::string(saved_model_dir))
         ->Set(absl::ToInt64Seconds(import_duration));
     LOG(INFO) << "TFRT finished importing savedmodel. Took "
               << absl::ToInt64Milliseconds(import_duration) << " ms.";
 
     // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
-    auto compile_start_time = absl::Now();
+    const auto compile_start_time = absl::Now();
     ASSIGN_OR_RETURN_IN_COMPILE(
         auto initializers_and_signatures,
         GetInitializersAndSignatures(mlir_module.get(), saved_model_dir));
@@ -567,14 +549,14 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
         options.graph_execution_options.compile_options, mlir_module.get(),
         &bef));
 
-    auto compile_duration = absl::Now() - compile_start_time;
+    const auto compile_duration = absl::Now() - compile_start_time;
     saved_model_compile_time_seconds->GetCell(std::string(saved_model_dir))
         ->Set(absl::ToInt64Seconds(compile_duration));
     LOG(INFO) << "TFRT finished compiling savedmodel. Took "
               << absl::ToInt64Milliseconds(compile_duration) << " ms.";
 
     // Step 3: Initialize runtime states using special BEF functions.
-    auto init_start_time = absl::Now();
+    const auto init_start_time = absl::Now();
     ASSIGN_OR_RETURN_IN_INIT(
         auto bef_file, tfrt::CreateBefFileFromBefBuffer(
                            *options.graph_execution_options.runtime, bef));
@@ -587,7 +569,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
         InitSavedModel(initializers_and_signatures, bef_file.get(), options,
                        resource_context.get(), *fallback_state));
 
-    auto init_duration = absl::Now() - init_start_time;
+    const auto init_duration = absl::Now() - init_start_time;
     saved_model_init_time_seconds->GetCell(std::string(saved_model_dir))
         ->Set(absl::ToInt64Seconds(init_duration));
     LOG(INFO) << "TFRT finished initializing savedmodel. Took "
@@ -653,10 +635,10 @@ const tensorflow::MetaGraphDef& SavedModelImpl::GetMetaGraphDef() const {
   return meta_graph_def_;
 }
 
-absl::optional<FunctionMetadata> SavedModelImpl::GetFunctionMetadata(
+std::optional<FunctionMetadata> SavedModelImpl::GetFunctionMetadata(
     absl::string_view func_name) const {
   auto iter = signatures_.find(func_name);
-  if (iter == signatures_.end()) return absl::nullopt;
+  if (iter == signatures_.end()) return std::nullopt;
   return FunctionMetadata(&iter->second);
 }
 

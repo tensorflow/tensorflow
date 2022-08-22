@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "llvm/ADT/Optional.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
-#include "tfrt/host_context/task_function.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -38,7 +37,6 @@ using llvm::Optional;
 using tfrt::MakeAvailableAsyncValueRef;
 using tfrt::MakeErrorAsyncValueRef;
 using tfrt::MakeStringError;
-using tfrt::TaskFunction;
 
 using Specialization = JitExecutable::Specialization;
 
@@ -91,7 +89,7 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
 
 /*static*/ void JitExecutable::InlineCompilationTaskRunner(
     size_t num_specializations, ArrayRef<ArgumentConstraint> constraints,
-    ArgumentsRef arguments, TaskFunction task, UserData user_data) {
+    ArgumentsRef arguments, CompilationTask task, UserData user_data) {
   task();
 }
 
@@ -99,18 +97,18 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
     std::string_view mlir_module, std::string_view entrypoint, Options opts,
     std::string_view memory_region_name, CompilationTaskRunner runner) {
   // Try to instantiate compilation context from the mlir source.
-  Expected<std::unique_ptr<JitCompiler>> ctx =
+  Expected<std::unique_ptr<JitCompiler>> compiler =
       JitCompiler::Instantiate(opts.compiler, mlir_module, entrypoint);
-  if (auto err = ctx.takeError()) return std::move(err);
+  if (auto err = compiler.takeError()) return std::move(err);
 
   // Get resolved operands constraints for the entrypoint function.
-  auto constraints = GetArgumentsConstraints((*ctx)->entrypoint());
+  auto constraints = GetArgumentsConstraints((*compiler)->entrypoint());
   if (auto err = constraints.takeError()) return std::move(err);
 
   // Get the entrypoint function signature, it will be later required to
   // compute the specialized function signature from the operands at runtime.
   auto signature = opts.compiler.type_converter.Convert(
-      (*ctx)->entrypoint().getFunctionType());
+      (*compiler)->entrypoint().getFunctionType());
   if (auto err = signature.takeError()) return std::move(err);
 
   // If all of the operands have static shape, then we can always use default
@@ -139,7 +137,7 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
 
   // Otherwise try to compile the default executable.
   Expected<Executable> executable =
-      JitCompiler::Compile(std::move(*ctx), memory_region_name);
+      JitCompiler::Compile(std::move(*compiler), memory_region_name);
   if (auto err = executable.takeError()) return std::move(err);
 
   return JitExecutable(mlir_module, entrypoint, memory_region_name,
@@ -283,10 +281,10 @@ Expected<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
   // the caller thread. We only use compilation runner for expensive part.
 
   // Try to instantiate compilation context from the mlir source.
-  Expected<std::unique_ptr<JitCompiler>> ctx =
+  Expected<std::unique_ptr<JitCompiler>> compiler =
       JitCompiler::Instantiate(opts_.compiler, mlir_module_, entrypoint_);
 
-  if (auto err = ctx.takeError()) {
+  if (auto err = compiler.takeError()) {
     assert(false && "parsing mlir module must always succeed at this point");
     return std::move(err);
   }
@@ -294,8 +292,8 @@ Expected<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
   // Specialize executable to the concrete operands.
   ErrorOr<llvm::SmallVector<SymbolicShapesResolver::SymbolicShape>>
       symbolic_shapes = symbolic_shapes_resolver_.Resolve(arguments);
-  if (auto err = (*ctx)->Specialize(arguments, *symbolic_shapes, constraints_,
-                                    listener)) {
+  if (auto err = (*compiler)->Specialize(arguments, *symbolic_shapes,
+                                         constraints_, listener)) {
     return MakeStringError("failed to specialize executable: ", err);
   }
 
@@ -310,19 +308,19 @@ Expected<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
   size_t specialization = entry.size - 1;
 
   // Construct the task that will do the specialized executable compilation.
-  auto compile = TaskFunction([ctx = std::move(*ctx), ref = entry.ptr.CopyRef(),
-                               memory_region_name = memory_region_name_,
-                               specialization]() mutable {
-    Expected<Executable> executable = JitCompiler::Compile(
-        std::move(ctx), memory_region_name, specialization);
+  auto compile = CompilationTask(
+      [compiler = std::move(*compiler), ref = entry.ptr.CopyRef(),
+       memory_region_name = memory_region_name_, specialization]() mutable {
+        Expected<Executable> executable = JitCompiler::Compile(
+            std::move(compiler), memory_region_name, specialization);
 
-    // Set the allocated entry async value state to error or concrete.
-    if (auto err = executable.takeError()) {
-      ref.SetError(std::move(err));
-    } else {
-      ref.emplace(std::move(*executable));
-    }
-  });
+        // Set the allocated entry async value state to error or concrete.
+        if (auto err = executable.takeError()) {
+          ref.SetError(std::move(err));
+        } else {
+          ref.emplace(std::move(*executable));
+        }
+      });
 
   // Offload specialization compilation to the user provided runner.
   runner_(specialization, constraints_, arguments, std::move(compile),

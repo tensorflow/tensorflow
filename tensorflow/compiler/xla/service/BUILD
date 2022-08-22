@@ -22,7 +22,7 @@ load("//tensorflow:tensorflow.bzl", "internal_hlo_deps")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "internal_cuda_deps")
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
@@ -1260,10 +1260,10 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
     ]) + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+        "//tensorflow/tsl/platform/default/build_config:stream_executor_cuda",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler",
-        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
+        "//tensorflow/tsl/platform/default/build_config:stream_executor_rocm",
     ]) + internal_cuda_deps(),
 )
 
@@ -2437,6 +2437,16 @@ tf_cc_test(
         "//tensorflow/core:test",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "algebraic_simplifier_overflow_test",
+    srcs = ["algebraic_simplifier_overflow_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 
@@ -5915,19 +5925,18 @@ tf_cc_test(
     srcs = ["hlo_parser_test.cc"],
     deps = [
         ":hlo",
-        ":hlo_matchers",
         ":hlo_parser",
         ":pattern_matcher",
         ":pattern_matcher_gmock",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/strings",
     ],
 )

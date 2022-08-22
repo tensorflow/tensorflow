@@ -237,9 +237,10 @@ struct ConvertBesselI1eOp : public OpConversionPattern<BesselI1eOp> {
     Value x = adaptor.operand();
     Type ty = x.getType().cast<ShapedType>().getElementType();
 
-    // For now, we support only f64, f32 and f16.
+    // For now, we support only f64, f32, f16 and bf16.
     // See https://www.tensorflow.org/api_docs/python/tf/math/bessel_i1e
-    if (!ty.isF64() && !ty.isF32() && !ty.isF16()) return failure();
+    if (!ty.isF64() && !ty.isF32() && !ty.isF16() && !ty.isBF16())
+      return failure();
 
     if (ty.isF64()) {
       rewriter.replaceOp(

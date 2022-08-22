@@ -60,7 +60,7 @@ namespace xla {
 
 /*static*/ StatusOr<HloInstruction*> TupleUtil::ReplaceTupleWith(
     HloInstruction* new_instruction, HloInstruction* tuple,
-    ShapeIndex shape_index) {
+    ShapeIndex shape_index, bool insert_bitcast_if_different_shape) {
   const Shape& tuple_shape = tuple->shape();
   CHECK(tuple->shape().IsTuple())
       << "ReplaceTupleWith was called for a non-tuple. Tuple = "
@@ -112,7 +112,8 @@ namespace xla {
                                              ShapeIndex(shape_index.begin() + 1,
                                                         shape_index.end())));
       } else {
-        if (subshape != new_instruction->shape()) {
+        if (subshape != new_instruction->shape() &&
+            insert_bitcast_if_different_shape) {
           VLOG(4) << "Old shape = " << subshape.ToString()
                   << ", new shape = " << new_instruction->shape().ToString()
                   << "; inserting a bitcast.";

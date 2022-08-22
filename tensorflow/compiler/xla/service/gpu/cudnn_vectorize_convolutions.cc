@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 
+#include <optional>
+#include <vector>
+
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_support_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/stream_executor/device_description.h"
-#include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {

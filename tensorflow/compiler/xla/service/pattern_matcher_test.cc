@@ -43,16 +43,13 @@ TEST_F(PatternMatcherTest, AddOp) {
   const HloInstruction* matched_inst;
   HloInstruction* matched_operand;
   Shape* matched_shape;
-  Layout* matched_layout;
 
   ASSERT_TRUE(Match(
       hlo_module->entry_computation()->root_instruction(),
       match::Op(&matched_inst)
           .WithName("two_plus_two")
           .WithOpcode(HloOpcode::kAdd)
-          .WithShape(
-              match::Shape(&matched_shape)
-                  .WithLayout(match::Layout(&matched_layout).WithDenseFormat()))
+          .WithShape(match::Shape(&matched_shape).IsDenseArray())
           .WithOperand(
               0,
               match::Op(&matched_operand).WithOpcode(HloOpcode::kConstant))));
@@ -99,9 +96,9 @@ TEST_F(PatternMatcherTest, DenseArrayShape) {
       Match(&array_shape, match::Shape().WithSubshape({0}, match::Shape())));
   Layout* matched_layout;
   EXPECT_TRUE(Match(&array_shape,
-                    match::Shape().WithLayout(
-                        match::Layout(&matched_layout).WithDenseFormat())));
+                    match::Shape().WithLayout(match::Layout(&matched_layout))));
   EXPECT_EQ(matched_layout, &array_shape.layout());
+  EXPECT_TRUE(Match(&array_shape, match::Shape().IsDenseArray()));
 }
 
 TEST_F(PatternMatcherTest, TupleShape) {

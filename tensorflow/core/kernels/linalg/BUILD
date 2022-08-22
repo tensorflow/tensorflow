@@ -229,7 +229,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:fill_functor",
         "//tensorflow/core/platform:stream_executor",
     ] + if_cuda([
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/util:cuda_solvers",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",

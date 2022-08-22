@@ -135,6 +135,20 @@ static FailureOr<TFOp> CreateConstantTensorOp(
   return TFOp(builder.create(state));
 }
 
+// Add control operand to `op` if it doesn't exist.
+static void AddControlOperand(OperationState &state, TFOp source) {
+  if (llvm::is_contained(state.operands, source.controlRet())) return;
+  state.addOperands(source.controlRet());
+}
+
+static void AddControlOperand(Operation *op, TFOp source,
+                              PatternRewriter &rewriter) {
+  if (llvm::is_contained(op->getOperands(), source.controlRet())) return;
+  rewriter.startRootUpdate(op);
+  op->insertOperands(op->getNumOperands(), source.controlRet());
+  rewriter.finalizeRootUpdate(op);
+}
+
 static FailureOr<TFOp> ReplaceOpWithConstantTensor(
     OpBuilder &builder, TFOp op, ElementsAttr value,
     ArrayRef<StringRef> exclude_attrs = llvm::None) {
@@ -260,7 +274,10 @@ static FailureOr<TFOp> ReplaceOperationWithBroadcastTo(OpBuilder &builder,
   state.addOperands(
       {op->getOperand(idx_to_replace), (*const_op)->getResult(0)});
   for (Value v : op.getNonControlOperands())
-    if (v != op->getOperand(idx_to_replace)) state.addOperands(v);
+    // TODO(tlongeri): Handle Switch op special case (see Grappler's
+    // AddControlDependency).
+    if (v != op->getOperand(idx_to_replace))
+      AddControlOperand(state, v.getDefiningOp());
   state.addTypes(op->getResultTypes());
 
   Operation *broadcast_to_op = builder.create(state);
@@ -719,7 +736,10 @@ class MaterializeShapeOp : public FolderPatternBase<MaterializeShapeOp> {
     if (!input_shape.getShape().empty() && input_shape.getShape()[0] == 0)
       return failure();
 
-    ElementsAttr const_attr = ConvertShapeToAttr(input_shape);
+    Type output_dtype =
+        op->getResult(0).getType().cast<ShapedType>().getElementType();
+    ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
+        output_dtype, {input_shape.getRank()}, input_shape.getShape());
 
     // Add the control edge to `input` to ensure that the constant value will
     // only be run in the cases where Shape would have been run in the original
@@ -1028,7 +1048,7 @@ class MaterializeReductionIndices
     auto indices_shape = indices->getResult(0).getType().cast<ShapedType>();
     if (!indices_shape.hasRank()) return failure();
     if (!indices_shape.getElementType().isInteger(32) &&
-        indices_shape.getElementType().isInteger(64)) {
+        !indices_shape.getElementType().isInteger(64)) {
       return failure();
     }
 
@@ -1064,11 +1084,11 @@ class MaterializeReductionIndices
 
     // We know it's a full reduction. We can generate the full set of indices
     // to reduce as a constant node.
-    SmallVector<int> elements(indices_shape.getRank());
+    SmallVector<int> elements(input_shape.getRank());
     std::iota(elements.begin(), elements.end(), 0);
 
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
-        indices_shape.getElementType(), {indices_shape.getRank()},
+        indices_shape.getElementType(), {input_shape.getRank()},
         llvm::makeArrayRef(elements));
 
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
@@ -2067,12 +2087,14 @@ class SimplifyReshapeOp : public FolderPatternBase<SimplifyReshapeOp> {
     if (!shape_op || !dialect_->IsConstant(shape_op)) return failure();
 
     auto shape_attr = shape_op->getAttrOfType<ElementsAttr>("value");
-    SmallVector<int32_t> new_shape(shape_attr.getValues<int32_t>());
+    // TODO(tlongeri): only reason for SmallVector instead of range directly is
+    // that llvm::zip implementation requires copy assignment (it shouldn't)
+    SmallVector<APInt> new_shape(shape_attr.getValues<APInt>());
 
     if (input_shape.getRank() != new_shape.size()) return failure();
     for (const auto &it : llvm::zip(input_shape.getShape(), new_shape)) {
-      int32_t dim_0 = std::get<0>(it);
-      int32_t dim_1 = std::get<1>(it);
+      int64_t dim_0 = std::get<0>(it);
+      int64_t dim_1 = std::get<1>(it).getSExtValue();
       if (dim_0 >= 0 && dim_1 >= 0 && dim_0 != dim_1) return failure();
     }
 
@@ -2898,11 +2920,7 @@ class MulConvPushDown : public ConstantPatternBase<MulConvPushDown, FolderTrait,
       const_node = new_const_op;
 
       // Add a control dep from c1 to c2 to ensure c2 is in the right frame
-      if (Operation *control_added_op =
-              AddControlOperand(rewriter, const_node, conv_const_node)) {
-        rewriter.replaceOp(const_node, control_added_op->getResults());
-        const_node = control_added_op;
-      }
+      AddControlOperand(const_node, conv_const_node, rewriter);
     }
 
     StringRef conv_node_name = TFOp(conv_node).name();
@@ -2942,22 +2960,6 @@ class MulConvPushDown : public ConstantPatternBase<MulConvPushDown, FolderTrait,
     OperationState state(op->getLoc(), op->getName());
     state.addOperands(non_control_operands);
     state.addOperands(new_control_operands);
-    state.addAttributes(op->getAttrs());
-    state.addTypes(op->getResultTypes());
-
-    return builder.create(state);
-  }
-
-  // Add control operand to `op` if it doesn't exist.
-  Operation *AddControlOperand(OpBuilder &builder, Operation *op,
-                               Operation *control) const {
-    auto [non_control_operands, control_operands] = TFOp(op).splitOperands();
-    auto it = llvm::find(control_operands, TFOp(control).controlRet());
-    if (it != control_operands.end()) return nullptr;
-
-    OperationState state(op->getLoc(), op->getName());
-    state.addOperands(op->getOperands());
-    state.addOperands(TFOp(control).controlRet());
     state.addAttributes(op->getAttrs());
     state.addTypes(op->getResultTypes());
 

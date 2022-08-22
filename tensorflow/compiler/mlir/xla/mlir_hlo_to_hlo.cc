@@ -119,6 +119,25 @@ static mlir::LogicalResult GetXlaOp(
   return mlir::success();
 }
 
+bool IsBoundedOrStatic(mlir::Type ty) {
+  auto ranked_ty = ty.dyn_cast_or_null<mlir::RankedTensorType>();
+  if (!ranked_ty) return false;
+
+  if (ranked_ty.hasStaticShape()) return true;
+
+  auto encoding = ranked_ty.getEncoding()
+                      .dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>();
+  if (!encoding || encoding.getBounds().empty()) return false;
+
+  int64_t rank = ranked_ty.getRank();
+  for (int64_t dim = 0; dim < rank; ++dim) {
+    if (ranked_ty.isDynamicDim(dim) &&
+        encoding.getBounds()[dim] == mlir::ShapedType::kDynamicSize)
+      return false;
+  }
+  return true;
+}
+
 // Convert APInt into an int.
 // TODO(hpucha): This should be consolidated into a general place.
 static int ConvertAPInt(llvm::APInt i) { return i.getSExtValue(); }
@@ -2115,11 +2134,11 @@ LogicalResult ConvertToHloModule::Lower(
   if (auto op = dyn_cast<mlir::tensor::CastOp>(inst)) {
     Value operand = op.getOperand();
     auto ty = operand.getType().dyn_cast<ShapedType>();
-    // If this was a cast from a static shaped tensors, then it is a noop for
-    // export to HLO and we can use the operand.
-    if (!ty || !ty.hasStaticShape()) {
+    // If this was a cast from a static or bounded tensors, then it is a noop
+    // for export to HLO and we can use the operand.
+    if (!ty || !IsBoundedOrStatic(ty)) {
       inst->emitOpError()
-          << "requires static shaped operand for HLO translation";
+          << "requires static or bounded operand for HLO translation";
       return failure();
     }
 
@@ -2419,7 +2438,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   } else {
     if (ensure_single_arg) {
       // Applicable for mhlo.IfOp or mhlo.CaseOp or mhlo.WhileOp.
-      llvm::SmallVector<xla::Shape> arg_shapes;
+      llvm::SmallVector<xla::Shape, 4> arg_shapes;
 
       auto args_size = block->getNumArguments();
       if (implicit_operands) args_size = implicit_operands->size();

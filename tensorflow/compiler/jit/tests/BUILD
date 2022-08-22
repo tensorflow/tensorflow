@@ -86,10 +86,8 @@ tf_cc_test(
         "XLA_FLAGS": "--xla_gpu_jitrt_executable",
     },
     tags = [
-        "broken",  # b/239679478: Switching AOT support from BEF to JitRt.
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
-        "notap",  # b/239679478: Switching AOT support from BEF to JitRt.
         "requires-gpu-nvidia",
         "xla",
     ],
@@ -110,10 +108,8 @@ tf_cc_test(
         "XLA_FLAGS": "--xla_gpu_jitrt_executable",
     },
     tags = [
-        "broken",  # b/239679478: Switching AOT support from BEF to JitRt.
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
-        "notap",  # b/239679478: Switching AOT support from BEF to JitRt.
         "requires-gpu-nvidia",
         "xla",
     ],

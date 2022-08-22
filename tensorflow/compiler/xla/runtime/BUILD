@@ -17,6 +17,7 @@ cc_library(
     hdrs = ["arguments.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":errors",
         ":types",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:type_converter",
         "@llvm-project//llvm:Support",
@@ -47,6 +48,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -71,6 +73,7 @@ cc_library(
     hdrs = ["constraints.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":errors",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:support",
     ],
@@ -86,6 +89,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:logical_result",
         "//tensorflow/compiler/xla/runtime:type_id",
         "//third_party/eigen3",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:dtype",
         "@tf_runtime//:support",
@@ -130,6 +134,15 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "errors",
+    hdrs = ["errors.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = ["executable.h"],
@@ -140,6 +153,7 @@ cc_library(
         ":custom_call",
         ":custom_call_registry",
         ":diagnostics",
+        ":errors",
         ":execution_engine",
         ":logical_result",
         ":memory_mapper",
@@ -161,6 +175,7 @@ cc_library(
     hdrs = ["execution_engine.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":errors",
         "@llvm-project//llvm:ARMAsmParser",
         "@llvm-project//llvm:ARMCodeGen",
         "@llvm-project//llvm:Core",
@@ -182,7 +197,7 @@ cc_library(
         ":arguments",
         ":async_values_cache",
         ":constraints",
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:compiler",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:jit_compiler",
         "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",

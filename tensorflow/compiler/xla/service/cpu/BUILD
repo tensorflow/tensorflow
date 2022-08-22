@@ -11,6 +11,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_copts", "t
 load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
+    "if_enable_acl",
 )
 
 # buildifier: disable=same-origin-load
@@ -182,6 +183,7 @@ cc_library(
         ":cpu_instruction_fusion",
         ":cpu_layout_assignment",
         ":cpu_options",
+        ":cpu_shape_verifier",
         ":dot_op_emitter",
         "@com_google_absl//absl/base:dynamic_annotations",
         ":ir_emission_utils",
@@ -350,7 +352,7 @@ cc_library(
         "windows_compatibility.h",
     ],
     hdrs = ["simple_orc_jit.h"],
-    copts = tf_copts(),
+    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]),
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
@@ -602,7 +604,6 @@ cc_library(
     hdrs = [
         "dot_op_emitter.h",
     ],
-    copts = tf_copts(),
     deps = [
         ":cpu_options",
         ":cpu_runtime",
@@ -1167,6 +1168,15 @@ cc_library(
         "//tensorflow/compiler/xla/service:layout_assignment",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "cpu_shape_verifier",
+    srcs = ["cpu_shape_verifier.cc"],
+    hdrs = ["cpu_shape_verifier.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_verifier",
     ],
 )
 

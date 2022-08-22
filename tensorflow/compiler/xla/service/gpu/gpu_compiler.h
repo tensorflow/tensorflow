@@ -168,8 +168,6 @@ class GpuCompiler : public LLVMCompiler {
   GpuCompiler& operator=(const GpuCompiler&) = delete;
 };
 
-GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec);
-
 // Compile `hlo_module` using XLA GPU and return the LLVM module thus generated.
 // The GpuExecutable (and the Thunks that are part of it) are not returned.
 StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(

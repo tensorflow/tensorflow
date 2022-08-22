@@ -16,6 +16,15 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
+#if defined(__APPLE__)
+#include "TargetConditionals.h"
+#if (TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR) || \
+    (TARGET_OS_OSX && TARGET_CPU_ARM64)
+// Only enable coreml delegate when using a real iPhone device or Apple Silicon.
+#define REAL_IPHONE_DEVICE
+#include "tensorflow/lite/delegates/coreml/coreml_delegate.h"
+#endif
+#endif
 
 #if !defined(_WIN32)
 #include <dirent.h>
@@ -187,6 +196,21 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
   opts.num_threads = num_threads > 1 ? num_threads : 0;
   return CreateXNNPACKDelegate(&opts);
 }
+
+TfLiteDelegatePtr CreateCoreMlDelegate() {
+#ifdef REAL_IPHONE_DEVICE
+  TfLiteCoreMlDelegateOptions coreml_options = {
+      .enabled_devices = TfLiteCoreMlDelegateAllDevices};
+  TfLiteDelegate* delegate = TfLiteCoreMlDelegateCreate(&coreml_options);
+  if (!delegate) {
+    return tools::CreateNullDelegate();
+  }
+  return TfLiteDelegatePtr(delegate, &TfLiteCoreMlDelegateDelete);
+#else
+  return tools::CreateNullDelegate();
+#endif
+}
+
 #endif
 }  // namespace evaluation
 }  // namespace tflite

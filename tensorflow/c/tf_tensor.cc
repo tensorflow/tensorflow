@@ -307,6 +307,20 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
   return new TF_Tensor{new tensorflow::TensorInterface(std::move(tensor))};
 }
 
+TF_Tensor* TF_TensorFromTensorShallow(const tensorflow::Tensor& src,
+                                      Status* status) {
+  *status = OkStatus();
+  if (!src.IsInitialized()) {
+    *status = FailedPrecondition(
+        "attempt to use a tensor with an uninitialized value");
+    return nullptr;
+  }
+  if (src.NumElements() == 0) {
+    return EmptyTensor(static_cast<TF_DataType>(src.dtype()), src.shape());
+  }
+  return new TF_Tensor{new tensorflow::TensorInterface(src)};
+}
+
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
   return tensorflow::down_cast<const tensorflow::TensorInterface*>(src->tensor)
       ->ToTensor(dst);
