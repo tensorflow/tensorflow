@@ -842,7 +842,6 @@ tf_cuda_library(
         ":type_index",
         ":type_traits",
         ":types_proto_cc",
-        "//tensorflow/core:framework",
         "//tensorflow/core/lib/core:coding",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:refcount",
