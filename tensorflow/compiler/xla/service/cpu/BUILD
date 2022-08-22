@@ -345,6 +345,36 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_xla_runtime_pipeline",
+    srcs = ["hlo_xla_runtime_pipeline.cc"],
+    hdrs = ["hlo_xla_runtime_pipeline.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
+        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:legalize_to_linalg",
+        "//tensorflow/compiler/xla/mlir_hlo:lower_index_cast",
+        "//tensorflow/compiler/xla/mlir_hlo:shape_simplification",
+        "//tensorflow/core:ops",
+        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:BufferizationToMemRef",
+        "@llvm-project//mlir:BufferizationTransforms",
+        "@llvm-project//mlir:ComplexToStandard",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:MemRefTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeToStandard",
+        "@llvm-project//mlir:ShapeTransforms",
+        "@llvm-project//mlir:TensorTransforms",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorToSCF",
+    ],
+)
+
+cc_library(
     name = "simple_orc_jit",
     srcs = [
         "simple_orc_jit.cc",
