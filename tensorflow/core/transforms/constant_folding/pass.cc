@@ -135,6 +135,20 @@ static FailureOr<TFOp> CreateConstantTensorOp(
   return TFOp(builder.create(state));
 }
 
+// Add control operand to `op` if it doesn't exist.
+static void AddControlOperand(OperationState &state, TFOp source) {
+  if (llvm::is_contained(state.operands, source.controlRet())) return;
+  state.addOperands(source.controlRet());
+}
+
+static void AddControlOperand(Operation *op, TFOp source,
+                              PatternRewriter &rewriter) {
+  if (llvm::is_contained(op->getOperands(), source.controlRet())) return;
+  rewriter.startRootUpdate(op);
+  op->insertOperands(op->getNumOperands(), source.controlRet());
+  rewriter.finalizeRootUpdate(op);
+}
+
 static FailureOr<TFOp> ReplaceOpWithConstantTensor(
     OpBuilder &builder, TFOp op, ElementsAttr value,
     ArrayRef<StringRef> exclude_attrs = llvm::None) {
@@ -260,7 +274,10 @@ static FailureOr<TFOp> ReplaceOperationWithBroadcastTo(OpBuilder &builder,
   state.addOperands(
       {op->getOperand(idx_to_replace), (*const_op)->getResult(0)});
   for (Value v : op.getNonControlOperands())
-    if (v != op->getOperand(idx_to_replace)) state.addOperands(v);
+    // TODO(tlongeri): Handle Switch op special case (see Grappler's
+    // AddControlDependency).
+    if (v != op->getOperand(idx_to_replace))
+      AddControlOperand(state, v.getDefiningOp());
   state.addTypes(op->getResultTypes());
 
   Operation *broadcast_to_op = builder.create(state);
@@ -2903,11 +2920,7 @@ class MulConvPushDown : public ConstantPatternBase<MulConvPushDown, FolderTrait,
       const_node = new_const_op;
 
       // Add a control dep from c1 to c2 to ensure c2 is in the right frame
-      if (Operation *control_added_op =
-              AddControlOperand(rewriter, const_node, conv_const_node)) {
-        rewriter.replaceOp(const_node, control_added_op->getResults());
-        const_node = control_added_op;
-      }
+      AddControlOperand(const_node, conv_const_node, rewriter);
     }
 
     StringRef conv_node_name = TFOp(conv_node).name();
@@ -2947,22 +2960,6 @@ class MulConvPushDown : public ConstantPatternBase<MulConvPushDown, FolderTrait,
     OperationState state(op->getLoc(), op->getName());
     state.addOperands(non_control_operands);
     state.addOperands(new_control_operands);
-    state.addAttributes(op->getAttrs());
-    state.addTypes(op->getResultTypes());
-
-    return builder.create(state);
-  }
-
-  // Add control operand to `op` if it doesn't exist.
-  Operation *AddControlOperand(OpBuilder &builder, Operation *op,
-                               Operation *control) const {
-    auto [non_control_operands, control_operands] = TFOp(op).splitOperands();
-    auto it = llvm::find(control_operands, TFOp(control).controlRet());
-    if (it != control_operands.end()) return nullptr;
-
-    OperationState state(op->getLoc(), op->getName());
-    state.addOperands(op->getOperands());
-    state.addOperands(TFOp(control).controlRet());
     state.addAttributes(op->getAttrs());
     state.addTypes(op->getResultTypes());
 
