@@ -191,43 +191,6 @@ bool CallSignature::operator==(const CallSignature& other) const {
               *other.thread_local_extra_jit_context));
 }
 
-template <typename H>
-H AbslHashValue(H h, const CallSignature& s) {
-  h = H::combine(std::move(h), s.dynamic_arg_treedefs,
-                 s.dynamic_arg_signatures);
-  for (const auto& name : s.dynamic_arg_names) {
-    h = H::combine(std::move(h), name.ptr());
-  }
-  h = H::combine(std::move(h), s.dynamic_arg_names.size());
-  for (const auto& static_arg : s.static_args) {
-    ssize_t hash;
-    try {
-      hash = py::hash(static_arg);
-    } catch (const py::error_already_set& e) {
-      if (!e.matches(PyExc_TypeError)) throw;
-      throw std::invalid_argument(absl::StrCat(
-          "Non-hashable static arguments are not supported. An error occurred "
-          "during a call to '",
-          s.function_name, "' while trying to hash an object of type ",
-          py::cast<std::string>(py::str(py::type::of(static_arg))), ", ",
-          py::cast<std::string>(py::str(static_arg)), ". The error was:\n",
-          e.what(), "\n"));
-    }
-    h = H::combine(std::move(h), hash);
-  }
-  h = H::combine(std::move(h), s.static_args.size());
-  for (const auto& name : s.static_arg_names) {
-    h = H::combine(std::move(h), name.ptr());
-  }
-  h = H::combine(std::move(h), s.static_arg_names.size());
-  h = H::combine(std::move(h), s.device, s.jax_enable_x64);
-
-  // We do not hash the extra_jit_context fields since calling Python hash
-  // functions is expensive (~300ns) and we don't expect a large number of
-  // different contexts.
-  return h;
-}
-
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
 xla::Status ParseArguments(py::handle args,
