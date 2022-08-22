@@ -39,7 +39,7 @@ func.func @main(%serialized: tensor<32x!tf_type.string>) -> (tensor<?x2xi64>) at
     {
       Tdense = [f32, f32], dense_shapes = [#tf_type.shape<>, #tf_type.shape<>],
       device = "/device:CPU:0", num_sparse = 2 : i64, ragged_split_types = [], ragged_value_types = [],
-      result_segment_sizes = dense<[2, 2, 2, 2, 0, 0]> : vector<6xi32>,
+      result_segment_sizes = array<i32: 2, 2, 2, 2, 0, 0>,
       sparse_types = [!tf_type.string, !tf_type.string]
     } : (tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0xf32>, tensor<0xf32>)
     -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf_type.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>, tensor<32xf32>, tensor<32xf32>)

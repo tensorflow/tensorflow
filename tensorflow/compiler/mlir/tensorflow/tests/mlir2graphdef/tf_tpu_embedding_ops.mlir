@@ -3,7 +3,7 @@
 func.func @main() {
   tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.RecvTPUEmbeddingActivations"() {config = "test_config_recv_embedding"} : () -> tensor<512x256xf32> loc("RecvTPUEmbedding")
-    %1:1 = tf_executor.island wraps "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> () loc("SendTPUEmbedding")
+    %1:1 = tf_executor.island wraps "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = array<i32: 1, 0>} : (tensor<512x256xf32>) -> () loc("SendTPUEmbedding")
     tf_executor.fetch
   }
   func.return

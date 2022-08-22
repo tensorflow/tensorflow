@@ -37,7 +37,7 @@ func.func @pad_to_static(%arg0: memref<4xf32>,
     api_version = 1 : i32,
     backend_config = "",
     call_target_name = "PadToStatic",
-    operand_segment_sizes = dense<[1, 2]> : vector<2xi32>
+    operand_segment_sizes = array<i32: 1, 2>
   } : (memref<4xf32>, memref<4xf32>, memref<i32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }

@@ -27,7 +27,7 @@ func.func @test(%arg0: memref<f32>) {
     api_version = 2 : i32,
     backend_config = "",
     call_target_name = "target",
-    operand_segment_sizes = dense<[0, 1]> : vector<2xi32>
+    operand_segment_sizes = array<i32: 0, 1>
   } : (memref<f32>) -> ()
   return
 }
@@ -61,7 +61,7 @@ func.func @test_with_mapping(
     api_version = 1 : i32,
     backend_config = "",
     call_target_name = "target",
-    operand_segment_sizes = dense<[2, 3]> : vector<2xi32>,
+    operand_segment_sizes = array<i32: 2, 3>,
     target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
       num_args = 4,
       num_results = 4,

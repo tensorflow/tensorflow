@@ -223,7 +223,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
                                 getLoc());
       getOperation()->setAttr(
           LoopOp::getOperandSegmentSizeAttr(),
-          builder.getI32VectorAttr(
+          builder.getDenseI32ArrayAttr(
               {numLoops, numLoops, numLoops, numInputs + 1, numOutputs}));
       return getOperation()->getOpOperand(getNumControlOperands() + numInputs);
     }
@@ -240,7 +240,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
                                 operand.getType(), getLoc());
       getOperation()->setAttr(
           LoopOp::getOperandSegmentSizeAttr(),
-          builder.getI32VectorAttr(
+          builder.getDenseI32ArrayAttr(
               {numLoops, numLoops, numLoops, numInputs, numOutputs + 1}));
       return getOperation()->getOpOperand(getNumControlOperands() + numInputs +
                                           numOutputs);
@@ -267,7 +267,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
       getBody()->eraseArgument(operandIndex - 2 * numLoops);
       getOperation()->setAttr(
           LoopOp::getOperandSegmentSizeAttr(),
-          builder.getI32VectorAttr(
+          builder.getDenseI32ArrayAttr(
               {numLoops, numLoops, numLoops, numInputs, numOutputs}));
     }
 

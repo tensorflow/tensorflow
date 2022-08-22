@@ -270,7 +270,7 @@ For example:
     Variadic<AnyType>:$replicated_inputs,
     Variadic<AnyType>:$packed_inputs,
 
-    I32ElementsAttr:$operand_segment_sizes,
+    DenseI32ArrayAttr:$operand_segment_sizes,
     Confined<I32Attr, [IntMinValue<2>]>:$n,
     OptionalAttr<DictionaryAttr>:$devices
   );

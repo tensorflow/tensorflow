@@ -179,7 +179,7 @@ def TF_GetEmbeddingConfigurationOp: TF_Op<"GetEmbeddingConfiguration", [AttrSize
     Variadic<TF_Float32Tensor>:$scalars,
 
     FlatSymbolRefAttr:$optimizer,
-    I32ElementsAttr:$operand_segment_sizes
+    DenseI32ArrayAttr:$operand_segment_sizes
   );
 
   let results = (outs
