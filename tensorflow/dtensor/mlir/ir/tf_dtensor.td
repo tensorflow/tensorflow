@@ -96,8 +96,8 @@ def TF_DTensorEmbeddingEnqueueOp : TF_Op<"DTensorEmbeddingEnqueue", [SameVariadi
     Variadic<TF_Int32Tensor>:$embedding_indices,
     Variadic<TF_Float32Tensor>:$aggregation_weights,
 
-    DefaultValuedAttr<StrAttr, "\"training\"">:$mode_override,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$combiners,
+    DefaultValuedOptionalAttr<StrAttr, "\"training\"">:$mode_override,
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$combiners,
     StrAttr:$config
   );
 
@@ -362,7 +362,7 @@ def TF_DTensorRetrieveTPUEmbeddingParametersOp : TF_Op<"DTensorRetrieveTPUEmbedd
   let summary = "";
 
   let arguments = (ins
-    DefaultValuedAttr<I64Attr, "1">:$num_hosts,
+    DefaultValuedOptionalAttr<I64Attr, "1">:$num_hosts,
     StrAttr:$config,
     I64Attr:$num_shards,
     I64Attr:$shard_id
@@ -465,7 +465,7 @@ Whether TPU Embedding is initialized in a distributed TPU system.
   }];
 
   let arguments = (ins
-    DefaultValuedAttr<StrAttr, "\"\"">:$config
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config
   );
 
   let results = (outs

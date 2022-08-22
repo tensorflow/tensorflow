@@ -174,9 +174,9 @@ def LHLOGPU_AllReduceStartOp :
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
     I64ElementsAttr:$replica_groups,
-    DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$constrain_layout,
     OptionalAttr<ChannelHandle>:$channel_id,
-    DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids
   );
   let results = (outs HLO_Token:$token);
   let regions = (region SizedRegion<1>:$computation);
