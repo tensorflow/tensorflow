@@ -119,10 +119,10 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core/platform:casts",
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,
 )
@@ -137,6 +137,7 @@ cc_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:tflite_portable_logging",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -160,10 +161,10 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core/platform:casts",
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -201,11 +202,11 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core/platform:casts",
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -315,8 +316,8 @@ cc_library(
         ":tpu_topology_external",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
