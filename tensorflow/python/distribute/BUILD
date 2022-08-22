@@ -1313,6 +1313,10 @@ tf_py_test(
     name = "sharded_variable_test",
     size = "small",
     srcs = ["sharded_variable_test.py"],
+    tags = [
+        "no_mac",
+        "no_windows",  # TODO(b/241967911): Re-enable mac and windows.
+    ],
     deps = [
         ":combinations",
         ":multi_worker_test_base",
