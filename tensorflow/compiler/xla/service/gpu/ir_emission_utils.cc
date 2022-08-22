@@ -780,7 +780,7 @@ bool ShmemTransposeSupportedForInputs(const HloInstruction& instr,
          instr.opcode() == HloOpcode::kGetDimensionSize;
 }
 
-std::optional<TransposeDimsAndParams> FindTranspose021DimsAndParameters(
+static std::optional<TransposeDimsAndParams> FindTranspose021DimsAndParameters(
     const std::vector<Shape>& operand_shapes, const Shape& output_shape) {
   std::vector<int64_t> params_012;
   std::optional<Vector3> reduced_dims_021;
@@ -896,85 +896,6 @@ std::optional<TransposeDimsAndParams> Match021Transpose(
   }
 
   return TransposeDimsAndParams{reduced_dims_021, params_012};
-}
-
-bool FusionCanBeEmittedAsShmemTranspose(const HloInstruction& producer,
-                                        const HloInstruction& consumer) {
-  const Shape& output_shape = consumer.shape();
-  std::vector<Shape> consumer_operand_shapes;
-  absl::c_for_each(consumer.operands(), [&](const HloInstruction* operand) {
-    consumer_operand_shapes.push_back(operand->shape());
-  });
-  std::optional<TransposeDimsAndParams> consumer_dims_and_params_021 =
-      FindTranspose021DimsAndParameters(consumer_operand_shapes, output_shape);
-
-  VLOG(3) << "Consumer " << consumer.name() << " has 021 transposed dimension: "
-          << consumer_dims_and_params_021.has_value();
-  // Whether the `consumer` will be emitted as shared memory transpose.
-  bool consumer_shmem_transpose =
-      consumer_dims_and_params_021.has_value() &&
-      ShmemTransposeSupportedForInputs(consumer,
-                                       consumer_dims_and_params_021->params);
-
-  std::vector<Shape> producer_operand_shapes;
-  absl::c_for_each(producer.operands(), [&](const HloInstruction* operand) {
-    producer_operand_shapes.push_back(operand->shape());
-  });
-  std::optional<TransposeDimsAndParams> producer_dims_and_params_021 =
-      FindTranspose021DimsAndParameters(producer_operand_shapes, output_shape);
-  VLOG(3) << "Producer " << producer.name() << " has 021 transposed dimension: "
-          << producer_dims_and_params_021.has_value();
-  // Whether the `producer` will be emitted as shared memory transpose.
-  bool producer_shmem_transpose =
-      producer_dims_and_params_021.has_value() &&
-      ShmemTransposeSupportedForInputs(producer,
-                                       producer_dims_and_params_021->params);
-
-  if (!consumer_shmem_transpose && !producer_shmem_transpose) {
-    // Neither `consumer` nor `producer` will be emitted as shared memory
-    // transpose. Hence, the fusion of both won't be either.
-    return false;
-  }
-
-  // The transposed dimensions of `producer` and `consumer` need to match.
-  if (consumer_dims_and_params_021.has_value() &&
-      producer_dims_and_params_021.has_value() &&
-      !absl::c_equal(consumer_dims_and_params_021->dims,
-                     producer_dims_and_params_021->dims)) {
-    VLOG(3) << producer.name() << " and " << consumer.name()
-            << " have different 021 transposed dimensions: "
-            << consumer_dims_and_params_021->ToString() << " vs "
-            << producer_dims_and_params_021->ToString();
-    return false;
-  }
-
-  std::vector<int64_t> producer_params_012;
-  if (producer_dims_and_params_021.has_value()) {
-    producer_params_012 = producer_dims_and_params_021->params;
-  }
-  int64_t producer_param_idx = consumer.operand_index(&producer);
-  // If the producer feeds into a 021 transposing param of the consumer, all
-  // consumer params need to be taken into account for further analysis.
-  if (consumer_dims_and_params_021.has_value() &&
-      absl::c_linear_search(consumer_dims_and_params_021->params,
-                            producer_param_idx)) {
-    producer_params_012.resize(producer.operand_count());
-    std::iota(producer_params_012.begin(), producer_params_012.end(), 0);
-  }
-  if (!producer_params_012.empty() &&
-      !ShmemTransposeSupportedForInputs(producer, producer_params_012)) {
-    VLOG(3) << "Producer " << producer.name()
-            << " has no operands that are considered safe for shared memory "
-               "transpose.";
-    return false;
-  }
-  if (!ShmemTransposeSupportedForInputs(consumer, {producer_param_idx})) {
-    VLOG(3) << "Consumer " << consumer.name()
-            << " has no operands that are considered safe for shared memory "
-               "transpose.";
-    return false;
-  }
-  return true;
 }
 
 }  // namespace gpu
