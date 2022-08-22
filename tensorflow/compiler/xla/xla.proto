@@ -113,8 +113,8 @@ message DebugOptions {
   // Generate calls to MKL-DNN in the CPU backend.
   bool xla_cpu_use_mkl_dnn = 97;
 
-  // Enable JitRt in the CPU backend.
-  bool xla_cpu_use_jitrt = 177;
+  // Enable XLA Runtime in the CPU backend.
+  bool xla_cpu_use_xla_runtime = 177;
 
   // Maximum kernel unroll factor for the GPU backend.
   int32 xla_gpu_max_kernel_unroll_factor = 98;
