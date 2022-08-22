@@ -1232,11 +1232,41 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
     }
   }
 
+  // Record the name of some constant global variables and their initializers.
+  // We'll change the linkage type of these variables from external to internal
+  // to ensure constant-folding works properly after calling llvm::SplitModule.
+  llvm::DenseMap<llvm::StringRef, llvm::Constant*> const_initializer_map;
+  for (llvm::GlobalVariable& gv : llvm_module->globals()) {
+    if (gv.hasName() && gv.isConstant() && gv.hasInitializer() &&
+        gv.hasExternalLinkage()) {
+      llvm::Constant* initializer = gv.getInitializer();
+      unsigned int num_elements = 0;
+      if (auto* caz =
+              llvm::dyn_cast<llvm::ConstantAggregateZero>(initializer)) {
+        num_elements = caz->getElementCount().getFixedValue();
+      } else if (auto* cds = llvm::dyn_cast<llvm::ConstantDataSequential>(
+                     initializer)) {
+        num_elements = cds->getNumElements();
+      }
+      if (num_elements > 0) {
+        const_initializer_map[gv.getName()] = initializer;
+      }
+    }
+  }
+
   llvm::SplitModule(
       *llvm_module,
       std::max<unsigned>(
           1, std::min<unsigned>(thread_pool->NumThreads(), num_functions)),
       [&](std::unique_ptr<llvm::Module> module) {
+        // Change the linkage type of some global constant variables to internal
+        for (llvm::GlobalVariable& gv : module->globals()) {
+          if (gv.hasName() && gv.isConstant() && !gv.hasInitializer() &&
+              const_initializer_map.count(gv.getName()) != 0) {
+            gv.setInitializer(const_initializer_map[gv.getName()]);
+            gv.setLinkage(llvm::GlobalValue::InternalLinkage);
+          }
+        }
         llvm_modules.push_back(std::move(module));
       },
       /*PreserveLocals=*/true);
