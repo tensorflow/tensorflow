@@ -179,62 +179,58 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
       });
   // Try to find the intersection of to_merge and dst replication groups, in
   // order to determine the merged tile assignment.
-  bool compatible = true;
-  merged_tile.Each([&](absl::Span<const int64_t> indices, int64_t* device) {
-    if (!compatible) {
-      return;
-    }
-    std::vector<int64_t> to_merge_index(
-        to_merge.tile_assignment().num_dimensions());
-    std::vector<int64_t> dst_index(dst->tile_assignment().num_dimensions());
-    for (int64_t i = 0; i < to_merge.TiledDataRank(); ++i) {
-      if (to_merge.tile_assignment().dim(i) == 1) {
-        to_merge_index[i] = 0;
-      } else {
-        to_merge_index[i] = indices[i];
-      }
-      if (dst->tile_assignment().dim(i) == 1) {
-        dst_index[i] = 0;
-      } else {
-        dst_index[i] = indices[i];
-      }
-    }
-    if (to_merge_man_dim >= 0) {
-      to_merge_index[to_merge_man_dim] = indices[to_merge.TiledDataRank()];
-      dst_index[dst_man_dim] = indices[to_merge.TiledDataRank()];
-    }
-    if (to_merge.HasPartialReplication()) {
-      to_merge_index[to_merge.SubgroupReplicationDim()] = indices.back();
-    }
-    dst_index[dst->SubgroupReplicationDim()] = indices.back();
-    int64_t to_merge_group_id =
-        get_group_index(to_merge_index, to_merge, to_merge_man_dim);
-    int64_t dst_group_id = get_group_index(dst_index, *dst, dst_man_dim);
-    if (merge_group_members[to_merge_group_id].empty() ||
-        dst_group_members[dst_group_id].empty()) {
-      compatible = false;
-      return;
-    }
+  Status compatible = merged_tile.EachStatus(
+      [&](absl::Span<const int64_t> indices, int64_t* device) {
+        std::vector<int64_t> to_merge_index(
+            to_merge.tile_assignment().num_dimensions());
+        std::vector<int64_t> dst_index(dst->tile_assignment().num_dimensions());
+        for (int64_t i = 0; i < to_merge.TiledDataRank(); ++i) {
+          if (to_merge.tile_assignment().dim(i) == 1) {
+            to_merge_index[i] = 0;
+          } else {
+            to_merge_index[i] = indices[i];
+          }
+          if (dst->tile_assignment().dim(i) == 1) {
+            dst_index[i] = 0;
+          } else {
+            dst_index[i] = indices[i];
+          }
+        }
+        if (to_merge_man_dim >= 0) {
+          to_merge_index[to_merge_man_dim] = indices[to_merge.TiledDataRank()];
+          dst_index[dst_man_dim] = indices[to_merge.TiledDataRank()];
+        }
+        if (to_merge.HasPartialReplication()) {
+          to_merge_index[to_merge.SubgroupReplicationDim()] = indices.back();
+        }
+        dst_index[dst->SubgroupReplicationDim()] = indices.back();
+        int64_t to_merge_group_id =
+            get_group_index(to_merge_index, to_merge, to_merge_man_dim);
+        int64_t dst_group_id = get_group_index(dst_index, *dst, dst_man_dim);
+        if (merge_group_members[to_merge_group_id].empty() ||
+            dst_group_members[dst_group_id].empty()) {
+          return InvalidArgument("Not compatible");
+        }
 
-    int64_t smallest_to_merge = *merge_group_members[to_merge_group_id].begin();
-    int64_t smallest_dst = *dst_group_members[dst_group_id].begin();
-    if (smallest_to_merge < smallest_dst) {
-      if (merge_group_members[to_merge_group_id].count(smallest_dst) == 0) {
-        compatible = false;
-        return;
-      }
-      *device = smallest_dst;
-    } else {
-      if (dst_group_members[dst_group_id].count(smallest_to_merge) == 0) {
-        compatible = false;
-        return;
-      }
-      *device = smallest_to_merge;
-    }
-    merge_group_members[to_merge_group_id].erase(*device);
-    dst_group_members[dst_group_id].erase(*device);
-  });
-  if (!compatible) {
+        int64_t smallest_to_merge =
+            *merge_group_members[to_merge_group_id].begin();
+        int64_t smallest_dst = *dst_group_members[dst_group_id].begin();
+        if (smallest_to_merge < smallest_dst) {
+          if (merge_group_members[to_merge_group_id].count(smallest_dst) == 0) {
+            return InvalidArgument("Not compatible");
+          }
+          *device = smallest_dst;
+        } else {
+          if (dst_group_members[dst_group_id].count(smallest_to_merge) == 0) {
+            return InvalidArgument("Not compatible");
+          }
+          *device = smallest_to_merge;
+        }
+        merge_group_members[to_merge_group_id].erase(*device);
+        dst_group_members[dst_group_id].erase(*device);
+        return OkStatus();
+      });
+  if (!compatible.ok()) {
     return false;
   }
   std::vector<OpMetadata> merged_metadata(std::move(dst->metadata()));
@@ -271,7 +267,7 @@ std::optional<int64_t> SelectDominantDevice(
   return count > 0 ? std::optional<int64_t>(device) : std::optional<int64_t>();
 }
 
-Status AssignComputationDevice(HloComputation* computation, int64_t device) {
+void AssignComputationDevice(HloComputation* computation, int64_t device) {
   VLOG(4) << "Assigning device " << device << " to " << computation->name()
           << " computation";
   for (HloInstruction* instruction : computation->instructions()) {
@@ -280,7 +276,6 @@ Status AssignComputationDevice(HloComputation* computation, int64_t device) {
       instruction->set_device_sharding(device);
     }
   }
-  return OkStatus();
 }
 
 std::optional<int64_t> GetMostOccurringDevice(
@@ -297,7 +292,7 @@ std::optional<int64_t> GetMostOccurringDevice(
   return SelectDominantDevice(device_map, nullptr);
 }
 
-StatusOr<std::optional<int64_t>> GetDominantDevice(
+std::optional<int64_t> GetDominantDevice(
     absl::Span<HloComputation* const> computations, double dominant_factor) {
   int64_t instruction_count = 0;
   std::map<int64_t, int64_t> device_map;

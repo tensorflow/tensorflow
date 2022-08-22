@@ -87,8 +87,7 @@ Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
         buffer_allocations.GetDeviceAddress(source_slice);
 
     // TODO(b/111309141): Run this on a separate stream so it doesn't block
-    // the GPU from doing work during the transfer. This could be handled by
-    // making StreamAssignment do something intelligent with outfeed thunks.
+    // the GPU from doing work during the transfer.
     stream
         .ThenMemcpy(buffer->destination()->untyped_data(), data_address,
                     buffer->length())

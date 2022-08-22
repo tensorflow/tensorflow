@@ -21,6 +21,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
@@ -218,8 +219,8 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
   auto executable = std::move(params.executable);
   std::unique_ptr<GpuExecutable> result(new GpuExecutable(std::move(params)));
 
-  if (std::holds_alternative<OwnedThunkSchedule>(executable)) {
-    result->thunks_ = std::move(std::get<OwnedThunkSchedule>(executable));
+  if (std::holds_alternative<OwnedThunkSequence>(executable)) {
+    result->thunks_ = std::move(std::get<OwnedThunkSequence>(executable));
     return result;
   }
 
@@ -315,7 +316,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
                            uint64_t start_micros, se::Stream* stream_to_sync);
 
 Status ExecuteThunks(const std::string& module_name,
-                     const ThunkSchedule& thunk_schedule,
+                     const ThunkSequence& thunk_sequence,
                      const ServiceExecutableRunOptions* run_options,
                      const BufferAllocations& buffer_allocations,
                      bool block_host_until_done) {
@@ -325,59 +326,26 @@ Status ExecuteThunks(const std::string& module_name,
   StatusOr<StreamPool::Ptr> async_comms_stream =
       run_options->BorrowStream(executor->device_ordinal());
 
-  // Stream 0 indicates `main_stream` and substreams start from stream 1.
-  std::vector<StreamPool::Ptr> sub_streams;
-  sub_streams.reserve(thunk_schedule.StreamCount() - 1);
-  while (sub_streams.size() + 1 < thunk_schedule.StreamCount()) {
-    sub_streams.emplace_back();
-    TF_ASSIGN_OR_RETURN(sub_streams.back(),
-                        run_options->BorrowStream(executor->device_ordinal()));
-    // Require substreams to wait for the main stream, otherwise substreams may
-    // execute before the program is scheduled to start on the main stream.
-    sub_streams.back()->ThenWaitFor(main_stream);
-  }
-
   uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
 
-  absl::flat_hash_map<const Thunk*, std::unique_ptr<se::Event>>
-      thunk_to_finish_event;
-  for (const std::unique_ptr<Thunk>& thunk : thunk_schedule.TotalOrder()) {
+  for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
-
-    int32_t stream_no = thunk_schedule.StreamNumberForThunk(thunk.get());
-    se::Stream* stream =
-        (stream_no == 0 ? main_stream : sub_streams[stream_no - 1].get());
-
-    for (const Thunk* dependency : thunk_schedule.DependsOn(thunk.get())) {
-      stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
-    }
-
-    VLOG(2) << "Executing the thunk for " << thunk->profile_annotation()
-            << " on stream " << stream_no;
-
+    VLOG(2) << "Executing the thunk for " << thunk->profile_annotation();
     TF_RET_CHECK(async_comms_stream.ok() || !NeedsAsyncCommsStream(*thunk))
         << "`run_options` must have a stream borrower for async thunks.";
 
     Thunk::ExecuteParams thunk_params{
-        *run_options, buffer_allocations, stream,
+        *run_options, buffer_allocations, main_stream,
         async_comms_stream.ok() ? async_comms_stream->get() : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
-    if (thunk_schedule.Depended(thunk.get())) {
-      auto finish_event = std::make_unique<se::Event>(main_stream->parent());
-      finish_event->Init();
-      stream->ThenRecordEvent(finish_event.get());
-      thunk_to_finish_event[thunk.get()] = std::move(finish_event);
-    }
   }
-
-  main_stream->ThenWaitFor(&sub_streams);
   return MaybeSyncAndProfile(run_options, start_micros,
                              block_host_until_done ? main_stream : nullptr);
 }
@@ -881,7 +849,7 @@ Status GpuExecutable::ExecuteThunksOrJitRt(
 
   if (thunks_) {
     se::StreamExecutor* executor = run_options->stream()->parent();
-    for (const std::unique_ptr<Thunk>& thunk : thunks_->TotalOrder()) {
+    for (const std::unique_ptr<Thunk>& thunk : *thunks_) {
       TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     }
     return ExecuteThunks(module_name_, *thunks_, run_options,

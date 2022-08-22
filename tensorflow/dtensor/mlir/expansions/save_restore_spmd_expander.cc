@@ -85,7 +85,7 @@ mlir::Value GetAllCandidateCheckpointPrefixes(mlir::OpBuilder& builder,
               prefix.getType().dyn_cast<mlir::RankedTensorType>(), prefix,
               StringConst(builder, prefix.getLoc(),
                           llvm::SmallVector<llvm::StringRef>(
-                              {absl::StrCat("_device_", 0)})))
+                              {DeviceSuffix(0, mesh.num_devices())})))
           .z();
 
   for (int64_t device_id = 1; device_id < mesh.num_devices(); ++device_id) {
@@ -96,7 +96,7 @@ mlir::Value GetAllCandidateCheckpointPrefixes(mlir::OpBuilder& builder,
                 prefix.getType().dyn_cast<mlir::RankedTensorType>(), prefix,
                 StringConst(builder, prefix.getLoc(),
                             llvm::SmallVector<llvm::StringRef>(
-                                {absl::StrCat("_device_", device_id)})))
+                                {DeviceSuffix(device_id, mesh.num_devices())})))
             .z();
 
     new_prefix = builder
@@ -294,8 +294,8 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
       // Builds the per device saving spec, that takes care of tensor_name
       // uniqueness requirement. Each save op should use new_tensor_indices and
       // new_specs to map the corresponding saving tensor and its slice spec.
-      SaveOpSpecs specs =
-          BuildPerDeviceSave(per_device_specs, device_id, prefix);
+      SaveOpSpecs specs = BuildPerDeviceSave(per_device_specs, device_id,
+                                             prefix, mesh.num_devices());
       const std::vector<std::vector<int>>& new_tensor_indices =
           specs.tensor_indices;
       const std::vector<std::vector<std::string>>& new_specs =

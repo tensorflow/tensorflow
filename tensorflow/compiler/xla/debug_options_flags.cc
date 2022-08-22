@@ -54,10 +54,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_jitrt(false);
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
 
-  // Run all GPU work on one stream by default.  Using multiple streams
-  // increases memory usage and we lack strong motivating benchmarks for tuning
-  // the heuristics needed to decide when to run on multiple streams.  See
-  // b/77879207.
+  // Run all GPU work on one stream by default. Multi-streaming support has been
+  // removed, so setting this to false has no effect.
+  // TODO(reedwm): Remove this option.
   opts.set_xla_gpu_disable_multi_streaming(true);
 
   opts.set_xla_cpu_enable_fast_math(false);
@@ -395,7 +394,8 @@ static void AllocateFlags() {
       "xla_gpu_disable_multi_streaming",
       bool_setter_for(&DebugOptions::set_xla_gpu_disable_multi_streaming),
       flag_values->xla_gpu_disable_multi_streaming(),
-      "If true, multi-streaming in the GPU backend is disabled."));
+      "Has no impact. Multi-streaming support has been removed from XLA GPU so "
+      "it is always disabled."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_max_kernel_unroll_factor",
       int32_setter_for(&DebugOptions::set_xla_gpu_max_kernel_unroll_factor),

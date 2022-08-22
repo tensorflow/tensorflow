@@ -122,10 +122,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
-#include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
-#include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -289,7 +287,7 @@ bool ConvIsLowerable(HloInstruction* conv) {
 
 }  // end anonymous namespace
 
-using OwnedThunkSchedule = GpuExecutable::OwnedThunkSchedule;
+using OwnedThunkSequence = GpuExecutable::OwnedThunkSequence;
 using OwnedJitRtProgram = GpuExecutable::OwnedJitRtProgram;
 
 StatusOr<std::unique_ptr<Executable>> JitRtAotCompilationResult::LoadExecutable(
@@ -854,11 +852,8 @@ static std::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
 
 StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
     const HloModule* hlo_module) {
-  std::unique_ptr<StreamAssignment> stream_assignment =
-      AssignStreams(*hlo_module);
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<GpuHloSchedule> hlo_schedule,
-      GpuHloSchedule::Build(hlo_module, *stream_assignment, pointer_size_));
+  TF_ASSIGN_OR_RETURN(HloSchedule hlo_schedule,
+                      ScheduleGpuModule(hlo_module, pointer_size_));
 
   auto buffer_size_bytes_function =
       [this](const BufferValue& buffer_value) -> int64_t {
@@ -868,7 +863,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(
-          hlo_module, hlo_schedule->ConsumeHloOrdering(),
+          hlo_module, std::make_unique<SequentialHloOrdering>(hlo_schedule),
           buffer_size_bytes_function,
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
@@ -957,7 +952,7 @@ struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::vector<BufferAllocation> allocations;
-  std::variant<OwnedThunkSchedule, OwnedJitRtProgram> executable;
+  std::variant<OwnedThunkSequence, OwnedJitRtProgram> executable;
   EntryFunctionAttributes entry_func_attrs;
   std::vector<GpuExecutable::ConstantInfo> constants;
   OutputInfoMap output_info;
@@ -981,11 +976,8 @@ static Status CompileModuleToLlvmIrImpl(
   results->llvm_module->setTargetTriple(target_triple);
   results->llvm_module->setDataLayout(data_layout);
 
-  std::unique_ptr<StreamAssignment> stream_assignment =
-      AssignStreams(*hlo_module);
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<GpuHloSchedule> hlo_schedule,
-      GpuHloSchedule::Build(hlo_module, *stream_assignment, pointer_size));
+  TF_ASSIGN_OR_RETURN(HloSchedule hlo_schedule,
+                      ScheduleGpuModule(hlo_module, pointer_size));
 
   auto buffer_size_bytes_function =
       [pointer_size](const BufferValue& buffer_value) -> int64_t {
@@ -995,7 +987,7 @@ static Status CompileModuleToLlvmIrImpl(
   TF_ASSIGN_OR_RETURN(
       results->buffer_assignment,
       BufferAssigner::Run(
-          hlo_module, hlo_schedule->ConsumeHloOrdering(),
+          hlo_module, std::make_unique<SequentialHloOrdering>(hlo_schedule),
           buffer_size_bytes_function,
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
@@ -1088,8 +1080,7 @@ static Status CompileModuleToLlvmIrImpl(
   }
 #endif  // XLA_ENABLE_XLIR
 
-  results->executable =
-      std::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
+  results->executable = ir_emitter->ConsumeThunkSequence();
   return OkStatus();
 }
 
@@ -1393,12 +1384,12 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                             std::move(compile_module_results.llvm_module),
                             stream_exec, options, module.get()));
   if (DumpingEnabledForHloModule(*module) &&
-      std::holds_alternative<OwnedThunkSchedule>(
+      std::holds_alternative<OwnedThunkSequence>(
           compile_module_results.executable)) {
-    const ThunkSchedule& thunk_schedule =
-        *std::get<OwnedThunkSchedule>(compile_module_results.executable);
-    DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
-                            thunk_schedule.ToString());
+    const ThunkSequence& thunk_sequence =
+        *std::get<OwnedThunkSequence>(compile_module_results.executable);
+    DumpToFileInDirOrStdout(*module, "", "thunk_sequence",
+                            thunk_sequence.ToString());
   }
 
   auto buffer_assignment_proto = std::make_unique<BufferAssignmentProto>(
@@ -1652,8 +1643,7 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
                                         ir_emitter_context->constants());
   }
 
-  auto thunk_schedule =
-      std::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
+  auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
 
   using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
   TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,
@@ -1664,7 +1654,7 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
   GpuVersion gpu_version = compiler->GetGpuVersion(stream_exec);
   return GpuExecutable::Create(
       {std::move(backend_result.first), std::move(backend_result.second),
-       gpu_version, std::move(thunk_schedule), entry_func_attrs,
+       gpu_version, std::move(thunk_sequence), entry_func_attrs,
        std::move(ir_emitter_context->constants()), std::move(output_info),
        module_name, output_shape, std::move(allocations)});
 }

@@ -196,43 +196,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "stream_assignment",
-    srcs = ["stream_assignment.cc"],
-    hdrs = ["stream_assignment.h"],
-    deps = [
-        ":cublas_cudnn",
-        ":ir_emission_utils",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_reachability",
-        "//tensorflow/core/platform:random",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
-tf_cc_test(
-    name = "stream_assignment_test",
-    srcs = [
-        "stream_assignment_test.cc",
-    ],
-    tags = ["no_pip"],
-    deps = [
-        ":stream_assignment",
-        "//tensorflow/compiler/xla:test_helpers",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings:str_format",
-    ],
-)
-
-cc_library(
     name = "hlo_to_ir_bindings",
     srcs = ["hlo_to_ir_bindings.cc"],
     hdrs = ["hlo_to_ir_bindings.h"],
@@ -632,7 +595,6 @@ cc_library(
         "outfeed_thunk.cc",
         "replica_id_thunk.cc",
         "sequential_thunk.cc",
-        "thunk_schedule.cc",
         "while_thunk.cc",
     ],
     hdrs = [
@@ -649,7 +611,6 @@ cc_library(
         "outfeed_thunk.h",
         "replica_id_thunk.h",
         "sequential_thunk.h",
-        "thunk_schedule.h",
         "while_thunk.h",
     ],
     local_defines = select({
@@ -673,7 +634,6 @@ cc_library(
         ":matmul_utils",
         ":nccl_collective_thunks",
         ":launch_dimensions",
-        ":stream_assignment",
         ":stream_executor_util",
         ":thunk",
         "@com_google_absl//absl/base",
@@ -1659,7 +1619,6 @@ cc_library(
         ":reduction_dimension_grouper",
         ":reduction_layout_normalizer",
         ":reduction_splitter",
-        ":stream_assignment",
         ":hlo_fusion_stats",
         ":stream_executor_util",
         ":target_constants",
@@ -2096,14 +2055,11 @@ cc_library(
     srcs = ["gpu_hlo_schedule.cc"],
     hdrs = ["gpu_hlo_schedule.h"],
     deps = [
-        ":stream_assignment",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:buffer_value",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_memory_scheduler",
         "//tensorflow/compiler/xla/service:hlo_ordering",
-        "//tensorflow/compiler/xla/service:hlo_reachability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
@@ -2117,7 +2073,6 @@ tf_cc_test(
     tags = ["no_pip"],
     deps = [
         ":gpu_hlo_schedule",
-        ":stream_assignment",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:hlo",

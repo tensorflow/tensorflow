@@ -31,6 +31,7 @@ from tensorflow.python.saved_model import registration
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 
 
 class _SingleDeviceSaver(object):
@@ -175,6 +176,9 @@ def _get_mapped_registered_restore_fn(fn, trackables,
     return restore_fn_with_replaced_captures
 
 
+_restore_noop = lambda *args, **kwargs: None
+
+
 class MultiDeviceSaver(object):
   """Saves checkpoints directly from multiple devices.
 
@@ -184,22 +188,22 @@ class MultiDeviceSaver(object):
   """
 
   def __init__(self,
-               saveable_objects,
+               serialized_tensors,
                registered_savers=None,
                call_with_mapped_captures=None):
     """Specify a list of `SaveableObject`s to save and restore.
 
     Args:
-      saveable_objects: A list of `SaveableObject`s.
-        Objects extending `SaveableObject` will be saved and restored.
+      serialized_tensors: A dictionary mapping `Trackable` to a tensor dict,
+        which maps checkpoint_key -> (slice_spec ->) -> Tensor/SaveSpec. The
+        `Trackable` key is used to get the `restore_from_tensors` function,
+        and may be `None` if the tensor is not meant to be restored.
       registered_savers: A dictionary mapping `registration.RegisteredSaver`
         namedtuples to a dictionary of named Trackables. The keys of the
         Trackable dictionary are string names that uniquely identify the
         Trackable in the checkpoint.
       call_with_mapped_captures: TODO
     """
-    saveable_objects = list(saveable_objects)
-
     # Keep these two data structures so that we can map restored tensors to
     # the Trackable restore functions.
     self._keys_to_restore_fn = {}
@@ -207,11 +211,9 @@ class MultiDeviceSaver(object):
 
     # Extract serialized tensors and separate by device.
     tensors_by_device = {}  # device -> checkpoint key -> (slice_spec ->) tensor
-    for saveable in saveable_objects:
-      tensor_dict = saveable_object_util.saveable_object_to_tensor_dict(
-          [saveable])
-      restore_fn = saveable_object_util.saveable_object_to_restore_fn(
-          [saveable])
+
+    for obj, tensor_dict in serialized_tensors.items():
+      restore_fn = _restore_noop if obj is None else obj._restore_from_tensors
 
       # Divide tensor_dict by device.
       for checkpoint_key, maybe_tensor in tensor_dict.items():
@@ -248,6 +250,16 @@ class MultiDeviceSaver(object):
             registration.get_restore_function(registered_name),
             trackables, call_with_mapped_captures)
         self._registered_savers[registered_name] = (save_fn, restore_fn)
+
+  @classmethod
+  def from_saveables(cls, saveables, registered_savers=None,
+                     call_with_mapped_captures=None):
+    serialized_tensors = object_identity.ObjectIdentityDictionary()
+    for saveable in saveables:
+      trackable = saveable_object_util.SaveableCompatibilityConverter(
+          saveable, saveables=[saveable])
+      serialized_tensors[trackable] = trackable._serialize_to_tensors()  # pylint: disable=protected-access
+    return cls(serialized_tensors, registered_savers, call_with_mapped_captures)
 
   def to_proto(self):
     """Serializes to a SaverDef referencing the current graph."""
@@ -447,7 +459,7 @@ class MultiDeviceSaver(object):
     # latest values of options like experimental_io_device.
     if context.executing_eagerly() and (len(self._single_device_savers) > 1 or
                                         options.experimental_io_device):
-      @def_function.function(jit_compile=False)
+      @def_function.function(jit_compile=False, autograph=False)
       def tf_function_restore():
         restore_fn()
         return {}

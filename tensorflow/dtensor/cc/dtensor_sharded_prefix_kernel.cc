@@ -123,7 +123,8 @@ class DTensorShardedPrefixOpKernel : public OpKernel {
     for (int device_id = 0; device_id < mesh.size(); ++device_id) {
       const auto& it = saving_spec.find(device_id);
       if (it == saving_spec.end()) continue;
-      SaveOpSpecs specs = BuildPerDeviceSave(it->second, device_id, prefix);
+      SaveOpSpecs specs =
+          BuildPerDeviceSave(it->second, device_id, prefix, mesh.size());
       // Add all generated shards into a vector
       for (const std::string& new_prefix : specs.new_prefixes) {
         all_shard_prefixes.push_back(new_prefix);
