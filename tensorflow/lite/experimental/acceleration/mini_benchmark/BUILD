@@ -541,9 +541,11 @@ cc_library(
     srcs = ["runner.cc"],
     hdrs = ["runner.h"],
     deps = [
+        ":big_little_affinity",
         ":status_codes",
+        "@flatbuffers//:runtime_cc",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:big_little_affinity",
+        "//tensorflow/lite:minimal_logging",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -703,13 +705,23 @@ cc_binary(
     name = "runner_unit_test_entry_points",
     srcs = ["runner_test_entry_points.cc"],
     linkshared = True,
-    deps = [":status_codes"],
+    deps = [
+        ":model_loader",
+        ":status_codes",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "@flatbuffers//:runtime_cc",
+    ],
 )
 
 cc_library(
     name = "runner_unit_test_entry_points_library",
     srcs = ["runner_test_entry_points.cc"],
-    deps = [":status_codes"],
+    deps = [
+        ":model_loader",
+        ":status_codes",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "@flatbuffers//:runtime_cc",
+    ],
 )
 
 embedded_binary(
@@ -737,6 +749,8 @@ cc_test(
         ":runner",
         ":status_codes",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
