@@ -44,7 +44,7 @@ from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.util import compat
 
 
-class FileWriterTestBase(object):
+class FileWriterTestBase:
 
   def _FileWriter(self, *args, **kwargs):
     return writer.FileWriter(*args, **kwargs)
