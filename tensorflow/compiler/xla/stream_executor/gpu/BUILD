@@ -303,7 +303,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/cuda:ptxas_wrapper",
         "//tensorflow/compiler/xla/stream_executor/cuda:fatbinary_wrapper",
     ]) + if_rocm_is_configured([
-        "//tensorflow/stream_executor/rocm:rocm_driver",  # TODO(ddunleavy) update once cl/468101393 lands
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_driver",
     ]),
 )
 
