@@ -436,6 +436,7 @@ cc_library(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/mlir:array_container_utils",
+        "//tensorflow/compiler/mlir/xla:layout_util",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/service:computation_placer_hdr",
@@ -610,6 +611,7 @@ cc_library(
     deps = [
         ":common",
         ":host_compute_metadata_proto_cc",
+        "//tensorflow/compiler/mlir/xla:layout_util",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:types",

@@ -465,8 +465,6 @@ cc_library(
     srcs = ["type_to_shape.cc"],
     hdrs = ["type_to_shape.h"],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
-        "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -497,6 +495,22 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "layout_util",
+    srcs = ["layout_util.cc"],
+    hdrs = ["layout_util.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "mlir_hlo_to_hlo",
     srcs = [
         "mlir_hlo_to_hlo.cc",
@@ -505,14 +519,11 @@ cc_library(
     hdrs = ["mlir_hlo_to_hlo.h"],
     deps = [
         ":attribute_exporter",
+        ":layout_util",
         ":type_to_shape",
         ":xla_passes",
         "//tensorflow/compiler/mlir:name_utils",
-        "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:layout_util",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

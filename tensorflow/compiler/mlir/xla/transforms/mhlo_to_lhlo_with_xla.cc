@@ -202,8 +202,7 @@ class XlaHloToLhloPass
       TF_RETURN_WITH_CONTEXT_IF_ERROR(
           ConvertMlirHloToHlo(module, &hlo_proto,
                               /*use_tuple_args=*/false,
-                              /*return_tuple=*/false,
-                              /*shape_determination_fns=*/{}),
+                              /*return_tuple=*/false),
           "conversion to XLA HLO proto failed");
 
       auto statusOrHloModule = HloModuleFromProto(hlo_proto);

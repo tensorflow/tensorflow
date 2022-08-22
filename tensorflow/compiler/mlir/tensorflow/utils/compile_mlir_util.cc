@@ -51,12 +51,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/xla/layout_util.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/adjust_layout.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
@@ -66,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
@@ -185,12 +188,17 @@ Status GetOutputInfo(
     xla::Shape* xla_output_shape, std::vector<XlaOutputDescription>* outputs,
     std::vector<XlaResourceUpdate>* resource_updates) {
   auto shape_representation_fn_no_fast_memory =
-      [shape_determination_fns](const TensorShape& shape, DataType dtype) {
-        auto layout_preference = shape_determination_fns.layout_preference_fn(
-            shape, dtype, std::nullopt);
-        return shape_determination_fns.shape_representation_fn(
-            shape, dtype, /*use_fast_memory=*/false, layout_preference);
-      };
+      [shape_determination_fns](
+          const xla::Shape& xla_shape) -> StatusOr<xla::Shape> {
+    TensorShape shape;
+    TF_RETURN_IF_ERROR(XLAShapeToTensorShape(xla_shape, &shape));
+    TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
+                                            xla_shape.element_type()));
+    auto layout_preference = shape_determination_fns.layout_preference_fn(
+        shape, dtype, std::nullopt);
+    return shape_determination_fns.shape_representation_fn(
+        shape, dtype, /*use_fast_memory=*/false, layout_preference);
+  };
 
   mlir::func::FuncOp main_func =
       module.lookupSymbol<mlir::func::FuncOp>("main");
@@ -233,9 +241,12 @@ Status GetOutputInfo(
         }
       }
     }
-    TF_ASSIGN_OR_RETURN(
-        xla::Shape shape,
-        xla::TypeToShape(buffer_ty, shape_representation_fn_no_fast_memory));
+
+    xla::Shape shape = xla::TypeToShape(buffer_ty);
+    if (shape.element_type() == xla::PRIMITIVE_TYPE_INVALID) {
+      return errors::InvalidArgument("XLA conversion failed for MLIR type.");
+    }
+    TF_ASSIGN_OR_RETURN(shape, shape_representation_fn_no_fast_memory(shape));
 
     if (!result_ty.hasStaticShape()) {
       int64_t rank = result_ty.getRank();
@@ -512,10 +523,29 @@ Status ConvertMLIRToXlaComputation(
   TF_RETURN_IF_ERROR(LegalizeToHlo(module_op, device_type, prefer_tf2xla,
                                    custom_legalization_passes));
 
+  mlir::MlirToHloConversionOptions options;
+  options.layout_preference_fn =
+      [&](const xla::Shape& xla_shape) -> StatusOr<mlir::XlaLayoutPreference> {
+    TensorShape shape;
+    TF_RETURN_IF_ERROR(XLAShapeToTensorShape(xla_shape, &shape));
+    TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
+                                            xla_shape.element_type()));
+    return shape_determination_fns.layout_preference_fn(shape, dtype,
+                                                        std::nullopt);
+  };
+  options.shape_representation_fn =
+      [&](const xla::Shape& xla_shape, bool fast_mem,
+          mlir::XlaLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
+    TensorShape shape;
+    TF_RETURN_IF_ERROR(XLAShapeToTensorShape(xla_shape, &shape));
+    TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
+                                            xla_shape.element_type()));
+    return shape_determination_fns.shape_representation_fn(
+        shape, dtype, fast_mem, layout_preference);
+  };
   xla::HloProto hlo_proto;
-  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module_op, &hlo_proto,
-                                               use_tuple_args, return_tuple,
-                                               shape_determination_fns));
+  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(
+      module_op, &hlo_proto, use_tuple_args, return_tuple, options));
   *xla_computation = xla::XlaComputation(hlo_proto.hlo_module());
   return OkStatus();
 }

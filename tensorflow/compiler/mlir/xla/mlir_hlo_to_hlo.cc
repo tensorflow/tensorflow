@@ -47,13 +47,10 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
-#include "tensorflow/compiler/tf2xla/layout_util.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -569,17 +566,14 @@ class ConvertToHloModule {
   // are converted to a tuple even when there is only a single return value.
   // Multiple return values are always converted to a tuple and returned as a
   // single value.
-  explicit ConvertToHloModule(
-      mlir::ModuleOp module, xla::XlaBuilder& module_builder,
-      bool use_tuple_args, bool return_tuple,
-      tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns
-          shape_determination_fns,
-      MlirToHloConversionOptions options)
+  explicit ConvertToHloModule(mlir::ModuleOp module,
+                              xla::XlaBuilder& module_builder,
+                              bool use_tuple_args, bool return_tuple,
+                              MlirToHloConversionOptions options)
       : module_(module),
         module_builder_(module_builder),
         use_tuple_args_(use_tuple_args),
         return_tuple_(return_tuple),
-        shape_determination_fns_(shape_determination_fns),
         options_(options) {}
 
   // Perform the lowering to XLA. This function returns failure if an error was
@@ -678,11 +672,6 @@ class ConvertToHloModule {
 
   // Whether to always return a tuple.
   bool return_tuple_;
-
-  // Shape determination functions to determine entry function argument and
-  // result shapes.
-  tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns
-      shape_determination_fns_;
 
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
@@ -2187,8 +2176,9 @@ LogicalResult ConvertToHloModule::Lower(
 
         xla::Shape return_shape = xla::TypeToShape(ret.get().getType());
         StatusOr<xla::XlaOp> reshape =
-            tensorflow::ReshapeWithCorrectRepresentationAndSharding(
-                builder, returns[index], return_shape, shape_determination_fns_,
+            ReshapeWithCorrectRepresentationAndSharding(
+                builder, returns[index], return_shape,
+                options_.layout_preference_fn, options_.shape_representation_fn,
                 ret_shardings[index], /*fast_mem=*/false);
         if (!reshape.ok())
           return inst->emitError() << reshape.status().error_message();
@@ -2336,24 +2326,18 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
   for (BlockArgument& arg : block->getArguments()) {
     arg_shapes->push_back(xla::TypeToShape(arg.getType()));
     xla::Shape& arg_shape = arg_shapes->back();
-    tensorflow::TensorShape arg_tensor_shape;
-    auto status =
-        tensorflow::XLAShapeToTensorShape(arg_shape, &arg_tensor_shape);
-    if (!status.ok())
-      return block->getParentOp()->emitError() << status.error_message();
+    auto layout_preference_status =
+        options_.layout_preference_fn ? options_.layout_preference_fn(arg_shape)
+                                      : XlaLayoutPreference::kNoPreference;
+    if (!layout_preference_status.ok())
+      return block->getParentOp()->emitError()
+             << layout_preference_status.status().error_message();
 
-    tensorflow::DataType arg_dtype;
-    status = tensorflow::ConvertToDataType(arg.getType(), &arg_dtype);
-    if (!status.ok())
-      return block->getParentOp()->emitError() << status.error_message();
-
-    CHECK(shape_determination_fns_.layout_preference_fn &&  // Crash OK
-          shape_determination_fns_.shape_representation_fn);
-    auto layout_preference = shape_determination_fns_.layout_preference_fn(
-        arg_tensor_shape, arg_dtype, std::nullopt);
-    auto arg_shape_status = shape_determination_fns_.shape_representation_fn(
-        arg_tensor_shape, arg_dtype, /*use_fast_memory=*/false,
-        layout_preference);
+    auto arg_shape_status = options_.shape_representation_fn
+                                ? options_.shape_representation_fn(
+                                      arg_shape, /*use_fast_memory=*/false,
+                                      layout_preference_status.ValueOrDie())
+                                : arg_shape;
     if (!arg_shape_status.ok())
       return block->getParentOp()->emitError()
              << arg_shape_status.status().error_message();
@@ -2382,9 +2366,10 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
         return block->getParentOp()->emitError()
                << hlo_sharding.status().error_message();
 
-      auto status = tensorflow::RewriteLayoutWithShardedShape(
+      auto status = RewriteLayoutWithShardedShape(
           hlo_sharding.ValueOrDie(), /*use_fast_memory=*/false,
-          shape_determination_fns_, &(*arg_shapes)[arg_sharding.index()]);
+          options_.layout_preference_fn, options_.shape_representation_fn,
+          &(*arg_shapes)[arg_sharding.index()]);
       if (!status.ok())
         return block->getParentOp()->emitError() << status.error_message();
 
@@ -2568,24 +2553,21 @@ Status ConvertRegionToComputation(mlir::Region* region,
                                   MlirToHloConversionOptions options) {
   mlir::ModuleOp module;
   xla::XlaBuilder module_builder("main");
-  ConvertToHloModule converter(module, module_builder, true, true, {}, options);
+  ConvertToHloModule converter(module, module_builder, true, true, options);
   if (failed(converter.LowerRegionAsComputation(region, func)))
     return tensorflow::errors::Internal(
         "failed to convert region to computation");
   return ::tensorflow::OkStatus();
 }
 
-Status ConvertMlirHloToHlo(
-    mlir::ModuleOp module, xla::HloProto* hlo_proto, bool use_tuple_args,
-    bool return_tuple,
-    const tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns
-        shape_determination_fns,
-    MlirToHloConversionOptions options) {
+Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
+                           bool use_tuple_args, bool return_tuple,
+                           MlirToHloConversionOptions options) {
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder("main");
   ConvertToHloModule converter(module, module_builder, use_tuple_args,
-                               return_tuple, shape_determination_fns, options);
+                               return_tuple, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   StringRef module_name = module.getName() ? *module.getName() : "main";
@@ -2602,7 +2584,7 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   ConvertToHloModule converter(module, builder,
                                /*use_tuple_args=*/false, /*return_tuple=*/false,
-                               /*shape_determination_fns=*/{}, options);
+                               options);
 
   ConvertToHloModule::ValueLoweringMap lowering;
   // xla_params should only include non-constant parameters the block arguments
