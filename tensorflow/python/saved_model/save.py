@@ -839,8 +839,9 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
           object_map=object_map,
           to_graph=exported_graph,
           call_with_mapped_captures=call_with_mapped_captures))
-  saver = functional_saver.MultiDeviceSaver.from_saveables(
-      named_saveable_objects, registered_savers, call_with_mapped_captures)
+  saver = functional_saver.MultiDeviceSaver(named_saveable_objects,
+                                            registered_savers,
+                                            call_with_mapped_captures)
 
   with exported_graph.as_default():
     saver_def = saver.to_proto()

@@ -15,14 +15,8 @@
 # ==============================================================================
 import abc
 
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.trackable import base
 from tensorflow.python.util.tf_export import tf_export
-
-
-PYTHON_STATE = "py_state"
 
 
 @tf_export("train.experimental.PythonState")
@@ -79,9 +73,3 @@ class PythonState(base.Trackable, metaclass=abc.ABCMeta):
   @abc.abstractmethod
   def deserialize(self, string_value):
     """Callback to deserialize the object."""
-
-  def _serialize_to_tensors(self):
-    """Implements Trackable._serialize_to_tensors."""
-    with ops.init_scope():
-      value = constant_op.constant(self.serialize(), dtype=dtypes.string)
-    return {PYTHON_STATE: value}
