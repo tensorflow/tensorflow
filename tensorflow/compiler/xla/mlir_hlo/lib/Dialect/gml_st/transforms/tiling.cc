@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace gml_st {
@@ -60,12 +59,9 @@ Value createTile(OpBuilder &b, Location loc, Value superset, ValueRange ivs,
     }
 
     // Otherwise, compute the tile size dynamically.
-    auto ivNext = b.create<arith::AddIOp>(loc, ivs[i], steps[i]);
-    auto isPartialTileInDim = b.create<arith::CmpIOp>(
-        loc, arith::CmpIPredicate::sgt, ivNext, upperBounds[i]);
     auto remainderInDim = b.create<arith::SubIOp>(loc, upperBounds[i], ivs[i]);
-    auto tileSizeInDim = b.create<arith::SelectOp>(loc, isPartialTileInDim,
-                                                   remainderInDim, steps[i]);
+    auto tileSizeInDim =
+        b.create<arith::MinSIOp>(loc, steps[i], remainderInDim);
     staticSizes.push_back(ShapedType::kDynamicSize);
     dynamicSizes.push_back(tileSizeInDim);
   }

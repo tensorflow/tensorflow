@@ -50,14 +50,10 @@ func.func @identity(%arg: tensor<64x32xf32>) -> tensor<64x32xf32> {
 // CHECK-IMPERFECT-SAME:      (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-IMPERFECT-SAME:      to (%[[C64]], %[[C32]])
 // CHECK-IMPERFECT-SAME:      step (%[[C17]], %[[C9]])
-// CHECK-IMPERFECT:         %[[ADDI:.*]] = arith.addi %[[I]], %[[C17]]
-// CHECK-IMPERFECT:         %[[CMPI:.*]] = arith.cmpi sgt, %[[ADDI]], %[[C64]]
 // CHECK-IMPERFECT:         %[[SUBI:.*]] = arith.subi %[[C64]], %[[I]]
-// CHECK-IMPERFECT:         %[[SELECT:.*]] = arith.select %[[CMPI]], %[[SUBI]], %[[C17]]
-// CHECK-IMPERFECT:         %[[ADDI_0:.*]] = arith.addi %[[J]], %[[C9]]
-// CHECK-IMPERFECT:         %[[CMPI_0:.*]] = arith.cmpi sgt, %[[ADDI_0]], %[[C32]]
+// CHECK-IMPERFECT:         %[[SELECT:.*]] = arith.minsi %[[C17]], %[[SUBI]]
 // CHECK-IMPERFECT:         %[[SUBI_0:.*]] = arith.subi %[[C32]], %[[J]]
-// CHECK-IMPERFECT:         %[[SELECT_0:.*]] = arith.select %[[CMPI_0]], %[[SUBI_0]], %[[C9]]
+// CHECK-IMPERFECT:         %[[SELECT_0:.*]] = arith.minsi %[[C9]], %[[SUBI_0]]
 // CHECK-IMPERFECT:         %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[I]], %[[J]]] [%[[SELECT]], %[[SELECT_0]]] [1, 1]
 // CHECK-IMPERFECT:         %[[MED_ARG:.*]] = gml_st.materialize %[[ARG]][%[[TILE]]]
 // CHECK-IMPERFECT:         %[[MED_INIT:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
@@ -70,14 +66,10 @@ func.func @identity(%arg: tensor<64x32xf32>) -> tensor<64x32xf32> {
 // CHECK-IMPERFECT-SAME:        (%[[ARG3:.*]], %[[ARG4:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-IMPERFECT-SAME:        to (%[[DIM]], %[[DIM_0]])
 // CHECK-IMPERFECT-SAME:        step (%[[C3]], %[[C3]])
-// CHECK-IMPERFECT:           %[[ADDI_1:.*]] = arith.addi %[[ARG3]], %[[C3]]
-// CHECK-IMPERFECT:           %[[CMPI_1:.*]] = arith.cmpi sgt, %[[ADDI_1]], %[[DIM]]
 // CHECK-IMPERFECT:           %[[SUBI_1:.*]] = arith.subi %[[DIM]], %[[ARG3]]
-// CHECK-IMPERFECT:           %[[SELECT_1:.*]] = arith.select %[[CMPI_1]], %[[SUBI_1]], %[[C3]]
-// CHECK-IMPERFECT:           %[[ADDI_2:.*]] = arith.addi %[[ARG4]], %[[C3]]
-// CHECK-IMPERFECT:           %[[CMPI_2:.*]] = arith.cmpi sgt, %[[ADDI_2]], %[[DIM_0]]
+// CHECK-IMPERFECT:           %[[SELECT_1:.*]] = arith.minsi %[[C3]], %[[SUBI_1]]
 // CHECK-IMPERFECT:           %[[SUBI_2:.*]] = arith.subi %[[DIM_0]], %[[ARG4]]
-// CHECK-IMPERFECT:           %[[SELECT_2:.*]] = arith.select %[[CMPI_2]], %[[SUBI_2]], %[[C3]]
+// CHECK-IMPERFECT:           %[[SELECT_2:.*]] = arith.minsi %[[C3]], %[[SUBI_2]]
 // CHECK-IMPERFECT:           %[[INNER_TILE:.*]] = gml_st.tile %[[INNER_SPACE]] [%[[ARG3]], %[[ARG4]]] [%[[SELECT_1]], %[[SELECT_2]]] [1, 1]
 // CHECK-IMPERFECT:           %[[INNER_MED_ARG:.*]] = gml_st.materialize %[[MED_ARG]][%[[INNER_TILE]]]
 // CHECK-IMPERFECT:           gml_st.set_yield %[[INNER_MED_ARG]] into %[[MED_INIT]][%[[INNER_TILE]]]

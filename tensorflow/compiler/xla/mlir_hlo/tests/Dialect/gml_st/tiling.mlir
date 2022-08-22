@@ -57,14 +57,10 @@ func.func @add(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>)
 // CHECK-TILE-SAME:      (%[[I:.*]], %[[J:.*]]) = (%[[LB_C0]], %[[LB_C0]]) 
 // CHECK-TILE-SAME:      to (%[[GENERIC_D0]], %[[GENERIC_D1]]) 
 // CHECK-TILE-SAME:      step (%[[C256]], %[[C512]])
-// CHECK-TILE:         %[[I_PLUS_256:.*]] = arith.addi %[[I]], %[[C256]]
-// CHECK-TILE:         %[[IS_PARTIAL_D0:.*]] = arith.cmpi sgt, %[[I_PLUS_256]], %[[GENERIC_D0]]
 // CHECK-TILE:         %[[REMAINDER_D0:.*]] = arith.subi %[[GENERIC_D0]], %[[I]]
-// CHECK-TILE:         %[[TILE_SIZE_D0:.*]] = arith.select %[[IS_PARTIAL_D0]], %[[REMAINDER_D0]], %[[C256]]
-// CHECK-TILE:         %[[I_PLUS_256_0:.*]] = arith.addi %[[J]], %[[C512]]
-// CHECK-TILE:         %[[IS_PARTIAL_D1:.*]] = arith.cmpi sgt, %[[I_PLUS_256_0]], %[[GENERIC_D1]]
+// CHECK-TILE:         %[[TILE_SIZE_D0:.*]] = arith.minsi %[[C256]], %[[REMAINDER_D0]]
 // CHECK-TILE:         %[[REMAINDER_D1:.*]] = arith.subi %[[GENERIC_D1]], %[[J]]
-// CHECK-TILE:         %[[TILE_SIZE_D1:.*]] = arith.select %[[IS_PARTIAL_D1]], %[[REMAINDER_D1]], %[[C512]]
+// CHECK-TILE:         %[[TILE_SIZE_D1:.*]] = arith.minsi %[[C512]], %[[REMAINDER_D1]]
 // CHECK-TILE:         %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[I]], %[[J]]] [%[[TILE_SIZE_D0]], %[[TILE_SIZE_D1]]] [1, 1]
 // CHECK-TILE:         %[[INNER_GENERIC:.*]] = gml_st.materialize %[[GENERIC]][%[[TILE]]]
 // CHECK-TILE:         gml_st.set_yield %[[INNER_GENERIC]] into %[[INIT]][%[[TILE]]]

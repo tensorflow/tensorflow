@@ -79,7 +79,7 @@ func.func @broadcast(%arg0: tensor<?xf32>) -> tensor<?x?xf32> {
 // CHECK-TILE-SAME:  %[[ARG0:.*]]:
 // CHECK-TILE:       %[[INIT:.*]] = linalg.init_tensor
 // CHECK-TILE:       gml_st.parallel (%[[I:.*]], %[[J:.*]]) =
-// CHECK-TILE:       %[[D0_SIZE:.*]] = arith.select {{.*}}, %c256
+// CHECK-TILE:       %[[D0_SIZE:.*]] = arith.minsi {{.*}}, %c256
 // CHECK-TILE:       %[[OUTPUT_TILE:.*]] = gml_st.tile %{{.*}} [%[[I]], %[[J]]]
 // CHECK-TILE:       %[[INPUT_SPACE:.*]] = gml_st.space [%[[D0_SIZE]]]
 // CHECK-TILE:       %[[INPUT_TILE:.*]] = gml_st.tile %[[INPUT_SPACE]] [%[[I]]]
