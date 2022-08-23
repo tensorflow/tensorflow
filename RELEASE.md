@@ -31,6 +31,11 @@
         causes the returned value to be the local SSIM map instead of the global
         mean.
 
+*   TF Core:
+
+    *   `tf.custom_gradient` can now be applied to functions that accept
+        "composite" tensors, such as `tf.RaggedTensor`, as inputs.
+
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
