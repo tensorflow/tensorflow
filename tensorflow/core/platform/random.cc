@@ -38,11 +38,6 @@ uint64 New64() {
   return (*rng)();
 }
 
-uint64 ThreadLocalNew64() {
-  static thread_local std::mt19937_64* rng = InitRngWithRandomSeed();
-  return (*rng)();
-}
-
 uint64 New64DefaultSeed() {
   static std::mt19937_64 rng = InitRngWithDefaultSeed();
   static mutex mu(LINKER_INITIALIZED);
