@@ -1248,6 +1248,7 @@ cc_library(
         ":export_tf_dialect_op",
         ":lower_tf_lib",
         ":mangling_util",
+        ":parallel_execute_util",
         ":serialize_mlir_module_utils",
         ":shape_inference_pass",
         ":tensorflow",
@@ -2263,6 +2264,18 @@ cc_library(
         "//tensorflow/core:framework",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "parallel_execute_util",
+    srcs = ["utils/parallel_execute_util.cc"],
+    hdrs = ["utils/parallel_execute_util.h"],
+    deps = [
+        ":tensorflow",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
