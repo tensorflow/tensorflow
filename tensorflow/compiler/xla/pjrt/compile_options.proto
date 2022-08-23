@@ -70,5 +70,12 @@ message ExecutableBuildOptionsProto {
   bool allow_spmd_sharding_propagation_to_output = 12;
 }
 
-// TODO(b/240299401): Add attributes to the proto to mirror CompileOptions.
-message CompileOptionsProto {}
+message CompileOptionsProto {
+  // Refer CompileOptions for documentation of fields.
+  repeated ShapeProto argument_layouts = 1;
+  bool parameter_is_tupled_arguments = 2;
+  ExecutableBuildOptionsProto executable_build_options = 3;
+  bool compile_portable_executable = 4;
+  int64 profile_version = 5;
+  // TODO(b/240299401): Add a field to store "multi_slice_config".
+}

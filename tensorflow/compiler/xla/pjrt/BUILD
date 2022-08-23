@@ -224,12 +224,15 @@ tf_cc_test(
 
 cc_library(
     name = "pjrt_executable",
+    srcs = ["pjrt_executable.cc"],
     hdrs = ["pjrt_executable.h"],
     visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
