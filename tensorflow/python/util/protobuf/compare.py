@@ -60,8 +60,6 @@ Alternatively:
 
 import difflib
 
-import six
-
 from google.protobuf import descriptor
 from google.protobuf import descriptor_pool
 from google.protobuf import message
@@ -88,7 +86,7 @@ def assertProtoEqual(self, a, b, check_initialized=True,  # pylint: disable=inva
     msg: if specified, is used as the error message on failure.
   """
   pool = descriptor_pool.Default()
-  if isinstance(a, six.string_types):
+  if isinstance(a, str):
     a = text_format.Merge(a, b.__class__(), descriptor_pool=pool)
 
   for pb in a, b:
@@ -173,7 +171,7 @@ def NormalizeNumberFields(pb):
         # This is a map, only recurse if the values have a message type.
         if (desc.message_type.fields_by_number[2].type ==
             descriptor.FieldDescriptor.TYPE_MESSAGE):
-          for v in six.itervalues(values):
+          for v in values.values():
             NormalizeNumberFields(v)
       else:
         for v in values:
@@ -188,7 +186,7 @@ def _IsMap(value):
 
 
 def _IsRepeatedContainer(value):
-  if isinstance(value, six.string_types):
+  if isinstance(value, str):
     return False
   try:
     iter(value)
@@ -252,7 +250,7 @@ def ProtoEq(a, b):
   return True
 
 
-class ProtoAssertions(object):
+class ProtoAssertions:
   """Mix this into a googletest.TestCase class to get proto2 assertions.
 
   Usage:

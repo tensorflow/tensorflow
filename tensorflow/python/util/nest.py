@@ -85,7 +85,6 @@ should be recursive. The behavior is undefined if there is a cycle.
 
 import collections as _collections
 
-import six as _six
 import wrapt as _wrapt
 
 from tensorflow.python.platform import tf_logging
@@ -242,7 +241,7 @@ def _sequence_like(instance, args):
     # Pack a CompositeTensor's components according to a TypeSpec.
     assert len(args) == 1
     return instance._from_components(args[0])  # pylint: disable=protected-access
-  elif isinstance(instance, _six.moves.range):
+  elif isinstance(instance, range):
     return _sequence_like(list(instance), args)
   elif isinstance(instance, _wrapt.ObjectProxy):
     # For object proxies, first create the underlying type and then re-wrap it
@@ -459,7 +458,7 @@ same_namedtuples = _pywrap_utils.SameNamedtuples
 _same_namedtuples = same_namedtuples  # This function was private up to TF2.5.
 
 
-class _DotString(object):
+class _DotString:
 
   __slots__ = []
 

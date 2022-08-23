@@ -18,8 +18,6 @@ import copy
 import re
 import textwrap
 
-import six
-
 from google.protobuf import text_format
 
 from tensorflow.python.platform import googletest
@@ -211,23 +209,23 @@ class NormalizeNumbersTest(googletest.TestCase):
     pb = compare_test_pb2.Large()
     pb.int64_ = 4
     compare.NormalizeNumberFields(pb)
-    self.assertTrue(isinstance(pb.int64_, six.integer_types))
+    self.assertIsInstance(pb.int64_, int)
 
     pb.int64_ = 4
     compare.NormalizeNumberFields(pb)
-    self.assertTrue(isinstance(pb.int64_, six.integer_types))
+    self.assertIsInstance(pb.int64_, int)
 
     pb.int64_ = 9999999999999999
     compare.NormalizeNumberFields(pb)
-    self.assertTrue(isinstance(pb.int64_, six.integer_types))
+    self.assertIsInstance(pb.int64_, int)
 
   def testNormalizesRepeatedInts(self):
     pb = compare_test_pb2.Large()
     pb.int64s.extend([1, 400, 999999999999999])
     compare.NormalizeNumberFields(pb)
-    self.assertTrue(isinstance(pb.int64s[0], six.integer_types))
-    self.assertTrue(isinstance(pb.int64s[1], six.integer_types))
-    self.assertTrue(isinstance(pb.int64s[2], six.integer_types))
+    self.assertIsInstance(pb.int64s[0], int)
+    self.assertIsInstance(pb.int64s[1], int)
+    self.assertIsInstance(pb.int64s[2], int)
 
   def testNormalizesFloats(self):
     pb1 = compare_test_pb2.Large()
@@ -267,7 +265,7 @@ class AssertTest(googletest.TestCase):
   """Tests assertProtoEqual()."""
 
   def assertProtoEqual(self, a, b, **kwargs):
-    if isinstance(a, six.string_types) and isinstance(b, six.string_types):
+    if isinstance(a, str) and isinstance(b, str):
       a, b = LargePbs(a, b)
     compare.assertProtoEqual(self, a, b, **kwargs)
 

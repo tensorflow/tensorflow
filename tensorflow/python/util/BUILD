@@ -312,9 +312,6 @@ py_strict_library(
         "//third_party/py/tf_slim:__subpackages__",
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
     ],
-    deps = [
-        "@six_archive//:six",
-    ],
 )
 
 # Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
@@ -325,10 +322,7 @@ py_strict_library(
     srcs_version = "PY3",
     # TODO(mdan): Remove public visibility.
     visibility = ["//visibility:public"],
-    deps = [
-        ":_tf_stack",
-        "@six_archive//:six",
-    ],
+    deps = [":_tf_stack"],
 )
 
 tf_python_pybind_extension(
@@ -468,7 +462,6 @@ py_library(
         ":tf_export",
         "@com_google_protobuf//:protobuf_python",
         "//third_party/py/numpy",
-        "@six_archive//:six",
         "@wrapt",
         "//tensorflow/python/util/protobuf",
         "//tensorflow/tools/docs:doc_controls",
@@ -586,7 +579,6 @@ py_library(
         ":util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:context",
-        "@six_archive//:six",
     ],
 )
 
@@ -668,7 +660,6 @@ tf_py_test(
         ":util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/tools/compatibility:all_renames_v2",
-        "@six_archive//:six",
     ],
 )
 
