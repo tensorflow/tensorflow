@@ -2226,6 +2226,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     x = tf.keras.layers.Dense(3)(x)
     x = tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
     model = tf.keras.Model(input_tensor, x)
+
     model.compile(
         optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])
 
