@@ -141,7 +141,7 @@ bool CheckCanonical(HloDotInstruction* dot) {
       !absl::c_equal(dimension_numbers.rhs_batch_dimensions(),
                      canonical_batch_dims)) {
     VLOG(2)
-        dot->ToString()
+        << dot->ToString()
         << " is not canonical: Expected batch dimensions to be all "
            "dimensions except for the last 2 ones. Hence, this dot is not a "
            "candidate for padding.";
