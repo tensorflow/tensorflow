@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
-#include "tfrt/support/error_util.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -38,7 +37,6 @@ namespace runtime {
 using namespace mlir;  // NOLINT
 
 using llvm::Error;
-using tfrt::MakeStringError;
 
 static bool DebugJitCompiler() {
 #if defined(DEBUG_XLA_RUNTIME_COMPILER)

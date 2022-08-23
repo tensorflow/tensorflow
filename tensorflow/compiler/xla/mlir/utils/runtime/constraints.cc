@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Error.h"
-#include "tfrt/support/error_util.h"  // from @tf_runtime
+#include "tensorflow/compiler/xla/runtime/errors.h"
 
 namespace xla {
 namespace runtime {
@@ -28,8 +28,6 @@ using namespace mlir;  // NOLINT
 
 using llvm::Expected;
 using llvm::SmallVector;
-
-using tfrt::MakeStringError;
 
 Expected<SmallVector<ArgumentConstraint>> GetArgumentsConstraints(
     func::FuncOp func) {

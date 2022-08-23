@@ -104,7 +104,7 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   host->Await({executable->CopyRef()});
 
   CHECK(!executable->IsError())
-      << "Failed to get executable: " << StrCat(executable->GetError());
+      << "Failed to get executable: " << tfrt::StrCat(executable->GetError());
   CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
   // Initialize call frame with MemrefDesc operands.

@@ -55,18 +55,18 @@
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                   xla::gpu::JitRtKernelsCache);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                   xla::gpu::JitRtGemmConfigCache);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                   xla::gpu::JitRtCollectiveSupport);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                   xla::gpu::JitRtAsyncCollectiveSupport);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                   const xla::ServiceExecutableRunOptions);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                   const xla::DebugOptions);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          xla::gpu::JitRtKernelsCache);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          xla::gpu::JitRtGemmConfigCache);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          xla::gpu::JitRtCollectiveSupport);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(
+    xla::runtime::CustomCall, xla::gpu::JitRtAsyncCollectiveSupport);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(
+    xla::runtime::CustomCall, const xla::ServiceExecutableRunOptions);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          const xla::DebugOptions);
 
 namespace xla {
 namespace gpu {

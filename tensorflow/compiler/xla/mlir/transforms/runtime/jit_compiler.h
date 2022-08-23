@@ -31,9 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
+#include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
-#include "tfrt/support/error_util.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {

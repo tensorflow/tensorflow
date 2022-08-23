@@ -567,7 +567,6 @@ config_setting(
 #         "//tensorflow/core/platform:human_readable_json",
 #         "//tensorflow/stream_executor/gpu:gpu_stream",
 #         "//tensorflow/stream_executor/gpu:gpu_types_header",
-#         "@tf_runtime//:support",
 #         "//tensorflow/compiler/xla/runtime:custom_call",
 #         "//tensorflow/compiler/xla/runtime:type_id",
 #         "//tensorflow/compiler/xla/mlir/transforms/runtime:custom_call_encoding",

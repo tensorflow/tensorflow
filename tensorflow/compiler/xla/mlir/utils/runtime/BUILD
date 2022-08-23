@@ -20,7 +20,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_async_runtime_api",
         "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -41,9 +40,9 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/runtime:constraints",
+        "//tensorflow/compiler/xla/runtime:errors",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@tf_runtime//:support",
     ],
 )

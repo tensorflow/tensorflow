@@ -124,6 +124,7 @@ cc_library(
         ":type_converter",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:constraints",
+        "//tensorflow/compiler/xla/runtime:errors",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:symbolic_shape",
         "@llvm-project//llvm:Core",
@@ -133,7 +134,6 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ToLLVMIRTranslation",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -155,7 +155,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TensorDialect",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -171,6 +170,5 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:IR",
-        "@tf_runtime//:support",
     ],
 )
