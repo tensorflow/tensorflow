@@ -711,32 +711,37 @@ bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
 // a reduce operations. In this case, the above description on "output" apply
 // to the result of such a use-chain, which provides the input to the reduce
 // operation.
-static bool IsInstructionSafeForShmemTranspose(const HloInstruction* hlo) {
-  if (hlo->IsElementwise()) {
-    return absl::c_all_of(hlo->users(), [&](const HloInstruction* user) {
-      return IsInstructionSafeForShmemTranspose(user);
-    });
+static bool IsInstructionSafeForShmemTransposeRec(
+    const HloInstruction* hlo,
+    absl::flat_hash_map<const HloInstruction*, bool>* memoized) {
+  auto it = memoized->find(hlo);
+  if (it != memoized->end()) {
+    return it->second;
   }
+  static const auto* const to_traverse = new absl::flat_hash_set<HloOpcode>{
+      HloOpcode::kGetTupleElement, HloOpcode::kMap, HloOpcode::kParameter,
+      HloOpcode::kTuple};
 
-  // Needs to be kept in sync with `ShmemTransposeSupportedForInputs` below.
-  switch (hlo->opcode()) {
-    // Non-elementwise instructions that don't cause the shmem transpose
-    // to be unsafe, including the instructions that don't currently fuse.
-    case HloOpcode::kGetDimensionSize:
+  bool is_safe = [&] {
+    if (hlo->IsElementwise() || to_traverse->contains(hlo->opcode())) {
+      return absl::c_all_of(hlo->users(), [&](const HloInstruction* user) {
+        return IsInstructionSafeForShmemTransposeRec(user, memoized);
+      });
+    } else if (hlo->opcode() == HloOpcode::kGetDimensionSize) {
       // The result of the operation doesn't rely on the content of the
       // tensor. As such, there is no need to further inspect its users.
       return true;
-    case HloOpcode::kGetTupleElement:
-    case HloOpcode::kMap:
-    case HloOpcode::kParameter:
-    case HloOpcode::kTuple:
-      return absl::c_all_of(hlo->users(), [&](const HloInstruction* user) {
-        return IsInstructionSafeForShmemTranspose(user);
-      });
+    }
+    return false;
+  }();
 
-    default:
-      return false;
-  }
+  memoized->emplace(hlo, is_safe);
+  return is_safe;
+}
+
+static bool IsInstructionSafeForShmemTranspose(const HloInstruction* hlo) {
+  absl::flat_hash_map<const HloInstruction*, bool> mapping;
+  return IsInstructionSafeForShmemTransposeRec(hlo, &mapping);
 }
 
 // Given a group of input parameters that are 0-2-1 transpose of the outputs
