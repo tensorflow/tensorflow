@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
@@ -744,47 +743,6 @@ static bool IsInstructionSafeForShmemTranspose(const HloInstruction* hlo) {
   return IsInstructionSafeForShmemTransposeRec(hlo, &mapping);
 }
 
-// Given a group of input parameters that are 0-2-1 transpose of the outputs
-// of a fusion kernel, returns the input parameters that are safe for the
-// shared memory transpose implementation.
-//
-// When a tile based shared memory transpose is used to implement an input
-// with 0-2-1 transpose, we preload a tile of the input elements [z, y..y+31,
-// x..x+31] to compute the output tile elements of the same indices.
-// Preloading the input tile this way is only safe when the computation of the
-// output tile elements do not need any input element outside the preloaded
-// tile. We inspect all the transitive users of the input parameter up to the
-// fusion root instruction to see if we can find any instruction that can make
-// preloading the input tile unsafe.
-static std::vector<int64_t> FilterInputsForShmemTranspose(
-    const HloComputation* fused_computation, std::vector<int64_t> input_ids) {
-  std::vector<int64_t> filtered_input_ids;
-  for (int64_t input_id : input_ids) {
-    const HloInstruction* instr =
-        fused_computation->parameter_instruction(input_id);
-    if (IsInstructionSafeForShmemTranspose(instr)) {
-      filtered_input_ids.push_back(input_id);
-    } else {
-      VLOG(10) << "Input not safe for shmem transpose " << instr->ToString();
-    }
-  }
-  return filtered_input_ids;
-}
-
-// Whether code emission supports shared memory transposes for one or more
-// `input_ids`.
-bool ShmemTransposeSupportedForInputs(const HloInstruction& instr,
-                                      std::vector<int64_t> input_ids) {
-  if (instr.opcode() == HloOpcode::kFusion) {
-    return !FilterInputsForShmemTranspose(
-                instr.fused_instructions_computation(), input_ids)
-                .empty();
-  }
-  // Needs to be kept in sync with `IsInstructionSafeForShmemTranspose` above.
-  return instr.IsElementwise() ||
-         instr.opcode() == HloOpcode::kGetDimensionSize;
-}
-
 static std::optional<TransposeDimsAndParams> FindTranspose021DimsAndParameters(
     const std::vector<Shape>& operand_shapes, const Shape& output_shape) {
   std::vector<int64_t> params_012;
@@ -850,8 +808,12 @@ std::optional<TransposeDimsAndParams> Match021Transpose(
     return std::nullopt;
   }
 
-  params_012 = FilterInputsForShmemTranspose(fused_computation, params_012);
-  if (params_012.empty()) {
+  auto safe_params = llvm::make_filter_range(params_012, [&](int64_t param_id) {
+    return IsInstructionSafeForShmemTranspose(
+        fused_computation->parameter_instruction(param_id));
+  });
+
+  if (safe_params.empty()) {
     VLOG(3) << "021 transpose on " << root->ToString()
             << "not matched: no inputs matched after filtering "
                "for shmem access";
@@ -878,29 +840,30 @@ std::optional<TransposeDimsAndParams> Match021Transpose(
   // memory, we'll have to adjust this heuristic.
   constexpr int kMinBlocksPerCore = 3;
   constexpr int64_t kShmemPerCore = 48 * 1024;
+
   int64_t shmem_used = 0;
-  for (int64_t i = 0; i < params_012.size(); ++i) {
+  std::vector<int64_t> filtered_params;
+  for (int64_t param_id : safe_params) {
     const Shape& operand_shape =
-        fused_computation->parameter_instruction(params_012[i])->shape();
+        fused_computation->parameter_instruction(param_id)->shape();
     shmem_used +=
         32 * 33 *
         ShapeUtil::ByteSizeOfPrimitiveType(operand_shape.element_type());
 
     if (kMinBlocksPerCore * shmem_used > kShmemPerCore) {
-      // Erase this element and everything after it from params_012.
-      params_012.resize(i);
       break;
     }
+    filtered_params.push_back(param_id);
   }
 
-  if (params_012.empty()) {
+  if (filtered_params.empty()) {
     VLOG(3)
         << "021 transpose on :" << root->ToString()
         << " not matched: no inputs matched after filtering for shmem budget";
     return std::nullopt;
   }
 
-  return TransposeDimsAndParams{reduced_dims_021, params_012};
+  return TransposeDimsAndParams{reduced_dims_021, filtered_params};
 }
 
 }  // namespace gpu
