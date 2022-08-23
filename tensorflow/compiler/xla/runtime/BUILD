@@ -22,7 +22,6 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:type_converter",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -50,7 +49,6 @@ cc_library(
         "@com_google_absl//absl/base:dynamic_annotations",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -74,7 +72,6 @@ cc_library(
     deps = [
         ":errors",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -84,6 +81,7 @@ cc_library(
     hdrs = ["custom_call.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":map_by_type",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/runtime:diagnostics",
         "//tensorflow/compiler/xla/runtime:logical_result",
@@ -91,7 +89,6 @@ cc_library(
         "//third_party/eigen3",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -103,7 +100,6 @@ cc_library(
     deps = [
         ":custom_call",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -126,7 +122,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -162,7 +157,6 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/utils/runtime:c_runner_utils",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -181,7 +175,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:X86AsmParser",
         "@llvm-project//llvm:X86CodeGen",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -199,7 +192,6 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -208,6 +200,26 @@ cc_library(
     hdrs = ["logical_result.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = ["@llvm-project//mlir:Support"],
+)
+
+cc_library(
+    name = "map_by_type",
+    hdrs = ["map_by_type.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":type_id",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "map_by_type_test",
+    srcs = ["map_by_type_test.cc"],
+    deps = [
+        ":map_by_type",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 cc_library(
@@ -252,7 +264,6 @@ cc_library(
         ":constraints",
         ":types",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:support",
     ],
 )
 
@@ -278,7 +289,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:support",
     ],
 )
 

@@ -41,8 +41,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
+#include "tensorflow/compiler/xla/runtime/map_by_type.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
-#include "tfrt/support/map_by_type.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -61,7 +61,7 @@ void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& registry);
 class CustomCall {
  public:
   // Container for passing data between XLA user and the custom call handler.
-  using UserData = tfrt::PtrMapByType<CustomCall>;
+  using UserData = PtrMapByType<CustomCall>;
 
   // A type for matching all remaining custom call arguments.
   class RemainingArgs;
