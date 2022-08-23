@@ -299,6 +299,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ]) + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_asm_compiler",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
         "//tensorflow/compiler/xla/stream_executor/cuda:ptxas_wrapper",
         "//tensorflow/compiler/xla/stream_executor/cuda:fatbinary_wrapper",
