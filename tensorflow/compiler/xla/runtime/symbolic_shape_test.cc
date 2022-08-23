@@ -24,19 +24,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/types.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
 
 using llvm::ArrayRef;
-using tfrt::DType;
 
 using SymbolicShape = SymbolicShapesResolver::SymbolicShape;
 
 // Create a function type with empty results from the operands shapes.
 static FunctionType GetFunctionType(
-    llvm::SmallVector<DType> dtypes,
+    llvm::SmallVector<PrimitiveType> dtypes,
     llvm::SmallVector<llvm::Optional<SymbolicShape>> shapes) {
   llvm::SmallVector<std::unique_ptr<Type>> operands;
   operands.reserve(shapes.size());
@@ -60,7 +58,8 @@ static OpaqueArg GetFakeOpaqueArg() { return OpaqueArg(nullptr); }
 // Creates fake memref argument of the given shape.
 static MemrefDesc GetFakeMemref(SymbolicShape shape) {
   // Data type of the fake memrefs doesn't matter.
-  return MemrefDesc(DType::F32, nullptr, 0, shape, shape /* fake strides */);
+  return MemrefDesc(PrimitiveType::F32, nullptr, 0, shape,
+                    shape /* fake strides */);
 }
 
 // Creates fake memref arguments of the given shapes.
@@ -80,7 +79,7 @@ static llvm::SmallVector<SymbolicShape> SymbolicShapes(
 
 TEST(SymbolicShapeResolverTest, UnrankedInputs) {
   // Operands: tensor<*xf32>, tensor<?xi32>, tensor<?x4xi1>
-  auto dtypes = {DType::F32, DType::I32, DType::I1};
+  auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED};
 
   auto type = GetFunctionType(dtypes, {llvm::None,
                                        {{MemrefType::kDynamicSize}},
@@ -143,7 +142,7 @@ TEST(SymbolicShapeResolverTest, UnrankedInputs) {
 
 TEST(SymbolicShapeResolverTest, DynamicInputShapes) {
   // Operands: tensor<?xf32>, tensor<?xi32>, tensor<?xi1>
-  auto dtypes = {DType::F32, DType::I32, DType::I1};
+  auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED};
   auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamicSize}},
                                        {{MemrefType::kDynamicSize}},
                                        {{MemrefType::kDynamicSize}}});
@@ -205,7 +204,7 @@ TEST(SymbolicShapeResolverTest, DynamicInputShapes) {
 
 TEST(SymbolicShapeResolverTest, PartialInputShapes) {
   // Operands: tensor<?x4xf32>, tensor<?x8xi32>, tensor<?xi1>
-  auto dtypes = {DType::F32, DType::I32, DType::I1};
+  auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED};
   auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamicSize, 4}},
                                        {{MemrefType::kDynamicSize, 8}},
                                        {{MemrefType::kDynamicSize}}});
@@ -279,7 +278,7 @@ TEST(SymbolicShapeResolverTest, PartialInputShapes) {
 
 TEST(SymbolicShapeResolverTest, ShapeConstrainedInput) {
   // Operands: tensor<*xf32>, tensor<?x4xi32>
-  auto dtypes = {DType::F32, DType::I32};
+  auto dtypes = {PrimitiveType::F32, PrimitiveType::S32};
 
   auto type =
       GetFunctionType(dtypes, {llvm::None, {{MemrefType::kDynamicSize, 4}}});
@@ -303,7 +302,7 @@ TEST(SymbolicShapeResolverTest, ShapeConstrainedInput) {
 
 TEST(SymbolicShapeResolverTest, ShapeConstrainedInputAfterDynamicInput) {
   // Operands: tensor<?x?xf32>, tensor<?x?xi32>
-  auto dtypes = {DType::F32, DType::I32};
+  auto dtypes = {PrimitiveType::F32, PrimitiveType::S32};
 
   auto type = GetFunctionType(
       dtypes, {{{MemrefType::kDynamicSize, MemrefType::kDynamicSize}},
@@ -342,7 +341,7 @@ TEST(SymbolicShapeResolverTest, ShapeConstrainedInputAfterDynamicInput) {
 
 TEST(SymbolicShapeResolverTest, StaticShapeOperandHash) {
   // Operands: tensor<?x?xf32>, tensor<4x4xi32>
-  auto dtypes = {DType::F32, DType::I32};
+  auto dtypes = {PrimitiveType::F32, PrimitiveType::S32};
 
   auto type = GetFunctionType(
       dtypes,
@@ -368,7 +367,7 @@ TEST(SymbolicShapeResolverTest, StaticShapeOperandHash) {
 
 TEST(SymbolicShapeResolverTest, IncompatibleInput) {
   // Operands: tensor<?x4xi32>
-  auto dtypes = {DType::F32};
+  auto dtypes = {PrimitiveType::F32};
   auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamicSize, 4}}});
   auto constraints = {ArgumentConstraint::kResolved};
 
@@ -399,8 +398,8 @@ TEST(SymbolicShapeResolverTest, OpaqueAndShapedInputs) {
   // Operands: !async.token, tensor<?x4xf32>, tensor<?x4xf32>
   llvm::SmallVector<std::unique_ptr<Type>> operands;
   operands.push_back(std::make_unique<AsyncTokenType>());
-  operands.push_back(std::make_unique<MemrefType>(shape, DType::F32));
-  operands.push_back(std::make_unique<MemrefType>(shape, DType::F32));
+  operands.push_back(std::make_unique<MemrefType>(shape, PrimitiveType::F32));
+  operands.push_back(std::make_unique<MemrefType>(shape, PrimitiveType::F32));
 
   auto constraints = {ArgumentConstraint::kResolved,
                       ArgumentConstraint::kResolved,
@@ -465,7 +464,8 @@ struct ResolveHash {
 
 template <typename Resolver>
 static void BenchmarkFullyDynamic(benchmark::State& state) {
-  auto dtypes = {DType::F32, DType::I32, DType::I1, DType::F32};
+  auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED,
+                 PrimitiveType::F32};
 
   auto type = GetFunctionType(
       dtypes, {{{MemrefType::kDynamicSize, MemrefType::kDynamicSize}},
@@ -489,7 +489,8 @@ static void BenchmarkFullyDynamic(benchmark::State& state) {
 
 template <typename Resolver>
 static void BenchmarkSameDynamic(benchmark::State& state) {
-  auto dtypes = {DType::F32, DType::I32, DType::I1, DType::F32};
+  auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED,
+                 PrimitiveType::F32};
 
   auto type = GetFunctionType(
       dtypes, {{{MemrefType::kDynamicSize, MemrefType::kDynamicSize}},
@@ -513,7 +514,8 @@ static void BenchmarkSameDynamic(benchmark::State& state) {
 
 template <typename Resolver>
 static void BenchmarkSomeDynamic(benchmark::State& state) {
-  auto dtypes = {DType::F32, DType::I32, DType::I1, DType::F32};
+  auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED,
+                 PrimitiveType::F32};
 
   auto type = GetFunctionType(
       dtypes, {{{2, 2}},
@@ -537,7 +539,8 @@ static void BenchmarkSomeDynamic(benchmark::State& state) {
 
 template <typename Resolver>
 static void BenchmarkStatic(benchmark::State& state) {
-  auto dtypes = {DType::F32, DType::I32, DType::I1, DType::F32};
+  auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED,
+                 PrimitiveType::F32};
 
   auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamicSize, 4}},
                                        {{MemrefType::kDynamicSize, 8}},
@@ -560,7 +563,8 @@ static void BenchmarkStatic(benchmark::State& state) {
 
 template <typename Resolver>
 static void BenchmarkSymbolic(benchmark::State& state) {
-  auto dtypes = {DType::F32, DType::I32, DType::I1, DType::F32};
+  auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED,
+                 PrimitiveType::F32};
 
   auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamicSize, 4}},
                                        {{MemrefType::kDynamicSize, 8}},

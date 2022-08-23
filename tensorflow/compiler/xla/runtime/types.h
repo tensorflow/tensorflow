@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/Support/Errc.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "tfrt/dtype/dtype.h"  // from @tf_runtime
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace runtime {
@@ -136,18 +136,18 @@ class RankedTensorType : public llvm::RTTIExtends<RankedTensorType, Type> {
 
   static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamicSize; }
 
-  RankedTensorType(llvm::ArrayRef<int64_t> sizes, tfrt::DType element_type)
+  RankedTensorType(llvm::ArrayRef<int64_t> sizes, PrimitiveType element_type)
       : sizes_(sizes.begin(), sizes.end()), element_type_(element_type) {}
 
   llvm::ArrayRef<int64_t> sizes() const { return sizes_; }
   unsigned rank() const { return sizes_.size(); }
-  tfrt::DType element_type() const { return element_type_; }
+  PrimitiveType element_type() const { return element_type_; }
 
   llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
 
  private:
   llvm::SmallVector<int64_t> sizes_;
-  tfrt::DType element_type_;
+  PrimitiveType element_type_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -158,15 +158,15 @@ class UnrankedTensorType : public llvm::RTTIExtends<UnrankedTensorType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
 
-  explicit UnrankedTensorType(tfrt::DType element_type)
+  explicit UnrankedTensorType(PrimitiveType element_type)
       : element_type_(element_type) {}
 
-  tfrt::DType element_type() const { return element_type_; }
+  PrimitiveType element_type() const { return element_type_; }
 
   llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
 
  private:
-  tfrt::DType element_type_;
+  PrimitiveType element_type_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -180,12 +180,12 @@ class MemrefType : public llvm::RTTIExtends<MemrefType, Type> {
 
   static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamicSize; }
 
-  MemrefType(llvm::ArrayRef<int64_t> sizes, tfrt::DType element_type)
+  MemrefType(llvm::ArrayRef<int64_t> sizes, PrimitiveType element_type)
       : sizes_(sizes.begin(), sizes.end()), element_type_(element_type) {}
 
   llvm::ArrayRef<int64_t> sizes() const { return sizes_; }
   unsigned rank() const { return sizes_.size(); }
-  tfrt::DType element_type() const { return element_type_; }
+  PrimitiveType element_type() const { return element_type_; }
 
   llvm::ErrorOr<ArgumentAbi> AsArgument() const final;
   llvm::ErrorOr<ResultAbi> AsResult() const final;
@@ -194,7 +194,7 @@ class MemrefType : public llvm::RTTIExtends<MemrefType, Type> {
 
  private:
   llvm::SmallVector<int64_t> sizes_;
-  tfrt::DType element_type_;
+  PrimitiveType element_type_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -205,15 +205,15 @@ class UnrankedMemrefType : public llvm::RTTIExtends<UnrankedMemrefType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
 
-  explicit UnrankedMemrefType(tfrt::DType element_type)
+  explicit UnrankedMemrefType(PrimitiveType element_type)
       : element_type_(element_type) {}
 
-  tfrt::DType element_type() const { return element_type_; }
+  PrimitiveType element_type() const { return element_type_; }
 
   llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
 
  private:
-  tfrt::DType element_type_;
+  PrimitiveType element_type_;
 };
 
 //===----------------------------------------------------------------------===//

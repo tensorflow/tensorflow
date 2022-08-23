@@ -37,6 +37,7 @@ using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConversion;
 using ::tfrt::jitrt::StaticRemainingResultsConverter;
 
+using ::xla::PrimitiveType;
 using ::xla::runtime::MemrefType;
 
 using ReturnTensorflowTensor =
@@ -49,7 +50,7 @@ using TensorflowResultConverter =
 
 static void BM_ReturnTensor(benchmark::State& state) {
   auto dims = std::array<int64_t, 4>({1, 2, 3, 4});
-  auto type = std::make_unique<MemrefType>(dims, DType::F32);
+  auto type = std::make_unique<MemrefType>(dims, PrimitiveType::F32);
 
   // Prepare a memref descriptor that will be returned as a tensor.
   StridedMemRefType<float, 4> memref{

@@ -38,6 +38,10 @@ static void PrintArr(raw_ostream& os, std::string_view name,
   os << "]";
 }
 
+static raw_ostream& operator<<(raw_ostream& os, PrimitiveType type) {
+  return os << primitive_util::LowercasePrimitiveTypeName(type);
+}
+
 raw_ostream& operator<<(raw_ostream& os, const StridedMemrefView& view) {
   os << "StridedMemrefView: dtype: " << view.dtype;
   PrintArr(os, "sizes", view.sizes);

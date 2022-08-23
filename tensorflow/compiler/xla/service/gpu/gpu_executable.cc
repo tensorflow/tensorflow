@@ -1074,7 +1074,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   rt_args.push_back(std::make_unique<runtime::KernelContextOperandType>());
 
   for (int64_t size : buffer_sizes) {
-    auto i8 = tfrt::DType::I8;
+    auto i8 = PrimitiveType::S8;
     args.push_back(std::make_unique<runtime::MemrefType>(size, i8));
     rt_args.push_back(std::make_unique<runtime::MemrefType>(size, i8));
   }

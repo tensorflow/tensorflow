@@ -28,9 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
+#include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
-#include "tfrt/dtype/dtype.h"  // from @tf_runtime
-#include "tfrt/support/error_util.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -39,10 +38,6 @@ using llvm::ArrayRef;
 using llvm::dyn_cast;
 using llvm::Error;
 using llvm::Expected;
-
-using tfrt::DType;
-using tfrt::MakeStringError;
-using tfrt::TypeForDTypeKind;
 
 using SymbolicShape = SymbolicShapesResolver::SymbolicShape;
 
@@ -115,16 +110,14 @@ static mlir::DenseElementsAttr GetMemrefValues(mlir::Builder& builder,
   llvm::SmallVector<mlir::Attribute> attributes;
   size_t num_values = rank == 0 ? 1 : desc.size(0);
   switch (desc.dtype()) {
-    case DType::I32: {
-      const auto* data =
-          static_cast<TypeForDTypeKind<DType::I32>*>(desc.data());
+    case PrimitiveType::S32: {
+      const auto* data = static_cast<int32_t*>(desc.data());
       for (int i = 0; i < num_values; ++i) {
         attributes.push_back(builder.getI32IntegerAttr(data[i]));
       }
     } break;
-    case DType::I64: {
-      const auto* data =
-          static_cast<TypeForDTypeKind<DType::I64>*>(desc.data());
+    case PrimitiveType::S64: {
+      const auto* data = static_cast<int64_t*>(desc.data());
       for (int i = 0; i < num_values; ++i) {
         attributes.push_back(builder.getI64IntegerAttr(data[i]));
       }

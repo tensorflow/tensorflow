@@ -38,10 +38,10 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Error.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
-#include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/support/map_by_type.h"  // from @tf_runtime
 
 namespace xla {
@@ -827,7 +827,7 @@ constexpr int64_t CustomCallHandler<checks, Fn, Ts...>::kNumArgs;
 // doesn't own the sizes/strides vectors, and cheap to pass around. Memrefs with
 // non-identity layouts can be decoded only as a StridedMemrefView.
 struct StridedMemrefView {
-  tfrt::DType dtype;
+  PrimitiveType dtype;
   void* data;
   llvm::ArrayRef<int64_t> sizes;
   llvm::ArrayRef<int64_t> strides;
@@ -835,7 +835,7 @@ struct StridedMemrefView {
 
 // A view into the memref argument with an identity (row major) layout.
 struct MemrefView {
-  tfrt::DType dtype;
+  PrimitiveType dtype;
   void* data;
   llvm::ArrayRef<int64_t> sizes;
 };
@@ -844,7 +844,7 @@ struct MemrefView {
 // memref shape and strides are not required for the custom call, it's cheaper
 // to pass the flat view.
 struct FlatMemrefView {
-  tfrt::DType dtype;
+  PrimitiveType dtype;
   void* data;
   int64_t size_in_bytes;
 };
@@ -868,7 +868,7 @@ struct CustomCallArgDecoding<StridedMemrefView, checks> {
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
         encoded, sizeof(EncodedMemref) + encoded->rank * sizeof(int64_t));
 
-    tfrt::DType dtype = static_cast<tfrt::DType>(encoded->dtype);
+    PrimitiveType dtype = static_cast<PrimitiveType>(encoded->dtype);
     return StridedMemrefView{dtype,
                              encoded->data,
                              {encoded->dims, encoded->rank},
@@ -890,7 +890,7 @@ struct CustomCallArgDecoding<MemrefView, checks> {
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
         encoded, sizeof(EncodedMemref) + encoded->rank * sizeof(int64_t));
 
-    tfrt::DType dtype = static_cast<tfrt::DType>(encoded->dtype);
+    PrimitiveType dtype = static_cast<PrimitiveType>(encoded->dtype);
     return MemrefView{dtype, encoded->data, {encoded->dims, encoded->rank}};
   }
 };
@@ -909,8 +909,8 @@ struct CustomCallArgDecoding<FlatMemrefView, checks> {
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
         encoded, sizeof(EncodedMemref) + encoded->rank * sizeof(int64_t));
 
-    tfrt::DType dtype = static_cast<tfrt::DType>(encoded->dtype);
-    int64_t size_in_bytes = GetHostSize(dtype);
+    PrimitiveType dtype = static_cast<PrimitiveType>(encoded->dtype);
+    int64_t size_in_bytes = primitive_util::ByteWidth(dtype);
     for (int d = 0; d < encoded->rank; ++d) size_in_bytes *= encoded->dims[d];
     return FlatMemrefView{dtype, encoded->data, size_in_bytes};
   }

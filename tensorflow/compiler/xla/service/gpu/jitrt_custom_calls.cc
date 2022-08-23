@@ -23,6 +23,7 @@
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
@@ -45,11 +46,9 @@
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tfrt_utils.h"
 #include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
-#include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
@@ -234,7 +233,7 @@ se::KernelBase* JitRtKernelsCache::Set(se::StreamExecutor* executor,
 
 template <typename MemrefArg>
 static se::DeviceMemoryBase GetDeviceAddress(MemrefArg& memref) {
-  uint64_t size = tfrt::GetHostSize(memref.dtype);
+  uint64_t size = primitive_util::ByteWidth(memref.dtype);
   for (auto dim : memref.sizes) size *= dim;
   return se::DeviceMemoryBase(memref.data, size);
 }
@@ -305,8 +304,6 @@ LogicalResult JitRtAsyncCollectiveSupport::PushEvent(int32_t uid,
 // -------------------------------------------------------------------------- //
 
 static Shape ToShape(const runtime::StridedMemrefView& memref) {
-  PrimitiveType type = TfrtToPrimitiveType(memref.dtype);
-
   // Recover `minor_to_major` dimensions permutation from strides.
   auto indexed_strides_range =
       llvm::map_range(llvm::enumerate(memref.strides), [](auto pair) {
@@ -320,7 +317,8 @@ static Shape ToShape(const runtime::StridedMemrefView& memref) {
   minor_to_major.reserve(indexed_strides.size());
   for (auto& pair : indexed_strides) minor_to_major.push_back(pair.second);
 
-  return ShapeUtil::MakeShapeWithLayout(type, memref.sizes, minor_to_major);
+  return ShapeUtil::MakeShapeWithLayout(memref.dtype, memref.sizes,
+                                        minor_to_major);
 }
 
 static StatusOr<GemmConfig> GetGemmConfig(const runtime::StridedMemrefView& lhs,
@@ -384,8 +382,8 @@ FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
     int element_count = 1;
     for (int size : source->sizes) element_count *= size;
     device_buffers.emplace_back(DeviceBufferPair{
-        TfrtToPrimitiveType(source->dtype), element_count,
-        GetDeviceAddress(*source), GetDeviceAddress(*destination)});
+        source->dtype, element_count, GetDeviceAddress(*source),
+        GetDeviceAddress(*destination)});
   }
   return device_buffers;
 }
@@ -1252,8 +1250,7 @@ Error Fft::operator()(const ServiceExecutableRunOptions* run_options,
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
-  if (input.dtype == tfrt::DType::F64 ||
-      input.dtype == tfrt::DType::Complex128) {
+  if (input.dtype == PrimitiveType::F64 || input.dtype == PrimitiveType::C128) {
     // Adjust FFT type to reflect double precision.
     switch (fft_type) {
       case se::fft::Type::kC2CForward:
@@ -1332,9 +1329,8 @@ Error Cholesky::operator()(const ServiceExecutableRunOptions* run_options,
 
   CholeskyParams params{n,        batch_size,       uplo,
                         a_buffer, workspace_buffer, info_buffer};
-  auto executed =
-      RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
-                  TfrtToPrimitiveType(operand.dtype), &params, stream);
+  auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
+                              operand.dtype, &params, stream);
   if (!executed.ok()) return AsError(executed);
 
   return Error::success();
@@ -1440,7 +1436,7 @@ Error TriangularSolve::operator()(
       b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
       [](int64_t a, int64_t b) { return a * b; });
 
-  PrimitiveType elem_type = TfrtToPrimitiveType(b.dtype);
+  PrimitiveType elem_type = b.dtype;
   int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_type);
   int64_t a_batch_stride = left_side ? m * m * elem_size : n * n * elem_size;
   int64_t b_batch_stride = m * n * elem_size;
@@ -1532,7 +1528,7 @@ Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
     }
     if (auto strided = args.get<runtime::StridedMemrefView>(i);
         succeeded(strided)) {
-      int64_t size_in_bytes = GetHostSize(strided->dtype);
+      int64_t size_in_bytes = primitive_util::ByteWidth(strided->dtype);
       for (int64_t size : strided->sizes) size_in_bytes *= size;
       buffers.push_back(size_in_bytes == 0 ? nullptr : strided->data);
       continue;

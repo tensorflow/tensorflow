@@ -197,7 +197,7 @@ static llvm::hash_code CombineWithValueConstraineOperands(
     size_t rank = memref.rank();
     assert(rank == 0 || rank == 1);
     size_t num_values = rank == 0 ? 1 : memref.size(0);
-    int64_t len = num_values * GetHostSize(memref.dtype());
+    int64_t len = num_values * primitive_util::ByteWidth(memref.dtype());
     hash = llvm::hash_combine(hash, llvm::hash_combine_range(data, data + len));
   }
   return hash;

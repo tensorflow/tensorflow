@@ -278,7 +278,7 @@ Error Executable::Execute(ArgumentsRef arguments,
     auto* memref = dyn_cast<MemrefDesc>(&arguments[i]);
     if (!memref) continue;
 
-    int64_t size_in_bytes = GetHostSize(memref->dtype());
+    int64_t size_in_bytes = primitive_util::ByteWidth(memref->dtype());
     for (int64_t size : memref->sizes()) size_in_bytes *= size;
 
     uint8_t* data = static_cast<uint8_t*>(memref->data());

@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -13,7 +13,7 @@ cc_library(
     name = "async_runtime_api",
     srcs = ["async_runtime_api.cc"],
     hdrs = ["async_runtime_api.h"],
-    compatible_with = get_compatible_with_portable(),
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/runtime:async_runtime",
         "@llvm-project//llvm:OrcJIT",
@@ -27,7 +27,7 @@ cc_library(
 cc_library(
     name = "c_runner_utils",
     hdrs = ["c_runner_utils.h"],
-    compatible_with = get_compatible_with_portable(),
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//mlir:mlir_c_runner_utils",
@@ -38,7 +38,7 @@ cc_library(
     name = "constraints",
     srcs = ["constraints.cc"],
     hdrs = ["constraints.h"],
-    compatible_with = get_compatible_with_portable(),
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/runtime:constraints",
         "@llvm-project//llvm:Support",

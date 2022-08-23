@@ -1058,27 +1058,6 @@ cc_library(
 # )
 # copybara:uncomment_end
 
-cc_library(
-    name = "tfrt_utils",
-    srcs = ["tfrt_utils.cc"],
-    hdrs = ["tfrt_utils.h"],
-    deps = [
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core:portable_gif_internal",
-        "@tf_runtime//:dtype",
-    ],
-)
-
-tf_cc_test(
-    name = "tfrt_utils_test",
-    srcs = ["tfrt_utils_test.cc"],
-    deps = [
-        ":tfrt_utils",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
 # This is a headers target that extra XLA devices can use to prevent circular dependencies.  Devices that are compiled as separate shared objects can also use it to prevent linking of library code.
 cc_header_only_library(
     name = "xla_headers_lib",

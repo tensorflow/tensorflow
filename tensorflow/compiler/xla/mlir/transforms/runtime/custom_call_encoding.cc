@@ -45,8 +45,6 @@ using func::FuncOp;
 using llvm::ArrayRef;
 using llvm::StringRef;
 
-using tfrt::DType;
-
 //===----------------------------------------------------------------------===//
 // Custom call arguments encoding.
 //===----------------------------------------------------------------------===//
@@ -540,34 +538,34 @@ static TypeID ScalarRuntimeTypeId(Type type) {
   return TypeID::getFromOpaquePointer(reinterpret_cast<void *>(0xDEADBEEF));
 }
 
-static DType ScalarDType(Type type) {
+static PrimitiveType ScalarPrimitiveType(Type type) {
   // Unsigned integer types.
-  if (type.isUnsignedInteger(8)) return DType::UI8;
-  if (type.isUnsignedInteger(16)) return DType::UI16;
-  if (type.isUnsignedInteger(32)) return DType::UI32;
-  if (type.isUnsignedInteger(64)) return DType::UI64;
+  if (type.isUnsignedInteger(8)) return PrimitiveType::U8;
+  if (type.isUnsignedInteger(16)) return PrimitiveType::U16;
+  if (type.isUnsignedInteger(32)) return PrimitiveType::U32;
+  if (type.isUnsignedInteger(64)) return PrimitiveType::U64;
 
   // Signed integer types.
-  if (type.isInteger(1)) return DType::I1;
-  if (type.isInteger(8)) return DType::I8;
-  if (type.isInteger(16)) return DType::I16;
-  if (type.isInteger(32)) return DType::I32;
-  if (type.isInteger(64)) return DType::I64;
+  if (type.isInteger(1)) return PrimitiveType::PRED;
+  if (type.isInteger(8)) return PrimitiveType::S8;
+  if (type.isInteger(16)) return PrimitiveType::S16;
+  if (type.isInteger(32)) return PrimitiveType::S32;
+  if (type.isInteger(64)) return PrimitiveType::S64;
 
   // Floating point types.
-  if (type.isF16()) return DType::F16;
-  if (type.isF32()) return DType::F32;
-  if (type.isF64()) return DType::F64;
-  if (type.isBF16()) return DType::BF16;
+  if (type.isF16()) return PrimitiveType::F16;
+  if (type.isF32()) return PrimitiveType::F32;
+  if (type.isF64()) return PrimitiveType::F64;
+  if (type.isBF16()) return PrimitiveType::BF16;
 
   // Complex types.
   if (auto complex = type.dyn_cast<ComplexType>()) {
-    if (complex.getElementType().isF32()) return DType::Complex64;
-    if (complex.getElementType().isF64()) return DType::Complex128;
+    if (complex.getElementType().isF32()) return PrimitiveType::C64;
+    if (complex.getElementType().isF64()) return PrimitiveType::C128;
   }
 
   assert(false && "unsupported type id");
-  return DType::Invalid;
+  return PrimitiveType::PRIMITIVE_TYPE_INVALID;
 }
 
 static TypeID ArrayRuntimeTypeId(Type elem_type) {
@@ -872,7 +870,7 @@ Value MemrefArgEncoding::EncodeMemRef(ImplicitLocOpBuilder &b,
   // Helper to unpack MLIR strided memref descriptor value.
   MemRefDescriptor desc(descriptor);
 
-  DType element_dtype = ScalarDType(memref_ty.getElementType());
+  PrimitiveType element_dtype = ScalarPrimitiveType(memref_ty.getElementType());
 
   // Create values for filling encoded memref struct.
   Value dtype = b.create<ConstantOp>(

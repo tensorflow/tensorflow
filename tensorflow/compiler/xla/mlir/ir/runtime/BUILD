@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 package(
@@ -16,7 +16,7 @@ td_library(
         "rt_base.td",
         "rt_ops.td",
     ],
-    compatible_with = get_compatible_with_portable(),
+    compatible_with = get_compatible_with_cloud(),
     includes = ["include"],
     visibility = ["//visibility:private"],
     deps = [
@@ -26,7 +26,7 @@ td_library(
 
 gentbl_cc_library(
     name = "rt_inc_gen",
-    compatible_with = get_compatible_with_portable(),
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-dialect-decls"],
@@ -62,7 +62,7 @@ cc_library(
     name = "rt_ops",
     srcs = ["rt_ops.cc"],
     hdrs = ["rt_ops.h"],
-    compatible_with = get_compatible_with_portable(),
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":rt_inc_gen",
         "//tensorflow/compiler/xla/runtime:constraints",

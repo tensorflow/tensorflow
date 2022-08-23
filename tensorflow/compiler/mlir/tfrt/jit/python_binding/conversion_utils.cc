@@ -24,6 +24,7 @@ namespace tensorflow {
 
 using ::tfrt::DType;
 
+using ::xla::PrimitiveType;
 using ::xla::runtime::MemrefDesc;
 
 // Returns Python buffer protocol's type string from TFRT's dtype.
@@ -72,40 +73,40 @@ const char* ToPythonStructFormat(DType dtype_kind) {
   }
 }
 
-// Returns TFRT's dtype for the Python buffer protocol's type string.
-DType FromPythonStructFormat(char dtype) {
+// Returns XLA primitive type for the Python buffer protocol's type string.
+PrimitiveType FromPythonStructFormat(char dtype) {
   // Reference: https://docs.python.org/3/library/struct.html
   switch (dtype) {
     case 'B':
-      return DType::UI8;
+      return PrimitiveType::U8;
     case 'H':
-      return DType::UI16;
+      return PrimitiveType::U16;
     case 'I':
-      return DType::UI32;
+      return PrimitiveType::U32;
     case 'L':
-      return DType::UI64;
+      return PrimitiveType::U64;
     case 'Q':
-      return DType::UI64;
+      return PrimitiveType::U64;
     case '?':
-      return DType::I1;
+      return PrimitiveType::PRED;
     case 'b':
-      return DType::I8;
+      return PrimitiveType::S8;
     case 'h':
-      return DType::I16;
+      return PrimitiveType::S16;
     case 'i':
-      return DType::I32;
+      return PrimitiveType::S32;
     case 'l':
-      return DType::I64;
+      return PrimitiveType::S64;
     case 'q':
-      return DType::I64;
+      return PrimitiveType::S64;
     case 'f':
-      return DType::F32;
+      return PrimitiveType::F32;
     case 'd':
-      return DType::F64;
+      return PrimitiveType::F64;
     case 'F':
-      return DType::Complex64;
+      return PrimitiveType::C64;
     case 'D':
-      return DType::Complex128;
+      return PrimitiveType::C128;
     default:
       throw std::runtime_error("Unsupported python dtype.");
   }
@@ -122,7 +123,7 @@ MemrefDesc ConvertPyArrayMemrefDesc(const pybind11::array& array) {
   };
 
   auto rank = array.ndim();
-  auto dtype = DType(FromPythonStructFormat(py_dtype(array.dtype())));
+  auto dtype = PrimitiveType(FromPythonStructFormat(py_dtype(array.dtype())));
 
   return MemrefDesc(rank, dtype, const_cast<void*>(array.data()), 0,
                     [&](auto sizes, auto strides) {

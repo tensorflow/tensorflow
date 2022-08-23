@@ -239,10 +239,10 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
 
   auto type_dispatch = [&](auto functor) {
     switch (desc.dtype()) {
-      case DType::I32:
+      case xla::PrimitiveType::S32:
         functor(int32_t{});
         break;
-      case DType::I64:
+      case xla::PrimitiveType::S64:
         functor(int64_t{});
         break;
       default:
@@ -584,6 +584,26 @@ using TensorflowResultConverter =
     StaticRemainingResultsConverter<TensorflowConversionContext,
                                     ReturnTensorflowTensor>;
 
+static xla::PrimitiveType DataTypeToPrimitiveType(DataType data_type) {
+  switch (data_type) {
+    case tensorflow::DT_BOOL:
+      return xla::PRED;
+    case tensorflow::DT_INT8:
+      return xla::S8;
+    case tensorflow::DT_INT32:
+      return xla::S32;
+    case tensorflow::DT_INT64:
+      return xla::S64;
+    case tensorflow::DT_FLOAT:
+      return xla::F32;
+    case tensorflow::DT_DOUBLE:
+      return xla::F64;
+    default:
+      LOG(FATAL) << "Unsupported Tensorflow data type: "  // Crash OK
+                 << DataTypeString(data_type);
+  }
+}
+
 static MemrefDesc ConvertTensorToMemrefDesc(const tensorflow::Tensor& tensor) {
   // Fills memref sizes and strides with a tensor shape;
   auto fill_desc = [&](MutableArrayRef<Index> sizes,
@@ -597,7 +617,7 @@ static MemrefDesc ConvertTensorToMemrefDesc(const tensorflow::Tensor& tensor) {
     }
   };
 
-  return MemrefDesc(tensor.dims(), tfd::GetTfrtDtype(tensor.dtype()),
+  return MemrefDesc(tensor.dims(), DataTypeToPrimitiveType(tensor.dtype()),
                     const_cast<void*>(tensor.data()), 0, fill_desc);
 }
 

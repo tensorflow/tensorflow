@@ -107,11 +107,11 @@ MemrefDesc TensorToMemrefDesc(const Tensor& tensor) {
   for (int d = 0; d < tensor.shape().dims(); ++d)
     dims[d] = tensor.shape().dim_size(d);
 
-  tfrt::DType dtype;
+  xla::PrimitiveType dtype;
   if (tensor.dtype() == DT_FLOAT)
-    dtype = tfrt::GetDType<float>();
+    dtype = xla::PrimitiveType::F32;
   else if (tensor.dtype() == DT_INT64)
-    dtype = tfrt::GetDType<int64_t>();
+    dtype = xla::PrimitiveType::S64;
   else
     LOG(FATAL) << "Unsupported tensor dtype: " << tensor.dtype();
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <system_error>  // NOLINT TODO(ezhulenev): Migrate to absl::Status.
 
 #include "llvm/ADT/Hashing.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"

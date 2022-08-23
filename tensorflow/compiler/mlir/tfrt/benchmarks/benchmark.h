@@ -101,8 +101,9 @@ JitExecutable& CreateJitExecutable(const HostContext& host,
 template <typename T, int rank>
 MemrefDesc TensorToMemrefDesc(Eigen::Tensor<T, rank, Eigen::RowMajor>& tensor) {
   tfrt::TensorShape shape(tensor.dimensions().values);
-  return MemrefDesc(shape.GetRank(), tfrt::GetDType<T>(), tensor.data(), 0,
-                    [&](auto sizes, auto strides) {
+  return MemrefDesc(shape.GetRank(),
+                    xla::primitive_util::NativeToPrimitiveType<T>(),
+                    tensor.data(), 0, [&](auto sizes, auto strides) {
                       shape.GetDimensions(sizes);
                       shape.GetStrides(strides);
                     });

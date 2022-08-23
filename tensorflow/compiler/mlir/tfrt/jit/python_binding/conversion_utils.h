@@ -26,7 +26,7 @@ namespace tensorflow {
 const char* ToPythonStructFormat(tfrt::DType dtype_kind);
 
 // Returns TFRT's dtype for the Python buffer protocol's type string.
-tfrt::DType FromPythonStructFormat(char dtype);
+xla::PrimitiveType FromPythonStructFormat(char dtype);
 
 // Converts Python array to the Memref Descriptor.
 xla::runtime::MemrefDesc ConvertPyArrayMemrefDesc(const pybind11::array& array);

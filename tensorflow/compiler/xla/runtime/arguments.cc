@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Casting.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
@@ -36,7 +37,9 @@ using llvm::MutableArrayRef;
 using llvm::Optional;
 using llvm::raw_ostream;
 
-using tfrt::DType;
+static raw_ostream& operator<<(raw_ostream& os, PrimitiveType& type) {
+  return os << primitive_util::LowercasePrimitiveTypeName(type);
+}
 
 raw_ostream& OpaqueArg::print(raw_ostream& os) const {
   return os << "OpaqueArg: ptr=" << ptr_;
@@ -77,25 +80,25 @@ size_t OpaqueArg::Pack(MutableArrayRef<void*> args, size_t offset) const {
 // MemrefDesc.
 //===----------------------------------------------------------------------===//
 
-static bool AreCompatibleTypes(DType type1, DType type2) {
-  auto compatible = [&](DType fromType, DType toType) {
+static bool AreCompatibleTypes(PrimitiveType type1, PrimitiveType type2) {
+  auto compatible = [&](PrimitiveType fromType, PrimitiveType toType) {
     return (type1 == fromType && type2 == toType) ||
            (type1 == toType && type2 == fromType);
   };
   // I1 and I8 types are compatible since they both are 1-byte size at runtime.
-  if (compatible(DType::I1, DType::I8)) return true;
+  if (compatible(PrimitiveType::PRED, PrimitiveType::S8)) return true;
 
   // Signed and unsigned integers of the same size are compatible in memory.
-  if (compatible(DType::I8, DType::UI8) ||
-      compatible(DType::I16, DType::UI16) ||
-      compatible(DType::I32, DType::UI32) ||
-      compatible(DType::I64, DType::UI64))
+  if (compatible(PrimitiveType::S8, PrimitiveType::U8) ||
+      compatible(PrimitiveType::S16, PrimitiveType::U16) ||
+      compatible(PrimitiveType::S32, PrimitiveType::U32) ||
+      compatible(PrimitiveType::S64, PrimitiveType::U64))
     return true;
 
   return type1 == type2;
 }
 
-static Error VerifyMemrefArgument(DType element_type,
+static Error VerifyMemrefArgument(PrimitiveType element_type,
                                   Optional<ArrayRef<int64_t>> sizes,
                                   const MemrefDesc& memref) {
   // Format memref argument and expected type for user-friendly error messages.
@@ -107,7 +110,8 @@ static Error VerifyMemrefArgument(DType element_type,
       return d == MemrefType::kDynamicSize ? "?" : std::to_string(d);
     };
 
-    auto print_shaped = [&](Optional<ArrayRef<int64_t>> dims, DType dtype) {
+    auto print_shaped = [&](Optional<ArrayRef<int64_t>> dims,
+                            PrimitiveType dtype) {
       if (!dims.has_value()) {
         os << "[*x" << dtype << "]";
         return;
@@ -135,7 +139,9 @@ static Error VerifyMemrefArgument(DType element_type,
   if (LLVM_UNLIKELY(!AreCompatibleTypes(element_type, memref.dtype()))) {
     return MakeStringError(
         "type is not compatible with the expected element type: ",
-        memref.dtype(), " vs ", element_type, " (", pretty_print(), ")");
+        primitive_util::LowercasePrimitiveTypeName(memref.dtype()), " vs ",
+        primitive_util::LowercasePrimitiveTypeName(element_type), " (",
+        pretty_print(), ")");
   }
 
   // Skip sizes verification if they are not available (unranked tensor or
@@ -250,11 +256,12 @@ raw_ostream& BufferDesc::print(raw_ostream& os) const {
   return os << "BufferDesc: data: " << data() << " size: " << size();
 }
 
-static Error VerifyBufferDesc(DType element_type,
+static Error VerifyBufferDesc(PrimitiveType element_type,
                               Optional<ArrayRef<int64_t>> sizes,
                               const BufferDesc& buffer) {
   size_t n_elem = !sizes.hasValue() || sizes->empty() ? 1 : (*sizes)[0];
-  size_t expected_buffer_size = tfrt::GetHostSize(element_type) * n_elem;
+  size_t expected_buffer_size =
+      primitive_util::ByteWidth(element_type) * n_elem;
   if (LLVM_UNLIKELY(expected_buffer_size != buffer.size())) {
     return MakeStringError(
         "buffer size is not equal to that expected from the element type: got ",
