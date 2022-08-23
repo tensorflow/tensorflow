@@ -25,12 +25,8 @@ namespace convert {
 
 class ConvertLogSoftmax : public OpConverterBase<ConvertLogSoftmax> {
  public:
-  explicit ConvertLogSoftmax(OpConverterParams *params)
+  explicit ConvertLogSoftmax(const OpConverterParams *params)
       : OpConverterBase<ConvertLogSoftmax>(params) {}
-
-  static constexpr std::array<DataType, 3> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF};
-  }
 
   static constexpr std::array<InputArgSpec, 1> InputSpec() {
     return std::array<InputArgSpec, 1>{
