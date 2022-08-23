@@ -192,8 +192,19 @@ StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
       combined_op_stats,
       ParseHardwareType(combined_op_stats.run_environment().device_type()),
       profile);
+  std::string json_output;
+  protobuf::util::JsonPrintOptions opts;
+  opts.always_print_primitive_fields = true;
 
-  return profile.SerializeAsString();
+  auto encode_status =
+      protobuf::util::MessageToJsonString(profile, &json_output, opts);
+  if (!encode_status.ok()) {
+    const auto& error_message = encode_status.message();
+    return errors::Internal(
+        "Could not convert op profile proto to json. Error: ",
+        absl::string_view(error_message.data(), error_message.length()));
+  }
+  return json_output;
 }
 
 }  // namespace
