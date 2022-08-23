@@ -64,8 +64,8 @@
 *   XLA:
     *   MWMS is now compilable with XLA.
 
-*   [oneDNN CPU performance optimizations](https://github.com/tensorflow/community/blob/master/rfcs/20210930-enable-onednn-ops.md):
-    *   **x86 CPUs**: oneDNN bfloat16 auto-mixed precision grappler graph optimization pass has been renamed from `auto_mixed_precision_mkl` to `auto_mixed_precision_onednn_bfloat16`. See example usage [here](https://www.intel.com/content/www/us/en/developer/articles/guide/getting-started-with-automixedprecisionmkl.html).  
+*   CPU performance optimizations:
+    *   **x86 CPUs**: [oneDNN](https://github.com/tensorflow/community/blob/master/rfcs/20210930-enable-onednn-ops.md) bfloat16 auto-mixed precision grappler graph optimization pass has been renamed from `auto_mixed_precision_mkl` to `auto_mixed_precision_onednn_bfloat16`. See example usage [here](https://www.intel.com/content/www/us/en/developer/articles/guide/getting-started-with-automixedprecisionmkl.html).  
     *   **aarch64 CPUs:** Experimental Arm Compute Library (ACL) CPU performance optimizations through oneDNN are available in the default Linux aarch64 package (`pip install tensorflow`).
         *   The optimizations are disabled by default. 
         *   Set the environment variable `TF_ENABLE_ONEDNN_OPTS=1` to enable the optimizations. Setting the variable to 0 or unsetting it will disable the optimizations.
