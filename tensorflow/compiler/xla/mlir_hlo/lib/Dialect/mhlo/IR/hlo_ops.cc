@@ -78,9 +78,9 @@ namespace mlir {
 #include "hlo_patterns.cc.inc"
 }  // namespace mlir
 
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.cc.inc"
 
 namespace mlir {
 namespace mhlo {
@@ -617,6 +617,17 @@ unsigned potentiallyComplexBitwidth(Type type) {
 }  // namespace
 
 //===----------------------------------------------------------------------===//
+// Utilities for attributes
+//===----------------------------------------------------------------------===//
+
+LogicalResult TypeExtensionsAttr::verifyEncoding(
+    llvm::ArrayRef<int64_t> bounds, mlir::Type elementType,
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError) const {
+  return hlo::verifyBounds(
+      getBounds(), RankedTensorType::get(bounds, elementType), emitError);
+}
+
+//===----------------------------------------------------------------------===//
 // AllReduceOp
 //===----------------------------------------------------------------------===//
 
@@ -770,7 +781,7 @@ bool ConstantOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
   // storage type.
   if (auto rhsElemTy =
           rhsTy.getElementType().dyn_cast<quant::QuantizedType>()) {
-    rhsTy = getSameShapeTensorType(rhsTy, rhsElemTy.getStorageType());
+    rhsTy = hlo::getSameShapeTensorType(rhsTy, rhsElemTy.getStorageType());
   }
   return lhsTy == rhsTy;
 }
@@ -2978,8 +2989,8 @@ LogicalResult BitcastConvertOp::reifyReturnTypeShapes(
       dataLayout.getTypeSizeInBits(resultType.getElementType());
   if (operandElementSize != resultElementSize) return failure();
 
-  return ::mlir::mhlo::deriveShapeFromOperand(
-      &builder, getOperation(), operands.front(), &reifiedReturnShapes);
+  return hlo::deriveShapeFromOperand(&builder, getOperation(), operands.front(),
+                                     &reifiedReturnShapes);
 }
 
 /*
@@ -3566,8 +3577,8 @@ LogicalResult ClampOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   // For `mhlo.clamp`, the first operand may be a scalar.
-  return deriveShapeFromOperand(&builder, getOperation(), operands[1],
-                                &reifiedReturnShapes);
+  return hlo::deriveShapeFromOperand(&builder, getOperation(), operands[1],
+                                     &reifiedReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3579,7 +3590,8 @@ LogicalResult ComplexOp::inferReturnTypes(
     RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   TensorType operandType = operands[0].getType().cast<TensorType>();
   ComplexType elementTy = ComplexType::get(operandType.getElementType());
-  inferredReturnTypes.push_back(getSameShapeTensorType(operandType, elementTy));
+  inferredReturnTypes.push_back(
+      hlo::getSameShapeTensorType(operandType, elementTy));
   return success();
 }
 
@@ -3603,7 +3615,7 @@ Type createRealType(TensorType type) {
   if (auto complexTy = elementTy.dyn_cast<ComplexType>()) {
     elementTy = complexTy.getElementType();
   }
-  return getSameShapeTensorType(type, elementTy);
+  return hlo::getSameShapeTensorType(type, elementTy);
 }
 }  // namespace
 
@@ -3627,23 +3639,13 @@ OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
 // IsFiniteOp
 //===----------------------------------------------------------------------===//
 
-TensorType getSameShapeTensorType(TensorType tensorType, Type elementType) {
-  if (auto rankedTensorTy = tensorType.dyn_cast<RankedTensorType>()) {
-    return RankedTensorType::get(rankedTensorTy.getShape(), elementType,
-                                 rankedTensorTy.getEncoding());
-  }
-  if (auto unrankedTensorTy = tensorType.dyn_cast<UnrankedTensorType>()) {
-    return UnrankedTensorType::get(elementType);
-  }
-  llvm_unreachable("unhandled type");
-}
-
 LogicalResult IsFiniteOp::inferReturnTypes(
     MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
     RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   auto argTy = operands.front().getType().cast<TensorType>();
   Builder b(ctx);
-  inferredReturnTypes.push_back(getSameShapeTensorType(argTy, b.getI1Type()));
+  inferredReturnTypes.push_back(
+      hlo::getSameShapeTensorType(argTy, b.getI1Type()));
   return success();
 }
 
@@ -4555,8 +4557,8 @@ OpFoldResult MapOp::fold(ArrayRef<Attribute> operands) {
 LogicalResult MapOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
-  return deriveShapeFromOperand(&builder, getOperation(), operands.front(),
-                                &reifiedReturnShapes);
+  return hlo::deriveShapeFromOperand(&builder, getOperation(), operands.front(),
+                                     &reifiedReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -5625,8 +5627,8 @@ LogicalResult SelectOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   // For `hlo.select`, the first operand may be a scalar.
-  return deriveShapeFromOperand(&builder, getOperation(), operands[1],
-                                &reifiedReturnShapes);
+  return hlo::deriveShapeFromOperand(&builder, getOperation(), operands[1],
+                                     &reifiedReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -7559,8 +7561,8 @@ LogicalResult CompareOp::inferReturnTypeComponents(
 LogicalResult CompareOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
-  return deriveShapeFromOperand(&builder, getOperation(), operands.front(),
-                                &reifiedReturnShapes);
+  return hlo::deriveShapeFromOperand(&builder, getOperation(), operands.front(),
+                                     &reifiedReturnShapes);
 }
 
 template <typename T>
@@ -8530,6 +8532,14 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
     return true;
   }
 };
+
+struct HLOBoundedDialectInterface : public hlo::BoundedDialectInterface {
+  using BoundedDialectInterface::BoundedDialectInterface;
+
+  Attribute createBoundedAttr(ArrayRef<int64_t> bounds) const override {
+    return TypeExtensionsAttr::get(getDialect()->getContext(), bounds);
+  }
+};
 }  // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
@@ -8542,11 +8552,12 @@ MhloDialect::MhloDialect(MLIRContext* context)
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
       >();
+  addInterfaces<HLOBoundedDialectInterface>();
   addInterfaces<HLOInlinerInterface>();
   addTypes<TokenType>();
   addAttributes<
 #define GET_ATTRDEF_LIST
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.cc.inc"
       >();
   context->loadDialect<tensor::TensorDialect>();
 }
@@ -9283,87 +9294,6 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
 }
 
 //===----------------------------------------------------------------------===//
-// Type utilities
-//===----------------------------------------------------------------------===//
-
-Type getExpressedTypeOrSelf(Type type) {
-  auto quantType = type.dyn_cast<quant::QuantizedType>();
-  return quantType ? quantType.getExpressedType() : type;
-}
-
-LogicalResult verifyCompatibleShapeWithBounds(Type type1, Type type2) {
-  if (failed(verifyCompatibleShape(type1, type2))) return failure();
-
-  // Verify shapes against bounds
-  auto isCompatible = [](ArrayRef<int64_t> shape,
-                         TypeExtensionsAttr extensionAttr) {
-    if (shape.empty() || !extensionAttr) return true;
-    auto bounds = extensionAttr.getBounds();
-    for (auto [dim_size, bound] : llvm::zip(shape, bounds))  // NOLINT
-      if (bound != ShapedType::kDynamicSize && bound < dim_size) return false;
-    return true;
-  };
-
-  RankedTensorType rankedType1 = type1.dyn_cast<RankedTensorType>();
-  RankedTensorType rankedType2 = type2.dyn_cast<RankedTensorType>();
-  if (rankedType1 && rankedType2) {
-    TypeExtensionsAttr extensionAttr1 =
-        rankedType1.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>();
-    TypeExtensionsAttr extensionAttr2 =
-        rankedType2.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>();
-    return LogicalResult::success(
-        isCompatible(rankedType1.getShape(), extensionAttr2) &&
-        isCompatible(rankedType2.getShape(), extensionAttr1));
-  }
-  return success();
-}
-
-bool isCompatibleForMhloTypeInference(Type tp1, Type tp2) {
-  // Dynamism: We don't require shapes to be the same, we only require them
-  // to be compatible, which means that:
-  //   1) At least one of the shapes is unranked.
-  //   2) Or both shapes have the same rank and their dimensions are compatible,
-  //     i.e. for each pair of corresponding dimensions:
-  //       2.1) At least one of the dimensions is dynamic,
-  //       2.2) Or both dimensions are equal.
-  // These relaxed rules simplify the implementation of type inference, allowing
-  // ops with partially inferred types to pass verification.
-  auto stp1 = tp1.dyn_cast<ShapedType>();
-  auto stp2 = tp2.dyn_cast<ShapedType>();
-  if (stp1 && stp2) {
-    return succeeded(verifyCompatibleShapeWithBounds(stp1, stp2)) &&
-           isCompatibleForMhloTypeInference(stp1.getElementType(),
-                                            stp2.getElementType());
-  }
-
-  // Quantization: In the most general case, we allow any combination of
-  // quantized/non-quantized across any combination of operands/results,
-  // and some differences in quantization parameters across operands/results.
-  // Individual ops may introduce additional constraints.
-  auto qtp1 = tp1.dyn_cast<quant::QuantizedType>();
-  auto qtp2 = tp2.dyn_cast<quant::QuantizedType>();
-  if (qtp1 && qtp2) {
-    if (qtp1.getStorageType() != qtp2.getStorageType() ||
-        qtp1.getStorageTypeMin() != qtp2.getStorageTypeMin() ||
-        qtp1.getStorageTypeMax() != qtp2.getStorageTypeMax())
-      return false;
-  }
-  auto etp1 = getExpressedTypeOrSelf(tp1);
-  auto etp2 = getExpressedTypeOrSelf(tp2);
-
-  // Sparsity: In the most general case, we allow any combination of
-  // sparsity/denseness across any combination of operands/results, as well as
-  // differences in sparsity encodings for operands and results.
-  // Individual ops may introduce additional constraints.
-  // No additional code is needed to check this because of how sparsity is
-  // currently implemented.
-
-  // Default case: Unless dynamism, quantization and/or sparsity are involved,
-  // the types are required to be exactly equal.
-  return etp1 == etp2;
-}
-
-//===----------------------------------------------------------------------===//
 // Builder utilities
 //===----------------------------------------------------------------------===//
 
@@ -9419,23 +9349,6 @@ SortOp createSortOp(PatternRewriter* rewriter, const Location& loc,
   buildSortComparisonBody(elementTypes, direction, compareType,
                           &sortOp.comparator(), rewriter);
   return sortOp;
-}
-
-//===----------------------------------------------------------------------===//
-// Shape inference
-//===----------------------------------------------------------------------===//
-
-LogicalResult deriveShapeFromOperand(
-    OpBuilder* builder, Operation* op, Value operand,
-    SmallVectorImpl<Value>* reifiedReturnShapes) {
-  auto shapedTy = operand.getType().dyn_cast<ShapedType>();
-  if (!shapedTy) {
-    op->emitOpError() << "operand is not a shaped type";
-    return failure();
-  }
-  reifiedReturnShapes->assign(
-      {builder->create<shape::ShapeOfOp>(op->getLoc(), operand)});
-  return success();
 }
 
 //===----------------------------------------------------------------------===//

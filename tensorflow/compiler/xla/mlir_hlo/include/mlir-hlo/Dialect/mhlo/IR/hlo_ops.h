@@ -19,7 +19,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h"
+#include "mlir-hlo/Dialect/mhlo/IR/base.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
@@ -30,10 +30,16 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/TensorEncoding.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+
+// Include order below matters.
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.h.inc"
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.h.inc"
 
 namespace mlir {
 class OpBuilder;
@@ -77,28 +83,6 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
  public:
   using Base::Base;
 };
-
-// Returns true if the given types are the same for the purposes of MHLO type
-// inference, accounting for special properties of quantization and sparsity.
-bool isCompatibleForMhloTypeInference(Type tp1, Type tp2);
-
-// Shape derivation function that computes the shape of the result based on an
-// operand. For a 2-dimensional input tensor, this produces IR of the form
-//
-//  %0 = dim %arg0, 0 : memref<?x?xf32>
-//  %1 = index_cast %0 : index to i64
-//  %2 = dim %arg0, 1 : memref<?x?xf32>
-//  %3 = index_cast %2 : index to i64
-//  %4 = "mhlo.scalars_to_dimension_tensor"(%1, %3)
-//    : (i64, i64) -> tensor<2xi64>
-//
-// and returns %4 as the shape value.
-LogicalResult deriveShapeFromOperand(
-    OpBuilder *builder, Operation *op, Value operand,
-    SmallVectorImpl<Value> *reifiedReturnShapes);
-
-// Type derivation function that returns a tensor type with a new element type.
-TensorType getSameShapeTensorType(TensorType tensorType, Type elementType);
 
 void printConvolutionDimensions(AsmPrinter &p, ConvDimensionNumbersAttr dnums);
 void printConvolutionDimensions(AsmPrinter &p, Operation *,

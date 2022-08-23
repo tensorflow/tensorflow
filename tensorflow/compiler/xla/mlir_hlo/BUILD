@@ -23,6 +23,25 @@ filegroup(
     srcs = glob(["include/mlir-hlo/Dialect/mhlo/IR/*.td"]),
 )
 
+gentbl_cc_library(
+    name = "base_attr_interfaces_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-attr-interface-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/base_attr_interfaces.h.inc",
+        ),
+        (
+            ["-gen-attr-interface-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/base_attr_interfaces.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/base.td",
+    deps = [":hlo_ops_td_files"],
+)
+
 td_library(
     name = "hlo_ops_td_files",
     srcs = glob(["include/mlir-hlo/Dialect/mhlo/IR/*.td"]),
@@ -103,6 +122,42 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "chlo_ops_attrs_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-attrdef-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_attrs.h.inc",
+        ),
+        (
+            ["-gen-attrdef-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_attrs.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td",
+    deps = [":hlo_ops_td_files"],
+)
+
+gentbl_cc_library(
+    name = "chlo_ops_enums_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-enum-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td",
+    deps = [":hlo_ops_td_files"],
+)
+
+gentbl_cc_library(
     name = "hlo_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
@@ -122,57 +177,38 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
-    name = "hlo_ops_base_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
-    deps = [":hlo_ops_td_files"],
-)
-
-gentbl_cc_library(
-    name = "hlo_ops_base_attrs_inc_gen",
+    name = "hlo_ops_attrs_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-attrdef-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc",
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.h.inc",
         ),
         (
             ["-gen-attrdef-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc",
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
 gentbl_cc_library(
-    name = "hlo_ops_base_enums_inc_gen",
+    name = "hlo_ops_enums_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-enum-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc",
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.h.inc",
         ),
         (
             ["-gen-enum-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.cc.inc",
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
@@ -450,32 +486,42 @@ cc_library(
 cc_library(
     name = "mlir_hlo",
     srcs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_attrs.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_attrs.h.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.h.inc",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.h.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.h.inc",
+        "lib/Dialect/mhlo/IR/base.cc",
         "lib/Dialect/mhlo/IR/chlo_ops.cc",
         "lib/Dialect/mhlo/IR/hlo_ops.cc",
         "lib/utils/broadcast_utils.cc",
         "lib/utils/hlo_utils.cc",
     ],
     hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/base.h",
         "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h",
         "include/mlir-hlo/utils/broadcast_utils.h",
         "include/mlir-hlo/utils/hlo_utils.h",
     ],
     includes = ["include"],
     deps = [
+        ":base_attr_interfaces_inc_gen",
         ":canonicalize_inc_gen",
+        ":chlo_ops_attrs_inc_gen",
+        ":chlo_ops_enums_inc_gen",
         ":chlo_ops_inc_gen",
         ":convert_op_folder",
-        ":hlo_ops_base_attrs_inc_gen",
-        ":hlo_ops_base_inc_gen",
+        ":hlo_ops_attrs_inc_gen",
         ":hlo_ops_common",
+        ":hlo_ops_enums_inc_gen",
         ":hlo_ops_inc_gen",
         ":hlo_ops_pattern_gen",
         "@llvm-project//llvm:Support",

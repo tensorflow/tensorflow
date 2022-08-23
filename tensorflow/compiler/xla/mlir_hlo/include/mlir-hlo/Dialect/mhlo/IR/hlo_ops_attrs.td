@@ -14,10 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 
-#ifndef HLO_OPS_BASE_ATTRS
-#define HLO_OPS_BASE_ATTRS
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ATTRS
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ATTRS
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/TensorEncoding.td"
 
 def HLODim : ArrayRefParameter<"int64_t", "Dimension">;
 
@@ -120,7 +121,9 @@ def ChannelHandle : AttrDef<HLO_Dialect, "ChannelHandle"> {
 
 // Note: This is an experimental attribute and shouldn't be relied upon for
 // production.
-def TypeExtensions : AttrDef<HLO_Dialect, "TypeExtensions"> {
+def TypeExtensions : AttrDef<HLO_Dialect, "TypeExtensions", [
+    DeclareAttrInterfaceMethods<VerifiableTensorEncoding>,
+    DeclareAttrInterfaceMethods<HLO_BoundedAttrInterface>]> {
   let mnemonic = "type_extensions";
 
   // TODO(b/238903065): Move sparsity related info here from the standalone
@@ -136,15 +139,65 @@ def TypeExtensions : AttrDef<HLO_Dialect, "TypeExtensions"> {
     properties. These properties aren't modeled in the MLIR type. This
     attribute is set in the `encoding` field of the tensor type.
 
-    Bounds parameter specifies the maximum runtime dimension size for
-    dimensions with unknown size. If the bound are not known for any of the
-    dimensions, it is set to ShapedType::kDynamicSize. Bound is undefined for
-    static dimensions. Bounds array has the same size as rank of the tensor.
+    See `HLO_BoundedAttrInterface` for documentation for `bounds`.
   }];
   let assemblyFormat = "`<` `bounds` `=` `[` $bounds `]` `>`";
-
-  // TODO(hinsu): Add verification for bounds that it has the same size as rank
-  // of the tensor and static dimensions don't have bounds.
 }
 
-#endif // HLO_OPS_BASE_ATTRS
+// A layout attribute (1D tensor of index type)
+def HLO_LayoutAttr : Attr<
+  And<[IndexElementsAttr.predicate,
+       CPred<[{$_self.cast<::mlir::DenseIntElementsAttr>().getType().getRank()
+               == 1}]>]>,
+  "A 1D tensor of index type (layout)"> {
+  let storageType = IndexElementsAttr.storageType;
+  let returnType = IndexElementsAttr.returnType;
+  let convertFromStorage = IndexElementsAttr.convertFromStorage;
+}
+
+// An array of layout (1D tensor) attributes.
+def HLO_ArrayOfLayoutAttr : TypedArrayAttrBase<HLO_LayoutAttr,
+    "Array of layout (1D tensor of index type) attributes">;
+
+// An array of FlatSymbolRef attributes that can be used as a default valued
+// attribute.
+def HLO_FlatSymbolRefArrayAttr :
+  TypedArrayAttrBase<FlatSymbolRefAttr, "flat symbol ref array attribute"> {
+  let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
+}
+
+//===----------------------------------------------------------------------===//
+// Common convolution attributes
+//===----------------------------------------------------------------------===//
+
+def BoolElementsAttr :
+    ElementsAttrBase<
+      And<[CPred<"$_self.isa<::mlir::DenseIntOrFPElementsAttr>()">,
+           CPred<"$_self.cast<::mlir::DenseIntOrFPElementsAttr>().getType().getElementType().isInteger(1)">]>,
+      "constant boolean vector/tensor attribute"> {
+  let storageType = [{ ::mlir::DenseElementsAttr }];
+  let returnType = [{ ::mlir::DenseElementsAttr }];
+
+  let convertFromStorage = "$_self";
+}
+
+def ConvolutionAttributes {
+  dag attributes = (ins
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    // Default value: two zeros for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$padding,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$lhs_dilation,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$rhs_dilation,
+    // Default value: false for each of the spatial dimension.
+    OptionalAttr<BoolElementsAttr>:$window_reversal,
+    ConvDimensionNumbers:$dimension_numbers,
+    I64Attr:$feature_group_count,
+    I64Attr:$batch_group_count,
+    HLO_PrecisionConfigAttr:$precision_config
+  );
+}
+
+#endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ATTRS

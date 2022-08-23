@@ -26,15 +26,15 @@ limitations under the License.
 //
 // See: https://www.tensorflow.org/xla/operation_semantics
 
-#ifndef CHLO_OPS
-#define CHLO_OPS
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS
+#define MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
+include "mlir-hlo/Dialect/mhlo/IR/base.td"
 
 def CHLO_Dialect : Dialect {
   let name = "chlo";
@@ -55,6 +55,8 @@ def CHLO_Dialect : Dialect {
 
   let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
+
+include "mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.td"
 
 class CHLO_Op<string mnemonic, list<Trait> traits> :
     Op<CHLO_Dialect, mnemonic, traits> {
@@ -461,7 +463,7 @@ class CHLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
   let extraClassDeclaration = [{
     LogicalResult reifyReturnTypeShapes(OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
-      return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
+      return ::mlir::hlo::deriveShapeFromOperand(&builder, getOperation(),
           operands.front(), &reifiedReturnShapes);
     }
   }];
@@ -610,6 +612,20 @@ def CHLO_TanOp : CHLO_UnaryElementwiseOp<"tan",
   }];
 }
 
+def CHLO_ConstantOp : CHLO_Op<"constant",
+    [ConstantLike, NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Constant operator";
+  let description = [{
+    Represents a constant value.
+  }];
+
+  let arguments = (ins ElementsAttr:$value);
+  let results = (outs HLO_StaticShapeTensor:$output);
+
+  let assemblyFormat = "attr-dict $value";
+  let hasFolder = 1;
+}
+
 def CHLO_ConstantLikeOp : CHLO_Op<"constant_like", [NoSideEffect,
     CHLO_Broadcasting, HLO_BroadcastingElementwise,
     SameOperandsAndResultShape, InferTensorTypeWithReify]> {
@@ -721,17 +737,17 @@ def CHLO_BroadcastCompareOp : CHLO_BroadcastBinaryElementwiseOp<
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions,
-    HLO_ComparisonDirectionAttr:$comparison_direction,
-    OptionalAttr<HLO_ComparisonTypeAttr>:$compare_type
+    CHLO_ComparisonDirectionAttr:$comparison_direction,
+    OptionalAttr<CHLO_ComparisonTypeAttr>:$compare_type
   );
   let results = (outs HLO_PredTensor);
 
   let builders = [
     OpBuilder<(ins "Value":$lhs, "Value":$rhs,
       "DenseIntElementsAttr":$broadcast_dimensions,
-      "::mlir::mhlo::ComparisonDirection":$comparison_direction,
-      CArg<"::mlir::mhlo::ComparisonType",
-      "::mlir::mhlo::ComparisonType::NOTYPE">:$compare_type)>,
+      "::mlir::chlo::ComparisonDirection":$comparison_direction,
+      CArg<"::mlir::chlo::ComparisonType",
+      "::mlir::chlo::ComparisonType::NOTYPE">:$compare_type)>,
   ];
 }
 
@@ -928,4 +944,4 @@ def CHLO_DynamicReshapeOp: CHLO_Op<"dynamic_reshape", [NoSideEffect,
   let results = (outs HLO_Tensor:$result);
 }
 
-#endif  // CHLO_OPS
+#endif  // MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS

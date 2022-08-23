@@ -33,14 +33,62 @@ struct HloNaryElementwiseAdaptor {
                                   broadcastedOperands);
   }
 };
+
+inline llvm::Optional<mhlo::ComparisonDirection> mhloComparisonDirection(
+    chlo::ComparisonDirection value) {
+  switch (value) {
+    case chlo::ComparisonDirection::EQ:
+      return mhlo::ComparisonDirection::EQ;
+    case chlo::ComparisonDirection::NE:
+      return mhlo::ComparisonDirection::NE;
+    case chlo::ComparisonDirection::GE:
+      return mhlo::ComparisonDirection::GE;
+    case chlo::ComparisonDirection::GT:
+      return mhlo::ComparisonDirection::GT;
+    case chlo::ComparisonDirection::LE:
+      return mhlo::ComparisonDirection::LE;
+    case chlo::ComparisonDirection::LT:
+      return mhlo::ComparisonDirection::LT;
+    default:
+      return {};
+  }
+}
+
+inline llvm::Optional<mhlo::ComparisonType> mhloComparisonType(
+    chlo::ComparisonType value) {
+  switch (value) {
+    case chlo::ComparisonType::NOTYPE:
+      return mhlo::ComparisonType::NOTYPE;
+    case chlo::ComparisonType::FLOAT:
+      return mhlo::ComparisonType::FLOAT;
+    case chlo::ComparisonType::TOTALORDER:
+      return mhlo::ComparisonType::TOTALORDER;
+    case chlo::ComparisonType::SIGNED:
+      return mhlo::ComparisonType::SIGNED;
+    case chlo::ComparisonType::UNSIGNED:
+      return mhlo::ComparisonType::UNSIGNED;
+    default:
+      return {};
+  }
+}
+
 struct HloCompareAdaptor {
   static mhlo::CompareOp createOp(BroadcastCompareOp fromOp, Type resultType,
                                   ValueRange broadcastedOperands,
                                   OpBuilder &builder) {
+    auto chloDirection = fromOp.comparison_direction();
+    auto mhloDirection = mhloComparisonDirection(chloDirection);
+    if (!mhloDirection) return nullptr;
+    auto chloType = fromOp.compare_type().value_or(ComparisonType::NOTYPE);
+    auto mhloType = mhloComparisonType(chloType);
+    if (!mhloType) return nullptr;
+    auto mhloTypeAttr =
+        fromOp.compare_type()
+            ? mhlo::ComparisonTypeAttr::get(builder.getContext(), *mhloType)
+            : nullptr;
     return builder.create<mhlo::CompareOp>(
         fromOp.getLoc(), resultType, broadcastedOperands[0],
-        broadcastedOperands[1], fromOp.comparison_direction(),
-        fromOp.compare_typeAttr());
+        broadcastedOperands[1], *mhloDirection, mhloTypeAttr);
   }
 };
 

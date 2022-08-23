@@ -6644,7 +6644,8 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
         loc, RankedTensorType::get({m}, builder->getIntegerType(32)),
         builder->getI64IntegerAttr(0));
     Value gtk = builder->create<chlo::BroadcastCompareOp>(
-        loc, iota, k, GetI64ElementsAttr({}, builder), ComparisonDirection::GT);
+        loc, iota, k, GetI64ElementsAttr({}, builder),
+        chlo::ComparisonDirection::GT);
     gtk = builder->create<ConvertOp>(loc, gtk, x_type.getElementType());
     Value x_after_k = builder->create<chlo::BroadcastMulOp>(
         loc, x, gtk, GetI64ElementsAttr({minor_dim}, builder));
@@ -6660,10 +6661,10 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
 
     Value sigma_is_zero = builder->create<chlo::BroadcastCompareOp>(
         loc, sigma.getResult(0), zero, GetI64ElementsAttr({}, builder),
-        ComparisonDirection::EQ);
+        chlo::ComparisonDirection::EQ);
     Value alpha_is_negative = builder->create<chlo::BroadcastCompareOp>(
         loc, alpha, zero, GetI64ElementsAttr({}, builder),
-        ComparisonDirection::LT);
+        chlo::ComparisonDirection::LT);
     auto batch_size_one = builder->create<BroadcastOp>(
         loc, one, GetI64ElementsAttr(batch_dims, builder));
     Value signed_mu = builder->create<chlo::BroadcastMulOp>(
@@ -6682,7 +6683,8 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
         builder->create<SelectOp>(loc, sigma_is_zero, batch_size_one, divisor);
 
     Value eqk = builder->create<chlo::BroadcastCompareOp>(
-        loc, iota, k, GetI64ElementsAttr({}, builder), ComparisonDirection::EQ);
+        loc, iota, k, GetI64ElementsAttr({}, builder),
+        chlo::ComparisonDirection::EQ);
     eqk = builder->create<ConvertOp>(loc, eqk, x_type.getElementType());
     llvm::SmallVector<int64_t, 4> e_k_shape(batch_dims.size(), 1);
     e_k_shape.push_back(m);
@@ -6788,12 +6790,12 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
           builder->getI64IntegerAttr(0));
       Value predecessor_mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota, j, GetI64ElementsAttr({}, builder),
-          ComparisonDirection::LT);
+          chlo::ComparisonDirection::LT);
       predecessor_mask = builder->create<ConvertOp>(loc, predecessor_mask,
                                                     a_type.getElementType());
       Value mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota, j, GetI64ElementsAttr({}, builder),
-          ComparisonDirection::EQ);
+          chlo::ComparisonDirection::EQ);
       mask = builder->create<ConvertOp>(loc, mask, a_type.getElementType());
       mask = builder->create<BroadcastOp>(
           loc,
@@ -6820,7 +6822,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
           builder->getI64IntegerAttr(minor_dim + 1));
       Value xa_mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota_mn, j, GetI64ElementsAttr({}, builder),
-          ComparisonDirection::EQ);
+          chlo::ComparisonDirection::EQ);
       a = builder->create<SelectOp>(loc, xa_mask, new_x, a);
 
       // vs[:, j] = v
@@ -6857,7 +6859,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
                              builder));
       Value taus_mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota_n, j, GetI64ElementsAttr({}, builder),
-          ComparisonDirection::EQ);
+          chlo::ComparisonDirection::EQ);
       auto taus_update = builder->create<SelectOp>(
           loc, taus_mask,
           StaticBinaryBroadcast<AddOp>(
@@ -6941,7 +6943,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
                              builder));
       auto compare = builder->create<chlo::BroadcastCompareOp>(
           loc, iota_mn, j, GetI64ElementsAttr({}, builder),
-          ComparisonDirection::GE);
+          chlo::ComparisonDirection::GE);
       auto y = builder->create<SelectOp>(loc, compare, zero, vs);
 
       // yv has shape [..., n, 1]

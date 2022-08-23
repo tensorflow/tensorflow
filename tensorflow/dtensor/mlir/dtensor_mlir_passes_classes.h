@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"
 #include "mlir/Pass/Pass.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace tensorflow {
 namespace dtensor {

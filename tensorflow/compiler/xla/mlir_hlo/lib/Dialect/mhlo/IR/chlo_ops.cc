@@ -18,6 +18,8 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/TypeSwitch.h"
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.cc.inc"
 #include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Traits.h"
@@ -30,6 +32,8 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops_attrs.cc.inc"
 
 namespace mlir {
 namespace chlo {
@@ -239,12 +243,12 @@ LogicalResult BroadcastComplexOp::reifyReturnTypeShapes(
 void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
                                Value lhs, Value rhs,
                                DenseIntElementsAttr broadcastDimensions,
-                               mhlo::ComparisonDirection comparisonDirection,
-                               mhlo::ComparisonType compareType) {
+                               chlo::ComparisonDirection comparisonDirection,
+                               chlo::ComparisonType compareType) {
   build(builder, result, lhs, rhs, broadcastDimensions,
-        mhlo::ComparisonDirectionAttr::get(builder.getContext(),
+        chlo::ComparisonDirectionAttr::get(builder.getContext(),
                                            comparisonDirection),
-        mhlo::ComparisonTypeAttr::get(builder.getContext(), compareType));
+        chlo::ComparisonTypeAttr::get(builder.getContext(), compareType));
 }
 
 LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
@@ -270,8 +274,8 @@ LogicalResult BroadcastCompareOp::reifyReturnTypeShapes(
 
 static Type getIsInfLikeReturnType(Value operand) {
   Builder b(operand.getContext());
-  return mhlo::getSameShapeTensorType(operand.getType().cast<TensorType>(),
-                                      b.getI1Type());
+  return hlo::getSameShapeTensorType(operand.getType().cast<TensorType>(),
+                                     b.getI1Type());
 }
 
 LogicalResult IsInfOp::inferReturnTypes(
@@ -391,8 +395,8 @@ LogicalResult ConstantLikeOp::inferReturnTypeComponents(
 LogicalResult ConstantLikeOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
-  return ::mlir::mhlo::deriveShapeFromOperand(
-      &builder, getOperation(), operands.front(), &reifiedReturnShapes);
+  return hlo::deriveShapeFromOperand(&builder, getOperation(), operands.front(),
+                                     &reifiedReturnShapes);
 }
 
 OpFoldResult ConstantLikeOp::fold(ArrayRef<Attribute> /*operands*/) {
@@ -514,6 +518,22 @@ LogicalResult TopKOp::inferReturnTypeComponents(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// ConstantOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ConstantOp::fold(ArrayRef<Attribute> /*operands*/) {
+  return value();
+}
+
+LogicalResult ConstantOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange, DictionaryAttr attributes,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  Type type = attributes.get("value").cast<TypedAttr>().getType();
+  inferredReturnTypes.push_back(type);
+  return success();
+}
+
 }  // namespace chlo
 }  // namespace mlir
 
@@ -527,20 +547,44 @@ namespace chlo {
 // chlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
-Operation* ChloDialect::materializeConstant(OpBuilder& builder, Attribute value,
-                                            Type type, Location loc) {
-  // Mirror MHLO dialect here.
-  if (value.isa<ElementsAttr>())
-    return builder.create<mhlo::ConstantOp>(loc, type,
-                                            value.cast<ElementsAttr>());
-  return nullptr;
-}
-
-void ChloDialect::initialize() {
+ChloDialect::ChloDialect(MLIRContext* context)
+    : Dialect(getDialectNamespace(), context, TypeID::get<ChloDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
       >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops_attrs.cc.inc"
+      >();
+}
+
+Operation* ChloDialect::materializeConstant(OpBuilder& builder, Attribute value,
+                                            Type type, Location loc) {
+  if (value.isa<ElementsAttr>())
+    return builder.create<chlo::ConstantOp>(loc, type,
+                                            value.cast<ElementsAttr>());
+  return nullptr;
+}
+
+// Entry point for Attribute parsing, TableGen generated code will handle the
+// dispatch to the individual classes.
+Attribute ChloDialect::parseAttribute(DialectAsmParser& parser,
+                                      Type type) const {
+  StringRef attrTag;
+  Attribute attr;
+  auto parseResult = generatedAttributeParser(parser, &attrTag, type, attr);
+  if (parseResult.hasValue()) return attr;
+  parser.emitError(parser.getNameLoc(), "unknown chlo attribute");
+  return Attribute();
+}
+
+// Entry point for Attribute printing, TableGen generated code will handle the
+// dispatch to the individual classes.
+void ChloDialect::printAttribute(Attribute attr, DialectAsmPrinter& os) const {
+  LogicalResult result = generatedAttributePrinter(attr, os);
+  (void)result;
+  assert(succeeded(result));
 }
 
 }  // namespace chlo

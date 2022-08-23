@@ -17,9 +17,10 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/base.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -32,20 +33,25 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
+// Include order below matters.
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.h.inc"
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops_attrs.h.inc"
+
 namespace mlir {
 namespace chlo {
 
 class ChloDialect : public Dialect {
-  void initialize();
-
  public:
-  explicit ChloDialect(MLIRContext* context)
-      : Dialect(getDialectNamespace(), context, TypeID::get<ChloDialect>()) {
-    initialize();
-  }
+  explicit ChloDialect(MLIRContext* context);
+  static StringRef getDialectNamespace() { return "chlo"; }
+
   Operation* materializeConstant(OpBuilder& builder, Attribute value, Type type,
                                  Location loc) override;
-  static StringRef getDialectNamespace() { return "chlo"; }
+
+  Attribute parseAttribute(DialectAsmParser& parser, Type type) const override;
+
+  void printAttribute(Attribute attr, DialectAsmPrinter& os) const override;
 };
 
 }  // namespace chlo

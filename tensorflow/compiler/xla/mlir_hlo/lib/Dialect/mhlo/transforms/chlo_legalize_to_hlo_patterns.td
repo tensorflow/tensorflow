@@ -349,3 +349,6 @@ def : Pat<(CHLO_IsNegInfOp NonComplexElementType:$input),
     HLO_ComparisonDirectionValue<"EQ">,
     (HLO_DEFAULT_COMPARISON_TYPE)
   )>;
+
+def : Pat<(CHLO_ConstantOp $v),
+          (HLO_ConstantOp $v)>;

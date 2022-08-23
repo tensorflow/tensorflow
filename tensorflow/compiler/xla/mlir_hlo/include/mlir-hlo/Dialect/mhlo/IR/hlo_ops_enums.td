@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef HLO_OPS_BASE_ENUMS
-#define HLO_OPS_BASE_ENUMS
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ENUMS
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ENUMS
 
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/PatternBase.td"
@@ -36,6 +36,11 @@ def HLO_Precision : I32EnumAttr<"Precision",
 }
 
 def HLO_PrecisionAttr : EnumAttr<HLO_Dialect, HLO_Precision, "precision">;
+
+// TODO(b/129153247) See if it's possible to also validate the size.
+def HLO_PrecisionConfigAttr:
+    OptionalAttr<
+          TypedArrayAttrBase<HLO_PrecisionAttr, "Precision Config attribute">>;
 
 //===----------------------------------------------------------------------===//
 // Domain Metadata Kind  enum definitions.
@@ -228,4 +233,4 @@ def HLO_RngAlgorithmAttr : EnumAttr<HLO_Dialect, HLO_RNG_ALGORITHM, "rng_algorit
   let assemblyFormat = "`<` $value `>`";
 }
 
-#endif // HLO_OPS_BASE_ENUMS
+#endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ENUMS

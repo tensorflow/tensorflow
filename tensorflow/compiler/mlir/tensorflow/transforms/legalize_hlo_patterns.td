@@ -170,18 +170,6 @@ def : Pat<(HLO_SelectOp $cond, $t, $e), (TF_SelectOp $cond, $t, $e)>;
 def : Pat<(HLO_ConcatenateOp $inputs, $dim),
           (TF_ConcatV2Op $inputs, (TF_ConstOp $dim))>;
 
-class HasCompareType<string value> :
-    CPred<"$_self.cast<::mlir::mhlo::ComparisonTypeAttr>().getValue() == " # value>;
-
-// Attribute value should be such that it matches the comparison used by
-// TensorFlow, if the attribute is present.
-def IsTFCompareType : AttrConstraint<
-   Or<[CPred<"!$_self">, HasCompareType<"::mlir::mhlo::ComparisonType::FLOAT">,
-   HasCompareType<"::mlir::mhlo::ComparisonType::SIGNED">,
-   HasCompareType<"::mlir::mhlo::ComparisonType::UNSIGNED">,
-   HasCompareType<"::mlir::mhlo::ComparisonType::NOTYPE">]>,
-   "compare type supported by TensorFlow">;
-
 //===----------------------------------------------------------------------===//
 // Compare op patterns.
 // Note that these are legalized from chlo.broadcast_* ops, since those are
@@ -189,29 +177,66 @@ def IsTFCompareType : AttrConstraint<
 // context, getting to these ops may require some raising.
 //===----------------------------------------------------------------------===//
 
+class HasChloCompareType<string value> :
+    CPred<"$_self.cast<::mlir::chlo::ComparisonTypeAttr>().getValue() == " # value>;
+
+// Attribute value should be such that it matches the comparison used by
+// TensorFlow, if the attribute is present.
+def IsChloTFCompareType : AttrConstraint<
+   Or<[CPred<"!$_self">, HasChloCompareType<"::mlir::chlo::ComparisonType::FLOAT">,
+   HasChloCompareType<"::mlir::chlo::ComparisonType::SIGNED">,
+   HasChloCompareType<"::mlir::chlo::ComparisonType::UNSIGNED">,
+   HasChloCompareType<"::mlir::chlo::ComparisonType::NOTYPE">]>,
+   "compare type supported by TensorFlow">;
+
+class CHLO_ComparisonDirectionValue<string enumStr> :
+  ConstantAttr<CHLO_ComparisonDirectionAttr, "::mlir::chlo::ComparisonDirection::" # enumStr>;
+
+class HasMhloCompareType<string value> :
+    CPred<"$_self.cast<::mlir::mhlo::ComparisonTypeAttr>().getValue() == " # value>;
+
+// Attribute value should be such that it matches the comparison used by
+// TensorFlow, if the attribute is present.
+def IsMhloTFCompareType : AttrConstraint<
+   Or<[CPred<"!$_self">, HasMhloCompareType<"::mlir::mhlo::ComparisonType::FLOAT">,
+   HasMhloCompareType<"::mlir::mhlo::ComparisonType::SIGNED">,
+   HasMhloCompareType<"::mlir::mhlo::ComparisonType::UNSIGNED">,
+   HasMhloCompareType<"::mlir::mhlo::ComparisonType::NOTYPE">]>,
+   "compare type supported by TensorFlow">;
+
 class HLO_ComparisonDirectionValue<string enumStr> :
   ConstantAttr<HLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
 
-foreach p = [[TF_EqualOp, HLO_ComparisonDirectionValue<"EQ">],
-             [TF_NotEqualOp, HLO_ComparisonDirectionValue<"NE">]] in {
+foreach p = [[TF_EqualOp, CHLO_ComparisonDirectionValue<"EQ">],
+             [TF_NotEqualOp, CHLO_ComparisonDirectionValue<"NE">]] in {
   def : Pat<(CHLO_BroadcastCompareOp $l, $r, $broadcast_dimensions, p[1],
-                                          IsTFCompareType:$type),
+                                          IsChloTFCompareType:$type),
             (p[0] $l, $r, ConstBoolAttrTrue),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
-  def : Pat<(HLO_CompareOp $l, $r, p[1], IsTFCompareType:$type),
+}
+
+foreach p = [[TF_EqualOp, HLO_ComparisonDirectionValue<"EQ">],
+             [TF_NotEqualOp, HLO_ComparisonDirectionValue<"NE">]] in {
+  def : Pat<(HLO_CompareOp $l, $r, p[1], IsMhloTFCompareType:$type),
             (p[0] $l, $r, ConstBoolAttrTrue)>;
 }
 
-foreach pair = [[TF_GreaterEqualOp, HLO_ComparisonDirectionValue<"GE">],
-                [TF_GreaterOp, HLO_ComparisonDirectionValue<"GT">],
-                [TF_LessEqualOp, HLO_ComparisonDirectionValue<"LE">],
-                [TF_LessOp, HLO_ComparisonDirectionValue<"LT">]] in {
+foreach p = [[TF_GreaterEqualOp, CHLO_ComparisonDirectionValue<"GE">],
+             [TF_GreaterOp, CHLO_ComparisonDirectionValue<"GT">],
+             [TF_LessEqualOp, CHLO_ComparisonDirectionValue<"LE">],
+             [TF_LessOp, CHLO_ComparisonDirectionValue<"LT">]] in {
   def : Pat<(CHLO_BroadcastCompareOp $l, $r, $broadcast_dimensions,
-                                          pair[1], IsTFCompareType:$type),
-            (pair[0] $l, $r),
+                                          p[1], IsChloTFCompareType:$type),
+            (p[0] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
-  def : Pat<(HLO_CompareOp $l, $r, pair[1], IsTFCompareType:$type),
-            (pair[0] $l, $r)>;
+}
+
+foreach p = [[TF_GreaterEqualOp, HLO_ComparisonDirectionValue<"GE">],
+             [TF_GreaterOp, HLO_ComparisonDirectionValue<"GT">],
+             [TF_LessEqualOp, HLO_ComparisonDirectionValue<"LE">],
+             [TF_LessOp, HLO_ComparisonDirectionValue<"LT">]] in {
+  def : Pat<(HLO_CompareOp $l, $r, p[1], IsMhloTFCompareType:$type),
+            (p[0] $l, $r)>;
 }
 
 def ConvertDotOp : NativeCodeCall<"ConvertDotOp($_builder, "

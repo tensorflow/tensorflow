@@ -13,25 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef HLO_OPS_BASE
-#define HLO_OPS_BASE
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_BASE
+#define MLIR_HLO_DIALECT_MHLO_IR_BASE
 
 include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 
-def HLO_Dialect : Dialect {
-  let name = "mhlo";
-  let cppNamespace = "::mlir::mhlo";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
-  let useDefaultAttributePrinterParser = 0;
-  let useDefaultTypePrinterParser = 0;
-}
-
-include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.td"
-include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.td"
+//===----------------------------------------------------------------------===//
+// HLO type definitions.
+//===----------------------------------------------------------------------===//
 
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
@@ -108,10 +100,6 @@ def HLO_QuantizedInt :
 // matching the matrix to dimensions 1 and 2 of the cuboid.
 defvar BroadcastDimAttr = I64ElementsAttr;
 
-//===----------------------------------------------------------------------===//
-// MHLO on tensors type definitions.
-//===----------------------------------------------------------------------===//
-
 // Token type.
 def HLO_Token : Type<CPred<"$_self.isa<TokenType>()">, "token">;
 
@@ -155,7 +143,7 @@ def HLO_StaticShapeTensor : StaticShapeTensorOf<[
       HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
 
 //===----------------------------------------------------------------------===//
-// MHLO on tensors combined type definitions.
+// HLO combined type definitions.
 //===----------------------------------------------------------------------===//
 
 // Any integer or floating-point tensor types
@@ -173,74 +161,12 @@ def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, HLO_Float, HLO_Complex]>;
 // Any pred, int or floating-point tensor types
 def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, HLO_Float]>;
 
-// A layout attribute (1D tensor of index type)
-def HLO_LayoutAttr : Attr<
-  And<[IndexElementsAttr.predicate,
-       CPred<[{$_self.cast<::mlir::DenseIntElementsAttr>().getType().getRank()
-               == 1}]>]>,
-  "A 1D tensor of index type (layout)"> {
-  let storageType = IndexElementsAttr.storageType;
-  let returnType = IndexElementsAttr.returnType;
-  let convertFromStorage = IndexElementsAttr.convertFromStorage;
-}
-
-// An array of layout (1D tensor) attributes.
-def HLO_ArrayOfLayoutAttr : TypedArrayAttrBase<HLO_LayoutAttr,
-    "Array of layout (1D tensor of index type) attributes">;
-
-// An array of FlatSymbolRef attributes that can be used as a default valued
-// attribute.
-def HLO_FlatSymbolRefArrayAttr :
-  TypedArrayAttrBase<FlatSymbolRefAttr, "flat symbol ref array attribute"> {
-  let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
-}
-
-
 //===----------------------------------------------------------------------===//
-// Common convolution attributes
-//===----------------------------------------------------------------------===//
-
-// TODO(b/129153247) See if it's possible to also validate the size.
-def HLO_PrecisionConfigAttr:
-    OptionalAttr<
-          TypedArrayAttrBase<HLO_PrecisionAttr, "Precision Config attribute">>;
-
-def BoolElementsAttr :
-    ElementsAttrBase<
-      And<[CPred<"$_self.isa<::mlir::DenseIntOrFPElementsAttr>()">,
-           CPred<"$_self.cast<::mlir::DenseIntOrFPElementsAttr>().getType().getElementType().isInteger(1)">]>,
-      "constant boolean vector/tensor attribute"> {
-  let storageType = [{ ::mlir::DenseElementsAttr }];
-  let returnType = [{ ::mlir::DenseElementsAttr }];
-
-  let convertFromStorage = "$_self";
-}
-
-def ConvolutionAttributes {
-  dag attributes = (ins
-    // Default value: one for each of the spatial dimension.
-    OptionalAttr<I64ElementsAttr>:$window_strides,
-    // Default value: two zeros for each of the spatial dimension.
-    OptionalAttr<I64ElementsAttr>:$padding,
-    // Default value: one for each of the spatial dimension.
-    OptionalAttr<I64ElementsAttr>:$lhs_dilation,
-    // Default value: one for each of the spatial dimension.
-    OptionalAttr<I64ElementsAttr>:$rhs_dilation,
-    // Default value: false for each of the spatial dimension.
-    OptionalAttr<BoolElementsAttr>:$window_reversal,
-    ConvDimensionNumbers:$dimension_numbers,
-    I64Attr:$feature_group_count,
-    I64Attr:$batch_group_count,
-    HLO_PrecisionConfigAttr:$precision_config
-  );
-}
-
-//===----------------------------------------------------------------------===//
-// Common traits
+// HLO traits
 //===----------------------------------------------------------------------===//
 
 class HLO_NativeOpTrait<string name> : NativeOpTrait<name> {
-  let cppNamespace = "::mlir::mhlo::OpTrait";
+  let cppNamespace = "::mlir::hlo::OpTrait";
 }
 
 // An operation that is essentially element-wise but may implement broadcasting
@@ -266,4 +192,24 @@ def HLO_CompatibleOperandsAndResultType : TraitList<
     HLO_NativeOpTrait<"CompatibleOperandsAndResultType">
   ]>;
 
-#endif // HLO_OPS_BASE
+def HLO_BoundedAttrInterface : AttrInterface<"BoundedAttrInterface"> {
+  let cppNamespace = "::mlir::hlo";
+
+  let description = [{
+    This interface is used for attributes that carry bounds for dimension sizes
+    of an accompanying shaped type, e.g. when the attribute represents a
+    RankedTensorType::getEncoding.
+    The number of bounds is expected to be the same as the number of dimensions
+    in the accompanying shaped type.
+    For a static dimension, the corresponding bound is ShapedType::kDynamicSize.
+    For a dynamic dimension, the corresponding bound is either known and is
+    a non-negative number or unknown and is ShapedType::kDynamicSize.
+  }];
+
+  let methods = [InterfaceMethod<
+    "Get the attribute's bounds",
+    "::llvm::ArrayRef<int64_t>", "getBounds"
+  >];
+}
+
+#endif // MLIR_HLO_DIALECT_MHLO_IR_BASE

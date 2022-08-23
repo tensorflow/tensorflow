@@ -15,16 +15,16 @@ limitations under the License.
 
 // This is the operation definition file for MHLO ops.
 
-#ifndef HLO_OPS
-#define HLO_OPS
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS
 
 include "mlir/Dialect/Shape/IR/ShapeBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
-include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.td"
 
 class HLO_Op<string mnemonic, list<Trait> traits> :
     Op<HLO_Dialect, mnemonic, traits> {
@@ -139,16 +139,16 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
-      return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
-                                                  operands.front(),
-                                                  &reifiedReturnShapes);
+      return ::mlir::hlo::deriveShapeFromOperand(&builder, getOperation(),
+                                                operands.front(),
+                                                &reifiedReturnShapes);
     }
     // Relax the strict default implementation with one that allows
     // for MHLO-specific differences.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
-      for (auto it : llvm::zip(l, r))
-        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
+      for (auto [lt, rt] : llvm::zip(l, r))
+        if (!mlir::hlo::isCompatibleForHloTypeInference(lt, rt))
           return false;
       return true;
     }
@@ -482,17 +482,17 @@ class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
-      return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
-                                                  operands.front(),
-                                                  &reifiedReturnShapes);
+      return ::mlir::hlo::deriveShapeFromOperand(&builder, getOperation(),
+                                                 operands.front(),
+                                                 &reifiedReturnShapes);
     }
     // Relax the strict default implementation with one that allows
     // for MHLO-specific differences.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
-      for (auto it : llvm::zip(l, r))
-        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
-         return false;
+      for (auto [lt, rt] : llvm::zip(l, r))
+        if (!mlir::hlo::isCompatibleForHloTypeInference(lt, rt))
+          return false;
       return true;
     }
   }];
@@ -1602,8 +1602,8 @@ def HLO_ClampOp : HLO_ShapedInterfaceOp<"clamp", [NoSideEffect,
     // Method from InferTypeOpInterface interface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
-      for (auto it : llvm::zip(l, r))
-        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
+      for (auto [lt, rt] : llvm::zip(l, r))
+        if (!mlir::hlo::isCompatibleForHloTypeInference(lt, rt))
           return false;
       return true;
     }
@@ -2146,8 +2146,8 @@ def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect,
     // Method from InferTypeOpInterface interface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
-      for (auto it : llvm::zip(l, r))
-        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
+      for (auto [lt, rt] : llvm::zip(l, r))
+        if (!mlir::hlo::isCompatibleForHloTypeInference(lt, rt))
           return false;
       return true;
     }
@@ -2734,7 +2734,7 @@ def HLO_DynamicPadOp: HLO_ShapedInterfaceOp<"dynamic_pad",
     Example:
 
     ```mlir
-    %0 = mhlo.dynamic_pad %arg0, %arg1, %arg2, %arg3, %arg4 
+    %0 = mhlo.dynamic_pad %arg0, %arg1, %arg2, %arg3, %arg4
            : (tensor<?x?xf32>, tensor<f32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<?x?xf32>
     ```
   }];
@@ -2849,4 +2849,4 @@ def HLO_CstrReshapableOp :
   let hasCustomHLOConverter = 1;
 }
 
-#endif // HLO_OPS
+#endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS

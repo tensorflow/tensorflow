@@ -17,6 +17,20 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_mlir_library(MLIRHloBase
+  base.cc
+
+  DEPENDS
+  MLIRHloBaseIncGen
+
+  LINK_LIBS PUBLIC
+  MLIRInferTypeOpInterface
+  MLIRIR
+  MLIRQuantDialect
+  MLIRShapeDialect
+  MLIRSupport
+)
+
 set(LLVM_TARGET_DEFINITIONS hlo_patterns.td)
 mlir_tablegen(hlo_patterns.cc.inc -gen-rewriters)
 add_public_tablegen_target(MLIRMhloRewriterIncGen)
@@ -33,6 +47,7 @@ add_mlir_dialect_library(ChloDialect
 
   LINK_LIBS PUBLIC
   MhloDialect
+  MLIRHloBase
   MLIRComplexDialect
   MLIRIR
   MLIRMhloUtils
@@ -56,6 +71,7 @@ add_mlir_dialect_library(MhloDialect
 target_link_libraries(MhloDialect
   PUBLIC
   MLIRComplexDialect
+  MLIRHloBase
   MLIRIR
   MLIRMhloUtils
   MLIRQuantDialect
