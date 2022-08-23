@@ -632,7 +632,8 @@ port::Status ROCMBlas::DoBlasGemmWithAlgorithm(
     blas::DataType type_a, int lda, const DeviceMemoryBase &b,
     blas::DataType type_b, int ldb, const void *beta, DeviceMemoryBase *c,
     blas::DataType type_c, int ldc, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
+    blas::AlgorithmType algorithm, blas::ComputePrecision precision,
+    blas::ProfileResult *output_profile_result) {
   // ROCM TODO: properly implement the interface
   return port::InternalError("Not implemented on ROCm");
 }
@@ -644,7 +645,8 @@ port::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
     blas::DataType type_b, int ldb, int64_t stride_b, const void *beta,
     DeviceMemoryBase *c, blas::DataType type_c, int ldc, int64_t stride_c,
     int batch_count, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
+    blas::AlgorithmType algorithm, blas::ComputePrecision precision,
+    blas::ProfileResult *output_profile_result) {
   // ROCM TODO: properly implement the interface
   return port::InternalError("Not implemented on ROCm");
 }
@@ -1071,7 +1073,8 @@ port::Status ROCMBlas::DoBlasGemmStridedBatched(
     uint64_t n, uint64 k, blas::DataType dtype, const void *alpha,
     const DeviceMemoryBase &a, int lda, int64_t stride_a,
     const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,
-    DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count) {
+    DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count,
+    blas::ComputePrecision precision) {
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS SGEMM Strided Batched<float>: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%p a=%p lda=%d b=%p ldb=%d beta=%p "

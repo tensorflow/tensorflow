@@ -919,7 +919,7 @@ static bool UsesTensorOps(blas::AlgorithmType algo) {
 
 static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
     Stream *stream, blas::AlgorithmType algorithm, blas::DataType type_a,
-    blas::DataType type_b) {
+    blas::DataType type_b, blas::ComputePrecision precision) {
   if (type_a != type_b) {
     return port::InternalError("Types of inputs mismatch");
   }
@@ -966,6 +966,9 @@ static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
           absl::StrCat("Algorithm ", algorithm,
                        " uses tensor ops which are not supported for input"));
     }
+  }
+  if (precision > blas::kDefaultComputePrecision) {
+    math_type = CUBLAS_DEFAULT_MATH;
   }
 
   // Return false if we might be hitting a cuBLAS bug that produces the wrong
@@ -1018,9 +1021,11 @@ port::Status CUDABlas::DoBlasGemmWithAlgorithm(
     blas::DataType type_a, int lda, const DeviceMemoryBase &b,
     blas::DataType type_b, int ldb, const void *beta, DeviceMemoryBase *c,
     blas::DataType type_c, int ldc, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
-  TF_ASSIGN_OR_RETURN(cublasMath_t math_type,
-                      GetMathTypeForGemmEx(stream, algorithm, type_a, type_b));
+    blas::AlgorithmType algorithm, blas::ComputePrecision precision,
+    blas::ProfileResult *output_profile_result) {
+  TF_ASSIGN_OR_RETURN(
+      cublasMath_t math_type,
+      GetMathTypeForGemmEx(stream, algorithm, type_a, type_b, precision));
 
   TF_ASSIGN_OR_RETURN(auto timer, StartGpuTimerForProfile(
                                       stream, parent_, output_profile_result));
@@ -1048,9 +1053,11 @@ port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
     blas::DataType type_b, int ldb, int64_t stride_b, const void *beta,
     DeviceMemoryBase *c, blas::DataType type_c, int ldc, int64_t stride_c,
     int batch_count, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
-  TF_ASSIGN_OR_RETURN(cublasMath_t math_type,
-                      GetMathTypeForGemmEx(stream, algorithm, type_a, type_b));
+    blas::AlgorithmType algorithm, blas::ComputePrecision precision,
+    blas::ProfileResult *output_profile_result) {
+  TF_ASSIGN_OR_RETURN(
+      cublasMath_t math_type,
+      GetMathTypeForGemmEx(stream, algorithm, type_a, type_b, precision));
   TF_ASSIGN_OR_RETURN(auto timer, StartGpuTimerForProfile(
                                       stream, parent_, output_profile_result));
 
@@ -1409,7 +1416,8 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
     uint64_t n, uint64 k, blas::DataType dtype, const void *alpha,
     const DeviceMemoryBase &a, int lda, int64_t stride_a,
     const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,
-    DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count) {
+    DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count,
+    blas::ComputePrecision precision) {
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
 #if CUDA_VERSION < 11000
   if (dtype == dnn::kHalf) {
@@ -1418,6 +1426,9 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
 #else
   if (dtype == dnn::kFloat) {
     math_type = CUBLAS_TF32_TENSOR_OP_MATH;
+  }
+  if (precision > blas::kDefaultComputePrecision) {
+    math_type = CUBLAS_DEFAULT_MATH;
   }
 #endif
 

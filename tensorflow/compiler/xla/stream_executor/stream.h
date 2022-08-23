@@ -873,7 +873,8 @@ class Stream {
     OutputType beta{0};
     return ThenBlasGemmWithAlgorithm(transa, transb, m, n, k, alpha, a, lda, b,
                                      ldb, beta, c, ldc, computation_type,
-                                     algorithm, output_profile_result);
+                                     algorithm, blas::kDefaultComputePrecision,
+                                     output_profile_result);
   }
 
   template <typename InputType, typename OutputType, typename ConstantType>
@@ -883,6 +884,7 @@ class Stream {
       const DeviceMemory<InputType> &b, int ldb, ConstantType beta,
       DeviceMemory<OutputType> *c, int ldc,
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
+      blas::ComputePrecision precision,
       blas::ProfileResult *output_profile_result) {
     TF_RETURN_IF_ERROR(
         CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
@@ -906,7 +908,7 @@ class Stream {
         blas::ToDataType<InputType>::value, lda, b,
         blas::ToDataType<InputType>::value, ldb, beta_ptr, c,
         blas::ToDataType<OutputType>::value, ldc, computation_type, algorithm,
-        output_profile_result);
+        precision, output_profile_result);
     if (output_profile_result) {
       // The error is recorded in the profile.
       return ::tensorflow::OkStatus();
@@ -921,7 +923,7 @@ class Stream {
       int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
       int64_t stride_b, ConstantType beta, DeviceMemory<OutputType> *c, int ldc,
       int64_t stride_c, int batch_count, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm,
+      blas::AlgorithmType algorithm, blas::ComputePrecision precision,
       blas::ProfileResult *output_profile_result) {
     TF_RETURN_IF_ERROR(
         CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
@@ -943,7 +945,7 @@ class Stream {
         blas::ToDataType<InputType>::value, lda, stride_a, b,
         blas::ToDataType<InputType>::value, ldb, stride_b, beta_ptr, c,
         blas::ToDataType<OutputType>::value, ldc, stride_c, batch_count,
-        computation_type, algorithm, output_profile_result);
+        computation_type, algorithm, precision, output_profile_result);
     if (output_profile_result) {
       // The error is recorded in the profile.
       return ::tensorflow::OkStatus();
@@ -1035,7 +1037,7 @@ class Stream {
       uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
       int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
       int64_t stride_b, ConstantType beta, DeviceMemory<InputType> *c, int ldc,
-      int64_t stride_c, int batch_count) {
+      int64_t stride_c, int batch_count, blas::ComputePrecision precision) {
     static_assert(
         detail::is_any_of<InputType, float, Eigen::half, Eigen::bfloat16,
                           double, std::complex<float>, std::complex<double>>(),
@@ -1061,7 +1063,7 @@ class Stream {
     return blas->DoBlasGemmStridedBatched(
         this, transa, transb, m, n, k, blas::ToDataType<InputType>::value,
         alpha_ptr, a, lda, stride_a, b, ldb, stride_b, beta_ptr, c, ldc,
-        stride_c, batch_count);
+        stride_c, batch_count, precision);
   }
 
   // See BlasSupport::DoBlasTrsm.

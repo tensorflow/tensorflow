@@ -426,6 +426,7 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
                            const se::blas::MatrixDescriptor& output,
                            Output alpha, Output beta, se::Stream* stream,
                            se::blas::AlgorithmType algorithm,
+                           se::blas::ComputePrecision compute_precision,
                            se::blas::ProfileResult* profile_result) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
@@ -439,13 +440,13 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
         lhs.leading_dim_stride, lhs.batch_stride, rhs.cast<Input>(),
         rhs.leading_dim_stride, rhs.batch_stride, beta, &output_data,
         output.leading_dim_stride, output.batch_stride, batch_size,
-        computation_type, algorithm, profile_result);
+        computation_type, algorithm, compute_precision, profile_result);
   } else {
     return stream->ThenBlasGemmWithAlgorithm(
         lhs.transpose, rhs.transpose, m, n, k, alpha, lhs.cast<Input>(),
         lhs.leading_dim_stride, rhs.cast<Input>(), rhs.leading_dim_stride, beta,
         &output_data, output.leading_dim_stride, computation_type, algorithm,
-        profile_result);
+        compute_precision, profile_result);
   }
 }
 
@@ -462,9 +463,9 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
   se::DeviceMemory<Input> output_data(output.data);
 
   if (algorithm) {
-    return DoGemmWithAlgorithm<Input, Input>(batch_size, m, n, k, lhs, rhs,
-                                             output, alpha, beta, stream,
-                                             *algorithm, profile_result);
+    return DoGemmWithAlgorithm<Input, Input>(
+        batch_size, m, n, k, lhs, rhs, output, alpha, beta, stream, *algorithm,
+        compute_precision, profile_result);
   }
 
   if (batch_size != 1) {
@@ -472,7 +473,8 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
         lhs.transpose, rhs.transpose, m, n, k, alpha, lhs.cast<Input>(),
         lhs.leading_dim_stride, lhs.batch_stride, rhs.cast<Input>(),
         rhs.leading_dim_stride, rhs.batch_stride, beta, &output_data,
-        output.leading_dim_stride, output.batch_stride, batch_size);
+        output.leading_dim_stride, output.batch_stride, batch_size,
+        compute_precision);
   }
 
   return stream->ThenBlasGemm(
@@ -517,7 +519,7 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
           batch_size, m, n, k, lhs, rhs, output,
           static_cast<int32_t>(config.alpha.real()),
           static_cast<int32_t>(config.beta), stream, *algorithm,
-          profile_result);
+          se::blas::kDefaultComputePrecision, profile_result);
     case F16:
       return DoGemm<Eigen::half>(batch_size, m, n, k, lhs, rhs, output,
                                  static_cast<Eigen::half>(config.alpha.real()),
