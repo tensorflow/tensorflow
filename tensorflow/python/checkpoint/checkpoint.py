@@ -29,6 +29,7 @@ from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import graph_view as graph_view_lib
 from tensorflow.python.checkpoint import restore as restore_lib
+from tensorflow.python.checkpoint import save_util
 from tensorflow.python.checkpoint import save_util_v1
 from tensorflow.python.checkpoint import util
 from tensorflow.python.client import session as session_lib
@@ -56,6 +57,7 @@ from tensorflow.python.trackable import base
 from tensorflow.python.trackable import data_structures
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import saver as v1_saver_lib
+from tensorflow.python.training.saving import saveable_object as saveable_object_lib
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
@@ -348,7 +350,7 @@ class _CheckpointRestoreCoordinator:
     if tensor_saveables or registered_savers:
       flat_saveables = saveable_object_util.validate_and_slice_inputs(
           tensor_saveables)
-      new_restore_ops = functional_saver.MultiDeviceSaver(
+      new_restore_ops = functional_saver.MultiDeviceSaver.from_saveables(
           flat_saveables,
           registered_savers).restore(self.save_path_tensor, self.options)
       if not context.executing_eagerly():
@@ -1150,12 +1152,16 @@ class TrackableSaver:
 
     # The following attributes are used when graph building.
 
-    # Saveables caching: A dictionary mapping `Trackable` objects ->
-    # attribute names -> SaveableObjects, used to avoid re-creating
-    # SaveableObjects when graph building.
+    # self._cache: A more generic cache used to cache the serialized tensors and
+    #   TrackableObjectGraph proto attributes.
+    # self._saveables_cache: A dictionary mapping `Trackable` objects ->
+    #   attribute names -> SaveableObjects, used to avoid re-creating
+    #   SaveableObjects when graph building.
     if context.executing_eagerly():
+      self._cache = None
       self._saveables_cache = None
     else:
+      self._cache = object_identity.ObjectIdentityWeakKeyDictionary()
       self._saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
 
     # The file prefix placeholder is created lazily when graph building (and not
@@ -1177,13 +1183,18 @@ class TrackableSaver:
     # objects for checkpoint saving.
     self._object_map = None
 
-  def _gather_saveables(self, object_graph_tensor=None):
-    """Wraps _serialize_object_graph to include the object graph proto."""
-    named_saveable_objects, graph_proto, feed_additions, registered_savers = (
-        save_util_v1.serialize_gathered_objects(
-            graph_view=self._graph_view,
-            object_map=self._object_map,
-            saveables_cache=self._saveables_cache))
+  def _gather_serialized_tensors(self, object_graph_tensor=None):
+    """Gathers tensors to save to ckpt and includes the object graph proto."""
+    serialized_tensors, feed_additions, registered_savers, graph_proto = (
+        save_util.serialize_graph_view(self._graph_view,
+                                       self._object_map,
+                                       cache=self._cache))
+
+    if self._saveables_cache is not None:
+      # Store saveables cache for restoration purposes.
+      self._saveables_cache = (
+          saveable_object_util.serialized_tensors_to_saveable_cache(
+              serialized_tensors))
 
     if object_graph_tensor is None:
       with ops.device("/cpu:0"):
@@ -1192,12 +1203,10 @@ class TrackableSaver:
     else:
       feed_additions.update(
           {object_graph_tensor: graph_proto.SerializeToString()})
-    assert base.OBJECT_GRAPH_PROTO_KEY not in named_saveable_objects
-    named_saveable_objects.append(
-        base.NoRestoreSaveable(
-            tensor=object_graph_tensor, name=base.OBJECT_GRAPH_PROTO_KEY))
-    return (named_saveable_objects, graph_proto, feed_additions,
-            registered_savers)
+    assert base.OBJECT_GRAPH_PROTO_KEY not in serialized_tensors.get(None, {})
+    serialized_tensors.setdefault(None, {})[base.OBJECT_GRAPH_PROTO_KEY] = (
+        object_graph_tensor)
+    return serialized_tensors, feed_additions, registered_savers, graph_proto
 
   def _save_cached_when_graph_building(self,
                                        file_prefix,
@@ -1221,9 +1230,8 @@ class TrackableSaver:
       current object graph and any Python state to be saved in the
       checkpoint. When executing eagerly only the first argument is meaningful.
     """
-    (named_saveable_objects, graph_proto, feed_additions,
-     registered_savers) = self._gather_saveables(
-         object_graph_tensor=object_graph_tensor)
+    serialized_tensors, feed_additions, registered_savers, graph_proto = (
+        self._gather_serialized_tensors(object_graph_tensor))
 
     def _run_save():
       """Create and execute the SaveOp for the checkpoint."""
@@ -1233,7 +1241,7 @@ class TrackableSaver:
           # constructors. That means the Saver needs to be copied with a new
           # var_list.
           or context.executing_eagerly() or ops.inside_function()):
-        saver = functional_saver.MultiDeviceSaver(named_saveable_objects,
+        saver = functional_saver.MultiDeviceSaver(serialized_tensors,
                                                   registered_savers)
         save_op = saver.save(file_prefix, options=options)
         with ops.device("/cpu:0"):
@@ -1244,21 +1252,13 @@ class TrackableSaver:
 
     def _copy_tensors():
       """Copy the tensors to the host CPU device."""
-      for saveable in named_saveable_objects:
-        # Pin the device according to the SaveableObject's device location to
-        # avoid unnecessary data copies when reading the variables. This is
-        # aligned with the behavior in MultiDeviceSaver.save().
-        original_device = saveable.device
-        with ops.device(original_device):
-          for spec in saveable.specs:
-            tensor = spec.tensor
-            device = spec.device
-            if tensor is not None:
-              with ops.device(saveable_object_util.set_cpu0(device)):
-                spec._tensor = array_ops.identity(tensor)  # pylint: disable=protected-access
-                # Modify the device info accordingly now that the tensors are
-                # copied to the host CPU device.
-                spec.device = saveable_object_util.set_cpu0(device)
+      for trackable in serialized_tensors:
+        maybe_tensor = serialized_tensors[trackable]
+        if isinstance(maybe_tensor, ops.Tensor):
+          serialized_tensors[trackable] = _copy_single_tensor(maybe_tensor)
+        else:
+          for key, tensor in maybe_tensor.items():
+            serialized_tensors[trackable][key] = _copy_single_tensor(tensor)
 
     def _async_save_fn():
       """The thread function for executing async checkpoint save."""
@@ -1549,8 +1549,8 @@ def frozen_saver(root_trackable):
   named_saveable_objects, registered_savers = (
       save_util_v1.frozen_saveables_and_savers(
           graph_view_lib.ObjectGraphView(root_trackable)))
-  return functional_saver.MultiDeviceSaver(named_saveable_objects,
-                                           registered_savers)
+  return functional_saver.MultiDeviceSaver.from_saveables(
+      named_saveable_objects, registered_savers)
 
 
 def _assert_trackable(obj, name):
@@ -1583,6 +1583,22 @@ def _convert_file_name_tensor_to_string(tensor):
     # Graph + Session, so we already session.ran it.
     output = compat.as_str(output)
   return output
+
+
+def _copy_single_tensor(tensor):
+  """Copies a single Tensor / SaveSpec onto the CPU device."""
+  device = tensor.device
+  if isinstance(tensor, saveable_object_lib.SaveSpec):
+    # Pin the device according to the tensor's device location to
+    # avoid unnecessary data copies when reading the variables. This is
+    # aligned with the behavior in MultiDeviceSaver.save().
+    with ops.device(device):
+      tensor = tensor.tensor
+
+  if tensor is not None:
+    with ops.device(saveable_object_util.set_cpu0(device)):
+      tensor = array_ops.identity(tensor)  # pylint: disable=protected-access
+  return tensor
 
 
 # Mentions graph building / Sessions. The v2 version is below.
