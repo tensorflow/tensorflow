@@ -2963,6 +2963,35 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "reduce_scatter_reassociate",
+    srcs = ["reduce_scatter_reassociate.cc"],
+    hdrs = ["reduce_scatter_reassociate.h"],
+    deps = [
+        ":all_reduce_key",
+        ":collective_ops_utils",
+        ":hlo",
+        ":hlo_domain_map",
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
+tf_cc_test(
+    name = "reduce_scatter_reassociate_test",
+    srcs = ["reduce_scatter_reassociate_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":reduce_scatter_reassociate",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "batch_dot_simplification",
     srcs = ["batch_dot_simplification.cc"],
     hdrs = ["batch_dot_simplification.h"],
