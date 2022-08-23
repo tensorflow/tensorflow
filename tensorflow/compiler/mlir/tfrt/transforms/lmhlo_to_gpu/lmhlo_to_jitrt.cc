@@ -15,6 +15,7 @@
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_jitrt.h"
 
 #include <cstdint>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -45,6 +46,7 @@
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
@@ -1660,6 +1662,10 @@ std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloGpuToJitRtPass() {
 
 void populateLmhloToJitRtPasses(mlir::OpPassManager& pm,
                                 GpuBinaryOptions options) {
+  // Run CSE to remove identical `memref.view` operations that read from the
+  // same argument at the same offset.
+  pm.addPass(createCSEPass());
+
   // Convert large global memrefs corresponding to XLA constants with arguments,
   // so that compiled device kernels do not capture them.
   //
@@ -1668,6 +1674,10 @@ void populateLmhloToJitRtPasses(mlir::OpPassManager& pm,
   // should not inline it too early. Currently it's hardcoded to `1` element.
   pm.addPass(createConvertLmhloConstantToArgPass(/*min_num_elements=*/2));
   pm.addPass(createSymbolDCEPass());  // Clean up unused global constants.
+
+  // Sink constants into MHLO regions before trying to export to XLA for
+  // compiling GPU binaries.
+  pm.addPass(mhlo::createSinkConstantsToControlFlowPass());
 
   // Small global constants will be embedded into the device modules.
   pm.addPass(createConvertLmhloToGpuBinaryPass(options));
