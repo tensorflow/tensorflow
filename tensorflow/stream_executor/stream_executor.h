@@ -13,12 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The StreamExecutor is a single-device abstraction for:
-//
-// * Loading/launching data-parallel-kernels
-// * Invoking pre-canned high-performance library routines (like matrix
-//   multiply)
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_H_
 #define TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_H_
 

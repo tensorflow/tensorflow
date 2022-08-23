@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file wraps roctracer API calls with dso loader so that we don't need to
-// have explicit linking to libroctracer. All TF hipsarse API usage should route
-// through this wrapper.
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCTRACER_WRAPPER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCTRACER_WRAPPER_H_
 

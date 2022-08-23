@@ -13,11 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The temporary-memory-manager is a helper class for a Stream to keep track of
-// temporary allocations. These allocations defer their deallocation to the next
-// Stream::BlockHostUntilDone call for efficiency purposes (as deallocation
-// itself generally forces synchronization to occur).
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TEMPORARY_MEMORY_MANAGER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TEMPORARY_MEMORY_MANAGER_H_
 

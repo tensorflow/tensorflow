@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The CUDA-specific DNN library support, implementing the general DnnSupport
-// interface.
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 

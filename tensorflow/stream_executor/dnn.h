@@ -13,12 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Neural Net operation support for StreamExecutor instances.
-//
-// This is an abstract interface for a platform to optionally support common
-// neural net operations; it accommodates implementations such as the cudnn
-// library operations.
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DNN_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DNN_H_
 
