@@ -46,6 +46,7 @@ sets of python types:
 import numbers as _numbers
 
 import numpy as _np
+import six as _six
 import codecs
 
 from tensorflow.python.util.tf_export import tf_export
@@ -76,7 +77,7 @@ def as_bytes(bytes_or_text, encoding='utf-8'):
   encoding = codecs.lookup(encoding).name
   if isinstance(bytes_or_text, bytearray):
     return bytes(bytes_or_text)
-  elif isinstance(bytes_or_text, str):
+  elif isinstance(bytes_or_text, _six.text_type):
     return bytes_or_text.encode(encoding)
   elif isinstance(bytes_or_text, bytes):
     return bytes_or_text
@@ -103,7 +104,7 @@ def as_text(bytes_or_text, encoding='utf-8'):
   """
   # Validate encoding, a LookupError will be raised if invalid.
   encoding = codecs.lookup(encoding).name
-  if isinstance(bytes_or_text, str):
+  if isinstance(bytes_or_text, _six.text_type):
     return bytes_or_text
   elif isinstance(bytes_or_text, bytes):
     return bytes_or_text.decode(encoding)
@@ -209,6 +210,6 @@ complex_types = (_numbers.Complex, _np.number)
 tf_export('compat.complex_types').export_constant(__name__, 'complex_types')
 
 # Either bytes or text.
-bytes_or_text_types = (bytes, str)
+bytes_or_text_types = (bytes, _six.text_type)
 tf_export('compat.bytes_or_text_types').export_constant(__name__,
                                                         'bytes_or_text_types')
