@@ -55,6 +55,7 @@ visibility = [
     "//third_party/courier:__subpackages__",
     "//third_party/py/courier:__subpackages__",
     "//third_party/py/reverb:__subpackages__",
+    "//third_party/py/tensorfn:__subpackages__",
     "//third_party/py/neural_structured_learning:__subpackages__",
     "//third_party/py/tensorflow_docs:__subpackages__",
     "//third_party/py/tensorflow_examples:__subpackages__",
