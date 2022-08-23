@@ -229,6 +229,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       TF_ASSIGN_OR_RETURN(
           bool was_fused,
           FuseVectorBiasAddSliced(instr, bias, existing_gemm, slice));
+      if (was_fused) {
+        return OkStatus();
+      }
     }
 
     // Attempt to elide broadcast and fuse addition of a vector bias into

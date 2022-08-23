@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -864,10 +865,10 @@ StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
   bool has_matrix_bias = config.beta() != 0.;
-  absl::flat_hash_set<xla::gpu::GemmBackendConfig_Epilogue> bias_epilogues{
-      xla::gpu::GemmBackendConfig::BIAS, xla::gpu::GemmBackendConfig::BIASRELU,
-      xla::gpu::GemmBackendConfig::BIASGELU};
-  bool has_vector_bias = bias_epilogues.contains(config.epilogue());
+
+  TF_ASSIGN_OR_RETURN(
+      bool has_vector_bias,
+      xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
 
   TF_RET_CHECK(custom_call->operand_count() ==
                2 + int{has_matrix_bias} + int{has_vector_bias});

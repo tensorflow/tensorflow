@@ -295,10 +295,9 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   std::optional<se::blas::AlgorithmType> best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
     bool has_matrix_bias = config.beta != 0.;
-    absl::flat_hash_set<GemmBackendConfig_Epilogue> bias_epilogues{
-        GemmBackendConfig::BIAS, GemmBackendConfig::BIASRELU,
-        GemmBackendConfig::BIASGELU};
-    bool has_vector_bias = bias_epilogues.contains(gemm_config.epilogue());
+
+    TF_ASSIGN_OR_RETURN(bool has_vector_bias, cublas_lt::EpilogueAddsVectorBias(
+                                                  gemm_config.epilogue()));
 
     TF_ASSIGN_OR_RETURN(auto epilogue,
                         AsBlasLtEpilogue(gemm_config.epilogue()));
