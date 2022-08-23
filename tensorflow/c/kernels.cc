@@ -109,13 +109,14 @@ void TF_DeleteAsyncKernelBuilder(TF_AsyncKernelBuilder* builder) {
 namespace tensorflow {
 namespace {
 
-#define CASE(type)                                               \
-  case DataTypeToEnum<type>::value: {                            \
-    kernel_builder->cc_builder->TypeConstraint<type>(attr_name); \
-    break;                                                       \
+#define CASE(type)                                                        \
+  case DataTypeToEnum<type>::value: {                                     \
+    kernel_builder->cc_builder->template TypeConstraint<type>(attr_name); \
+    break;                                                                \
   }
 
-void AddTypeConstraint(TF_KernelBuilder* kernel_builder, const char* attr_name,
+template <typename T>
+void AddTypeConstraint(T* kernel_builder, const char* attr_name,
                        const DataType dtype, TF_Status* status) {
   // This needs to be under tensorflow:: namespace so that
   // TF_CALL_ALL_TYPES macro can find tensorflow::string as string.
@@ -130,24 +131,8 @@ void AddTypeConstraint(TF_KernelBuilder* kernel_builder, const char* attr_name,
   }
   TF_SetStatus(status, TF_OK, "");
 }
-
-void AddTypeConstraint(TF_AsyncKernelBuilder* kernel_builder,
-                       const char* attr_name, const DataType dtype,
-                       TF_Status* status) {
-  // This needs to be under tensorflow:: namespace so that
-  // TF_CALL_ALL_TYPES macro can find tensorflow::string as string.
-  switch (dtype) {
-    TF_CALL_ALL_TYPES(CASE);
-    TF_CALL_QUANTIZED_TYPES(CASE);
-    TF_CALL_quint16(CASE);
-    TF_CALL_qint16(CASE);
-    default:
-      status->status = errors::Unimplemented("Unexpected type ", dtype);
-      return;
-  }
-  TF_SetStatus(status, TF_OK, "");
-}
 #undef CASE
+
 }  // namespace
 }  // namespace tensorflow
 
