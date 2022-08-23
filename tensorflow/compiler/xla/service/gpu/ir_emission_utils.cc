@@ -839,7 +839,6 @@ std::optional<TransposeDimsAndParams> Match021Transpose(
   // shared memory in fusions.  If in the future other fusible ops use shared
   // memory, we'll have to adjust this heuristic.
   constexpr int kMinBlocksPerCore = 3;
-  constexpr int64_t kShmemPerCore = 48 * 1024;
 
   int64_t shmem_used = 0;
   std::vector<int64_t> filtered_params;
@@ -850,7 +849,7 @@ std::optional<TransposeDimsAndParams> Match021Transpose(
         32 * 33 *
         ShapeUtil::ByteSizeOfPrimitiveType(operand_shape.element_type());
 
-    if (kMinBlocksPerCore * shmem_used > kShmemPerCore) {
+    if (kMinBlocksPerCore * shmem_used > kSharedMemoryBudgetInBytes) {
       break;
     }
     filtered_params.push_back(param_id);
