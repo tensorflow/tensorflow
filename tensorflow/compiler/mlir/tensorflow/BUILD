@@ -984,6 +984,7 @@ cc_library(
     deps = [
         ":resource_value_typed_analyzer",
         ":tensorflow",
+        ":tensorflow_analysis",
         ":tensorflow_ops",
         ":tensorflow_passes",
         ":tensorflow_types",
@@ -1005,10 +1006,12 @@ cc_library(
     srcs = [
         "analysis/per_function_aggregate_analysis.h",
         "analysis/resource_alias_analysis.cc",
+        "analysis/resource_dataflow.cc",
         "analysis/side_effect_analysis.cc",
     ],
     hdrs = [
         "analysis/resource_alias_analysis.h",
+        "analysis/resource_dataflow.h",
         "analysis/side_effect_analysis.h",
     ],
     deps = [
