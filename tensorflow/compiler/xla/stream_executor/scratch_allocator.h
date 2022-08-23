@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_SCRATCH_ALLOCATOR_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_SCRATCH_ALLOCATOR_H_
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -50,7 +51,7 @@ class ScratchAllocator {
   //
   // This is a temporary allocation, and the caller is responsible for
   // deallocating at some known-safe point. See the class comment above.
-  virtual port::StatusOr<DeviceMemory<uint8>> AllocateBytes(
+  virtual port::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) = 0;
 };
 
@@ -67,10 +68,11 @@ class OneTimeScratchAllocator : public ScratchAllocator {
 
   int64_t GetMemoryLimitInBytes() override { return -1; }
 
-  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
+  port::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+      int64_t byte_size) override;
 
  private:
-  std::unique_ptr<TemporaryDeviceMemory<uint8>> temporary_;
+  std::unique_ptr<TemporaryDeviceMemory<uint8_t>> temporary_;
   Stream* stream_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(OneTimeScratchAllocator);
@@ -89,7 +91,7 @@ class OwningScratchAllocator : public ScratchAllocator {
 
   int64_t GetMemoryLimitInBytes() override { return -1; }
 
-  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(
+  port::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
     TF_ASSIGN_OR_RETURN(OwningDeviceMemory buffer,
                         allocator_->Allocate(device_ordinal_, byte_size,

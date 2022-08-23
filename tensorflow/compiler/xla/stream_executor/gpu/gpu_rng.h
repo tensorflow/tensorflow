@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_RNG_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_RNG_H_
 
+#include <cstdint>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
@@ -64,7 +66,8 @@ class GpuRng : public rng::RngSupport {
   bool DoPopulateRandGaussian(Stream* stream, double mean, double stddev,
                               DeviceMemory<double>* v) override;
 
-  bool SetSeed(Stream* stream, const uint8* seed, uint64_t seed_bytes) override;
+  bool SetSeed(Stream* stream, const uint8_t* seed,
+               uint64_t seed_bytes) override;
 
  private:
   // Actually performs the work of generating random numbers - the public

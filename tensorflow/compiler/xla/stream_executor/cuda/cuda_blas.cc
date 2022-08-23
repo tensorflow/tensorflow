@@ -45,6 +45,7 @@ limitations under the License.
 #endif
 
 #include <complex>
+#include <cstdint>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -351,22 +352,22 @@ struct CUDADataType<int> {
 };
 
 template <>
-struct CUDADataType<int8> {
+struct CUDADataType<int8_t> {
   static constexpr cudaDataType_t type = CUDA_R_8I;
 };
 
 template <>
-struct CUDADataType<std::complex<int8>> {
+struct CUDADataType<std::complex<int8_t>> {
   static constexpr cudaDataType_t type = CUDA_C_8I;
 };
 
 template <>
-struct CUDADataType<uint8> {
+struct CUDADataType<uint8_t> {
   static constexpr cudaDataType_t type = CUDA_R_8U;
 };
 
 template <>
-struct CUDADataType<std::complex<uint8>> {
+struct CUDADataType<std::complex<uint8_t>> {
   static constexpr cudaDataType_t type = CUDA_C_8U;
 };
 
@@ -1228,11 +1229,11 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
   // Decide how to allocate device-side copy of pointers to matrices based on
   // whether a scratch allocator was passed.
   if (scratch_allocator != nullptr) {
-    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> a_bytes,
+    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> a_bytes,
                         scratch_allocator->AllocateBytes(size));
-    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> b_bytes,
+    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> b_bytes,
                         scratch_allocator->AllocateBytes(size));
-    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> c_bytes,
+    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> c_bytes,
                         scratch_allocator->AllocateBytes(size));
     a = DeviceMemory<CUDA_T *>(a_bytes);
     b = DeviceMemory<CUDA_T *>(b_bytes);

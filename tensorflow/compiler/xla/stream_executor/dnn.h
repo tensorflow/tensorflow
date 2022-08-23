@@ -22,6 +22,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DNN_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DNN_H_
 
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -1059,19 +1060,19 @@ class NormalizeDescriptor {
   std::string ToShortString() const;
 
   float bias() const { return bias_; }
-  int32 range() const { return range_; }
+  int32_t range() const { return range_; }
   float alpha() const { return alpha_; }
   float beta() const { return beta_; }
   bool wrap_around() const { return wrap_around_; }
-  int32 segment_size() const { return segment_size_; }
+  int32_t segment_size() const { return segment_size_; }
 
  private:
   float bias_;
-  int32 range_;
+  int32_t range_;
   float alpha_;
   float beta_;
   bool wrap_around_;
-  int32 segment_size_;
+  int32_t segment_size_;
 };
 
 // Returns a string representation of the given activation mode.
@@ -1223,7 +1224,7 @@ class DnnSupport {
       dnn::ActivationMode activation_mode, DeviceMemory<float>* x_backprop,
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
       DeviceMemory<float>* side_input_backprop,
-      DeviceMemory<uint8>* reserve_space_data,
+      DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator) {
     return false;
   }
@@ -1242,7 +1243,7 @@ class DnnSupport {
       DeviceMemory<Eigen::half>* x_backprop,
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
       DeviceMemory<Eigen::half>* side_input_backprop,
-      DeviceMemory<uint8>* reserve_space_data,
+      DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator) {
     return false;
   }
@@ -1328,7 +1329,7 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const AlgorithmConfig& algorithm_config,
       ScratchAllocator* scratch_allocator, AlgorithmDesc* algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory) {
+      DeviceMemory<uint8_t>* scratch_memory) {
     return DoPrepareForConvolution(
         kind, ToDataType<ElementType>::value, stream, batch_descriptor,
         input_data, filter_descriptor, filter_data, output_descriptor,
@@ -1377,7 +1378,7 @@ class DnnSupport {
       DeviceMemoryBase filter_data, const BatchDescriptor& output_descriptor,
       DeviceMemoryBase output_data,
       const ConvolutionDescriptor& convolution_descriptor,
-      AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
+      AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the forward convolution pass.
@@ -1456,7 +1457,7 @@ class DnnSupport {
       Stream* stream, const dnn::BatchDescriptor& input_descriptor,
       const DeviceMemory<float>& input_data,
       const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int8>& filter_coefficients,
+      const DeviceMemory<int8_t>& filter_coefficients,
       const DeviceMemory<float>& coefficient_scales,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
@@ -1561,7 +1562,7 @@ class DnnSupport {
   //     quantized_weight[row * nnum_columns + column] * weight_scales[column].
   virtual bool DoMatMulQuantized(Stream* stream,
                                  const DeviceMemory<float>& input_data,
-                                 const DeviceMemory<int8>& quantized_weights,
+                                 const DeviceMemory<int8_t>& quantized_weights,
                                  const DeviceMemory<float>& weight_scales,
                                  const dnn::BatchDescriptor& input_dimensions,
                                  const dnn::BatchDescriptor& output_dimensions,
@@ -2239,7 +2240,7 @@ class DnnSupport {
       DeviceMemory<Eigen::half>* input_h_backprop_data,
       DeviceMemory<Eigen::half>* input_c_backprop_data,
       DeviceMemory<Eigen::half>* params_backprop_data,
-      DeviceMemory<uint8>* reserve_space_data,
+      DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result) {
     return false;
@@ -2268,7 +2269,7 @@ class DnnSupport {
       DeviceMemory<float>* input_h_backprop_data,
       DeviceMemory<float>* input_c_backprop_data,
       DeviceMemory<float>* params_backprop_data,
-      DeviceMemory<uint8>* reserve_space_data,
+      DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result) {
     return false;
@@ -2297,7 +2298,7 @@ class DnnSupport {
       DeviceMemory<double>* input_h_backprop_data,
       DeviceMemory<double>* input_c_backprop_data,
       DeviceMemory<double>* params_backprop_data,
-      DeviceMemory<uint8>* reserve_space_data,
+      DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result) {
     return false;
@@ -2312,7 +2313,7 @@ class DnnSupport {
                                  absl::Span<const int> labels_lengths_data,
                                  absl::Span<const int> input_lengths_data,
                                  ScratchAllocator* workspace_allocator,
-                                 DeviceMemory<uint8>* scratch_memory,
+                                 DeviceMemory<uint8_t>* scratch_memory,
                                  int* ctc_loss_algo_id) {
     return DoPrepareForCtcLoss(
         stream, ToDataType<ElementType>::value, probs_desc, grads_desc,
@@ -2348,7 +2349,7 @@ class DnnSupport {
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
       const RnnStateTensorDescriptor& grads_desc, DeviceMemoryBase grads_data,
-      DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id);
+      DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id);
 
   template <typename ElementType>
   bool DoCtcLoss(Stream* stream,
@@ -2360,7 +2361,7 @@ class DnnSupport {
                  DeviceMemory<ElementType>* costs_data,
                  const dnn::RnnStateTensorDescriptor& grads_desc,
                  DeviceMemory<ElementType>* grads_data,
-                 DeviceMemory<uint8>* scratch_memory, int ctc_loss_algo_id) {
+                 DeviceMemory<uint8_t>* scratch_memory, int ctc_loss_algo_id) {
     return IsStatusOk(
         DoCtcLoss(stream, ToDataType<ElementType>::value, probs_desc,
                   probs_data, labels_data, labels_lengths_data,
@@ -2624,7 +2625,7 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const AlgorithmConfig& algorithm_config,
       ScratchAllocator* scratch_allocator, AlgorithmDesc* algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory) {
+      DeviceMemory<uint8_t>* scratch_memory) {
     *algorithm_desc = {};
     *scratch_memory = {};
     return ::tensorflow::OkStatus();
@@ -2637,8 +2638,8 @@ class DnnSupport {
       absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data,
-      ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
-      int* ctc_loss_algo_id) {
+      ScratchAllocator* scratch_allocator,
+      DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) {
     *scratch_memory = {};
     return ::tensorflow::OkStatus();
   }

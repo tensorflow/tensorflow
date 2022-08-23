@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/const_init.h"
 #include "absl/base/optimization.h"
@@ -121,10 +123,10 @@ static void WarnIfBadPtxasVersion(const std::string& ptxas_path) {
   }
 }
 
-port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
+port::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
     int device_ordinal, const char* ptx, GpuAsmOpts compilation_options) {
   using PtxCacheKey = std::tuple<int, std::string, GpuAsmOpts::PtxOptionsTuple>;
-  using PtxCompilerResult = port::StatusOr<std::vector<uint8>>;
+  using PtxCompilerResult = port::StatusOr<std::vector<uint8_t>>;
   static absl::Mutex ptx_cache_mutex(absl::kConstInit);
   static auto& ptx_cache ABSL_GUARDED_BY(ptx_cache_mutex) =
       *new absl::flat_hash_map<PtxCacheKey, PtxCompilerResult>();
@@ -149,13 +151,13 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
     return it->second.status();
   }
 
-  const std::vector<uint8>& compiled = it->second.ValueOrDie();
+  const std::vector<uint8_t>& compiled = it->second.ValueOrDie();
   return absl::MakeSpan(compiled);
 }
 
-port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
-                                                 const char* ptx_contents,
-                                                 GpuAsmOpts options) {
+port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int device_ordinal,
+                                                   const char* ptx_contents,
+                                                   GpuAsmOpts options) {
   gpu::GpuDeviceHandle handle;
   TF_RETURN_IF_ERROR(gpu::GpuDriver::GetDevice(device_ordinal, &handle));
   int cc_major;
@@ -246,9 +248,9 @@ static void AppendArgsFromOptions(GpuAsmOpts options,
               options.extra_flags.end());
 }
 
-port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
-                                                 const char* ptx_contents,
-                                                 GpuAsmOpts options) {
+port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
+                                                   const char* ptx_contents,
+                                                   GpuAsmOpts options) {
   std::string ptxas_path =
       FindCudaExecutable("ptxas", options.preferred_cuda_dir);
 
@@ -333,11 +335,11 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   std::string cubin;
   TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
                                                   cubin_path, &cubin));
-  std::vector<uint8> cubin_vector(cubin.begin(), cubin.end());
+  std::vector<uint8_t> cubin_vector(cubin.begin(), cubin.end());
   return cubin_vector;
 }
 
-port::StatusOr<std::vector<uint8>> BundleGpuAsm(
+port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
     std::vector<CubinOrPTXImage> images, GpuAsmOpts options) {
   std::string fatbinary_path =
       FindCudaExecutable("fatbinary", options.preferred_cuda_dir);
@@ -416,7 +418,7 @@ port::StatusOr<std::vector<uint8>> BundleGpuAsm(
   std::string result_blob;
   TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
                                                   result_path, &result_blob));
-  return std::vector<uint8>(result_blob.begin(), result_blob.end());
+  return std::vector<uint8_t>(result_blob.begin(), result_blob.end());
 }
 
 static std::string findRocmExecutable(const std::string& binary_relative_path,
@@ -431,7 +433,7 @@ static std::string findRocmExecutable(const std::string& binary_relative_path,
   return binary_path;
 }
 
-port::StatusOr<std::vector<uint8>> BundleGpuAsm(
+port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
     std::vector<HsacoImage> images, const std::string rocm_root_dir) {
   std::string clang_offload_bundler_path =
       findRocmExecutable("llvm/bin/clang-offload-bundler", rocm_root_dir);
@@ -511,7 +513,7 @@ port::StatusOr<std::vector<uint8>> BundleGpuAsm(
   std::string result_blob;
   TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
                                                   result_path, &result_blob));
-  return std::vector<uint8>(result_blob.begin(), result_blob.end());
+  return std::vector<uint8_t>(result_blob.begin(), result_blob.end());
 }
 
 }  // namespace stream_executor

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_OP_EXECUTABLE_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_OP_EXECUTABLE_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 
@@ -35,7 +36,7 @@ namespace tensorflow {
 // An executable capable of being fed to a TPU device via TpuExecutor.
 class TpuOpExecutable : public xla::TpuExecutableInterface {
  public:
-  using HostCommandHandler = std::function<void(uint32, int64_t)>;
+  using HostCommandHandler = std::function<void(uint32_t, int64_t)>;
 
   // Constructs an executable that holds a non-owning reference to an
   // XLA_TpuProgram.

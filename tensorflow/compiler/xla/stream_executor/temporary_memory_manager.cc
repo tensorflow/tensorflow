@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/temporary_memory_manager.h"
 
+#include <cstdint>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
@@ -95,7 +97,7 @@ TemporaryMemoryManager::AllocateArrayBase(uint64_t element_count,
                                           uint64_t element_size) {
   uint64_t byte_size = element_count * element_size;
   DeviceMemoryBase device_memory =
-      stream_->parent()->AllocateArray<uint8>(byte_size);
+      stream_->parent()->AllocateArray<uint8_t>(byte_size);
   if (device_memory == nullptr) {
     return port::Status(port::error::RESOURCE_EXHAUSTED,
                         absl::StrCat("could not allocate temporary memory of ",

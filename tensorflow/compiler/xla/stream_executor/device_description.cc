@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/human_readable.h"
@@ -135,7 +136,7 @@ bool ThreadDimOk(const DeviceDescription &device_description,
   return ok;
 }
 
-uint64_t DivideCeil(uint64 x, uint64 y) {
+uint64_t DivideCeil(uint64_t x, uint64_t y) {
   return port::MathUtil::CeilOfRatio(x, y);
 }
 

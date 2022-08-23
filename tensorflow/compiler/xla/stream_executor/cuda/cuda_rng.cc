@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_rng.h"
 
+#include <cstdint>
+
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_helpers.h"
@@ -196,7 +198,7 @@ bool GpuRng::DoPopulateRandGaussian(Stream* stream, double mean, double stddev,
                                         curandGenerateNormalDouble);
 }
 
-bool GpuRng::SetSeed(Stream* stream, const uint8* seed, uint64_t seed_bytes) {
+bool GpuRng::SetSeed(Stream* stream, const uint8_t* seed, uint64_t seed_bytes) {
   absl::MutexLock lock(&mu_);
   CHECK(rng_ != nullptr);
 

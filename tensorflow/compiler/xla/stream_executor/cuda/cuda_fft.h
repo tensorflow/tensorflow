@@ -20,6 +20,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_FFT_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_FFT_H_
 
+#include <cstdint>
+
 #include "third_party/gpus/cuda/include/cufft.h"
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
@@ -89,7 +91,7 @@ class CUDAFftPlan : public fft::Plan {
   GpuExecutor* parent_;
   cufftHandle plan_;
   fft::Type fft_type_;
-  DeviceMemory<uint8> scratch_;
+  DeviceMemory<uint8_t> scratch_;
   size_t scratch_size_bytes_;
   bool is_initialized_;
   ScratchAllocator* scratch_allocator_;

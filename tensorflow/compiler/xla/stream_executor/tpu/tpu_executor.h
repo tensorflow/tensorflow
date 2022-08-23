@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
@@ -95,11 +97,11 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
-  void DequeueOutfeed(int32_t outfeed_queue_index, absl::Span<uint8> bytes,
+  void DequeueOutfeed(int32_t outfeed_queue_index, absl::Span<uint8_t> bytes,
                       StatusCallback done);
 
   Status EnqueueInfeed(int32_t infeed_queue_index,
-                       absl::Span<const uint8> bytes);
+                       absl::Span<const uint8_t> bytes);
 
   std::optional<stream_executor::AllocatorStats> GetAllocatorStats() override;
 
@@ -191,7 +193,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
                  uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
-  Status Memset32(Stream* stream, DeviceMemoryBase* location, uint32 pattern,
+  Status Memset32(Stream* stream, DeviceMemoryBase* location, uint32_t pattern,
                   uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }

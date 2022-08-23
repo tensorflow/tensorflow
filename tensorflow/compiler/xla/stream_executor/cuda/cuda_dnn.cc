@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_dnn.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -1174,7 +1175,7 @@ class CudnnDropoutDescriptor {
       return CudnnDropoutDescriptor(std::move(handle));
     }
 
-    DeviceMemory<uint8> state_memory;
+    DeviceMemory<uint8_t> state_memory;
     if (state_allocator) {
       size_t state_sizes_in_bytes = 0;
       RETURN_IF_CUDNN_ERROR(
@@ -1853,7 +1854,7 @@ port::Status CheckRNNParameterSize(
   return ::tensorflow::OkStatus();
 }
 
-port::StatusOr<DeviceMemory<uint8>> CreateRnnWorkspace(
+port::StatusOr<DeviceMemory<uint8_t>> CreateRnnWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
     const CudnnRnnDescriptor& rnn_desc,
     const CudnnRnnSequenceTensorDescriptor& input_desc,
@@ -1866,13 +1867,13 @@ port::StatusOr<DeviceMemory<uint8>> CreateRnnWorkspace(
       /*sizeInBytes=*/&workspace_size_in_bytes));
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
-    return DeviceMemory<uint8>();
+    return DeviceMemory<uint8_t>();
   }
   return workspace_allocator->AllocateBytes(workspace_size_in_bytes);
 }
 
 #if CUDNN_VERSION >= 7402
-port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
+port::StatusOr<DeviceMemory<uint8_t>> CreateBatchNormForwardWorkspace(
     Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
     const cudnnBatchNormOps_t& bn_ops,
     const cudnnActivationDescriptor_t& activation_desc,
@@ -1891,12 +1892,12 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
           /*sizeInBytes=*/&workspace_size_in_bytes));
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
-    return DeviceMemory<uint8>();
+    return DeviceMemory<uint8_t>();
   }
   return workspace_allocator->AllocateBytes(workspace_size_in_bytes);
 }
 
-port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
+port::StatusOr<DeviceMemory<uint8_t>> CreateBatchNormBackwardWorkspace(
     Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
     const cudnnBatchNormOps_t& bn_ops,
     const cudnnActivationDescriptor_t& activation_desc,
@@ -1917,7 +1918,7 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
       /*sizeInBytes=*/&workspace_size_in_bytes));
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
-    return DeviceMemory<uint8>();
+    return DeviceMemory<uint8_t>();
   }
   return workspace_allocator->AllocateBytes(workspace_size_in_bytes);
 }
@@ -1962,8 +1963,8 @@ port::Status CudnnSupport::DoRnnForwardImpl(
   // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#release-802.
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   if (input_desc.is_var_seq_lengths()) {
-    DeviceMemory<uint8> workspace;
-    DeviceMemory<uint8> reserve_space;
+    DeviceMemory<uint8_t> workspace;
+    DeviceMemory<uint8_t> reserve_space;
     cudnnForwardMode_t rnn_fwd_mode;
     if (is_training) {
       rnn_fwd_mode = CUDNN_FWD_MODE_TRAINING;
@@ -2028,13 +2029,13 @@ port::Status CudnnSupport::DoRnnForwardImpl(
     return port::Status::OK();
   }
 #endif
-  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> workspace,
                       CreateRnnWorkspace(stream, cudnn, rnn_desc, input_desc,
                                          workspace_allocator));
 
   // query the reserve space size
   // allocate the reserve space
-  DeviceMemory<uint8> reserve_space;
+  DeviceMemory<uint8_t> reserve_space;
   if (is_training) {
     size_t reserve_space_size_in_bytes = 0;
     RETURN_IF_CUDNN_ERROR(cudnnGetRNNTrainingReserveSize(
@@ -2162,7 +2163,7 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
     DeviceMemory<T>* input_h_backprop_data,
     DeviceMemory<T>* input_c_backprop_data,
     DeviceMemory<T>* params_backprop_data,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   TF_ASSIGN_OR_RETURN(
@@ -2182,7 +2183,7 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
   // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#release-802.
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   if (input_desc.is_var_seq_lengths()) {
-    DeviceMemory<uint8> workspace;
+    DeviceMemory<uint8_t> workspace;
     size_t workspace_size_in_bytes = 0;
     RETURN_IF_CUDNN_ERROR(cudnnGetRNNTempSpaceSizes(
         /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
@@ -2261,7 +2262,7 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
     return port::Status::OK();
   }
 #endif
-  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> workspace,
                       CreateRnnWorkspace(stream, cudnn, rnn_desc, input_desc,
                                          workspace_allocator));
 
@@ -2378,7 +2379,7 @@ port::Status CudnnSupport::DoCtcLossImpl(
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const CudnnRnnStateTensorDescriptor& grads_desc,
     DeviceMemoryBase grads_data, const CudnnCtcLossDescriptor& ctc_loss_desc,
-    DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id) {
+    DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id) {
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   int kNumTimestamps = probs_desc.num_layers();
@@ -2621,7 +2622,7 @@ bool CudnnSupport::DoRnnBackward(
     DeviceMemory<Eigen::half>* input_h_backprop_data,
     DeviceMemory<Eigen::half>* input_c_backprop_data,
     DeviceMemory<Eigen::half>* params_backprop_data,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   const CudnnRnnDescriptor& cudnn_rnn_desc =
@@ -2673,7 +2674,7 @@ bool CudnnSupport::DoRnnBackward(
     DeviceMemory<float>* input_h_backprop_data,
     DeviceMemory<float>* input_c_backprop_data,
     DeviceMemory<float>* params_backprop_data,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   const CudnnRnnDescriptor& cudnn_rnn_desc =
@@ -2726,7 +2727,7 @@ bool CudnnSupport::DoRnnBackward(
     DeviceMemory<double>* input_h_backprop_data,
     DeviceMemory<double>* input_c_backprop_data,
     DeviceMemory<double>* params_backprop_data,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   const CudnnRnnDescriptor& cudnn_rnn_desc =
@@ -2884,7 +2885,7 @@ GetCudnnConvolutionBackwardFilterAlgo(const CudnnHandle& cudnn,
 #endif
 }
 
-port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
+port::StatusOr<DeviceMemory<uint8_t>> AllocateCudnnConvolutionForwardWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
     const CudnnConvolutionDescriptor& conv,
@@ -2921,7 +2922,7 @@ port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
   }
 
   if (size_in_bytes_int64_t == 0) {
-    return DeviceMemory<uint8>();
+    return DeviceMemory<uint8_t>();
   }
 
   if (ABSL_PREDICT_FALSE(!scratch_allocator)) {
@@ -2932,7 +2933,7 @@ port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
   return scratch_allocator->AllocateBytes(size_in_bytes);
 }
 
-port::StatusOr<DeviceMemory<uint8>>
+port::StatusOr<DeviceMemory<uint8_t>>
 AllocateCudnnConvolutionBackwardDataWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
@@ -2971,7 +2972,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
   }
 
   if (size_in_bytes_int64_t == 0) {
-    return DeviceMemory<uint8>();
+    return DeviceMemory<uint8_t>();
   }
 
   if (ABSL_PREDICT_FALSE(!scratch_allocator)) {
@@ -2982,7 +2983,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
   return scratch_allocator->AllocateBytes(size_in_bytes);
 }
 
-port::StatusOr<DeviceMemory<uint8>>
+port::StatusOr<DeviceMemory<uint8_t>>
 AllocateCudnnConvolutionBackwardFilterWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
@@ -3021,7 +3022,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
   }
 
   if (size_in_bytes_int64_t == 0) {
-    return DeviceMemory<uint8>();
+    return DeviceMemory<uint8_t>();
   }
 
   if (ABSL_PREDICT_FALSE(!scratch_allocator)) {
@@ -3057,7 +3058,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     dnn::DataType element_type,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const CudnnTensorDescriptor& output_nd, ScratchAllocator* scratch_allocator,
-    DeviceMemory<uint8>* scratch) {
+    DeviceMemory<uint8_t>* scratch) {
   std::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
 
   CudnnConvolutionDescriptor conv(
@@ -3120,7 +3121,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
     dnn::DataType element_type,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const CudnnTensorDescriptor& output_nd, ScratchAllocator* scratch_allocator,
-    DeviceMemory<uint8>* scratch) {
+    DeviceMemory<uint8_t>* scratch) {
   std::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
   CudnnConvolutionDescriptor conv(
       convolution_descriptor,
@@ -3181,7 +3182,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
     dnn::DataType element_type,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const CudnnTensorDescriptor& output_nd, ScratchAllocator* scratch_allocator,
-    DeviceMemory<uint8>* scratch) {
+    DeviceMemory<uint8_t>* scratch) {
   std::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
   CudnnConvolutionDescriptor conv(
       convolution_descriptor,
@@ -3206,7 +3207,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
     algo_desc = dnn::AlgorithmDesc(algo, use_tensor_ops);
   }
 
-  port::StatusOr<DeviceMemory<uint8>> scratch_or =
+  port::StatusOr<DeviceMemory<uint8_t>> scratch_or =
       AllocateCudnnConvolutionBackwardFilterWorkspace(
           stream, cudnn, input_nd, filter, conv, output_nd, *algo_desc,
           scratch_allocator);
@@ -3963,7 +3964,7 @@ port::Status CudnnSupport::DoPrepareForConvolution(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::AlgorithmConfig& algorithm_config,
     ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
-    DeviceMemory<uint8>* scratch_memory) {
+    DeviceMemory<uint8_t>* scratch_memory) {
   CudnnTensorDescriptor input_nd(
       input_descriptor,
       ToCudnnDataType(element_type, input_descriptor.layout()));
@@ -4262,7 +4263,7 @@ port::Status CudnnSupport::DoConvolve(
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
     DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
+    dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
     dnn::ProfileResult* profile_result) {
   cudnnDataType_t cudnn_type =
       ToCudnnDataType(element_type, input_descriptor.layout());
@@ -5479,8 +5480,8 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
   float zero = 0.0;
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
-  DeviceMemory<uint8> workspace;
-  DeviceMemory<uint8> reserve_space;
+  DeviceMemory<uint8_t> workspace;
+  DeviceMemory<uint8_t> reserve_space;
 
 #if CUDNN_VERSION >= 7402
   const auto get_bn_ops = [&]() -> cudnnBatchNormOps_t {
@@ -5612,7 +5613,7 @@ bool CudnnSupport::DoBatchNormalizationBackward(
     dnn::ActivationMode activation_mode, DeviceMemory<float>* x_backprop,
     DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
     DeviceMemory<float>* side_input_backprop,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
   return IsStatusOk(
       DoBatchNormalizationBackwardImpl(
@@ -5633,7 +5634,7 @@ bool CudnnSupport::DoBatchNormalizationBackward(
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* x_backprop,
     DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
     DeviceMemory<Eigen::half>* side_input_backprop,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
   return IsStatusOk(
       DoBatchNormalizationBackwardImpl(
@@ -5655,7 +5656,7 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
     dnn::ActivationMode activation_mode, DeviceMemory<T>* x_backprop,
     DeviceMemory<U>* scale_backprop, DeviceMemory<U>* offset_backprop,
     DeviceMemory<T>* side_input_backprop,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
   CudnnTensorDescriptor x_descriptor(
       x_desc, static_cast<cudnnDataType_t>(cudnn_input_type));
@@ -5690,7 +5691,7 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
         activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
 
     TF_ASSIGN_OR_RETURN(
-        DeviceMemory<uint8> workspace,
+        DeviceMemory<uint8_t> workspace,
         CreateBatchNormBackwardWorkspace(
             stream, cudnn, mode, bn_ops, activation_desc.handle(), x_descriptor,
             scale_offset_descriptor, workspace_allocator));
@@ -5799,7 +5800,7 @@ port::Status CudnnSupport::DoFusedConvolve(
       ToCudnnDataType(input_type, filter_descriptor.layout()));
   CudnnTensorDescriptor bias_nd(bias_descriptor, ToCudnnDataType(bias_type));
 
-  DeviceMemory<uint8> scratch;
+  DeviceMemory<uint8_t> scratch;
   dnn::AlgorithmDesc algo_desc;
   {
     auto cudnn = cudnn_->GetHandle(parent_, stream);
@@ -5841,7 +5842,7 @@ port::Status CudnnSupport::DoPrepareForCtcLoss(
     absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data,
-    ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
+    ScratchAllocator* scratch_allocator, DeviceMemory<uint8_t>* scratch_memory,
     int* ctc_loss_algo_id) {
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   // Query the workspace size.
@@ -5891,7 +5892,7 @@ port::Status CudnnSupport::DoPrepareForCtcLoss(
 #endif
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
-    *scratch_memory = DeviceMemory<uint8>();
+    *scratch_memory = DeviceMemory<uint8_t>();
     return ::tensorflow::OkStatus();
   }
   const auto scratch_or =
@@ -5911,7 +5912,7 @@ port::Status CudnnSupport::DoCtcLoss(
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const dnn::RnnStateTensorDescriptor& grads_desc,
-    DeviceMemoryBase grads_data, DeviceMemory<uint8> scratch_memory,
+    DeviceMemoryBase grads_data, DeviceMemory<uint8_t> scratch_memory,
     int ctc_loss_algo_id) {
   // Current cuDNN CTC Loss only supports the float datatype
   if (CUDNN_VERSION < 7603 || element_type != dnn::DataType::kFloat) {

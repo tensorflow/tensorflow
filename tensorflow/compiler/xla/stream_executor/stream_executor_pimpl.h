@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 
 #include <atomic>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
@@ -307,7 +308,7 @@ class StreamExecutor {
   // (i.e. evently divisible by 4). Returns whether the operation was
   // successfully enqueued onto the stream.
   port::Status Memset32(Stream* stream, DeviceMemoryBase* location,
-                        uint32 pattern, uint64_t size);
+                        uint32_t pattern, uint64_t size);
 
   // Enables peer access from this StreamExecutor to memory
   // allocated by other, such that launched device code, memcpies, etc may
@@ -461,7 +462,7 @@ class StreamExecutor {
   template <typename... Args>
   port::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
       absl::string_view kernel_name, absl::string_view ptx,
-      absl::Span<const uint8> cubin_data);
+      absl::Span<const uint8_t> cubin_data);
 
   // Warning: use Stream::ThenLaunch instead, this method is not for general
   // consumption. However, this is the only way to launch a kernel for which
@@ -811,7 +812,7 @@ template <typename... Args>
 inline port::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
 StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
                                   absl::string_view ptx,
-                                  absl::Span<const uint8> cubin_data) {
+                                  absl::Span<const uint8_t> cubin_data) {
   auto kernel_base = std::make_unique<TypedKernel<Args...>>(this);
   MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
