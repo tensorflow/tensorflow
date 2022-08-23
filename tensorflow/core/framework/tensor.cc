@@ -756,7 +756,7 @@ Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
   shape_.set_data_type(dtype);
   if (buf_ != other.buf_) {
     UnrefIfNonNull(buf_);
-    if (port::kLittleEndian) {
+    if (port::kLittleEndian || in_size == out_size) {
       buf_ = other.buf_;
       RefIfNonNull(buf_);
     } else {

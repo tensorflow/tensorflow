@@ -1712,8 +1712,8 @@ tf.Tensor(
 
 *NOTE*: Bitcast is implemented as a low-level cast, so machines with different
 endian orderings will give different results. A copy from input buffer to output 
-buffer is made on BE machines in order to get the same casting results as on LE 
-machines.
+buffer is made on BE machines when types are of different sizes in order to get 
+the same casting results as on LE machines.
   }];
 
   let arguments = (ins
