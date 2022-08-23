@@ -24,15 +24,6 @@
     *   Updates to existing operations:
           * tfl.mul now supports complex32 inputs.
 
-*   `tf.data`:
-    *   Updated the logic of
-        `tf.data.experimental.make_batched_features_dataset` to be aware whether
-        the `file_patterns` given by the user are actually file paths or
-        patterns. If the file paths are given, the method will skip expensive
-        glob operations and create the Dataset with the files directly instead
-        of using `Dataset.list_files()` which is
-        [suboptimal](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#list_files).
-
 # Bug Fixes and Other Changes
 
 *   `tf.image`

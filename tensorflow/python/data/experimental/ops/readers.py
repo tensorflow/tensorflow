@@ -974,18 +974,15 @@ def make_batched_features_dataset_v2(file_pattern,
   ```
 
   Args:
-    file_pattern: List of files or patterns of file paths containing `Example`
-      records. If any entry contains a pattern wildcard (see `tf.io.gfile.glob`
-      for pattern rules), the list will be considered a list of patterns,
-      otherwise it will be considered a list of files (see
-      `tf.data.Dataset.list_files`).
-    batch_size: An int representing the number of records to combine in a single
-      batch.
+    file_pattern: List of files or patterns of file paths containing
+      `Example` records. See `tf.io.gfile.glob` for pattern rules.
+    batch_size: An int representing the number of records to combine
+      in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values. See `tf.io.parse_example`.
-    reader: A function or class that can be called with a `filenames` tensor and
-      (optional) `reader_args` and returns a `Dataset` of `Example` tensors.
-      Defaults to `tf.data.TFRecordDataset`.
+    reader: A function or class that can be
+      called with a `filenames` tensor and (optional) `reader_args` and returns
+      a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
     label_key: (Optional) A string corresponding to the key labels are stored in
       `tf.Examples`. If provided, it must be one of the `features` key,
       otherwise results in `ValueError`.
@@ -1004,11 +1001,11 @@ def make_batched_features_dataset_v2(file_pattern,
       the results will be interleaved. Defaults to `1`.
     parser_num_threads: Number of threads to use for parsing `Example` tensors
       into a dictionary of `Feature` tensors. Defaults to `2`.
-    sloppy_ordering: If `True`, reading performance will be improved at the cost
-      of non-deterministic ordering. If `False`, the order of elements produced
-      is deterministic prior to shuffling (elements are still randomized if
-      `shuffle=True`. Note that if the seed is set, then order of elements after
-      shuffling is deterministic). Defaults to `False`.
+    sloppy_ordering: If `True`, reading performance will be improved at
+      the cost of non-deterministic ordering. If `False`, the order of elements
+      produced is deterministic prior to shuffling (elements are still
+      randomized if `shuffle=True`. Note that if the seed is set, then order
+      of elements after shuffling is deterministic). Defaults to `False`.
     drop_final_batch: If `True`, and the batch size does not evenly divide the
       input dataset size, the final smaller batch will be dropped. Defaults to
       `False`.
@@ -1031,22 +1028,9 @@ def make_batched_features_dataset_v2(file_pattern,
   if prefetch_buffer_size is None:
     prefetch_buffer_size = dataset_ops.AUTOTUNE
 
-  def _is_glob(file_pattern):
-    return any(char in file_pattern for char in "*?[]")
-
-  if isinstance(file_pattern, str):
-    file_pattern = [file_pattern]
-  glob_patterns_present = any(_is_glob(p) for p in file_pattern)
-
   # Create dataset of all matching filenames
-  if glob_patterns_present:
-    dataset = dataset_ops.Dataset.list_files(
-        file_pattern, shuffle=shuffle, seed=shuffle_seed)
-  else:
-    dataset = dataset_ops.TensorSliceDataset(file_pattern, is_files=True)
-    if shuffle:
-      buffer_size = max(len(file_pattern), 1)
-      dataset = dataset.shuffle(buffer_size, seed=shuffle_seed)
+  dataset = dataset_ops.Dataset.list_files(
+      file_pattern, shuffle=shuffle, seed=shuffle_seed)
 
   if isinstance(reader, type) and issubclass(reader, io_ops.ReaderBase):
     raise TypeError("The `reader` argument must return a `Dataset` object. "
@@ -1113,29 +1097,26 @@ def make_batched_features_dataset_v2(file_pattern,
 
 
 @tf_export(v1=["data.experimental.make_batched_features_dataset"])
-def make_batched_features_dataset_v1(  # pylint: disable=missing-docstring
-    file_pattern,
-    batch_size,
-    features,
-    reader=None,
-    label_key=None,
-    reader_args=None,
-    num_epochs=None,
-    shuffle=True,
-    shuffle_buffer_size=10000,
-    shuffle_seed=None,
-    prefetch_buffer_size=None,
-    reader_num_threads=None,
-    parser_num_threads=None,
-    sloppy_ordering=False,
-    drop_final_batch=False):
-  return dataset_ops.DatasetV1Adapter(
-      make_batched_features_dataset_v2(file_pattern, batch_size, features,
-                                       reader, label_key, reader_args,
-                                       num_epochs, shuffle, shuffle_buffer_size,
-                                       shuffle_seed, prefetch_buffer_size,
-                                       reader_num_threads, parser_num_threads,
-                                       sloppy_ordering, drop_final_batch))
+def make_batched_features_dataset_v1(file_pattern,  # pylint: disable=missing-docstring
+                                     batch_size,
+                                     features,
+                                     reader=None,
+                                     label_key=None,
+                                     reader_args=None,
+                                     num_epochs=None,
+                                     shuffle=True,
+                                     shuffle_buffer_size=10000,
+                                     shuffle_seed=None,
+                                     prefetch_buffer_size=None,
+                                     reader_num_threads=None,
+                                     parser_num_threads=None,
+                                     sloppy_ordering=False,
+                                     drop_final_batch=False):
+  return dataset_ops.DatasetV1Adapter(make_batched_features_dataset_v2(
+      file_pattern, batch_size, features, reader, label_key, reader_args,
+      num_epochs, shuffle, shuffle_buffer_size, shuffle_seed,
+      prefetch_buffer_size, reader_num_threads, parser_num_threads,
+      sloppy_ordering, drop_final_batch))
 make_batched_features_dataset_v1.__doc__ = (
     make_batched_features_dataset_v2.__doc__)
 
