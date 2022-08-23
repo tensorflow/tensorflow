@@ -300,6 +300,7 @@ cc_library(
 #     allowed_match_regexp = "|".join([
 #         ":xla_compiled_cpu_runtime_standalone",
 #         "//tensorflow/core/framework:numeric_types",
+#         "//tensorflow/tsl/platform:byte_order",
 #         "//tensorflow/tsl/platform/default:cord",
 #         "//tensorflow/tsl/platform/default:env_time",
 #         "//tensorflow/tsl/platform/default:logging",
