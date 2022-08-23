@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 
+#include <sstream>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -232,6 +234,17 @@ using ::tensorflow::concat_split_util::Concat;
 using ::tensorflow::concat_split_util::Split;
 using TensorMatrix = std::vector<std::vector<Tensor>>;
 
+string GetTensorNamesAndShapesString(const OpKernelContext* context,
+                                     const OpInputList& tensors) {
+  std::stringstream out;
+  int i = 0;
+  for (const Tensor& tensor : tensors) {
+    out << " - " << context->op_kernel().requested_input(i++) << " has shape "
+        << tensor.shape().DebugString() << "\n";
+  }
+  return out.str();
+}
+
 Status BatchResourceBase::RegisterInput(
     int64_t guid, OpKernelContext* context, const string& batcher_queue_name,
     AsyncOpKernel::DoneCallback done_callback) {
@@ -246,13 +259,16 @@ Status BatchResourceBase::RegisterInput(
   for (const Tensor& tensor : tensors) {
     if (tensor.shape().dims() == 0) {
       return errors::InvalidArgument(
-          "Batching input tensors must have at least one dimension");
+          "Batching input tensors must have at least one dimension.\nBelow are "
+          "the input tensors: \n",
+          GetTensorNamesAndShapesString(context, tensors));
     }
     if (tensors.size() >= 2 &&
         tensor.shape().dim_size(0) != tensors[0].shape().dim_size(0)) {
       return errors::InvalidArgument(
           "Batching input tensors supplied in a given op invocation must "
-          "have equal 0th-dimension size");
+          "have equal 0th-dimension size.\nBelow are the input tensors: \n",
+          GetTensorNamesAndShapesString(context, tensors));
     }
     batch_components->inputs.push_back(tensor);
   }
