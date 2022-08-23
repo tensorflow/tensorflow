@@ -525,6 +525,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
+    visibility = [":friends"],
     deps = [
         ":exceptions",
         "//tensorflow/core/platform:logging",
