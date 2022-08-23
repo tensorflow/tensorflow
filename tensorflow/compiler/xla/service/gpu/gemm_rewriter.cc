@@ -217,12 +217,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                              .WithOneUser(),
                          m::Op(&bias)))) {
       HloInstruction *new_bitcast =
-          MakeBitcastHlo(bias, existing_gemm->shape());
-      new_bitcast->set_metadata(bias->metadata());
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * new_add,
-          MakeBinaryHlo(HloOpcode::kAdd, existing_gemm, new_bitcast));
-      new_add->set_metadata(bias->metadata());
+          MakeBitcastHlo(bias, existing_gemm->shape(), &bias->metadata());
+      TF_ASSIGN_OR_RETURN(HloInstruction * new_add,
+                          MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
+                                        new_bitcast, &bias->metadata()));
       TF_RETURN_IF_ERROR(
           ReplaceInstruction(instr, MakeBitcastHlo(new_add, instr->shape())));
 

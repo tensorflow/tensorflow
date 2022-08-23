@@ -43,10 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 84
+_version = 89
 
 # Version number for MLIR:Python components.
-mlir_api_version = 31
+mlir_api_version = 32
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -670,3 +670,5 @@ XlaRuntimeError = _xla.XlaRuntimeError
 # Perform one last garbage collection of deferred Python references. This is
 # mostly to keep ASAN happy.
 atexit.register(_xla.collect_garbage)
+
+weakref_lru_cache = _xla.weakref_lru_cache

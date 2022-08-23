@@ -31,6 +31,14 @@ GPUOperation CreateElementwiseOneInput(const GpuInfo& gpu_info,
                                        const OperationDef& definition,
                                        const OperationType& op_type);
 
+// Creates simple one input operation without any parameters, for example
+// log, sin, cos, etc.
+// Can broadcast input.
+GPUOperation CreateElementwiseOneInputWithBroadcast(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const OperationType& op_type, const BHWC& input_shape,
+    const BHWC& output_shape);
+
 // Creates simple two input(first input is runtime tensor and second input is
 // constant or linear/hwc tensor) operation, for example sub, div and etc.
 GPUOperation CreateElementwise(const GpuInfo& gpu_info,
@@ -38,11 +46,29 @@ GPUOperation CreateElementwise(const GpuInfo& gpu_info,
                                const OperationType& op_type,
                                const ElementwiseAttributes& attr);
 
+// Creates simple two input(first input is runtime tensor and second input is
+// constant or linear/hwc tensor) operation, for example sub, div and etc.
+// Can broadcast input.
+GPUOperation CreateElementwiseWithBroadcast(const GpuInfo& gpu_info,
+                                            const OperationDef& definition,
+                                            const OperationType& op_type,
+                                            const ElementwiseAttributes& attr,
+                                            const BHWC& input_shape,
+                                            const BHWC& output_shape);
+
 // Creates simple two input(2 runtime tensors) operation, for example
 // sub, div and etc.
 GPUOperation CreateElementwiseTwoInput(const OperationDef& definition,
                                        const OperationType& op_type,
                                        const BHWC& shape);
+
+// Creates simple two input(2 runtime tensors) operation, for example
+// sub, div and etc.
+// Can broadcast first and second input simultaneously.
+GPUOperation CreateElementwiseTwoInputWithBroadcast(
+    const OperationDef& definition, const OperationType& op_type,
+    const BHWC& first_input_shape, const BHWC& second_input_shape,
+    const BHWC& output_shape);
 
 }  // namespace gpu
 }  // namespace tflite

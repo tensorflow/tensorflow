@@ -26,7 +26,6 @@ from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import save_restore
 from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.checkpoint import checkpoint_options
-from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import graph_view as graph_view_lib
 from tensorflow.python.checkpoint import restore as restore_lib
 from tensorflow.python.eager import context
@@ -43,12 +42,12 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
-class _DSaver(functional_saver._SingleDeviceSaver):  # pylint: disable=protected-access
+class _DSaver:  # pylint: disable=protected-access
   """A single device saver that places tensors on DTensor Device."""
 
   def __init__(self, mesh: layout.Mesh,
                saveable_objects: List[saveable_object.SaveableObject]):
-    super().__init__(saveable_objects)
+    self._saveable_objects = saveable_objects
     self._mesh = mesh
 
   def save(

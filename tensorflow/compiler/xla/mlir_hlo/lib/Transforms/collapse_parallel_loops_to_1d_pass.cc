@@ -44,7 +44,7 @@ struct CollapseParallelLoopsTo1D
 using namespace mlir;
 
 void mlir::CollapseParallelLoopsTo1D::runOnOperation() {
-  getOperation().walk([&](ParallelOp op) {
+  getOperation()->walk([&](ParallelOp op) {
     unsigned numLoops = op.getNumLoops();
     if (numLoops == 1) return;
     std::vector<unsigned> combinedLoops(numLoops);
@@ -53,7 +53,6 @@ void mlir::CollapseParallelLoopsTo1D::runOnOperation() {
   });
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-mlir::createCollapseParallelLoopsTo1DPass() {
+std::unique_ptr<OperationPass<>> mlir::createCollapseParallelLoopsTo1DPass() {
   return std::make_unique<CollapseParallelLoopsTo1D>();
 }

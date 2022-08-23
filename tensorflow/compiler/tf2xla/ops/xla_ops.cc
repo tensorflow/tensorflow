@@ -1228,6 +1228,22 @@ Documented at https://www.tensorflow.org/xla/operation_semantics#optimizationbar
 input: A Tuple of Arrays of any type.
 )doc");
 
+REGISTER_OP("XlaReducePrecision")
+    .Input("operand: T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .Attr("exponent_bits: int")
+    .Attr("mantissa_bits: int")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Wraps the XLA ReducePrecision operator
+  documented at https://www.tensorflow.org/xla/operation_semantics#reduceprecision.
+
+operand: array of floating-point type.
+exponent_bits: number of exponent bits in lower-precision format
+mantissa_bits: number of mantissa bits in lower-precision format
+)doc");
+
 REGISTER_OP("XlaCustomCall")
     .Input("args: T")
     .Output("output: dtype")

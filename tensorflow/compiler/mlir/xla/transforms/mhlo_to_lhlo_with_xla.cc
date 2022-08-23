@@ -771,7 +771,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
   const int32_t segments[2] = {static_cast<int32_t>(num_arguments),
                                static_cast<int32_t>(num_results)};
   custom_call->setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
-                       builder_.getI32VectorAttr(segments));
+                       builder_.getDenseI32ArrayAttr(segments));
   if (target_mapping) custom_call.setTargetArgMappingAttr(target_mapping);
   return custom_call.getOperation();
 }

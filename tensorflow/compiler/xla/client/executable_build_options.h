@@ -20,9 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -170,6 +170,8 @@ class ExecutableBuildOptions {
     return *this;
   }
 
+  StatusOr<ExecutableBuildOptionsProto> ToProto() const;
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
@@ -190,6 +192,9 @@ class ExecutableBuildOptions {
   bool allow_spmd_sharding_propagation_to_output_ = false;
   tensorflow::thread::ThreadPool* compile_thread_pool_ = nullptr;
 };
+
+StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
+    const ExecutableBuildOptionsProto& input);
 
 // Creates an ExecutionOptions based on a given ExecutableBuildOptions and
 // ProgramShape.

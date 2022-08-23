@@ -17,6 +17,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H
 
 #include <memory>
+#include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
@@ -28,11 +29,18 @@ namespace gml_st {
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass();
 
 /// Pass to tile operations.
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
-    ArrayRef<int64_t> tileSizes = {});
+    const SmallVector<SmallVector<int64_t>>& tileSizes);
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
+    const std::string& tileSizes);
 
 /// Pass to compose set operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createComposeSetOpsPass();
+
+/// Pass to collapse (or uncollapse) materialize operations.
+std::unique_ptr<OperationPass<func::FuncOp>> createCollapseMaterializeOpsPass(
+    bool reverse = false);
 
 /// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
 /// loops and memref.load/memref.store accesses.

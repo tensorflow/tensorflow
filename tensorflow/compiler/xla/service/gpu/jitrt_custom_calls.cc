@@ -87,9 +87,15 @@ using mlir::success;
 
 using tfrt::MakeStringError;
 
+using ::xla::runtime::AggregateAttrDef;
+using ::xla::runtime::AggregateAttrEncoding;
 using ::xla::runtime::CustomCall;
+using ::xla::runtime::CustomCallAttrEncodingSet;
 using ::xla::runtime::DirectCustomCallLibrary;
+using ::xla::runtime::EnumAttrEncoding;
 using ::xla::runtime::Executable;
+using ::xla::runtime::Tagged;
+using ::xla::runtime::TypeIDNameRegistry;
 
 namespace se = ::stream_executor;
 namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
@@ -106,62 +112,61 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 
 // -------------------------------------------------------------------------- //
 
-// Define type id names for all enums and structs passed to the custom calls.
+// Populate mapping from XLA (SE) enums/structs type id to symbol names.
+void PopulateXlaTypeIdNames(TypeIDNameRegistry& registry) {
+  registry.Register<Tagged<se::dnn::ActivationMode>>(
+      "__type_id_se_dnn_activation");
+  registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
+      "__type_id_se_cublas_lt_epilogue");
+  registry.Register<Tagged<se::fft::Type>>("__type_id_se_fft_type");
 
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(se::dnn::ActivationMode,
-                                            "__type_id_se_dnn_activation");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(se::cuda::BlasLt::Epilogue,
-                                            "__type_id_se_cublas_lt_epilogue");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(se::fft::Type,
-                                            "__type_id_se_fft_type");
-
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(DotDimensionNumbers,
-                                            "__type_id_dot_dimension_numbers");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(ConvDimensionNumbers,
-                                            "__type_id_conv_dimension_numbers");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(ConvBackendConfig,
-                                            "__type_id_conv_backend_config");
+  registry.Register<Tagged<DotDimensionNumbers>>(
+      "__type_id_dot_dimension_numbers");
+  registry.Register<Tagged<ConvDimensionNumbers>>(
+      "__type_id_conv_dimension_numbers");
+  registry.Register<Tagged<ConvBackendConfig>>("__type_id_conv_backend_config");
+}
 
 // Add custom call arguments and attributes encoding for custom HLO enums and
 // structs, so that we can pass them to custom calls.
-void PopulateLmhloToXlaAttrEncoding(
-    tfrt::jitrt::CustomCallAttrEncodingSet& encoding) {
-  encoding.Add<tfrt::jitrt::EnumAttrEncoding<lmhlo_gpu::ActivationAttr,
-                                             lmhlo_gpu::Activation,
-                                             se::dnn::ActivationMode>>(
-      [](lmhlo_gpu::Activation value) -> se::dnn::ActivationMode {
-        return ConvertConvActivationMode(value).value();
+void PopulateLmhloToXlaAttrEncoding(CustomCallAttrEncodingSet& encoding) {
+  encoding
+      .Add<EnumAttrEncoding<lmhlo_gpu::ActivationAttr, lmhlo_gpu::Activation,
+                            se::dnn::ActivationMode>>(
+          [](lmhlo_gpu::Activation value) -> se::dnn::ActivationMode {
+            return ConvertConvActivationMode(value).value();
+          });
+
+  encoding.Add<EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
+                                lmhlo_gpu::CublasLtMatmulEpilogue,
+                                se::cuda::BlasLt::Epilogue>>(
+      [](lmhlo_gpu::CublasLtMatmulEpilogue value)
+          -> se::cuda::BlasLt::Epilogue {
+        return cublas_lt::AsBlasLtEpilogue(value).value();
       });
 
-  encoding.Add<tfrt::jitrt::EnumAttrEncoding<
-      lmhlo_gpu::CublasLtMatmulEpilogueAttr, lmhlo_gpu::CublasLtMatmulEpilogue,
-      se::cuda::BlasLt::Epilogue>>([](lmhlo_gpu::CublasLtMatmulEpilogue value)
-                                       -> se::cuda::BlasLt::Epilogue {
-    return cublas_lt::AsBlasLtEpilogue(value).value();
-  });
-
-  encoding.Add<tfrt::jitrt::EnumAttrEncoding<mhlo::FftTypeAttr, mhlo::FftType,
-                                             se::fft::Type>>(
-      [](mhlo::FftType value) -> se::fft::Type {
-        switch (value) {
-          case mhlo::FftType::FFT:
-            return se::fft::Type::kC2CForward;
-          case mhlo::FftType::IFFT:
-            return se::fft::Type::kC2CInverse;
-          case mhlo::FftType::RFFT:
-            return se::fft::Type::kR2C;
-          case mhlo::FftType::IRFFT:
-            return se::fft::Type::kC2R;
-          default:
-            return se::fft::Type::kInvalid;
-        }
-      });
+  encoding
+      .Add<EnumAttrEncoding<mhlo::FftTypeAttr, mhlo::FftType, se::fft::Type>>(
+          [](mhlo::FftType value) -> se::fft::Type {
+            switch (value) {
+              case mhlo::FftType::FFT:
+                return se::fft::Type::kC2CForward;
+              case mhlo::FftType::IFFT:
+                return se::fft::Type::kC2CInverse;
+              case mhlo::FftType::RFFT:
+                return se::fft::Type::kR2C;
+              case mhlo::FftType::IRFFT:
+                return se::fft::Type::kC2R;
+              default:
+                return se::fft::Type::kInvalid;
+            }
+          });
 
   using DotDimsAttr = mhlo::DotDimensionNumbersAttr;
   encoding.Add<
-      tfrt::jitrt::AggregateAttrEncoding<DotDimsAttr, DotDimensionNumbers>>(
+      xla::runtime::AggregateAttrEncoding<DotDimsAttr, DotDimensionNumbers>>(
       encoding,
-      tfrt::jitrt::AggregateAttrDef<DotDimsAttr>()
+      xla::runtime::AggregateAttrDef<DotDimsAttr>()
           .Add("lhs_batch", &DotDimsAttr::getLhsBatchingDimensions)
           .Add("lhs_contract", &DotDimsAttr::getLhsContractingDimensions)
           .Add("rhs_batch", &DotDimsAttr::getRhsBatchingDimensions)
@@ -169,9 +174,9 @@ void PopulateLmhloToXlaAttrEncoding(
 
   using ConvDimsAttr = mhlo::ConvDimensionNumbersAttr;
   encoding.Add<
-      tfrt::jitrt::AggregateAttrEncoding<ConvDimsAttr, ConvDimensionNumbers>>(
+      xla::runtime::AggregateAttrEncoding<ConvDimsAttr, ConvDimensionNumbers>>(
       encoding,
-      tfrt::jitrt::AggregateAttrDef<ConvDimsAttr>()
+      xla::runtime::AggregateAttrDef<ConvDimsAttr>()
           .Add("input_batch_dim", &ConvDimsAttr::getInputBatchDimension)
           .Add("input_feature_dim", &ConvDimsAttr::getInputFeatureDimension)
           .Add("input_spatial_dims", &ConvDimsAttr::getInputSpatialDimensions)
@@ -187,9 +192,9 @@ void PopulateLmhloToXlaAttrEncoding(
 
   using ConvConfigAttr = lmhlo_gpu::ConvolutionBackendConfigAttr;
   encoding.Add<
-      tfrt::jitrt::AggregateAttrEncoding<ConvConfigAttr, ConvBackendConfig>>(
+      xla::runtime::AggregateAttrEncoding<ConvConfigAttr, ConvBackendConfig>>(
       encoding,
-      tfrt::jitrt::AggregateAttrDef<ConvConfigAttr>()
+      xla::runtime::AggregateAttrDef<ConvConfigAttr>()
           .Add("algorithm", &ConvConfigAttr::getAlgorithm)
           .Add("tensor_ops_enabled", &ConvConfigAttr::getTensorOpsEnabled)
           .Add("is_cudnn_frontend", &ConvConfigAttr::getIsCudnnFrontend)

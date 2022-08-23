@@ -56524,6 +56524,31 @@ func XlaRecvTPUEmbeddingDeduplicationData(scope *Scope, config string) (output t
 	return op.Output(0)
 }
 
+// Wraps the XLA ReducePrecision operator
+//
+//	documented at https://www.tensorflow.org/xla/operation_semantics#reduceprecision.
+//
+// Arguments:
+//
+//	operand: array of floating-point type.
+//	exponent_bits: number of exponent bits in lower-precision format
+//	mantissa_bits: number of mantissa bits in lower-precision format
+func XlaReducePrecision(scope *Scope, operand tf.Output, exponent_bits int64, mantissa_bits int64) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"exponent_bits": exponent_bits, "mantissa_bits": mantissa_bits}
+	opspec := tf.OpSpec{
+		Type: "XlaReducePrecision",
+		Input: []tf.Input{
+			operand,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Wraps the XLA ReduceScatter operator
 //
 //	documented at https://www.tensorflow.org/xla/operation_semantics#reducescatter.

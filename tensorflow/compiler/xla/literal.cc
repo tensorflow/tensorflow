@@ -120,7 +120,7 @@ const Shape& ScalarShapeImpl() {
                 "Not a valid type for a scalar.");
   static const Shape* shape = [] {
     auto shape = new Shape(kType, {}, {}, {});
-    shape->mutable_layout()->set_format(DENSE);
+    shape->mutable_layout();
     return shape;
   }();
   return *shape;

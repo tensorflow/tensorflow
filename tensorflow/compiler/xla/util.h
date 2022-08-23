@@ -67,6 +67,7 @@ Status WithLogBacktrace(const Status& status);
 // memory to store its values.
 inline constexpr int InlineRank() { return 6; }
 using DimensionVector = absl::InlinedVector<int64_t, InlineRank()>;
+using DimLevelTypeVector = absl::InlinedVector<DimLevelType, InlineRank()>;
 
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it

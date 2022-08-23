@@ -97,7 +97,8 @@ Value preSparsify(Operation* op, llvm::SmallVector<Value, 2>& values, Type rtp,
       (isa<mhlo::AbsOp>(op) && hasIntegralShapeType(op)) ||
       isa<chlo::AsinOp>(op) || isa<chlo::AsinhOp>(op) ||
       isa<chlo::AtanOp>(op) || isa<chlo::AtanhOp>(op) ||
-      isa<chlo::BesselI1eOp>(op)) {
+      isa<chlo::BesselI1eOp>(op) || isa<chlo::SinhOp>(op) ||
+      isa<chlo::TanOp>(op)) {
     if (!sparse_tensor::getSparseTensorEncoding(op->getResult(0).getType()) &&
         !sparse_tensor::getSparseTensorEncoding(op->getOperand(0).getType()))
       return Value();

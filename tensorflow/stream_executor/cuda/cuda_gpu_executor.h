@@ -22,14 +22,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_
 
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
-
-namespace stream_executor {
-namespace cuda {
-
-using CUDAExecutor = gpu::GpuExecutor;
-
-}  // namespace cuda
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_

@@ -284,7 +284,7 @@ class LiteralBase {
             return;
           }
 
-          CHECK(LayoutUtil::IsDense(subshape.layout()));
+          CHECK(LayoutUtil::IsDenseArray(subshape));
           auto data = absl::MakeConstSpan(
               static_cast<const char*>(literal.untyped_data(index)),
               std::min(kByteLimit, literal.size_bytes(index)));

@@ -1927,16 +1927,14 @@ mlir::Operation* ImporterBase::CreateOperation(
       [&](const NameRangeMap& arg_ranges,
           const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
           llvm::StringRef attr_name) {
-        std::vector<mlir::Attribute> values;
+        std::vector<int32_t> values;
         values.reserve(args.size());
         for (const auto& arg : args) {
           auto range = arg_ranges.at(arg.name());
           values.push_back(
-              island_builder.getI32IntegerAttr(range.second - range.first));
+              range.second - range.first);
         }
-        auto attr_type =
-            mlir::VectorType::get(args.size(), builder_.getIntegerType(32));
-        auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
+        auto attr_value = mlir::DenseI32ArrayAttr::get(inner_op->getContext(), values);
         inner_op->setAttr(attr_name, attr_value);
       };
 

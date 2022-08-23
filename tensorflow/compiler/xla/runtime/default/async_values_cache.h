@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_RUNTIME_DEFAULT_ASYNC_VALUES_CACHE_H_
 #define XLA_RUNTIME_DEFAULT_ASYNC_VALUES_CACHE_H_
 
+#include "absl/synchronization/mutex.h"
 #include "llvm/ADT/DenseMap.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
-#include "tfrt/support/mutex.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -67,20 +67,20 @@ class AsyncValuesCache {
   };
 
  private:
-  mutable tfrt::mutex mu_;
-  llvm::DenseMap<Key, AsyncValueRef<Value>> cache_ TFRT_GUARDED_BY(mu_);
+  mutable absl::Mutex mu_;
+  llvm::DenseMap<Key, AsyncValueRef<Value>> cache_ ABSL_GUARDED_BY(mu_);
 };
 
 template <typename Key, typename Value>
 AsyncValuePtr<Value> AsyncValuesCache<Key, Value>::Find(Key key) const {
-  tfrt::mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   auto it = cache_.find(key);
   return it != cache_.end() ? it->getSecond().AsPtr() : AsyncValuePtr<Value>();
 }
 
 template <typename Key, typename Value>
 auto AsyncValuesCache<Key, Value>::Allocate(Key key) -> Entry {
-  tfrt::mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   auto it = cache_.find(key);
   if (it != cache_.end())
     return {it->getSecond().AsPtr(), false, cache_.size()};
@@ -94,7 +94,7 @@ auto AsyncValuesCache<Key, Value>::Allocate(Key key) -> Entry {
 
 template <typename Key, typename Value>
 AsyncValueRef<Chain> AsyncValuesCache<Key, Value>::AllAvailable() const {
-  tfrt::mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
 
   llvm::SmallVector<AsyncValue*> avs;
   for (auto& it : cache_) avs.push_back(it.getSecond().GetAsyncValue());

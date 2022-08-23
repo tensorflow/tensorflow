@@ -82,7 +82,7 @@ def SetOutputOp : RT_Op<"set_output"> {
 
   let arguments = (ins
     KernelContextType:$ctx,
-    Confined<I64Attr, [IntNonNegative]>:$index,
+    ConfinedAttr<I64Attr, [IntNonNegative]>:$index,
     AnyType:$value
   );
 

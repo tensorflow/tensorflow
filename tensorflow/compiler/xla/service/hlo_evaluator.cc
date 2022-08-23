@@ -3859,10 +3859,16 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
   // Out of convenience the literal may have been produced with a different
   // layout. Relayout as indicated by the HLO instruction.
-  if (!Layout::Equal().MinorToMajorOnly()(
-          GetEvaluatedLiteralFor(hlo).shape().layout(),
-          hlo->shape().layout())) {
-    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo->shape());
+  auto evaluated_shape = GetEvaluatedLiteralFor(hlo).shape();
+  xla::Shape hlo_shape = hlo->shape();
+  if (hlo_shape.IsArray() && !hlo_shape.has_layout()) {
+    *hlo_shape.mutable_layout() =
+        LayoutUtil::GetDefaultLayoutForShape(hlo_shape);
+  }
+  if (evaluated_shape.has_layout() && hlo_shape.has_layout() &&
+      !Layout::Equal().MinorToMajorOnly()(evaluated_shape.layout(),
+                                          hlo_shape.layout())) {
+    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo_shape);
   }
   return OkStatus();
 }

@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import numpy
 
@@ -180,4 +180,7 @@ class ReplicaGroup:
 
 def make_replica_groups(
     replica_groups: Optional[Sequence[Sequence[int]]]) -> List[ReplicaGroup]:
+  ...
+
+def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
   ...

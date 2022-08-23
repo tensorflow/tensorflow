@@ -99,6 +99,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/pjrt:compile_options_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",

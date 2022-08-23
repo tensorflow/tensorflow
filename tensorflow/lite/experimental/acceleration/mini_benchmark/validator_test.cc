@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
 
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration.pb.h"
@@ -59,17 +61,36 @@ class ValidatorTest : public ::testing::Test {
   std::unique_ptr<ModelLoader> plain_model_loader_;
 };
 
-TEST_F(ValidatorTest, HappyPath) {
+TEST_F(ValidatorTest, HappyPathOnCpu) {
   flatbuffers::FlatBufferBuilder fbb;
   fbb.Finish(CreateComputeSettings(fbb));
   const ComputeSettings* settings =
       flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer());
+  ASSERT_EQ(validation_model_loader_->Init(), kMinibenchmarkSuccess);
+  int model_output_size = validation_model_loader_->GetModel()
+                              ->GetModel()
+                              ->subgraphs()
+                              ->Get(0)
+                              ->outputs()
+                              ->size();
 
   Validator validator(std::move(validation_model_loader_), settings);
   Validator::Results results;
   EXPECT_EQ(validator.RunValidation(&results), kMinibenchmarkSuccess);
   EXPECT_TRUE(results.ok);
   EXPECT_EQ(results.delegate_error, 0);
+  EXPECT_EQ(results.actual_inference_output.size(), model_output_size);
+  EXPECT_EQ(results.golden_inference_output.size(), model_output_size);
+  // Only compares the output value when running on forge or local host. The
+  // golden output is generated at build time, while actual output is generated
+  // at run time. When running on Android, these two outputs may generated on
+  // different machines and have diffs.
+#ifndef __ANDROID__
+  for (auto expected : results.golden_inference_output) {
+    EXPECT_THAT(results.actual_inference_output[expected.first],
+                testing::ContainerEq(expected.second));
+  }
+#endif  // __ANDROID__
 }
 
 TEST_F(ValidatorTest, DelegateNotSupported) {
@@ -78,7 +99,7 @@ TEST_F(ValidatorTest, DelegateNotSupported) {
   flatbuffers::FlatBufferBuilder fbb;
   const ComputeSettings* settings = ConvertFromProto(settings_proto, &fbb);
 
-  Validator validator(std::move(plain_model_loader_), settings);
+  Validator validator(std::move(validation_model_loader_), settings);
   Validator::Results results;
   EXPECT_EQ(validator.RunValidation(&results),
             kMinibenchmarkDelegateNotSupported);

@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Casting.h"
+#include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
-#include "tfrt/support/error_util.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -37,7 +37,6 @@ using llvm::Optional;
 using llvm::raw_ostream;
 
 using tfrt::DType;
-using tfrt::MakeStringError;
 
 raw_ostream& OpaqueArg::print(raw_ostream& os) const {
   return os << "OpaqueArg: ptr=" << ptr_;

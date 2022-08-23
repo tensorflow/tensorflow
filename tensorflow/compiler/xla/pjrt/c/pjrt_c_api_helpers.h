@@ -51,6 +51,11 @@ absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
 
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
 
+tensorflow::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
+                                              const PJRT_Api* api);
+
+PJRT_Error_Code StatusCodeToPjrtErrorCode(tensorflow::error::Code code);
+
 using PJRT_EventDeleter = std::function<void(PJRT_Event*)>;
 
 // Pass in an API pointer; receive a custom deleter for smart pointers.

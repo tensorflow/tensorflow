@@ -157,6 +157,7 @@ pytype_strict_library(
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/types",
         "//third_party/py/numpy",
+        "@absl_py//absl/logging",
     ],
 )
 

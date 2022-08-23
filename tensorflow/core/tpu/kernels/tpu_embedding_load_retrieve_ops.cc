@@ -221,8 +221,8 @@ void LoadAllTPUEmbeddingParametersOp::Compute(OpKernelContext* ctx) {
       params->c_params.parameters[i][table_id] = &(params_data[i][table_id]);
       params->c_params.parameters[i][table_id]->size =
           state_variable_vector[i][table_id].size();
-      params->c_params.parameters[i][table_id]->ptr = const_cast<float_t*>(
-          state_variable_vector[i][table_id].data());
+      params->c_params.parameters[i][table_id]->ptr =
+          const_cast<float*>(state_variable_vector[i][table_id].data());
     }
   }
   StatusHelper status;

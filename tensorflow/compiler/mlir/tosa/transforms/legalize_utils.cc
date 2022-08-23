@@ -241,8 +241,10 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
 void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
                             double input_scale, int32_t input_zp,
                             std::function<double(double)> func,
-                            Value& upper_const, Value& lower_const) {
-  SmallVector<int16_t, 513> upper_table, lower_table;
+                            Value& first_const, Value& second_const,
+                            Value& third_const, Value& fourth_const) {
+  SmallVector<int16_t, 513> first_table, second_table, third_table,
+      fourth_table;
 
   double output_inv_scale = static_cast<double>(1L << 31);
 
@@ -258,15 +260,16 @@ void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
       rescaled = static_cast<int64_t>(1L << 31) - 1;
     }
 
-    int32_t upper = (rescaled >> 16) & 0xFFFF;
-    // TABLE output is signed 16 bits with range [-32768, 32767]
-    // Lower 16 bits are unsigned and ranges [0, 65536]
-    // Need to adjust value with offset 0x8000 in table generation
-    // Legalization should add this back before recovering 32-bit value
-    int32_t lower = (rescaled & 0xFFFF) - 0x8000;
+    // Only copy the 8-bit groups
+    int32_t first = (rescaled >> 24) & 0xFF;
+    int32_t second = (rescaled >> 16) & 0xFF;
+    int32_t third = (rescaled >> 8) & 0xFF;
+    int32_t fourth = (rescaled)&0xFF;
 
-    upper_table.push_back(upper);
-    lower_table.push_back(lower);
+    first_table.push_back(first);
+    second_table.push_back(second);
+    third_table.push_back(third);
+    fourth_table.push_back(fourth);
   }
 
   auto element_qtype =
@@ -276,16 +279,28 @@ void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
   auto storage_type =
       RankedTensorType::get({513}, element_qtype.getStorageType());
 
-  auto upper_const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(upper_table));
-  auto lower_const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(lower_table));
+  auto first_const_attr =
+      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(first_table));
+  auto second_const_attr =
+      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(second_table));
+  auto third_const_attr =
+      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(third_table));
+  auto fourth_const_attr =
+      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(fourth_table));
 
-  upper_const =
-      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, upper_const_attr)
+  first_const =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, first_const_attr)
           .getResult();
-  lower_const =
-      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, lower_const_attr)
+  second_const =
+      rewriter
+          .create<tosa::ConstOp>(op->getLoc(), const_type, second_const_attr)
+          .getResult();
+  third_const =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, third_const_attr)
+          .getResult();
+  fourth_const =
+      rewriter
+          .create<tosa::ConstOp>(op->getLoc(), const_type, fourth_const_attr)
           .getResult();
 }
 

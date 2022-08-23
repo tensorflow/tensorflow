@@ -22,8 +22,6 @@ import types as types_lib
 from typing import List
 import weakref
 
-import six
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.function.polymorphism import function_cache
@@ -165,7 +163,7 @@ def _parse_func_attrs(attributes):
       attrs[key] = attr_value_pb2.AttrValue(i=value)
     elif isinstance(value, float):
       attrs[key] = attr_value_pb2.AttrValue(f=value)
-    elif isinstance(value, (str, bytes, six.text_type)):
+    elif isinstance(value, (str, bytes)):
       attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(value))
     else:
       raise ValueError(f"Attribute {key} must be bool, int, float, string, or "
@@ -1228,9 +1226,9 @@ class _FirstOrderTapeGradientFunctions(_TapeGradientFunctions):
   def __init__(self, func_graph, attrs, func_graph_deleter,
                forwardprop_input_indices, delayed_rewrite_functions,
                need_gradients_for_jvps):
-    super(_FirstOrderTapeGradientFunctions, self).__init__(
-        func_graph, attrs, func_graph_deleter, forwardprop_input_indices,
-        delayed_rewrite_functions, need_gradients_for_jvps)
+    super().__init__(func_graph, attrs, func_graph_deleter,
+                     forwardprop_input_indices, delayed_rewrite_functions,
+                     need_gradients_for_jvps)
     self._func_graph_deleter = func_graph_deleter
     self._forwardprop_input_indices = forwardprop_input_indices
 
@@ -2380,7 +2378,7 @@ _pywrap_utils.RegisterType("IndexedSlices", indexed_slices.IndexedSlices)
 
 # TODO(mdan): Refactor this and clarify relationship with def_function.Function.
 # Right now, def_function.Function is the higher level implementation.
-class Function(object):
+class Function:
   """Wrapper class for the graph functions defined for a Python function.
 
   See the documentation for `defun` for more information on the semantics of
@@ -2572,7 +2570,7 @@ class Function(object):
     # `instance` here is the instance that this `Function` was accessed through
     # e.g., for
     #
-    #   class Foo(object):
+    #   class Foo:
     #
     #     @function.defun
     #     def bar(self):
@@ -2810,7 +2808,7 @@ def defun(func=None,
   class MyModel(tf.keras.Model):
 
     def __init__(self, keep_probability=0.2):
-      super(MyModel, self).__init__()
+      super().__init__()
       self.dense1 = tf.keras.layers.Dense(4, activation=tf.nn.relu)
       self.dense2 = tf.keras.layers.Dense(5, activation=tf.nn.softmax)
       self.keep_probability = keep_probability
@@ -3158,7 +3156,7 @@ def defun_with_attributes(func=None,
 # execute it consistent with class_method_to_instance_method's
 # bound_method_wrapper.
 # TODO(b/119246461): This is not pretty. Use a descriptor instead?
-class TfMethodTarget(object):
+class TfMethodTarget:
   """Binding target for methods replaced by function and defun."""
 
   __slots__ = ("weakrefself_target__", "weakrefself_func__")
@@ -3182,8 +3180,6 @@ class TfMethodTarget(object):
 
   def call(self, args, kwargs):
     wrapped_fn = self.weakrefself_func__()
-    if tf_inspect.ismethod(wrapped_fn):
-      wrapped_fn = six.get_unbound_function(wrapped_fn)
     return wrapped_fn(self.weakrefself_target__(), *args, **kwargs)
 
 
@@ -3215,8 +3211,6 @@ def class_method_to_instance_method(original_function, instance):
       # If __wrapped__ was not replaced, then call original_function.
       # TODO(mdan): For better consistency, use the wrapper's call().
       wrapped_fn = original_function.python_function
-      if tf_inspect.ismethod(wrapped_fn):
-        wrapped_fn = six.get_unbound_function(wrapped_fn)
       return wrapped_fn(weak_instance(), *args, **kwargs)
 
     # If __wrapped__ was replaced, then it is always an unbound function.
@@ -3244,7 +3238,7 @@ def class_method_to_instance_method(original_function, instance):
   return wrapped_instance_func
 
 
-class ConcreteFunctionGarbageCollector(object):
+class ConcreteFunctionGarbageCollector:
   """Cleans up reference cycles when a `ConcreteFunction` goes out of scope."""
 
   __slots__ = ["_func_graph"]

@@ -315,7 +315,8 @@ port::Status StreamExecutor::GetFusedConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType input_type, dnn::DataType bias_type,
     dnn::DataType output_type, double conv_input_scale, double side_input_scale,
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+    double leakyrelu_alpha, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
@@ -328,8 +329,8 @@ port::Status StreamExecutor::GetFusedConvolveRunners(
   }
   return dnn_support->GetFusedConvolveRunners(
       use_cudnn_frontend, kind, input_type, bias_type, output_type,
-      conv_input_scale, side_input_scale, stream, input_descriptor,
-      filter_descriptor, bias_descriptor, output_descriptor,
+      conv_input_scale, side_input_scale, leakyrelu_alpha, stream,
+      input_descriptor, filter_descriptor, bias_descriptor, output_descriptor,
       convolution_descriptor, use_fallback, activation_mode, out_exec_plans);
 }
 

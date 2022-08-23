@@ -1174,10 +1174,7 @@ cc_library(
         "@com_google_absl//absl/strings",
     ] + if_rocm_is_configured([
         "//tensorflow/core/platform:stream_executor",
-    ]) + if_static(
-        ["//tensorflow/core/platform:tensor_float_32_utils"],
-        ["//tensorflow/core/platform:tensor_float_32_hdr_lib"],
-    ),
+    ])
 )
 
 tf_cuda_cc_test(

@@ -193,6 +193,16 @@ table SparsityParameters {
   dim_metadata:[DimensionMetadata];
 }
 
+// The nested tensor type for VARIANT type.
+table VariantSubType {
+  // The tensor shape.
+  shape:[int];
+  type:TensorType;
+  // If false, the rank or the number of tensor dimensions is unknown.
+  // If false, "shape" must be [].
+  has_rank: bool = false;
+}
+
 table Tensor {
   // The tensor shape. The meaning of each entry is operator-specific but
   // builtin ops use: [batch size, height, width, number of channels] (That's
@@ -224,6 +234,12 @@ table Tensor {
   // If false, the rank or the number of tensor dimensions is unknown.
   // If false, "shape" must be [].
   has_rank: bool = false;
+
+  // The nested Tensor types for VARIANT type. This is always empty for
+  // non-VARIANT types. This is optional because the nested type can be omitted.
+  // Currently only 1 subtype is supported. The field is defined as an array for
+  // flexibility of supporting multiple subtypes in the future.
+  variant_tensors:[VariantSubType];
 }
 
 // A list of builtin operators. Builtin operators are slightly faster than custom

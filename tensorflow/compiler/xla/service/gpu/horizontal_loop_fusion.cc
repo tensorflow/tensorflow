@@ -50,8 +50,9 @@ PrimitiveType GetUniqueOutputTypeOfFusible(const HloInstruction& fusible) {
 
 class HorizontalLoopFusionImpl {
  public:
-  explicit HorizontalLoopFusionImpl(HloComputation* computation)
-      : computation_(computation) {}
+  explicit HorizontalLoopFusionImpl(HloComputation* computation,
+                                    absl::string_view prefix)
+      : computation_(computation), prefix_(prefix) {}
 
   ~HorizontalLoopFusionImpl() {}
 
@@ -95,6 +96,7 @@ class HorizontalLoopFusionImpl {
   };
 
   HloComputation* computation_;
+  std::string prefix_;
 };  // HorizontalLoopFusionImpl
 
 bool IsFusibleCandidate(const HloInstruction& instr) {
@@ -176,7 +178,7 @@ bool HasOnlyRowMajorLayout(const HloInstruction& instr) {
 
   auto fused_instrs = instr.fused_instructions_computation()->instructions();
   for (HloInstruction* i : fused_instrs) {
-    if (i->shape().layout().format() != DENSE) {
+    if (!LayoutUtil::IsDenseArray(i->shape())) {
       continue;
     }
     if (!LayoutUtil::IsMonotonicWithDim0Major(i->shape().layout())) {
@@ -328,7 +330,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
     std::unique_ptr<HloComputation>* uniq_computation,
     std::vector<HloInstruction*>* bound_operands) {
   // First, build a computation with only params.
-  HloComputation::Builder b("horizontally_fused_computation");
+  HloComputation::Builder b(prefix_ + "horizontally_fused_computation");
   size_t fused_comp_param_id = 0;
   for (size_t i = 0; i < fused_fusion_instrs.size(); ++i) {
     auto old_params = fused_fusion_instrs[i]->fused_parameters();
@@ -432,11 +434,8 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   }
 
   // Make a tuple of output_slices.
-  HloInstruction* tuple =
-      comp->AddInstruction(HloInstruction::CreateTuple(output_slices));
-  if (metadata != nullptr) {
-    tuple->set_metadata(*metadata);
-  }
+  HloInstruction* tuple = comp->AddInstruction(
+      HloInstruction::CreateTuple(output_slices), metadata);
   comp->set_root_instruction(tuple, /*accept_different_shape=*/true);
   TF_RETURN_IF_ERROR(comp->RemoveInstruction(dummy_root));
 
@@ -452,11 +451,11 @@ Status HorizontalLoopFusionImpl::Fuse(
       fused_fusion_instrs, &uniq_computation, &bound_operands));
   HloComputation* fused_comp = computation_->parent()->AddEmbeddedComputation(
       std::move(uniq_computation));
-  HloInstruction* hori_fusion_instr =
-      computation_->AddInstruction(HloInstruction::CreateFusion(
-          fused_comp->root_instruction()->shape(),
-          HloInstruction::FusionKind::kInput, bound_operands, fused_comp));
-  hori_fusion_instr->set_metadata(fused_comp->root_instruction()->metadata());
+  HloInstruction* hori_fusion_instr = computation_->AddInstruction(
+      HloInstruction::CreateFusion(fused_comp->root_instruction()->shape(),
+                                   HloInstruction::FusionKind::kInput,
+                                   bound_operands, fused_comp, prefix_),
+      &fused_comp->root_instruction()->metadata());
   fused_comp->SetFusionInstruction(hori_fusion_instr);
 
   // Insert bitcasts and replace corresponding users. Note that we do not insert
@@ -535,7 +534,7 @@ StatusOr<bool> HorizontalLoopFusionImpl::Run() {
 
 StatusOr<bool> GpuHorizontalLoopFusion::RunOnComputation(
     HloComputation* computation) {
-  HorizontalLoopFusionImpl horizontal_fusion_impl(computation);
+  HorizontalLoopFusionImpl horizontal_fusion_impl(computation, prefix_);
   return horizontal_fusion_impl.Run();
 }
 

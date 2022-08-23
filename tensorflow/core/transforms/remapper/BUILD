@@ -30,11 +30,16 @@ gentbl_cc_library(
 cc_library(
     name = "Pass",
     srcs = ["pass.cc"],
-    hdrs = ["pass.h"],
+    hdrs = [
+        "pass.h",
+        "remapping_helper.h",
+    ],
     deps = [
         ":MklPDLLPatternsIncGen",
+        "//tensorflow/core:framework",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/transforms:PassDetail",
+        "//tensorflow/core/transforms:op_cat_helper",
         "//tensorflow/core/transforms:pdll_utils",
         "//tensorflow/core/transforms:utils",
         "@llvm-project//mlir:IR",

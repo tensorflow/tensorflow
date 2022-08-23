@@ -333,6 +333,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
     ],
 )
@@ -374,10 +375,7 @@ cc_library(
 
 cc_library(
     name = "stream_executor_impl",
-    deps = [
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
-    ],
+    deps = ["//tensorflow/compiler/xla/stream_executor:stream_executor_impl"],
 )
 
 cc_library(
@@ -406,7 +404,7 @@ cc_library(
 
 alias(
     name = "cuda_platform",
-    actual = "//tensorflow/stream_executor/cuda:all_runtime",
+    actual = "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
 )
 
 alias(

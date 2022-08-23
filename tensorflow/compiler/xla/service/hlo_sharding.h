@@ -333,7 +333,7 @@ class HloSharding {
     return -1;
   }
 
-  // Returns the manual subgroiup dim, or -1 if it doesn't exist.
+  // Returns the manual subgroup dim, or -1 if it doesn't exist.
   int64_t SubgroupManualDim() const {
     auto it = absl::c_find(subgroup_types_, OpSharding::MANUAL);
     if (it != subgroup_types_.end()) {

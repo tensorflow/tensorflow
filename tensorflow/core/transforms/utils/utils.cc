@@ -35,11 +35,11 @@ namespace mlir {
 namespace tfg {
 namespace util {
 
-bool NodeIsOnCpu(Operation *op) {
+bool OpHasDevice(Operation *op, const char *device_name) {
   std::string task, device;
   return tensorflow::DeviceNameUtils::SplitDeviceName(TFOp(op).device().data(),
                                                       &task, &device) &&
-         absl::StartsWith(device, tensorflow::DEVICE_CPU);
+         absl::StartsWith(device, device_name);
 }
 
 void EraseRegularNodeAttributes(NamedAttrList &attr_list) {
@@ -152,9 +152,9 @@ void SizedOperandSegmentsEraseOperands(Operation *op,
   Builder b(op->getContext());
   StringAttr attr_name = b.getStringAttr(
       OpTrait::AttrSizedOperandSegments<void>::getOperandSegmentSizeAttr());
-  auto segment_sizes = op->getAttrOfType<DenseIntElementsAttr>(attr_name);
+  auto segment_sizes = op->getAttrOfType<DenseI32ArrayAttr>(attr_name);
   if (segment_sizes) {
-    auto values = segment_sizes.getValues<int32_t>();
+    auto values = segment_sizes.asArrayRef();
     SmallVector<int32_t> new_sizes = llvm::to_vector(values);
 
     unsigned base = 0;
@@ -168,7 +168,7 @@ void SizedOperandSegmentsEraseOperands(Operation *op,
     assert(llvm::all_of(new_sizes, [](int32_t size) { return size >= 0; }));
     assert(std::accumulate(new_sizes.begin(), new_sizes.end(), 0) ==
            op->getNumOperands() - erase.count());
-    segment_sizes = b.getI32TensorAttr(new_sizes);
+    segment_sizes = b.getDenseI32ArrayAttr(new_sizes);
   }
 
   op->eraseOperands(erase);

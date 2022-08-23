@@ -136,11 +136,11 @@ static int64_t getElementsPerThread(TensorType type) {
   const int64_t kNumFp32AlusOnV100 = 5376;
   if (type.getNumElements() < kNumFp32AlusOnV100) return 1;
 
-  // Vectorize so that loads and stores are 128 bits per thread.
-  if (type.getElementType().isIntOrFloat())
-    return 128 / type.getElementType().getIntOrFloatBitWidth();
+  // Don't vectorize if element type is not int or float.
+  if (!type.getElementType().isIntOrFloat()) return 1;
 
-  return 1;  // Default to no vectorization.
+  // Vectorize so that loads and stores are 128 bits per thread.
+  return 128 / type.getElementType().getIntOrFloatBitWidth();
 }
 
 // Returns the number of threads per block to use for 'type', given the number
@@ -186,10 +186,6 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   if (!isRewritable(fusionOp))
     return rewriter.notifyMatchFailure(fusionOp, "not rewritable");
 
-  auto storeOps = fusionOp.getBody()->getOps<memref::TensorStoreOp>();
-  if (storeOps.empty())
-    return rewriter.notifyMatchFailure(fusionOp, "no memref.tensor_store ops");
-
   // Collect values in fusion region defined above.
   SetVector<Value> captures;
   getUsedValuesDefinedAbove(fusionOp->getRegions(), captures);
@@ -233,7 +229,8 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   });
 
   // Create and run the HLO to GPU pass pipeline.
-  auto resultType = (*storeOps.begin()).tensor().getType().cast<TensorType>();
+  auto resultType =
+      fusionOp.getFusionResults().front().getType().cast<TensorType>();
   int64_t unrollFactor = getElementsPerThread(resultType);
   int64_t tileSize = getThreadsPerBlock(resultType, unrollFactor);
   // Note: passManager.enableIRPrinting() doesn't do anything on dynamic pass
@@ -278,8 +275,8 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
 }
 
 bool FusionRewritePattern::isRewritable(lmhlo::FusionOp fusionOp) const {
-  if (fusionOp.getFusionResults().size() > 1)
-    return false;  // Do not rewrite fusions with multiple outputs.
+  if (fusionOp.getFusionResults().size() != 1)
+    return false;  // Only rewrite fusions with a single result.
   auto callback = [this](Operation* op) {
     if (rewritableTarget.isLegal(op)) return WalkResult::advance();
     return WalkResult::interrupt();

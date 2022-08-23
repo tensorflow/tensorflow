@@ -21,6 +21,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -80,6 +81,14 @@ void PJRT_Error_Message(PJRT_Error_Message_Args* args) {
     args->message = status->error_message().data();
     args->message_size = status->error_message().size();
   }
+}
+
+PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Error_GetCode_Args", PJRT_Error_GetCode_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->code = StatusCodeToPjrtErrorCode(args->error->status.code());
+  return nullptr;
 }
 
 // ---------------------------------- Client -----------------------------------
@@ -461,9 +470,10 @@ PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
                              &args->dynamic_dimensions);
 
   if (shape.has_layout()) {
+    args->has_layout = true;
     ApiConverter::ToC(shape.layout(), &args->layout);
   } else {
-    args->layout.format = xla::INVALID_FORMAT;
+    args->has_layout = false;
   }
 
   return nullptr;
@@ -533,6 +543,16 @@ PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args) {
       "PJRT_Buffer_IsOnCpu_Args", PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE,
       args->struct_size));
   args->is_on_cpu = args->buffer->buffer->IsOnCpu();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_ReadyEvent_Args", PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE,
+      args->struct_size));
+  xla::PjRtFuture<xla::Status> wrapped_promise =
+      args->buffer->buffer->GetReadyFuture();
+  args->event = new PJRT_Event{std::move(wrapped_promise)};
   return nullptr;
 }
 

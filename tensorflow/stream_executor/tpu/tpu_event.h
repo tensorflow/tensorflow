@@ -15,25 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_EVENT_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_EVENT_H_
 
-#include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/stream_executor_internal.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-
-namespace tensorflow {
-namespace tpu {
-
-class TpuEvent : public ::stream_executor::internal::EventInterface {
- public:
-  explicit TpuEvent(SE_Event* event) : event_(event) {}
-  ~TpuEvent() override {
-    tensorflow::tpu::ExecutorApiFn()->TpuEvent_FreeFn(event_);
-  }
-
- private:
-  SE_Event* event_;
-};
-
-}  // namespace tpu
-}  // namespace tensorflow
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_event.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_EVENT_H_

@@ -19,28 +19,11 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
-TypeIDNameRegistry::TypeIDNameRegistry() : type_id_name_map_() {}
-
 llvm::StringRef TypeIDNameRegistry::FindTypeIDSymbolName(TypeID type_id) {
   auto it = type_id_name_map_.find(type_id);
   if (it == type_id_name_map_.end()) return "";
   return it->second;
 }
 
-static std::vector<TypeIDNameRegistry::RegistrationFunction>*
-GetTypeIDNameRegistrations() {
-  static auto* ret = new std::vector<TypeIDNameRegistry::RegistrationFunction>;
-  return ret;
-}
-
-void RegisterStaticTypeIDName(TypeIDNameRegistry* typeid_name_registry) {
-  for (const auto& func : *GetTypeIDNameRegistrations())
-    func(typeid_name_registry);
-}
-
-void AddStaticTypeIDNameRegistration(
-    TypeIDNameRegistry::RegistrationFunction registration) {
-  GetTypeIDNameRegistrations()->push_back(registration);
-}
 }  // namespace runtime
 }  // namespace xla

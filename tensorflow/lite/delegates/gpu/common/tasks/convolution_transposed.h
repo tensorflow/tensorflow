@@ -118,14 +118,11 @@ void ConvolutionTransposed::UploadWeights(
     uint2 tex_size = Get2dResourceSize(weights_desc, weights.shape);
     int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
     for (int i = 0; i < 4; ++i) {
-      Texture2DDescriptor desc;
-      desc.element_type = weights_desc.type;
-      desc.size = int2(tex_size.x, tex_size.y);
-      desc.data.resize(sub_size);
-      memcpy(desc.data.data(), weights_data.data() + sub_size * i, sub_size);
-      const std::string name = "weights" + std::to_string(i);
-      args_.AddObject(name,
-                      std::make_unique<Texture2DDescriptor>(std::move(desc)));
+      TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+          weights_desc.type, TensorStorageType::TEXTURE_2D, tex_size.x,
+          tex_size.y, weights_data.data() + sub_size * i);
+      args_.AddObject("weights" + std::to_string(i),
+                      std::make_unique<TensorDescriptor>(std::move(desc)));
     }
   }
 }
@@ -152,14 +149,11 @@ void ConvolutionTransposed::UploadWeights(
     uint2 tex_size = Get2dResourceSize(weights_desc, weights.shape);
     int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
     for (int i = 0; i < 4; ++i) {
-      Texture2DDescriptor desc;
-      desc.element_type = weights_desc.type;
-      desc.size = int2(tex_size.x, tex_size.y);
-      desc.data.resize(sub_size);
-      memcpy(desc.data.data(), weights_data.data() + sub_size * i, sub_size);
-      const std::string name = "weights" + std::to_string(i);
-      args_.AddObject(name,
-                      std::make_unique<Texture2DDescriptor>(std::move(desc)));
+      TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+          weights_desc.type, TensorStorageType::TEXTURE_2D, tex_size.x,
+          tex_size.y, weights_data.data() + sub_size * i);
+      args_.AddObject("weights" + std::to_string(i),
+                      std::make_unique<TensorDescriptor>(std::move(desc)));
     }
   }
 }

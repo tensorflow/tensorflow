@@ -1281,6 +1281,11 @@ class OpConverterTest : public ::testing::Test {
     }
     TrtShapeOptimizationProfile profiles;
     if (!converter_->use_implicit_batch()) {
+      std::vector<bool> input_mask(input_data.size());
+      for (int i = 0; i < input_data.size(); i++) {
+        input_mask[i] = (input_data[i].tensor.dtype() != DataType::DT_RESOURCE);
+      }
+      profiles.SetInputMask(input_mask);
       profiles.SetShapeTensorMask(converter_->network());
       TF_RETURN_IF_ERROR(profiles.CollectShapeValues(input_data));
       // Create a single optimization profile for explicit batch mode
@@ -1363,6 +1368,10 @@ class OpConverterTest : public ::testing::Test {
           name, trt_type, dims_adap->AsTrtDims(), batch_size);
       ASSERT_EQ(add_input_status, status);
     }
+  }
+
+  Status AddTensorOrWeights(const string& name, TRT_TensorOrWeights input) {
+    return converter_->AddTensorOrWeights(name, input);
   }
 
   // Adds ITensor for both validation and conversion. The difference compared to
@@ -1576,6 +1585,8 @@ class OpConverterTest : public ::testing::Test {
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
   std::unique_ptr<Allocator> tensor_buffer_allocator_;
+
+ public:
   // The scope that contains the graph being converted. Because
   // tensor_buffer_allocator_ provides the storage for tensor contents that are
   // represented as attributes for graph nodes within scope_,
@@ -1583,6 +1594,8 @@ class OpConverterTest : public ::testing::Test {
   // Therefore, scope_ comes after tensor_buffer_allocator_ in the class member
   // field list.
   Scope scope_;
+
+ protected:
   std::unordered_map<string, Output> node_inputs_;
 };
 
@@ -1653,6 +1666,16 @@ class VariableOpConverterTest : public OpConverterTest {
     // Outputs.
     *kernel = op_kernel_.get();
     *context = context_.get();
+  }
+
+  // Adds resource for resource variable op converters.
+  void AddTestResource(const string& name, const ResourceHandle& resource) {
+    // Add resource for validation.
+    node_inputs_[name] =
+        ops::Placeholder(scope_.WithOpName("my_handle"), DT_RESOURCE);
+
+    // Add resource for conversion.
+    TF_EXPECT_OK(AddTensorOrWeights(name, TRT_TensorOrWeights{resource}));
   }
 
  private:
@@ -2278,6 +2301,98 @@ void TestConvertVariableV2(VariableOpConverterTest* test) {
 TEST_F(VariableOpConverterTest, ConvertVariableV2) {
   TestConvertVariableV2<DT_FLOAT, float>(this);
   TestConvertVariableV2<DT_HALF, Eigen::half>(this);
+}
+
+template <DataType dtype, typename CType>
+void TestConvertReadVariableOp(VariableOpConverterTest* test) {
+  struct TestParam {
+    string container;
+    string name;
+    std::vector<int> dims;
+    float epsilon;
+    Status conversion_status;
+  };
+
+  std::vector<TestParam> test_param = {
+      {"", "var0", {}, 0.001, Status::OK()},
+      {"", "var0", {64}, 0.001, Status::OK()},
+      {"", "var0", {8, 16}, 0.001, Status::OK()},
+      {"box", "var", {8, 16}, 0.001, Status::OK()}};
+  for (auto p : test_param) {
+    // Create node definition.
+    NodeDefBuilder::NodeOut rvo_input =
+        NodeDefBuilder::NodeOut("my_handle", 0, DT_RESOURCE);
+    NodeDef node_def;
+    std::vector<int64_t> dims_64(p.dims.begin(), p.dims.end());
+    TensorShape shape =
+        TensorShape(gtl::ArraySlice<int64_t>(dims_64));  // non-absl ok
+    TF_CHECK_OK(NodeDefBuilder("my_var", "ReadVariableOp")
+                    .Attr("dtype", dtype)
+                    .Attr("_shape", shape)
+                    .Input(rvo_input)
+                    .Finalize(&node_def));
+
+    OpKernel* kernel;
+    OpKernelContext* context;
+    test->CreateContext(node_def, &kernel, &context);
+
+    test->Reset(TrtPrecisionMode::FP32, TrtTestMode::kDynamicShape);
+
+    // Set the value of the variable according to p.dims.
+    int var_size = std::accumulate(p.dims.begin(), p.dims.end(), 1,
+                                   std::multiplies<int>());
+    std::vector<CType> expected_value;
+    expected_value.reserve(var_size);
+    for (int i = 0; i < var_size; i++) {
+      // Set expected_value[i] = (cast)i.
+      expected_value.push_back((CType)i);
+    }
+
+    // Create a resource handle.
+    DtypeAndPartialTensorShape dtype_and_shape;
+    dtype_and_shape.dtype = dtype;
+    TF_CHECK_OK(PartialTensorShape::BuildPartialTensorShape(
+        gtl::ArraySlice<int64_t>(dims_64),  // non-absl ok
+        &dtype_and_shape.shape));
+    ResourceHandle handle = MakeResourceHandle<Var>(
+        context, p.container, p.name,
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape});
+
+    // Create input resource with the handle.
+    test->AddTestResource("my_handle", handle);
+
+    // Create a resource with this handle.
+    Var* resource = new Var(dtype);
+    TF_EXPECT_OK(CreateResource(context, handle, resource));
+
+    // Setup the tensor of the variable.
+    // We allocate the tensor in the temporary memory. Note that creating a
+    // tensor in this scope and sharing the underlying storage by copy would
+    // lead to double destruction.
+    AllocatorAttributes attr_value;
+    attr_value.set_gpu_compatible(true);
+    attr_value.set_nic_compatible(true);
+    TF_EXPECT_OK(
+        context->allocate_temp(dtype, shape, resource->tensor(), attr_value));
+    // The tensor is allocated on GPU. We copy the values from the CPU.
+    auto tensor_flat = resource->tensor()->flat<CType>();
+    CHECK(tensor_flat.data());
+    auto ret = cudaMemcpy(tensor_flat.data(), expected_value.data(),
+                          expected_value.size() * sizeof(CType),
+                          cudaMemcpyHostToDevice);
+    CHECK_EQ(ret, 0);
+
+    test->RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_var", &output));
+    EXPECT_THAT(output.weights(),
+                ShapedWeightsHasDimsAndValues<CType>(p.dims, expected_value));
+  }
+}
+
+TEST_F(VariableOpConverterTest, ConvertReadVariableOp) {
+  TestConvertReadVariableOp<DT_FLOAT, float>(this);
+  TestConvertReadVariableOp<DT_HALF, Eigen::half>(this);
 }
 
 template <DataType dtype, typename InputCType, typename OutputCType>

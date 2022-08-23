@@ -54,6 +54,27 @@ bool CudnnUseFrontend() {
   return result;
 }
 
+// Whether to enable Cudnn runtime compiled kernels which are able to support
+// more general fusion patterns but might increase the warmup time.
+// TODO(kaixih@nvidia): we can make it default when Cudnn further improves the
+// runtime compilation overhead.
+bool CudnnUseRuntimeFusion() {
+  static bool result = [] {
+    bool value = false;
+#if GOOGLE_CUDA
+    if (CUDNN_VERSION >= 8400) {
+      Status status =
+          ReadBoolFromEnvVar("TF_CUDNN_USE_RUNTIME_FUSION", false, &value);
+      if (!status.ok()) {
+        LOG(ERROR) << status;
+      }
+    }
+#endif  // GOOGLE_CUDA
+    return value;
+  }();
+  return result;
+}
+
 ADD_BOOL_CUDNN_FLAG(CudnnUseAutotune, TF_CUDNN_USE_AUTOTUNE, true);
 // Whether to auto-tuning Cudnn RNN forward and backward pass to pick
 // statistically the best cudnnRNNAlgo_t and cudnnMathType_t.

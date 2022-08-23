@@ -135,23 +135,17 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
     std::vector<TF_Tensor*> embedding_indices_tensors(num_input_features);
     std::vector<TF_Tensor*> aggregation_weights_tensors(num_input_features);
 
-    {
-      tensorflow::profiler::TraceMe copy_tensors_trace(
-          [] { return "CopyTensors"; },
-          tensorflow::profiler::TraceMeLevel::kInfo);
-
-      for (int i = 0; i < num_input_features; ++i) {
-        Status tf_status;
-        sample_indices_or_row_splits_tensors[i] = TF_TensorFromTensor(
-            sample_indices_or_row_splits_list[i], &tf_status);
-        OP_REQUIRES_OK(ctx, tf_status);
-        embedding_indices_tensors[i] =
-            TF_TensorFromTensor(embedding_indices_list[i], &tf_status);
-        OP_REQUIRES_OK(ctx, tf_status);
-        aggregation_weights_tensors[i] =
-            TF_TensorFromTensor(aggregation_weights_list[i], &tf_status);
-        OP_REQUIRES_OK(ctx, tf_status);
-      }
+    for (int i = 0; i < num_input_features; ++i) {
+      Status tf_status;
+      sample_indices_or_row_splits_tensors[i] = TF_TensorFromTensorShallow(
+          sample_indices_or_row_splits_list[i], &tf_status);
+      OP_REQUIRES_OK(ctx, tf_status);
+      embedding_indices_tensors[i] =
+          TF_TensorFromTensorShallow(embedding_indices_list[i], &tf_status);
+      OP_REQUIRES_OK(ctx, tf_status);
+      aggregation_weights_tensors[i] =
+          TF_TensorFromTensorShallow(aggregation_weights_list[i], &tf_status);
+      OP_REQUIRES_OK(ctx, tf_status);
     }
 
     TpuEmbeddingEngine_EnqueueTensorBatch_Params params;

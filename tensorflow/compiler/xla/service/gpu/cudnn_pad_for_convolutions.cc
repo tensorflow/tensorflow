@@ -62,10 +62,9 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
 
   auto* zero = comp->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
-  auto* pad = comp->AddInstruction(
-      HloInstruction::CreatePad(new_shape, instr, zero, pad_config));
-  pad->set_metadata(instr->metadata());
-  return pad;
+  return comp->AddInstruction(
+      HloInstruction::CreatePad(new_shape, instr, zero, pad_config),
+      &instr->metadata());
 }
 
 // Modifies the given convolution to have the given input and result shapes.

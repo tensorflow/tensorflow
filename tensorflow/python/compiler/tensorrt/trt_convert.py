@@ -898,16 +898,30 @@ def _construct_function_from_graph_def(func, graph_def, frozen_func=None):
   """Rebuild function from graph_def."""
   if frozen_func is None:
     frozen_func = func
-  rebuilt_func = wrap_function.function_from_graph_def(
+
+  # If a function is converted, then the TF context contains the original
+  # function while the converted_graph_def contains the converted function.
+  # Remove the original function from the TF context in this case.
+  for f in graph_def.library.function:
+    while context.context().has_function(f.signature.name):
+      context.context().remove_function(f.signature.name)
+
+  # pylint: disable = protected-access
+  captures = {
+      t2.name.split(":")[0]: t1
+      for _, (t1, t2) in frozen_func.graph._captures.items()
+  }
+  new_func = wrap_function.function_from_graph_def(
       graph_def, [tensor.name for tensor in frozen_func.inputs],
-      [tensor.name for tensor in frozen_func.outputs])
-  rebuilt_func.graph.structured_outputs = nest.pack_sequence_as(
-      func.graph.structured_outputs, rebuilt_func.graph.structured_outputs)
+      [tensor.name for tensor in frozen_func.outputs], captures)
+  new_func.graph.structured_outputs = nest.pack_sequence_as(
+      func.graph.structured_outputs, new_func.graph.structured_outputs)
+
   # Copy structured input signature from original function (used during
   # serialization)
-  rebuilt_func.graph.structured_input_signature = (
-      func.structured_input_signature)
-  return rebuilt_func
+  new_func.graph.structured_input_signature = (func.structured_input_signature)
+
+  return new_func
 
 
 def _apply_inlining(func):
@@ -954,7 +968,41 @@ def _apply_inlining(func):
 
   new_graph_def = tf_optimizer.OptimizeGraph(config, meta_graph)
 
-  return _construct_function_from_graph_def(func, new_graph_def)
+  return new_graph_def
+
+
+def _annotate_variable_ops(func, graph_def):
+  """Annotates variable operations with custom `_shape` attribute.
+
+  This is required for the converters and shape inference. The graph
+  definition is modified in-place.
+
+  Args:
+    func: Function represented by the graph definition.
+    graph_def: Graph definition to be annotated in-place.
+
+  Raises:
+    RuntimeError: if some shapes cannot be annotated.
+  """
+  ph_shape_map = {}
+  for ph, var in zip(func.graph.internal_captures, func.variables):
+    ph_shape_map[ph.name] = var.shape
+  # Construct a mapping of node names to nodes
+  name_to_node = {node.name: node for node in graph_def.node}
+  # Go through all the ReadVariableOp nodes in the graph def
+  for node in graph_def.node:
+    if node.op == "ReadVariableOp" or node.op == "ResourceGather":
+      node_ = node
+      # Go up the chain of identities to find a placeholder
+      while name_to_node[node_.input[0]].op == "Identity":
+        node_ = name_to_node[node_.input[0]]
+      ph_name = node_.input[0] + ":0"
+      if ph_name in ph_shape_map:
+        shape = ph_shape_map[ph_name]
+        node.attr["_shape"].shape.CopyFrom(shape.as_proto())
+      else:
+        raise RuntimeError(
+            "Not found in the function captures: {}".format(ph_name))
 
 
 def _save_calibration_table(node):
@@ -1188,6 +1236,12 @@ class TrtGraphConverterV2(object):
     else:
       self._use_dynamic_shape = use_dynamic_shape
 
+    if not self.freeze and not self._use_dynamic_shape:
+      logging.warn(
+          "Disabling graph freezing is only possible in dynamic shape mode."
+          " The graph will be frozen.")
+      self.freeze = True
+
     self._profile_strategy = "Unknown"
     if self._use_dynamic_shape:
       if dynamic_shape_profile_strategy is None:
@@ -1302,7 +1356,9 @@ class TrtGraphConverterV2(object):
     if self.freeze:
       frozen_func = convert_to_constants.convert_variables_to_constants_v2(func)
     else:
-      frozen_func = _apply_inlining(func)
+      inlined_graph_def = _apply_inlining(func)
+      _annotate_variable_ops(func, inlined_graph_def)
+      frozen_func = _construct_function_from_graph_def(func, inlined_graph_def)
     frozen_graph_def = frozen_func.graph.as_graph_def()
 
     # Clear any prior device assignments
@@ -1328,15 +1384,6 @@ class TrtGraphConverterV2(object):
 
     # Run TRT optimizer in Grappler to convert the graph.
     self._converted_graph_def = self._run_conversion(grappler_meta_graph_def)
-    # If a function is converted, then the TF context contains the original
-    # function while the converted_graph_def contains the converted function.
-    # Remove the original function from the TF context in this case.
-    for f in self._converted_graph_def.library.function:
-      while context.context().has_function(f.signature.name):
-        logging.info("Removing original function %s from the context",
-                     f.signature.name)
-        context.context().remove_function(f.signature.name)
-
     self._converted_func = _construct_function_from_graph_def(
         func, self._converted_graph_def, frozen_func)
 

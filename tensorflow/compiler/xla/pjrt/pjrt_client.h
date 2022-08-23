@@ -238,7 +238,13 @@ struct CompileOptions {
   // Set multi_slice_config to trigger compilation for DCN connected multi
   // slice operation.
   const MultiSliceConfig* multi_slice_config = nullptr;
+
+  // Serialize the CompileOptions into a CompileOptionsProto.
+  StatusOr<CompileOptionsProto> ToProto() const;
 };
+
+StatusOr<CompileOptions> CompileOptionsFromProto(
+    const CompileOptionsProto& input);
 
 // A sized chunk of host data. The host data can be either in host layout or in
 // device layout, and it can be one part of the entire buffer. The PjRt
@@ -963,6 +969,7 @@ class PjRtBuffer {
   // Returns a future that can be used to discover when the data in the
   // PjRtBuffer has been computed, or an error has occurred.
   //
+  // TODO(b/241967811): change these weird semantics
   // If the buffer has been deleted or donated the returned future will
   // immediately hold an error, however if GetReadyFuture() is called before
   // the buffer has been deleted or donated then the returned future will stay

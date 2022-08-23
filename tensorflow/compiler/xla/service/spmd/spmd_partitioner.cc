@@ -3931,7 +3931,9 @@ Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
           ? hlo->sharding().GetTupleSharding(hlo->shape()).ValueOrDie()
           : hlo->sharding();
   Shape shard_shape = MakePartitionedShape(hlo->shape(), result_sharding);
-  *sharded_rw_shape.mutable_layout() = shard_shape.layout();
+  if (shard_shape.has_layout()) {
+    *sharded_rw_shape.mutable_layout() = shard_shape.layout();
+  }
   SetPartitionedHlo(hlo, [&]() {
     HloInstruction* sharded_rw =
         b_.AddInstruction(HloInstruction::CreateReduceWindow(

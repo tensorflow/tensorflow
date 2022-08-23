@@ -108,8 +108,7 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
   options.maybe_drop_incomplete_steps = true;
   OpStats op_stats = ConvertXSpaceToOpStats(xspace, options);
   if (tools.contains(kOverviewPage)) {
-    OverviewPage overview_page_db =
-        ConvertOpStatsToOverviewPage(op_stats, xspace);
+    OverviewPage overview_page_db = ConvertOpStatsToOverviewPage(op_stats);
     AddToolData(ToolName(kOverviewPage), overview_page_db, response);
     if (tools.contains(kInputPipeline)) {
       AddToolData(ToolName(kInputPipeline), overview_page_db.input_analysis(),

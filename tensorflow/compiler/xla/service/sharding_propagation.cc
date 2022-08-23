@@ -48,12 +48,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 // Returns true iff the specified hlo or sharding has a spatially partitioned
-// sharding (tiled or replicated) what can be propagated by sharding
+// sharding (tiled or replicated) that can be propagated by sharding
 // propagation.
 bool IsSpatiallyPartitioned(const HloSharding& sharding) {
   if (sharding.IsTuple()) {
@@ -1026,9 +1027,10 @@ bool RefineManualAutoShardingFromManual(
 bool InferUnspecifiedDimsFromOperand(HloInstruction* annotate_op,
                                      absl::Span<const int64_t> unspecified_dims,
                                      HloInstruction** man_conversion_op_after) {
-  if (!annotate_op->IsCustomCall("Sharding")) {
-    CHECK_EQ(annotate_op->opcode(), HloOpcode::kCopy);
-  }
+  // ProcessShardingInstruction will either keep the "Sharding" custom call as
+  // is or replace it with a copy.
+  CHECK(annotate_op->IsCustomCall("Sharding") ||
+        annotate_op->opcode() == HloOpcode::kCopy);
   if (!IsSpatiallyPartitioned(annotate_op->operand(0))) {
     return false;
   }
@@ -1042,12 +1044,14 @@ bool InferUnspecifiedDimsFromOperand(HloInstruction* annotate_op,
     if (user->IsCustomCall("SPMDFullToShardShape") ||
         user->IsCustomCall("SPMDShardToFullShape")) {
       std::vector<int64_t> user_unspec_dims;
-      absl::c_sort(user_unspec_dims);
       if (!sharding_op_util::ParseAttributes(
                Cast<HloCustomCallInstruction>(user)->opaque(),
                &user_unspec_dims)
-               .ok() ||
-          unspecified_dims != user_unspec_dims) {
+               .ok()) {
+        return false;
+      }
+      absl::c_sort(user_unspec_dims);
+      if (unspecified_dims != user_unspec_dims) {
         // The manual/auto conversion op must have the same set of unspecified
         // dims.
         return false;
@@ -1097,9 +1101,8 @@ bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
                                      int64_t aggressiveness, bool is_spmd,
                                      absl::Span<const int64_t> unspecified_dims,
                                      HloInstruction* man_conversion_op) {
-  if (!annotate_op->IsCustomCall("Sharding")) {
-    CHECK_EQ(annotate_op->opcode(), HloOpcode::kCopy);
-  }
+  CHECK(annotate_op->IsCustomCall("Sharding") ||
+        annotate_op->opcode() == HloOpcode::kCopy);
   if (!user->has_sharding() || !user->sharding().IsTiled()) {
     return false;
   }
@@ -1236,7 +1239,7 @@ std::optional<HloSharding> InferBroadcastOperandSharding(
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
 // copy node for reshard.
-// partially_specified will be populated with the converted copies if the custom
+// `unspecified_dims` will be populated with the converted copies if the custom
 // call is partially specified.
 StatusOr<bool> ProcessShardingInstruction(
     HloModule* module,
@@ -1250,11 +1253,7 @@ StatusOr<bool> ProcessShardingInstruction(
     auto instructions = computation->MakeInstructionPostOrder();
     std::reverse(instructions.begin(), instructions.end());
     for (HloInstruction* instruction : instructions) {
-      const auto* ccall = DynCast<HloCustomCallInstruction>(instruction);
-      if (ccall == nullptr) {
-        continue;
-      }
-      if (ccall->custom_call_target() != "Sharding") {
+      if (!instruction->IsCustomCall("Sharding")) {
         continue;
       }
       TF_RET_CHECK(instruction->has_sharding())
@@ -1262,8 +1261,8 @@ StatusOr<bool> ProcessShardingInstruction(
       const HloSharding& sharding = instruction->sharding();
 
       std::vector<int64_t> unspec_dims;
-      TF_RETURN_IF_ERROR(
-          sharding_op_util::ParseAttributes(ccall->opaque(), &unspec_dims));
+      TF_RETURN_IF_ERROR(sharding_op_util::ParseAttributes(
+          Cast<HloCustomCallInstruction>(instruction)->opaque(), &unspec_dims));
       // Replace it with a copy node so that it does not need special handling.
       if (replace_sharding_with_copy) {
         auto copy = computation->AddInstruction(
@@ -2311,10 +2310,11 @@ StatusOr<bool> ShardingPropagation::Run(
                      : RemoveShardingMetadata(module, execution_threads);
   absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>
       unspecified_dims;
-  auto status_or_changed = ProcessShardingInstruction(
-      module, execution_threads, !cse_prevention_only_, &unspecified_dims);
-  if (!status_or_changed.ok()) return status_or_changed;
-  any_changed |= status_or_changed.ValueOrDie();
+  TF_ASSIGN_OR_RETURN(
+      bool changed,
+      ProcessShardingInstruction(module, execution_threads,
+                                 !cse_prevention_only_, &unspecified_dims));
+  any_changed |= changed;
 
   // Association of partitionable embedded computations with their parent
   // instruction.
@@ -2329,9 +2329,10 @@ StatusOr<bool> ShardingPropagation::Run(
           inst->while_body()->parameter_instruction(0),
           inst->while_condition()->parameter_instruction(0)};
     } else if (inst->opcode() == HloOpcode::kConditional) {
-      std::vector<HloInstruction*> comps{inst};
       const auto& called_computations = inst->called_computations();
-      comps.reserve(called_computations.size());
+      std::vector<HloInstruction*> comps;
+      comps.reserve(called_computations.size() + 1);
+      comps.push_back(inst);
       for (HloComputation* c : called_computations) {
         comps.push_back(c->root_instruction());
       }
@@ -2463,9 +2464,9 @@ StatusOr<bool> ShardingPropagation::Run(
             computation->MakeInstructionPostOrder();
 
         instruction_counter += instructions.size();
-        for (const HloInstruction* instruction : instructions) {
-          already_sharded_counter += (instruction->has_sharding() ? 1 : 0);
-        }
+        already_sharded_counter += absl::c_count_if(
+            instructions,
+            [](const HloInstruction* inst) { return inst->has_sharding(); });
         auto clear_cache = [&](HloInstruction* hlo,
                                HloInstruction* hlo_for_users = nullptr) {
           for (auto operand : hlo->operands()) {

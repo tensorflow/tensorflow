@@ -96,6 +96,35 @@ usage example, and a
 [tutorial video](https://www.youtube.com/watch?v=cPAD9vLKE0c) on
 `jit_compile=True` usage.
 
+### Usage with Keras
+
+For Keras models, `jit_compile=True` can be set as an argument to
+[`model.compile`](https://www.tensorflow.org/api_docs/python/tf/keras/Model#compile):
+
+```
+model.compile(optimizer="adam", jit_compile=True)
+```
+
+### Usage with distributed strategy
+
+XLA:GPU can be used with TF distributed strategy
+([`MirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MirroredStrategy)
+or
+[`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/MultiWorkerMirroredStrategy))
+by annotating step function with `jit_compile=True`:
+
+```
+@tf.function(jit_compile=True)
+def step_fn():
+  t = tf.ones(shape=[100], dtype=tf.float32)
+  ctx = tf.distribute.get_replica_context()
+  return ctx.all_reduce(tf.distribute.ReduceOp.SUM, t)
+
+@tf.function
+def run_fn():
+  return strategy.run(step_fn)
+```
+
 ### Auto-clustering
 
 A simple way to start using XLA in TensorFlow models without any changes is to

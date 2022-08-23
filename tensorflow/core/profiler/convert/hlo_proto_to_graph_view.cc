@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/hlo_proto_to_graph_view.h"
 
 #include <memory>
+#include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
 
 namespace tensorflow {
@@ -123,7 +124,72 @@ StatusOr<std::string> Plot(std::unique_ptr<HloModule> module,
 
   return graph_handle;
 }
+
+// Default parameter constants for graph viewer.
+static constexpr char kGraphTypeName[] = "graph";
+static constexpr char kShortTxtTypeName[] = "short_txt";
+static constexpr char kLongTxtTypeName[] = "long_txt";
+static constexpr char kDefaultFormatString[] = "url";
+static constexpr int kDefaultWidth = 3;
+static constexpr int kDefaultShowMetadata = 0;
+static constexpr int kDefaultMergeFusion = 0;
+
 }  // namespace
+
+StatusOr<GraphViewerParams> ParseGraphViewerParams(const ToolOptions& options) {
+  GraphViewerParams params;
+  std::optional<std::string> type = GetParam<std::string>(options, "type");
+  if (!type.has_value()) {
+    return errors::InvalidArgument("Graph viewer must provide a type option.");
+  }
+
+  // For graph type.
+  if (type == kGraphTypeName) {
+    params.type = type.value();
+    if (std::optional<std::string> node_name =
+            GetParam<std::string>(options, "node_name")) {
+      params.node_name = node_name.value();
+    }
+
+    params.graph_width =
+        GetParamWithDefault<int>(options, "graph_width", kDefaultWidth);
+    params.render_options.show_backend_config = GetParamWithDefault<int>(
+        options, "show_metadata", kDefaultShowMetadata);
+    params.render_options.show_fusion_subcomputations =
+        !GetParamWithDefault<int>(options, "merge_fusion", kDefaultMergeFusion);
+    params.format = GetRenderFormat(GetParamWithDefault<std::string>(
+        options, "format", kDefaultFormatString));
+
+    return params;
+  }
+
+  // For txt type.
+  if (type == kShortTxtTypeName || type == kLongTxtTypeName) {
+    params.type = type.value();
+    params.verbose = (type == kLongTxtTypeName);
+    params.show_metadata =
+        GetParamWithDefault(options, "show_metadata", kDefaultShowMetadata);
+    return params;
+  }
+
+  // Unknown type.
+  return errors::InvalidArgument("Unknown graph viewer type option: ",
+                                 type.value());
+}
+
+xla::RenderedGraphFormat GetRenderFormat(const std::string& format_string) {
+  if (format_string == "html") {
+    return xla::RenderedGraphFormat::kHtml;
+  } else if (format_string == "dot") {
+    return xla::RenderedGraphFormat::kDot;
+  } else if (format_string == "url") {
+    return xla::RenderedGraphFormat::kUrl;
+  } else {
+    LOG(ERROR) << "Invalid graph format argument: " << format_string
+               << ", fallback to default url";
+    return xla::RenderedGraphFormat::kUrl;
+  }
+}
 
 StatusOr<std::string> ConvertHloProtoToGraph(
     const HloProto& hlo_proto, const std::string& node_name, int graph_width,

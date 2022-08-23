@@ -73,6 +73,7 @@ enum MinibenchmarkStatus {
   kMinibenchmarkCommandFailed = 510,
   kMiniBenchmarkCannotLoadSupportLibrary = 511,
   kMiniBenchmarkInvalidSupportLibraryConfiguration = 512,
+  kMinibenchmarkPipeFailed = 513,
   // Validator status codes.
   kMinibenchmarkDelegateNotSupported = 1000,
   kMinibenchmarkDelegatePluginNotFound = 1001,

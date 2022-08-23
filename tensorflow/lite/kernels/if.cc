@@ -220,8 +220,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // the feature until we find a different case.
   Subgraph* then_subgraph = (*subgraphs)[op_data->then_subgraph_index].get();
   Subgraph* else_subgraph = (*subgraphs)[op_data->else_subgraph_index].get();
-  TF_LITE_ENSURE_OK(context, then_subgraph->ReleaseNonPersistentMemory());
-  TF_LITE_ENSURE_OK(context, else_subgraph->ReleaseNonPersistentMemory());
+  TF_LITE_ENSURE_OK(context, then_subgraph->ReleaseMemory());
+  TF_LITE_ENSURE_OK(context, else_subgraph->ReleaseMemory());
 
   return kTfLiteOk;
 }

@@ -13,7 +13,7 @@ load(
 )
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
@@ -437,6 +437,20 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "gpu_compilation_parallelism_test",
+    srcs = [
+        "gpu_compilation_parallelism_test.cc",
+    ],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "gpu_copy_test",
     srcs = ["gpu_copy_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -547,6 +561,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 

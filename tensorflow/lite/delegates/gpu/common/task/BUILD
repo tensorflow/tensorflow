@@ -109,8 +109,6 @@ cc_library(
         ":gpu_operation",
         ":serialization_base_cc_fbs",
         ":tensor_desc",
-        ":texture2d_desc",
-        "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",

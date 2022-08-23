@@ -53,7 +53,7 @@ class SaverTest(test.TestCase):
   def test_resource_variable(self):
     v1 = resource_variable_ops.ResourceVariable(2.)
     self.evaluate(v1.initializer)
-    saver = functional_saver._SingleDeviceSaver(
+    saver = functional_saver.MultiDeviceSaver(
         saveable_object_util.saveable_objects_for_op(v1, "x"))
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     self.evaluate(saver.save(constant_op.constant(prefix)))
@@ -64,7 +64,7 @@ class SaverTest(test.TestCase):
 
     v2 = resource_variable_ops.ResourceVariable(3.)
     self.evaluate(v2.initializer)
-    second_saver = functional_saver._SingleDeviceSaver(
+    second_saver = functional_saver.MultiDeviceSaver(
         saveable_object_util.saveable_objects_for_op(v2, "x"))
     self.evaluate(second_saver.restore(prefix))
     self.assertEqual(2., self.evaluate(v2))
@@ -73,7 +73,7 @@ class SaverTest(test.TestCase):
   def test_resource_variable_use_localhost(self):
     v1 = resource_variable_ops.ResourceVariable(2.)
     self.evaluate(v1.initializer)
-    saver = functional_saver._SingleDeviceSaver(
+    saver = functional_saver.MultiDeviceSaver(
         saveable_object_util.saveable_objects_for_op(v1, "x"))
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     self.evaluate(saver.save(constant_op.constant(prefix), self.local_options))
@@ -84,7 +84,7 @@ class SaverTest(test.TestCase):
 
     v2 = resource_variable_ops.ResourceVariable(3.)
     self.evaluate(v2.initializer)
-    second_saver = functional_saver._SingleDeviceSaver(
+    second_saver = functional_saver.MultiDeviceSaver(
         saveable_object_util.saveable_objects_for_op(v2, "x"))
     self.evaluate(second_saver.restore(prefix, self.local_options))
     self.assertEqual(2., self.evaluate(v2))

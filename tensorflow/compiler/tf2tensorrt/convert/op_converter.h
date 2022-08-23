@@ -32,7 +32,10 @@ class Converter;
 
 // Specifies the expected type taken by a TRT_TensorOrWeights input during op
 // conversion.
-enum class TrtInputArg { kTensor = 1, kWeight = 2, kBoth = 3 };
+// kResource is only used for resource variable ops. For an operation like
+// Add(tensor, ReadVariableOp(...)), the second operand of Add is the result of
+// the ReadVariableOp, which is a kWeight.
+enum class TrtInputArg { kTensor = 1, kWeight = 2, kBoth = 3, kResource = 4 };
 
 // Parameters for each op converter.
 struct OpConverterParams {

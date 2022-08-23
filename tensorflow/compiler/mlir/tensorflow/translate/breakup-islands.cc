@@ -65,6 +65,38 @@ class BreakUpIslands : public TF::PerFunctionAggregateAnalysisConsumerPass<
                          new_control_inputs);
 };
 
+// Returns true if the operation is a stateful If, Case, or While op.
+bool IsStatefulFunctionalControlFlowOp(Operation* op) {
+  if (!isa<TF::IfOp, TF::CaseOp, TF::WhileOp>(op)) {
+    return false;
+  }
+
+  if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless")) {
+    return !is_stateless.getValue();
+  }
+  return false;
+}
+
+// Add control dependencies from stateful control-flow ops to graph fetch op.
+// This is needed to avoid that such control-flow ops get pruned because of a
+// bug in common runtime (see b/185483669).
+void AddStatefulControlFlowDependencies(tf_executor::GraphOp graph_op) {
+  llvm::SmallDenseSet<Value, 8> graph_fetches;
+  for (Value value : graph_op.GetFetch().fetches()) {
+    graph_fetches.insert(value);
+  }
+  for (Operation& op : graph_op.GetBody().without_terminator()) {
+    auto island = dyn_cast<tf_executor::IslandOp>(&op);
+    if (!island) continue;
+    if (!island.WrapsSingleOp()) continue;
+    Operation& wrapped_op = island.GetBody().front();
+    if (!IsStatefulFunctionalControlFlowOp(&wrapped_op)) continue;
+    if (graph_fetches.contains(island.control())) continue;
+
+    graph_op.GetFetch().fetchesMutable().append(island.control());
+  }
+}
+
 void BreakUpIslands::runOnFunction(
     func::FuncOp func,
     const TF::SideEffectAnalysis::Info& side_effect_analysis) {
@@ -131,6 +163,7 @@ void BreakUpIslands::runOnFunction(
     new_op->setAttrs(item.getAttrDictionary());
     item.erase();
   }
+  AddStatefulControlFlowDependencies(graph_op);
 }
 
 // Populates an empty IslandOp and with a NoOp or Identity/IdentityN depending
@@ -195,18 +228,6 @@ struct IslandSourcesAndSinks {
   // executing.
   llvm::SmallPtrSet<Operation*, 4> sinks;
 };
-
-// Returns true if the operation is a stateful If, Case, or While op.
-bool IsStatefulFunctionalControlFlowOp(Operation* op) {
-  if (!isa<TF::IfOp, TF::CaseOp, TF::WhileOp>(op)) {
-    return false;
-  }
-
-  if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless")) {
-    return !is_stateless.getValue();
-  }
-  return false;
-}
 
 // Finds IslandSourcesAndSinks for an unmodified island.
 IslandSourcesAndSinks FindSourcesAndSinksInIsland(

@@ -145,7 +145,6 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options) {
-  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   std::vector<const XPlane*> device_planes = FindTensorCorePlanes(space);
   bool is_gpu = device_planes.empty();
   if (is_gpu) {
@@ -199,6 +198,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 
   bool has_device = !device_planes.empty();
   // Convert a host plane.
+  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   if (host_plane) {
     if (options.generate_op_metrics_db) {
       *op_stats.mutable_host_op_metrics_db() =
@@ -210,6 +210,12 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       StepEvents host_step_events =
           ConvertHostThreadsXPlaneToStepEvents(*host_plane, device_step_events);
       CombineStepEvents(host_step_events, &step_events);
+    }
+    XPlaneVisitor visitor = CreateTfXPlaneVisitor(host_plane);
+    auto stat = visitor.GetStat(StatType::kMatrixUnitUtilizationPercent);
+    if (stat.has_value()) {
+      op_stats.mutable_performance_counter_result()
+          ->set_matrix_unit_utilization_percent(stat->DoubleValue());
     }
   }
   if (options.generate_step_db) {

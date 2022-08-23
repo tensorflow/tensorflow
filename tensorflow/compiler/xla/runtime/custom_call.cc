@@ -24,7 +24,11 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
+using llvm::ArrayRef;
 using llvm::raw_ostream;
+
+template <typename T>
+using TensorRef = CustomCall::TensorRef<T>;
 
 static void PrintArr(raw_ostream& os, std::string_view name,
                      llvm::ArrayRef<int64_t> arr) {
@@ -52,47 +56,35 @@ raw_ostream& operator<<(raw_ostream& os, const FlatMemrefView& view) {
             << " size_in_bytes: " << view.size_in_bytes;
 }
 
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(uint8_t, "__type_id_uint8");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(uint32_t, "__type_id_uint32");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(uint64_t, "__type_id_uint64");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(bool, "__type_id_bool");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(int32_t, "__type_id_int32");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(int64_t, "__type_id_int64");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(Eigen::half,
-                                            "__type_id_eigen_half");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(float, "__type_id_float");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(double, "__type_id_double");
+void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
+  r.Register<Tagged<llvm::StringRef>>("__type_id_string");
 
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::StringRef,
-                                            "__type_id_string");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(MemrefView,
-                                            "__type_id_memref_view");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(StridedMemrefView,
-                                            "__type_id_strided_memref_view");
+  r.Register<Tagged<uint8_t>>("__type_id_uint8");
+  r.Register<Tagged<uint32_t>>("__type_id_uint32");
+  r.Register<Tagged<uint64_t>>("__type_id_uint64");
+  r.Register<Tagged<bool>>("__type_id_bool");
+  r.Register<Tagged<int32_t>>("__type_id_int32");
+  r.Register<Tagged<int64_t>>("__type_id_int64");
+  r.Register<Tagged<Eigen::half>>("__type_id_half");
+  r.Register<Tagged<float>>("__type_id_float");
+  r.Register<Tagged<double>>("__type_id_double");
 
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(EmptyArrayRef,
-                                            "__type_id_empty_arrayref");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::ArrayRef<int8_t>,
-                                            "__type_id_arrayref_int8");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::ArrayRef<int16_t>,
-                                            "__type_id_arrayref_int16");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::ArrayRef<int32_t>,
-                                            "__type_id_arrayref_int32");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::ArrayRef<int64_t>,
-                                            "__type_id_arrayref_int64");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::ArrayRef<float>,
-                                            "__type_id_arrayref_float");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(llvm::ArrayRef<double>,
-                                            "__type_id_arrayref_double");
+  r.Register<Tagged<MemrefView>>("__type_id_memref_view");
+  r.Register<Tagged<StridedMemrefView>>("__type_id_strided_memref_view");
+  r.Register<Tagged<EmptyArrayRef>>("__type_id_empty_array");
 
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(
-    CustomCall::TensorRef<int32_t>, "__type_id_customcall_tensorref_int32_t");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(
-    CustomCall::TensorRef<int64_t>, "__type_id_customcall_tensorref_int64_t");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(
-    CustomCall::TensorRef<float>, "__type_id_customcall_tensorref_float");
-XLA_RUNTIME_STATIC_TYPEID_NAME_REGISTRATION(
-    CustomCall::TensorRef<double>, "__type_id_customcall_tensorref_double");
+  r.Register<Tagged<ArrayRef<int8_t>>>("__type_id_arrayr_int8");
+  r.Register<Tagged<ArrayRef<int16_t>>>("__type_id_array_int16");
+  r.Register<Tagged<ArrayRef<int32_t>>>("__type_id_array_int32");
+  r.Register<Tagged<ArrayRef<int64_t>>>("__type_id_array_int64");
+  r.Register<Tagged<ArrayRef<float>>>("__type_id_array_float");
+  r.Register<Tagged<ArrayRef<double>>>("__type_id_array_double");
+
+  r.Register<Tagged<TensorRef<int32_t>>>("__type_id__tensor_int32_t");
+  r.Register<Tagged<TensorRef<int64_t>>>("__type_id_tensor_int64_t");
+  r.Register<Tagged<TensorRef<float>>>("__type_id_tensor_float");
+  r.Register<Tagged<TensorRef<double>>>("__type_id_tensor_double");
+}
 
 }  // namespace runtime
 }  // namespace xla

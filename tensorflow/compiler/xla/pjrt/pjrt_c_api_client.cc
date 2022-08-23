@@ -155,11 +155,7 @@ absl::string_view PjRtCApiClient::platform_version() const {
 
 StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
     const PjRtLoadedExecutable& executable) const {
-#ifdef PJRT_C_API_BYPASS
-  return wrapped_->ExecutableFingerprint(
-      *PjRtCApiExecutable::GetWrapped(&executable));
-#endif  // PJRT_C_API_BYPASS
-  return Unimplemented("PJRT C API does not support ExecutableFingerprint");
+  return {std::nullopt};
 }
 
 StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
@@ -661,7 +657,7 @@ void PjRtCApiBuffer::set_shape() {
 
   Shape trimmed_shape = Shape(element_type, dims, dynamic_dims, {});
 
-  if (args.layout.format != xla::INVALID_FORMAT) {
+  if (args.has_layout) {
     *(trimmed_shape.mutable_layout()) = ApiConverter::FromC(&args.layout);
   }
 
@@ -676,7 +672,7 @@ void PjRtCApiBuffer::set_shape() {
     delete[] args.dynamic_dimensions.heap;
   }
 
-  if (args.layout.format != xla::INVALID_FORMAT) {
+  if (args.has_layout) {
     if (args.layout.minor_to_major.size > TPU_C_API_MAX_INLINED) {
       delete[] args.layout.minor_to_major.heap;
     }
