@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/const_init.h"
+#include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
@@ -144,7 +145,7 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
   // Use separate status check and ValueOrDie invocation on ptx_cache
   // entry to avoid value moving introduced by TF_ASSIGN_OR_RETURN.
 
-  if (TF_PREDICT_FALSE(!it->second.ok())) {
+  if (ABSL_PREDICT_FALSE(!it->second.ok())) {
     return it->second.status();
   }
 

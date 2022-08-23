@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/base/const_init.h"
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/debugging/leak_check.h"
 #include "absl/memory/memory.h"
@@ -49,7 +50,7 @@ bool FLAGS_gpuexec_cuda_device_0_only = false;
 #define RETURN_IF_CUDA_RES_ERROR(expr, ...)                            \
   do {                                                                 \
     CUresult _res = (expr);                                            \
-    if (TF_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                      \
+    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                    \
       return port::InternalError(absl::StrCat(                         \
           __VA_ARGS__, ": ", ::stream_executor::gpu::ToString(_res))); \
     }                                                                  \
@@ -58,7 +59,7 @@ bool FLAGS_gpuexec_cuda_device_0_only = false;
 #define FAIL_IF_CUDA_RES_ERROR(expr, ...)                   \
   do {                                                      \
     CUresult _res = (expr);                                 \
-    if (TF_PREDICT_FALSE(_res != CUDA_SUCCESS)) {           \
+    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {         \
       LOG(FATAL) << absl::StrCat(__VA_ARGS__) << ": "       \
                  << ::stream_executor::gpu::ToString(_res); \
     }                                                       \

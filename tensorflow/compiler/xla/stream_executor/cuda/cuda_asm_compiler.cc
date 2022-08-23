@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/base/attributes.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
@@ -23,7 +24,7 @@ namespace stream_executor {
 #define RETURN_IF_CUDA_ERROR(expr)                                            \
   do {                                                                        \
     CUresult _status = expr;                                                  \
-    if (!SE_PREDICT_TRUE(_status == CUDA_SUCCESS)) {                          \
+    if (!ABSL_PREDICT_TRUE(_status == CUDA_SUCCESS)) {                        \
       const char* error_string;                                               \
       cuGetErrorString(_status, &error_string);                               \
       std::ostringstream oss;                                                 \

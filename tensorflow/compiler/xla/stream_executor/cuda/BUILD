@@ -631,6 +631,7 @@ cc_library(
     name = "cuda_asm_compiler",
     srcs = if_cuda_is_configured(["cuda_asm_compiler.cc"]),
     deps = if_cuda_is_configured([
+        "@com_google_absl//absl/base:core_headers",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_diagnostics_header",

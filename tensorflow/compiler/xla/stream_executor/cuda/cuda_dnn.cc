@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
@@ -82,7 +83,7 @@ static_assert(CUDNN_VERSION >= 7300, "cuDNN needs to be version 7.3 or higher");
 #define RETURN_IF_CUDNN_ERROR(expr)                                     \
   do {                                                                  \
     cudnnStatus_t _status = (expr);                                     \
-    if (!SE_PREDICT_TRUE(_status == CUDNN_STATUS_SUCCESS)) {            \
+    if (!ABSL_PREDICT_TRUE(_status == CUDNN_STATUS_SUCCESS)) {          \
       std::ostringstream oss;                                           \
       oss << CudnnStatusToString(_status) << "\nin " << __FILE__ << "(" \
           << __LINE__ << "): '" << #expr << "'";                        \
@@ -93,7 +94,7 @@ static_assert(CUDNN_VERSION >= 7300, "cuDNN needs to be version 7.3 or higher");
 #define RETURN_MSG_IF_CUDNN_ERROR(expr)                                 \
   do {                                                                  \
     cudnnStatus_t _status = (expr).get_status();                        \
-    if (!SE_PREDICT_TRUE(_status == CUDNN_STATUS_SUCCESS)) {            \
+    if (!ABSL_PREDICT_TRUE(_status == CUDNN_STATUS_SUCCESS)) {          \
       std::ostringstream oss;                                           \
       oss << CudnnStatusToString(_status) << "\nin " << __FILE__ << "(" \
           << __LINE__ << "): '" << #expr << "' " << (expr).get_error(); \
@@ -101,11 +102,11 @@ static_assert(CUDNN_VERSION >= 7300, "cuDNN needs to be version 7.3 or higher");
     }                                                                   \
   } while (false)
 
-#define RETURN_FALSE_IF_CUDNN_ERROR(expr)                                \
-  do {                                                                   \
-    if (!SE_PREDICT_TRUE((expr).get_status() == CUDNN_STATUS_SUCCESS)) { \
-      return false;                                                      \
-    }                                                                    \
+#define RETURN_FALSE_IF_CUDNN_ERROR(expr)                                  \
+  do {                                                                     \
+    if (!ABSL_PREDICT_TRUE((expr).get_status() == CUDNN_STATUS_SUCCESS)) { \
+      return false;                                                        \
+    }                                                                      \
   } while (false)
 
 // Converts (via narrowing) a type T value to a type U, and checks that the
@@ -2912,7 +2913,7 @@ port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
 
   int64_t size_in_bytes_int64_t = size_in_bytes;
 
-  if (TF_PREDICT_FALSE(size_in_bytes_int64_t < 0)) {
+  if (ABSL_PREDICT_FALSE(size_in_bytes_int64_t < 0)) {
     return port::Status(
         port::error::INTERNAL,
         "cudnnGetConvolutionForwardWorkspaceSize() returned "
@@ -2923,7 +2924,7 @@ port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
     return DeviceMemory<uint8>();
   }
 
-  if (TF_PREDICT_FALSE(!scratch_allocator)) {
+  if (ABSL_PREDICT_FALSE(!scratch_allocator)) {
     return port::Status(port::error::INVALID_ARGUMENT,
                         "No scratch allocator provided");
   }
@@ -2962,7 +2963,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
 
   int64_t size_in_bytes_int64_t = size_in_bytes;
 
-  if (TF_PREDICT_FALSE(size_in_bytes_int64_t < 0)) {
+  if (ABSL_PREDICT_FALSE(size_in_bytes_int64_t < 0)) {
     return port::Status(
         port::error::INTERNAL,
         "cudnnGetConvolutionBackwardDataWorkspaceSize() returned "
@@ -2973,7 +2974,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
     return DeviceMemory<uint8>();
   }
 
-  if (TF_PREDICT_FALSE(!scratch_allocator)) {
+  if (ABSL_PREDICT_FALSE(!scratch_allocator)) {
     return port::Status(port::error::INVALID_ARGUMENT,
                         "No scratch allocator provided");
   }
@@ -3012,7 +3013,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
 
   int64_t size_in_bytes_int64_t = size_in_bytes;
 
-  if (TF_PREDICT_FALSE(size_in_bytes_int64_t < 0)) {
+  if (ABSL_PREDICT_FALSE(size_in_bytes_int64_t < 0)) {
     return port::Status(
         port::error::INTERNAL,
         "cudnnGetConvolutionBackwardFilterWorkspaceSize() returned "
@@ -3023,7 +3024,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
     return DeviceMemory<uint8>();
   }
 
-  if (TF_PREDICT_FALSE(!scratch_allocator)) {
+  if (ABSL_PREDICT_FALSE(!scratch_allocator)) {
     return port::Status(port::error::INVALID_ARGUMENT,
                         "No scratch allocator provided");
   }

@@ -24,6 +24,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/memory/memory.h"
@@ -224,39 +225,39 @@ class StreamExecutor {
   // is used to register memory allocated outside the StreamExecutor;
   // HostMemoryAllocate implicitly registers its allocations and
   // HostMemoryDeallocate implicitly deregisters on deallocation.
-  bool HostMemoryRegister(void* location, uint64_t size) SE_MUST_USE_RESULT;
+  bool HostMemoryRegister(void* location, uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Unregisters a region of host memory registered with HostMemoryRegister.
   // This should be done before deallocating the region with delete[]/free/etc.
-  bool HostMemoryUnregister(void* location) SE_MUST_USE_RESULT;
+  bool HostMemoryUnregister(void* location) ABSL_MUST_USE_RESULT;
 
   // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
-  bool SynchronizeAllActivity() SE_MUST_USE_RESULT;
+  bool SynchronizeAllActivity() ABSL_MUST_USE_RESULT;
 
   // Blocks the caller while "size" bytes are zeroed out (in POD fashion) at the
   // given location in device memory.
   port::Status SynchronousMemZero(DeviceMemoryBase* location,
-                                  uint64_t size) SE_MUST_USE_RESULT;
+                                  uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Blocks the caller while "size" bytes are initialized to "value" (in POD
   // fashion) at the given location in device memory.
   port::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                 uint64_t size) SE_MUST_USE_RESULT;
+                                 uint64_t size) ABSL_MUST_USE_RESULT;
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the host source to the device destination.
   ABSL_DEPRECATED(
       "Prefer SynchronousMemcpyH2D, to avoid error-prone API usage.")
   bool SynchronousMemcpy(DeviceMemoryBase* device_dst, const void* host_src,
-                         uint64_t size) SE_MUST_USE_RESULT;
+                         uint64_t size) ABSL_MUST_USE_RESULT;
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the device source to the host destination.
   ABSL_DEPRECATED(
       "Prefer SynchronousMemcpyD2H, to avoid error-prone API usage.")
   bool SynchronousMemcpy(void* host_dst, const DeviceMemoryBase& device_src,
-                         uint64_t size) SE_MUST_USE_RESULT;
+                         uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Same as SynchronousMemcpy(DeviceMemoryBase*, ...) above.
   port::Status SynchronousMemcpyH2D(const void* host_src, int64_t size,
@@ -293,13 +294,13 @@ class StreamExecutor {
   // device source to the device destination.
   bool SynchronousMemcpy(DeviceMemoryBase* device_dst,
                          const DeviceMemoryBase& device_src,
-                         uint64_t size) SE_MUST_USE_RESULT;
+                         uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Enqueues an operation onto stream to zero out size bytes at the given
   // device memory location. Neither stream nor location may be null. Returns
   // whether the operation was successfully enqueued onto the stream.
   port::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                       uint64_t size) SE_MUST_USE_RESULT;
+                       uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Enqueues an operation onto stream to set 32-bit patterns starting at
   // location, for byte count given by size. size must be 32-bit quantified
