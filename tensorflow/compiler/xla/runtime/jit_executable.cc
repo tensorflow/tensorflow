@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/ADT/Optional.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
+#include "tensorflow/compiler/xla/runtime/errors.h"
 
 namespace xla {
 namespace runtime {
@@ -36,7 +37,6 @@ using llvm::Optional;
 
 using tfrt::MakeAvailableAsyncValueRef;
 using tfrt::MakeErrorAsyncValueRef;
-using tfrt::MakeStringError;
 
 using Specialization = JitExecutable::Specialization;
 

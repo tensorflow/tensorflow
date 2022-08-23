@@ -194,6 +194,7 @@ cc_library(
         ":arguments",
         ":async_values_cache",
         ":constraints",
+        ":errors",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:jit_compiler",
         "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
         "@llvm-project//llvm:Support",
@@ -289,5 +290,15 @@ cc_library(
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "type_id_test",
+    srcs = ["type_id_test.cc"],
+    deps = [
+        ":type_id",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
