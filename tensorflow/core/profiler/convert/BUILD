@@ -343,14 +343,13 @@ cc_library(
     deps = [
         ":op_metrics_db_combiner",
         ":op_stats_combiner",
+        ":repository",
         ":step_events_to_steps_db",
         ":xplane_to_kernel_stats_db",
         ":xplane_to_op_metrics_db",
         ":xplane_to_step_events",
-        ":xplane_to_tf_functions",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:diagnostics_proto_cc",
-        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
@@ -363,13 +362,11 @@ cc_library(
         "//tensorflow/core/profiler/utils:kernel_stats_utils",
         "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:step_intersection",
-        "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:tpu_xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_visitor",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
@@ -380,15 +377,13 @@ tf_cc_test(
     size = "small",
     srcs = ["xplane_to_op_stats_test.cc"],
     deps = [
+        ":repository",
         ":step_events_to_steps_db",
         ":xplane_to_op_stats",
-        ":xplane_to_tf_functions",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/profiler/protobuf:diagnostics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
@@ -399,7 +394,6 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_test_utils",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -718,6 +712,7 @@ cc_library(
         ":op_stats_to_overview_page",
         ":op_stats_to_pod_viewer",
         ":op_stats_to_tf_stats",
+        ":repository",
         ":tool_options",
         ":xplane_to_hlo",
         ":xplane_to_memory_profile",
@@ -818,12 +813,12 @@ cc_library(
     deps = [
         ":hlo_proto_to_graph_view",
         ":hlo_proto_to_memory_visualization_utils",
+        ":repository",
         ":tool_options",
         ":xplane_to_hlo",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = True,
@@ -865,14 +860,15 @@ cc_library(
     hdrs = ["xplane_to_hlo.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":repository",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:file_system_utils",
         "//tensorflow/core/profiler/utils:hlo_proto_map",
-        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ] + tf_profiler_xla_proto_header(),
 )
 
@@ -948,5 +944,19 @@ cc_library(
     hdrs = ["tool_options.h"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "repository",
+    srcs = ["repository.cc"],
+    hdrs = ["repository.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:file_system_utils",
+        "@com_google_absl//absl/strings",
     ],
 )

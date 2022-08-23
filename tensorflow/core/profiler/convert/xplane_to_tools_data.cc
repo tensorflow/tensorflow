@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 
+#include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
+#include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
@@ -56,88 +56,89 @@ namespace profiler {
 namespace {
 
 StatusOr<std::string> ConvertXSpaceToTraceEvents(
-    const std::vector<XSpace>& xspaces) {
-  if (xspaces.size() != 1) {
+    const SessionSnapshot& session_snapshot) {
+  if (session_snapshot.XSpaceSize() != 1) {
     return errors::InvalidArgument(
         "Trace events tool expects only 1 XSpace path but gets ",
-        xspaces.size());
+        session_snapshot.XSpaceSize());
   }
 
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                      session_snapshot.GetXSpace(0));
   std::string content;
-  ConvertXSpaceToTraceEventsString(xspaces[0], &content);
+  ConvertXSpaceToTraceEventsString(*xspace, &content);
   return content;
 }
 
 StatusOr<std::string> ConvertMultiXSpacesToOverviewPage(
-    const std::vector<XSpace>& xspaces) {
+    const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
   options.generate_kernel_stats_db = true;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                          &combined_op_stats));
-
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
   // TODO(profiler): xspace should tell whether this is sampling mode.
-  OverviewPage overview_page_db =
-      ConvertOpStatsToOverviewPage(combined_op_stats);
-  return overview_page_db.SerializeAsString();
+  return ConvertOpStatsToOverviewPage(combined_op_stats).SerializeAsString();
 }
 
 StatusOr<std::string> ConvertMultiXSpacesToInputPipeline(
-    const std::vector<XSpace>& xspaces) {
+    const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                          &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
   return ConvertOpStatsToInputPipelineAnalysis(combined_op_stats)
       .SerializeAsString();
 }
 
 StatusOr<std::string> ConvertMultiXSpacesToTfStats(
-    const std::vector<XSpace>& xspaces) {
+    const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_kernel_stats_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                          &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
   return ConvertOpStatsToTfStats(combined_op_stats).SerializeAsString();
 }
 
 StatusOr<std::string> ConvertMultiXSpacesToKernelStats(
-    const std::vector<XSpace>& xspaces) {
+    const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
   options.generate_kernel_stats_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                          &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
   return combined_op_stats.kernel_stats_db().SerializeAsString();
 }
 
 StatusOr<std::string> ConvertXSpaceToMemoryProfile(
-    const std::vector<XSpace>& xspaces) {
-  if (xspaces.size() != 1) {
+    const SessionSnapshot& session_snapshot) {
+  if (session_snapshot.XSpaceSize() != 1) {
     return errors::InvalidArgument(
         "Memory profile tool expects only 1 XSpace path but gets ",
-        xspaces.size());
+        session_snapshot.XSpaceSize());
   }
+
   std::string json_output;
-  TF_RETURN_IF_ERROR(
-      ConvertXSpaceToMemoryProfileJson(xspaces[0], &json_output));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                      session_snapshot.GetXSpace(0));
+  TF_RETURN_IF_ERROR(ConvertXSpaceToMemoryProfileJson(*xspace, &json_output));
   return json_output;
 }
 
 StatusOr<std::string> ConvertMultiXSpacesToPodViewer(
-    const std::vector<XSpace>& xspaces) {
+    const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                          &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
 
   std::string json_output;
   protobuf::util::JsonPrintOptions opts;
@@ -147,30 +148,31 @@ StatusOr<std::string> ConvertMultiXSpacesToPodViewer(
   if (!encode_status.ok()) {
     const auto& error_message = encode_status.message();
     return errors::Internal(
-        "Could not convert pod viewer proto to json. Error: ",
+        "Could not convert pod viewer to json. Error: ",
         absl::string_view(error_message.data(), error_message.length()));
   }
   return json_output;
 }
 
 StatusOr<std::string> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
-    const std::vector<XSpace>& xspaces,
-    const std::vector<std::string>& filenames) {
+    const SessionSnapshot& session_snapshot) {
   CombinedTfDataStats combined_tf_data_stats;
   CombinedTfDataStatsBuilder builder(&combined_tf_data_stats);
 
-  std::vector<XSpace> mutable_xspaces = xspaces;
+  for (int idx = 0; idx < session_snapshot.XSpaceSize(); ++idx) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                        session_snapshot.GetXSpace(idx));
 
-  for (int idx = 0; idx < mutable_xspaces.size(); ++idx) {
     XPlane* host_plane =
-        FindMutablePlaneWithName(&mutable_xspaces[idx], kHostThreadsPlaneName);
+        FindMutablePlaneWithName(xspace.get(), kHostThreadsPlaneName);
+    std::string host_name_from_file = session_snapshot.GetHostname(idx);
     if (host_plane == nullptr) {
       return errors::InvalidArgument(
-          "Could not find host XPlane for tf data stats: ", filenames[idx]);
+          "Could not find host XPlane for tf data stats: ",
+          host_name_from_file);
     }
-    absl::string_view host_name = mutable_xspaces[idx].hostnames_size()
-                                      ? mutable_xspaces[idx].hostnames(0)
-                                      : filenames[idx];
+    absl::string_view host_name =
+        xspace->hostnames_size() ? xspace->hostnames(0) : host_name_from_file;
     builder.Add(host_name, host_plane);
   }
   builder.Finalize();
@@ -178,12 +180,12 @@ StatusOr<std::string> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
 }
 
 StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
-    const std::vector<XSpace>& xspaces) {
+    const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   OpStats combined_op_stats;
-  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                          &combined_op_stats));
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
 
   tensorflow::profiler::op_profile::Profile profile;
   ConvertOpStatsToOpProfile(
@@ -193,39 +195,39 @@ StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
 
   return profile.SerializeAsString();
 }
+
 }  // namespace
 
 StatusOr<std::string> ConvertMultiXSpacesToToolData(
-    const std::vector<XSpace>& xspaces,
-    const std::vector<std::string>& filenames,
-    const absl::string_view tool_name, const ToolOptions& options) {
+    const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
+    const ToolOptions& options) {
   if (tool_name == "trace_viewer") {
-    return ConvertXSpaceToTraceEvents(xspaces);
+    return ConvertXSpaceToTraceEvents(session_snapshot);
   } else if (tool_name == "overview_page") {
-    return ConvertMultiXSpacesToOverviewPage(xspaces);
+    return ConvertMultiXSpacesToOverviewPage(session_snapshot);
   } else if (tool_name == "input_pipeline_analyzer") {
-    return ConvertMultiXSpacesToInputPipeline(xspaces);
+    return ConvertMultiXSpacesToInputPipeline(session_snapshot);
   } else if (tool_name == "tensorflow_stats") {
-    return ConvertMultiXSpacesToTfStats(xspaces);
+    return ConvertMultiXSpacesToTfStats(session_snapshot);
   } else if (tool_name == "kernel_stats") {
-    return ConvertMultiXSpacesToKernelStats(xspaces);
+    return ConvertMultiXSpacesToKernelStats(session_snapshot);
   } else if (tool_name == "memory_profile") {
-    return ConvertXSpaceToMemoryProfile(xspaces);
+    return ConvertXSpaceToMemoryProfile(session_snapshot);
   } else if (tool_name == "pod_viewer") {
-    return ConvertMultiXSpacesToPodViewer(xspaces);
+    return ConvertMultiXSpacesToPodViewer(session_snapshot);
   } else if (tool_name == "tf_data_bottleneck_analysis") {
-    return ConvertMultiXSpacesToTfDataBottleneckAnalysis(xspaces, filenames);
+    return ConvertMultiXSpacesToTfDataBottleneckAnalysis(session_snapshot);
   } else if (tool_name == "hlo_proto") {
     // <hlo_proto> is a special tool name to generate HLO proto files from
     // XSpace and store them in profile repository, this method does not return
     // actual tool data.
     TF_RETURN_IF_ERROR(
-        GetHloProtoFromMultiXSpaceAndSaveToFile(xspaces, filenames));
+        GetHloProtoFromMultiXSpaceAndSaveToFile(session_snapshot));
     return std::string();
   } else if (tool_name == "op_profile") {
-    return ConvertMultiXSpacesToOpProfileViewer(xspaces);
+    return ConvertMultiXSpacesToOpProfileViewer(session_snapshot);
   } else if (tool_name == "memory_viewer" || tool_name == "graph_viewer") {
-    return ConvertHloProtoToToolData(filenames, tool_name, options);
+    return ConvertHloProtoToToolData(session_snapshot, tool_name, options);
   } else {
     return errors::InvalidArgument(
         "Can not find tool: ", tool_name,

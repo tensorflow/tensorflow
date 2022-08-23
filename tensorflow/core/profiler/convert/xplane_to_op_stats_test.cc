@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
-#include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/status.h"
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -39,8 +41,6 @@ namespace {
 
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
-
-static constexpr char kXPlanePb[] = "xplane.pb";
 
 TEST(ConvertXPlaneToOpStats, GpuPerfEnv) {
   XSpace space;
@@ -230,23 +230,31 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
   static constexpr char kHost1[] = "host1";
   static constexpr char kHost2[] = "host2";
 
-  XSpace xspace1;
-  XSpace xspace2;
+  auto xspace1 = std::make_unique<XSpace>();
+  auto xspace2 = std::make_unique<XSpace>();
 
-  BuildXSpaceForTest(xspace1, kHost1);
-  BuildXSpaceForTest(xspace2, kHost2);
+  BuildXSpaceForTest(*xspace1, kHost1);
+  BuildXSpaceForTest(*xspace2, kHost2);
 
-  std::vector<XSpace> xspaces;
-  xspaces.push_back(xspace1);
-  xspaces.push_back(xspace2);
+  std::vector<std::string> xspace_paths;
+  xspace_paths.push_back("xspace_path1");
+  xspace_paths.push_back("xspace_path2");
+
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  xspaces.push_back(std::move(xspace1));
+  xspaces.push_back(std::move(xspace2));
+
+  auto session_snapshot_or =
+      SessionSnapshot::Create(std::move(xspace_paths), std::move(xspaces));
+  TF_CHECK_OK(session_snapshot_or.status());
 
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
 
-  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                   &combined_op_stats))
+  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
+                                                   options, &combined_op_stats))
       << "Failed to convert multi XSpace to OpStats";
 
   // Result OpStats has 2 Host Ops, "IDLE" and "aaa:bbb".

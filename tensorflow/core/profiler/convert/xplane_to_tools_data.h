@@ -17,25 +17,21 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TOOLS_DATA_H_
 
 #include <string>
-#include <utility>
-#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Convert XSpace proto to a tool specific data. Pass in additional
-// filenames to fall back in case proto does not contain hostnames field.
+// Convert XSpace protos to a tool specific data.
 // Return the serialized string of tool specific data when the conversion is
 // successful, else return error status.
 StatusOr<std::string> ConvertMultiXSpacesToToolData(
-    const std::vector<XSpace>& xspaces,
-    const std::vector<std::string>& filenames,
-    const absl::string_view tool_name, const ToolOptions& options);
+    const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
+    const ToolOptions& options);
 
 }  // namespace profiler
 }  // namespace tensorflow
