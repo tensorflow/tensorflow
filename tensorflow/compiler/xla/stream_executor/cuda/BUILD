@@ -4,7 +4,7 @@
 load("//tensorflow:tensorflow.bzl", "check_deps", "tf_cc_test", "tf_copts", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
-    "//tensorflow/stream_executor:build_defs.bzl",
+    "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
     "tf_additional_cuda_driver_deps",
     "tf_additional_cuda_platform_deps",

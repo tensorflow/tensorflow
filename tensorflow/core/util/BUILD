@@ -711,10 +711,10 @@ tf_kernel_library(
     }),
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lib",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cusolver_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/cuda:cublas_lib",
-        "//tensorflow/stream_executor/cuda:cusolver_lib",
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
     ],
 )
@@ -729,12 +729,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform:dso_loader",
-        "//tensorflow/stream_executor/rocm:rocblas_plugin",
-        "//tensorflow/stream_executor/rocm:rocblas_wrapper",
-        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
-        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -753,11 +753,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ] + if_cuda([
-        "//tensorflow/stream_executor/cuda:cusparse_lib",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cusparse_lib",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
-        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
-        "//tensorflow/stream_executor/rocm:hipsparse_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
 

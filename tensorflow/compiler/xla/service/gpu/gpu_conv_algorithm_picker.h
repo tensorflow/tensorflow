@@ -24,12 +24,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #endif
 
 namespace xla {

@@ -24,10 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {

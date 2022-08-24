@@ -1,6 +1,6 @@
 # buildifier: disable=same-origin-load
 load(
-    "//tensorflow/stream_executor:build_defs.bzl",
+    "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
 
@@ -101,7 +101,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
@@ -158,10 +158,10 @@ cc_library(
         ":tf_gpu_runtime_wrappers",
         ":tf_jit_cache",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:strcat",
-        "//tensorflow/stream_executor:stream_header",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ExecutionEngine",
         "@llvm-project//mlir:ExecutionEngineUtils",
@@ -200,7 +200,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/stream_executor:stream_header",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/tsl/platform/default/build_config:stream_executor_cuda",

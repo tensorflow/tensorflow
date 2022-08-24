@@ -225,7 +225,7 @@ cc_library(
     compatible_with = [],
     deps = [
         ":platform",
-        "//tensorflow/stream_executor/cuda:cuda_activation_header",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
     ],
 )
 
@@ -646,7 +646,7 @@ cc_library(
     hdrs = if_rocm_is_configured(["rocm.h"]),
     deps = if_rocm_is_configured([
         ":platform",
-        "//tensorflow/stream_executor/rocm:rocm_activation",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_activation",
     ]),
 )
 

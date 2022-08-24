@@ -9,12 +9,18 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
     default_visibility = [
-        "//tensorflow:__subpackages__",
+        ":friends",
     ],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    packages = stream_executor_friends(),
 )
 
 # The stream_executor_headers target does not prescribe an implementation.
@@ -747,4 +753,9 @@ exports_files(["lazy_op_runner.h"])
 alias(
     name = "cuda_platform",
     actual = "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
+)
+
+alias(
+    name = "rocm_platform",
+    actual = "//tensorflow/stream_executor/rocm:all_runtime",
 )

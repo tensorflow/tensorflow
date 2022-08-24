@@ -52,9 +52,9 @@ using stream_executor::dnn::DimIndex;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace {

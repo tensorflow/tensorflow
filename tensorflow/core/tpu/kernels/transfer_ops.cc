@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -22,10 +26,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/tpu/tpu_node_context.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_transfer_manager_interface.h"
 
 namespace tensorflow {
 

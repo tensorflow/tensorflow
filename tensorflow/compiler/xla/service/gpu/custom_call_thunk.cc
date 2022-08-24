@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif
 
 namespace xla {

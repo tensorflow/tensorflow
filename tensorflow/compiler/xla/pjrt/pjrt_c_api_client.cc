@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/pjrt_api.h"
 
 // TODO(b/238999986): Remove this when we have decomposed shape.
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 
 namespace xla {
 

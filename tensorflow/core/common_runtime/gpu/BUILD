@@ -146,7 +146,7 @@ tf_cuda_library(
     copts = tf_copts(),
     cuda_deps = [
         "@local_config_cuda//cuda:cudnn_header",
-        "//tensorflow/stream_executor/cuda:cuda_platform",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
         ":gpu_virtual_mem_allocator",
     ],
     deps = [
@@ -185,7 +185,7 @@ tf_cuda_library(
     ],
     hdrs = ["gpu_cudamallocasync_allocator.h"],
     cuda_deps = [
-        "//tensorflow/stream_executor/cuda:cuda_platform",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
     ],
     deps = [
         ":gpu_id_impl",
@@ -252,15 +252,15 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_id",
+        "//tensorflow/compiler/xla/stream_executor:platform",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/stream_executor:platform",
-        "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -459,6 +459,7 @@ tf_cuda_cc_test(
     deps = [
         ":gpu_id",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/xla/stream_executor:platform",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -471,7 +472,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/stream_executor:platform",
     ],
 )
 
@@ -484,11 +484,11 @@ tf_cc_test(
     deps = [
         ":gpu_init",
         ":gpu_virtual_mem_allocator",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/stream_executor/lib",
     ],
 )

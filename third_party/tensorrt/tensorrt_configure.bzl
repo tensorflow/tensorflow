@@ -216,7 +216,7 @@ def _create_local_tensorrt_repository(repository_ctx):
     )
 
     # Set up tensorrt_config.h, which is used by
-    # tensorflow/stream_executor/dso_loader.cc.
+    # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
     repository_ctx.template(
         "tensorrt/include/tensorrt_config.h",
         tpl_paths["tensorrt/include/tensorrt_config.h"],

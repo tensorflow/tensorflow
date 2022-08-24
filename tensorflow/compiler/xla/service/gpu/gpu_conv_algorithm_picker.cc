@@ -46,7 +46,7 @@ limitations under the License.
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #endif
 
 namespace xla {

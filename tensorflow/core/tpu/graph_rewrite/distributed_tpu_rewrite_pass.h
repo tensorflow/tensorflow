@@ -116,11 +116,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/stream_executor/tpu/tpu_topology.h"
 
 namespace tensorflow {
 

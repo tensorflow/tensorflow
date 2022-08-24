@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 // TODO(b/238999986): Remove this.
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 
 namespace pjrt {
 

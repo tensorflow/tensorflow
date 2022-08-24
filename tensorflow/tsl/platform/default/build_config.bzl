@@ -774,11 +774,11 @@ def tf_additional_binary_deps():
         clean_dep("//tensorflow/core/util/tensor_bundle"),
     ] + if_cuda(
         [
-            clean_dep("//tensorflow/stream_executor:cuda_platform"),
+            clean_dep("//tensorflow/compiler/xla/stream_executor:cuda_platform"),
         ],
     ) + if_rocm(
         [
-            clean_dep("//tensorflow/stream_executor:rocm_platform"),
+            clean_dep("//tensorflow/compiler/xla/stream_executor:rocm_platform"),
             clean_dep("//tensorflow/tsl/platform/default/build_config:rocm"),
         ],
     ) + if_mkl_ml(

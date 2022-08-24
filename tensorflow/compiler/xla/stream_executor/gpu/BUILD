@@ -2,7 +2,7 @@
 #   GPU-platform specific StreamExecutor support code.
 
 load(
-    "//tensorflow/stream_executor:build_defs.bzl",
+    "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
 load(
@@ -260,7 +260,7 @@ cc_library(
     ]) + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
     ]) + if_rocm_is_configured([
-        "//tensorflow/stream_executor/rocm:rocm_driver",  # TODO(ddunleavy) update once cl/468101393 lands
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_driver",
     ]),
 )
 

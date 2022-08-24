@@ -46,9 +46,9 @@
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/core/platform/human_readable_json.h"
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/stream_executor/gpu/gpu_types.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"

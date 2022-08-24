@@ -28,17 +28,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
 namespace xla {
 namespace gpu {

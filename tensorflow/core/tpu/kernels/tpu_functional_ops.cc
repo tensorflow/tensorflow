@@ -19,11 +19,11 @@ limitations under the License.
 #include <memory>
 
 #include "absl/strings/match.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 #define EIGEN_USE_THREADS
 

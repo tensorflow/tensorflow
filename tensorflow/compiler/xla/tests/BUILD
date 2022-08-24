@@ -308,10 +308,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:device_memory_allocator",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1154,7 +1154,7 @@ CONVOLUTION_TEST_DEPS = [
     "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     "//tensorflow/core:lib",
     "//tensorflow/core:test",
-    "//tensorflow/stream_executor/cuda:cuda_platform_id",
+    "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
 ]
 
 xla_test(
@@ -1511,10 +1511,10 @@ xla_test(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
 
@@ -2417,9 +2417,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
+        "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/stream_executor",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Core",
     ],
@@ -2560,10 +2560,10 @@ xla_test(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
 
@@ -2684,10 +2684,10 @@ xla_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:stream_pool",
+        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
 

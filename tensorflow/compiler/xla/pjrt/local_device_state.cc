@@ -19,10 +19,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/stream_executor/stream.h"
 
 namespace xla {
 

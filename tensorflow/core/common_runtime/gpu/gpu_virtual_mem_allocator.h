@@ -18,10 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_VMEM_ALLOCATOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_VMEM_ALLOCATOR_H_
 
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"

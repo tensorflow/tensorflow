@@ -78,7 +78,7 @@ cc_library(
     deps = if_tensorrt([
         "@local_config_tensorrt//:tensorrt_headers",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
     ]),
 )
 
@@ -737,7 +737,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/profiler/lib:annotated_traceme",
-        "//tensorflow/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps() + select({
         ":use_efficient_nms_plugin": [":efficient_nms_plugin"],
@@ -991,7 +991,7 @@ tf_cuda_library(
         ":common_utils",
         ":tensorrt_lib",
         ":op_converter_registry",
-        "//tensorflow/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
     ]),
 )
 
@@ -1039,10 +1039,10 @@ pybind_extension(
     deps = [
         ":common_utils",
         ":py_utils",
+        "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
-        "//tensorflow/stream_executor",
         "@pybind11",
     ],
 )
