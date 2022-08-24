@@ -286,7 +286,7 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
 TEST(ConvertXPlaneToOpStats, RunEnvironmentExtractedFromTpuPlane) {
   XSpace xspace;
   for (int i : {0, 1, 2, 3}) {
-    GetOrCreateTpuXPlane(&xspace, i, "TPU V4");
+    GetOrCreateTpuXPlane(&xspace, i, "TPU V4", 0, 0);
   }
 
   OpStats op_stats = ConvertXSpaceToOpStats(xspace, OpStatsOptions());
@@ -308,8 +308,9 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
   constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
 
-  XPlaneBuilder device_plane(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4"));
+  XPlaneBuilder device_plane(GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, "TPU V4", kDevCapPeakTeraflopsPerSecond,
+      kDevCapPeakHbmBwGigabytesPerSecond));
   /*device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kDevVendor)),
                         kDeviceVendorNvidia); // "Google, Inc.");*/
@@ -326,12 +327,6 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   device_plane.AddStatValue(
       *device_plane.GetOrCreateStatMetadata("compute_cap_minor"),
       kComputeCapMinor);
-  device_plane.AddStatValue(
-      *device_plane.GetOrCreateStatMetadata("peak_teraflops_per_second"),
-      kDevCapPeakTeraflopsPerSecond);
-  device_plane.AddStatValue(
-      *device_plane.GetOrCreateStatMetadata("peak_hbm_bw_gigabytes_per_second"),
-      kDevCapPeakHbmBwGigabytesPerSecond);
 
   GroupTfEvents(&space);
   OpStatsOptions options;
@@ -346,9 +341,9 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
 TEST(ConvertXPlaneToOpStats, TpuRunEnvironment) {
   XSpace space;
   XPlaneBuilder device_plane1(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4"));
+      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4", 0, 0));
   XPlaneBuilder device_plane2(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/1, "TPU V4"));
+      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/1, "TPU V4", 0, 0));
 
   GroupTfEvents(&space);
   OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
@@ -385,17 +380,10 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  XPlaneBuilder device_plane_builder(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4"));
+  XPlaneBuilder device_plane_builder(GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, "TPU V4", kDevCapPeakTeraflopsPerSecond,
+      kDevCapPeakHbmBwGigabytesPerSecond));
   device_plane_builder.ReserveLines(1);
-  device_plane_builder.AddStatValue(
-      *device_plane_builder.GetOrCreateStatMetadata(
-          "peak_teraflops_per_second"),
-      kDevCapPeakTeraflopsPerSecond);
-  device_plane_builder.AddStatValue(
-      *device_plane_builder.GetOrCreateStatMetadata(
-          "peak_hbm_bw_gigabytes_per_second"),
-      kDevCapPeakHbmBwGigabytesPerSecond);
   device_plane_builder.AddStatValue(
       *device_plane_builder.GetOrCreateStatMetadata("core_count"), kCoreCount);
 
@@ -422,15 +410,9 @@ TEST(ConvertXPlaneToOpStats, TpuDeviceTraceToStepDb) {
   XSpace space;
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
   constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
-  XPlaneBuilder xplane_builder(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4"));
-
-  xplane_builder.AddStatValue(
-      *xplane_builder.GetOrCreateStatMetadata("peak_teraflops_per_second"),
-      kDevCapPeakTeraflopsPerSecond);
-  xplane_builder.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
-                                  "peak_hbm_bw_gigabytes_per_second"),
-                              kDevCapPeakHbmBwGigabytesPerSecond);
+  XPlaneBuilder xplane_builder(GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, "TPU V4", kDevCapPeakTeraflopsPerSecond,
+      kDevCapPeakHbmBwGigabytesPerSecond));
 
   XEventMetadata* event_metadata = xplane_builder.GetOrCreateEventMetadata(1);
   event_metadata->set_name("op_name");
@@ -445,9 +427,9 @@ TEST(ConvertXPlaneToOpStats, TpuDeviceTraceToStepDb) {
   stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
                          GetStatTypeStr(StatType::kSelfDurationPs)),
                      10);
-  stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
-                         GetStatTypeStr(StatType::kTfOpName)),
-                     "tf_op_name");
+  stats.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
+      "tf_op_name");
   stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
                          GetStatTypeStr(StatType::kHloCategory)),
                      "category");
