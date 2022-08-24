@@ -15,12 +15,6 @@ package(
 )
 
 cc_library(
-    name = "byte_order",
-    hdrs = ["byte_order.h"],
-    compatible_with = get_compatible_with_portable(),
-)
-
-cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
     compatible_with = get_compatible_with_portable(),
@@ -32,40 +26,5 @@ filegroup(
         "stack_frame.h",
     ],
     compatible_with = get_compatible_with_portable(),
-)
-
-# Header files for tensorflow/core:platform_base.
-filegroup(
-    name = "base_hdrs",
-    srcs = [
-        "byte_order.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-)
-
-filegroup(
-    name = "framework_lite_hdrs",
-    srcs = [
-        "byte_order.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-)
-
-# Export source files needed for mobile builds, which do not use granular targets.
-filegroup(
-    name = "mobile_srcs_no_runtime",
-    srcs = [
-        "byte_order.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-)
-
-filegroup(
-    name = "legacy_lib_internal_headers",
-    srcs = glob(
-        [
-            "*.h",
-        ],
-    ),
-    compatible_with = get_compatible_with_portable(),
+    visibility = ["//tensorflow/core:__pkg__"],
 )

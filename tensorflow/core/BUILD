@@ -287,10 +287,7 @@ java_proto_library(
 
 cc_library(
     name = "platform_base",
-    hdrs = [
-        "//tensorflow/core/platform:base_hdrs",
-        "//tensorflow/tsl/platform:base_hdrs",
-    ],
+    hdrs = ["//tensorflow/core/platform:base_hdrs"],
     compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
     tags = ["avoid_dep"],
@@ -558,7 +555,6 @@ cc_library(
         "//tensorflow/core/framework:tensor_types.h",
         "//tensorflow/core/framework:type_traits.h",
         "//tensorflow/core/platform:framework_lite_hdrs",
-        "//tensorflow/tsl/platform:framework_lite_hdrs",
         "//tensorflow/tsl/platform/default:integral_types.h",
         "//tensorflow/tsl/platform/default:logging.h",
     ],
@@ -1274,7 +1270,6 @@ filegroup(
         "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/lib/math:math_util.h",
-        "//tensorflow/tsl/platform:legacy_lib_internal_headers",
     ] + glob(
         [
             "lib/**/*.h",
