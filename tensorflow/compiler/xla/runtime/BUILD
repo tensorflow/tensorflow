@@ -44,6 +44,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:dynamic_annotations",

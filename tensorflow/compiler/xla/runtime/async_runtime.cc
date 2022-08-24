@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "llvm/Support/MathExtras.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
@@ -43,6 +44,9 @@ using tfrt::GetReadyChain;
 using tfrt::MakeConstructedAsyncValueRef;
 
 using xla::runtime::AsyncRuntimeObject;
+
+using tensorflow::port::AlignedFree;
+using tensorflow::port::AlignedMalloc;
 
 class AsyncToken : public AsyncRuntimeObject {
  public:
@@ -82,11 +86,11 @@ class AsyncValue : public AsyncRuntimeObject {
 
     Storage(size_t size, size_t alignment)
         : is_inline(CanStoreInline(size, alignment)) {
-      if (!is_inline) allocated_buffer = std::aligned_alloc(alignment, size);
+      if (!is_inline) allocated_buffer = AlignedMalloc(size, alignment);
     }
 
     ~Storage() {
-      if (!is_inline) std::free(allocated_buffer);
+      if (!is_inline) AlignedFree(allocated_buffer);
     }
 
     static bool CanStoreInline(size_t size, size_t alignment) {
