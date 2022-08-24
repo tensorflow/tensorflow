@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -51,7 +52,9 @@ class RecentRequestIds {
   // can be received in a small time window. For example, we observed a peak RPC
   // rate of ~700 RecvTensor RPC/s when training inception v3 on TPUs, so we
   // currently set num_tracked_request_ids to 100,000 for RecvTensor.
-  RecentRequestIds(int num_tracked_request_ids);
+  // Having a large `num_shars` can prevent run into lock contention in this
+  // class.
+  explicit RecentRequestIds(int num_tracked_request_ids, int num_shards = 1);
 
   // Returns OK iff request_id has not been seen in the last
   // num_tracked_request_ids insertions. For backwards compatibility, this
@@ -67,13 +70,18 @@ class RecentRequestIds {
  private:
   bool Insert(int64_t request_id);
 
-  mutex mu_;
-  // next_index_ indexes into circular_buffer_, and points to the next storage
-  // space to use. When the buffer is full, next_index_ points at the oldest
-  // request_id.
-  int next_index_ TF_GUARDED_BY(mu_) = 0;
-  std::vector<int64_t> circular_buffer_ TF_GUARDED_BY(mu_);
-  std::unordered_set<int64_t> set_ TF_GUARDED_BY(mu_);
+  struct IndexBucket {
+    mutex mu;
+    // next_index indexes into circular_buffer_, and points to the next storage
+    // space to use. When the buffer is full, next_index_ points at the oldest
+    // request_id.
+    int next_index TF_GUARDED_BY(mu) = 0;
+    std::vector<int64_t> circular_buffer TF_GUARDED_BY(mu);
+    absl::flat_hash_set<int64_t> set TF_GUARDED_BY(mu);
+  };
+
+  // This vector is immutable so we don't need to use a mutex to protect it.
+  std::vector<IndexBucket> index_buckets_;
 };
 
 // Implementation details
