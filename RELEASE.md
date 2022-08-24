@@ -24,6 +24,11 @@
     *   Updates to existing operations:
           * tfl.mul now supports complex32 inputs.
 
+*   `tf.experimental.StructuredTensor`
+    *   Introduced `tf.experimental.StructuredTensor`, which provides a flexible
+        and Tensorflow-native way to encode structured data such as protocol
+        buffers or pandas dataframes.
+
 # Bug Fixes and Other Changes
 
 *   `tf.image`
