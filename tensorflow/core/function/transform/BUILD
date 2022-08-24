@@ -2,7 +2,10 @@ load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "py_strict_test")
 
 package(
-    default_visibility = ["//tensorflow/core/function:__subpackages__"],
+    default_visibility = [
+        "//learning/brain/experimental/tfq:__subpackages__",
+        "//tensorflow/core/function:__subpackages__",
+    ],
 )
 
 licenses(["notice"])
