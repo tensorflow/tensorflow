@@ -16,6 +16,7 @@
 import functools
 
 from tensorflow.python.checkpoint import saveable_compat
+from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 
@@ -495,17 +496,28 @@ class RestoredSaveableObject(saveable_object.SaveableObject):
         *[restored_tensors[i] for i in range(len(self.specs))])
 
 
-def recreate_saveable_objects(saveable_fn_by_name):
+def recreate_saveable_objects(saveable_fn_by_name, temp_session):
   """Returns a dict of SaveableObject factories generated from loaded fns."""
 
   names_and_slices = []
 
   with ops.init_scope():
+
     for save_fn, _ in saveable_fn_by_name.values():
       for tensor_info in save_fn(""):
+        name = tensor_info["name"]
+        slice_spec = tensor_info["slice_spec"]
+        if not context.executing_eagerly():
+          sess = ops.get_default_session()
+          if sess is None:
+            if temp_session[0] is not None:
+              sess = temp_session[0]
+            else:
+              sess = temp_session[0] = session.Session()
+          name, slice_spec = sess.run([name, slice_spec])
         names_and_slices.append((
-            _convert_to_string(tensor_info["name"]),
-            _convert_to_string(tensor_info["slice_spec"])))
+            _convert_to_string(name),
+            _convert_to_string(slice_spec)))
 
   saveable_factories = {}
   for name, (save_fn, restore_fn) in saveable_fn_by_name.items():
