@@ -88,7 +88,10 @@ LogicalResult verifyDestinationStyleOp(Operation *op,
 }
 
 template <typename DstOpTy>
-void printDstStyleOp(DstOpTy op, OpAsmPrinter &p) {
+void printDstStyleOp(
+    DstOpTy op, OpAsmPrinter &p,
+    function_ref<SmallVector<StringRef>(DstOpTy op, OpAsmPrinter &)>
+        printAttrsFn = nullptr) {
   if (op.getNumInputs() != 0) {
     p << " ins(";
     llvm::interleaveComma(
@@ -102,7 +105,11 @@ void printDstStyleOp(DstOpTy op, OpAsmPrinter &p) {
       [&](Value output) { p << output << " : " << output.getType(); });
   p << ")";
 
-  p.printOptionalAttrDict(op->getAttrs());
+  // Print attributes with custom printing logic.
+  SmallVector<StringRef> elidedAttrs;
+  if (printAttrsFn) elidedAttrs = printAttrsFn(op, p);
+
+  p.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
 }
 
 ParseResult parseKeywordOperandListWithTypes(
@@ -131,7 +138,10 @@ ParseResult parseKeywordOperandListWithTypes(
   return success();
 }
 
-ParseResult parseDstStyleOp(OpAsmParser &parser, OperationState &result) {
+ParseResult parseDstStyleOp(
+    OpAsmParser &parser, OperationState &result,
+    function_ref<ParseResult(OpAsmParser &, NamedAttrList &)> parseAttrsFn =
+        nullptr) {
   // Parse `ins` and `outs`.
   SmallVector<Type, 4> inputTypes, outputTypes;
   if (parseKeywordOperandListWithTypes(parser, result, "ins", &inputTypes) ||
@@ -143,9 +153,28 @@ ParseResult parseDstStyleOp(OpAsmParser &parser, OperationState &result) {
     if (outputType.isa<RankedTensorType>()) result.addTypes(outputType);
   }
 
+  // Parse required attributes.
+  if (parseAttrsFn && failed(parseAttrsFn(parser, result.attributes)))
+    return failure();
+
   // Parse optional attributes.
   if (parser.parseOptionalAttrDict(result.attributes)) return failure();
   return success();
+}
+
+ParseResult parseDenseI64ArrayAttr(OpAsmParser &parser,
+                                   NamedAttrList &attributes,
+                                   StringRef attributeName) {
+  if (parser.parseKeyword(attributeName) || parser.parseEqual())
+    return failure();
+
+  attributes.set(attributeName, DenseI64ArrayAttr::parse(parser, Type{}));
+  return success();
+}
+
+void printDenseI64ArrayAttr(OpAsmPrinter &p, StringRef attributeName,
+                            ArrayRef<int64_t> attributeValue) {
+  p << " " << attributeName << " = [" << attributeValue << "] ";
 }
 
 }  // namespace
@@ -388,11 +417,22 @@ LogicalResult ConcatenateOp::verify() {
 
 ParseResult DynamicBroadcastInDimOp::parse(OpAsmParser &parser,
                                            OperationState &result) {
-  return parseDstStyleOp(parser, result);
+  return parseDstStyleOp(parser, result,
+                         [&](OpAsmParser &parser, NamedAttrList &attributes) {
+                           return parseDenseI64ArrayAttr(
+                               parser, attributes, "broadcast_dimensions");
+                         });
 }
 
 void DynamicBroadcastInDimOp::print(OpAsmPrinter &p) {
-  printDstStyleOp(cast<DynamicBroadcastInDimOp>(getOperation()), p);
+  printDstStyleOp<DynamicBroadcastInDimOp>(
+      cast<DynamicBroadcastInDimOp>(getOperation()), p,
+      [](DynamicBroadcastInDimOp op,
+         OpAsmPrinter &p) -> SmallVector<StringRef> {
+        printDenseI64ArrayAttr(p, op.broadcast_dimensionsAttrName(),
+                               op.broadcast_dimensions());
+        return {op.broadcast_dimensionsAttrName()};
+      });
 }
 
 LogicalResult DynamicBroadcastInDimOp::verify() {
@@ -557,11 +597,19 @@ LogicalResult GatherOp::verify() {
 //===----------------------------------------------------------------------===//
 
 ParseResult TransposeOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseDstStyleOp(parser, result);
+  return parseDstStyleOp(
+      parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+        return parseDenseI64ArrayAttr(parser, attributes, "permutation");
+      });
 }
 
 void TransposeOp::print(OpAsmPrinter &p) {
-  printDstStyleOp(cast<TransposeOp>(getOperation()), p);
+  printDstStyleOp<TransposeOp>(
+      cast<TransposeOp>(getOperation()), p,
+      [](TransposeOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+        printDenseI64ArrayAttr(p, op.permutationAttrName(), op.permutation());
+        return {op.permutationAttrName()};
+      });
 }
 
 bool isValidPermutation(ArrayRef<int64_t> permutation) {
