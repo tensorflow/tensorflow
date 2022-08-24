@@ -60,3 +60,19 @@ func.func @transpose_unknown_dimentions(%input: tensor<16x?xf32>,
   func.return %transpose : tensor<64x?xf32>
 }
 // CHECK-LABEL: func @transpose_unknown_dimentions
+
+// -----
+
+func.func @reduction(%input: tensor<16x32x64xf32>,
+                     %init: tensor<16x64xf32>)  -> tensor<16x64xf32> {
+  %reduction = thlo.reduction
+      ins(%input:tensor<16x32x64xf32>)
+      outs(%init:tensor<16x64xf32>)
+      dimensions = [1]
+      (%in: f32, %out: f32) {
+        %0 = arith.addf %in, %out: f32
+        thlo.yield %0: f32
+      }
+  func.return %reduction : tensor<16x64xf32>
+}
+// CHECK-LABEL: func @reduction

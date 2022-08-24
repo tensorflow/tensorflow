@@ -2950,6 +2950,7 @@ td_library(
     compatible_with = get_compatible_with_cloud(),
     includes = ["include"],
     deps = [
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],

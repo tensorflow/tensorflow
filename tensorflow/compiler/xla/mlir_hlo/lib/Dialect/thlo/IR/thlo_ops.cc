@@ -177,6 +177,10 @@ void printDenseI64ArrayAttr(OpAsmPrinter &p, StringRef attributeName,
   p << " " << attributeName << " = [" << attributeValue << "] ";
 }
 
+bool dimensionsMatch(int64_t d1, int64_t d2) {
+  return ShapedType::isDynamic(d1) || ShapedType::isDynamic(d2) || d1 == d2;
+}
+
 }  // namespace
 }  // namespace mlir
 
@@ -649,13 +653,88 @@ LogicalResult TransposeOp::verify() {
     int64_t inputDim = inputDims[permutationRef[i]];
     int64_t initDim = initDims[i];
 
-    if (inputDim != ShapedType::kDynamicSize &&
-        initDim != ShapedType::kDynamicSize && inputDim != initDim) {
+    if (!dimensionsMatch(inputDim, initDim)) {
       return emitOpError() << "dim(result, " << i << ") = " << initDim
                            << " doesn't match dim(input, permutation[" << i
                            << "]) = " << inputDim;
     }
   }
+  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+}
+
+//===----------------------------------------------------------------------===//
+// ReductionOp
+//===----------------------------------------------------------------------===//
+
+ParseResult ReductionOp::parse(OpAsmParser &parser, OperationState &result) {
+  if (parseDstStyleOp(
+          parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+            return parseDenseI64ArrayAttr(parser, attributes, "dimensions");
+          }))
+    return failure();
+
+  SmallVector<OpAsmParser::Argument> regionArgs;
+  if (parser.parseArgumentList(regionArgs, OpAsmParser::Delimiter::Paren,
+                               /*allowType=*/true, /*allowAttrs=*/true)) {
+    return failure();
+  }
+
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, regionArgs)) return failure();
+
+  return success();
+}
+
+void ReductionOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<ReductionOp>(
+      cast<ReductionOp>(getOperation()), p,
+      [](ReductionOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+        printDenseI64ArrayAttr(p, op.dimensionsAttrName(), op.dimensions());
+        return {op.dimensionsAttrName()};
+      });
+
+  p << "(";
+  llvm::interleaveComma(combiner().getArguments(), p,
+                        [&](auto arg) { p.printRegionArgument(arg); });
+  p << ") ";
+
+  p.printRegion(combiner(), /*printEntryBlockArgs=*/false);
+}
+
+LogicalResult ReductionOp::verify() {
+  ArrayRef<int64_t> dimensionsRef = dimensions();
+
+  auto inputType = input().getType().cast<ShapedType>();
+  auto initType = init().getType().cast<ShapedType>();
+
+  if (!llvm::all_of(dimensionsRef, [&](int64_t d) {
+        return d >= 0 && d < inputType.getRank();
+      })) {
+    return emitOpError() << "dimentions for reduction should be in the range "
+                            "[0, rank(input) - 1].";
+  }
+
+  auto inputDims = inputType.getShape();
+  auto initDims = initType.getShape();
+
+  // Input dimentions that will be left after the reduction.
+  SmallVector<int64_t> reducedInputDims;
+  for (const auto &en : llvm::enumerate(inputDims)) {
+    if (!llvm::is_contained(dimensionsRef, en.index()))
+      reducedInputDims.push_back(en.value());
+  }
+
+  if (reducedInputDims.size() != initType.getRank()) {
+    return emitOpError() << "number of dimentions after reduction "
+                         << reducedInputDims.size()
+                         << " doesn't match the init rank "
+                         << initType.getRank();
+  }
+
+  if (!all_of_zip(reducedInputDims, initDims, &dimensionsMatch))
+    return emitOpError() << "init dimensions [" << initDims
+                         << "] doesn't match input dimensions after reduction ["
+                         << reducedInputDims << "]";
 
   return verifyDestinationStyleOp(getOperation(), getNumOutputs());
 }

@@ -18,6 +18,7 @@ limitations under the License.
 
 include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def TensorOrMemref : AnyTypeOf<[AnyMemRef, AnyRankedTensor]>;
@@ -32,6 +33,14 @@ def THLO_Dialect : Dialect {
 class THLO_Op<string mnemonic, list<Trait> traits> :
     Op<THLO_Dialect, mnemonic, traits> {
   let hasVerifier = 1;
+}
+
+
+def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator]>,
+    Arguments<(ins AnyType:$value)> {
+  let summary = "Yield operation for thlo.map and thlo.reduce.";
+  let assemblyFormat = "attr-dict $value `:` type($value)";
+  let hasVerifier = 0;
 }
 
 class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
@@ -150,6 +159,41 @@ def THLO_TransposeOp : THLO_DstStyleOp<"transpose", []> {
     DenseI64ArrayAttr:$permutation
   );
   let results = (outs TensorOrMemref:$result);
+
+  let extraClassDeclaration = extraBaseClassDeclaration;
+}
+
+def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
+    SingleBlockImplicitTerminator<"YieldOp">
+]> {
+  let summary = "Destination-style twin for `mhlo.reduce`";
+  let description = [{
+    Executes `combiner` on the `dimensions` of the `operand` and returns
+    the reduced result.
+
+    Example:
+    ```
+      %reduction = thlo.reduction
+          ins(%input:tensor<16x32x64xf32>)
+          outs(%init:tensor<16x64xf32>)
+          dimensions = [1]
+          (%in: f32, %out: f32) {
+            %0 = arith.addf %in, %out: f32
+            thlo.yield %0: f32
+          }
+    ```
+  }];
+
+  let arguments = (ins
+    // Input arg
+    TensorOrMemref:$input,
+    // Output arg
+    TensorOrMemref:$init,
+
+    DenseI64ArrayAttr:$dimensions
+  );
+  let results = (outs TensorOrMemref:$result);
+  let regions = (region AnyRegion:$combiner);
 
   let extraClassDeclaration = extraBaseClassDeclaration;
 }
