@@ -101,7 +101,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
     absl::Span<const Tile> tiles, int64_t element_size_in_bits,
-    int64_t memory_space) {
+    int64_t memory_space, std::optional<Shape> physical_shape) {
   if (dimensions.size() != minor_to_major.size()) {
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
                            dimensions.size(), minor_to_major.size());
@@ -118,9 +118,9 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     // Only set element_size_in_bits if it's different from the default value.
     element_size_in_bits = 0;
   }
-  *shape.mutable_layout() =
-      LayoutUtil::MakeLayout(minor_to_major, dim_level_types, tiles,
-                             element_size_in_bits, memory_space);
+  *shape.mutable_layout() = LayoutUtil::MakeLayout(
+      minor_to_major, dim_level_types, tiles, element_size_in_bits,
+      memory_space, std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
@@ -314,10 +314,10 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
     absl::Span<const Tile> tiles, int64_t element_size_in_bits,
-    int64_t memory_space) {
-  auto ret = MakeShapeWithLayoutInternal(element_type, dimensions,
-                                         minor_to_major, dim_level_types, tiles,
-                                         element_size_in_bits, memory_space);
+    int64_t memory_space, std::optional<Shape> physical_shape) {
+  auto ret = MakeShapeWithLayoutInternal(
+      element_type, dimensions, minor_to_major, dim_level_types, tiles,
+      element_size_in_bits, memory_space, std::move(physical_shape));
   if (!ret.ok()) LOG(ERROR) << ret.status();
   return ret.ValueOrDie();
 }
@@ -1727,9 +1727,10 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
 
 Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
   ForEachMutableSubshape(&s, [](Shape* subshape, const ShapeIndex& index) {
-    if (subshape->IsArray()) {
+    if (subshape->IsArray() && subshape->has_layout()) {
       subshape->mutable_layout()->clear_tiles();
       subshape->mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
+      subshape->mutable_layout()->clear_physical_shape();
     }
   });
   return s;
@@ -1755,7 +1756,7 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
 }
 
 /*static*/ int64_t ShapeUtil::ArraySize(const Shape& shape) {
-  CHECK(shape.IsArray());
+  CHECK(LayoutUtil::IsDenseArray(shape));
   CHECK(!shape.layout().tiles().empty());
 
   auto tile_dimensions = shape.layout().tiles(0).dimensions();
@@ -1787,7 +1788,7 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
 }
 
 /*static*/ int64_t ShapeUtil::ArrayDataSize(const Shape& shape) {
-  CHECK(shape.IsArray());
+  CHECK(LayoutUtil::IsDenseArray(shape));
   absl::InlinedVector<int64_t, 4> indices;
   for (int64_t dim : shape.dimensions()) {
     indices.push_back(dim - 1);

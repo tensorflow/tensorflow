@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout.h"
 
+#include <memory>
 #include <string_view>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -49,6 +52,61 @@ std::string Tile::ToString() const {
   }
   return absl::StrCat("(", absl::StrJoin(elements, ","), ")");
 }
+
+Layout::Layout() = default;
+
+Layout::Layout(absl::Span<const int64_t> minor_to_major)
+    : minor_to_major_(minor_to_major.begin(), minor_to_major.end()) {}
+
+Layout::Layout(absl::Span<const int64_t> minor_to_major,
+               absl::Span<const DimLevelType> dim_level_types,
+               absl::Span<const Tile> tiles, int64_t element_size_in_bits,
+               int64_t memory_space, std::unique_ptr<Shape> physical_shape)
+    : dim_level_types_(dim_level_types.begin(), dim_level_types.end()),
+      minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
+      tiles_(tiles.begin(), tiles.end()),
+      element_size_in_bits_(element_size_in_bits),
+      memory_space_(memory_space),
+      physical_shape_(std::move(physical_shape)) {}
+
+Layout::Layout(absl::Span<const int64_t> minor_to_major,
+               absl::Span<const DimLevelType> dim_level_types,
+               absl::Span<const Tile> tiles, int64_t element_size_in_bits,
+               int64_t memory_space)
+    : Layout(minor_to_major, dim_level_types, tiles, element_size_in_bits,
+             memory_space, /*physical_shape=*/nullptr) {}
+
+Layout::Layout(const Layout& other)
+    : dim_level_types_(other.dim_level_types_),
+      minor_to_major_(other.minor_to_major_),
+      tiles_(other.tiles_),
+      element_size_in_bits_(other.element_size_in_bits_),
+      memory_space_(other.memory_space_),
+      physical_shape_(other.physical_shape_ != nullptr
+                          ? std::make_unique<Shape>(*other.physical_shape_)
+                          : nullptr) {}
+
+Layout::Layout(Layout&& other) = default;
+
+Layout::~Layout() = default;
+
+Layout& Layout::operator=(const Layout& other) {
+  if (this != &other) {
+    dim_level_types_ = other.dim_level_types_;
+    minor_to_major_ = other.minor_to_major_;
+    tiles_ = other.tiles_;
+    element_size_in_bits_ = other.element_size_in_bits_;
+    memory_space_ = other.memory_space_;
+    if (other.physical_shape_ != nullptr) {
+      physical_shape_ = std::make_unique<Shape>(*other.physical_shape_);
+    } else {
+      physical_shape_ = nullptr;
+    }
+  }
+  return *this;
+}
+
+Layout& Layout::operator=(Layout&& other) = default;
 
 /* static */ Layout Layout::CreateFromProto(const LayoutProto& proto) {
   Layout layout;
@@ -143,6 +201,16 @@ bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
   if (!ignore_memory_space_ && lhs.memory_space() != rhs.memory_space()) {
     return false;
   }
+  if (!ignore_physical_shape_) {
+    if (lhs.has_physical_shape() || rhs.has_physical_shape()) {
+      if (!lhs.has_physical_shape() || !rhs.has_physical_shape()) {
+        return false;
+      }
+      if (lhs.physical_shape() != rhs.physical_shape()) {
+        return false;
+      }
+    }
+  }
   return true;
 }
 
@@ -159,5 +227,14 @@ std::ostream& operator<<(std::ostream& out, const Layout& layout) {
   out << layout.ToString();
   return out;
 }
+
+Shape* Layout::mutable_physical_shape() {
+  if (physical_shape_ == nullptr) {
+    physical_shape_ = std::make_unique<Shape>();
+  }
+  return physical_shape_.get();
+}
+
+void Layout::clear_physical_shape() { physical_shape_ = nullptr; }
 
 }  // namespace xla

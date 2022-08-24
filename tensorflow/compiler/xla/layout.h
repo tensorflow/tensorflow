@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_LAYOUT_H_
 #define TENSORFLOW_COMPILER_XLA_LAYOUT_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
+
+class Shape;
 
 // Describes a tile used in tiling-based layout. Refer to
 // g3doc/third_party/tensorflow/compiler/xla/g3doc/tiled_layout.md for
@@ -82,23 +85,28 @@ class Tile {
 
 class Layout {
  public:
-  Layout() = default;
+  Layout();
+  Layout(const Layout& other);
+  Layout(Layout&& other);
+  ~Layout();
 
   // Constructs a dense layout with the given minor-to-major order.
-  explicit Layout(absl::Span<const int64_t> minor_to_major)
-      : minor_to_major_(minor_to_major.begin(), minor_to_major.end()) {}
+  explicit Layout(absl::Span<const int64_t> minor_to_major);
 
   // Constructs a dense tiled layout with the given minor-to-major order, dim
   // level types, and tiles.
-  Layout(absl::Span<const int64_t> minor_to_major,
-         absl::Span<const DimLevelType> dim_level_types,
-         absl::Span<const Tile> tiles, int64_t element_size_in_bits = 0,
-         int64_t memory_space = 0)
-      : dim_level_types_(dim_level_types.begin(), dim_level_types.end()),
-        minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
-        tiles_(tiles.begin(), tiles.end()),
-        element_size_in_bits_(element_size_in_bits),
-        memory_space_(memory_space) {}
+  explicit Layout(absl::Span<const int64_t> minor_to_major,
+                  absl::Span<const DimLevelType> dim_level_types,
+                  absl::Span<const Tile> tiles, int64_t element_size_in_bits,
+                  int64_t memory_space, std::unique_ptr<Shape> physical_shape);
+
+  explicit Layout(absl::Span<const int64_t> minor_to_major,
+                  absl::Span<const DimLevelType> dim_level_types,
+                  absl::Span<const Tile> tiles,
+                  int64_t element_size_in_bits = 0, int64_t memory_space = 0);
+
+  Layout& operator=(const Layout& other);
+  Layout& operator=(Layout&& other);
 
   // Construct a shape from a LayoutProto.
   static Layout CreateFromProto(const LayoutProto& proto);
@@ -139,6 +147,7 @@ class Layout {
       ignore_tiles_ = true;
       ignore_element_size_ = true;
       ignore_memory_space_ = true;
+      ignore_physical_shape_ = true;
       return *this;
     }
 
@@ -147,10 +156,16 @@ class Layout {
       return *this;
     }
 
+    Equal& IgnorePhysicalShape() {
+      ignore_physical_shape_ = true;
+      return *this;
+    }
+
    private:
     bool ignore_tiles_ = false;
     bool ignore_element_size_ = false;
     bool ignore_memory_space_ = false;
+    bool ignore_physical_shape_ = false;
   };
 
   bool operator==(const Layout& other) const;
@@ -231,6 +246,15 @@ class Layout {
     return *this;
   }
 
+  // Methods for accessing the physical shape.
+  bool has_physical_shape() const { return physical_shape_ != nullptr; }
+  const Shape& physical_shape() const {
+    CHECK(has_physical_shape());
+    return *physical_shape_;
+  }
+  Shape* mutable_physical_shape();
+  void clear_physical_shape();
+
   void Swap(Layout* other) {
     using std::swap;
     swap(*this, *other);
@@ -270,6 +294,9 @@ class Layout {
 
   // The assigned memory space.
   int64_t memory_space_ = 0;
+
+  // The physical on-device shape used to represent a sparse array.
+  std::unique_ptr<Shape> physical_shape_;
 };
 
 std::ostream& operator<<(std::ostream& out, const Tile& Tile);
