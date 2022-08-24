@@ -16,6 +16,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/runtime:async_runtime",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_async_runtime_api",

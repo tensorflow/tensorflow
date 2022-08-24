@@ -23,6 +23,7 @@ limitations under the License.
 #include <thread>  // NOLINT TODO(ezhulenev): Remove this header.
 #include <type_traits>
 
+#include "absl/base/dynamic_annotations.h"
 #include "mlir/ExecutionEngine/AsyncRuntime.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
