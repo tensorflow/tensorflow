@@ -464,6 +464,11 @@ if(CMAKE_SYSTEM_NAME MATCHES "Android")
   list(APPEND TFLITE_PROFILER_SRCS
     ${TFLITE_SOURCE_DIR}/profiling/atrace_profiler.cc
   )
+elseif(CMAKE_SYSTEM_NAME MATCHES "iOS")
+  enable_language(OBJCXX)
+  list(APPEND TFLITE_PROFILER_SRCS
+    ${TFLITE_SOURCE_DIR}/profiling/signpost_profiler.mm
+  )
 endif()
 
 # TFLite library
