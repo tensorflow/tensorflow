@@ -54,10 +54,9 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
   // We are always willing to duplicate a widening type-conversion instruction
   // if it means we can fuse the convert into a consumer.  This allows the
   // consumer to read less memory, which is almost always a performance win.
-  return (instruction.opcode() == HloOpcode::kConvert &&
-          ShapeUtil::ByteSizeOf(instruction.operand(0)->shape()) <
-              ShapeUtil::ByteSizeOf(instruction.shape())) ||
-         instruction.opcode() == HloOpcode::kBroadcast;
+  return instruction.opcode() == HloOpcode::kConvert &&
+         ShapeUtil::ByteSizeOf(instruction.operand(0)->shape()) <
+             ShapeUtil::ByteSizeOf(instruction.shape());
 }
 }  // namespace
 

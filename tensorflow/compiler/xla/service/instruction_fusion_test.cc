@@ -471,30 +471,6 @@ TEST_F(InstructionFusionTest,
   EXPECT_THAT(root, op::Fusion(op::Parameter()));
 }
 
-TEST_F(InstructionFusionTest, BroadcastsAreAlwaysDuplicableIntoConsumers) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-  HloModule test_module
-  ENTRY Test {
-    p0 = f16[100] parameter(0)
-    c = f32[100,100] broadcast(p0), dimensions={0}
-    add = f32[100,100] add(c, c)
-    ROOT mul = f32[100,100] multiply(c, c)
-  })")
-                    .ValueOrDie();
-
-  // The broadcast should be fused into the add and mul, even though
-  // may_duplicate is false, because it's always beneficial to fuse/duplicate
-  // broadcasts into consumers.
-  EXPECT_TRUE(
-      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
-          .Run(module.get())
-          .ValueOrDie())
-      << module->ToString();
-
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Fusion(op::Parameter()));
-}
-
 TEST_F(InstructionFusionTest,
        InPlaceOpShouldNotFuseWithNonElementwiseSharedOperand) {
   auto module = ParseAndReturnVerifiedModule(R"(
