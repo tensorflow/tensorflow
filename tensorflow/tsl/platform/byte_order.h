@@ -13,17 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_BYTE_ORDER_H_
-#define TENSORFLOW_CORE_PLATFORM_BYTE_ORDER_H_
+#ifndef TSL_PLATFORM_BYTE_ORDER_H_
+#define TSL_PLATFORM_BYTE_ORDER_H_
 
-#include "tensorflow/tsl/platform/byte_order.h"
+// Byte order defines provided by gcc. MSVC doesn't define those so
+// we define them here.
+// We assume that all windows platform out there are little endian.
+#if defined(_MSC_VER) && !defined(__clang__)
+#define __ORDER_LITTLE_ENDIAN__ 0x4d2
+#define __ORDER_BIG_ENDIAN__ 0x10e1
+#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
+#endif
 
-namespace tensorflow {
+namespace tsl {
 namespace port {
 
-constexpr bool kLittleEndian = tsl::port::kLittleEndian;
+// TODO(jeff,sanjay): Make portable
+constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PLATFORM_BYTE_ORDER_H_
+#endif  // TSL_PLATFORM_BYTE_ORDER_H_
