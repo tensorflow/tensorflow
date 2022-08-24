@@ -753,7 +753,7 @@ class Tf2XlaRewritePattern : public RewritePattern {
   bool is_module_pass_;
 };
 
-class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
+class LegalizeTF : public LegalizeTFWithTF2XLABase<LegalizeTF> {
  public:
   LegalizeTF() = default;
   explicit LegalizeTF(llvm::StringRef device_type, bool prefer_tf2xla) {
