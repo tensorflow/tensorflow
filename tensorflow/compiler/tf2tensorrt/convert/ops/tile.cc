@@ -127,18 +127,18 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
     const auto dims = tensor.GetTrtDims();
     const auto nb_dims = dims.nbDims;
 
-    nvinfer1::Dims size{nb_dims, {1}};
-    bool dynamic_flag = replics.is_tensor();
+    nvinfer1::Dims output_size{nb_dims, {1}};
+    bool dynamic_flag = replics.is_tensor() || !HasStaticShape(dims);
+
     if (!dynamic_flag) {
-      const auto dim_adj =
+      // If input0 is a tensor, and we're in implicit batch mode, then we need
+      // dim_offset.
+      const auto dim_offset =
           params.use_implicit_batch && tensor.is_tensor() ? 1 : 0;
-      const auto *pSize = dims.d;
-      dynamic_flag = std::any_of(pSize + 1 - dim_adj, pSize + nb_dims,
-                                 [](int i) { return i < 0; });
-      const int *pMultiplies = replics.weights().GetPointer<int>() + dim_adj;
-      size.d[0] = pMultiplies[0];
-      for (int i = 1 - dim_adj; i < nb_dims; i++)
-        size.d[i] = pMultiplies[i] * pSize[i];
+      const auto *input_size = dims.d;
+      const int *pReplics = replics.weights().GetPointer<int>() + dim_offset;
+      for (int i = 0; i < nb_dims; i++)
+        output_size.d[i] = pReplics[i] * input_size[i];
     }
 
     StatusOr<TRTNetworkBuilder> builder;
@@ -183,8 +183,8 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
 
     nvinfer1::Dims start{nb_dims, {}};
     DimsAdapter stride(std::vector<int>(nb_dims, 1));
-    auto layer =
-        network->addSlice(input_trt_tensor, start, size, stride.AsTrtDims());
+    auto layer = network->addSlice(input_trt_tensor, start, output_size,
+                                   stride.AsTrtDims());
     layer->setMode(nvinfer1::SliceMode::kWRAP);
     if (target_shape) layer->setInput(2, *target_shape);
 
