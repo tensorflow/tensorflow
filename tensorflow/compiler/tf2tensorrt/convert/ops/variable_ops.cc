@@ -300,6 +300,7 @@ class ConvertReadVariableOp : public OpConverterBase<ConvertReadVariableOp> {
 
   Status Validate() {
     const auto& node_def = params_->node_def;
+
     if (params_->use_implicit_batch) {
       return errors::Unimplemented("Implicit batch mode not supported, at ",
                                    node_def.name());

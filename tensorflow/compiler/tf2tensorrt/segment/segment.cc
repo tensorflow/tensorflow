@@ -1162,7 +1162,28 @@ Status SegmentGraph(const Graph* tf_graph,
           que->pop_front();
           if (!visited.insert(node).second) continue;
           segment_nodes.erase(node);
-          for (auto in : (is_input_nodes || node->type_string() == "Const")
+
+          // We need to make sure that an Identity node that follows a variable
+          // is treated like the variable.
+          bool is_var_identity = false;
+          if (node->type_string() == "Identity") {
+            const Node* src_node = node;
+            while (src_node->type_string() == "Identity") {
+              std::vector<const Edge*> input_edges_temp;
+              Status status = src_node->input_edges(&input_edges_temp);
+              if (!status.ok()) {
+                break;
+              }
+              src_node = input_edges_temp[0]->src();
+            }
+            if (src_node->type_string() == "Const" ||
+                src_node->type_string() == "VariableV2") {
+              is_var_identity = true;
+            }
+          }
+
+          for (auto in : (is_input_nodes || node->type_string() == "Const" ||
+                          node->type_string() == "VariableV2" || is_var_identity)
                              ? node->in_nodes()
                              : node->out_nodes()) {
             if (segment_nodes.count(in)) {

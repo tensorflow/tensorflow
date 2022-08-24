@@ -327,11 +327,10 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
   // -> T: 1 1 1 -1 3 5 1
   // -> W: 1 1 1  1 3 5 1
   // ***************************************************************************
-  if (!operand_l.is_tensor() && !operand_r.is_tensor()) {
-    // TODO(lsugy): remove this check in dynamic shapes mode. This should work
-    // if both inputs are weights.
+  if (use_implicit_batch && !operand_l.is_tensor() && !operand_r.is_tensor()) {
     return errors::InvalidArgument(
-        "Broadcasting requires at least one of the operands be tensors");
+        "Broadcasting requires at least one of the operands be tensors in "
+        "implicit batch mode");
   }
 
   constexpr int max_nb_dims = nvinfer1::Dims::MAX_DIMS + 1;
@@ -3423,13 +3422,6 @@ Status ConvertBiasAdd(const OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
 
-  if (inputs[0].is_weights() && inputs[1].is_weights()) {
-    // TODO(lsugy): don't assume that if all inputs are weights, grappler
-    // should fold them, because variables are weights.
-    return errors::InvalidArgument(
-        "All inputs are weights, but Grappler is expected to fold them.");
-  }
-
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
@@ -4802,12 +4794,6 @@ Status ConvertBatchMatMul(const OpConverterParams* params) {
   // TODO(tfeher): Consider adding INT8 type because FC layer can support it.
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
-    // TODO(lsugy): don't assume that if all inputs are weights, grappler
-    // should fold them, because variables are weights.
-    return errors::InvalidArgument(
-        "All inputs are weights, but Grappler is expected to fold them.");
-  }
 
   bool transpose_a = false, transpose_b = false;
   AttrSlice attrs(node_def);
@@ -6164,9 +6150,22 @@ Status ConvertSegmentToGraphDef(
 
 bool OutputEdgeValidator::operator()(const Edge* out_edge) const {
   if (out_edge->IsControlEdge()) return true;
-  if (out_edge->src()->type_string() == "Const") {
+
+  // Go up the chain of Identity nodes.
+  Node* src_node = out_edge->src();
+  while (src_node->def().op() == "Identity") {
+    std::vector<const Edge*> input_edges_temp;
+    Status status = src_node->input_edges(&input_edges_temp);
+    if(!status.ok()) {
+      break;
+    }
+    src_node = input_edges_temp[0]->src();
+  }
+
+  if (src_node->type_string() == "Const" ||
+      src_node->type_string() == "VariableV2") {
     VLOG(1) << "--> Need to remove output node " << out_edge->src()->name()
-            << " which is a Const.";
+            << " which is a constant or variable.";
     return false;
   }
   return true;

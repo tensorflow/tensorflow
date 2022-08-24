@@ -37,5 +37,6 @@ def tensorrt_py_test(name, tags, test_names = []):
                 "//tensorflow/python:client_testlib",
                 "//tensorflow/python:framework_test_lib",
                 "//tensorflow/python/compiler/tensorrt:tf_trt_integration_test_base",
+                "//tensorflow/python/compiler/tensorrt/test:test_utils",
             ],
         )

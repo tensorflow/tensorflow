@@ -670,12 +670,15 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   DummyAsyncHelper dummy_async_helper;
 
   CalibrationContext* calib_ctx = cache_res->calib_ctx_.get();
-  const int num_inputs = ctx->num_inputs();
+  int trt_input_idx = 0;
   // TODO(laigd): need to check that input shape matches.
   // Pass input data to calibrator
   std::unordered_map<string, void*> input_data;
   bool input_size_ok = true;
-  for (int i = 0; i < num_inputs; i++) {
+  for (int i = 0; i < ctx->num_inputs(); i++) {
+    if (!input_mask_[i]) {
+      continue;
+    }
     const Tensor& t = ctx->input(i);
     void* data_address = GetTensorAddress(&t);
     OP_REQUIRES_ASYNC(ctx, data_address,
@@ -683,7 +686,7 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                           "Unsupported data type encountered in input ", i),
                       dummy_async_helper);
     // Check the allocated buffer is sufficient for input
-    const auto device_tensor = &calib_ctx->device_tensors_.at(i);
+    const auto device_tensor = &calib_ctx->device_tensors_.at(trt_input_idx);
     if (t.TotalBytes() != device_tensor->TotalBytes()) {
       // This can happen if the network has data dependent shapes.
       input_size_ok = false;
@@ -692,6 +695,7 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
       break;
     }
     input_data.emplace(StrCat(IONamePrefixes::kInputPHName, i), data_address);
+    trt_input_idx++;
   }
   if (input_size_ok) {
     VLOG(2) << "Filled map for sending";
@@ -1307,15 +1311,25 @@ Status TRTEngineOp::AllocateCalibrationResources(
   auto* cres = cache_res->calib_ctx_.get();
 
   // Get the input shapes.
-  /// TODO(lsugy): support INT8 calibration in non-frozen mode.
   const int batch_size = ctx->input(0).dim_size(0);
-  const int num_inputs = ctx->num_inputs();
+  int num_inputs = 0;
+  // Only count TRT engine inputs according to the mask.
+  for (int i = 0; i < ctx->num_inputs(); i++) {
+    if (input_mask_[i]) {
+      num_inputs++;
+    }
+  }
+  int j = 0;
   std::vector<TensorShape> shapes;
   cres->device_tensors_.resize(num_inputs);
   VLOG(1) << "Constructing calibrator";
-  for (int i = 0; i < num_inputs; i++) {
+  for (int i = 0; i < ctx->num_inputs(); i++) {
+    if (!input_mask_[i]) {
+      shapes.emplace_back();  // Empty shape
+      continue;
+    }
     // allocate workspace on device for inputs
-    auto* input = &cres->device_tensors_.at(i);
+    auto* input = &cres->device_tensors_.at(j);
     const Tensor& t = ctx->input(i);
     shapes.emplace_back(t.shape());
     TF_RETURN_IF_ERROR(ctx->allocate_temp(t.dtype(), t.shape(), input));
@@ -1330,6 +1344,8 @@ Status TRTEngineOp::AllocateCalibrationResources(
     cres->device_buffers_.emplace(
         StrCat(IONamePrefixes::kInputPHName, i),
         std::pair<void*, size_t>(device_address, input->TotalBytes()));
+
+    j++;
   }
   cres->calibrator_.reset(
       new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));

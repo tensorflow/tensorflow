@@ -2051,7 +2051,8 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
           SCOPED_TRACE(StrCat(op_name, "_", operand_1_is_tensor ? "T" : "W",
                               operand_2_is_tensor ? "T" : "W"));
           Reset();
-          if (!operand_1_is_tensor && !operand_2_is_tensor) {
+          if (trt_mode_ == TrtTestMode::kImplicitBatch &&
+              !operand_1_is_tensor && !operand_2_is_tensor) {
             // In that case the only test which should be launched is in
             // runExpectedToFailTest
             runExpectedToFailTest(op_name, node_def);
@@ -2083,8 +2084,19 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
             AddTestWeights("input2", {2, 1}, data[3], tf_type);
           }
 
-          TestOpConverter(node_def, {2, 2, 2}, conv_status, OkStatus(),
-                          ElementsAreArray(op_test_info[op_name].second),
+          const std::vector<int> output_dims_tensor = {2, 2, 2};
+          const std::vector<int> output_dims_weights = {2, 2};
+          int output_size =
+              (operand_1_is_tensor || operand_2_is_tensor) ? 8 : 4;
+          std::vector<T> output(output_size);
+          std::copy(op_test_info[op_name].second.begin(),
+                    op_test_info[op_name].second.begin() + output_size,
+                    output.begin());
+          TestOpConverter(node_def,
+                          (operand_1_is_tensor || operand_2_is_tensor)
+                              ? output_dims_tensor
+                              : output_dims_weights,
+                          conv_status, OkStatus(), ElementsAreArray(output),
                           logical_op ? bool_types : default_types);
         }
       }

@@ -34,6 +34,9 @@ filegroup(
         "testdata/tf_readvariableop_saved_model/saved_model.pb",
         "testdata/tf_readvariableop_saved_model/variables/variables.data-00000-of-00001",
         "testdata/tf_readvariableop_saved_model/variables/variables.index",
+        "testdata/tf_variablev2_copy_model/saved_model.pb",
+        "testdata/tf_variablev2_copy_model/variables/variables.data-00000-of-00001",
+        "testdata/tf_variablev2_copy_model/variables/variables.index",
         "testdata/tf_variablev2_saved_model/saved_model.pb",
         "testdata/tf_variablev2_saved_model/variables/variables.data-00000-of-00001",
         "testdata/tf_variablev2_saved_model/variables/variables.index",
@@ -84,6 +87,7 @@ oss_tests = [
     "trt_engine_op_shape_test",
     "trt_mode_test",
     "unary_test",
+    "variables_test",
     "vgg_block_nchw_test",
     "vgg_block_test",
 ]

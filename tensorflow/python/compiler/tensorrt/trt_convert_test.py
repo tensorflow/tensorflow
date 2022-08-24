@@ -1225,8 +1225,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     del converter
     gc.collect()  # Force GC to destroy the TRT engine cache.
 
-  def _TestVariableHelper(self, variable_op, tf_model_name, tftrt_model_name,
-                          output_name):
+  def _TestVariableHelper(
+    self, variable_op, tf_model_name, tftrt_model_name, output_name,
+    precision_mode="FP16"):
     """Helper with the common code of variable converter tests."""
 
     model_dir = test.test_src_dir_path(
@@ -1235,7 +1236,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Load and convert the TF model.
     conv_params = trt_convert.TrtConversionParams(
-        precision_mode="FP16",
+        precision_mode=precision_mode,
         minimum_segment_size=3,
         max_workspace_size_bytes=10 << 20,
         maximum_cached_engines=1)
@@ -1245,7 +1246,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           conversion_params=conv_params,
           use_dynamic_shape=True,
           dynamic_shape_profile_strategy="Optimal")
-    converter.convert()
 
     # Build and save the converted model.
     input_shapes = [[(4, 1, 1), (4, 1, 1)]]
@@ -1254,6 +1254,11 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       for shapes in input_shapes:
         # return a list of input tensors
         yield [np.ones(shape=shape).astype(np.float32) for shape in shapes]
+
+    if precision_mode == "INT8":
+      converter.convert(_InputFn)
+    else:
+      converter.convert()
 
     converter.build(_InputFn)
     converter.save(trt_model_dir)
@@ -1296,6 +1301,71 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     self._TestVariableHelper("ReadVariableOp", "tf_readvariableop_saved_model",
                              "tftrt_readvariableop_saved_model", "output_0")
+
+  @test_util.run_v2_only
+  def testReadVariableOpInt8(self):
+    """Tests conversion of ReadVariableOp nodes in INT8 precision."""
+
+    self._TestVariableHelper("ReadVariableOp",
+                             "tf_readvariableop_saved_model",
+                             "tftrt_readvariableop_saved_model",
+                             "output_0", "INT8")
+
+  @test_util.run_v2_only
+  def testVariableV2_1Var2Engines(self):
+    """Tests special case where 1 VariableV2 node is used in 2 engines."""
+
+    model_dir = test.test_src_dir_path(
+        "python/compiler/tensorrt/test/testdata/"
+        "tf_variablev2_copy_model")
+    trt_model_dir = os.path.join(
+        self.mkdtemp(), "tftrt_variablev2_copy_model")
+
+    # Load and convert the TF model.
+    conv_params = trt_convert.TrtConversionParams(
+        precision_mode="FP16", minimum_segment_size=3,
+        max_workspace_size_bytes=1 << 20, maximum_cached_engines=1)
+    with test_utils.experimental_feature_scope("disable_graph_freezing"):
+      converter = trt_convert.TrtGraphConverterV2(
+          input_saved_model_dir=model_dir, conversion_params=conv_params,
+          use_dynamic_shape=True,
+          dynamic_shape_profile_strategy="Optimal"
+      )
+
+    # Build and save the converted model.
+    input_shapes = [[(2, 32, 32, 32, 3)]]
+
+    def _InputFn():
+      for shapes in input_shapes:
+        # Return a list of input tensors.
+        yield [np.ones(shape=shape).astype(np.float32) for shape in shapes]
+
+    converter.convert()
+    converter.build(_InputFn)
+    converter.save(trt_model_dir)
+
+    # Load the converted model.
+    saved_model_loaded = load.load(trt_model_dir, tags=[tag_constants.SERVING])
+    graph_func = saved_model_loaded.signatures[
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+
+    # Check that there are two segments and that the variable is in both.
+    graph_def = graph_func.graph.as_graph_def()
+    engines = []
+    for lib_function in graph_def.library.function:
+      if re.search(r"TRTEngineOp_\d+_\d+_native_segment",
+                   lib_function.signature.name):
+        node_ops = [node.op for node in lib_function.node_def]
+        engines.append(node_ops)
+    self.assertLen(engines, 2)
+    self.assertEqual(engines[0].count("VariableV2"), 1)
+    self.assertEqual(engines[1].count("VariableV2"), 1)
+
+    # Run the function and check the output shape.
+    np_input1 = ops.convert_to_tensor(
+        np.ones([2, 32, 32, 32, 3]).astype(np.float32))
+    output = graph_func(input1=np_input1)["output"]
+    self.assertEqual(output.shape, (2, 32, 32, 32, 3))
 
 if __name__ == "__main__" and is_tensorrt_enabled():
   test.main()

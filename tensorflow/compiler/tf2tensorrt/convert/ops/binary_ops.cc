@@ -71,9 +71,11 @@ class ConvertBinaryImpl {
       return errors::Unimplemented("Binary op: ", op, " not supported");
     }
 
-    // Constant folding should have been done by TensorFlow.
-    const auto& inputs = params.inputs;
-    if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
+    // Constant folding should have been done by TensorFlow when the graph is
+    // frozen. In dynamic shapes mode it might not have been frozen.
+    const auto &inputs = params.inputs;
+    if (params.use_implicit_batch && inputs.at(0).is_weights() &&
+        inputs.at(1).is_weights()) {
       return errors::Unimplemented(
           "Constant folding is falled back to TensorFlow, binary op '", op,
           "' received both input as constant");
