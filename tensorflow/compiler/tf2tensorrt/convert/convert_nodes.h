@@ -384,13 +384,14 @@ class Converter {
   //   only insert a new dim if size_for_added_dims[i] >= 0.
   Status DynamicReshape(ITensorProxyPtr input,
                         std::vector<std::pair<int, int>> slices,
-                        OpConverterParams* params, ITensorProxyPtr* output,
+                        const OpConverterParams* params,
+                        ITensorProxyPtr* output,
                         std::vector<int> size_for_added_dims = {},
                         std::optional<int> op_instance = std::nullopt);
 
   // Inserts a singleton dimension at axis for a dynamic shape tensor.
   Status DynamicExpandDims(ITensorProxyPtr input, const nvinfer1::Dims& dims,
-                           int axis, OpConverterParams* params,
+                           int axis, const OpConverterParams* params,
                            ITensorProxyPtr* output,
                            std::optional<int> op_instance = std::nullopt);
 
@@ -399,7 +400,7 @@ class Converter {
   // The input_dims argument stores the TRT dimensions of the input tensor,
   // where the dimensions to be squeezed are replaced by 0.
   Status SqueezeTensor(ITensorProxyPtr input, std::vector<int>* input_dims,
-                       OpConverterParams* params, ITensorProxyPtr* output,
+                       const OpConverterParams* params, ITensorProxyPtr* output,
                        std::optional<int> op_instance = std::nullopt);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
@@ -540,7 +541,8 @@ const UnaryOperationMapType* UnaryOperationMap();
 const UnaryOperationMapType* UnaryBooleanOperationMap();
 
 // Map of all supported ActivationTypes.
-const OperationMap<nvinfer1::ActivationType>* ActivationTypeMap();
+using ActivationTypeMapType = OperationMap<nvinfer1::ActivationType>;
+const ActivationTypeMapType* ActivationTypeMap();
 
 // Map from Tensorflow binary operation names to TensorRT binary operations
 // types.
@@ -562,7 +564,7 @@ absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {
 // Adds a matrix multiplication operation to the TensorRT graph. The "params"
 // pointer is only used to access the TRT network builder. The inputs and
 // parameters for the op are fully specified by input_[a|b] and transpose_[a|b].
-StatusOr<ITensorProxyPtr> ConvertMatMulImpl(OpConverterParams* params,
+StatusOr<ITensorProxyPtr> ConvertMatMulImpl(const OpConverterParams* params,
                                             TRT_TensorOrWeights input_a,
                                             TRT_TensorOrWeights input_b,
                                             bool transpose_a, bool transpose_b);

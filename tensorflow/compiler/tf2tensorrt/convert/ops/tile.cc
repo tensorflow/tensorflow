@@ -25,12 +25,10 @@ namespace convert {
 
 class ConvertTile : public OpConverterBase<ConvertTile> {
  public:
-  explicit ConvertTile(OpConverterParams *params)
-      : OpConverterBase<ConvertTile>(params) {}
-
-  static constexpr std::array<DataType, 3> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32};
-  }
+  explicit ConvertTile(const OpConverterParams *params)
+      : OpConverterBase<ConvertTile>(
+            params,
+            {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}) {}
 
   static constexpr std::array<InputArgSpec, 2> InputSpec() {
     return std::array<InputArgSpec, 2>{
@@ -60,12 +58,13 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
       multiplies = nullptr;
     }
 
+    const auto &node = params.node_def;
     if (dtype != nvinfer1::DataType::kINT32) {
-      return errors::InvalidArgument(
-          "The replication parameter of the ", params.node_def.op(),
-          " operation in ", params.node_def.name(), " is expected to be of ",
-          DebugString(nvinfer1::DataType::kINT32), " type, got ",
-          DebugString(dtype), ".");
+      return errors::InvalidArgument("The replication parameter of the ",
+                                     node.op(), " operation in ", node.name(),
+                                     " is expected to be of ",
+                                     DebugString(nvinfer1::DataType::kINT32),
+                                     " type, got ", DebugString(dtype), ".");
     }
 
     const auto dims = inputs.at(0).GetTrtDims();
@@ -77,7 +76,7 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
       if (mult_numb != nb_dims) {
         return errors::InvalidArgument(
             "The length of the replication vector (", mult_numb,
-            ") of the Tile operation in '", params.node_def.name(),
+            ") of the Tile operation in '", node.name(),
             "' is expected to be equal to the rank of the input vector (",
             nb_dims, ").");
       }
@@ -86,14 +85,14 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
                       [](int i) { return i <= 0; })) {
         const auto &mul = absl::StrJoin(multiplies, multiplies + nb_dims, ", ");
         return errors::InvalidArgument(
-            "All replications of the Tile operation in '",
-            params.node_def.name(), "' should be positive, got (", mul, ").");
+            "All replications of the Tile operation in '", node.name(),
+            "' should be positive, got (", mul, ").");
       }
 
       if (params.use_implicit_batch && multiplies[0] > 1) {
         return errors::Unimplemented(
-            "The Tile operation along the batch dimension in '",
-            params.node_def.name(), "' is not implemented.");
+            "The Tile operation along the batch dimension in '", node.name(),
+            "' is not implemented.");
       }
     } else {
       const auto &repl_dims = repl.GetTrtDims();
