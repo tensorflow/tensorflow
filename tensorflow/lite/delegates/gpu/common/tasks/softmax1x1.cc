@@ -49,22 +49,29 @@ std::string Softmax1x1::GetSoftmaxKernelCode(const OperationDef& op_def) {
 
   std::string c;
   c += "MAIN_FUNCTION($0) {\n";
-  if (op_def.IsBatchSupported()) {
-    c += "  int batch_id = GLOBAL_ID_1;\n";
-    c += "  if (batch_id >= args.dst_tensor.Batch()) return;\n";
-    c += "  args.dst_tensor.SetBatchRef(batch_id);\n";
-    c += "  args.src_tensor.SetBatchRef(batch_id);\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int linear_id = GROUP_ID_1;\n";
+    c += "  int X = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  if (B >= args.dst_tensor.Batch()) return;\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+  } else {
+    c += "  int X = GROUP_ID_1;\n";
   }
+  c += "  int Y = GROUP_ID_2;\n";
+  c += "  if (X >= args.dst_tensor.Width()) return;\n";
+  c += "  if (Y >= args.dst_tensor.Height()) return;\n";
   c += "  float4 mask = INIT_FLOAT4v4(args.mask_x, args.mask_y, args.mask_z, "
        "args.mask_w);\n";
   c +=
-      "  float4 maxx4 = INIT_FLOAT4(args.src_tensor.Read<float>(0, 0, 0).x);\n";
+      "  float4 maxx4 = INIT_FLOAT4(args.src_tensor.Read<float>(X, Y, 0).x);\n";
   c += "  int tid = LOCAL_ID_0;\n";
   c += "  for (int s = tid; s < args.src_tensor.Slices(); s += 32) {\n";
   c += "    float4 mask_a = s == args.src_tensor.Slices() - 1 ? mask : "
        "INIT_FLOAT4(1.0f);\n";
   c += "    float4 mask_b = INIT_FLOAT4(1.0f) - mask_a;\n";
-  c += "    float4 src = args.src_tensor.Read<float>(0, 0, s);\n";
+  c += "    float4 src = args.src_tensor.Read<float>(X, Y, s);\n";
   c += "    src = src * mask_a + mask_b * src.x;\n";
   c += "    maxx4 = max(maxx4, src);\n";
   c += "  }\n";
@@ -97,7 +104,7 @@ std::string Softmax1x1::GetSoftmaxKernelCode(const OperationDef& op_def) {
   c += "  for (int s = tid; s < args.src_tensor.Slices(); s += 32) {\n";
   c += "    float4 mask_temp = s == args.src_tensor.Slices() - 1 ? mask : "
        "INIT_FLOAT4(1.0f);\n";
-  c += "    float4 src = args.src_tensor.Read<float>(0, 0, s) - "
+  c += "    float4 src = args.src_tensor.Read<float>(X, Y, s) - "
        "INIT_FLOAT4(maximum);\n";
   c += "    sum += dot(mask_temp, exp(src));\n";
   c += "  }\n";
@@ -124,10 +131,10 @@ std::string Softmax1x1::GetSoftmaxKernelCode(const OperationDef& op_def) {
   c += "\n";
   c += "  int dst_s = GLOBAL_ID_0;\n";
   c += "  if (dst_s < args.dst_tensor.Slices()) {\n";
-  c += "    float4 src = args.src_tensor.Read<float>(0, 0, dst_s) - "
+  c += "    float4 src = args.src_tensor.Read<float>(X, Y, dst_s) - "
        "INIT_FLOAT4(maximum);\n";
   c += "    FLT4 res = TO_FLT4(exp(src) * sum);\n";
-  c += "    args.dst_tensor.Write(res, 0, 0, dst_s);\n";
+  c += "    args.dst_tensor.Write(res, X, Y, dst_s);\n";
   c += "  }\n";
   c += "}\n";
   return c;
@@ -143,7 +150,8 @@ absl::Status Softmax1x1::BindArguments(ArgumentsBinder* args) {
 }
 
 int3 Softmax1x1::GetGridSize() const {
-  return int3(dst_[0]->Slices(), dst_[0]->Batch(), 1);
+  return int3(dst_[0]->Slices(), dst_[0]->Width() * dst_[0]->Batch(),
+              dst_[0]->Height());
 }
 
 Softmax1x1 CreateSoftmax1x1(const OperationDef& definition) {
