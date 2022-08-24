@@ -36,10 +36,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if defined(__clang__)
-// Only clang supports warn_unused_result as a type annotation.
-class TF_MUST_USE_RESULT Status;
-#endif
+class [[nodiscard]] Status;
 
 #if ABSL_HAVE_BUILTIN(__builtin_LINE) && ABSL_HAVE_BUILTIN(__builtin_FILE)
 #define TF_INTERNAL_HAVE_BUILTIN_LINE_FILE 1

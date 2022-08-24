@@ -74,11 +74,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if defined(__clang__)
-// Only clang supports warn_unused_result as a type annotation.
 template <typename T>
-class TF_MUST_USE_RESULT StatusOr;
-#endif
+class [[nodiscard]] StatusOr;
 
 template <typename T>
 class StatusOr : private internal_statusor::StatusOrData<T>,
