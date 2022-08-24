@@ -63,8 +63,7 @@ absl::Status GetNextSingleNode(const GraphFloat32& graph, const Node& node,
   return absl::OkStatus();
 }
 
-std::string GetReduceCode(const std::string& src_value,
-                          const std::string& dst_value, int3 work_group_size,
+std::string GetReduceCode(const std::string& value, int3 work_group_size,
                           bool two_step) {
   int reduction_size = work_group_size.z;
   std::string mem_name = work_group_size.x * work_group_size.y != 1
@@ -73,13 +72,18 @@ std::string GetReduceCode(const std::string& src_value,
   if (reduction_size <= 8) {
     std::string result;
     result += "  {  // reduction\n";
-    result += "    " + mem_name + "[local_id] = " + src_value + ";\n";
+    result += "    " + mem_name + "[local_id] = " + value + ";\n";
     result += "    LOCAL_MEM_BARRIER;\n";
-    result += "    " + dst_value + " = " + mem_name + "[0];\n";
+    result += "    if (LOCAL_ID_2 == 0) {\n";
+    result += "      " + value + " = " + mem_name + "[0];\n";
     for (int i = 1; i < reduction_size; ++i) {
-      result += "    " + dst_value + " += " + mem_name + "[" +
-                std::to_string(i) + "];\n";
+      result += "      " + value + " += " + mem_name + "[" + std::to_string(i) +
+                "];\n";
     }
+    result += "      " + mem_name + "[0] = " + value + ";\n";
+    result += "    }\n";
+    result += "    LOCAL_MEM_BARRIER;\n";
+    result += "    " + value + " = " + mem_name + "[0];\n";
     if (two_step) {
       result += "    LOCAL_MEM_BARRIER;\n";
     }
@@ -96,7 +100,7 @@ std::string GetReduceCode(const std::string& src_value,
     // Number of items still to be summed after: 3 = ceil(5/2)
     return absl::Substitute(R"(
   {  // reduction, all threads inside workgroup must execute this code
-    $3[local_id] = $1;
+    $2[local_id] = $1;
     LOCAL_MEM_BARRIER;
     // The number of items still need to be summed
     int reduction_size = $0;
@@ -104,16 +108,16 @@ std::string GetReduceCode(const std::string& src_value,
       int active_thread_limit = reduction_size / 2;
       int offset = (reduction_size + 1) / 2;
       if (local_id < active_thread_limit) {
-        $1 += $3[local_id + offset];
-        $3[local_id] = $1;
+        $1 += $2[local_id + offset];
+        $2[local_id] = $1;
       }
       LOCAL_MEM_BARRIER;
       reduction_size = offset;
     }
-    $2 = $3[0];
+    $1 = $2[0];
   }
 )",
-                            reduction_size, src_value, dst_value, mem_name);
+                            reduction_size, value, mem_name);
   }
 }
 
@@ -256,18 +260,16 @@ std::string GetVarianceCalculationCode(const GpuInfo& gpu_info,
   if (two_step) {
     c += "    private_sum4 += t;\n";
     c += "  }\n";
-    c += "  float private_sum = dot(private_sum4, INIT_FLOAT4(1.0f));\n";
-    c += "  float sum;\n";
+    c += "  float sum = dot(private_sum4, INIT_FLOAT4(1.0f));\n";
   } else {
     c += "    private_sum4 += t;\n";
     c += "    private_sum4_sq += t * t;\n";
     c += "  }\n";
-    c += "  float2 private_sum;\n";
-    c += "  private_sum.x = dot(private_sum4, INIT_FLOAT4(1.0f));\n";
-    c += "  private_sum.y = dot(private_sum4_sq, INIT_FLOAT4(1.0f));\n";
     c += "  float2 sum;\n";
+    c += "  sum.x = dot(private_sum4, INIT_FLOAT4(1.0f));\n";
+    c += "  sum.y = dot(private_sum4_sq, INIT_FLOAT4(1.0f));\n";
   }
-  c += GetReduceCode("private_sum", "sum", work_group_size, two_step);
+  c += GetReduceCode("sum", work_group_size, two_step);
   if (two_step) {
     c += R"(
   // Calculate the mean
@@ -286,17 +288,18 @@ std::string GetVarianceCalculationCode(const GpuInfo& gpu_info,
     private_sum_diff_sq4 += diff * diff;
   }
   // Reduce
-  float private_sum_diff_sq = dot(private_sum_diff_sq4, INIT_FLOAT4(1.0f));
-  float sum_diff_sq;
+  float sum_diff_sq = dot(private_sum_diff_sq4, INIT_FLOAT4(1.0f));
 )";
-    c += GetReduceCode("private_sum_diff_sq", "sum_diff_sq", work_group_size,
-                       two_step);
+    c += GetReduceCode("sum_diff_sq", work_group_size, two_step);
     c += "  float variance = sum_diff_sq * args.inv_ch_count;\n";
   } else {
     c += "  float mean = sum.x * args.inv_ch_count;\n";
     c += "  float mean_sq = sum.y * args.inv_ch_count;\n";
     c += "  float variance = mean_sq - mean * mean;\n";
   }
+  c += "  // no more shared memory usage, 'useless' threads can exit now\n";
+  c += "  if (X >= args.dst_tensor.Width()) { return; }\n";
+  c += "  if (Y >= args.dst_tensor.Height()) { return; }\n";
   return c;
 }
 }  // namespace
@@ -321,10 +324,6 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
       gpu_info, work_group_size_,
       definition_.dst_tensors[0].HasAxis(Axis::BATCH), channels_x4, two_step);
   c += R"(
-  // no more shared memory usage, 'useless' threads can exit now
-  if (X >= args.dst_tensor.Width()) { return; }
-  if (Y >= args.dst_tensor.Height()) { return; }
-  // Calculate 1/stddev (with the 'regulazing constant' as in tensor_utils.cc)
   float stddev_inv = rsqrt(variance + args.variance_bias);
   // Calculate (t-mean)/stddev for each element
   for (int S = local_id; S < args.src_tensor.Slices(); S += reduction_group_size) {
@@ -486,9 +485,6 @@ std::string LayerNormalization::GetNormalizationCode(const GpuInfo& gpu_info,
       gpu_info, work_group_size_,
       definition_.dst_tensors[0].HasAxis(Axis::BATCH), channels_x4, two_step);
   c += R"(
-  // no more shared memory usage, 'useless' threads can exit now
-  if (X >= args.dst_tensor.Width()) { return; }
-  if (Y >= args.dst_tensor.Height()) { return; }
   float stddev_inv = rsqrt(variance + args.variance_bias);
   for (int S = local_id; S < args.src_tensor.Slices(); S += reduction_group_size) {
     float4 t = args.src_tensor.Read<float>(X, Y, S);
