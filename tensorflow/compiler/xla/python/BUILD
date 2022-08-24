@@ -16,7 +16,7 @@ load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pytype_library")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
