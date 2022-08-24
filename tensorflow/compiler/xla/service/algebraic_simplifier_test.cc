@@ -4704,6 +4704,216 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
   EXPECT_EQ("NO_CHANGE", build_and_simplify());
 }
 
+struct ConvTestOptions {
+  int input_width = 4;
+  int input_height = 2;
+  int input_features = 10;
+  int input_batch = 1;
+  int kernel_width = 1;
+  int kernel_height = 1;
+  int kernel_input_channels = 1;
+  int kernel_output_channels = 10;
+  int feature_group_count = 10;
+  absl::string_view input_order = "bf01";
+  absl::string_view kernel_order = "io01";
+  absl::string_view output_order = "bf01";
+  PrimitiveType input_type = F32;
+  PrimitiveType kernel_type = F32;
+  PrimitiveType output_type = F32;
+  struct WindowOptions {
+    int col_stride = 1;
+    int col_padding = 0;
+    int col_dilation = 1;
+    int row_stride = 1;
+    int row_padding = 0;
+    int row_dilation = 1;
+  } window_options;
+
+  std::unique_ptr<HloComputation> Build(const std::string& test_name) const {
+    auto create_dimension = [](int size, int stride, int padding,
+                               int dilation) {
+      WindowDimension dim;
+      dim.set_size(size);
+      dim.set_stride(stride);
+      dim.set_padding_low(padding);
+      dim.set_padding_high(padding);
+      dim.set_window_dilation(dilation);
+      dim.set_base_dilation(dilation);
+      return dim;
+    };
+    auto vertical = create_dimension(kernel_height, window_options.row_stride,
+                                     window_options.row_padding,
+                                     window_options.row_dilation);
+    auto horizontal = create_dimension(kernel_width, window_options.col_stride,
+                                       window_options.col_padding,
+                                       window_options.col_dilation);
+    bool width_first = kernel_order.find('0') < kernel_order.find('1');
+    Window window;
+    *window.add_dimensions() = width_first ? horizontal : vertical;
+    *window.add_dimensions() = width_first ? vertical : horizontal;
+
+    auto create_shape = [this](PrimitiveType type, absl::string_view order,
+                               int width, int height) {
+      DimensionVector dim;
+      for (char ch : order) {
+        if (ch == '0') {
+          dim.push_back(width);
+        } else if (ch == '1') {
+          dim.push_back(height);
+        } else if (ch == 'f') {
+          dim.push_back(input_features);
+        } else if (ch == 'b') {
+          dim.push_back(input_batch);
+        } else if (ch == 'i') {
+          dim.push_back(kernel_input_channels);
+        } else if (ch == 'o') {
+          dim.push_back(kernel_output_channels);
+        } else {
+          LOG(FATAL) << "Incorrect order value: " << ch;
+        }
+      }
+      return ShapeUtil::MakeShape(type, dim);
+    };
+    Shape input_shape =
+        create_shape(input_type, input_order, input_width, input_height);
+    Shape kernel_shape =
+        create_shape(kernel_type, kernel_order, kernel_width, kernel_height);
+
+    ConvolutionDimensionNumbers dnums =
+        ParseConvolutionDimensionNumbers(
+            absl::StrCat(input_order, "_", kernel_order, "->", output_order))
+            .ValueOrDie();
+    Shape inferred_shape =
+        ShapeInference::InferConvolveShape(
+            input_shape, kernel_shape, feature_group_count,
+            /*batch_group_count=*/1, window, dnums, output_type)
+            .ValueOrDie();
+
+    HloComputation::Builder b(test_name);
+    HloInstruction* input = b.AddInstruction(
+        HloInstruction::CreateParameter(0, input_shape, "input"));
+    HloInstruction* kernel = b.AddInstruction(
+        HloInstruction::CreateParameter(1, kernel_shape, "kernel"));
+    b.AddInstruction(HloInstruction::CreateConvolve(
+        inferred_shape, input, kernel, feature_group_count,
+        /*batch_group_count=*/1, window, dnums,
+        HloTestBase::DefaultPrecisionConfig(2)));
+    return b.Build();
+  }
+};
+
+class ConvTestBase : public HloTestBase {
+ public:
+  std::unique_ptr<HloModule> Simplify(ConvTestOptions options) {
+    auto module = CreateNewVerifiedModule();
+    module->AddEntryComputation(options.Build(TestName()));
+    AlgebraicSimplifierOptions simplifier_options;
+    AlgebraicSimplifier simplifier{simplifier_options};
+    bool result = simplifier.Run(module.get()).ValueOrDie();
+    return result ? std::move(module) : nullptr;
+  }
+
+  template <typename T>
+  void ExpectSimplifyMatch(ConvTestOptions options, const T& match) {
+    auto module = Simplify(std::move(options));
+    ASSERT_NE(module.get(), nullptr);
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(match));
+  }
+
+  void ExpectSimplifyNoMatch(ConvTestOptions options) {
+    auto module = Simplify(std::move(options));
+    EXPECT_EQ(module.get(), nullptr);
+  }
+};
+
+TEST_F(ConvTestBase, DefaultOptions) {
+  ExpectSimplifyMatch(
+      ConvTestOptions{},
+      m::Multiply(m::Parameter(0), m::Broadcast(m::Reshape(m::Parameter(1)))));
+}
+
+TEST_F(ConvTestBase, FeatureDimension) {
+  ExpectSimplifyNoMatch(
+      ConvTestOptions{.kernel_input_channels = 2, .feature_group_count = 5});
+}
+
+TEST_F(ConvTestBase, ContractedDimension) {
+  ExpectSimplifyMatch(
+      ConvTestOptions{.kernel_height = 2},
+      m::Reshape(m::Reduce(m::Multiply(m::Parameter(0), m::Broadcast()),
+                           m::Convert(m::Constant()))));
+}
+
+TEST_F(ConvTestBase, InputConvert) {
+  ExpectSimplifyMatch(ConvTestOptions{.input_type = F16},
+                      m::Multiply(m::Convert(m::Parameter(0)),
+                                  m::Broadcast(m::Reshape(m::Parameter(1)))));
+}
+
+TEST_F(ConvTestBase, KernelConvert) {
+  ExpectSimplifyMatch(
+      ConvTestOptions{.kernel_type = F16},
+      m::Multiply(m::Parameter(0),
+                  m::Broadcast(m::Reshape(m::Convert(m::Parameter(1))))));
+}
+
+TEST_F(ConvTestBase, OutputConvert) {
+  ExpectSimplifyMatch(
+      ConvTestOptions{.output_type = F16},
+      m::Multiply(m::Convert(m::Parameter(0)),
+                  m::Broadcast(m::Reshape(m::Convert(m::Parameter(1))))));
+}
+
+class ConvTestTranspose : public ConvTestBase,
+                          public ::testing::WithParamInterface<const char*> {};
+
+TEST_P(ConvTestTranspose, InputLayout) {
+  ExpectSimplifyMatch(ConvTestOptions{.input_order = GetParam()},
+                      m::Multiply(m::Transpose(m::Parameter(0)),
+                                  m::Broadcast(m::Reshape(m::Parameter(1)))));
+}
+
+TEST_P(ConvTestTranspose, KernelLayout) {
+  ExpectSimplifyMatch(
+      ConvTestOptions{.kernel_order = absl::StrReplaceAll(
+                          GetParam(), {{"b", "i"}, {"f", "o"}})},
+      m::Multiply(m::Parameter(0),
+                  m::Broadcast(m::Reshape(m::Transpose(m::Parameter(1))))));
+}
+
+TEST_P(ConvTestTranspose, OutputLayout) {
+  ExpectSimplifyMatch(
+      ConvTestOptions{.output_order = GetParam()},
+      m::Multiply(m::Transpose(m::Parameter(0)),
+                  m::Broadcast(m::Reshape(m::Transpose(m::Parameter(1))))));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ConvTestSuite, ConvTestTranspose,
+    ::testing::ValuesIn({"10fb", "10bf", "1fb0", "1f0b", "1bf0", "1b0f",
+                         "01fb", "01bf", "0fb1", "0f1b", "0bf1", "0b1f",
+                         "fb01", "fb10", "f01b", "f0b1", "f10b", "f1b0",
+                         "b01f", "b0f1", "b10f", "b1f0", "bf10"}));
+
+class ConvTestWindow : public ConvTestBase,
+                       public ::testing::WithParamInterface<ConvTestOptions> {};
+
+TEST_P(ConvTestWindow, NoMatch) { ExpectSimplifyNoMatch(GetParam()); }
+
+INSTANTIATE_TEST_SUITE_P(
+    ConvTestSuite, ConvTestWindow,
+    ::testing::ValuesIn({
+        ConvTestOptions{.kernel_width = 3},
+        ConvTestOptions{.kernel_height = 3},
+        ConvTestOptions{.window_options = {.col_stride = 2}},
+        ConvTestOptions{.window_options = {.col_padding = 1}},
+        ConvTestOptions{.window_options = {.col_dilation = 2}},
+        ConvTestOptions{.window_options = {.row_stride = 2}},
+        ConvTestOptions{.window_options = {.row_padding = 1}},
+        ConvTestOptions{.window_options = {.row_dilation = 2}},
+    }));
+
 // Test that slice(broadcast(/*scalar value*/)) simplifies to a single
 // broadcast.
 TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToSlice) {

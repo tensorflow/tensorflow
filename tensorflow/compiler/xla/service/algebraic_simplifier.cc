@@ -6661,6 +6661,112 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
   return true;
 }
 
+StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToMultiply(
+    HloInstruction* convolution) {
+  if (options_.is_layout_sensitive()) {
+    return false;
+  }
+
+  auto* input = convolution->mutable_operand(0);
+  auto* kernel = convolution->mutable_operand(1);
+  const auto& window = convolution->window();
+  const ConvolutionDimensionNumbers& dnums =
+      convolution->convolution_dimension_numbers();
+
+  const Shape& input_shape = input->shape();
+  const Shape& kernel_shape = kernel->shape();
+  const Shape& convolution_shape = convolution->shape();
+
+  // Require the spatial dimensions to be either contracted or trivial.
+  for (int64_t i = 0; i < dnums.output_spatial_dimensions_size(); ++i) {
+    if (kernel_shape.dimensions(dnums.kernel_spatial_dimensions(i)) != 1 &&
+        convolution_shape.dimensions(dnums.output_spatial_dimensions(i)) != 1) {
+      return false;
+    }
+  }
+
+  // Stride ignores part of the output, which matrix multiplication does not do,
+  // so require no stride. Padding and dilation both implicitly extend the data,
+  // which matrix multiplication also does not do, so require no padding and no
+  // dilation.
+  if (window_util::HasStride(window) || window_util::HasPadding(window) ||
+      window_util::HasDilation(window)) {
+    return false;
+  }
+
+  // Verify feature dimensions.
+  if (kernel_shape.dimensions(dnums.kernel_input_feature_dimension()) != 1 ||
+      input_shape.dimensions(dnums.input_feature_dimension()) !=
+          convolution->feature_group_count() ||
+      convolution_shape.dimensions(dnums.output_feature_dimension()) !=
+          convolution->feature_group_count()) {
+    return false;
+  }
+
+  // Calculate permutations for the operand dimensions.
+  DimensionVector input_permutation(input_shape.rank());
+  DimensionVector kernel_permutation(kernel_shape.rank());
+
+  input_permutation[dnums.output_batch_dimension()] =
+      dnums.input_batch_dimension();
+  input_permutation[dnums.output_feature_dimension()] =
+      dnums.input_feature_dimension();
+
+  kernel_permutation[dnums.output_batch_dimension()] =
+      dnums.kernel_input_feature_dimension();
+  kernel_permutation[dnums.output_feature_dimension()] =
+      dnums.kernel_output_feature_dimension();
+
+  // Set reduction dimensions for spatial dimensions where the kernel size is
+  // not equal to one.
+  DimensionVector reduction_dimensions;
+  for (int64_t i = 0; i < dnums.output_spatial_dimensions_size(); ++i) {
+    int64_t dim = dnums.output_spatial_dimensions(i);
+    input_permutation[dim] = dnums.input_spatial_dimensions(i);
+    kernel_permutation[dim] = dnums.kernel_spatial_dimensions(i);
+    if (kernel_shape.dimensions(dnums.kernel_spatial_dimensions(i)) != 1) {
+      reduction_dimensions.push_back(dim);
+    }
+  }
+
+  // Update shapes of the operands, if necessary.
+  if (!absl::c_is_sorted(input_permutation)) {
+    TF_ASSIGN_OR_RETURN(input, MakeTransposeHlo(input, input_permutation));
+  }
+  if (!ShapeUtil::SameElementType(input_shape, convolution_shape)) {
+    input = MakeConvertToHlo(input, convolution_shape.element_type());
+  }
+
+  if (!absl::c_is_sorted(kernel_permutation)) {
+    TF_ASSIGN_OR_RETURN(kernel, MakeTransposeHlo(kernel, kernel_permutation));
+  }
+  if (!ShapeUtil::SameElementType(kernel_shape, convolution_shape)) {
+    kernel = MakeConvertToHlo(kernel, convolution_shape.element_type());
+  }
+
+  // Replace convolution with reduce(input * broadcast(kernel))
+  kernel = convolution->parent()->AddInstruction(
+      HloInstruction::CreateBroadcastSequence(
+          input->shape(), kernel, [&](std::unique_ptr<HloInstruction> added) {
+            return convolution->parent()->AddInstruction(std::move(added));
+          }));
+  TF_ASSIGN_OR_RETURN(HloInstruction * result,
+                      MakeBinaryHlo(HloOpcode::kMultiply, input, kernel));
+  if (!reduction_dimensions.empty()) {
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * sum,
+        MakeReduceHlo(
+            result,
+            MakeConvertToHlo(MakeR0ConstantHlo(convolution->parent(), 0),
+                             convolution_shape.element_type()),
+            reduction_dimensions, HloOpcode::kAdd));
+    TF_ASSIGN_OR_RETURN(result, MakeReshapeHlo(convolution_shape, sum));
+  }
+
+  TF_RETURN_IF_ERROR(ReplaceInstruction(convolution, result));
+  return true;
+}
+
 Status AlgebraicSimplifierVisitor::HandleConvolution(
     HloInstruction* convolution) {
   if (options_.enable_scalar_multiply_reduction()) {
@@ -6690,9 +6796,14 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   if (swapped) {
     return OkStatus();
   }
-  // Try to replace the convolution with a kDot instruction.
+  // Try to replace the convolution with a kDot or a kMultiply instruction.
   TF_ASSIGN_OR_RETURN(bool replaced_with_dot, SimplifyConvToDot(convolution));
   if (replaced_with_dot) {
+    return OkStatus();
+  }
+  TF_ASSIGN_OR_RETURN(bool replaced_with_multiply,
+                      SimplifyConvToMultiply(convolution));
+  if (replaced_with_multiply) {
     return OkStatus();
   }
 
