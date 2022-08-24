@@ -21,7 +21,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "mlir-hlo/Dialect/mhlo/IR/base.td"
+include "dialect/Base.td"
 include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_base.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_base.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.td"

@@ -18,8 +18,8 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
 #define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
 
+#include "dialect/Base.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir-hlo/Dialect/mhlo/IR/base.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"

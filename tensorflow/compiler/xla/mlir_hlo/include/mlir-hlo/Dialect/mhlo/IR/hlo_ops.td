@@ -2633,7 +2633,7 @@ def HLO_FusionOp : HLO_Op<"fusion", []> {
   );
 
   let results = (outs
-    Variadic<HLO_TensorOrTuple>:$results
+    Variadic<AnyTypeOf<[HLO_Tensor, HLO_Tuple]>>:$results
   );
 
   // FusionOp has special conversion logic to HLO.

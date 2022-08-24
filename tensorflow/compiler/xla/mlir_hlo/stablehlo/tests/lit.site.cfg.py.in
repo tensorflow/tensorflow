@@ -43,7 +43,7 @@ config.llvm_use_sanitizer = "@LLVM_USE_SANITIZER@"
 config.llvm_host_triple = '@LLVM_HOST_TRIPLE@'
 config.host_arch = "@HOST_ARCH@"
 config.stablehlo_src_root = "@STABLEHLO_SOURCE_DIR@"
-config.stablehlo_obj_root = "@STABLEHLO_BINARY_DIR@"
+config.stablehlo_obj_root = "@CMAKE_BINARY_DIR@"
 config.mlir_runner_utils_dir = os.path.join(config.llvm_obj_root, "lib")
 
 # Support substitution of the tools_dir with user parameters. This is
@@ -61,4 +61,4 @@ import lit.llvm
 lit.llvm.initialize(lit_config, config)
 
 # Let the main config do the real work.
-lit_config.load_config(config, "@CMAKE_SOURCE_DIR@/tests/lit.cfg.py")
+lit_config.load_config(config, "@STABLEHLO_SOURCE_DIR@/tests/lit.cfg.py")

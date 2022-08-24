@@ -14,11 +14,6 @@
 # limitations under the License.
 #
 # Need a separate function because of the .cc vs .cpp used in the one provided by MLIR
-set(LLVM_TARGET_DEFINITIONS base.td)
-mlir_tablegen(base_attr_interfaces.h.inc -gen-attr-interface-decls)
-mlir_tablegen(base_attr_interfaces.cc.inc -gen-attr-interface-defs)
-add_public_tablegen_target(MLIRHloBaseIncGen)
-
 function(add_mlir_hlo_dialect dialect)
   set(LLVM_TARGET_DEFINITIONS ${dialect}.td)
   mlir_tablegen(${dialect}.h.inc -gen-op-decls)
