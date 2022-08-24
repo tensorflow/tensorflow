@@ -74,7 +74,7 @@ Value buildPointOp(Location loc, OpBuilder& builder, Value operand,
   SmallVector<int64_t> staticOffsets(operandShape.size(),
                                      ShapedType::kDynamicStrideOrOffset);
   SmallVector<Value> dynamicOffsets;
-  for (int i = 0; i < operandShape.size(); ++i) {
+  for (int64_t i = 0; i < static_cast<int64_t>(operandShape.size()); ++i) {
     if (int outputDim = operandDimsToOutputDims[i]; outputDim >= 0) {
       auto index = builder.create<arith::ConstantIndexOp>(loc, outputDim);
       dynamicOffsets.push_back(builder.create<OffsetOp>(loc, subset, index));
@@ -183,7 +183,8 @@ struct LinalgGenericFusionInterface
       // Whether the composition of the inverse of the operand's affine map and
       // the output's affine map is the identity function (i.e., a given output
       // coordinate maps to the same coordinate in the input).
-      bool isIdentity = operandMap.getResults().size() == outputRank;
+      bool isIdentity =
+          static_cast<int64_t>(operandMap.getResults().size()) == outputRank;
       SmallVector<bool> containsDim(outputRank);
       for (const AffineExpr& expression : operandMap.getResults()) {
         auto dim = expression.dyn_cast<AffineDimExpr>();
@@ -191,14 +192,16 @@ struct LinalgGenericFusionInterface
         auto output = iteratorsToOutputs[dim.getPosition()];
         operandDimsToOutputDims.push_back(output.value_or(-1));
         if (output) containsDim[*output] = true;
-        isIdentity &= output.value_or(-1) == operandDimsToOutputDims.size() - 1;
+        isIdentity &= output.value_or(-1) ==
+                      static_cast<int64_t>(operandDimsToOutputDims.size()) - 1;
       }
 
       Value operandSubset;
       if (isIdentity) {
         operandSubset = subset;
         operandsArePoints.push_back(subset.getType().isa<PointType>());
-      } else if (operandDimsToOutputDims.size() == outputRank &&
+      } else if (static_cast<int64_t>(operandDimsToOutputDims.size()) ==
+                     outputRank &&
                  !llvm::is_contained(containsDim, false)) {
         operandSubset = builder.create<TransposeDimsOp>(
             loc, subset,

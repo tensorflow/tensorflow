@@ -54,7 +54,7 @@ Value createTile(OpBuilder &b, Location loc, Value superset, ValueRange ivs,
   SmallVector<int64_t> staticSizes;
   SmallVector<Value> dynamicSizes;
   staticSizes.reserve(rank);
-  for (int64_t i = 0; i < rank; ++i) {
+  for (auto i : llvm::seq<int64_t>(0, rank)) {
     // If the dimension is perfectly tiled, use the statically known tile size.
     if (tileSizes[i] == 1 || (supersetShape[i] != ShapedType::kDynamicSize &&
                               supersetShape[i] % tileSizes[i] == 0)) {
@@ -169,8 +169,9 @@ LogicalResult tileUniqueFunctionResult(
 
   // All nested tiles must be of the same rank as the source value.
   int64_t rank = sourceTy.getRank();
-  if (llvm::any_of(nestedTileSizes,
-                   [&](auto it) { return it.size() != rank; })) {
+  if (llvm::any_of(nestedTileSizes, [&](auto it) {
+        return static_cast<int64_t>(it.size()) != rank;
+      })) {
     return failure();
   }
 

@@ -225,7 +225,7 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
 
     // The space sizes, tile offsets, and tile sizes differ in the concat
     // dimension. Do not populate these.
-    if (i == concatDim) {
+    if (i == static_cast<int64_t>(concatDim)) {
       continue;
     }
 
@@ -620,7 +620,8 @@ bool isValidPermutation(ArrayRef<int64_t> permutation) {
   SmallVector<bool> seen(permutation.size(), false);
   for (auto p : permutation) {
     // Verify that each element is in [0..n-1] range and is present only once.
-    if (p < 0 || p >= permutation.size() || seen[p]) return false;
+    if (p < 0 || p >= static_cast<int64_t>(permutation.size()) || seen[p])
+      return false;
 
     seen[p] = true;
   }
@@ -642,14 +643,14 @@ LogicalResult TransposeOp::verify() {
     return emitOpError() << "input rank " << rank
                          << " does not match init rank " << initType.getRank();
 
-  if (rank != permutationRef.size())
+  if (rank != static_cast<int64_t>(permutationRef.size()))
     return emitOpError() << "size of permutation " << permutationRef.size()
                          << " does not match the argument rank " << rank;
 
   auto inputDims = inputType.getShape();
   auto initDims = initType.getShape();
 
-  for (size_t i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     int64_t inputDim = inputDims[permutationRef[i]];
     int64_t initDim = initDims[i];
 

@@ -2055,8 +2055,8 @@ struct ConvolutionOpGeneralConversion
     std::iota(resultIndexMapping.begin(), resultIndexMapping.end(), 0);
     auto updateDimMappingFromOffset =
         [](llvm::SmallVectorImpl<int64_t>& mapping, int64_t offset) {
-          for (auto i = offset; i < mapping.size(); ++i) {
-            mapping[i] += 1;
+          for (auto& mappingElt : llvm::drop_begin(mapping, offset)) {
+            mappingElt += 1;
           }
         };
 
@@ -2073,7 +2073,7 @@ struct ConvolutionOpGeneralConversion
                                  llvm::SmallVectorImpl<int64_t>& newShape,
                                  int64_t reshapedDim, int64_t factor) {
       newShape.reserve(oldShape.size() + 1);
-      for (int i = 0; i < oldShape.size(); ++i) {
+      for (auto i : llvm::seq<int64_t>(0, oldShape.size())) {
         if (i == reshapedDim) {
           newShape.push_back(factor);
           newShape.push_back(oldShape[reshapedDim] / factor);
@@ -2276,7 +2276,7 @@ struct DepthwiseConvolutionOpConversion
     int64_t inputFeatureDim = dimensionNumbers.getInputFeatureDimension();
     int64_t inputFeatureCount =
         op.lhs().getType().cast<ShapedType>().getDimSize(inputFeatureDim);
-    if (op.feature_group_count() != inputFeatureCount) {
+    if (static_cast<int64_t>(op.feature_group_count()) != inputFeatureCount) {
       return rewriter.notifyMatchFailure(op, "not depth-wise convolution");
     }
 
@@ -2337,7 +2337,7 @@ struct DepthwiseConvolutionOpConversion
         dimensionNumbers.getKernelOutputFeatureDimension();
     if (filterDims[kernelInputFeatureDimension] *
             filterDims[kernelOutputFeatureDimension] !=
-        op.feature_group_count()) {
+        static_cast<int64_t>(op.feature_group_count())) {
       // For cases where channel multiplier != 1
 
       // Reshaping filter shape
@@ -2553,7 +2553,7 @@ struct ReduceWindowOpOnTensorsGenericConversion
         llvm::any_of(baseDilations, [](int64_t v) { return v != 1; })) {
       llvm::SmallVector<int64_t> staticLows(rank, 0);
       llvm::SmallVector<int64_t> staticHighs(rank, 0);
-      for (int i = 0; i < padding.size(); i += 2) {
+      for (int64_t i = 0; i < static_cast<int64_t>(padding.size()); i += 2) {
         staticLows[i / 2] = padding[i];
         staticHighs[i / 2] = padding[i + 1];
       }
