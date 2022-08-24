@@ -2618,7 +2618,6 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:fused_slice.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:fused_slice_different_operands.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:fusion.hlo.test",
-        "//tensorflow/compiler/xla/service/gpu/tests:fusion_logical_index_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gemm_broadcast_folding_rewrite_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gemm_rewrite_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_alignment_test",
