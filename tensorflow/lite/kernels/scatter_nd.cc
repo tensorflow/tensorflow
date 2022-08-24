@@ -174,7 +174,7 @@ TfLiteStatus EvalScatterNd(TfLiteContext* context, const TfLiteTensor* indices,
       return kTfLiteError;
   }
   if (status != kTfLiteOk) {
-    TF_LITE_KERNEL_LOG(context, "scatter_nd index out of bounds");
+    context->ReportError(context, "scatter_nd index out of bounds");
   }
   return status;
 }
