@@ -24,11 +24,15 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling_using_interface.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace gml_st {
@@ -287,6 +291,46 @@ struct TilingPass : public TilingPassBase<TilingPass> {
   llvm::Optional<SmallVector<SmallVector<int64_t>>> tileSizes;
 };
 
+struct TileToForPass : public TileToForPassBase<TileToForPass> {
+  TileToForPass() = default;
+  TileToForPass(StringRef label, llvm::ArrayRef<int64_t> sizes) {
+    tilingTarget = label.str();
+    tileSizes = sizes;
+  }
+
+  void getDependentDialects(DialectRegistry &registry) const final {
+    registry.insert<GmlStDialect>();
+    registerGmlStTilingInterfaceExternalModels(registry);
+  }
+
+  void runOnOperation() override {
+    func::FuncOp f = getOperation();
+    MLIRContext *ctx = &getContext();
+
+    GmlStTilingOptions opts;
+    SmallVector<int64_t> ts(tileSizes.begin(), tileSizes.end());
+    opts.tileSizeComputationFunction = [ts](OpBuilder &b, Operation *op) {
+      OpBuilder::InsertionGuard guard(b);
+      b.setInsertionPointToStart(
+          &op->getParentOfType<func::FuncOp>().getBody().front());
+      return llvm::to_vector<4>(llvm::map_range(ts, [&](int64_t s) {
+        Value v = b.create<arith::ConstantIndexOp>(op->getLoc(), s);
+        return v;
+      }));
+    };
+
+    RewritePatternSet patterns(ctx);
+    patterns.add<TileToGmlStLoops>(ctx, tilingTarget, opts);
+
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+      return signalPassFailure();
+    }
+
+    // Clean up by removing temporary attributes.
+    f.walk([](Operation *op) { removeTransformationAttr(op); });
+  }
+};
+
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass() {
@@ -301,6 +345,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
     const std::string &tileSizes) {
   return std::make_unique<TilingPass>(tileSizes);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> createTileToForPass(
+    StringRef tilingTarget, ArrayRef<int64_t> tileSizes) {
+  return std::make_unique<TileToForPass>(tilingTarget, tileSizes);
 }
 
 }  // namespace gml_st

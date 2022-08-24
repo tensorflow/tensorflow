@@ -30,6 +30,17 @@ def TilingPass : Pass<"gml-tiling", "mlir::func::FuncOp"> {
   ];
 }
 
+def TileToForPass : Pass<"gml-tile-to-for", "mlir::func::FuncOp"> {
+  let summary = "Tile operations using TilingInterface to produce gml_st.for";
+  let constructor = "::mlir::gml_st::createTileToForPass()";
+  let options = [
+    Option<"tilingTarget", "tiling-target", "std::string", /*default=*/"",
+           "Operation with this label is the anchor to latch on.">,
+    ListOption<"tileSizes", "tile-sizes", "int64_t", "Tile sizes",
+               "llvm::cl::ZeroOrMore">,
+  ];
+}
+
 def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
   let summary = "Compose set operations.";
   let constructor = "::mlir::gml_st::createComposeSetOpsPass()";
