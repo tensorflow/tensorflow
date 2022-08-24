@@ -571,10 +571,22 @@ StatusOr<ITensorProxyPtr> ConvertMatMulImpl(const OpConverterParams* params,
 
 std::string convert_range_error_msg(float start, float limit, float delta);
 std::string convert_range_expected_msg(const NodeDef& node_def);
+std::string bool_weight_error_msg(const NodeDef& node_def);
+std::string unexpected_type_error_msg(nvinfer1::DataType type_being_checked,
+                                      nvinfer1::DataType type_expected,
+                                      const NodeDef& node_def, int idx = 0);
+std::string then_else_dtypes_error_msg(nvinfer1::DataType type_then,
+                                       nvinfer1::DataType type_else,
+                                       const NodeDef& node_def);
+std::string batch_size_error(const string& name, const string& comment);
 
 inline bool find_name(const string& name, const std::vector<string> names) {
   return std::find(names.begin(), names.end(), name) != names.end();
 }
+
+Status check_type(nvinfer1::DataType type_being_checked,
+                  nvinfer1::DataType type_expected, const NodeDef& node_def,
+                  int idx = 0);
 
 }  // namespace convert
 }  // namespace tensorrt
