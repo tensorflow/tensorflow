@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -127,14 +128,8 @@ std::string ZeroClampVec4Code(const std::string& slice_name,
 )",
                           slice_name, channels_name, value_name);
 }
-}  // namespace
 
-MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
-                                                 const GpuInfo& gpu_info,
-                                                 const BHWC& shape,
-                                                 float variance_bias,
-                                                 bool two_step)
-    : GPUOperation(definition) {
+int3 GetRecommendedWorkGroupSize(const GpuInfo& gpu_info, const BHWC& shape) {
   const int tensor_slices = DivideRoundUp(shape.c, 4);
   int desired_work_group_size = gpu_info.GetMaxWorkGroupSizeForZ();
   if (gpu_info.IsMali()) {
@@ -177,66 +172,64 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   if (gpu_info.IsAMD()) {
     desired_work_group_size = 512;
   }
+  int3 work_group_size(1, 1, 1);
   if (shape.w * shape.h == 1) {
     desired_work_group_size =
         std::min(desired_work_group_size, gpu_info.GetMaxWorkGroupSizeForZ());
     while (desired_work_group_size >= tensor_slices * 2) {
       desired_work_group_size /= 2;
     }
-    work_group_size_.x = 1;
-    work_group_size_.y = 1;
-    work_group_size_.z = desired_work_group_size;
+    work_group_size.x = 1;
+    work_group_size.y = 1;
+    work_group_size.z = desired_work_group_size;
   } else {
     if (tensor_slices >= 16) {
-      work_group_size_.z = 8;
+      work_group_size.z = 8;
     } else if (tensor_slices >= 10) {
-      work_group_size_.z = 4;
+      work_group_size.z = 4;
     } else {
       std::map<int, int> slices_to_group_size = {
           {1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 3},
           {6, 3}, {7, 4}, {8, 4}, {9, 3},
       };
-      work_group_size_.z = slices_to_group_size[tensor_slices];
+      work_group_size.z = slices_to_group_size[tensor_slices];
     }
     desired_work_group_size =
         std::min(desired_work_group_size, gpu_info.GetMaxWorkGroupTotalSize());
-    work_group_size_.x = 1;
-    work_group_size_.y =
-        desired_work_group_size / AlignByN(work_group_size_.z, 4);
-    while (work_group_size_.y > work_group_size_.x) {
-      work_group_size_.y /= 2;
-      work_group_size_.x *= 2;
+    work_group_size.x = 1;
+    work_group_size.y =
+        desired_work_group_size / AlignByN(work_group_size.z, 4);
+    while (work_group_size.y > work_group_size.x) {
+      work_group_size.y /= 2;
+      work_group_size.x *= 2;
     }
   }
-  args_.AddFloat("variance_bias", variance_bias);
-  args_.AddFloat("inv_ch_count", 1.0f / shape.c);
-  code_ = GetNormalizationCode(gpu_info, shape.c % 4 == 0, two_step);
+  return work_group_size;
 }
 
-std::string MeanStdDevNormalization::GetNormalizationCode(
-    const GpuInfo& gpu_info, bool channels_x4, bool two_step) {
-  AddSrcTensor("src_tensor", definition_.src_tensors[0]);
-  AddDstTensor("dst_tensor", definition_.dst_tensors[0]);
-
+std::string GetVarianceCalculationCode(const GpuInfo& gpu_info,
+                                       const int3& work_group_size,
+                                       bool has_batch, bool channels_x4,
+                                       bool two_step) {
   std::string c;
   if (gpu_info.IsApiOpenCl()) {
     c += "__attribute__((reqd_work_group_size(" +
-         std::to_string(work_group_size_.x) + ", " +
-         std::to_string(work_group_size_.y) + ", " +
-         std::to_string(work_group_size_.z) + ")))\n";
+         std::to_string(work_group_size.x) + ", " +
+         std::to_string(work_group_size.y) + ", " +
+         std::to_string(work_group_size.z) + ")))\n";
   }
   c += "MAIN_FUNCTION($0) {\n";
   std::string accum_type = two_step ? "float" : "float2";
-  if (work_group_size_.x * work_group_size_.y == 1) {
+  if (work_group_size.x * work_group_size.y == 1) {
     c += "__local " + accum_type + " shared_mem[" +
-         std::to_string(work_group_size_.z) + "];\n";
+         std::to_string(work_group_size.z) + "];\n";
   } else {
     c += "__local " + accum_type + " shared_mem[" +
-         std::to_string(work_group_size_.x) + "][" +
-         std::to_string(work_group_size_.y) + "][" +
-         std::to_string(work_group_size_.z) + "];\n";
+         std::to_string(work_group_size.x) + "][" +
+         std::to_string(work_group_size.y) + "][" +
+         std::to_string(work_group_size.z) + "];\n";
   }
-  if (definition_.dst_tensors[0].HasAxis(Axis::BATCH)) {
+  if (has_batch) {
     c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
@@ -274,7 +267,7 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
     c += "  private_sum.y = dot(private_sum4_sq, INIT_FLOAT4(1.0f));\n";
     c += "  float2 sum;\n";
   }
-  c += GetReduceCode("private_sum", "sum", work_group_size_, two_step);
+  c += GetReduceCode("private_sum", "sum", work_group_size, two_step);
   if (two_step) {
     c += R"(
   // Calculate the mean
@@ -296,7 +289,7 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
   float private_sum_diff_sq = dot(private_sum_diff_sq4, INIT_FLOAT4(1.0f));
   float sum_diff_sq;
 )";
-    c += GetReduceCode("private_sum_diff_sq", "sum_diff_sq", work_group_size_,
+    c += GetReduceCode("private_sum_diff_sq", "sum_diff_sq", work_group_size,
                        two_step);
     c += "  float variance = sum_diff_sq * args.inv_ch_count;\n";
   } else {
@@ -304,6 +297,29 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
     c += "  float mean_sq = sum.y * args.inv_ch_count;\n";
     c += "  float variance = mean_sq - mean * mean;\n";
   }
+  return c;
+}
+}  // namespace
+
+MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
+                                                 const GpuInfo& gpu_info,
+                                                 const BHWC& shape,
+                                                 float variance_bias,
+                                                 bool two_step)
+    : GPUOperation(definition) {
+  work_group_size_ = GetRecommendedWorkGroupSize(gpu_info, shape);
+  args_.AddFloat("variance_bias", variance_bias);
+  args_.AddFloat("inv_ch_count", 1.0f / shape.c);
+  AddSrcTensor("src_tensor", definition_.src_tensors[0]);
+  AddDstTensor("dst_tensor", definition_.dst_tensors[0]);
+  code_ = GetNormalizationCode(gpu_info, shape.c % 4 == 0, two_step);
+}
+
+std::string MeanStdDevNormalization::GetNormalizationCode(
+    const GpuInfo& gpu_info, bool channels_x4, bool two_step) {
+  std::string c = GetVarianceCalculationCode(
+      gpu_info, work_group_size_,
+      definition_.dst_tensors[0].HasAxis(Axis::BATCH), channels_x4, two_step);
   c += R"(
   // no more shared memory usage, 'useless' threads can exit now
   if (X >= args.dst_tensor.Width()) { return; }
@@ -416,7 +432,7 @@ absl::Status TryMeanStdDevNormalization(
   if (it != tensor_descriptors.end()) {
     op_def.src_tensors.push_back(it->second);
   }
-  auto output_id = graph.FindInputs(mul_node->id)[0]->id;
+  auto output_id = graph.FindOutputs(mul_node->id)[0]->id;
   it = tensor_descriptors.find(output_id);
   if (it != tensor_descriptors.end()) {
     op_def.dst_tensors.push_back(it->second);
@@ -442,5 +458,66 @@ absl::Status TryMeanStdDevNormalization(
   return absl::OkStatus();
 }
 
+LayerNormalization::LayerNormalization(
+    const OperationDef& definition, const GpuInfo& gpu_info, const BHWC& shape,
+    float variance_bias, const Tensor<Linear, DataType::FLOAT32>& mul_linear,
+    const Tensor<Linear, DataType::FLOAT32>& sub_linear, bool two_step)
+    : GPUOperation(definition) {
+  work_group_size_ = GetRecommendedWorkGroupSize(gpu_info, shape);
+  args_.AddFloat("variance_bias", variance_bias);
+  args_.AddFloat("inv_ch_count", 1.0f / shape.c);
+  AddSrcTensor("src_tensor", definition_.src_tensors[0]);
+  AddDstTensor("dst_tensor", definition_.dst_tensors[0]);
+  TensorDescriptor mul_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), mul_linear);
+  args_.AddObject("mul_linear", std::make_unique<TensorDescriptor>(
+                                    std::move(mul_tensor_desc)));
+  TensorDescriptor sub_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), sub_linear);
+  args_.AddObject("sub_linear", std::make_unique<TensorDescriptor>(
+                                    std::move(sub_tensor_desc)));
+  code_ = GetNormalizationCode(gpu_info, shape.c % 4 == 0, two_step);
+}
+
+std::string LayerNormalization::GetNormalizationCode(const GpuInfo& gpu_info,
+                                                     bool channels_x4,
+                                                     bool two_step) {
+  std::string c = GetVarianceCalculationCode(
+      gpu_info, work_group_size_,
+      definition_.dst_tensors[0].HasAxis(Axis::BATCH), channels_x4, two_step);
+  c += R"(
+  // no more shared memory usage, 'useless' threads can exit now
+  if (X >= args.dst_tensor.Width()) { return; }
+  if (Y >= args.dst_tensor.Height()) { return; }
+  float stddev_inv = rsqrt(variance + args.variance_bias);
+  for (int S = local_id; S < args.src_tensor.Slices(); S += reduction_group_size) {
+    float4 t = args.src_tensor.Read<float>(X, Y, S);
+    float4 mul0_res = stddev_inv * args.mul_linear.Read<float>(S);
+    float4 mul1_res = mul0_res * t;
+    float4 mul2_res = mul0_res * mean;
+    float4 sub_res = args.sub_linear.Read<float>(S) - mul2_res;
+    FLT4 result = TO_FLT4(mul1_res + sub_res);
+    args.dst_tensor.Write(result, X, Y, S);
+  }
+})";
+  return c;
+}
+
+int3 LayerNormalization::GetGridSize() const {
+  // To avoid dealing with global reductions, we restrict the grid size to the
+  // work group size in the first dimension.
+  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
+  const int grid_y = dst_[0]->Height();
+  const int grid_z = work_group_size_.z;
+  return int3(grid_x, grid_y, grid_z);
+}
+
+LayerNormalization CreateLayerNormalization(
+    const OperationDef& definition, const GpuInfo& gpu_info, const BHWC& shape,
+    float variance_bias, const Tensor<Linear, DataType::FLOAT32>& mul_linear,
+    const Tensor<Linear, DataType::FLOAT32>& sub_linear, bool two_step) {
+  return LayerNormalization(definition, gpu_info, shape, variance_bias,
+                            mul_linear, sub_linear, two_step);
+}
 }  // namespace gpu
 }  // namespace tflite
