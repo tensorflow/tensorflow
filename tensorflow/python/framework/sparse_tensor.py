@@ -281,6 +281,30 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
   def consumers(self):
     return self._consumers()
 
+  def _numpy(self):
+    """Returns a numpy `array` with the values for this `SparseTensor`.
+
+    Requires that this `SparseTensor` was constructed in eager execution mode.
+    """
+    if not self._is_eager():
+      raise ValueError("SparseTensor.numpy() is only supported in eager mode.")
+    arr = np.zeros(self.dense_shape, dtype=self.dtype.as_numpy_dtype())
+    for i, v in zip(self.indices, self.values):
+      arr[tuple(i)] = v
+
+    return arr
+
+  def _is_eager(self):
+    """Returns True if this `SparseTensor` was constructed in eager execution.
+
+    Requires that each individual component of `SparseTensor`
+    (`indices`, `values` and `dense_shape`) is an instance of `EagerTensor`.
+    """
+
+    return all(
+        isinstance(t, ops.EagerTensor)
+        for t in (self.indices, self.values, self.dense_shape))
+
 
 SparseTensorValue = collections.namedtuple("SparseTensorValue",
                                            ["indices", "values", "dense_shape"])
