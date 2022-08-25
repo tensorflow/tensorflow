@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape.h"
 
+#include <algorithm>
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_util.h"

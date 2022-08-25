@@ -20,14 +20,12 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <vector>
 
-#include "absl/hash/hash.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 

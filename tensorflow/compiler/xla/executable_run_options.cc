@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 
 #include <atomic>
+#include <string>
 
 namespace xla {
 

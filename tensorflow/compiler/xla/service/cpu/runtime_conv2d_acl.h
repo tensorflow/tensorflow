@@ -73,6 +73,8 @@ extern void __xla_cpu_runtime_ACLConv2DF32(
     int64_t rhs_col_dilation, int64_t feature_group_count);
 }
 #else
+#include <iostream>
+
 extern "C" {
 extern void __xla_cpu_runtime_ACLConv2DF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,

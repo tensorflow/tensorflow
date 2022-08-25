@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <random>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -32,7 +33,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {

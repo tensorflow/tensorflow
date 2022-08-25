@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_LAYOUT_H_
 #define TENSORFLOW_COMPILER_XLA_LAYOUT_H_
 
+#include <limits>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/types/span.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 

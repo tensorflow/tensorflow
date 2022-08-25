@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_LITERAL_H_
 
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
@@ -27,6 +28,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -771,7 +773,7 @@ class LiteralBase {
 // Abstract base class representing a mutable literal in XLA.
 class MutableLiteralBase : public LiteralBase {
  public:
-  virtual ~MutableLiteralBase() = 0;
+  ~MutableLiteralBase() override = 0;
 
   // Returns a Span view of the array for this literal for the
   // given NativeT (e.g., float). CHECKs if the subshape of the literal at the
@@ -1057,7 +1059,7 @@ class Literal : public MutableLiteralBase {
   // Create a literal of the given shape. The literal is allocated sufficient
   // memory to hold the shape. Memory is uninitialized.
   explicit Literal(const Shape& shape);
-  virtual ~Literal();
+  ~Literal() override;
 
   // Literals are moveable, but not copyable. To copy a literal use
   // Literal::Clone or Literal::CloneToUnique. This prevents inadvertent copies
@@ -1079,7 +1081,10 @@ class Literal : public MutableLiteralBase {
   // deallocated, and the respective buffers are replaced with those in
   // src_literal. Upon return, src_literal is set to a nil shape (empty tuple).
   virtual Status MoveFrom(Literal&& src_literal,
-                          const ShapeIndex& dest_shape_index = {});
+                          const ShapeIndex& dest_shape_index);
+  Status MoveFrom(Literal&& src_literal) {
+    return MoveFrom(std::move(src_literal), /*dest_shape_index=*/{});
+  }
 
   // Returns a vector containing the tuple elements of this Literal as separate
   // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
@@ -1117,7 +1122,7 @@ class Literal : public MutableLiteralBase {
 // others. The shape is not owned by this class and not mutable.
 class MutableBorrowingLiteral : public MutableLiteralBase {
  public:
-  virtual ~MutableBorrowingLiteral();
+  ~MutableBorrowingLiteral() override;
 
   MutableBorrowingLiteral() : MutableLiteralBase() {}
 
@@ -1125,6 +1130,7 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   MutableBorrowingLiteral& operator=(const MutableBorrowingLiteral& literal);
 
   // Implicit conversion constructors.
+  // NOLINTNEXTLINE(google-explicit-constructor)
   MutableBorrowingLiteral(MutableLiteralBase* literal);
   MutableBorrowingLiteral(MutableBorrowingLiteral literal,
                           const ShapeIndex& view_root);
@@ -1151,6 +1157,7 @@ class LiteralSlice : public LiteralBase {
   LiteralSlice() : LiteralBase() {}
 
   // Implicit conversion constructors.
+  // NOLINTNEXTLINE(google-explicit-constructor)
   LiteralSlice(const LiteralBase& literal);
   LiteralSlice(const LiteralBase& literal, const ShapeIndex& view_root);
 

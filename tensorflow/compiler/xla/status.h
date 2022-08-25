@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STATUS_H_
 #define TENSORFLOW_COMPILER_XLA_STATUS_H_
 
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status.h"  // IWYU pragma: export
 
 namespace xla {
 
