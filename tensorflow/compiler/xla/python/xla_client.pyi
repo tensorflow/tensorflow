@@ -24,6 +24,7 @@ from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
 from .xla_extension import Buffer as Buffer
+from .xla_extension import ShardedBuffer as ShardedBuffer
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
