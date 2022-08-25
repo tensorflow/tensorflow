@@ -18,9 +18,10 @@ limitations under the License.
 namespace xla {
 
 // Not implemented by default. It is the responsibility of the plugin device
-// author to provide an implementation of this function.
+// author to provide an implementation of this function. It is recommended to
+// implement this in //tensorflow/compiler/plugin:plugin
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtPluginDeviceClient();
 
-}
+}  // namespace xla
 
-#endif // TENSORFLOW_COMPILER_XLA_PJRT_PLUGIN_DEVICE_CLIENT_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PJRT_PLUGIN_DEVICE_CLIENT_H_
