@@ -449,7 +449,7 @@ filegroup(
     name = "test_data",
     testonly = True,
     data = [
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:stablehlo-opt",
+        ":stablehlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
 )
