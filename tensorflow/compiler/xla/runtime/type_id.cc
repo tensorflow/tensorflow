@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
+#include <string_view>
 #include <vector>
 
 namespace xla {
 namespace runtime {
 
-llvm::StringRef TypeIDNameRegistry::FindTypeIDSymbolName(TypeID type_id) {
+std::string_view TypeIDNameRegistry::FindTypeIDSymbolName(TypeID type_id) {
   auto it = type_id_name_map_.find(type_id);
   if (it == type_id_name_map_.end()) return "";
   return it->second;

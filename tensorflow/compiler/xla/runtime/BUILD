@@ -299,7 +299,7 @@ cc_library(
     hdrs = ["type_id.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//mlir:Support",
     ],
 )
