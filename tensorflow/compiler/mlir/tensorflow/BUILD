@@ -1862,6 +1862,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ir/importexport:mangling",
         "@com_google_absl//absl/strings",
     ],
 )
