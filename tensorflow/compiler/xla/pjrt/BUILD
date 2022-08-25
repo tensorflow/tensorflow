@@ -451,10 +451,17 @@ cc_library(
 
 cc_library(
     name = "pjrt_plugin_device_client",
+    deps = [
+        ":pjrt_plugin_device_client_headers",
+        "//tensorflow/compiler/plugin:plugin",
+    ],
+)
+
+cc_library(
+    name = "pjrt_plugin_device_client_headers",
     hdrs = ["pjrt_plugin_device_client.h"],
     deps = [
         ":pjrt_client",
-        "//tensorflow/compiler/plugin:plugin",
     ],
 )
 
