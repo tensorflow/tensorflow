@@ -4744,33 +4744,6 @@ Status ConvertBatchMatMul(const OpConverterParams* params) {
                              transpose_b);
 }
 
-Status ConvertSoftmax(const OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"logits", false}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  ITensorProxyPtr tensor = inputs.at(0).tensor();
-
-  const int num_trt_dims = tensor->getDimensions().nbDims;
-  if (num_trt_dims == 0 && params->use_implicit_batch) {
-    return errors::InvalidArgument(
-        "TensorRT Softmax cannot apply on batch dimension");
-  }
-  if (params->validation_only) return Status::OK();
-
-  nvinfer1::ISoftMaxLayer* layer =
-      params->converter->network()->addSoftMax(*tensor->trt_tensor());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  params->converter->SetLayerName(layer, node_def);
-  // Tensorflow SoftMax assumes applying softmax on the last dimension.
-  layer->setAxes(1 << (num_trt_dims - 1));
-
-  ITensorProxyPtr output_tensor = layer->getOutput(0);
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return Status::OK();
-}
-
 Status ConvertArgMinMax(const OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -5792,7 +5765,6 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool3D, "AvgPool3D");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool3D, "MaxPool3D");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertShape, "Shape");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSlice, "Slice");
-REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSoftmax, "Softmax");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertDepthSpaceShuffle, "SpaceToDepth");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSplit, "Split");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSquare, "Square");
