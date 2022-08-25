@@ -32,6 +32,7 @@ import fnmatch
 import os
 import re
 import sys
+import io
 
 from setuptools import Command
 from setuptools import find_packages
@@ -62,6 +63,35 @@ if '--project_name' in sys.argv:
 # tf_nightly-* package is being built.
 def standard_or_nightly(standard, nightly):
   return nightly if 'tf_nightly' in project_name else standard
+
+## AMD ##
+# For tensorflow-rocm, add the rocm version we're building against as a
+# semver compatible buid metadata string (https://semver.org/#spec-item-10)
+# This is not pip public version compatible (see: https://peps.python.org/pep-0440/),
+# so for pip we will convert the '+' to a "."
+def _get_default_rocm_path():
+  return "/opt/rocm"
+
+def _get_rocm_install_path():
+  """Determines and returns the ROCm installation path."""
+  rocm_install_path = _get_default_rocm_path()
+  if "ROCM_PATH" in os.environ:
+    rocm_install_path = os.environ["ROCM_PATH"]
+  return rocm_install_path
+
+def _rocm_version(rocm_install_path):
+  version_file = os.path.join(rocm_install_path, ".info/version-dev")
+  if not os.path.exists(version_file):
+    return ""
+  version_numbers = []
+  with open(version_file) as f:
+    version_string = f.read().strip()
+    version_numbers = version_string.split(".")
+  return str(version_numbers[0] + "." + version_numbers[1] + "." + version_numbers[2].split("-")[0])
+
+if project_name.endswith('_rocm'):
+  _VERSION = _VERSION + "+rocm" + str(_rocm_version(_get_rocm_install_path()))
+
 
 # All versions of TF need these packages. We indicate the widest possible range
 # of package releases possible to be as up-to-date as possible as well as to
@@ -282,7 +312,7 @@ headers = (
 
 setup(
     name=project_name,
-    version=_VERSION.replace('-', ''),
+    version=_VERSION.replace('-', '').replace('+', '.'),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
     long_description_content_type='text/markdown',
