@@ -557,6 +557,16 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   // critical.
   using jax::property;
   using jax::property_readonly;
+  type.attr("__array__") = py::cpp_function(
+      [](PyBuffer::object self, py::object dtype, py::object context) {
+        py::object array = ValueOrThrow(self.buf()->AsNumPyArray(self));
+        if (!dtype.is_none()) {
+          return array.attr("astype")(dtype);
+        }
+        return array;
+      },
+      py::is_method(type), py::arg("dtype") = py::none(),
+      py::arg("context") = py::none());
   type.attr("__array_priority__") =
       property_readonly([](py::object self) -> int { return 100; });
   type.attr("_device") = property(
@@ -646,9 +656,6 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       py::is_method(type));
   type.attr("copy_to_host_async") = py::cpp_function(
       [](PyBuffer::object self) { return self.buf()->CopyToHostAsync(); },
-      py::is_method(type));
-  type.attr("to_py") = py::cpp_function(
-      [](PyBuffer::object self) { return self.buf()->AsNumPyArray(self); },
       py::is_method(type));
   type.attr("xla_shape") = py::cpp_function(
       [](PyBuffer::object self) { return self.buf()->shape(); },
