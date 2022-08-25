@@ -280,6 +280,14 @@ class DenseBincountOp : public OpKernel {
     OP_REQUIRES(ctx, size_t.dims() == 0,
                 errors::InvalidArgument("Shape must be rank 0 but is rank ",
                                         size_t.dims()));
+    OP_REQUIRES(ctx,
+                weights.shape() == data.shape() || weights.NumElements() == 0,
+                errors::InvalidArgument(
+                    "`weights` must be the same shape as `arr` or a length-0 "
+                    "`Tensor`, in which case it acts as all weights equal to "
+                    "1. Received ",
+                    weights.shape().DebugString()));
+
     Tidx size = size_t.scalar<Tidx>()();
     OP_REQUIRES(
         ctx, size >= 0,
