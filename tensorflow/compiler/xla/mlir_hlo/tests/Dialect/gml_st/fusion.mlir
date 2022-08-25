@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --split-input-file --gml-fusion | FileCheck %s
+// RUN: mlir-hlo-opt %s --split-input-file --gml-deprecated-fusion | FileCheck %s
 
 // CHECK-LABEL: @dynamic_broadcast_in_dim_at_tile
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?xf32>, %[[SHAPE:.*]]: tensor<3xindex>, %[[TILE:.*]]: !gml_st.tile<3x4x?>

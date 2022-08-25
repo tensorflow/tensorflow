@@ -26,13 +26,13 @@ namespace mlir {
 namespace gml_st {
 
 /// Pass to fuse producers into `gml_st.materialize` ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedFusionPass();
 
 /// Pass to tile operations.
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass();
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
     const SmallVector<SmallVector<int64_t>>& tileSizes);
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
     const std::string& tileSizes);
 
 /// Pass to tile ops using TilingInterface and gml_st::ForOp.
