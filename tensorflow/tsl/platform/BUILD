@@ -6,6 +6,12 @@
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_protobuf_compiler_deps",
+    "tf_testing_deps",
+    "tf_windows_aware_platform_deps",
+)
 
 package(
     default_visibility = [
@@ -38,7 +44,11 @@ cc_library(
 filegroup(
     name = "lib_hdrs",
     srcs = [
+        "init_main.h",
+        "net.h",
         "stack_frame.h",
+        "stacktrace_handler.h",
+        "stringpiece.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -48,6 +58,8 @@ filegroup(
     name = "base_hdrs",
     srcs = [
         "byte_order.h",
+        "macros.h",
+        "threadpool_interface.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -56,6 +68,8 @@ filegroup(
     name = "framework_lite_hdrs",
     srcs = [
         "byte_order.h",
+        "macros.h",
+        "platform.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -65,6 +79,13 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "byte_order.h",
+        "init_main.h",
+        "intrusive_ptr.h",
+        "macros.h",
+        "platform.h",
+        "platform_strings_computed.h",
+        "stringpiece.h",
+        "threadpool_interface.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -89,7 +110,231 @@ filegroup(
         ],
         exclude = [
             "gif.h",
+            "jpeg.h",
         ],
     ),
     compatible_with = get_compatible_with_portable(),
+)
+
+exports_files(
+    [
+        "init_main.h",
+        "net.h",
+        "resource_loader.h",
+        "stacktrace_handler.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+cc_library(
+    name = "platform_port",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = [
+        "init_main.h",
+    ],
+    deps = tf_windows_aware_platform_deps("platform_port"),
+)
+
+filegroup(
+    name = "lib_proto_parsing_hdrs",
+    srcs = [
+        "init_main.h",
+        "macros.h",
+        "platform.h",
+        "stringpiece.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/core:__pkg__",
+    ],
+)
+
+cc_library(
+    name = "intrusive_ptr",
+    hdrs = ["intrusive_ptr.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [],
+)
+
+filegroup(
+    name = "lib_internal_public_hdrs",
+    srcs = [
+        "intrusive_ptr.h",
+        "platform.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+    ],
+)
+
+filegroup(
+    name = "jpeg_hdrs",
+    srcs = [
+        "jpeg.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
+)
+
+cc_library(
+    name = "jpeg",
+    hdrs = ["jpeg.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@libjpeg_turbo//:jpeg",
+    ],
+)
+
+filegroup(
+    name = "tflite_portable_logging_hdrs",
+    srcs = [
+        "macros.h",
+        "platform.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
+)
+
+filegroup(
+    name = "jpeg_internal_hdrs",
+    srcs = [
+        "macros.h",
+        "platform.h",
+        "stringpiece.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
+)
+
+filegroup(
+    name = "gif_internal_hdrs",
+    srcs = [
+        "macros.h",
+        "platform.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/gif:__pkg__",
+    ],
+)
+
+cc_library(
+    name = "macros",
+    hdrs = ["macros.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+filegroup(
+    name = "xla_cpu_runtime_srcs",
+    srcs = [
+        "macros.h",
+        "platform.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "net",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["net.h"],
+    deps = tf_windows_aware_platform_deps("net"),
+)
+
+cc_library(
+    name = "platform",
+    hdrs = ["platform.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "platform_strings",
+    srcs = [
+        "platform_strings_computed.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "protobuf_compiler",
+    hdrs = ["protobuf_compiler.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = tf_protobuf_compiler_deps(),
+)
+
+cc_library(
+    name = "resource_loader",
+    testonly = 1,
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["resource_loader.h"],
+    deps = tf_testing_deps("resource_loader"),
+)
+
+filegroup(
+    name = "stacktrace_handler_hdrs",
+    srcs = [
+        "stacktrace_handler.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "stacktrace_handler",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["stacktrace_handler.h"],
+    deps = tf_windows_aware_platform_deps("stacktrace_handler"),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "stringpiece",
+    hdrs = ["stringpiece.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "threadpool_interface",
+    hdrs = ["threadpool_interface.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//third_party/eigen3",
+        # TODO(jakeharmon): Remove deps on core once mutex and types are migrated
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "build_test",
+    testonly = 1,
+    visibility = [
+        "//tensorflow/core/platform:__pkg__",
+    ],
+    deps = [
+        ":byte_order",
+        ":gif",
+        ":jpeg",
+        ":macros",
+        ":net",
+        ":platform",
+        ":platform_port",
+        ":platform_strings",
+        ":stacktrace_handler",
+        ":stringpiece",
+        ":threadpool_interface",
+    ],
 )

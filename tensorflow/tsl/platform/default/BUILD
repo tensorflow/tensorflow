@@ -7,6 +7,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     default_visibility = [
         "//tensorflow/core/platform:__pkg__",
+        "//tensorflow/tsl/platform:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -249,7 +250,10 @@ cc_library(
 cc_library(
     name = "net",
     srcs = ["net.cc"],
-    hdrs = ["//tensorflow/core/platform:net.h"],
+    hdrs = [
+        "//tensorflow/core/platform:net.h",
+        "//tensorflow/tsl/platform:net.h",
+    ],
     tags = [
         "manual",
         "no_oss",
@@ -291,6 +295,7 @@ cc_library(
         "//tensorflow/core/platform:numa.h",
         "//tensorflow/core/platform:snappy.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/tsl/platform:init_main.h",
     ],
     copts = tf_copts(),
     defines = ["TF_USE_SNAPPY"] + select({

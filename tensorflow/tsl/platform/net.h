@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_MACROS_H_
-#define TENSORFLOW_CORE_PLATFORM_MACROS_H_
-
-#include "tensorflow/tsl/platform/macros.h"
+#ifndef TENSORFLOW_TSL_PLATFORM_NET_H_
+#define TENSORFLOW_TSL_PLATFORM_NET_H_
 
 namespace tensorflow {
 namespace internal {
-template <typename T>
-constexpr auto remove_unused_variable_compiler_warning =
-    tsl::internal::remove_unused_variable_compiler_warning<T>;
+
+int PickUnusedPortOrDie();
+
 }  // namespace internal
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_MACROS_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_NET_H_

@@ -13,6 +13,7 @@ load(
 package(
     default_visibility = [
         "//tensorflow/core/platform:__pkg__",
+        "//tensorflow/tsl/platform:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -148,7 +149,10 @@ cc_library(
 cc_library(
     name = "net",
     srcs = ["net.cc"],
-    hdrs = ["//tensorflow/core/platform:net.h"],
+    hdrs = [
+        "//tensorflow/core/platform:net.h",
+        "//tensorflow/tsl/platform:net.h",
+    ],
     linkopts = ["-DEFAULTLIB:ws2_32.lib"],
     tags = [
         "manual",
@@ -176,6 +180,7 @@ cc_library(
         "//tensorflow/core/platform:mem.h",
         "//tensorflow/core/platform:numa.h",
         "//tensorflow/core/platform:snappy.h",
+        "//tensorflow/tsl/platform:init_main.h",
     ],
     copts = tf_copts(),
     defines = ["TF_USE_SNAPPY"],

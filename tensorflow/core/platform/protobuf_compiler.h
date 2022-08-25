@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_PROTOBUF_COMPILER_H_
 #define TENSORFLOW_PLATFORM_PROTOBUF_COMPILER_H_
 
-#include "google/protobuf/compiler/importer.h"  // IWYU pragma: export
+#include "tensorflow/tsl/platform/protobuf_compiler.h"
 
 #endif  // TENSORFLOW_PLATFORM_PROTOBUF_COMPILER_H_

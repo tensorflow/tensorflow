@@ -13,17 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_MACROS_H_
-#define TENSORFLOW_CORE_PLATFORM_MACROS_H_
-
-#include "tensorflow/tsl/platform/macros.h"
+#ifndef TENSORFLOW_TSL_PLATFORM_INIT_MAIN_H_
+#define TENSORFLOW_TSL_PLATFORM_INIT_MAIN_H_
 
 namespace tensorflow {
-namespace internal {
-template <typename T>
-constexpr auto remove_unused_variable_compiler_warning =
-    tsl::internal::remove_unused_variable_compiler_warning<T>;
-}  // namespace internal
+namespace port {
+
+void InitMain(const char* usage, int* argc, char*** argv);
+
+}  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_MACROS_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_INIT_MAIN_H_

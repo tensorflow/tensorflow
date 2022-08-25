@@ -13,17 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_MACROS_H_
-#define TENSORFLOW_CORE_PLATFORM_MACROS_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_PROTOBUF_COMPILER_H_
+#define TENSORFLOW_TSL_PLATFORM_PROTOBUF_COMPILER_H_
 
-#include "tensorflow/tsl/platform/macros.h"
+#include "google/protobuf/compiler/importer.h"  // IWYU pragma: export
 
-namespace tensorflow {
-namespace internal {
-template <typename T>
-constexpr auto remove_unused_variable_compiler_warning =
-    tsl::internal::remove_unused_variable_compiler_warning<T>;
-}  // namespace internal
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_PLATFORM_MACROS_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_PROTOBUF_COMPILER_H_
