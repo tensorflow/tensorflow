@@ -160,6 +160,7 @@ cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
     compatible_with = get_compatible_with_portable(),
+    deps = ["//tensorflow/tsl/platform:byte_order"],
 )
 
 cc_library(
@@ -225,7 +226,7 @@ cc_library(
     compatible_with = [],
     deps = [
         ":platform",
-        "//tensorflow/stream_executor/cuda:cuda_activation_header",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
     ],
 )
 
@@ -325,7 +326,7 @@ cc_library(
     name = "gif",
     hdrs = ["gif.h"],
     deps = [
-        "@gif",
+        "//tensorflow/tsl/platform:gif",
     ],
 )
 
@@ -401,7 +402,7 @@ filegroup(
         "tstring.h",
         "types.h",
     ] + if_windows([
-        "//tensorflow/core/platform/windows:xla_cpu_runtime_srcs",
+        "//tensorflow/tsl/platform/windows:xla_cpu_runtime_srcs",
     ]),
 )
 
@@ -646,7 +647,7 @@ cc_library(
     hdrs = if_rocm_is_configured(["rocm.h"]),
     deps = if_rocm_is_configured([
         ":platform",
-        "//tensorflow/stream_executor/rocm:rocm_activation",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_activation",
     ]),
 )
 
@@ -696,6 +697,8 @@ cc_library(
 cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["//tensorflow/tsl/platform:stack_frame"],
 )
 
 cc_library(
@@ -715,7 +718,9 @@ cc_library(
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -1070,7 +1075,7 @@ tf_cuda_library(
     ],
     features = ["-parse_headers"],
     deps = [
-        "//tensorflow/core/platform/default/build_config:stream_executor",
+        "//tensorflow/tsl/platform/default/build_config:stream_executor",
     ],
 )
 
@@ -1084,7 +1089,7 @@ cc_library(
     ],
     features = ["-parse_headers"],
     deps = [
-        "//tensorflow/core/platform/default/build_config:stream_executor_no_cuda",
+        "//tensorflow/tsl/platform/default/build_config:stream_executor_no_cuda",
     ],
 )
 
@@ -1581,11 +1586,12 @@ filegroup(
         "subprocess.h",
         "thread_annotations.h",
         ":base_hdrs",
-        # copybara:uncomment(GoogleFileSystem) "//tensorflow/core/platform/google:env.h",
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
         "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
+        "//tensorflow/tsl/platform:base_hdrs",
+        # copybara:uncomment(GoogleFileSystem) "//tensorflow/tsl/platform/google:env.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -1843,7 +1849,7 @@ filegroup(
     ] + selects.with_or({
         "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
-            "//tensorflow/core/platform/default:mobile_srcs_no_runtime",
+            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
             "threadpool.cc",
             "tracing.cc",
@@ -1877,7 +1883,7 @@ filegroup(
         "test_benchmark.h",
         "threadpool_options.h",
         "unbounded_work_queue.h",
-        "//tensorflow/core/platform/default:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/platform/default:mobile_srcs_only_runtime",
     ] + tf_google_mobile_srcs_only_runtime(),
     visibility = ["//tensorflow/core:__pkg__"],
 )

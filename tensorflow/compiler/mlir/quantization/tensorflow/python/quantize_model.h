@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_H_
 
+#include <string>
+
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -23,22 +25,22 @@ namespace tensorflow {
 namespace quantization {
 namespace internal {
 
-absl::StatusOr<tensorflow::GraphDef> QuantizeQATModel(
+absl::StatusOr<GraphDef> QuantizeQatModel(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags);
+    absl::string_view tags, absl::string_view quant_opts_serialized);
 
 // Apply post-training dynamic range quantization to the model.
-absl::StatusOr<tensorflow::GraphDef> QuantizePTQDynamicRange(
+absl::StatusOr<GraphDef> QuantizePtqDynamicRange(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags, absl::string_view quant_opts_serialized);
+
+absl::StatusOr<GraphDef> QuantizePtqModelPreCalibration(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags);
 
-absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPreCalibration(
+absl::StatusOr<GraphDef> QuantizePtqModelPostCalibration(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags);
-
-absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPostCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags);
+    absl::string_view tags, absl::string_view quant_opts_serialized);
 
 }  // namespace internal
 }  // namespace quantization

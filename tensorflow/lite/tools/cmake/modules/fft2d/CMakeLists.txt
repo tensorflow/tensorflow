@@ -42,6 +42,14 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL Windows)
 target_link_libraries(fft2d_fftsg m)
 endif()
 
+install(
+  TARGETS fft2d_fftsg
+  EXPORT tensorflow-liteTargets
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
 # Requires implementation of fft2d_alloc.
 add_library(fft2d_fftsg2d "${FFT2D_SOURCE_DIR}/fftsg2d.c")
 target_link_libraries(fft2d_fftsg2d fft2d_fftsg)
@@ -55,3 +63,11 @@ target_include_directories(fft2d_fftsg3d PRIVATE "${FFT2D_SOURCE_DIR}")
 add_library(fft2d_shrtdct "${FFT2D_SOURCE_DIR}/shrtdct.c")
 
 add_library(fft2d ALIAS fft2d_fftsg2d)
+
+install(
+  TARGETS fft2d_fftsg2d
+  EXPORT tensorflow-liteTargets
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)

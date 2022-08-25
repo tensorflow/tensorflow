@@ -25,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.stateless_random_ops import Algorithm
@@ -569,6 +570,7 @@ class Generator(autotrackable.AutoTrackable):
           f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
 
   def _skip_single_var(self, var, delta):
+    resource_variable_ops.variable_accessed(var)
     # TODO(wangpeng): Cache the cast algorithm instead of casting everytime.
     return gen_stateful_random_ops.rng_read_and_skip(
         var.handle,

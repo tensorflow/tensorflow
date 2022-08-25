@@ -117,9 +117,9 @@ class ConcatTest(xla_test.XLATestCase):
                               cur_offset + params[p[i]].shape[concat_dim])
       cur_offset += params[p[i]].shape[concat_dim]
       if dtype == dtype_feed:
-        self.assertAllEqual(result[ind], params[p[i]])
+        self.assertAllEqual(result[tuple(ind)], params[p[i]])
       else:
-        self.assertAllClose(result[ind], params[p[i]], 0.01)
+        self.assertAllClose(result[tuple(ind)], params[p[i]], 0.01)
 
   def testRandom(self):
     self._testRandom(dtypes.float32)
@@ -323,7 +323,7 @@ class ConcatTest(xla_test.XLATestCase):
             index[concat_dim] = slice(
                 cur_offset, cur_offset + params[p[i]].shape[concat_dim])
             cur_offset += params[p[i]].shape[concat_dim]
-            self.assertAllEqual(result[index], params[p[i]])
+            self.assertAllEqual(result[tuple(index)], params[p[i]])
 
 
 class ConcatOffsetTest(xla_test.XLATestCase):

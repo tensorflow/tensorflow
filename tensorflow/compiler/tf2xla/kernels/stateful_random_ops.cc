@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/stateful_random_ops.h"
 
 #include <cmath>
+#include <utility>
 
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
@@ -200,7 +201,7 @@ Status CompileImpl(
   if (!status_or_value.ok()) {
     return status_or_value.status();
   }
-  xla::RngOutput value_state = status_or_value.ConsumeValueOrDie();
+  xla::RngOutput value_state = std::move(status_or_value).value();
   state = value_state.state;
   ctx->SetOutput(0, value_state.value);
   var = StateAndKeyToVariable(alg, state, key);

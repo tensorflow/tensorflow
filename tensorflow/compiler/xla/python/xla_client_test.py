@@ -14,6 +14,7 @@
 # ==============================================================================
 """Backend-dependent tests for the Python XLA client."""
 
+import collections
 import functools
 import itertools
 import re
@@ -2642,6 +2643,189 @@ def TestFactory(xla_backend,
       self.assertNotEmpty(serialized)
 
   tests.append(DeviceAssignmentTest)
+
+  class TokenTest(ComputationTest):
+    """Tests related to PyToken."""
+
+    def testExecuteWithToken(self):
+      c = self._NewComputation()
+      ops.Mul(
+          ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], np.float32)),
+          ops.Constant(c, np.array([-1.2, 2, -2, -3], np.float32)))
+      compiled_c = self.backend.compile(c.build())
+      results, token = compiled_c.execute_with_token([])
+      token.block_until_ready()
+      self.assertLen(results, 1)
+      np.testing.assert_allclose(
+          results[0].to_py(), np.float32([-3, 6.6, 2.4, -2.1]), rtol=3e-3)
+
+    def testExecuteShardedOnLocalDevicesWithTokens(self):
+      c = self._NewComputation()
+      ops.Mul(
+          ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], np.float32)),
+          ops.Constant(c, np.array([-1.2, 2, -2, -3], np.float32)))
+      num_replicas = 1
+      options = xla_client.CompileOptions()
+      options.num_replicas = num_replicas
+      compiled_c = self.backend.compile(c.build(), compile_options=options)
+      results, sharded_token = compiled_c.execute_sharded_on_local_devices_with_tokens(
+          [])
+      sharded_token.block_until_ready()
+      self.assertLen(results, 1)
+      self.assertLen(results[0], 1)
+      np.testing.assert_allclose(
+          results[0][0].to_py(), np.float32([-3, 6.6, 2.4, -2.1]), rtol=3e-3)
+
+  tests.append(TokenTest)
+
+  class HostCallbackTest(ComputationTest):
+    """Tests related to HostCallback."""
+
+    @unittest.skipIf(not tfrt_tpu, "not implemented")
+    def testHostCallback(self):
+
+      c = self._NewComputation()
+      token = ops.CreateToken(c)
+
+      frontend_attributes = xla_client._xla.FrontendAttributes()
+      frontend_attributes["_xla_host_transfer_rendezvous"] = "undef"
+      frontend_attributes["_xla_host_transfer_original_type"] = "u32"
+      frontend_attributes["_xla_host_transfer_is_lower_bits"] = "false"
+      frontend_attributes["_xla_host_transfer_handler_name"] = "undef"
+      c.set_frontend_attributes(frontend_attributes)
+
+      send_channel_handle = self.backend.create_channel_handle()
+      send_channel_handle.type = (
+          xla_client._xla.ChannelHandle_ChannelType.DEVICE_TO_HOST)
+      send_channel_handle.handle = 1
+      ops.SendToHost(
+          ops.Constant(c, np.float32(1.25)),
+          token,
+          shape_with_layout=xla_client.Shape.scalar_shape(np.dtype(np.float32)),
+          handle=send_channel_handle)
+
+      recv_channel_handle = self.backend.create_channel_handle()
+      recv_channel_handle.type = (
+          xla_client._xla.ChannelHandle_ChannelType.HOST_TO_DEVICE)
+      recv_channel_handle.handle = 2
+      data = ops.RecvFromHost(
+          token,
+          shape=xla_client.Shape.scalar_shape(np.dtype(np.float32)),
+          handle=recv_channel_handle)
+      ops.GetTupleElement(data, 0)
+
+      def Identity(x):
+        return (x,)
+
+      host_callback = self.backend.make_python_callback_from_host_send_and_recv(
+          Identity,
+          operand_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.float32))],
+          result_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.float32))],
+          send_channel_ids=[1],
+          recv_channel_ids=[2])
+
+      compiled_c = self.backend.compile(
+          c.build(), host_callbacks=[host_callback])
+      c.clear_frontend_attributes()
+
+      results = compiled_c.execute([])
+      self.assertLen(results, 1)
+
+      np.testing.assert_equal(results[0].to_py(), np.float32(1.25))
+
+  tests.append(HostCallbackTest)
+
+  class HostCallbackMultiReplicaTest(ComputationTest):
+    """Tests related to HostCallback for multi-replica execution."""
+
+    @unittest.skipIf(not tfrt_tpu, "not implemented")
+    def testHostCallbackMultiReplica(self):
+
+      c = self._NewComputation()
+      token = ops.CreateToken(c)
+
+      frontend_attributes = xla_client._xla.FrontendAttributes()
+      frontend_attributes["_xla_host_transfer_rendezvous"] = "undef"
+      frontend_attributes["_xla_host_transfer_original_type"] = "u32"
+      frontend_attributes["_xla_host_transfer_is_lower_bits"] = "false"
+      frontend_attributes["_xla_host_transfer_handler_name"] = "undef"
+      c.set_frontend_attributes(frontend_attributes)
+
+      send_channel_handle = self.backend.create_channel_handle()
+      send_channel_handle.type = (
+          xla_client._xla.ChannelHandle_ChannelType.DEVICE_TO_HOST)
+      send_channel_handle.handle = 1
+      ops.SendToHost(
+          ops.ReplicaId(c),
+          token,
+          shape_with_layout=xla_client.Shape.scalar_shape(np.dtype(np.uint32)),
+          handle=send_channel_handle)
+
+      recv_channel_handle = self.backend.create_channel_handle()
+      recv_channel_handle.type = (
+          xla_client._xla.ChannelHandle_ChannelType.HOST_TO_DEVICE)
+      recv_channel_handle.handle = 2
+      data = ops.RecvFromHost(
+          token,
+          shape=xla_client.Shape.scalar_shape(np.dtype(np.uint32)),
+          handle=recv_channel_handle)
+      ops.GetTupleElement(data, 0)
+
+      def Identity(x):
+        return (x,)
+
+      host_callback = self.backend.make_python_callback_from_host_send_and_recv(
+          Identity,
+          operand_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.uint32))],
+          result_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.uint32))],
+          send_channel_ids=[1],
+          recv_channel_ids=[2])
+
+      num_replicas = 2
+      options = xla_client.CompileOptions()
+      options.num_replicas = num_replicas
+      compiled_c = self.backend.compile(
+          c.build(), compile_options=options, host_callbacks=[host_callback])
+      c.clear_frontend_attributes()
+
+      results = compiled_c.execute_sharded_on_local_devices([])
+      self.assertLen(results, 1)
+      self.assertLen(results[0], num_replicas)
+
+      for i in range(num_replicas):
+        np.testing.assert_equal(results[0][i].to_py(), np.uint32(i))
+
+  tests.append(HostCallbackMultiReplicaTest)
+
+  class ExecutePortableTest(ComputationTest):
+
+    def testExecutePortable(self):
+      devices_by_kind = collections.defaultdict(list)
+      for device in self.backend.devices():
+        devices_by_kind[device.device_kind].append(device)
+      multi_devices = [d for d in devices_by_kind.values() if len(d) > 1]
+      if not multi_devices:
+        raise unittest.SkipTest("Test needs multiple identical devices")
+      devices = multi_devices[0]
+
+      c = self._NewComputation()
+      args = [
+          np.array(3, dtype=np.int32),
+          np.array([10, 15, -2, 7], dtype=np.int32)
+      ]
+      p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(args[0]))
+      p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(args[1]))
+      ops.Mul(p0, p1)
+      options = xla_client.CompileOptions()
+      options.compile_portable_executable = True
+      compiled_c = self.backend.compile(c.build(), compile_options=options)
+      for device in devices:
+        out, = compiled_c.execute(
+            [self.backend.buffer_from_pyval(a, device=device) for a in args],
+            device=device)
+        np.testing.assert_array_equal(out.to_py(), args[0] * args[1])
+
+  tests.append(ExecutePortableTest)
 
   return tests
 

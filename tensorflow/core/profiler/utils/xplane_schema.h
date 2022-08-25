@@ -127,8 +127,6 @@ enum HostEventType {
   kASBSQueueSchedule,
   // TFRT related.
   kTfrtModelRun,
-  // JAX related.
-  kExecuteOnLocalDevices,
   // GPU related.
   kKernelLaunch,
   kKernelExecute,
@@ -269,7 +267,16 @@ enum StatType {
   kTheoreticalOccupancyPct,
   kOccupancyMinGridSize,
   kOccupancySuggestedBlockSize,
-  kLastStatType = kOccupancySuggestedBlockSize,
+  // Aggregrated Stats
+  kSelfDurationPs,
+  kMinDurationPs,
+  kMaxIterationNum,
+  kDeviceType,
+  kUsesMegaCore,
+  kSymbolId,
+  kTfOpName,
+  kDmaStallDurationPs,
+  kLastStatType = kDmaStallDurationPs
 };
 
 inline std::string TpuPlaneName(int32_t device_ordinal) {

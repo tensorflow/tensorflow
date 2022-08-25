@@ -29,12 +29,14 @@ namespace xla {
 
 namespace gpu {
 
-StatusOr<bool> GpuSanitizeConstantNames::Run(HloModule* module) {
+StatusOr<bool> GpuSanitizeConstantNames::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
   NameUniquer instr_name_uniquer(/*separator=*/"_");
   // Collect the names used for the non-constant HLO instructions.+
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
       if (instr->opcode() == HloOpcode::kConstant) {
         continue;
@@ -51,7 +53,7 @@ StatusOr<bool> GpuSanitizeConstantNames::Run(HloModule* module) {
   // change the names of non-constant instructions, that is, if a constant HLO
   // conflicts with a non-constant HLO, we change the name of the constant HLO
   // even though the non-constant HLO comes after in the HLO module.
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
       if (instr->opcode() != HloOpcode::kConstant) {
         continue;

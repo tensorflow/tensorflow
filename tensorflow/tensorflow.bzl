@@ -40,7 +40,12 @@ load(
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_mkldnn_aarch64_acl",
+    "if_mkldnn_aarch64_acl_openmp",
     "if_mkldnn_openmp",
+)
+load(
+    "//third_party/compute_library:build_defs.bzl",
+    "if_enable_acl",
 )
 load(
     "//third_party/llvm_openmp:openmp.bzl",
@@ -56,7 +61,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.10.0"
+VERSION = "2.11.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -400,7 +405,9 @@ def tf_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
-        if_mkldnn_aarch64_acl(["-DENABLE_ONEDNN_OPENMP", "-DDNNL_AARCH64_USE_ACL=1"]) +
+        if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
+        if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
+        if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
@@ -1359,6 +1366,7 @@ def tf_cc_test(
                 "-lpthread",
                 "-lm",
             ],
+            clean_dep("//third_party/compute_library:build_with_acl"): ["-fopenmp"],
         }) + linkopts + _rpath_linkopts(name),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
@@ -1381,6 +1389,11 @@ def tf_cc_test(
         }),
         **kwargs
     )
+
+register_extension_info(
+    extension = tf_cc_test,
+    label_regex_for_dep = "{extension_name}",
+)
 
 def tf_gpu_cc_test(
         name,
@@ -2416,10 +2429,6 @@ def pywrap_tensorflow_macro(
 #    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
 def py_test(deps = [], data = [], kernels = [], exec_properties = None, **kwargs):
-    # Python version placeholder
-    if kwargs.get("python_version", None) == "PY3":
-        kwargs["tags"] = kwargs.get("tags", []) + ["no_oss_py2"]
-
     if not exec_properties:
         exec_properties = tf_exec_properties(kwargs)
 

@@ -31,6 +31,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_query_of_death.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
+#include "tensorflow/compiler/xla/runtime/arguments.h"
+#include "tensorflow/compiler/xla/runtime/async_runtime.h"
+#include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/runtime/types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -38,10 +44,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tfrt/jitrt/async_runtime.h"  // from @tf_runtime
-#include "tfrt/jitrt/async_runtime_api.h"  // from @tf_runtime
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
+#include "tfrt/jitrt/results.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
@@ -62,12 +66,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#if __cplusplus >= 201703L
 using ::std::any_cast;
-#else
-using ::llvm::any_cast;
-#endif
 
+using ::llvm::cast;
 using ::llvm::Expected;
 using ::llvm::MutableArrayRef;
 using ::llvm::None;
@@ -101,29 +102,34 @@ using ::tfrt::RequestContext;
 using ::tfrt::SharedContext;
 using ::tfrt::StrCat;
 using ::tfrt::StringAttribute;
-using ::tfrt::TaskFunction;
 
-using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
-using ::tfrt::jitrt::EigenThreadPoolAsyncTaskRunner;
-using ::tfrt::jitrt::Executable;
-using ::tfrt::jitrt::JitExecutable;
-using ::tfrt::jitrt::JitExecutableCache;
-using ::tfrt::jitrt::MemrefDesc;
-using ::tfrt::jitrt::OperandConstraint;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnErrors;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConversion;
-using ::tfrt::jitrt::SpecializationListener;
-using ::tfrt::jitrt::StaticReturnValueConverter;
+using ::tfrt::jitrt::StaticRemainingResultsConverter;
+
+using ::xla::runtime::ArgumentConstraint;
+using ::xla::runtime::ArgumentsRef;
+using ::xla::runtime::AsyncValuesCache;
+using ::xla::runtime::EigenThreadPoolAsyncTaskRunner;
+using ::xla::runtime::Executable;
+using ::xla::runtime::JitExecutable;
+using ::xla::runtime::MemrefDesc;
+using ::xla::runtime::SpecializationListener;
 
 using ::tensorflow::profiler::TraceMe;
 using ::tensorflow::profiler::TraceMeEncode;
 using ::tensorflow::tfd::KernelFallbackCompatRequestState;
 using ::tensorflow::tfrt_stub::FallbackTensor;
 using ::tensorflow::thread::ThreadPool;
+
+template <typename T>
+using KernelArgument = ::tfrt::Argument<T>;
+
+using JitExecutableCache = AsyncValuesCache<size_t, JitExecutable>;
 
 // -------------------------------------------------------------------------- //
 // Dedicated thread pool for running compilation tasks.
@@ -233,10 +239,10 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
 
   auto type_dispatch = [&](auto functor) {
     switch (desc.dtype()) {
-      case DType::I32:
+      case xla::PrimitiveType::S32:
         functor(int32_t{});
         break;
-      case DType::I64:
+      case xla::PrimitiveType::S64:
         functor(int64_t{});
         break;
       default:
@@ -333,11 +339,11 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // Custom runner for compiling specializations that schedules compilation task
   // into the dedicated thread pool and adds tracing.
   auto runner = [kernel_info](size_t specialization,
-                              ArrayRef<OperandConstraint> constraints,
-                              ArrayRef<MemrefDesc> operands,
-                              TaskFunction compile,
+                              ArrayRef<ArgumentConstraint> constraints,
+                              ArgumentsRef arguments,
+                              JitExecutable::CompilationTask compile,
                               JitExecutable::UserData user_data) {
-    assert(operands.size() == constraints.size());
+    assert(arguments.size() == constraints.size());
 
     // Get the context of the request that triggered specialization compilation.
     RequestContext* req_ctx = any_cast<RequestContext*>(user_data);
@@ -347,17 +353,18 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // because operands lifetime is shorter than the compilation task.
     using SpecializationArg = std::pair<std::string, std::string>;
     llvm::SmallVector<SpecializationArg> args;
-    args.reserve(operands.size());
+    args.reserve(arguments.size());
 
     // Trace types of all operands of the specialization.
-    for (size_t i = 0; i < operands.size(); ++i)
-      args.emplace_back(StrCat("%arg", i, " type"), AsTensorType(operands[i]));
+    for (size_t i = 0; i < arguments.size(); ++i)
+      args.emplace_back(StrCat("%arg", i, " type"),
+                        AsTensorType(cast<MemrefDesc>(arguments[i])));
 
     // Trace content of all operands that require value specializations.
     for (size_t i = 0; i < constraints.size(); ++i) {
-      if (constraints[i] != OperandConstraint::kValue) continue;
+      if (constraints[i] != ArgumentConstraint::kValue) continue;
       args.emplace_back(StrCat("%arg", i, " value"),
-                        AsTensorContent(operands[i]));
+                        AsTensorContent(cast<MemrefDesc>(arguments[i])));
     }
 
     // Schedule specialization compilation task into the dedicated thread pool.
@@ -433,19 +440,19 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
         GetJitRtFlags().cost_driven_async_parallel_for;
 
     // Options for the JitRt JitExecutable compilation.
-    CompilationOptions opts;
+    JitExecutable::Options opts;
     opts.specialization = GetJitRtFlags().always_specialize
-                              ? CompilationOptions::Specialization::kAlways
-                              : CompilationOptions::Specialization::kEnabled;
+                              ? JitExecutable::Specialization::kAlways
+                              : JitExecutable::Specialization::kEnabled;
 
     // Register dialects and interfaces required for the compilation pipeline.
-    opts.register_dialects = [](mlir::DialectRegistry& registry) {
+    opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
       mlir::RegisterAllTensorFlowDialects(registry);
       RegisterDefaultJitRtDialects(registry);
     };
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
-    opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
+    opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
       if (GetJitRtFlags().enable_crash_reproducer)
         SetCrashReproducer(pm, kCrashReproducerStdErr);
 
@@ -465,7 +472,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     };
 
     // Register a custom pipeline to propagate specialization information.
-    opts.create_specialization_pipeline = [=](mlir::PassManager& pm) {
+    opts.compiler.create_specialization_pipeline = [=](mlir::PassManager& pm) {
       if (GetJitRtFlags().enable_crash_reproducer)
         SetCrashReproducer(pm, kCrashReproducerStdErr);
       CreateJitRtSpecializationPipeline(pm);
@@ -473,7 +480,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.
-    opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+    opts.compiler.calling_convention = xla::runtime::DefaultCallingConvention(
         mlir::bufferization::BufferizeTypeConverter());
 
     // Instantiate new JitExecutable from the MLIR source.
@@ -535,7 +542,7 @@ static AsyncValueRef<Chain> Compile(StringAttribute device,
 // -------------------------------------------------------------------------- //
 
 static AsyncValueRef<Chain> WaitForCompilation(
-    Argument<Chain> chain, CompilationUnitAttribute kernel,
+    KernelArgument<Chain> chain, CompilationUnitAttribute kernel,
     const ExecutionContext& exec_ctx) {
   // Request context must be initialized with the tf_jitrt state.
   auto* state = exec_ctx.request_ctx()->GetDataIfExists<TfJitRtRequestState>();
@@ -556,7 +563,7 @@ static AsyncValueRef<Chain> WaitForCompilation(
 // -------------------------------------------------------------------------- //
 
 static AsyncValueRef<Chain> ResetCompilationThreadPool(
-    Argument<Chain> chain, const ExecutionContext& exec_ctx) {
+    KernelArgument<Chain> chain, const ExecutionContext& exec_ctx) {
   // Make sure that we reset the compilation thread pool only from a thread pool
   // (concurrent work queue) managed by the HostContext.
   return EnqueueWork(exec_ctx, [host = exec_ctx.host()]() -> Chain {
@@ -573,9 +580,29 @@ using ReturnTensorflowTensor =
     ReturnValueConversion<TensorflowConversionContext,
                           ReturnStridedMemref<ConvertTensor>>;
 
-using TensorflowReturnValueConverter =
-    StaticReturnValueConverter<TensorflowConversionContext,
-                               ReturnTensorflowTensor>;
+using TensorflowResultConverter =
+    StaticRemainingResultsConverter<TensorflowConversionContext,
+                                    ReturnTensorflowTensor>;
+
+static xla::PrimitiveType DataTypeToPrimitiveType(DataType data_type) {
+  switch (data_type) {
+    case tensorflow::DT_BOOL:
+      return xla::PRED;
+    case tensorflow::DT_INT8:
+      return xla::S8;
+    case tensorflow::DT_INT32:
+      return xla::S32;
+    case tensorflow::DT_INT64:
+      return xla::S64;
+    case tensorflow::DT_FLOAT:
+      return xla::F32;
+    case tensorflow::DT_DOUBLE:
+      return xla::F64;
+    default:
+      LOG(FATAL) << "Unsupported Tensorflow data type: "  // Crash OK
+                 << DataTypeString(data_type);
+  }
+}
 
 static MemrefDesc ConvertTensorToMemrefDesc(const tensorflow::Tensor& tensor) {
   // Fills memref sizes and strides with a tensor shape;
@@ -590,7 +617,7 @@ static MemrefDesc ConvertTensorToMemrefDesc(const tensorflow::Tensor& tensor) {
     }
   };
 
-  return MemrefDesc(tensor.dims(), tfd::GetTfrtDtype(tensor.dtype()),
+  return MemrefDesc(tensor.dims(), DataTypeToPrimitiveType(tensor.dtype()),
                     const_cast<void*>(tensor.data()), 0, fill_desc);
 }
 
@@ -650,7 +677,7 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
         "tf_jitrt.Execute",
         {{"id", id},
          {"executable", name},
-         {"specialization", !executable.specialization().hasValue()
+         {"specialization", !executable.specialization().has_value()
                                 ? "default"
                                 : std::to_string(*executable.specialization())},
          {"time_to_compile_ms", executable.time_to_compile().count()}});
@@ -666,7 +693,7 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
   for (auto& t : operands)
     ctx.runtime_tensors.insert({t.tensor().data(), &t.tensor()});
 
-  TensorflowReturnValueConverter converter(results, ctx);
+  TensorflowResultConverter converter(results, ctx);
 
   // Get the worker threads from the execution context.
   Expected<Eigen::ThreadPoolInterface*> worker_threads =
@@ -680,7 +707,6 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
 
   Executable::ExecuteOpts opts;
   opts.async_task_runner = &async_task_runner;
-  opts.kernel_context = &ctx;
 
   // Execution error automatically forwarded to all results, we only need to
   // notify the HostContext to emit the diagnostics for the kernel invocation.

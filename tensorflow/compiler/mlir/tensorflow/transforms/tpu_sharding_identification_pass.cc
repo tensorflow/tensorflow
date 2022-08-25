@@ -312,6 +312,10 @@ llvm::Optional<StringRef> GetXlaShardingFromRetval(Value value) {
     if (auto sharding = llvm::dyn_cast_or_null<TF::XlaShardingOp>(def))
       return sharding._XlaSharding();
 
+    if (auto sharding = def->getAttrOfType<StringAttr>("_XlaSharding")) {
+      return sharding.strref();
+    }
+
     if (  // Cast, real/imag, etc.
         def->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>() ||
         // Exp, ceil, etc.

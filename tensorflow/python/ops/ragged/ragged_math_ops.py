@@ -699,11 +699,19 @@ def reduce_variance(input_tensor: ragged_tensor.Ragged,
                     name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
   with ops.name_scope(name, 'RaggedReduceVariance', [input_tensor, axis]):
+    input_tensor = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        input_tensor, name='input_tensor')
+    if input_tensor.dtype.is_complex:
+      raise ValueError(
+          'reduce_variance is not supported for RaggedTensors with complex dtypes.'
+      )
     square_of_input = math_ops.square(input_tensor)
     mean_of_square = reduce_mean(square_of_input, axis=axis, keepdims=keepdims)
     mean = reduce_mean(input_tensor, axis=axis, keepdims=keepdims)
     square_of_mean = math_ops.square(mean)
-    return mean_of_square - square_of_mean
+    # Note: the above method of computing variance is not numerically stable,
+    # and can result in negative variances.  Here we clip to >= 0.
+    return math_ops.maximum(mean_of_square - square_of_mean, 0)
 
 
 @dispatch.dispatch_for_api(math_ops.reduce_std)
@@ -1109,6 +1117,23 @@ def dropout_v2(x: ragged_tensor.Ragged,
     x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
     return x.with_flat_values(
         nn_ops.dropout_v2(x.flat_values, rate=rate, seed=seed))
+
+
+@dispatch.dispatch_for_api(nn_ops.stateless_dropout)
+def stateless_dropout(x: ragged_tensor.Ragged,
+                      rate,
+                      seed,
+                      rng_alg=None,
+                      noise_shape=None,
+                      name=None):
+  """Ragged dispatch target for tf.nn.experimental.stateless_dropout."""
+  if noise_shape is not None:
+    raise ValueError('noise_shape is not supported yet for RaggedTensor x')
+  with ops.name_scope(name, 'RaggedNNStatelessDropout', [x, rate]):
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
+    return x.with_flat_values(
+        nn_ops.stateless_dropout(
+            x.flat_values, rate=rate, seed=seed, rng_alg=rng_alg))
 
 
 #===============================================================================

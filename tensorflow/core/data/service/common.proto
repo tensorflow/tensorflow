@@ -26,7 +26,7 @@ message TaskDef {
     DatasetDef dataset_def = 1;
     string path = 2;
   }
-  int64 dataset_id = 3;
+  string dataset_id = 3;
   int64 task_id = 4;
   int64 iteration_id = 5;
   // In distributed epoch processing mode, we use one split provider for each

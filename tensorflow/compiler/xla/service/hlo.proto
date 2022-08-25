@@ -90,7 +90,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 79
+// Next ID: 80
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -332,6 +332,11 @@ message HloInstructionProto {
   // async start, async done, and zero or more async update operations.
   // Negative async_group_id is equivalent to no async group id.
   int64 async_group_id = 78;
+
+  // Represents a unique execution thread name for one or more async groups.
+  // Each HLO module may contain a main thread and one or more parallel threads.
+  // Empty async_execution_thread is equivalent to main thread.
+  string async_execution_thread = 79;
 }
 
 // Serialization of HloComputation.
@@ -359,6 +364,9 @@ message HloComputationProto {
   // to determine whether they are a fusion in CreateFromProto since the
   // parent fusion_instruction_ may get removed and be nullptr.
   bool is_fusion_computation = 7;
+
+  // The name of execution thread this computation belongs to.
+  string execution_thread = 8;
 }
 
 // Serialization of an HLO schedule. An HLO schedule contains a total order of
@@ -483,6 +491,9 @@ message HloModuleProto {
 
   repeated xla.OpSharding spmd_parameters_shardings = 14;
 
+  // Uses AutoSharding pass or not.
+  bool use_auto_spmd_partitioning = 16;
+
   // The type of optimization profile in use for module-level optimizations.
   enum ProfileType {
     INVALID = 0;
@@ -517,8 +528,10 @@ message LogicalBufferProto {
   message Location {
     // NOTE: module_name isn't necessary, since all LogicalBuffers are
     // associated with a single HloModule.
-    string computation_name = 1;
-    string instruction_name = 2;
+    // TODO(b/239098765): Remove instruction_name and computation_name.
+    string computation_name = 1 [deprecated = true];
+    string instruction_name = 2 [deprecated = true];
+    int64 instruction_id = 4;
     repeated int64 shape_index = 3;
   }
 
@@ -736,14 +749,24 @@ message EntryFunctionAttributes {
   string result_xla_shape = 2;
 }
 
-// Encodes the underlying BEF executable for GpuExecutable.
-message GpuBefExecutableProto {
+// Encodes the underlying JitRt executable compiled from the XLA module.
+message JitRtExecutableProto {
   HloModuleProto hlo_module_proto = 1;
 
-  // Executable serialized in Binary Executable Format:
-  // https://github.com/tensorflow/runtime/blob/master/documents/binary_executable_format.md
-  bytes bef = 2;
+  // XLA-specific attributes of the executable's entry function.
+  EntryFunctionAttributes entry_func_attrs = 2;
 
-  // XLA-specific attributes of the executable's (BEF) entry function.
-  EntryFunctionAttributes entry_func_attrs = 3;
+  // TODO(b/232263665)): We need to know the TargetMachine this executable was
+  // compiled for, otherwise we can accidentally use illegal instrauctions (e.g.
+  // use AVX512 when it's not available).
+
+  // TODO(b/232263665)): Serialized executable has to know what APIs it has to
+  // be linked with, including the version. For example Gpu executable must be
+  // linked with a runtime layer that abstracts over CUDA.
+
+  // Serialized object file compiled from the XLA module.
+  bytes obj_file = 3;
+
+  // Serialized MLIR module corresponding to compiled object file.
+  string mlir_module = 4;
 }

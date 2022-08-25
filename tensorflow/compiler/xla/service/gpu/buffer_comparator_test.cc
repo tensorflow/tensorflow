@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
 namespace gpu {
@@ -56,8 +56,7 @@ class BufferComparatorTest : public testing::Test {
             primitive_util::NativeToPrimitiveType<ElementType>(),
             {static_cast<int64_t>(lhs_buffer->ElementCount())}),
         HloModuleConfig());
-    return comparator.CompareEqual(&stream, *lhs_buffer, *rhs_buffer)
-        .ConsumeValueOrDie();
+    return comparator.CompareEqual(&stream, *lhs_buffer, *rhs_buffer).value();
   }
 
   // Take floats only for convenience. Still uses ElementType internally.

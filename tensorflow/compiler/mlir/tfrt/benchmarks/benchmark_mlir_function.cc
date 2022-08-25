@@ -39,11 +39,12 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 
-using ::tfrt::jitrt::Executable;
-using ::tfrt::jitrt::HostContextAsyncTaskRunner;
-using ::tfrt::jitrt::JitExecutable;
-using ::tfrt::jitrt::MemrefDesc;
-using ::tfrt::jitrt::ReturnValueConverter;
+using ::tfrt::jitrt::RemainingResultsConverter;
+
+using ::xla::runtime::Executable;
+using ::xla::runtime::HostContextAsyncTaskRunner;
+using ::xla::runtime::JitExecutable;
+using ::xla::runtime::MemrefDesc;
 
 // Returns random tensors generated based on the input specs.
 static llvm::SmallVector<Tensor> GetInputTensors(
@@ -132,7 +133,7 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
 
   // Free memory owned by the returned memrefs.
   ResultConversionCtx result_ctx(std::move(input_ptrs));
-  ReturnValueConverter<ResultConversionCtx> converter(results, result_ctx);
+  RemainingResultsConverter<ResultConversionCtx> converter(results, result_ctx);
   converter.AddConversion(FreeReturnedMemref);
 
   // Initialize call frame with MemrefDesc operands.

@@ -140,7 +140,6 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:resampling",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,7 +26,6 @@ limitations under the License.
 #include "grpcpp/support/channel_arguments.h"
 #include "grpcpp/support/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
@@ -74,7 +74,7 @@ Status DataServiceDispatcherClient::WorkerUpdate(
   return OkStatus();
 }
 
-Status DataServiceDispatcherClient::GetDatasetDef(int64_t dataset_id,
+Status DataServiceDispatcherClient::GetDatasetDef(const std::string& dataset_id,
                                                   DatasetDef& dataset_def) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetDatasetDefRequest req;
@@ -116,11 +116,15 @@ Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
 
 Status DataServiceDispatcherClient::RegisterDataset(
     const DatasetDef& dataset, const DataServiceMetadata& metadata,
-    int64_t& dataset_id) {
+    const std::optional<std::string>& requested_dataset_id,
+    std::string& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
   *req.mutable_dataset() = dataset;
   *req.mutable_metadata() = metadata;
+  if (requested_dataset_id.has_value()) {
+    req.set_dataset_id(*requested_dataset_id);
+  }
 
   GetOrRegisterDatasetResponse resp;
   grpc::ClientContext client_ctx;
@@ -133,9 +137,9 @@ Status DataServiceDispatcherClient::RegisterDataset(
 }
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
-    int64_t dataset_id, const ProcessingModeDef& processing_mode,
-    const absl::optional<std::string>& job_name,
-    absl::optional<int64_t> num_consumers, bool use_cross_trainer_cache,
+    const std::string& dataset_id, const ProcessingModeDef& processing_mode,
+    const std::optional<std::string>& job_name,
+    std::optional<int64_t> num_consumers, bool use_cross_trainer_cache,
     TargetWorkers target_workers, int64_t& job_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
@@ -246,7 +250,7 @@ Status DataServiceDispatcherClient::GetWorkers(
 }
 
 Status DataServiceDispatcherClient::GetDataServiceMetadata(
-    int64_t dataset_id, DataServiceMetadata& metadata) {
+    const std::string& dataset_id, DataServiceMetadata& metadata) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetDataServiceMetadataRequest req;
   req.set_dataset_id(dataset_id);
@@ -311,7 +315,8 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
         resp.version(), ", while the client is running version ",
         kDataServiceVersion,
         ". Please ensure that the client and server side are running the "
-        "same version of TensorFlow.");
+        "same version of TensorFlow. If you're running an MPM binary, make "
+        "sure the server is running an up-to-date MPM.");
   }
   return OkStatus();
 }

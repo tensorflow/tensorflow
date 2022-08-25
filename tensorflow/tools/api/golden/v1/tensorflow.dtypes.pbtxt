@@ -2,7 +2,7 @@ path: "tensorflow.dtypes"
 tf_module {
   member {
     name: "DType"
-    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DTypeMeta\'>"
   }
   member {
     name: "QUANTIZED_DTYPES"

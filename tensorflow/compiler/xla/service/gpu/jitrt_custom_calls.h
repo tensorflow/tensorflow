@@ -12,19 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_JITRT_CUSTOM_CALLS_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_JITRT_CUSTOM_CALLS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_XLA_RUNTIME_CUSTOM_CALLS_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_XLA_RUNTIME_CUSTOM_CALLS_H_
 
 #include <cstdint>
+#include <memory>
 #include <tuple>
 
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
+#include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/runtime/type_id.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tfrt/jitrt/custom_call.h"  // from @tf_runtime
-#include "tfrt/support/type_id.h"  // from @tf_runtime
 
 namespace xla {
 namespace gpu {
@@ -32,26 +34,104 @@ class JitRtKernelsCache;
 class JitRtGemmConfigCache;
 class JitRtCollectiveSupport;
 class JitRtAsyncCollectiveSupport;
+
+struct DotDimensionNumbers {
+  llvm::ArrayRef<int64_t> lhs_batch;
+  llvm::ArrayRef<int64_t> lhs_contract;
+  llvm::ArrayRef<int64_t> rhs_batch;
+  llvm::ArrayRef<int64_t> rhs_contract;
+};
+
+struct ConvDimensionNumbers {
+  int64_t input_batch_dim;
+  int64_t input_feature_dim;
+  llvm::ArrayRef<int64_t> input_spatial_dims;
+
+  int64_t kernel_in_feature_dim;
+  int64_t kernel_out_feature_dim;
+  llvm::ArrayRef<int64_t> kernel_spatial_dims;
+
+  int64_t output_batch_dim;
+  int64_t output_feature_dim;
+  llvm::ArrayRef<int64_t> output_spatial_dims;
+};
+
+struct ConvBackendConfig {
+  int64_t algorithm;
+  bool tensor_ops_enabled;
+  bool is_cudnn_frontend;
+  llvm::ArrayRef<int64_t> knob_ids;
+  llvm::ArrayRef<int64_t> knob_values;
+  llvm::ArrayRef<int64_t> operand_0_layout;
+  llvm::ArrayRef<int64_t> operand_1_layout;
+  llvm::ArrayRef<int64_t> result_layout;
+  int64_t workspace_size;
+};
 }  // namespace gpu
+}  // namespace xla
+
+namespace xla {
+namespace runtime {
+
+using llvm::ArrayRef;
+
+XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(stream_executor::dnn::ActivationMode);
+XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(stream_executor::fft::Type);
+XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(
+    stream_executor::cuda::BlasLt::Epilogue);
+
+XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
+    xla::gpu::DotDimensionNumbers,
+    XLA_RUNTIME_AGGREGATE_FIELDS("lhs_batch", "lhs_contract", "rhs_batch",
+                                 "rhs_contract"),
+    ArrayRef<int64_t>, ArrayRef<int64_t>, ArrayRef<int64_t>, ArrayRef<int64_t>);
+
+XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
+    xla::gpu::ConvDimensionNumbers,
+    XLA_RUNTIME_AGGREGATE_FIELDS("input_batch_dim", "input_feature_dim",
+                                 "input_spatial_dims", "kernel_in_feature_dim",
+                                 "kernel_out_feature_dim",
+                                 "kernel_spatial_dims", "output_batch_dim",
+                                 "output_feature_dim", "output_spatial_dims"),
+    int64_t, int64_t, ArrayRef<int64_t>, int64_t, int64_t, ArrayRef<int64_t>,
+    int64_t, int64_t, ArrayRef<int64_t>);
+
+XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
+    xla::gpu::ConvBackendConfig,
+    XLA_RUNTIME_AGGREGATE_FIELDS("algorithm", "tensor_ops_enabled",
+                                 "is_cudnn_frontend", "knob_ids", "knob_values",
+                                 "operand_0_layout", "operand_1_layout",
+                                 "result_layout", "workspace_size"),
+    int64_t, bool, bool, ArrayRef<int64_t>, ArrayRef<int64_t>,
+    ArrayRef<int64_t>, ArrayRef<int64_t>, ArrayRef<int64_t>, int64_t);
+
+}  // namespace runtime
 }  // namespace xla
 
 // Declare explicit dense type ids for all types passed to the custom calls
 // as a user data to generate template specializations for fast id lookup.
-TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
-                                    xla::gpu::JitRtKernelsCache);
-TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
-                                    xla::gpu::JitRtGemmConfigCache);
-TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
-                                    xla::gpu::JitRtCollectiveSupport);
-TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
-                                    xla::gpu::JitRtAsyncCollectiveSupport);
-TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
-                                    const xla::ServiceExecutableRunOptions);
-TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
-                                    const xla::DebugOptions);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                           xla::gpu::JitRtKernelsCache);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                           xla::gpu::JitRtGemmConfigCache);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                           xla::gpu::JitRtCollectiveSupport);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(
+    xla::runtime::CustomCall, xla::gpu::JitRtAsyncCollectiveSupport);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(
+    xla::runtime::CustomCall, const xla::ServiceExecutableRunOptions);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                           const xla::DebugOptions);
 
 namespace xla {
 namespace gpu {
+
+// Populate mapping from XLA (SE) enums/structs type id to symbol names.
+void PopulateXlaTypeIdNames(runtime::TypeIDNameRegistry& registry);
+
+// Populate encoding from LMHLO attributes to XLA(SE) enums and structs.
+void PopulateLmhloToXlaAttrEncoding(
+    runtime::CustomCallAttrEncodingSet& encoding);
 
 class JitRtKernelsCache {
  public:
@@ -138,9 +218,9 @@ class JitRtAsyncCollectiveSupport {
   llvm::SmallDenseMap<int64_t, se::Event> done_events_ ABSL_GUARDED_BY(mutex_);
 };
 
-tfrt::jitrt::DirectCustomCallLibrary JitRtGpuCustomCalls();
+xla::runtime::DirectCustomCallLibrary JitRtGpuCustomCalls();
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_JITRT_CUSTOM_CALLS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_XLA_RUNTIME_CUSTOM_CALLS_H_

@@ -28,6 +28,7 @@ import weakref
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python.checkpoint import checkpoint
+from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -36,6 +37,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1956,7 +1958,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     options = load_options.LoadOptions(experimental_io_device="/job:localhost")
     self.assertEqual("/job:localhost", options.experimental_io_device)
 
-  def test_load_custom_saveable_object(self, cycles):
+  def _custom_saveable_object(self, cycles):
     if context.is_tfrt_enabled():
       self.skipTest("Disable due to b/190539415.")
     root = autotrackable.AutoTrackable()
@@ -1975,6 +1977,19 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = cycle(root, cycles)
     self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
     self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
+
+    if not saveable_compat.force_checkpoint_conversion_enabled():
+      self.assertEqual({"table"},
+                       imported.table._self_saveable_object_factories.keys())
+
+  def test_load_custom_saveable_object(self, cycles):
+    self._custom_saveable_object(cycles)
+
+  def test_load_custom_saveable_object_ckpt_conversion(self, cycles):
+    # Tests custom saveable object with checkpoint conversion enabled (forces
+    # Trackable-based checkpoint implementation).
+    saveable_compat.force_checkpoint_conversion()
+    self._custom_saveable_object(cycles)
 
   def test_load_resource_with_dependency(self, cycles):
     # Test with StaticHashTable, which has a _initializer attribute that tracks
@@ -2546,6 +2561,53 @@ class DeferredInitModuleVariablesTest(test.TestCase):
         options=load_options.LoadOptions(experimental_skip_checkpoint=True))
     self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
                         [3, 1])
+
+
+class _TestModel(module.Module):
+
+  def __init__(self, rows, cols):
+    super().__init__()
+    self.rows = rows
+    self.cols = cols
+    self.table = None
+
+  def __call__(self, x):
+    with ops.device("/cpu:0"):
+      self.table = variables.Variable(
+          constant_op.constant(1., shape=[self.rows, self.cols]))
+      x = math_ops.matmul(self.table, x)
+      x = math_ops.reduce_sum(x, axis=0)
+    return x
+
+
+class SavedModelLoadMemoryTests(test.TestCase):
+
+  @test_util.run_gpu_only
+  def test_no_oom_loading_large_tenor(self):
+    if not config.get_soft_device_placement():
+      self.skipTest("This test only works for soft device placement is on")
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    ncols = 16
+    nrows = 32
+    model = _TestModel(rows=nrows, cols=ncols)
+    x = array_ops.zeros(shape=(ncols, 2), dtype=dtypes.float32)
+    y = model(x)
+    save.save(
+        model,
+        save_dir,
+        options=save_options.SaveOptions(
+            experimental_variable_policy=save_options.VariablePolicy
+            .SAVE_VARIABLE_DEVICES),
+    )
+    loaded_on_cpu = load.load(
+        export_dir=save_dir,
+        options=load_options.LoadOptions(
+            experimental_variable_policy=save_options.VariablePolicy
+            .SAVE_VARIABLE_DEVICES),
+    )
+    loaded_on_gpu = load.load(export_dir=save_dir)
+    self.assertTrue("CPU" in loaded_on_cpu.table.device)
+    self.assertTrue("GPU" in loaded_on_gpu.table.device)
 
 
 if __name__ == "__main__":

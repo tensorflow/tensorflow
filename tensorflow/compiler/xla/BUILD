@@ -8,6 +8,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -18,12 +19,14 @@ package_group(
     name = "friends",
     includes = ["//tensorflow:internal"],
     packages = [
-        "//tensorflow/compiler/...",
-        "//tensorflow/python/tpu/...",
+        # copybara:uncomment "//learning/infra/mira/...",
         "//third_party/auroraml/...",
         "//third_party/iree/...",
+        "//third_party/mlcompass/...",
         "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
+        "//tensorflow/compiler/...",
+        "//tensorflow/python/tpu/...",
     ],
 )
 
@@ -239,7 +242,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":status",
-        "//tensorflow/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/lib",
     ],
 )
 
@@ -260,6 +263,7 @@ cc_library(
         ":types",
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -384,8 +388,8 @@ cc_library(
     hdrs = ["sharding_op_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":status",
         ":status_macros",
-        ":util",
         "//tensorflow/compiler/xla/service:hlo_lexer",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -451,9 +455,9 @@ tf_cc_test(
     srcs = ["layout_util_test.cc"],
     deps = [
         ":shape_util",
-        ":test",
         ":test_helpers",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -961,6 +965,7 @@ cc_library(
         "debug_options_parsers.h",
     ],
     hdrs = ["debug_options_flags.h"],
+    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]),
     visibility = [":friends"],
     deps =
         [

@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 
 namespace mlir {
 namespace quant {
@@ -44,7 +44,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass();
 
 // Lifts the dynamic range quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsDRQPass();
+CreateLiftQuantizableSpotsAsFunctionsDRQPass(int min_num_elements_for_weights);
 
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.
@@ -57,7 +57,7 @@ CreateIssueIDsOfCustomAggregationOpsPass();
 
 // Inserts quantized function library.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
-    QuantizationMethod quantization_method);
+    QuantizationMethod quantization_method, const OpSet& op_set);
 
 // Inserts custom aggregation operators for the calibration procedure.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -67,7 +67,7 @@ CreateInsertCustomAggregationOpsPass();
 // pass runs, functions in the given graph will be replaced with their quantized
 // versions. By doing so, the quantization will be applied to the given input.
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
-    QuantizationMethod quantization_method);
+    QuantizationMethod quantization_method, OpSet target_opset = OpSet::TF);
 
 // Converts dequantize-(quantizable) call-quantize pattern to a single call op
 // that has quantized input and output types. It is expected for this pass to
@@ -92,6 +92,20 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizeDRQPass();
 // Creates an instance of the PostQuantize pass, which will remove unnecessary
 // ops from the final quantized graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass();
+
+// Creates an instance of the ConvertTFQuantOpsToMHLOPass pass, which will
+// convert TF uniform quantized ops to the corresponding quantized MHLO ops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateConvertTFQuantOpsToMHLOPass();
+
+// Applies optimization patterns after quantization.
+std::unique_ptr<OperationPass<mlir::func::FuncOp>> CreateOptimizePass();
+
+// Creates an instance of the ReplaceCastHacksWithTFXLAOpsPass, which will
+// replace mixed-type convolution and matmul cast hacks by XLA Conv2DOp and
+// MatmulOp.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateReplaceCastHacksWithTFXLAOpsPass();
 
 }  // namespace quant
 }  // namespace mlir

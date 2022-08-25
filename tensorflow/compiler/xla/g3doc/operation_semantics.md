@@ -2261,7 +2261,7 @@ XlaComputation max;
   auto y = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "y");
   auto x = builder.Parameter(1, ShapeUtil::MakeShape(F32, {}), "x");
   builder.Max(y, x);
-  max = builder.Build().ConsumeValueOrDie();
+  max = builder.Build().value();
 }
 
 // Create a ReduceWindow computation with the max reduction computation.
@@ -2576,8 +2576,8 @@ The arguments of scatter should follow these constraints:
     `inserted_window_dims.size`.
 
 -   `scatter_dims_to_operand_dims.size` must be equal to
-    `scatter_indices`[`index_vector_dim`], and its values must be in the range
-    `[0, operand.rank)`.
+    `scatter_indices.shape.dims`[`index_vector_dim`], and its values must be in
+    the range `[0, operand.rank)`.
 
 For a given index `U` in each `updates` array, the corresponding index `I` in
 the corresponding `operands` array into which this update has to be applied is

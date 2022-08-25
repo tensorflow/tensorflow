@@ -582,6 +582,9 @@ class CompressingRematerializationTest : public RematerializationTestBase {
   // Swap the layout of the two most-minor dimensions if the second-minor
   // dimension is bigger than the most-minor dimension.
   static StatusOr<Shape> ChooseCompactLayoutForShape(const Shape& shape) {
+    if (shape.rank() != 2) {
+      return shape;
+    }
     Shape result = shape;
     Layout layout = result.layout();
     int64_t most_minor_index = layout.minor_to_major()[0];
@@ -695,6 +698,44 @@ ENTRY %entry {
       module->entry_computation()->GetInstructionWithName("reduce.1");
   EXPECT_THAT(reduce,
               op::Reduce(op::Copy(op::Copy(broadcast)), op::Constant()));
+}
+
+// Test a pathological case where the peak memory is largely due to a single
+// tensor (broadcast.0) and compressing it would actually increase the peak
+// memory.
+TEST_F(CompressingRematerializationTest, AvoidPathologicalCompress) {
+  const std::string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %constant = f32[] constant(0)
+  %broadcast.0 = f32[63,60]{1,0} broadcast(f32[] %param.0), dimensions={}
+  %broadcast.1 = f32[16,64]{1,0} broadcast(f32[] %param.0), dimensions={}
+  %reduce.0 = f32[] reduce(%broadcast.1, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %reduce.1 = f32[] reduce(%broadcast.0, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %add = f32[] add(f32[] %reduce.0, f32[] %reduce.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/16 * 1024, module.get()));
+  EXPECT_FALSE(changed);
+  HloInstruction* broadcast =
+      module->entry_computation()->GetInstructionWithName("broadcast.0");
+  HloInstruction* reduce =
+      module->entry_computation()->GetInstructionWithName("reduce.1");
+  EXPECT_THAT(reduce, op::Reduce(broadcast, op::Constant()));
 }
 
 TEST_F(CompressingRematerializationTest, AllUsersUseSameCopy) {

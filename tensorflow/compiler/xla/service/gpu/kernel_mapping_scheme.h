@@ -27,8 +27,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using Vector3 = std::array<int64_t, 3>;
-
 // Describes tiling used by the kernel.
 //
 // Used by reductions and 021 transpose algorithm. Both algorithms operate over
@@ -78,7 +76,9 @@ class TilingScheme {
                          absl::StrJoin(num_threads_, ", ")),
          absl::StrFormat("indexing_order = %s",
                          IndexingOrderToString(indexing_order_)),
-         absl::StrFormat("vector_size = %d", vector_size_)},
+         absl::StrFormat("vector_size = %d", vector_size_),
+         absl::StrFormat("thread_id_virtual_scaling = %d",
+                         thread_id_virtual_scaling_)},
         ", ");
   }
 

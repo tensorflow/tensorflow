@@ -66,7 +66,7 @@ tf_proto_library(
     srcs = ["autotuning.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/stream_executor:dnn_proto"],
+    protodeps = ["//tensorflow/compiler/xla/stream_executor:dnn_proto"],
 )
 
 tf_proto_library(
@@ -75,7 +75,7 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/stream_executor:dnn_proto",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
     ],
 )
 
@@ -183,6 +183,7 @@ exports_files(
         "transport_options.proto",
         "distributed_runtime_payloads.proto",
         "core_platform_payloads.proto",
+        "fingerprint.proto",
     ],
 )
 
@@ -216,6 +217,7 @@ tf_proto_library(
         "transport_options.proto",
         "distributed_runtime_payloads.proto",
         "core_platform_payloads.proto",
+        "fingerprint.proto",
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,

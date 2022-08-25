@@ -518,7 +518,7 @@ TEST_F(HloControlFlowFlatteningTest, Recv) {
                    .status());
   LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::CustomCall(), op::AfterAll()));
+              op::CustomCall(op::CustomCall()));
 }
 
 TEST_F(HloControlFlowFlatteningTest, RecvHostTransfer) {
@@ -549,7 +549,7 @@ TEST_F(HloControlFlowFlatteningTest, RecvHostTransfer) {
                    .status());
   LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::CustomCall(), op::AfterAll()));
+              op::CustomCall(op::CustomCall()));
 }
 
 TEST_F(HloControlFlowFlatteningTest, Send) {
@@ -578,7 +578,7 @@ TEST_F(HloControlFlowFlatteningTest, Send) {
                    .status());
   LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::CustomCall(op::Constant(), op::AfterAll()));
+              op::CustomCall(op::CustomCall()));
 }
 
 TEST_F(HloControlFlowFlatteningTest, SendHostTransfer) {
@@ -610,7 +610,7 @@ TEST_F(HloControlFlowFlatteningTest, SendHostTransfer) {
                    .status());
   LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::CustomCall(op::Constant(), op::AfterAll()));
+              op::CustomCall(op::CustomCall()));
 }
 
 TEST_F(HloControlFlowFlatteningTest, AllGatherStartAndDone) {

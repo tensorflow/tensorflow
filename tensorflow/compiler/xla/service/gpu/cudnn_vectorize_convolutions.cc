@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 
+#include <optional>
+#include <vector>
+
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_support_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/stream_executor/device_description.h"
-#include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
@@ -92,8 +92,8 @@ static StatusOr<HloComputation*> BuilderToHloComputation(
 static XlaOp SplitAtDim(XlaOp instr, int64_t dim, int64_t vect_size) {
   XlaBuilder& b = *instr.builder();
   Shape shape = b.GetShape(instr).ValueOrDie();
-  absl::InlinedVector<int64_t, 6> new_dims(shape.dimensions().begin(),
-                                           shape.dimensions().end());
+  DimensionVector new_dims(shape.dimensions().begin(),
+                           shape.dimensions().end());
   CHECK_EQ(new_dims[dim] % vect_size, 0);
   new_dims[dim] /= vect_size;
   new_dims.insert(new_dims.begin() + dim + 1, vect_size);
@@ -106,8 +106,8 @@ static XlaOp SplitAtDim(XlaOp instr, int64_t dim, int64_t vect_size) {
 // For example given shape=s8[10, 32, 20], dim=1, vect_size=4, returns
 // s8[10, 8, 4, 20].
 static Shape SplitShapeAtDim(Shape shape, int64_t dim, int64_t vect_size) {
-  absl::InlinedVector<int64_t, 5> new_dims(shape.dimensions().begin(),
-                                           shape.dimensions().end());
+  DimensionVector new_dims(shape.dimensions().begin(),
+                           shape.dimensions().end());
   CHECK_EQ(new_dims[dim] % vect_size, 0);
   new_dims[dim] /= vect_size;
   new_dims.insert(new_dims.begin() + dim + 1, vect_size);
@@ -119,7 +119,7 @@ static XlaOp MoveDim(XlaOp instr, int64_t src, int64_t dst) {
   XlaBuilder& b = *instr.builder();
   int64_t rank = b.GetShape(instr)->dimensions_size();
 
-  absl::InlinedVector<int64_t, 6> idxs(rank);
+  DimensionVector idxs(rank);
   absl::c_iota(idxs, 0);
   if (src < dst) {
     idxs.insert(idxs.begin() + dst, src);
@@ -309,6 +309,8 @@ static StatusOr<bool> TryRevectorizeConv(
   // We use XlaBuilder because it's a lot easier to get these tricky
   // reshape/transposes correct using that API.
   XlaBuilder b(absl::StrCat(conv->name(), ".revectorized"));
+  b.SetOpMetadata(conv->metadata());
+
   absl::InlinedVector<XlaOp, 4> new_operands = {
       RevectorizeInstr(Parameter(&b, 0, conv->operand(0)->shape(), "input"),
                        dnums.input_feature_dimension(), *input_vect_dim,
@@ -335,8 +337,8 @@ static StatusOr<bool> TryRevectorizeConv(
 
   // The custom-call returns a tuple (new_output_shape, u8[0]), where the second
   // value in the tuple represents the convolution's scratch memory.
-  absl::InlinedVector<int64_t, 5> new_output_dims(
-      output_shape.dimensions().begin(), output_shape.dimensions().end());
+  DimensionVector new_output_dims(output_shape.dimensions().begin(),
+                                  output_shape.dimensions().end());
   new_output_dims[dnums.output_feature_dimension()] /=
       (vect_size / output_vect_size);
   new_output_dims[*output_vect_dim] = vect_size;
@@ -433,6 +435,7 @@ static StatusOr<bool> TryVectorizeConv(
   // We use XlaBuilder because it's a lot easier to get these tricky
   // reshape/transposes correct using that API.
   XlaBuilder b(absl::StrCat(conv->name(), ".revectorized"));
+  b.SetOpMetadata(conv->metadata());
 
   absl::InlinedVector<XlaOp, 4> new_operands = {
       SplitAtDim(Parameter(&b, 0, conv->operand(0)->shape(), "input"),
@@ -492,9 +495,12 @@ static StatusOr<bool> TryVectorizeConv(
   return true;
 }
 
-StatusOr<bool> CudnnVectorizeConvolutions::Run(HloModule* module) {
+StatusOr<bool> CudnnVectorizeConvolutions::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
       // Try to (re)vectorize to int8x32 if this is an sm75+ GPU.  If we can't,
       // fall back to int8x4.

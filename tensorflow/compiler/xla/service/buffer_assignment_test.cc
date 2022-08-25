@@ -599,11 +599,13 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto colorer = [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
+  absl::flat_hash_map<const HloInstruction*, int> color_map;
+  auto colorer = [&](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
     int color = 0;
     for (HloValue::Id id = 0;
          id < alias_analysis->dataflow_analysis().values().size(); id++) {
       auto& value = alias_analysis->dataflow_analysis().GetValue(id);
+      color_map[value.defining_instruction()] = color;
       value.set_color(BufferValue::Color(color++));
     }
     return OkStatus();
@@ -632,11 +634,11 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
   GetAssignedOutputAllocation(*buffers, sub);
 
   // Check if the HLO instructions have the correct colors in the layout.
-  EXPECT_EQ(param0->shape().layout().memory_space(), 2);
-  EXPECT_EQ(param1->shape().layout().memory_space(), 3);
-  EXPECT_EQ(mul->shape().layout().memory_space(), 4);
-  EXPECT_EQ(add->shape().layout().memory_space(), 5);
-  EXPECT_EQ(sub->shape().layout().memory_space(), 6);
+  EXPECT_EQ(param0->shape().layout().memory_space(), color_map[param0]);
+  EXPECT_EQ(param1->shape().layout().memory_space(), color_map[param1]);
+  EXPECT_EQ(mul->shape().layout().memory_space(), color_map[mul]);
+  EXPECT_EQ(add->shape().layout().memory_space(), color_map[add]);
+  EXPECT_EQ(sub->shape().layout().memory_space(), color_map[sub]);
 }
 
 TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
@@ -733,7 +735,7 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(2, f32vec100_, "p2"));
   Shape f32vec100_color1 =
-      ShapeUtil::MakeShapeWithLayout(F32, {100}, {0}, {}, 0, 1);
+      ShapeUtil::MakeShapeWithLayout(F32, {100}, {0}, {}, {}, 0, 1);
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_color1, HloOpcode::kMultiply, broadcast, param0));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -792,7 +794,7 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   // HloValue and HloBuffer (i.e., a while loop).
   auto module = CreateNewVerifiedModule();
   Shape f32vec10_color1 =
-      ShapeUtil::MakeShapeWithLayout(F32, {10}, {0}, {}, 0, 1);
+      ShapeUtil::MakeShapeWithLayout(F32, {10}, {0}, {}, {}, 0, 1);
   Shape t_s32_f32v10_color1 =
       ShapeUtil::MakeTupleShape({s32_, f32vec10_color1});
 

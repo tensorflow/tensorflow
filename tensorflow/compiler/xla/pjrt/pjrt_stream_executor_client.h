@@ -48,12 +48,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/casts.h"
-#include "tensorflow/stream_executor/stream.h"
 
 namespace xla {
 
@@ -74,6 +74,10 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   void SetClient(PjRtClient* client) {
     CHECK(client_ == nullptr);
     client_ = client;
+    // We have to define debug_string_ and to_string_ here, because
+    // platform_name() requires client_ to be set.
+    debug_string_ = absl::StrCat(platform_name(), ":", id());
+    to_string_ = absl::StrCat(platform_name(), "(id=", id(), ")");
   }
 
   int process_index() const override { return process_index_; }
@@ -106,9 +110,9 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   absl::string_view device_kind() const override { return device_kind_; }
 
-  std::string ToString() const override;
+  absl::string_view ToString() const override;
 
-  std::string DebugString() const override;
+  absl::string_view DebugString() const override;
 
   Status TransferToInfeed(const LiteralSlice& literal) override;
 
@@ -133,6 +137,8 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   const int process_index_;
   const std::string device_kind_;
+  std::string debug_string_;
+  std::string to_string_;
   PjRtClient* client_ = nullptr;
 };
 
@@ -184,23 +190,23 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
 
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtExecutable& executable) const override {
+      const PjRtLoadedExecutable& executable) const override {
     return std::optional<std::string>();
   }
 
   StatusOr<std::string> SerializeExecutable(
-      const PjRtExecutable& executable) const override {
+      const PjRtLoadedExecutable& executable) const override {
     return Unimplemented("SerializeExecutable not implemented on %s",
                          platform_name());
   }
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized, CompileOptions options) override {
     return Unimplemented("DeserializeExecutable not implemented on %s",
                          platform_name());
@@ -265,7 +271,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-                addressable_devices_.at(device_ordinal))
+                LookupAddressableDevice(device_ordinal).ValueOrDie())
                 ->local_device_state();
   }
   LocalClient* client() const { return client_; }
@@ -324,7 +330,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   // `options` in-place.
   struct ExecutableExtras {
     std::shared_ptr<DeviceAssignment> device_assignment;
-    std::vector<PjRtExecutable::LogicalDeviceIds>
+    std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
         addressable_device_logical_ids;
     std::vector<PjRtDevice*> addressable_devices;
   };
@@ -701,7 +707,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by
 // the build options).
-class PjRtStreamExecutorExecutable : public PjRtExecutable {
+class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
  public:
   PjRtStreamExecutorExecutable(
       std::vector<std::unique_ptr<LocalExecutable>> executables,
@@ -750,21 +756,21 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
-  using PjRtExecutable::Execute;
+  using PjRtLoadedExecutable::Execute;
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
       std::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
       override;
 
-  using PjRtExecutable::ExecuteSharded;
+  using PjRtLoadedExecutable::ExecuteSharded;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
-  using PjRtExecutable::ExecutePortable;
+  using PjRtLoadedExecutable::ExecutePortable;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
@@ -774,6 +780,8 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   void Delete() override { executables_.clear(); }
 
   bool IsDeleted() override { return executables_.empty(); }
+
+  bool IsReturnedFutureSupported() const override { return true; }
 
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;

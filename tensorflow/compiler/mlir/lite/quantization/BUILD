@@ -33,8 +33,8 @@ td_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:QuantizationOpsTdFiles",
     ],
 )
 
@@ -76,6 +76,7 @@ cc_library(
     ],
     deps = [
         ":quantization_info_proto_cc",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
         "//tensorflow/compiler/mlir/tensorflow:location_utils",
         "//tensorflow/core:lib_proto_parsing",
@@ -105,6 +106,7 @@ cc_library(
     ],
     deps = [
         ":quantization_config",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/kernels/internal:tensor_utils",
@@ -179,6 +181,7 @@ cc_library(
     hdrs = ["device_target.h"],
     deps = [
         ":numerical_utils",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -194,6 +197,7 @@ cc_library(
     deps = [
         ":device_target",
         ":quantization_lib",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

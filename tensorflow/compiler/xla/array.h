@@ -253,11 +253,20 @@ class Array {
               &values_[0]);
   }
 
+  Array(Array<T>&& other)
+      : sizes_(std::move(other.sizes_)), values_(std::move(other.values_)) {}
+
   Array<T>& operator=(const Array<T>& other) {
     sizes_ = other.sizes_;
     values_.reset(new T[num_elements()]);
     std::copy(&other.values_[0], &other.values_[0] + num_elements(),
               &values_[0]);
+    return *this;
+  }
+
+  Array<T>& operator=(Array<T>&& other) {
+    sizes_ = std::move(other.sizes_);
+    values_ = std::move(other.values_);
     return *this;
   }
 
@@ -313,6 +322,16 @@ class Array {
     std::uniform_int_distribution<T> distribution(min_value, max_value);
     for (int64_t i = 0; i < num_elements(); ++i) {
       values_[i] = static_cast<T>(distribution(g));
+    }
+  }
+
+  // Fills the array with random uniform variables that's either True or False.
+  // Defined for boolean type.
+  void FillRandomBool(int seed = 12345) {
+    std::mt19937 g(seed);
+    std::uniform_int_distribution<int32_t> distribution(0, 1);
+    for (int64_t i = 0; i < num_elements(); ++i) {
+      values_[i] = static_cast<bool>(distribution(g));
     }
   }
 
@@ -514,6 +533,24 @@ class Array {
     int64_t old_num_elements = num_elements();
     sizes_ = std::vector<int64_t>(new_dimensions.begin(), new_dimensions.end());
     CHECK_EQ(num_elements(), old_num_elements);
+  }
+
+  // Performs a permutation of dimensions.
+  void TransposeDimensions(absl::Span<const int64_t> permutation) {
+    std::vector<int64_t> permuted_dims(permutation.size());
+    for (int64_t i = 0; i < permutation.size(); ++i) {
+      permuted_dims[i] = this->dim(permutation[i]);
+    }
+    Array<T> permuted(permuted_dims);
+    std::vector<int64_t> src_indices(sizes_.size(), -1);
+    permuted.Each([&](absl::Span<const int64_t> indices, int64_t* value) {
+      CHECK_EQ(sizes_.size(), indices.size());
+      for (int64_t i = 0; i < sizes_.size(); ++i) {
+        src_indices[permutation[i]] = indices[i];
+      }
+      *value = (*this)(src_indices);
+    });
+    *this = std::move(permuted);
   }
 
   template <typename H>

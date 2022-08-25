@@ -49,7 +49,7 @@ Status HandleDynamicStridedSliceInput(
     nvinfer1::Dims end_dims);
 
 Status ConvertStridedSliceHelper(
-    OpConverterParams* params, const TRT_TensorOrWeights& input,
+    const OpConverterParams* params, const TRT_TensorOrWeights& input,
     const PartialTensorShape& input_dims, const SliceDims& begin,
     const SliceDims& stride, const SliceDims& end,
     std::optional<nvinfer1::Dims> final_shape, std::optional<int> op_instance,

@@ -34,11 +34,11 @@ using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
-using ::tfrt::jitrt::Executable;
-using ::tfrt::jitrt::HostContextAsyncTaskRunner;
-using ::tfrt::jitrt::JitExecutable;
-using ::tfrt::jitrt::MemrefDesc;
-using ::tfrt::jitrt::ReturnValueConverter;
+using ::tfrt::jitrt::RemainingResultsConverter;
+using ::xla::runtime::Executable;
+using ::xla::runtime::HostContextAsyncTaskRunner;
+using ::xla::runtime::JitExecutable;
+using ::xla::runtime::MemrefDesc;
 
 // -------------------------------------------------------------------------- //
 // Run benchmark by compiling MLIR function using TFRT JitRt API.
@@ -86,7 +86,7 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
 
   // Free memory owned by the returned memrefs.
   ResultConversionCtx result_ctx(std::move(input_ptrs));
-  ReturnValueConverter<ResultConversionCtx> converter(results, result_ctx);
+  RemainingResultsConverter<ResultConversionCtx> converter(results, result_ctx);
   converter.AddConversion(FreeReturnedMemref);
 
   // Execute async tasks in the HostContext work queue.
@@ -104,7 +104,7 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   host->Await({executable->CopyRef()});
 
   CHECK(!executable->IsError())
-      << "Failed to get executable: " << StrCat(executable->GetError());
+      << "Failed to get executable: " << tfrt::StrCat(executable->GetError());
   CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
   // Initialize call frame with MemrefDesc operands.

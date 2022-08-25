@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <array>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -23,8 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/ops/tpu_embedding_shape_util.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
@@ -36,7 +35,7 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 using tensorflow::tpu::TPUEmbeddingConfiguration;
 
-REGISTER_OP("_ExecuteTPUEmbeddingPartitioner")
+REGISTER_OP("ExecuteTPUEmbeddingPartitioner")
     .Output("common_config: string")
     .Attr("config: string")
     .SetIsStateful()
@@ -52,59 +51,42 @@ REGISTER_OP("_ExecuteTPUEmbeddingPartitioner")
       }
       c->set_output(0, c->Scalar());
       return OkStatus();
-    })
-    .Doc(R"doc(
+    });
 
-An op that executes the TPUEmbedding partitioner on the central configuration
-device and computes the HBM size (in bytes) required for TPUEmbedding operation.
-
-common_config: A string-encoded tpu_embedding::CommonConfiguration proto
-containing metadata about the TPUEmbedding partitioner output and
-the HBM size (in bytes) required for operation.
-config: An TPUEmbeddingConfiguration proto serialized to a string,
-describing the desired TPUEmbedding configuration.
-)doc");
-
-REGISTER_OP("_ConfigureTPUEmbeddingMemory")
+REGISTER_OP("ConfigureTPUEmbeddingMemory")
     .Input("common_config: string")
-    .Output("task_host_config: string")
-    .Attr("config: string")
+    .Output("memory_config: string")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) -> Status {
-      string config_string;
-      TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
-      TPUEmbeddingConfiguration config;
-      TF_RET_CHECK(config.ParseFromString(config_string));
-      if (config.mode() == TPUEmbeddingConfiguration::UNSPECIFIED) {
-        return errors::InvalidArgument(
-            "TPUEmbeddingConfiguration.mode is INVALID.  Must be INFERENCE, "
-            "TRAINING, or BACKWARD_PASS_ONLY");
-      }
       TF_RET_CHECK(c->num_inputs() == 1);
       // Validate that all the input shape is compatible.
       ShapeHandle input(c->Scalar());
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
       c->set_output(0, c->Scalar());
       return OkStatus();
-    })
-    .Doc(R"doc(
+    });
 
-An op that configures the TPUEmbedding software on a host.
-
-common_config: A string-encoded tpu_embedding CommonConfiguration proto
-containing metadata about the TPUEmbedding partitioner output and the HBM
-size (in bytes) required for operation.
-task_host_config: A string-encoded tpu_embedding PerHostConfiguration proto
-containing metadata about the memory allocations reserved for TPUEmbedding.
-config: An TPUEmbeddingConfiguration proto serialized to a string,
-describing the desired TPUEmbedding configuration.
-)doc");
-
-REGISTER_OP("_ConfigureTPUEmbeddingHost")
-    .Input("common_config: string")
-    .Input("task_host_config: N * string")
-    .Output("host_config: string")
+REGISTER_OP("CollateTPUEmbeddingMemory")
+    .Input("memory_configs: N * string")
+    .Output("merged_memory_config: string")
     .Attr("N: int >= 1")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) -> Status {
+      TF_RET_CHECK(c->num_inputs() > 0);
+      ShapeHandle input(c->Scalar());
+      // Validate that all the inputs are compatible with the correct
+      // vector shape.
+      for (int i = 0; i < c->num_inputs(); ++i) {
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
+      }
+      c->set_output(0, c->Scalar());
+      return OkStatus();
+    });
+
+REGISTER_OP("ConfigureTPUEmbeddingHost")
+    .Input("common_config: string")
+    .Input("memory_config: string")
+    .Output("network_config: string")
     .Attr("config: string")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) -> Status {
@@ -117,27 +99,16 @@ REGISTER_OP("_ConfigureTPUEmbeddingHost")
             "TPUEmbeddingConfiguration.mode is INVALID.  Must be INFERENCE, "
             "TRAINING, or BACKWARD_PASS_ONLY");
       }
-      TF_RET_CHECK(c->num_inputs() > 0);
+      TF_RET_CHECK(c->num_inputs() == 2);
       ShapeHandle input(c->Scalar());
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), input, &input));
       c->set_output(0, c->Scalar());
       return OkStatus();
-    })
-    .Doc(R"doc(
+    });
 
-An op that configures the TPUEmbedding software on a host.
-
-common_config: A string-encoded tpu_embedding CommonConfiguration proto
-containing metadata about the TPUEmbedding partitioner output.
-task_host_config: A string-encoded tpu_embedding PerHostConfiguration proto from
-each host containing metadata about the memory allocations reserved for
-TPUEmbedding.
-config: An TPUEmbeddingConfiguration proto serialized to a string,
-describing the desired TPUEmbedding configuration.
-)doc");
-
-REGISTER_OP("_ConnectInterTPUEmbeddingCommunication")
-    .Input("host_config: N * string")
+REGISTER_OP("ConnectTPUEmbeddingHosts")
+    .Input("network_configs: N * string")
     .Attr("N: int >= 1")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) -> Status {
@@ -149,71 +120,53 @@ REGISTER_OP("_ConnectInterTPUEmbeddingCommunication")
         TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
       }
       return OkStatus();
-    })
-    .Doc(R"doc(
+    });
 
-An op that sets up communication between TPUEmbedding host software instances after
-ConfigureTPUEmbeddingHost has been called on each host.
-
-host_config: A string-encoded tpu_embedding PerHostConfiguration proto read
-from each host containing metadata about the RPC port used for communication
-with that host.
-)doc");
-
-REGISTER_OP("_FinalizeTPUEmbeddingSystemConfiguration")
-    .Input("host_config: N * string")
-    .Attr("N: int >= 1")
+REGISTER_OP("FinalizeTPUEmbedding")
+    .Input("common_config: string")
+    .Input("memory_config: string")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) -> Status {
-      ShapeHandle input(c->Scalar());
       // Validate that all the inputs are compatible with the correct
       // vector shape.
-      for (int i = 0; i < c->num_inputs(); ++i) {
-        TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
-      }
+      TF_RET_CHECK(c->num_inputs() == 2);
+      ShapeHandle input(c->Scalar());
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), input, &input));
       return OkStatus();
-    })
-    .Doc(R"doc(
-
-An op that finalizes the TPUEmbedding system configuration after
-ConfigureTPUEmbeddingHost has been called on each host.
-
-host_config: A string-encoded tpu_embedding PerHostConfiguration proto read
-from each host containing metadata about the HBM base byte address reserved for
-the TPUEmbedding on that host.
-)doc");
+    });
 
 // After configuring the TPU system (detailed in tpu_configuration_ops.cc),
-// you may, if desired, run _ExecuteTPUEmbeddingPartitioner,
-// _ConfigureTPUEmbeddingHost, _ConnectInterTPUEmbeddingCommunication and
-// _FinalizeTPUEmbeddingSystemConfiguration Ops to configure the TPUEmbeddings.
+// you may, if desired, run ExecuteTPUEmbeddingPartitioner,
+// ConfigureTPUEmbeddingHost, _ConnectInterTPUEmbeddingCommunication and
+// FinalizeTPUEmbedding Ops to configure the TPUEmbeddings.
 //
-// 1) The _ExecuteTPUEmbeddingPartitioner Op runs on TPU_SYSTEM of task 0. It
+// 1) The ExecuteTPUEmbeddingPartitioner Op runs on TPU_SYSTEM of task 0. It
 //    runs the embedding layer partitioner and computes the HBM size (in bytes)
 //    needed for TPUEmbedding operation. Note that this Op does not need to wait
 //    until the entire TPU system is configured, rather it only needs to wait
 //    till _ConfigureDistributedTPU completes. Also stores the HBM size and the
 //    embedding partitioner output in the system metadata where it can be used
 //    while compiling embedding Ops for TPU.
-// 2) The _ConfigureTPUEmbeddingMemory Op runs on TPU:0 of all tasks. Using the
-//    output of the _ExecuteTPUEmbeddingPartitioner Op, it allocates HBM memory,
+// 2) The ConfigureTPUEmbeddingMemory Op runs on TPU:0 of all tasks. Using the
+//    output of the ExecuteTPUEmbeddingPartitioner Op, it allocates HBM memory,
 //    initializes the TPUEmbeddingManager and store the HBM buffer
 //    configuration.
-// 3) The _ConfigureTPUEmbeddingHost Op runs on TPU:0 of all tasks. Using the
-//    output of the _ExecuteTPUEmbeddingPartitioner Op, it builds the program
+// 3) The ConfigureTPUEmbeddingHost Op runs on TPU:0 of all tasks. Using the
+//    output of the ExecuteTPUEmbeddingPartitioner Op, it builds the program
 //    that executes on the TPUEmbeddings, configures the TPUEmbedding hardware
 //    and sets up the TPUEmbedding host software. Using the output of the
-//    _ConfigureTPUEmbeddingMemory Op that it receives from all tasks, it
+//    ConfigureTPUEmbeddingMemory Op that it receives from all tasks, it
 //    checks that HBM segment sizes are equal, and combines each task's
 //    allocation info to create a global map of HBM base addresses. It uses that
 //    to initialize the TPUEmbeddingManager, and also provides the hostname:port
 //    for inter-TPUEmbedding agreement of minibatch sizing.
 // 4) The _ConnectInterTPUEmbeddingCommunication Op runs on TPU:0 of all tasks.
-//    It uses the hostname:port output from all _ConfigureTPUEmbeddingHost Ops
+//    It uses the hostname:port output from all ConfigureTPUEmbeddingHost Ops
 //    to form all-to-all connections between all tasks for inter-TPUEmbedding
 //    agreement.
-// 5) The _FinalizeTPUEmbeddingSystemConfiguration Op runs on TPU_SYSTEM of
-//    task 0. It takes as input the outputs from all _ConfigureTPUEmbeddingHost
+// 5) The FinalizeTPUEmbedding Op runs on TPU_SYSTEM of
+//    task 0. It takes as input the outputs from all ConfigureTPUEmbeddingHost
 //    Ops and validates that the HBM base address (in bytes) used for
 //    TPUEmbedding operation is the same. Also stores the common HBM base
 //    address in the system metadata where it can be used while compiling
@@ -448,12 +401,7 @@ REGISTER_OP("XlaRecvTPUEmbeddingActivations")
             "node.");
       }
       std::vector<TensorShapeProto> output_shapes;
-      if (config.feature_descriptor_size() == 0) {
-        TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
-      } else {
-        TF_RETURN_IF_ERROR(
-            ComputeOutputTensorShapesFromFeature(config, &output_shapes));
-      }
+      TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
       if (c->num_outputs() != output_shapes.size()) {
         return errors::InvalidArgument(absl::StrFormat(
             "Number of outputs: %d of the XlaRecvTPUEmbeddingActivations node "

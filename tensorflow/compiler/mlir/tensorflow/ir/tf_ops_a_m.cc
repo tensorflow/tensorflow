@@ -1190,7 +1190,7 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
 
   // Compute binary operands hoist parameters.
   auto hoist_params = GetHoistParams(op, axis, exceptions);
-  if (!hoist_params.hasValue()) return failure();
+  if (!hoist_params.has_value()) return failure();
 
   // Process `exceptions`: For each value there, synthesize a binary op of the
   // above kind, so that the concat hoisting optimization can still apply.
@@ -1539,7 +1539,8 @@ void ConstOp::build(OpBuilder &builder, OperationState &result,
     // we want to provide more flexibility by allowing attributes of scalar
     // types. But we need to wrap it up with ElementsAttr to construct
     // valid TensorFlow constants.
-    type = RankedTensorType::get(/*shape=*/{}, value.getType());
+    auto typed_attr = value.cast<TypedAttr>();
+    type = RankedTensorType::get(/*shape=*/{}, typed_attr.getType());
     return ConstOp::build(builder, result, DenseElementsAttr::get(type, value));
   }
   // TODO(jpienaar): support other TensorFlow specific types.
@@ -2406,7 +2407,7 @@ OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
 
   // If input operand's type's shape always satisfies the shape attribute, fold
   // it to input.
-  if (shape_constraint.hasValue() &&
+  if (shape_constraint.has_value() &&
       shape_constraint->size() == type.getShape().size()) {
     for (int i = 0; i < shape_constraint->size(); ++i) {
       if (!ShapedType::isDynamic(shape_constraint.getValue()[i]) &&

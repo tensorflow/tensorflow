@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "third_party/tensorrt/NvInferPlugin.h"
 
 // Implements the TensorRT API by forwarding to TensorRT loaded from the DSO.

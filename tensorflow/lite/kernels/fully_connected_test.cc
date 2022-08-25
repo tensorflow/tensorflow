@@ -234,7 +234,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
                  CreateFullyConnectedOptions(builder_, activation_func,
                                              weights_format, keep_num_dims)
                      .Union());
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED, registration);
     BuildInterpreter({GetShape(input_), GetShape(weights_),
                       (bias_ == kTfLiteOptionalTensor) ? std::vector<int>()
@@ -428,7 +428,7 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
                        .Union();
     SetBuiltinOp(BuiltinOperator_FULLY_CONNECTED,
                  BuiltinOptions_FullyConnectedOptions, options);
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED,
         ops::builtin::Register_FULLY_CONNECTED_PIE());
     BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
@@ -1579,7 +1579,7 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
                                     /*keep_num_dims=*/false,
                                     asymmetric_quantize_inputs)
             .Union());
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED, registration);
     std::vector<std::vector<int>> inputs = {GetShape(input_),
                                             GetShape(weights_)};

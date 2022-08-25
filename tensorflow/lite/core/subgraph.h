@@ -23,6 +23,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -58,7 +59,8 @@ class Subgraph {
            std::vector<std::unique_ptr<Subgraph>>* subgraphs,
            resource::ResourceMap* resources,
            resource::ResourceIDMap* resource_ids,
-           resource::InitializationStatusMap* initialization_status_map);
+           resource::InitializationStatusMap* initialization_status_map,
+           int subgraph_index = kInvalidSubgraphIndex);
 
   Subgraph(const Subgraph&) = delete;
 
@@ -236,6 +238,12 @@ class Subgraph {
   // AllocateTensors needs to be called before next invocation.
   TfLiteStatus ReleaseNonPersistentMemory();
 
+  // WARNING: Experimental interface, subject to change
+  // This API releases memory held by the given subgraph. This method is
+  // designed to release memory of control flow subgraphs.
+  // AllocateTensors needs to be called before next invocation.
+  TfLiteStatus ReleaseMemory();
+
   // Update allocations for all tensors. This will redim dependent tensors using
   // the input tensor dimensionality as given. This is relatively expensive.
   // If you know that your sizes are not changing, you need not call this.
@@ -312,8 +320,8 @@ class Subgraph {
       profiler_.reset(nullptr);
       context_.profiler = nullptr;
     } else {
-      profiler_.reset(
-          new SubgraphAwareProfiler(profiler, associated_subgraph_idx));
+      profiler_ = std::make_unique<SubgraphAwareProfiler>(
+          profiler, associated_subgraph_idx);
       context_.profiler = profiler_.get();
     }
   }
@@ -323,6 +331,14 @@ class Subgraph {
   // Returns a pointer to vector of subgraphs.
   // WARNING: This is an experimental API and subject to change.
   std::vector<std::unique_ptr<Subgraph>>* GetSubgraphs() { return subgraphs_; }
+
+  // Returns the location of this object within subgraphs_, or
+  // kInvalidSubgraphIndex if subgraphs_ is nullptr or *this is not
+  // represented *subgraphs_.
+  // WARNING: This is an experimental API and subject to
+  // change.
+  static constexpr int kInvalidSubgraphIndex = -1;
+  int GetSubgraphIndex() const { return subgraph_index_; }
 
   // True if all tensors in the graph has static size after calling
   // `AllocateTensors` function.
@@ -368,6 +384,17 @@ class Subgraph {
   // is linked to the program, calling this function will output memory usage
   // information about tenosrs and ops.
   void DumpMemoryPlannerDebugInfo() const;
+
+  typedef struct SubgraphAllocInfo {
+    size_t arena_size;
+    size_t arena_persist_size;
+    size_t dynamic_size;
+    size_t resource_size;
+  } SubgraphAllocInfo;
+
+  // WARNING: This is an experimental API and subject to change.
+  // Returns memory allocation status.
+  void GetMemoryAllocInfo(SubgraphAllocInfo* alloc_info) const;
 
   // WARNING: This is an experimental API and subject to change.
   // Set the given `InterpreterOptions` object.
@@ -474,42 +501,17 @@ class Subgraph {
   // 'buffer'. If registration_external is valid, use the 'init' callback from
   // that.
   void* OpInit(const TfLiteRegistration& op_reg, const char* buffer,
-               size_t length) {
-    if (op_reg.registration_external && op_reg.registration_external->init) {
-      return op_reg.registration_external->init(
-          reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer, length);
-    }
-    if (op_reg.init == nullptr) return nullptr;
-    return op_reg.init(&context_, buffer, length);
-  }
+               size_t length);
 
   // Let 'op_reg' release any memory it might have allocated via 'OpInit'.
   // If registration_external is valid, use the 'free' callback from that.
-  void OpFree(const TfLiteRegistration& op_reg, void* buffer) {
-    if (op_reg.registration_external && op_reg.registration_external->free &&
-        buffer) {
-      return op_reg.registration_external->free(
-          reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer);
-    }
-    if (op_reg.free == nullptr) return;
-    if (buffer) {
-      op_reg.free(&context_, buffer);
-    }
-  }
+  void OpFree(const TfLiteRegistration& op_reg, void* buffer);
 
   // Prepare the given 'node' for execution.
   TfLiteStatus OpPrepare(const TfLiteRegistration& op_reg, TfLiteNode* node);
 
   // Invoke the operator represented by 'node'.
-  TfLiteStatus OpInvoke(const TfLiteRegistration& op_reg, TfLiteNode* node) {
-    if (op_reg.registration_external && op_reg.registration_external->invoke) {
-      return op_reg.registration_external->invoke(
-          reinterpret_cast<TfLiteOpaqueContext*>(&context_),
-          reinterpret_cast<TfLiteOpaqueNode*>(node));
-    }
-    if (op_reg.invoke == nullptr) return kTfLiteError;
-    return op_reg.invoke(&context_, node);
-  }
+  TfLiteStatus OpInvoke(const TfLiteRegistration& op_reg, TfLiteNode* node);
 
   // Call OpPrepare() for as many ops as possible, allocating memory for their
   // tensors. If an op containing dynamic tensors is found, preparation will be
@@ -740,15 +742,15 @@ class Subgraph {
   // tensors if configured.
   void MaybeReleaseDynamicTensors(const TfLiteNode& node, size_t node_index);
 
-  // The state of the Interpreter.
+  // The state of the Subgraph.
   enum State {
-    // The interpreter isn't ready to be invoked.
+    // The Subgraph isn't ready to be invoked.
     // `AllocateTensor` need to be called to enter an invokable state.
     kStateUninvokable = 0,
-    // The interpreter is ready to be invoked.
+    // The Subgraph is ready to be invoked.
     kStateInvokable,
-    // The interpreter is ready to be invoked, and graph can't be further
-    // modified. The interpreter will enter this state when calling
+    // The Subgraph is ready to be invoked, and graph can't be further
+    // modified. The Subgraph will enter this state when calling
     // `ModifyGraphWithDelegate` and the delegate doesn't support dynamic
     // tensors.
     kStateInvokableAndImmutable,
@@ -853,6 +855,9 @@ class Subgraph {
 
   // A pointer to vector of subgraphs. The vector is owned by the interpreter.
   std::vector<std::unique_ptr<Subgraph>>* subgraphs_ = nullptr;
+
+  // Location of the pointer to *this in *subgraphs_, or kInvalidSubgraphIndex.
+  const int subgraph_index_;
 
   // True if not all tensors in the graph has static size after calling
   // `PrepareOpsStartingAt` function (which is called by the `AllocateTensors`

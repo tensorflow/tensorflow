@@ -176,7 +176,7 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
 
   // StatusOr<T>::value()
   //
-  // absl::StatusOr compatible versions of ValueOrDie and ConsumeValueOrDie.
+  // absl::StatusOr compatible versions of ValueOrDie.
   const T& value() const&;
   T& value() &;
   const T&& value() const&&;
@@ -230,9 +230,6 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   // value.
   const T* operator->() const;
   T* operator->();
-
-  // DEPRECATED: Prefer value().
-  T ConsumeValueOrDie() { return std::move(ValueOrDie()); }
 
   // Ignores any errors. This method does nothing except potentially suppress
   // complaints from any tools that are checking that errors are not dropped on

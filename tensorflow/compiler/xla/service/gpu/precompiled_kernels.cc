@@ -16,16 +16,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/precompiled_kernels.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
 
 #if TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 namespace stream_executor {
 namespace gpu {
 
@@ -113,7 +114,7 @@ class LazyKernel {
           se::CompileGpuAsmOrGetCached(stream_exec->device_ordinal(), ptx_,
                                        asm_opts_);
       if (compiled_ptx_or.ok()) {
-        compiled_ptx = compiled_ptx_or.ConsumeValueOrDie();
+        compiled_ptx = std::move(compiled_ptx_or).value();
       } else {
         static absl::once_flag logged_once;
         absl::call_once(logged_once, [&]() {

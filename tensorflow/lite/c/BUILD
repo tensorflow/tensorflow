@@ -43,19 +43,6 @@ tflite_cc_shared_object(
 )
 
 cc_library(
-    name = "c_api_internal",
-    hdrs = ["c_api_internal.h"],
-    copts = tflite_copts(),
-    visibility = ["//visibility:private"],
-    deps = [
-        ":common",
-        "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core/api",
-    ],
-)
-
-cc_library(
     name = "c_api",
     hdrs = [
         "c_api.h",
@@ -92,6 +79,7 @@ cc_library(
         ":c_api_internal",
         ":c_api_types",
         ":common",
+        ":common_internal",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:create_op_resolver_header",
         "//tensorflow/lite:framework",
@@ -135,6 +123,28 @@ cc_library(
     copts = tflite_copts(),
 )
 
+cc_library(
+    name = "c_api_internal",
+    hdrs = ["c_api_internal.h"],
+    copts = tflite_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":common",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core/api",
+    ],
+)
+
+filegroup(
+    name = "c_api_test_builtin_op_models",
+    testonly = 1,
+    srcs = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+    ],
+)
+
 cc_test(
     name = "c_api_test",
     size = "small",
@@ -158,6 +168,7 @@ cc_test(
 tflite_custom_c_library(
     name = "selectively_built_c_api_test_lib",
     testonly = 1,
+    models = [":c_api_test_builtin_op_models"],
     visibility = ["//visibility:private"],
 )
 
@@ -196,6 +207,19 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "c_api_signature_runner_test",
+    size = "small",
+    srcs = ["c_api_signature_runner_test.cc"],
+    copts = tflite_copts(),
+    data = ["//tensorflow/lite:testdata/multi_signatures.bin"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "common",
     srcs = ["common.cc"],
@@ -204,10 +228,7 @@ cc_library(
         "common.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + select({
-        "//tensorflow/lite:tensorflow_profiler_config": ["-DTF_LITE_TENSORFLOW_PROFILER"],
-        "//conditions:default": [],
-    }),
+    copts = tflite_copts(),
     deps = [
         ":c_api_types",
     ] + select({
@@ -218,6 +239,18 @@ cc_library(
         "//conditions:default": [],
     }),
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
+)
+
+cc_library(
+    name = "common_internal",
+    hdrs = ["common_internal.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = ["//tensorflow/lite:__pkg__"],
+    deps = [
+        ":c_api_types",
+        ":common",
+    ],
 )
 
 # For use with library targets that can't use relative paths.
@@ -238,6 +271,7 @@ filegroup(
         "c_api.cc",
         "c_api_experimental.cc",
         "c_api_opaque.cc",
+        "common_internal.h",
     ],
 )
 

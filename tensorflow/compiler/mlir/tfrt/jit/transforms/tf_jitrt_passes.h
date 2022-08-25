@@ -23,14 +23,14 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace tensorflow {
 
@@ -121,6 +121,15 @@ bool IsContiguousMemref(mlir::Value value);
 // ops with a single combiner are supported.
 mlir::FailureOr<mlir::Operation *> DetectCombiner(
     mlir::linalg::LinalgOp linalg_op);
+
+// Sets the attribute to the `op` that indicates that the op was transformed.
+void setTransformationAttr(mlir::OpBuilder &b, mlir::Operation *op);
+
+// Removes the attribute that indicates that it was transformed.
+void removeTransformationAttr(mlir::Operation *op);
+
+// Checks if `op` has the attribute that indicates that it was transformed.
+bool hasTransformationAttr(mlir::Operation *op);
 
 }  // namespace tensorflow
 

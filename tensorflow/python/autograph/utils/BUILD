@@ -38,7 +38,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/data/ops:dataset_ops",
-        "@six_archive//:six",
     ],
 )
 

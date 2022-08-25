@@ -18,8 +18,8 @@ include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 
-def NonOpaqueElementsAttr : ElementsAttrBase<
-  CPred<"!$_self.isa<OpaqueElementsAttr>()">,
+def DenseElementsAttr : ElementsAttrBase<
+  CPred<"$_self.isa<DenseElementsAttr>()">,
   "non-opaque constant tensor">;
 
 def CreateGatherNdOp : NativeCodeCall<
@@ -29,7 +29,7 @@ def CreateTFCastOpI32 : NativeCodeCall<
     "CreateTFCastOpI32(&$_builder, $_loc, $0, $1)">;
 
 // Convert to std constant for statically shaped, non-opaque constants.
-def ConvertTfConst : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (Arith_ConstantOp $value),
+def ConvertTfConst : Pat<(TF_ConstOp:$res DenseElementsAttr:$value), (Arith_ConstantOp $value),
           [(AnyStaticShapeTensor $res)]>;
 
 // Convert the legacy BatchNormWithGlobalNormalization to other ops.

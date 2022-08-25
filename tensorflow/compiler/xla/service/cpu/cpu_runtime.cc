@@ -25,6 +25,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -40,11 +41,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace se = ::stream_executor;
 
@@ -83,12 +84,20 @@ extern const char* const kEigenMatMulC128SymbolName =
     "__xla_cpu_runtime_EigenMatMulC128";
 extern const char* const kEigenMatMulS32SymbolName =
     "__xla_cpu_runtime_EigenMatMulS32";
+extern const char* const kEigenBatchMatMulF32SymbolName =
+    "__xla_cpu_runtime_EigenBatchMatMulF32";
 extern const char* const kMKLConv2DF32SymbolName =
     "__xla_cpu_runtime_MKLConv2DF32";
+extern const char* const kACLConv2DF32SymbolName =
+    "__xla_cpu_runtime_ACLConv2DF32";
 extern const char* const kMKLMatMulF32SymbolName =
     "__xla_cpu_runtime_MKLMatMulF32";
 extern const char* const kMKLMatMulF64SymbolName =
     "__xla_cpu_runtime_MKLMatMulF64";
+extern const char* const kACLMatMulF32SymbolName =
+    "__xla_cpu_runtime_ACLMatMulF32";
+extern const char* const kACLBatchMatMulF32SymbolName =
+    "__xla_cpu_runtime_ACLBatchMatMulF32";
 extern const char* const kMKLSingleThreadedMatMulF32SymbolName =
     "__xla_cpu_runtime_MKLSingleThreadedMatMulF32";
 extern const char* const kMKLSingleThreadedMatMulF64SymbolName =
@@ -451,7 +460,6 @@ class CpuCollectivePermuteRendezvous
       for (int p_idx = 0; p_idx < participants_.size(); p_idx++) {
         replica_idx_to_participant_idx[participants_[p_idx].replica_id] = p_idx;
       }
-
       for (auto& p : participants_) {
         for (int dest_replica : p.replica_ids_to_copy_to) {
           auto& dest_p = participants_[xla::FindOrDie(
@@ -827,17 +835,20 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
   absl::string_view source_target_pairs_serialized(
       static_cast<const char*>(source_target_pairs), source_target_pairs_size);
   auto pairs = absl::StrSplit(source_target_pairs_serialized, ',');
-  int32_t replica_id =
+  const xla::DeviceAssignment::LogicalID logical_id =
       run_options->device_assignment()
-          ->ReplicaIdForDevice(xla::GlobalDeviceId(device_ordinal))
+          ->LogicalIdForDevice(xla::GlobalDeviceId(device_ordinal))
           .ValueOrDie();
+  int32_t logical_device_id =
+      channel_id_present ? logical_id.computation_id : logical_id.replica_id;
+
   std::vector<int> copy_to;
   for (auto& p : pairs) {
     std::vector<std::string> mapping = absl::StrSplit(p, '=');
     CHECK_EQ(mapping.size(), 2);
     int from = std::stoi(mapping[0]);
     int to = std::stoi(mapping[1]);
-    if (from == replica_id) {
+    if (from == logical_device_id) {
       copy_to.push_back(to);
     }
   }
@@ -847,7 +858,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
 
   CollectivePermuteParticipantData participant(rendezvous_key, device_ordinal,
                                                run_options->stream());
-  participant.replica_id = replica_id;
+  participant.replica_id = logical_device_id;
   participant.source_data = se::DeviceMemoryBase(input_buffer, byte_size);
   participant.destination_data = se::DeviceMemoryBase(output_buffer, byte_size);
   participant.replica_ids_to_copy_to = copy_to;

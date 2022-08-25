@@ -589,7 +589,7 @@ TEST_F(LayoutAssignmentTest, TransposeIsBitcastFail) {
   LayoutUtil::ClearLayout(hlo->mutable_shape());
   EXPECT_DEATH(ShapeUtil::TransposeIsBitcast(hlo->operand(0)->shape(),
                                              hlo->shape(), hlo->dimensions()),
-               "LayoutUtil::HasLayout");
+               "has_layout");
 }
 
 // ReshapeIsBitcast shouldn't be called without layout information.
@@ -606,7 +606,7 @@ TEST_F(LayoutAssignmentTest, ReshapeIsBitcastFail) {
   LayoutUtil::ClearLayout(hlo->mutable_shape());
   EXPECT_DEATH(
       ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(), hlo->shape()),
-      "LayoutUtil::HasLayout");
+      "has_layout");
 }
 
 // Check that the computation below doesn't crash the compiler.

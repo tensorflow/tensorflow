@@ -51,7 +51,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this,
         name_utils::IteratorPrefix(TextLineDatasetOp::kDatasetType, prefix)});
   }
@@ -194,17 +194,17 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
           TranslateFileName(dataset()->filenames_[current_file_index_]),
           &file_));
       input_stream_ =
-          absl::make_unique<io::RandomAccessInputStream>(file_.get(), false);
+          std::make_unique<io::RandomAccessInputStream>(file_.get(), false);
 
       if (dataset()->use_compression_) {
-        zlib_input_stream_ = absl::make_unique<io::ZlibInputStream>(
+        zlib_input_stream_ = std::make_unique<io::ZlibInputStream>(
             input_stream_.get(), dataset()->options_.input_buffer_size,
             dataset()->options_.input_buffer_size, dataset()->options_);
-        buffered_input_stream_ = absl::make_unique<io::BufferedInputStream>(
+        buffered_input_stream_ = std::make_unique<io::BufferedInputStream>(
             zlib_input_stream_.get(), dataset()->options_.input_buffer_size,
             false);
       } else {
-        buffered_input_stream_ = absl::make_unique<io::BufferedInputStream>(
+        buffered_input_stream_ = std::make_unique<io::BufferedInputStream>(
             input_stream_.get(), dataset()->options_.input_buffer_size, false);
       }
       return OkStatus();

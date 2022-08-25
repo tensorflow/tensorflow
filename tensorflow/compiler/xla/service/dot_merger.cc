@@ -42,7 +42,7 @@ bool IsCanonicalDot(HloInstruction* dot) {
   // Checks that the given list is a permutation of [0, 1, ..., n].
   auto is_permutation_of_iota =
       [](const tensorflow::protobuf::RepeatedField<int64_t>& vals) {
-        absl::InlinedVector<int64_t, 8> copy(vals.begin(), vals.end());
+        DimensionVector copy(vals.begin(), vals.end());
         absl::c_sort(copy);
         for (int i = 0; i < copy.size(); i++) {
           if (copy[i] != i) {
@@ -168,13 +168,12 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
                           ? contracting_dim + 1
                           : contracting_dim - 1;
 
-  HloComputation* comp = a->parent();
   TF_ASSIGN_OR_RETURN(
       Shape concat_shape,
       ShapeInference::InferConcatOpShape(
           {&diff_op_a->shape(), &diff_op_b->shape()}, outer_dim));
   HloInstruction* concat_op =
-      comp->AddInstruction(HloInstruction::CreateConcatenate(
+      diff_op_a->AddInstruction(HloInstruction::CreateConcatenate(
           concat_shape, {diff_op_a, diff_op_b}, outer_dim));
 
   HloInstruction* dot_lhs = lhs_same ? shared_op : concat_op;
@@ -184,31 +183,35 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
       ShapeInference::InferDotOpShape(
           dot_lhs->shape(), dot_rhs->shape(), dnums,
           /*preferred_element_type=*/a->shape().element_type()));
-  HloInstruction* new_dot = comp->AddInstruction(HloInstruction::CreateDot(
+  HloInstruction* new_dot = a->AddInstruction(HloInstruction::CreateDot(
       new_dot_shape, dot_lhs, dot_rhs, dnums, a->precision_config()));
 
+  // We can't keep both. But one is better then none.
+  if (!a->metadata().op_name().empty()) {
+    new_dot->set_metadata(a->metadata());
+  } else if (!b->metadata().op_name().empty()) {
+    new_dot->set_metadata(b->metadata());
+  }
+
   // Slice the outputs.
-  absl::InlinedVector<int64_t, 6> start_indices(new_dot_shape.dimensions_size(),
-                                                0);
-  absl::InlinedVector<int64_t, 6> limit_indices(
-      new_dot_shape.dimensions().begin(), new_dot_shape.dimensions().end());
-  absl::InlinedVector<int64_t, 6> strides(new_dot_shape.dimensions_size(), 1);
+  DimensionVector start_indices(new_dot_shape.dimensions_size(), 0);
+  DimensionVector limit_indices(new_dot_shape.dimensions().begin(),
+                                new_dot_shape.dimensions().end());
+  DimensionVector strides(new_dot_shape.dimensions_size(), 1);
 
   int64_t slice_dim = new_dot_shape.dimensions_size() - (lhs_same ? 1 : 2);
   limit_indices[slice_dim] = a->shape().dimensions(slice_dim);
   // Important: We do RAUW, not ReplaceInstruction, because the old instruction
   // must live until the end of the pass.
-  HloInstruction* new_a = comp->AddInstruction(HloInstruction::CreateSlice(
+  HloInstruction* new_a = a->AddInstruction(HloInstruction::CreateSlice(
       a->shape(), new_dot, start_indices, limit_indices, strides));
   TF_RETURN_IF_ERROR(a->ReplaceAllUsesWith(new_a));
-  new_a->set_metadata(a->metadata());
 
   start_indices[slice_dim] = limit_indices[slice_dim];
   limit_indices[slice_dim] = new_dot_shape.dimensions(slice_dim);
-  HloInstruction* new_b = comp->AddInstruction(HloInstruction::CreateSlice(
+  HloInstruction* new_b = b->AddInstruction(HloInstruction::CreateSlice(
       b->shape(), new_dot, start_indices, limit_indices, strides));
   TF_RETURN_IF_ERROR(b->ReplaceAllUsesWith(new_b));
-  new_b->set_metadata(b->metadata());
 
   return new_dot;
 }
@@ -356,9 +359,12 @@ StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
 
 }  // anonymous namespace
 
-StatusOr<bool> DotMerger::Run(HloModule* module) {
+StatusOr<bool> DotMerger::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool changed_computation,
                         MergeDots(comp, max_size_to_merge_));
     changed |= changed_computation;

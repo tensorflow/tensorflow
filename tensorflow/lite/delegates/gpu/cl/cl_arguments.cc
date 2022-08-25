@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -23,9 +25,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
-#include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
-#include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
@@ -106,25 +106,7 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
     Buffer gpu_buffer;
     RETURN_IF_ERROR(
         gpu_buffer.CreateFromBufferDescriptor(*buffer_desc, context));
-    *result = absl::make_unique<Buffer>(std::move(gpu_buffer));
-    return absl::OkStatus();
-  }
-
-  const auto* texture_desc = dynamic_cast<const Texture2DDescriptor*>(desc);
-  if (texture_desc) {
-    Texture2D gpu_texture;
-    RETURN_IF_ERROR(
-        gpu_texture.CreateFromTexture2DDescriptor(*texture_desc, context));
-    *result = absl::make_unique<Texture2D>(std::move(gpu_texture));
-    return absl::OkStatus();
-  }
-
-  const auto* linear_desc = dynamic_cast<const TensorLinearDescriptor*>(desc);
-  if (linear_desc) {
-    LinearStorage gpu_storage;
-    RETURN_IF_ERROR(
-        gpu_storage.CreateFromTensorLinearDescriptor(*linear_desc, context));
-    *result = absl::make_unique<LinearStorage>(std::move(gpu_storage));
+    *result = std::make_unique<Buffer>(std::move(gpu_buffer));
     return absl::OkStatus();
   }
 
@@ -132,7 +114,7 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
   if (tensor_desc) {
     Tensor gpu_tensor;
     RETURN_IF_ERROR(gpu_tensor.CreateFromDescriptor(*tensor_desc, context));
-    *result = absl::make_unique<Tensor>(std::move(gpu_tensor));
+    *result = std::make_unique<Tensor>(std::move(gpu_tensor));
     return absl::OkStatus();
   }
 
@@ -452,10 +434,10 @@ absl::Status CLArguments::SetObjectRef(const std::string& name,
 
 absl::Status CLArguments::SetGPUResources(
     const std::string& name, const GPUResourcesWithValue& resources) {
-  for (const auto& r : resources.ints) {
+  for (const auto& r : resources.generic.ints) {
     RETURN_IF_ERROR(SetInt(absl::StrCat(name, "_", r.first), r.second));
   }
-  for (const auto& r : resources.floats) {
+  for (const auto& r : resources.generic.floats) {
     RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
   }
   for (const auto& r : resources.buffers) {
@@ -490,12 +472,16 @@ std::string CLArguments::GetListOfArgs() {
     for (const auto& attr : t.second.desc.attributes) {
       attributes += absl::StrCat("  __attribute__((", attr, "))");
     }
-    AppendArgument(
-        absl::StrCat(
-            MemoryTypeToCLType(t.second.desc.memory_type), " ",
-            ToCLDataType(t.second.desc.data_type, t.second.desc.element_size),
-            "* ", t.first, attributes),
-        &result);
+    std::string cl_type;
+    if (t.second.desc.data_type == DataType::BOOL) {
+      cl_type = ToCLDataType(DataType::UINT8, t.second.desc.element_size);
+    } else {
+      cl_type =
+          ToCLDataType(t.second.desc.data_type, t.second.desc.element_size);
+    }
+    AppendArgument(absl::StrCat(MemoryTypeToCLType(t.second.desc.memory_type),
+                                " ", cl_type, "* ", t.first, attributes),
+                   &result);
   }
   for (auto& t : image_buffers_) {
     AppendArgument(absl::StrCat(GetImageModifier(t.second.desc.access_type),

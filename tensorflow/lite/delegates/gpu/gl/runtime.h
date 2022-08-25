@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_RUNTIME_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_RUNTIME_H_
 
+#include <functional>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"

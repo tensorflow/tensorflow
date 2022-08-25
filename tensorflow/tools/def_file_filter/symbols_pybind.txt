@@ -32,7 +32,7 @@ tensorflow::IsBuiltWithNvcc
 tensorflow::GpuSupportsHalfMatMulAndConv
 tensorflow::IsMklEnabled
 
-[//tensorflow/stream_executor:stream_executor_pimpl] # stat_summarizer
+[//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl] # stat_summarizer
 stream_executor::StreamExecutor::EnablePeerAccessTo
 stream_executor::StreamExecutor::CanEnablePeerAccessTo
 
@@ -52,6 +52,7 @@ tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 [//tensorflow/python:bfloat16_lib] # bfloat16
 tensorflow::RegisterNumpyBfloat16
 tensorflow::Bfloat16Dtype
+tensorflow::Float8_E4M3B11Dtype
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
@@ -371,6 +372,9 @@ tensorflow::ProfilerSession::~ProfilerSession
 tensorflow::profiler::ProfilerServer::StartProfilerServer
 tensorflow::profiler::ProfilerServer::~ProfilerServer
 
+[//tensorflow/core/profiler/convert:hlo_to_tools_data_impl] # profiler
+tensorflow::profiler::ConvertHloProtoToToolData
+
 [//tensorflow/core/profiler/rpc/client:profiler_client_impl] # profiler
 tensorflow::profiler::ProfileGrpc
 tensorflow::profiler::NewSessionGrpc
@@ -418,8 +422,12 @@ tensorflow::metrics::SavedModelWriteApi
 tensorflow::metrics::SavedModelReadApi
 tensorflow::metrics::CheckpointReadDuration
 tensorflow::metrics::CheckpointWriteDuration
+tensorflow::metrics::AsyncCheckpointWriteDuration
 tensorflow::metrics::TrainingTimeSaved
 tensorflow::metrics::CheckpointSize
+
+[//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
+tensorflow::fingerprinting::CreateFingerprintDef
 
 
 [//tensorflow/compiler/jit:flags] # tfe
@@ -520,3 +528,4 @@ tensorflow::dtensor::Unpack
 tensorflow::dtensor::FetchLayout
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
+tensorflow::dtensor::GetFunctionCacheHitAndMissCount

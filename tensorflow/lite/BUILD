@@ -119,6 +119,7 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
     "core/subgraph.h",
     "graph_info.h",
     "interpreter_options.h",
+    "logger.h",
     "optional_debug_tools.h",
     "signature_runner.h",
 ]
@@ -159,6 +160,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "arena_planner_with_profiler",
+    testonly = True,
+    srcs = ["arena_planner.cc"],
+    hdrs = ["arena_planner.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings() + ["-DTF_LITE_TENSORFLOW_PROFILER"],
+    deps = [
+        ":graph_info",
+        ":memory_planner",
+        ":simple_memory_arena_with_profiler",
+        ":util",
+        "//tensorflow/lite/c:common",
+    ],
+)
+
 cc_test(
     name = "arena_planner_test",
     size = "small",
@@ -167,7 +184,7 @@ cc_test(
         "tflite_not_portable_android",
     ],
     deps = [
-        ":arena_planner",
+        ":arena_planner_with_profiler",
         ":graph_info",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/c:common",
@@ -250,9 +267,24 @@ cc_library(
     srcs = ["simple_memory_arena.cc"],
     hdrs = ["simple_memory_arena.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts_warnings(),
+    copts = tflite_copts() + tflite_copts_warnings(),
     deps = [
         ":macros",
+        ":tensorflow_profiler_logger_shim",
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_library(
+    name = "simple_memory_arena_with_profiler",
+    testonly = True,
+    srcs = ["simple_memory_arena.cc"],
+    hdrs = ["simple_memory_arena.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + tflite_copts_warnings() + ["-DTF_LITE_TENSORFLOW_PROFILER"],
+    deps = [
+        ":macros",
+        ":tensorflow_profiler_logger_shim",
         "//tensorflow/lite/c:common",
     ],
 )
@@ -269,6 +301,7 @@ cc_library(
     name = "tensorflow_profiler_logger_shim",
     srcs = ["tensorflow_profiler_logger_shim.cc"],
     hdrs = ["tensorflow_profiler_logger.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     deps = [
         ":macros",
@@ -283,6 +316,8 @@ cc_library(
     hdrs = ["tensorflow_profiler_logger.h"],
     copts = tflite_copts_warnings(),
     deps = [
+        ":macros",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
@@ -505,12 +540,14 @@ cc_library(
         "core/subgraph.h",
         "interpreter.cc",
         "interpreter_builder.cc",
+        "logger.cc",
         "signature_runner.h",
     ],
     hdrs = [
         "interpreter.h",
         "interpreter_builder.h",
         "interpreter_options.h",
+        "logger.h",
         "model.h",
         "model_builder.h",
     ],
@@ -523,7 +560,6 @@ cc_library(
     ],
     deps = [
         ":allocation",
-        ":arena_planner",
         ":external_cpu_backend_context",
         ":graph_info",
         ":kernel_api",
@@ -536,11 +572,15 @@ cc_library(
         ":simple_memory_arena",
         ":stderr_reporter",
         ":string",
+        ":tensorflow_profiler_logger_shim",
         ":type_to_tflitetype",
         ":util",
         ":version",
+        "@flatbuffers//:runtime_cc",
+        "@ruy//ruy:denormal",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/delegates:telemetry",
@@ -553,9 +593,14 @@ cc_library(
         "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
-        "@flatbuffers//:runtime_cc",
-        "@ruy//ruy:denormal",
-    ],
+    ] + select({
+        ":tflite_use_simple_memory_planner": [
+            ":simple_planner",
+        ],
+        "//conditions:default": [
+            ":arena_planner",
+        ],
+    }),
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 
@@ -575,6 +620,7 @@ cc_library(
         "interpreter.h",
         "interpreter_builder.h",
         "interpreter_options.h",
+        "logger.h",
         "model.h",
         "model_builder.h",
         "signature_runner.h",
@@ -938,6 +984,7 @@ cc_test(
         "testdata/test_model_broken.bin",
         "testdata/test_model_redux_precision.bin",
         "testdata/while_op_with_forwarding_input.bin",
+        "testdata/zero_size_constant.bin",
     ],
     tags = [
         "no_windows",  # TODO(b/194459105): the test is flaky.
@@ -948,7 +995,8 @@ cc_test(
         ":framework",
         ":interpreter_test_util",
         ":string",
-        "//tensorflow/lite:string_util",
+        ":string_util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -1161,7 +1209,10 @@ cc_library(
             "minimal_logging_default.cc",
         ],
     }),
-    hdrs = ["minimal_logging.h"],
+    hdrs = [
+        "logger.h",
+        "minimal_logging.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings() + tflite_copts(),
     linkopts = select({

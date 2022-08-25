@@ -148,7 +148,7 @@ class HloLiveRange {
   // After:
   //
   //           +----------+    live range of buffer1
-  //   +------+                live range of buffer2
+  //   +-------+               live range of buffer2
   //
   // Before(buffer1 and 2 are aliased):
   //
@@ -158,7 +158,7 @@ class HloLiveRange {
   // After:
   //
   //           +----------+    live range of buffer1
-  //   +------+                live range of buffer2
+  //   +-------+               live range of buffer2
   //
   // Before(buffer1 and 2 are aliased):
   //
@@ -196,19 +196,19 @@ class HloLiveRange {
   //                     a      p1    p2    e     b
   // a = ...             +
   //                     |
-  // {                   +
-  //   p1 = param                +
+  // {                   |
+  //   p1 = param        +       +
   //   ROOT true                 |
-  // }                           +
-  // { // body
-  //   p2 = param                      +
+  // }                           |
+  // { // body                   |
+  //   p2 = param                +     +
   //   c = p2 + 1                      +
   //   d = c + 1
   //   ROOT e = d + 1                       +
   // }                                      |
   //                                        |
-  // b = while (a)                          +
-  //                                              +
+  // b = while (a)                          +     +
+  //                                              |
   // f = b + 1                                    +
   //
   // Note there is no overlap of live ranges after normalization.

@@ -29,7 +29,7 @@ function run_build () {
   export TF_NEED_CUDA=0
   export PYTHON_BIN_PATH=$(which python3.7)
   yes "" | $PYTHON_BIN_PATH configure.py
-  tag_filters="-no_oss,-no_oss_py2,-gpu,-tpu,-benchmark-test,-nomac,-no_mac,-v1only"
+  tag_filters="-no_oss,-gpu,-tpu,-benchmark-test,-nomac,-no_mac,-v1only"
 
   # Get the default test targets for bazel.
   source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh

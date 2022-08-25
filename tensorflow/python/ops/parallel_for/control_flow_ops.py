@@ -38,6 +38,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -534,6 +535,7 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True, warn=True):
   Raises:
     ValueError: If vectorization fails and fallback_to_while_loop is False.
   """
+  elems = variable_utils.convert_variables_to_tensors(elems)
   elems = nest.map_structure(ops.convert_to_tensor,
                              elems,
                              expand_composites=True)

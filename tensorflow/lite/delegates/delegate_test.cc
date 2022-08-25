@@ -1106,8 +1106,8 @@ TEST_F(TestFP16Delegation, NullDelegate) {
 }
 
 TEST_P(TestFP16Delegation, DelegationWorks) {
-  delegate_ = std::unique_ptr<FP16Delegate>(
-      new FP16Delegate(/**num_delegated_subsets**/ GetParam()));
+  delegate_ = std::make_unique<FP16Delegate>(
+      /**num_delegated_subsets**/ GetParam());
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);
@@ -1117,8 +1117,8 @@ TEST_P(TestFP16Delegation, DelegationWorks) {
 }
 
 TEST_P(TestFP16Delegation, DelegatePrepareFails) {
-  delegate_ = std::unique_ptr<FP16Delegate>(new FP16Delegate(
-      /**num_delegated_subsets**/ GetParam(), /**fail_node_prepare**/ true));
+  delegate_ = std::make_unique<FP16Delegate>(
+      /**num_delegated_subsets**/ GetParam(), /**fail_node_prepare**/ true);
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteDelegateError);

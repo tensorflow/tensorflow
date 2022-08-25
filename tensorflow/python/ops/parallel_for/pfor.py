@@ -2426,6 +2426,14 @@ def _convert_pad(pfor_input):
   return wrap(array_ops.pad(t, paddings, mode="CONSTANT"), True)
 
 
+@RegisterPFor("PadV2")
+def _convert_pad_v2(pfor_input):
+  t = pfor_input.stacked_input(0)
+  paddings = pfor_input.unstacked_input(1)
+  paddings = array_ops.concat([[[0, 0]], paddings], 0)
+  return wrap(array_ops.pad_v2(t, paddings, mode="CONSTANT"), True)
+
+
 @RegisterPFor("Split")
 def _convert_split(pfor_input):
   split_dim = pfor_input.unstacked_input(0)
@@ -4264,7 +4272,7 @@ def _convert_tensor_scatter_update(pfor_input):
 
   # Tile the loop count range for the batch dimensions (all except the first and
   # last dimensions of indices).
-  # Rank(indices) >= 3 always for this function so we always have atleast 1.
+  # Rank(indices) >= 3 always for this function so we always have at least 1.
   tile_multiplier = array_ops.tensor_scatter_nd_update(
       indices_shape, [[0], [indices_rank - 1]], [1, 1])
   meta_index = array_ops.tile(loop_count, tile_multiplier)
@@ -4590,6 +4598,51 @@ def _convert_if(pfor_input):
         cond,
         lambda: _outputs_for_branch(then_branch.name, None, pfor_input, inputs),
         lambda: _outputs_for_branch(else_branch.name, None, pfor_input, inputs))
+    return [wrap(t, True) for t in outputs]
+
+
+@RegisterPFor("Case")
+@RegisterPFor("StatelessCase")
+def _convert_stateless_case(pfor_input):
+  branch_idx, is_stacked, _ = pfor_input.input(0)
+  branches = pfor_input.get_attr("branches")
+  inputs = pfor_input.inputs[1:]
+
+  if is_stacked:
+    logging.info("Running stacked flow")
+
+    # Compute loop indices for the different branches
+    switch_indices = data_flow_ops.dynamic_partition(
+        pfor_input.pfor.all_indices, branch_idx, len(branches))
+    if pfor_input.pfor.all_indices_partitioned:
+      partitioned_indices = data_flow_ops.dynamic_partition(
+          math_ops.range(pfor_input.pfor.loop_len_vector[0]), branch_idx,
+          len(branches))
+    else:
+      partitioned_indices = switch_indices
+    # Partition inputs
+    input_list = []
+    for indices in partitioned_indices:
+      input_list.append(_partition_inputs_for_indices(inputs, indices))
+
+    outputs = []
+    for (b, indices, inputs) in zip(branches, switch_indices, input_list):
+      out = _outputs_for_branch(b.name, indices, pfor_input, inputs)
+      outputs.extend(out)
+
+    out = data_flow_ops.dynamic_stitch(partitioned_indices, outputs)
+    return [wrap(out, True)]
+  else:
+    new_branches = []
+    for b in branches:
+      def new_function(func=b.name):
+        return _outputs_for_branch(func, None, pfor_input,
+                                   pfor_input.inputs[1:])
+
+      new_branches.append(new_function)
+
+    outputs = []
+    outputs = control_flow_ops.switch_case(branch_idx, new_branches)
     return [wrap(t, True) for t in outputs]
 
 

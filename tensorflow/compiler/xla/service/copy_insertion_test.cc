@@ -77,7 +77,9 @@ class CopyInsertionTest : public HloTestBase {
  protected:
   void InsertCopies(HloModule* module) {
     CopyInsertion copy_insertion;
+    VLOG(3) << "Before copy inser: " << module->ToString();
     ASSERT_IS_OK(copy_insertion.Run(module).status());
+    VLOG(2) << "After copy inser: " << module->ToString();
   }
 
   const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
@@ -2464,7 +2466,6 @@ ENTRY TestComputation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
-  VLOG(2) << module->ToString() << "\n";
 
   // An extra copy must be kept inside the loop due to uses in the conditional.
   EXPECT_EQ(CountCopies(*module), 3);

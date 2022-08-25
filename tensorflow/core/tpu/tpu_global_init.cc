@@ -63,7 +63,7 @@ Status CreateDeviceMgr(Env* env, std::unique_ptr<DeviceMgr>* device_mgr) {
   }
   TF_RETURN_IF_ERROR(
       device_factory->CreateDevices(session_options, kTaskSpec, &devices));
-  *device_mgr = absl::make_unique<DynamicDeviceMgr>(std::move(devices));
+  *device_mgr = std::make_unique<DynamicDeviceMgr>(std::move(devices));
   return OkStatus();
 }
 

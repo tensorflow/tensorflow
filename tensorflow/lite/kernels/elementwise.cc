@@ -16,7 +16,9 @@ limitations under the License.
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 
 #include "tensorflow/lite/c/common.h"

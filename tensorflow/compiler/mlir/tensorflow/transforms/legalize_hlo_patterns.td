@@ -18,12 +18,12 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
-include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
+include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
+include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 // Check if broadcasting is compatible with TF ops.
 def IsLegalNumpyRankedBroadcast :
-    Constraint<CPred<"hlo::IsLegalNumpyRankedBroadcast($0, $1, $2)">,
+    Constraint<CPred<"hlo::isLegalNumpyRankedBroadcast($0, $1, $2)">,
     "broadcasting should be compatible with TF ops">;
 
 // Return a constant op that carries the shape of the given value.
@@ -40,7 +40,8 @@ def IsNotTFStyleBroadcast : Constraint<Neg<CPred<"IsTFStyleBroadcast($0, $1)">>,
 // Return intermediate shape before broadcasting, wrapped in a constant op.
 def ExpandedShape : NativeCodeCall<"ExpandedShape($_builder, $0, $1, $2)">;
 
-def : Pat<(HLO_ConstantOp $value), (TF_ConstOp $value)>;
+def : Pat<(HLO_ConstantOp:$output $value), (TF_ConstOp $value),
+          [(TF_Tensor $output)]>;
 
 //===----------------------------------------------------------------------===//
 // Binary op patterns.
@@ -56,7 +57,7 @@ foreach fromToBinPair = [[HLO_AddOp, CHLO_BroadcastAddOp, TF_AddV2Op],
                          [HLO_MinOp, CHLO_BroadcastMinOp, TF_MinimumOp],
                          [HLO_MulOp, CHLO_BroadcastMulOp, TF_MulOp],
                          [HLO_PowOp, CHLO_BroadcastPowOp, TF_PowOp],
-                         [HLO_SubOp, CHLO_BroadcastSubOp, TF_SubOp],
+                         [HLO_SubtractOp, CHLO_BroadcastSubOp, TF_SubOp],
                          [HLO_Atan2Op, CHLO_BroadcastAtan2Op, TF_Atan2Op]] in {
   def : Pat<(fromToBinPair[0] $l, $r), (fromToBinPair[2] $l, $r)>;
   def : Pat<(fromToBinPair[1] $l, $r, $broadcast_dimensions),
@@ -115,7 +116,7 @@ def : Pat<(HLO_ConvertOp HLO_Tensor:$operand),
 foreach Mapping = [[HLO_AbsOp, TF_AbsOp],
                    [HLO_BitcastConvertOp, TF_BitcastOp],
                    [HLO_CeilOp, TF_CeilOp],
-                   [HLO_CosOp, TF_CosOp],
+                   [HLO_CosineOp, TF_CosOp],
                    [HLO_ExpOp, TF_ExpOp],
                    [HLO_Expm1Op, TF_Expm1Op],
                    [HLO_FloorOp, TF_FloorOp],
@@ -127,7 +128,7 @@ foreach Mapping = [[HLO_AbsOp, TF_AbsOp],
                    [HLO_NegOp, TF_NegOp],
                    [HLO_RealOp, TF_RealOp],
                    [HLO_RsqrtOp, TF_RsqrtOp],
-                   [HLO_SinOp, TF_SinOp],
+                   [HLO_SineOp, TF_SinOp],
                    [HLO_SignOp, TF_SignOp],
                    [HLO_SqrtOp, TF_SqrtOp],
                    [HLO_TanhOp, TF_TanhOp]] in
@@ -169,18 +170,6 @@ def : Pat<(HLO_SelectOp $cond, $t, $e), (TF_SelectOp $cond, $t, $e)>;
 def : Pat<(HLO_ConcatenateOp $inputs, $dim),
           (TF_ConcatV2Op $inputs, (TF_ConstOp $dim))>;
 
-class HasCompareType<string value> :
-    CPred<"$_self.cast<::mlir::mhlo::ComparisonTypeAttr>().getValue() == " # value>;
-
-// Attribute value should be such that it matches the comparison used by
-// TensorFlow, if the attribute is present.
-def IsTFCompareType : AttrConstraint<
-   Or<[CPred<"!$_self">, HasCompareType<"::mlir::mhlo::ComparisonType::FLOAT">,
-   HasCompareType<"::mlir::mhlo::ComparisonType::SIGNED">,
-   HasCompareType<"::mlir::mhlo::ComparisonType::UNSIGNED">,
-   HasCompareType<"::mlir::mhlo::ComparisonType::NOTYPE">]>,
-   "compare type supported by TensorFlow">;
-
 //===----------------------------------------------------------------------===//
 // Compare op patterns.
 // Note that these are legalized from chlo.broadcast_* ops, since those are
@@ -188,35 +177,72 @@ def IsTFCompareType : AttrConstraint<
 // context, getting to these ops may require some raising.
 //===----------------------------------------------------------------------===//
 
+class HasChloCompareType<string value> :
+    CPred<"$_self.cast<::mlir::chlo::ComparisonTypeAttr>().getValue() == " # value>;
+
+// Attribute value should be such that it matches the comparison used by
+// TensorFlow, if the attribute is present.
+def IsChloTFCompareType : AttrConstraint<
+   Or<[CPred<"!$_self">, HasChloCompareType<"::mlir::chlo::ComparisonType::FLOAT">,
+   HasChloCompareType<"::mlir::chlo::ComparisonType::SIGNED">,
+   HasChloCompareType<"::mlir::chlo::ComparisonType::UNSIGNED">,
+   HasChloCompareType<"::mlir::chlo::ComparisonType::NOTYPE">]>,
+   "compare type supported by TensorFlow">;
+
+class CHLO_ComparisonDirectionValue<string enumStr> :
+  ConstantAttr<CHLO_ComparisonDirectionAttr, "::mlir::chlo::ComparisonDirection::" # enumStr>;
+
+class HasMhloCompareType<string value> :
+    CPred<"$_self.cast<::mlir::mhlo::ComparisonTypeAttr>().getValue() == " # value>;
+
+// Attribute value should be such that it matches the comparison used by
+// TensorFlow, if the attribute is present.
+def IsMhloTFCompareType : AttrConstraint<
+   Or<[CPred<"!$_self">, HasMhloCompareType<"::mlir::mhlo::ComparisonType::FLOAT">,
+   HasMhloCompareType<"::mlir::mhlo::ComparisonType::SIGNED">,
+   HasMhloCompareType<"::mlir::mhlo::ComparisonType::UNSIGNED">,
+   HasMhloCompareType<"::mlir::mhlo::ComparisonType::NOTYPE">]>,
+   "compare type supported by TensorFlow">;
+
 class HLO_ComparisonDirectionValue<string enumStr> :
   ConstantAttr<HLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
 
-foreach p = [[TF_EqualOp, HLO_ComparisonDirectionValue<"EQ">],
-             [TF_NotEqualOp, HLO_ComparisonDirectionValue<"NE">]] in {
+foreach p = [[TF_EqualOp, CHLO_ComparisonDirectionValue<"EQ">],
+             [TF_NotEqualOp, CHLO_ComparisonDirectionValue<"NE">]] in {
   def : Pat<(CHLO_BroadcastCompareOp $l, $r, $broadcast_dimensions, p[1],
-                                          IsTFCompareType:$type),
+                                          IsChloTFCompareType:$type),
             (p[0] $l, $r, ConstBoolAttrTrue),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
-  def : Pat<(HLO_CompareOp $l, $r, p[1], IsTFCompareType:$type),
+}
+
+foreach p = [[TF_EqualOp, HLO_ComparisonDirectionValue<"EQ">],
+             [TF_NotEqualOp, HLO_ComparisonDirectionValue<"NE">]] in {
+  def : Pat<(HLO_CompareOp $l, $r, p[1], IsMhloTFCompareType:$type),
             (p[0] $l, $r, ConstBoolAttrTrue)>;
 }
 
-foreach pair = [[TF_GreaterEqualOp, HLO_ComparisonDirectionValue<"GE">],
-                [TF_GreaterOp, HLO_ComparisonDirectionValue<"GT">],
-                [TF_LessEqualOp, HLO_ComparisonDirectionValue<"LE">],
-                [TF_LessOp, HLO_ComparisonDirectionValue<"LT">]] in {
+foreach p = [[TF_GreaterEqualOp, CHLO_ComparisonDirectionValue<"GE">],
+             [TF_GreaterOp, CHLO_ComparisonDirectionValue<"GT">],
+             [TF_LessEqualOp, CHLO_ComparisonDirectionValue<"LE">],
+             [TF_LessOp, CHLO_ComparisonDirectionValue<"LT">]] in {
   def : Pat<(CHLO_BroadcastCompareOp $l, $r, $broadcast_dimensions,
-                                          pair[1], IsTFCompareType:$type),
-            (pair[0] $l, $r),
+                                          p[1], IsChloTFCompareType:$type),
+            (p[0] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
-  def : Pat<(HLO_CompareOp $l, $r, pair[1], IsTFCompareType:$type),
-            (pair[0] $l, $r)>;
+}
+
+foreach p = [[TF_GreaterEqualOp, HLO_ComparisonDirectionValue<"GE">],
+             [TF_GreaterOp, HLO_ComparisonDirectionValue<"GT">],
+             [TF_LessEqualOp, HLO_ComparisonDirectionValue<"LE">],
+             [TF_LessOp, HLO_ComparisonDirectionValue<"LT">]] in {
+  def : Pat<(HLO_CompareOp $l, $r, p[1], IsMhloTFCompareType:$type),
+            (p[0] $l, $r)>;
 }
 
 def ConvertDotOp : NativeCodeCall<"ConvertDotOp($_builder, "
                                                "$0.getDefiningOp())">;
-def : Pat<(HLO_DotOp:$old_value AnyStaticShapeTensor:$lhs,
-               AnyStaticShapeTensor:$rhs, $precision_config),
+def : Pat<(HLO_DotOp:$old_value StaticShapeTensorOf<[TF_ElementType]>:$lhs,
+               StaticShapeTensorOf<[TF_ElementType]>:$rhs, $precision_config),
           (ConvertDotOp $old_value)>;
 
 def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "
@@ -262,7 +288,7 @@ def FloatOrDefaultCompare : Constraint<CPred<
 //   return floor(x)
 def : Pat<(HLO_SelectOp
             (HLO_OrOp
-              (HLO_CompareOp (HLO_SubOp:$frac
+              (HLO_CompareOp (HLO_SubtractOp:$frac
                                $input,
                                (HLO_FloorOp:$floor $input)),
                              (HLO_ConstantOp $half),
@@ -275,7 +301,7 @@ def : Pat<(HLO_SelectOp
                   HLO_ComparisonDirectionValue<"EQ">,
                   $compare_type1),
                 (HLO_CompareOp
-                  (HLO_SubOp
+                  (HLO_SubtractOp
                     $floor1,
                     (HLO_MulOp
                       (HLO_FloorOp (HLO_MulOp $input, (HLO_ConstantOp $half2))),
@@ -403,7 +429,7 @@ def : Pat<(HLO_RoundOp
                   $compare_type1)),
               (HLO_AddOp
                 (HLO_DivOp:$div
-                  (HLO_SubOp $arg0, $rem2),
+                  (HLO_SubtractOp $arg0, $rem2),
                   $arg1b),
                 (HLO_ConstantOp $cst_neg1)),
               $div1)),
@@ -459,7 +485,7 @@ def : Pat<(HLO_RoundOp
                   $compare_type1)),
               (HLO_AddOp
                 (HLO_MulOp:$mul
-                  (HLO_SubOp $arg0, $rem2),
+                  (HLO_SubtractOp $arg0, $rem2),
                   (HLO_ConstantOp $cst_recip)),
                 (HLO_ConstantOp $cst_neg1)),
               $mul1)),
@@ -517,7 +543,7 @@ def : Pat<(HLO_RoundOp
                   $compare_type1)),
               (HLO_AddOp
                 (HLO_DivOp:$div
-                  (HLO_SubOp $arg0, $rem2),
+                  (HLO_SubtractOp $arg0, $rem2),
                   (HLO_ConstantOp $cstv1)),
                 (HLO_ConstantOp $cst_neg1)),
               $div1)),
@@ -582,7 +608,7 @@ def : Pat<(HLO_RoundOp
                   $compare_type1)),
               (HLO_AddOp
                 (HLO_DivOp:$div
-                  (HLO_SubOp $arg0, $rem2),
+                  (HLO_SubtractOp $arg0, $rem2),
                   $bcst1),
                 (HLO_ConstantOp $cst_neg1)),
               $div1)),

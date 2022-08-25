@@ -97,7 +97,7 @@ func.func @replicate_with_multiple_operands() {
 
 // CHECK-LABEL: func @replicate_derived_operand_segment_sizes
 func.func @replicate_derived_operand_segment_sizes() {
-  tf_device.replicate {n = 2 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} {
+  tf_device.replicate {n = 2 : i32, operand_segment_sizes = array<i32: 0, 0>} {
   }
   func.return
 

@@ -14,10 +14,10 @@ cc_library(
     ],
     hdrs = ["roundtrip.h"],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:Support",
     ],
 )

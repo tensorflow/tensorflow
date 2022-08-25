@@ -16,48 +16,38 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/fixed_array.h"
-#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
-#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
-#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
-#include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
-#include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
-#include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/rendezvous.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace eager {
@@ -106,13 +96,15 @@ Status GetEagerOperationAndNumRetvals(const Operation& operation,
                                       EagerOperation* eager_op,
                                       int* num_retvals) {
   const char* name = operation.name().c_str();  // Shorthand
-  absl::optional<tensorflow::EagerFunctionParams> remote_func_params =
-      absl::nullopt;
+  std::optional<tensorflow::EagerFunctionParams> remote_func_params =
+      std::nullopt;
   if (operation.is_function()) {
     if (operation.is_component_function()) {
-      remote_func_params = {operation.id(), operation.func_step_id()};
+      remote_func_params = {operation.id(), /*is_component_function=*/true,
+                            operation.func_step_id()};
     } else {
-      remote_func_params = {operation.id(), absl::nullopt};
+      remote_func_params = {operation.id(), /*is_component_function=*/false,
+                            std::nullopt};
     }
   }
   TF_RETURN_IF_ERROR(eager_op->Reset(name, operation.device().c_str(), false,
@@ -326,8 +318,24 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       !config.experimental().coordination_config().service_type().empty();
   if (enable_coordination) {
     auto dist_mgr = std::make_unique<EagerContextDistributedManager>(ctx);
-    dist_mgr->SetCoordinationServiceAgent(
-        env_->session_mgr->GetCoordinationServiceAgent());
+    auto coord_agent = env_->session_mgr->GetCoordinationServiceAgent();
+    dist_mgr->SetCoordinationServiceAgent(coord_agent);
+    auto preemption_notifier =
+        PreemptionNotifier::CreatePreemptionNotifier("sigterm", Env::Default());
+    preemption_notifier->WillBePreemptedAtAsync(
+        [coord_agent](StatusOr<absl::Time> time_or_status) {
+          if (time_or_status.ok()) {
+            const auto& coord_task = coord_agent->GetOwnTask().ValueOrDie();
+            Status s = coord_agent->InsertKeyValue(
+                "TF_DEFAULT_PREEMPTION_NOTICE_KEY",
+                absl::StrCat("/job:", coord_task.job_name(),
+                             "/task:", coord_task.task_id()));
+            if (!s.ok()) {
+              LOG(INFO) << "Preemption not exported to coordination service: "
+                        << s;
+            }
+          }
+        });
     ctx->SetDistributedManager(std::move(dist_mgr));
   }
 #endif  // !IS_MOBILE_PLATFORM

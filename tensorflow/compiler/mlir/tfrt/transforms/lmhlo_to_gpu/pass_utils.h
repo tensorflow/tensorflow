@@ -16,21 +16,17 @@
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LMHLO_TO_GPU_PASS_UTILS_H_
 
 #include "mlir/IR/BuiltinOps.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_jitrt.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
-
-// Runs the lowering pipeline to convert the given LMHLO module to a TFRT
-// module, including the device code.
-Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module,
-                                       mlir::StringRef entry_function_name,
-                                       llvm::ArrayRef<int64_t> buffer_sizes);
 
 // Runs the lowering pipeline to convert the given LMHLO module to a JitRt
 // module, with a Gpu runtime custom calls to drive the device code execution.
 Status ConvertLmhloToJitRt(mlir::ModuleOp module,
                            mlir::StringRef entry_function_name,
-                           llvm::ArrayRef<int64_t> buffer_sizes);
+                           llvm::ArrayRef<int64_t> buffer_sizes,
+                           GpuBinaryOptions options);
 
 }  // namespace tensorflow
 

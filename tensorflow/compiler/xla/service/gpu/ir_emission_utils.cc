@@ -17,14 +17,18 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
+#include <numeric>
+#include <optional>
 #include <vector>
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 
@@ -191,7 +195,10 @@ static bool IsUnnestedReductionFasterThanElemental(
     // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
     // along tile_size_x which needs to be large enough to make the tiling
     // implementation efficient.
-    return reduction_dimensions.dimensions[2] >= WarpSize();
+    // For very small reductions with a power-of-two size, we can fit multiple
+    // reductions inside a single warp, which is more efficient than a loop.
+    return (reduction_dimensions.dimensions[2] >= WarpSize()) ||
+           ((WarpSize() % reduction_dimensions.dimensions[2]) == 0);
   }
 
   // For column reduction, the tile block is tile_size_y x tile_size_x, and we
@@ -579,12 +586,12 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
   }
   if (auto view =
           mlir::dyn_cast_or_null<mlir::memref::ViewOp>(v.getDefiningOp())) {
-    TF_RET_CHECK(view.source().isa<mlir::BlockArgument>());
+    TF_RET_CHECK(view.getSource().isa<mlir::BlockArgument>());
 
     return BufferAllocation::Slice(
         &allocations[GetAllocationIndex(
-            view.source().cast<mlir::BlockArgument>(), constant_name)],
-        mlir::cast<mlir::arith::ConstantOp>(view.byte_shift().getDefiningOp())
+            view.getSource().cast<mlir::BlockArgument>(), constant_name)],
+        mlir::cast<mlir::arith::ConstantOp>(view.getByteShift().getDefiningOp())
             .getValue()
             .cast<mlir::IntegerAttr>()
             .getValue()
@@ -595,10 +602,10 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
           v.getDefiningOp())) {
     auto module = get_global->getParentOfType<mlir::ModuleOp>();
     if (constant_name) {
-      *constant_name = get_global.name().str();
+      *constant_name = get_global.getName().str();
     }
     auto global = mlir::cast<mlir::memref::GlobalOp>(
-        module.lookupSymbol(get_global.name()));
+        module.lookupSymbol(get_global.getName()));
     int64_t index =
         global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
     return BufferAllocation::Slice(&allocations[index], 0,
@@ -663,6 +670,199 @@ bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
          (!reduction_dimensions.is_row_reduction &&
           reduction_dimensions.dimensions[1] <=
               WarpSize() * reduction_tiling[1]);
+}
+
+// A recursive function to inspect the users of a parameter to determine
+// whether it's safe for a parameter to participate in a shared-memory
+// transpose.
+//
+// Consider a fusion parameter P for which we might want to use a shmem
+// transpose.  If we do, we use a GPU thread block to preload a tile of P with
+// indices [z, y..y+31, x..x+31] to compute an output tile with the same indices
+// cooperatively, where z, y, x are the indices for the normalized input/output
+// tensor (see the document for FindTranspose021 for the definition of
+// normalized tensor for 0-2-1 transpose). This shmem transpose implementation
+// requires that the computation of the output tile only read elements within
+// the preload tile. If this is not true, we can't use a shmem transpose for P.
+//
+// If the computation of output element [z, y, x] only requires the element of
+// P with the same indices, the shmem transpose implementation can be applied
+// to P safely. This is a sufficient but not necessary condition. We check all
+// the transitive users of P to see if we can find a user that may cause an
+// exception to the situation. If such a user is not found, we conclude that P
+// is safe for shmem transpose.
+//
+// This is trivially true for elementwise operations and some "data-movement"
+// ops like kTuple. However, it's not true for operations that can change the
+// dimensions of the inputs (e.g. pad, slice) and bitcast operation.
+// For example:
+//
+// fused_computation {
+//   param_0 = f32[64,64]{1,0} parameter(0)
+//   ROOT bitcast = f32[64,64]{0,1} bitcast(param_0)
+// }
+// The output element at logical address [0, 63] depends on the input element
+// at logical address [63, 0], which would not be within the shared-memory
+// block.
+//
+// TODO(bixia): In order to extend this for kInput fusion, that is reduction
+// with transpose, we only need to end the use-chain checking with the input of
+// a reduce operations. In this case, the above description on "output" apply
+// to the result of such a use-chain, which provides the input to the reduce
+// operation.
+static bool IsInstructionSafeForShmemTransposeRec(
+    const HloInstruction* hlo,
+    absl::flat_hash_map<const HloInstruction*, bool>* memoized) {
+  auto it = memoized->find(hlo);
+  if (it != memoized->end()) {
+    return it->second;
+  }
+  static const auto* const to_traverse = new absl::flat_hash_set<HloOpcode>{
+      HloOpcode::kGetTupleElement, HloOpcode::kMap, HloOpcode::kParameter,
+      HloOpcode::kTuple};
+
+  bool is_safe = [&] {
+    if (hlo->IsElementwise() || to_traverse->contains(hlo->opcode())) {
+      return absl::c_all_of(hlo->users(), [&](const HloInstruction* user) {
+        return IsInstructionSafeForShmemTransposeRec(user, memoized);
+      });
+    } else if (hlo->opcode() == HloOpcode::kGetDimensionSize) {
+      // The result of the operation doesn't rely on the content of the
+      // tensor. As such, there is no need to further inspect its users.
+      return true;
+    }
+    return false;
+  }();
+
+  memoized->emplace(hlo, is_safe);
+  return is_safe;
+}
+
+static bool IsInstructionSafeForShmemTranspose(const HloInstruction* hlo) {
+  absl::flat_hash_map<const HloInstruction*, bool> mapping;
+  return IsInstructionSafeForShmemTransposeRec(hlo, &mapping);
+}
+
+static std::optional<TransposeDimsAndParams> FindTranspose021DimsAndParameters(
+    const std::vector<Shape>& operand_shapes, const Shape& output_shape) {
+  std::vector<int64_t> params_012;
+  std::optional<Vector3> reduced_dims_021;
+  for (int64_t operand_idx = 0; operand_idx < operand_shapes.size();
+       ++operand_idx) {
+    std::optional<Vector3> find_transpose_result =
+        ShapeUtil::FindTranspose021(operand_shapes[operand_idx], output_shape);
+    if (!find_transpose_result.has_value()) {
+      continue;
+    } else if (!reduced_dims_021.has_value()) {
+      reduced_dims_021 = *find_transpose_result;
+    } else if (!absl::c_equal(*reduced_dims_021, *find_transpose_result)) {
+      // There is more than one possible transpose. Instead of picking one
+      // transpose, we simply give up here.
+      VLOG(3) << "021 transpose not matched; More than one possible "
+                 "transposition of parameters: "
+              << VectorString(*reduced_dims_021) << " and "
+              << VectorString(*find_transpose_result);
+      return std::nullopt;
+    }
+    params_012.push_back(operand_idx);
+  }
+  if (!reduced_dims_021.has_value()) {
+    return std::nullopt;
+  }
+  return TransposeDimsAndParams{*reduced_dims_021, params_012};
+}
+
+std::optional<TransposeDimsAndParams> Match021Transpose(
+    const HloComputation* fused_computation) {
+  // If a dimensions is smaller than this, untiled transposition may be more
+  // efficient.
+  static const int64_t kMinDimensionToTransposeTiled = 16;
+
+  const HloInstruction* root = fused_computation->root_instruction();
+  if (root->shape().IsTuple()) {
+    // TODO(cheshire): Why we are not pattern-matching other outputs?
+    root = root->operand(0);
+  }
+  const Shape& output_shape = root->shape();
+
+  std::vector<Shape> param_shapes;
+  absl::c_for_each(fused_computation->parameter_instructions(),
+                   [&](const HloInstruction* param) {
+                     param_shapes.push_back(param->shape());
+                   });
+  std::optional<TransposeDimsAndParams> reduced_dims_and_params_021 =
+      FindTranspose021DimsAndParameters(param_shapes, output_shape);
+
+  if (!reduced_dims_and_params_021.has_value()) {
+    VLOG(3) << "021 transposition not found on instruction "
+            << root->ToString();
+    return std::nullopt;
+  }
+  std::vector<int64_t> params_012 = reduced_dims_and_params_021->params;
+  const Vector3& reduced_dims_021 = reduced_dims_and_params_021->dims;
+
+  if (reduced_dims_021.at(1) < kMinDimensionToTransposeTiled ||
+      reduced_dims_021.at(2) < kMinDimensionToTransposeTiled) {
+    VLOG(3) << "021 transpose not matched: dimensions of transposition "
+            << root->ToString() << " are too small";
+    return std::nullopt;
+  }
+
+  auto safe_params = llvm::make_filter_range(params_012, [&](int64_t param_id) {
+    return IsInstructionSafeForShmemTranspose(
+        fused_computation->parameter_instruction(param_id));
+  });
+
+  if (safe_params.empty()) {
+    VLOG(3) << "021 transpose on " << root->ToString()
+            << "not matched: no inputs matched after filtering "
+               "for shmem access";
+    return std::nullopt;
+  }
+
+  // Each of our shared memory tiles has 32*33 elements (so ~4kb, if the
+  // elements are of size 4 bytes), and CUDA has an architectural limit of
+  // 48kb shared memory per SM.  (This is increased to 96kb in Volta, but we
+  // don't use this, in part because it eats into our L1 cache space.)
+  //
+  // For correctness we need to ensure that we don't make more than 48kb worth
+  // of shmem tiles per block.  And for performance, we'd probably like to use
+  // significantly less, so that we can fit more than one block at a time on a
+  // gpu core.
+  //
+  // We say without benchmarks that we want at least 3 threads/block,
+  // corresponding to 3 shmem tiles if the elements are 32 bits wide.  We
+  // choose which params get the shmem transpose treatment arbitrarily; it's
+  // not clear if there's a Right Choice.
+  //
+  // This is only sound if tiled transposes are the only place where we use
+  // shared memory in fusions.  If in the future other fusible ops use shared
+  // memory, we'll have to adjust this heuristic.
+  constexpr int kMinBlocksPerCore = 3;
+
+  int64_t shmem_used = 0;
+  std::vector<int64_t> filtered_params;
+  for (int64_t param_id : safe_params) {
+    const Shape& operand_shape =
+        fused_computation->parameter_instruction(param_id)->shape();
+    shmem_used +=
+        32 * 33 *
+        ShapeUtil::ByteSizeOfPrimitiveType(operand_shape.element_type());
+
+    if (kMinBlocksPerCore * shmem_used > kSharedMemoryBudgetInBytes) {
+      break;
+    }
+    filtered_params.push_back(param_id);
+  }
+
+  if (filtered_params.empty()) {
+    VLOG(3)
+        << "021 transpose on :" << root->ToString()
+        << " not matched: no inputs matched after filtering for shmem budget";
+    return std::nullopt;
+  }
+
+  return TransposeDimsAndParams{reduced_dims_021, filtered_params};
 }
 
 }  // namespace gpu

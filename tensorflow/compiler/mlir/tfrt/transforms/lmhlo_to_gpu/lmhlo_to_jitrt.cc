@@ -15,8 +15,10 @@
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_jitrt.h"
 
 #include <cstdint>
+#include <memory>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
@@ -25,7 +27,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -41,10 +43,10 @@
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
@@ -59,7 +61,6 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/jitrt_passes.h.inc"
 
-using mlir::ArrayAttr;
 using mlir::Attribute;
 using mlir::DialectRegistry;
 using mlir::FunctionType;
@@ -83,6 +84,7 @@ using mlir::func::ReturnOp;
 using mlir::gpu::GPUModuleOp;
 using mlir::gpu::LaunchFuncOp;
 using mlir::gpu::MemcpyOp;
+using mlir::gpu::MemsetOp;
 using mlir::lmhlo::AllGatherOp;
 using mlir::lmhlo::AllReduceOp;
 using mlir::lmhlo::AllToAllOp;
@@ -105,14 +107,12 @@ using mlir::lmhlo_gpu::ConvBackwardInputOp;
 using mlir::lmhlo_gpu::ConvForwardFusedOp;
 using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
 using mlir::lmhlo_gpu::ConvForwardOp;
-using mlir::lmhlo_gpu::ConvolutionBackendConfigAttr;
-using mlir::lmhlo_gpu::GEMM_BiasOp;
+using mlir::lmhlo_gpu::CublasLtMatmulOp;
 using mlir::lmhlo_gpu::GEMMOp;
 using mlir::memref::AllocaOp;
 using mlir::memref::GetGlobalOp;
-using mlir::mhlo::ConvDimensionNumbersAttr;
 
-using xla::ConvertConvActivationMode;
+static constexpr const char kDirectCustomCall[] = "rt.direct_custom_call";
 
 class ConvertLmhloConstantToArgPass
     : public ConvertLmhloConstantToArgPassBase<ConvertLmhloConstantToArgPass> {
@@ -181,12 +181,13 @@ class TerminatorOpLowering : public OpRewritePattern<TerminatorOp> {
 
 template <typename IoFeedOp>
 class IoFeedOpLowering : public OpRewritePattern<IoFeedOp> {
+ private:
+  static StringRef CustomCallTarget(InfeedOp) { return "xla.gpu.infeed"; }
+  static StringRef CustomCallTarget(OutfeedOp) { return "xla.gpu.outfeed"; }
+
  public:
   explicit IoFeedOpLowering(MLIRContext* ctx)
       : OpRewritePattern<IoFeedOp>(ctx) {}
-
-  static llvm::StringRef Name(InfeedOp) { return "infeed"; }
-  static llvm::StringRef Name(OutfeedOp) { return "outfeed"; }
 
   LogicalResult matchAndRewrite(IoFeedOp op,
                                 PatternRewriter& rewriter) const override {
@@ -194,15 +195,15 @@ class IoFeedOpLowering : public OpRewritePattern<IoFeedOp> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     // Custom call target.
-    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr(Twine("xla.gpu.") + Name(op)));
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
+                          b.getStringAttr(CustomCallTarget(op)));
 
     // Create a custom call function declaration.
     auto custom_call_type =
         FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), Name(op), custom_call_type,
-                                      custom_call_attrs);
+    auto custom_call = FuncOp::create(op.getLoc(), CustomCallTarget(op),
+                                      custom_call_type, custom_call_attrs);
     custom_call.setPrivate();
 
     SymbolTable sym_table(op->template getParentOfType<ModuleOp>());
@@ -252,14 +253,14 @@ class MemcpyOpLowering : public OpRewritePattern<MemcpyOp> {
 
     // Identify the direction of the memcpy operation.
     auto memcpy = [&]() {
-      if (IsHostMemRef(op.dst())) return "memcpy.d2h";
-      if (IsHostMemRef(op.src())) return "memcpy.h2d";
-      return "memcpy.d2d";
+      if (IsHostMemRef(op.dst())) return "xla.gpu.memcpy.d2h";
+      if (IsHostMemRef(op.src())) return "xla.gpu.memcpy.h2d";
+      return "xla.gpu.memcpy.d2d";
     }();
 
     // Custom call target.
-    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr(Twine("xla.gpu.") + memcpy));
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
+                          b.getStringAttr(memcpy));
 
     // Create a custom call function declaration.
     auto custom_call_type =
@@ -283,7 +284,48 @@ class MemcpyOpLowering : public OpRewritePattern<MemcpyOp> {
 
 // -------------------------------------------------------------------------- //
 
+class MemsetOpLowering : public OpRewritePattern<MemsetOp> {
+ private:
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.memset";
+
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(MemsetOp op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
+                          b.getStringAttr(kCustomCallTarget));
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
+                                      custom_call_type, custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(op->getParentOfType<ModuleOp>());
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Create a function launch call operation.
+    rewriter.replaceOpWithNewOp<CallOp>(op, inserted, TypeRange(),
+                                        op.getOperands());
+
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
+
 class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
+ private:
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.func.launch";
+
  public:
   using OpRewritePattern::OpRewritePattern;
 
@@ -311,13 +353,13 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
     llvm::SmallVector<Type> args_types = TypeRange(ValueRange(args));
 
     // Custom call target.
-    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr("xla.gpu.func.launch"));
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
+                          b.getStringAttr(kCustomCallTarget));
 
     // Create a custom call function declaration.
     auto custom_call_type = FunctionType::get(ctx, args_types, TypeRange());
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), "launch_func",
+    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
                                       custom_call_type, custom_call_attrs);
     custom_call.setPrivate();
 
@@ -334,8 +376,7 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
     auto gpu_binary = gpu_module->getAttrOfType<mlir::StringAttr>("binary");
 
     // Create a function launch call operation.
-    auto call =
-        rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(), args);
+    auto call = b.create<CallOp>(inserted, TypeRange(), args);
     call->setAttr(b.getStringAttr("ptx"), gpu_binary);
     call->setAttr(b.getStringAttr("kernel"), op.getKernelName());
 
@@ -360,24 +401,15 @@ class GemmUidGenerator {
   std::atomic<int64_t> cnt_;
 };
 
-template <typename Gemm>
-class GemmLowering : public OpRewritePattern<Gemm> {
+class GemmOpLowering : public OpRewritePattern<GEMMOp> {
  private:
-  static StringRef CustomCallTarget(GEMMOp) { return "xla.gpu.gemm"; }
-  static StringRef CustomCallTarget(GEMM_BiasOp) { return "xla.gpu.gemm.bias"; }
-
-  static void SetOptionalAttrs(ImplicitLocOpBuilder& b, GEMMOp op,
-                               CallOp call) {}
-  static void SetOptionalAttrs(ImplicitLocOpBuilder& b, GEMM_BiasOp op,
-                               CallOp call) {
-    call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
-  }
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.gemm";
 
  public:
-  GemmLowering(MLIRContext* ctx, GemmUidGenerator& uid)
-      : OpRewritePattern<Gemm>(ctx), uid_(uid) {}
+  GemmOpLowering(MLIRContext* ctx, GemmUidGenerator& uid)
+      : OpRewritePattern<GEMMOp>(ctx), uid_(uid) {}
 
-  LogicalResult matchAndRewrite(Gemm op,
+  LogicalResult matchAndRewrite(GEMMOp op,
                                 PatternRewriter& rewriter) const override {
     MLIRContext* ctx = this->getContext();
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -385,15 +417,15 @@ class GemmLowering : public OpRewritePattern<Gemm> {
     ModuleOp module = op->template getParentOfType<ModuleOp>();
 
     // Custom call target.
-    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr(CustomCallTarget(op)));
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
+                          b.getStringAttr(kCustomCallTarget));
 
     // Create a custom call function declaration.
     auto custom_call_type =
         FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), "gemm", custom_call_type,
-                                      custom_call_attrs);
+    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
+                                      custom_call_type, custom_call_attrs);
     custom_call.setPrivate();
 
     SymbolTable sym_table(module);
@@ -408,25 +440,14 @@ class GemmLowering : public OpRewritePattern<Gemm> {
     call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
 
     // Copy backend specific attributes.
-    call->setAttr(b.getStringAttr("algorithm"), op.getAlgorithmAttr());
+    auto algorithm_attr = op.getAlgorithm()
+                              ? op.getAlgorithmAttr()
+                              : b.getI64IntegerAttr(se::blas::kDefaultGemmAlgo);
+    call->setAttr(b.getStringAttr("algorithm"), algorithm_attr);
     call->setAttr(b.getStringAttr("alpha_imag"), op.getAlphaImagAttr());
     call->setAttr(b.getStringAttr("alpha_real"), op.getAlphaRealAttr());
-
-    // Set optional arguments that are defined only for some Gemm ops.
-    SetOptionalAttrs(b, op, call);
-
-    // TODO(ezhulenev): Once cutom calls support passing structured attributes
-    // we should be able to pass `mhlo.dot` attribute directly.
-    auto dot = op.getDotDimensionNumbers();
-    auto lhs_batch = b.getI64TensorAttr(dot.getLhsBatchingDimensions());
-    auto lhs_contract = b.getI64TensorAttr(dot.getLhsContractingDimensions());
-    auto rhs_batch = b.getI64TensorAttr(dot.getRhsBatchingDimensions());
-    auto rhs_contract = b.getI64TensorAttr(dot.getRhsContractingDimensions());
-
-    call->setAttr(b.getStringAttr("lhs_batching_dimensions"), lhs_batch);
-    call->setAttr(b.getStringAttr("lhs_contracting_dimensions"), lhs_contract);
-    call->setAttr(b.getStringAttr("rhs_batching_dimensions"), rhs_batch);
-    call->setAttr(b.getStringAttr("rhs_contracting_dimensions"), rhs_contract);
+    call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
+    call->setAttr(b.getStringAttr("dot_dims"), op.getDotDimensionNumbers());
 
     // Erase the original gemm operation.
     rewriter.eraseOp(op);
@@ -438,42 +459,113 @@ class GemmLowering : public OpRewritePattern<Gemm> {
   GemmUidGenerator& uid_;
 };
 
-class GemmOpLowering : public GemmLowering<GEMMOp> {
- public:
-  using GemmLowering::GemmLowering;
-};
+// -------------------------------------------------------------------------- //
 
-class GemmBiasOpLowering : public GemmLowering<GEMM_BiasOp> {
+class CublasLtMatmulOpLowering : public OpRewritePattern<CublasLtMatmulOp> {
+ private:
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.cublas.lt.matmul";
+
  public:
-  using GemmLowering::GemmLowering;
+  CublasLtMatmulOpLowering(MLIRContext* ctx, GemmUidGenerator& uid)
+      : OpRewritePattern<CublasLtMatmulOp>(ctx), uid_(uid) {}
+
+  LogicalResult matchAndRewrite(CublasLtMatmulOp op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = this->getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    ModuleOp module = op->template getParentOfType<ModuleOp>();
+
+    std::string matmul;
+    switch (op.getOperands().size()) {
+      case 4:
+        matmul = kCustomCallTarget;
+        break;
+      case 5:
+        matmul = absl::StrCat(kCustomCallTarget, ".bias");
+        break;
+      default:
+        return op.emitOpError("unexpected number of operands for matmul");
+    }
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
+                          b.getStringAttr(matmul));
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), matmul, custom_call_type,
+                                      custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(module);
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Convert matmul to a function call.
+    auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
+                                        op.getOperands());
+
+    // Assign a unique id to this instance of a matmul operation.
+    call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
+
+    // Copy backend specific attributes.
+    call->setAttr(b.getStringAttr("algorithm"), op.getAlgorithmAttr());
+    call->setAttr(b.getStringAttr("alpha_imag"), op.getAlphaImagAttr());
+    call->setAttr(b.getStringAttr("alpha_real"), op.getAlphaRealAttr());
+    call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
+    call->setAttr(b.getStringAttr("dot_dims"), op.getDotDimensionNumbers());
+    call->setAttr(b.getStringAttr("epilogue"), op.getEpilogueAttr());
+
+    // TODO(ezhulenev): Today we can't pass an array of enum attributes to the
+    // custom call. Also we do not have a corresponding precision enum on the
+    // SE/XLA side, so we encode it as an i32 array (tensor).
+    if (auto precisions = op.getPrecisionConfig()) {
+      llvm::SmallVector<int32_t> values;
+      for (auto precision : *precisions) {
+        auto value = precision.cast<mhlo::PrecisionAttr>().getValue();
+        values.push_back(static_cast<int32_t>(value));
+      }
+      call->setAttr(b.getStringAttr("precision"), b.getI32TensorAttr(values));
+    } else {
+      call->setAttr(b.getStringAttr("precision"), b.getI32TensorAttr({0, 0}));
+    }
+
+    // Erase the original matmul operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  GemmUidGenerator& uid_;
 };
 
 // -------------------------------------------------------------------------- //
 
 template <typename Conv>
 class ConvOpLowering : public OpRewritePattern<Conv> {
- public:
-  explicit ConvOpLowering(MLIRContext* ctx) : OpRewritePattern<Conv>(ctx) {}
-
+ private:
   static StringRef CustomCallTarget(ConvForwardOp) {
     return "xla.gpu.conv.forward";
   }
-
   static StringRef CustomCallTarget(ConvForwardFusedOp) {
     return "xla.gpu.conv.forward.fused";
   }
-
   static StringRef CustomCallTarget(ConvForwardFusedSideInputOp) {
     return "xla.gpu.conv.forward.fused.side_input";
   }
-
   static StringRef CustomCallTarget(ConvBackwardFilterOp) {
     return "xla.gpu.conv.backward.filter";
   }
-
   static StringRef CustomCallTarget(ConvBackwardInputOp) {
     return "xla.gpu.conv.backward.input";
   }
+
+ public:
+  explicit ConvOpLowering(MLIRContext* ctx) : OpRewritePattern<Conv>(ctx) {}
 
   LogicalResult matchAndRewrite(Conv op,
                                 PatternRewriter& rewriter) const override {
@@ -483,7 +575,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     ModuleOp module = op->template getParentOfType<ModuleOp>();
 
     // Custom call target.
-    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
                           b.getStringAttr(CustomCallTarget(op)));
 
     // Create a custom call function declaration.
@@ -507,17 +599,10 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
       call->setAttr(b.getStringAttr(name), attr);
     };
 
-    auto set_i64 = [&](StringRef name, int64_t value) {
-      set_attr(name, b.getI64IntegerAttr(value));
-    };
-
-    auto set_i64s = [&](StringRef name, ArrayRef<int64_t> values) {
-      set_attr(name, b.getI64TensorAttr(values));
-    };
-
     auto set_xi64 = [&](StringRef name, Optional<DenseIntElementsAttr> attr) {
       SmallVector<int64_t> values;
-      if (attr.hasValue()) values = llvm::to_vector(attr->getValues<int64_t>());
+      if (attr.has_value())
+        values = llvm::to_vector(attr->getValues<int64_t>());
       set_attr(name, b.getI64TensorAttr(values));
     };
 
@@ -525,26 +610,14 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     // TODO(ezhulenev): Allow passing boolean tensors to the JitRt custom calls.
     auto set_xi1 = [&](StringRef name, Optional<DenseElementsAttr> attr) {
       SmallVector<int64_t> values;
-      if (attr.hasValue())
+      if (attr.has_value())
         values.assign(attr->getValues<bool>().begin(),
                       attr->getValues<bool>().end());
       set_attr(name, b.getI64TensorAttr(values));
     };
 
     // Copy dimension number attributes.
-    ConvDimensionNumbersAttr dims = op.getDimensionNumbers();
-
-    set_i64("input_batch_dim", dims.getInputBatchDimension());
-    set_i64("input_feature_dim", dims.getInputFeatureDimension());
-    set_i64s("input_spatial_dims", dims.getInputSpatialDimensions());
-
-    set_i64("kernel_in_feature_dim", dims.getKernelInputFeatureDimension());
-    set_i64("kernel_out_feature_dim", dims.getKernelOutputFeatureDimension());
-    set_i64s("kernel_spatial_dims", dims.getKernelSpatialDimensions());
-
-    set_i64("output_batch_dim", dims.getOutputBatchDimension());
-    set_i64("output_feature_dim", dims.getOutputFeatureDimension());
-    set_i64s("output_spatial_dims", dims.getOutputSpatialDimensions());
+    call->setAttr(b.getStringAttr("conv_dims"), op.getDimensionNumbers());
 
     // Copy convolution window attributes.
     set_xi1("window_reversal", op.getWindowReversal());
@@ -554,19 +627,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     set_xi64("padding", op.getPadding());
 
     // Copy backend config.
-    ConvolutionBackendConfigAttr backend = op.getBackendConfig();
-
-    set_i64("algorithm", backend.getAlgorithm());
-    set_attr("tensor_ops_enabled",
-             b.getBoolAttr(backend.getTensorOpsEnabled()));
-    set_attr("is_cudnn_frontend", b.getBoolAttr(backend.getIsCudnnFrontend()));
-    set_i64("workspace_size", backend.getWorkspaceSize());
-
-    set_i64s("knob_ids", backend.getKnobIds());
-    set_i64s("knob_values", backend.getKnobValues());
-    set_i64s("operand_0_layout", backend.getOperand_0Layout());
-    set_i64s("operand_1_layout", backend.getOperand_1Layout());
-    set_i64s("result_layout", backend.getResultLayout());
+    call->setAttr(b.getStringAttr("backend_config"), op.getBackendConfig());
 
     // Copy remaining attributes.
     set_attr("feature_group_count", op.getFeatureGroupCountAttr());
@@ -574,20 +635,14 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
 
     // Copy attributes specific for fused convolutions.
     if (auto fused = dyn_cast<ConvForwardFusedOp>(op.getOperation())) {
-      auto activation_mode =
-          ConvertConvActivationMode(fused.getActivationMode());
-      if (!activation_mode.ok())
-        return op.emitOpError("failed to convert activation mode");
-      set_i64("activation_mode", static_cast<int64_t>(*activation_mode));
+      call->setAttr(b.getStringAttr("activation_mode"),
+                    fused.getActivationModeAttr());
     }
 
     // Copy attributes specific for fused convolutions with side input.
     if (auto fused = dyn_cast<ConvForwardFusedSideInputOp>(op.getOperation())) {
-      auto activation_mode =
-          ConvertConvActivationMode(fused.getActivationMode());
-      if (!activation_mode.ok())
-        return op.emitOpError("failed to convert activation mode");
-      set_i64("activation_mode", static_cast<int64_t>(*activation_mode));
+      call->setAttr(b.getStringAttr("activation_mode"),
+                    fused.getActivationModeAttr());
       set_attr("side_input_scale", fused.getSideInputScaleAttr());
     }
 
@@ -764,6 +819,9 @@ class CaseOpLowering : public OpRewritePattern<CaseOp> {
 // -------------------------------------------------------------------------- //
 
 class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
+ private:
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.custom_call";
+
  public:
   using OpRewritePattern::OpRewritePattern;
 
@@ -773,15 +831,15 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     // Custom call target.
-    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr(Twine("xla.gpu.custom_call")));
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
+                          b.getStringAttr(kCustomCallTarget));
 
     // By default all operands passed to the custom call handler.
     llvm::SmallVector<Value> operands = op.getOperands();
 
     // If custom call has target arguments mapping, then we need to pass empty
     // memrefs in place of holes.
-    if (op.getTargetArgMapping().hasValue()) {
+    if (op.getTargetArgMapping().has_value()) {
       auto mapping = *op.getTargetArgMapping();
       int64_t num_args = mapping.getNumArgs();
       int64_t num_results = mapping.getNumResults();
@@ -806,7 +864,7 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
         FunctionType::get(ctx, TypeRange(ValueRange(operands)), TypeRange());
 
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), "custom_call",
+    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
                                       custom_call_type, custom_call_attrs);
     custom_call.setPrivate();
 
@@ -872,7 +930,7 @@ class GetGlobalOpLowering : public OpRewritePattern<GetGlobalOp> {
     if (func_mapping == cst_args_.end()) return failure();
 
     // Check if the global operation correposponds to the LMHLO constant arg.
-    auto arg = func_mapping->second.find(op.name());
+    auto arg = func_mapping->second.find(op.getName());
     if (arg == func_mapping->second.end()) return failure();
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -917,6 +975,9 @@ class GetGlobalOpLowering : public OpRewritePattern<GetGlobalOp> {
 // -------------------------------------------------------------------------- //
 
 class FftOpLowering : public OpRewritePattern<FftOp> {
+ private:
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.fft";
+
  public:
   using OpRewritePattern::OpRewritePattern;
 
@@ -928,14 +989,14 @@ class FftOpLowering : public OpRewritePattern<FftOp> {
     ModuleOp module = op->getParentOfType<ModuleOp>();
 
     // Custom call target.
-    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr("xla.gpu.fft"));
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
+                          b.getStringAttr(kCustomCallTarget));
 
     // Create a custom call function declaration.
     auto custom_call_type =
         FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), "xla.gpu.fft",
+    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
                                       custom_call_type, custom_call_attrs);
     custom_call.setPrivate();
 
@@ -949,8 +1010,7 @@ class FftOpLowering : public OpRewritePattern<FftOp> {
 
     // Copy backend specific attributes.
     call->setAttr(b.getStringAttr("fft_length"), op.getFftLengthAttr());
-    call->setAttr(b.getStringAttr("fft_type"),
-                  b.getI32IntegerAttr(static_cast<int32_t>(op.getFftType())));
+    call->setAttr(b.getStringAttr("fft_type"), op.getFftTypeAttr());
 
     // Erase the original Fft operation.
     rewriter.eraseOp(op);
@@ -962,6 +1022,9 @@ class FftOpLowering : public OpRewritePattern<FftOp> {
 // -------------------------------------------------------------------------- //
 
 class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
+ private:
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.cholesky";
+
  public:
   explicit CholeskyOpLowering(MLIRContext* ctx)
       : OpRewritePattern<CholeskyOp>(ctx) {}
@@ -974,15 +1037,15 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
     ModuleOp module = op->getParentOfType<ModuleOp>();
 
     // Custom call target.
-    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr("xla.gpu.cholesky"));
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
+                          b.getStringAttr(kCustomCallTarget));
 
     // Create a custom call function declaration.
     auto custom_call_type =
         FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), "cholesky", custom_call_type,
-                                      custom_call_attrs);
+    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
+                                      custom_call_type, custom_call_attrs);
     custom_call.setPrivate();
 
     SymbolTable sym_table(module);
@@ -1007,8 +1070,7 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
     call->setAttr(b.getStringAttr("batch_size"),
                   b.getI64IntegerAttr(batch_size));
     call->setAttr(b.getStringAttr("n"), b.getI64IntegerAttr(n));
-    call->setAttr(b.getStringAttr("uplo"),
-                  b.getI64IntegerAttr(op.getIsLower()));
+    call->setAttr(b.getStringAttr("is_lower"), op.getIsLowerAttr());
 
     // Erase the original Cholesky operation.
     rewriter.eraseOp(op);
@@ -1067,13 +1129,21 @@ class CollectiveUidGenerator {
 template <typename CollectiveOp>
 class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
  private:
-  static llvm::StringRef Name(AllGatherOp) { return "all_gather"; }
-  static llvm::StringRef Name(AllReduceOp) { return "all_reduce"; }
-  static llvm::StringRef Name(AllReduceStartOp) { return "all_reduce_start"; }
-  static llvm::StringRef Name(ReduceScatterOp) { return "reduce_scatter"; }
-  static llvm::StringRef Name(AllToAllOp) { return "all_to_all"; }
-  static llvm::StringRef Name(CollectivePermuteOp) {
-    return "collective_permute";
+  static StringRef CustomCallTarget(AllGatherOp) {
+    return "xla.gpu.all_gather";
+  }
+  static StringRef CustomCallTarget(AllReduceOp) {
+    return "xla.gpu.all_reduce";
+  }
+  static StringRef CustomCallTarget(AllReduceStartOp) {
+    return "xla.gpu.all_reduce_start";
+  }
+  static StringRef CustomCallTarget(ReduceScatterOp) {
+    return "xla.gpu.reduce_scatter";
+  }
+  static StringRef CustomCallTarget(AllToAllOp) { return "xla.gpu.all_to_all"; }
+  static StringRef CustomCallTarget(CollectivePermuteOp) {
+    return "xla.gpu.collective_permute";
   }
 
   template <typename ReduceOrGatherOp>
@@ -1165,7 +1235,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllToAllOp op,
                                         CallOp call) {
     call->setAttr(b.getStringAttr("has_split_dimension"),
-                  b.getBoolAttr(op.getSplitDimension().hasValue()));
+                  b.getBoolAttr(op.getSplitDimension().has_value()));
     return success();
   }
   static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
@@ -1236,15 +1306,15 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     }
 
     // Custom call target.
-    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr(Twine("xla.gpu.") + Name(op)));
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
+                          b.getStringAttr(CustomCallTarget(op)));
 
     // Create a custom call function declaration.
     auto custom_call_type =
         FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), Name(op), custom_call_type,
-                                      custom_call_attrs);
+    auto custom_call = FuncOp::create(op.getLoc(), CustomCallTarget(op),
+                                      custom_call_type, custom_call_attrs);
     custom_call.setPrivate();
 
     SymbolTable sym_table(module);
@@ -1257,7 +1327,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
 
     if (!CanImplement(op)) {
       return op.emitOpError()
-             << "Requested " << Name(op)
+             << "Requested " << CustomCallTarget(op)
              << " not implemented on GPU; replica_count: " << replica_count
              << ", num_partitions: " << num_partitions << ", group_mode: "
              << CollectiveOpGroupModeToString(config.group_mode)
@@ -1356,6 +1426,9 @@ class CollectivePermuteOpLowering
 };
 
 class AllReduceDoneOpLowering : public OpRewritePattern<AllReduceDoneOp> {
+ private:
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.all_reduce_done";
+
  public:
   explicit AllReduceDoneOpLowering(MLIRContext* ctx,
                                    CollectiveUidGenerator& uid)
@@ -1369,8 +1442,8 @@ class AllReduceDoneOpLowering : public OpRewritePattern<AllReduceDoneOp> {
     ModuleOp module = op->getParentOfType<ModuleOp>();
 
     // Custom call target.
-    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr("xla.gpu.all_reduce_done"));
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
+                          b.getStringAttr(kCustomCallTarget));
 
     // For done operation we drop the token argument and communicate async event
     // dependency through the `uid` attribute.
@@ -1380,7 +1453,7 @@ class AllReduceDoneOpLowering : public OpRewritePattern<AllReduceDoneOp> {
     auto custom_call_type =
         FunctionType::get(ctx, TypeRange(ValueRange(operands)), TypeRange());
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), "all_reduce_done",
+    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
                                       custom_call_type, custom_call_attrs);
     custom_call.setPrivate();
 
@@ -1415,8 +1488,12 @@ class AllReduceDoneOpLowering : public OpRewritePattern<AllReduceDoneOp> {
 template <typename IdOp>
 class IdOpLowering : public OpRewritePattern<IdOp> {
  private:
-  static llvm::StringRef Name(ReplicaIdOp) { return "replica_id"; }
-  static llvm::StringRef Name(PartitionIdOp) { return "partition_id"; }
+  static StringRef CustomCallTarget(ReplicaIdOp) {
+    return "xla.gpu.replica_id";
+  }
+  static StringRef CustomCallTarget(PartitionIdOp) {
+    return "xla.gpu.partition_id";
+  }
 
  public:
   explicit IdOpLowering(MLIRContext* ctx) : OpRewritePattern<IdOp>(ctx) {}
@@ -1429,15 +1506,15 @@ class IdOpLowering : public OpRewritePattern<IdOp> {
     ModuleOp module = op->template getParentOfType<ModuleOp>();
 
     // Custom call target.
-    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
-                          b.getStringAttr(Twine("xla.gpu.") + Name(op)));
+    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
+                          b.getStringAttr(CustomCallTarget(op)));
 
     // Create a custom call function declaration.
     auto custom_call_type =
         FunctionType::get(ctx, op->getOperandTypes(), TypeRange());
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), Name(op), custom_call_type,
-                                      custom_call_attrs);
+    auto custom_call = FuncOp::create(op.getLoc(), CustomCallTarget(op),
+                                      custom_call_type, custom_call_attrs);
     custom_call.setPrivate();
 
     SymbolTable sym_table(module);
@@ -1502,7 +1579,7 @@ void ConvertGpuToJitRtPass::runOnOperation() {
   // Convert gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<GpuModuleOpLowering, LaunchFuncOpLowering, MemcpyOpLowering,
-                  InfeedOpLowering, OutfeedOpLowering>(ctx);
+                  MemsetOpLowering, InfeedOpLowering, OutfeedOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();
@@ -1515,9 +1592,9 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   // Convert lmhlo_gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
 
-  // Each unique Gemm operation in the module will get assigned a uid.
+  // Each unique Gemm/Matmul operation in the module will get assigned a uid.
   GemmUidGenerator gemm_uid;
-  patterns.insert<GemmOpLowering, GemmBiasOpLowering>(ctx, gemm_uid);
+  patterns.insert<GemmOpLowering, CublasLtMatmulOpLowering>(ctx, gemm_uid);
 
   // Assign shared unique id to each unique pair of async start-done operations,
   // all other collective operations will get assigned uid.
@@ -1583,7 +1660,12 @@ std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloGpuToJitRtPass() {
   return std::make_unique<ConvertLmhloGpuToJitRtPass>();
 }
 
-void populateLmhloToJitRtPasses(mlir::OpPassManager& pm) {
+void populateLmhloToJitRtPasses(mlir::OpPassManager& pm,
+                                GpuBinaryOptions options) {
+  // Run CSE to remove identical `memref.view` operations that read from the
+  // same argument at the same offset.
+  pm.addPass(createCSEPass());
+
   // Convert large global memrefs corresponding to XLA constants with arguments,
   // so that compiled device kernels do not capture them.
   //
@@ -1593,8 +1675,12 @@ void populateLmhloToJitRtPasses(mlir::OpPassManager& pm) {
   pm.addPass(createConvertLmhloConstantToArgPass(/*min_num_elements=*/2));
   pm.addPass(createSymbolDCEPass());  // Clean up unused global constants.
 
+  // Sink constants into MHLO regions before trying to export to XLA for
+  // compiling GPU binaries.
+  pm.addPass(mhlo::createSinkConstantsToControlFlowPass());
+
   // Small global constants will be embedded into the device modules.
-  pm.addPass(createConvertLmhloToGpuBinaryPass());
+  pm.addPass(createConvertLmhloToGpuBinaryPass(options));
 
   // Convert remaining small global memrefs corresponding to constant arguments.
   pm.addPass(createConvertLmhloConstantToArgPass());

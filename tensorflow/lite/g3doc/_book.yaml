@@ -99,8 +99,7 @@ upper_tabs:
 
       - heading: "Images & video"
       - title: "Object detection"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android
-        status: external
+        path: /lite/android/tutorials/object_detection
       - title: "Image classification"
         path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/
         status: external
@@ -110,19 +109,14 @@ upper_tabs:
 
       - heading: "Text"
       - title: "Text classification"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/text_classification/android
-        status: external
+        path: /lite/android/tutorials/text_classification
       - title: "Smart reply"
         path: https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android
         status: external
 
       - heading: "Audio"
-      - title: "Voice commands"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/speech_commands/android
-        status: external
-      - title: "Sound classification"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/sound_classification/android
-        status: external
+      - title: "Sound and word recognition"
+        path: /lite/android/tutorials/audio_classification
 
       - heading: "Hardware acceleration"
       - title: "NNAPI delegate"
@@ -245,6 +239,8 @@ upper_tabs:
           path: /lite/models/modify/model_maker/speech_recognition
 
       - heading: "Design and build models"
+      - title: "Overview"
+        path: /lite/models/build/
       - title: "Performance best practices"
         path: /lite/performance/best_practices
       - title: "Performance measurement"

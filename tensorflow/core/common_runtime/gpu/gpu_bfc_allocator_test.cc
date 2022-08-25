@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
 
 namespace tensorflow {
 namespace {

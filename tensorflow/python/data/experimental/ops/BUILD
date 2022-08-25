@@ -109,6 +109,15 @@ py_library(
 )
 
 py_library(
+    name = "from_list",
+    srcs = ["from_list.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+    ],
+)
+
+py_library(
     name = "get_single_element",
     srcs = ["get_single_element.py"],
     srcs_version = "PY3",
@@ -409,6 +418,7 @@ py_library(
         ":distribute",
         ":enumerate_ops",
         ":error_ops",
+        ":from_list",
         ":get_single_element",
         ":grouping",
         ":interleave_ops",

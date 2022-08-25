@@ -32,12 +32,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-// The amount of shared memory a CUDA kernel can use.
-//
-// Stay on the conservative side, this is smaller than full 64kB, but allows
-// some extra space for cache.
-int64_t kSharedMemoryBudgetInBytes = 40000;
-
 bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
   if (instr.opcode() == HloOpcode::kReduce &&
@@ -58,26 +52,22 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
 
 }  // namespace
 
-bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
-                                         const HloInstruction& reduce) {
-  if (producer.opcode() == HloOpcode::kCopy) {
-    return false;
-  }
-  if (producer.opcode() == HloOpcode::kFusion) {
-    for (const HloInstruction* instr : producer.fused_instructions()) {
-      if (instr->opcode() == HloOpcode::kCopy) {
-        // Elementwise copies are only inserted in input fusion for
-        // transposition, and those are never friendly to the reduction.
-        return false;
+bool IsPhysicallyTransposing(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kFusion) {
+    for (const HloInstruction* fused_instr : instr.fused_instructions()) {
+      if (IsPhysicallyTransposing(*fused_instr)) {
+        return true;
       }
     }
   }
 
   // A fusion iterates over its output in physically-contiguous order. This
   // applies "upwards" to operands.  Only an operator that changes an operand's
-  // physical layout can create a "bad" memory access pattern, and layout
-  // assignment guarantees kCopy is the only such operator.
-  return true;
+  // physical layout can create a "bad" memory access pattern.
+  return instr.opcode() == HloOpcode::kCopy ||
+         (instr.opcode() == HloOpcode::kTranspose &&
+          !ShapeUtil::TransposeIsBitcast(instr.operand(0)->shape(),
+                                         instr.shape(), instr.dimensions()));
 }
 
 bool IsReduceInputFusion(const HloInstruction& instr) {
@@ -222,12 +212,10 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     return "the fusion would create a nested loop";
   }
 
-  // Do not fuse into reduce input fusions if the resulting kernel would suffer
-  // from poor data locality (due to unfriendly input layouts).
-  if (IsInputFusibleReduction(consumer) &&
-      !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
-    return "the producer layout is not fusion-friendly for the consumer "
-           "reduction";
+  // Do not fuse into fusions if the resulting kernel would suffer from
+  // uncoalesced reads due to a transposed memory access pattern.
+  if (IsInputFusibleReduction(consumer) && IsPhysicallyTransposing(producer)) {
+    return "fusing the producer would break read coalescing";
   }
 
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
@@ -291,7 +279,7 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
     return false;
   }
-  if (!LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
+  if (IsPhysicallyTransposing(producer)) {
     return false;
   }
   return true;

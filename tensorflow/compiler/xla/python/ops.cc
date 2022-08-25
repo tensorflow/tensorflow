@@ -76,16 +76,16 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("channel_id") = std::nullopt,
           py::arg("shape_with_layout") = std::nullopt,
           py::arg("use_global_device_ids") = std::nullopt);
-  ops.def(
-      "AllReduce",
-      static_cast<XlaOp (*)(
-          XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
-          const std::optional<ChannelHandle>&, const std::optional<Shape>&)>(
-          &AllReduce),
-      py::arg("operand"), py::arg("computation"),
-      py::arg("replica_groups") = py::list(),
-      py::arg("channel_id") = std::nullopt,
-      py::arg("shape_with_layout") = std::nullopt);
+  ops.def("AllReduce",
+          static_cast<XlaOp (*)(
+              XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
+              const std::optional<ChannelHandle>&, const std::optional<Shape>&,
+              const std::optional<bool>)>(&AllReduce),
+          py::arg("operand"), py::arg("computation"),
+          py::arg("replica_groups") = py::list(),
+          py::arg("channel_id") = std::nullopt,
+          py::arg("shape_with_layout") = std::nullopt,
+          py::arg("use_global_device_ids") = std::nullopt);
   ops.def("ReduceScatter", &ReduceScatter, py::arg("operand"),
           py::arg("computation"), py::arg("scatter_dimension"),
           py::arg("shard_count"), py::arg("replica_groups") = py::list(),
@@ -297,6 +297,8 @@ void BuildOpsSubmodule(py::module* m) {
         return std::make_pair(d.q_and_r, d.taus);
       },
       py::arg("operand"));
+  ops.def("RecvFromHost", &RecvFromHost, py::arg("token"), py::arg("shape"),
+          py::arg("handle"));
   ops.def("Reduce",
           static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
                                 absl::Span<const XlaOp>, const XlaComputation&,
@@ -369,6 +371,8 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("select"), py::arg("window_dimensions"),
           py::arg("window_strides"), py::arg("padding"), py::arg("source"),
           py::arg("init_value"), py::arg("scatter"));
+  ops.def("SendToHost", &SendToHost, py::arg("operand"), py::arg("token"),
+          py::arg("shape_with_layout"), py::arg("handle"));
   ops.def("SetDimensionSize", &SetDimensionSize, py::arg("operand"),
           py::arg("val"), py::arg("dimension"));
   ops.def("Slice", &Slice, py::arg("operand"), py::arg("start_indices"),

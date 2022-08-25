@@ -86,7 +86,7 @@ func.func @layernormalizedlstmcellsimple(%arg0: tensor<1x?xf32>, %arg1: tensor<3
 // CHECK-DAG:       [[VAL_47:%.*]] = arith.constant dense<0.000000e+00> : tensor<1x3xf32>
 // CHECK-DAG:       [[VAL_48:%.*]] = arith.constant dense<0.000000e+00> : tensor<1x1xf32>
 // CHECK:           [[VAL_49:%.*]] = "tfl.lstm"([[VAL_0]], [[VAL_16]], [[VAL_19]], [[VAL_13]], [[VAL_22]], [[VAL_28]], [[VAL_31]], [[VAL_25]], [[VAL_34]], [[VAL_10]], [[VAL_10]], [[VAL_10]], [[VAL_40]], [[VAL_41]], [[VAL_37]], [[VAL_42]], [[VAL_45]], [[VAL_46]], [[VAL_47]], [[VAL_48]], [[VAL_10]], [[VAL_10]], [[VAL_10]], [[VAL_10]]) ({
-// CHECK:           }) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", kernel_type = #tfl<"lstm_kernel_type_attr FULL">, proj_clip = 0.000000e+00 : f32} : (tensor<1x?xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x3xf32>, tensor<1x3xf32>, tensor<1x3xf32>, tensor<1x3xf32>, none, none, none, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<3x1xf32>, tensor<3xf32>, tensor<1x3xf32>, tensor<1x1xf32>, none, none, none, none) -> tensor<1x3xf32>
+// CHECK:           }) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", kernel_type = #tfl<lstm_kernel_type_attr FULL>, proj_clip = 0.000000e+00 : f32} : (tensor<1x?xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x3xf32>, tensor<1x3xf32>, tensor<1x3xf32>, tensor<1x3xf32>, none, none, none, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<3x1xf32>, tensor<3xf32>, tensor<1x3xf32>, tensor<1x1xf32>, none, none, none, none) -> tensor<1x3xf32>
 // CHECK:           [[VAL_50:%.*]] = tensor.cast [[VAL_51:%.*]] : tensor<1x3xf32> to tensor<1x?xf32>
 // CHECK:           return [[VAL_50]] : tensor<1x?xf32>
 
@@ -146,7 +146,7 @@ func.func @layernormalizedlstmcellsimple(%arg0: tensor<1x?xf32>, %arg1: tensor<3
 // CHECK-DAG:       [[VAL_101:%.*]] = arith.constant dense<0.000000e+00> : tensor<1xf32>
 // CHECK-DAG:       [[VAL_102:%.*]] = arith.constant dense<0.000000e+00> : tensor<1xf32>
 // CHECK:           [[VAL_103:%.*]] = "tfl.lstm"([[VAL_0]], [[VAL_62]], [[VAL_65]], [[VAL_59]], [[VAL_68]], [[VAL_74]], [[VAL_77]], [[VAL_71]], [[VAL_80]], [[VAL_56]], [[VAL_56]], [[VAL_56]], [[VAL_86]], [[VAL_87]], [[VAL_83]], [[VAL_88]], [[VAL_91]], [[VAL_92]], [[VAL_93]], [[VAL_94]], [[VAL_100]], [[VAL_101]], [[VAL_97]], [[VAL_102]]) ({
-// CHECK:           }) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", kernel_type = #tfl<"lstm_kernel_type_attr FULL">, proj_clip = 0.000000e+00 : f32} : (tensor<1x?xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x3xf32>, tensor<1x3xf32>, tensor<1x3xf32>, tensor<1x3xf32>, none, none, none, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<3x1xf32>, tensor<3xf32>, tensor<1x3xf32>, tensor<1x1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<1x3xf32>
+// CHECK:           }) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", kernel_type = #tfl<lstm_kernel_type_attr FULL>, proj_clip = 0.000000e+00 : f32} : (tensor<1x?xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x3xf32>, tensor<1x3xf32>, tensor<1x3xf32>, tensor<1x3xf32>, none, none, none, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<3x1xf32>, tensor<3xf32>, tensor<1x3xf32>, tensor<1x1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<1x3xf32>
 // CHECK:           [[VAL_104:%.*]] = tensor.cast [[VAL_105:%.*]] : tensor<1x3xf32> to tensor<1x?xf32>
 // CHECK:           return [[VAL_104]] : tensor<1x?xf32>
 }
@@ -587,7 +587,7 @@ func.func @tflite_custom_nms(%arg0: tensor<1x100x4xf32>, %arg1: tensor<1x100x91x
 // CHECK-SAME:                          %[[VAL_0:.*]]: tensor<1x100x4xf32>,
 // CHECK-SAME:                          %[[VAL_1:.*]]: tensor<1x100x91xf32>,
 // CHECK-SAME:                          %[[VAL_2:.*]]: tensor<100x4xf32>) -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) attributes {tf._implements = "TFLite_Detection_PostProcess", tf._reference = "mlir"} {
-// CHECK:         %[[VAL_3:.*]]:4 = "tfl.custom"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) {custom_code = "TFLite_Detection_PostProcess", custom_option = opaque<"tfl", "0x6D61785F646574656374696F6E73006D61785F636C61737365735F7065725F646574656374696F6E006E756D5F636C6173736573006E6D735F73636F72655F7468726573686F6C64006E6D735F696F755F7468726573686F6C6400795F7363616C6500785F7363616C6500685F7363616C6500775F7363616C65007573655F726567756C61725F6E6D73000A217E8E465B681720313A00000C000000010000000A0000000000803F010000000A0000009A99193F0000003F5B0000000000000000000040000020410000A0400E06060E0E06060E0E0E322601"> : tensor<217xi8>} : (tensor<1x100x4xf32>, tensor<1x100x91xf32>, tensor<100x4xf32>) -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>)
+// CHECK:         %[[VAL_3:.*]]:4 = "tfl.custom"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) {custom_code = "TFLite_Detection_PostProcess", custom_option = #tfl<const_bytes : "0x6D61785F646574656374696F6E73006D61785F636C61737365735F7065725F646574656374696F6E006E756D5F636C6173736573006E6D735F73636F72655F7468726573686F6C64006E6D735F696F755F7468726573686F6C6400795F7363616C6500785F7363616C6500685F7363616C6500775F7363616C65007573655F726567756C61725F6E6D73000A217E8E465B681720313A00000C000000010000000A0000000000803F010000000A0000009A99193F0000003F5B0000000000000000000040000020410000A0400E06060E0E06060E0E0E322601">} : (tensor<1x100x4xf32>, tensor<1x100x91xf32>, tensor<100x4xf32>) -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>)
 // CHECK:         return %[[VAL_3]]#0, %[[VAL_3]]#1, %[[VAL_3]]#2, %[[VAL_3]]#3 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
 // CHECK:       }
 }
@@ -637,7 +637,7 @@ func.func @max_unpooling_2d(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi3
 // CHECK-LABEL: func @max_unpooling_2d(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1x1x2x1xf32>,
 // CHECK-SAME:                         %[[VAL_1:.*]]: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = "MaxUnpooling2D"} {
-// CHECK-NEXT:    %[[VAL_2:.*]] = "tfl.custom"(%[[VAL_0]], %[[VAL_1]]) {custom_code = "MaxUnpooling2D", custom_option = opaque<"tfl", "0x01000000020000000200000002000000020000000000000000000000000000000000000000000000"> : tensor<40xi8>} : (tensor<1x1x2x1xf32>, tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32>
+// CHECK-NEXT:    %[[VAL_2:.*]] = "tfl.custom"(%[[VAL_0]], %[[VAL_1]]) {custom_code = "MaxUnpooling2D", custom_option = #tfl<const_bytes : "0x01000000020000000200000002000000020000000000000000000000000000000000000000000000">} : (tensor<1x1x2x1xf32>, tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32>
 // CHECK-NEXT:    return %[[VAL_2]] : tensor<1x2x4x1xf32>
 // CHECK-NEXT:  }
 }
@@ -754,7 +754,7 @@ func.func private @__inference_interpolate_bilinear(%arg0: tensor<2x4x4x1xf32>, 
 // CHECK-LABEL: func private @__inference_dense_image_warp(
 // CHECK-SAME:      %arg0: tensor<2x4x4x1xf32>,
 // CHECK-SAME:      %arg1: tensor<2x4x4x2xf32>) -> tensor<2x4x4x1xf32> attributes {tf._implements = "DenseImageWarp"} {
-// CHECK-NEXT:    %0 = "tfl.custom"(%arg0, %arg1) {custom_code = "DenseImageWarp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<2x4x4x1xf32>, tensor<2x4x4x2xf32>) -> tensor<2x4x4x1xf32>
+// CHECK-NEXT:    %0 = "tfl.custom"(%arg0, %arg1) {custom_code = "DenseImageWarp", custom_option = #tfl<const_bytes : "0x">} : (tensor<2x4x4x1xf32>, tensor<2x4x4x2xf32>) -> tensor<2x4x4x1xf32>
 // CHECK-NEXT:    return %0 : tensor<2x4x4x1xf32>
 // CHECK-NEXT:  }
 }
@@ -799,7 +799,7 @@ func.func @my_composite_op_150(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>, %
 }
 
 // CHECK-LABEL: func @my_composite_op_150(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>, %arg2: tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>) attributes {tf._implements = #tf_type.func<@my_composite_op, {example_option = 10 : i64, tfl_fusable_op = true}>} {
-// CHECK-NEXT:  %0:2 = "tfl.custom"(%arg0, %arg1, %arg2) {custom_code = "my_composite_op", custom_option = opaque<"tfl", "0x6578616D706C655F6F7074696F6E0001100101010A04022401"> : tensor<25xi8>} : (tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+// CHECK-NEXT:  %0:2 = "tfl.custom"(%arg0, %arg1, %arg2) {custom_code = "my_composite_op", custom_option = #tfl<const_bytes : "0x6578616D706C655F6F7074696F6E0001100101010A04022401">} : (tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>)
 // CHECK-NEXT:  return %0#0, %0#1 : tensor<*xf32>, tensor<*xf32>
 // CHECK-NEXT: }
 

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
+#include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/gpu_device.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
@@ -58,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/weakref_lru_cache.h"
 #include "tensorflow/compiler/xla/python/xla_compiler.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -193,6 +195,8 @@ PYBIND11_MODULE(xla_extension, m) {
              PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes)
       .value("ZERO_COPY", PjRtClient::HostBufferSemantics::kZeroCopy);
 
+  jax::BuildWeakrefLRUCacheAPI(m);
+
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)
       .def_property_readonly("platform_version", &PyClient::platform_version)
@@ -224,23 +228,37 @@ PYBIND11_MODULE(xla_extension, m) {
            &PyClient::MakeCrossHostReceiveBuffers, py::arg("shapes"),
            py::arg("device"))
       .def("compile", &PyClient::Compile, py::arg("computation"),
-           py::arg("compile_options") = CompileOptions())
+           py::arg("compile_options") = CompileOptions(),
+           py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("compile", &PyClient::CompileMlir, py::arg("computation"),
-           py::arg("compile_options") = CompileOptions())
+           py::arg("compile_options") = CompileOptions(),
+           py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("serialize_executable", &PyClient::SerializeExecutable)
       .def("deserialize_executable",
-           py::overload_cast<const std::string&, CompileOptions>(
-               &PyClient::DeserializeExecutable))
+           py::overload_cast<const std::string&, CompileOptions,
+                             std::vector<py::capsule>>(
+               &PyClient::DeserializeExecutable),
+           py::arg("serialized"), py::arg("compile_options"),
+           py::arg("host_callbacks") = std::vector<py::capsule>())
       // TODO(skyewm): remove when jax stop providing hlo_module
       .def("deserialize_executable",
            py::overload_cast<const std::string&, std::shared_ptr<HloModule>,
-                             CompileOptions>(&PyClient::DeserializeExecutable))
+                             CompileOptions, std::vector<py::capsule>>(
+               &PyClient::DeserializeExecutable),
+           py::arg("serialized"), py::arg("hlo_module"),
+           py::arg("compile_options"),
+           py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("heap_profile", &PyClient::HeapProfile)
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment", &PyClient::Defragment)
       .def("get_emit_python_callback_descriptor",
            &PyClient::GetEmitPythonCallbackDescriptor, py::arg("callable"),
            py::arg("operand_shapes"), py::arg("result_shapes") = std::nullopt)
+      .def("make_python_callback_from_host_send_and_recv",
+           &PyClient::MakePythonCallbackUsingHostSendAndRecv,
+           py::arg("callable"), py::arg("operand_shapes"),
+           py::arg("result_shapes"), py::arg("send_channel_ids"),
+           py::arg("recv_channel_ids"))
       // Deprecated: please use `get_emit_python_callback_descriptor` instead.
       .def("emit_python_callback", &PyClient::EmitPythonCallback,
            py::arg("callable"), py::arg("builder"), py::arg("operands"),
@@ -357,9 +375,17 @@ PYBIND11_MODULE(xla_extension, m) {
            &PyExecutable::SizeOfGeneratedCodeInBytes)
       .def("get_compiled_memory_stats", &PyExecutable::GetCompiledMemoryStats)
       .def("delete", &PyExecutable::Delete)
-      .def("execute", &PyExecutable::Execute, py::arg("arguments"))
+      .def("execute", &PyExecutable::Execute, py::arg("arguments"),
+           py::arg("device") = std::nullopt)
+      // TODO(chky): Change execute() to always return token rather than hanving
+      // two API entry points.
+      .def("execute_with_token", &PyExecutable::ExecuteWithToken,
+           py::arg("arguments"), py::arg("device") = std::nullopt)
       .def("execute_sharded_on_local_devices",
            &PyExecutable::ExecuteShardedOnLocalDevices, py::arg("arguments"))
+      .def("execute_sharded_on_local_devices_with_tokens",
+           &PyExecutable::ExecuteShardedOnLocalDevicesWithTokens,
+           py::arg("arguments"))
       .def("hlo_modules", &PyExecutable::HloModules)
       .def("keep_alive", &PyExecutable::KeepAlive)
       .def_property_readonly("traceback", &PyExecutable::traceback)
@@ -371,6 +397,11 @@ PYBIND11_MODULE(xla_extension, m) {
                                  return py::none();
                                }
                              });
+  py::class_<PyToken> token(m, "Token");
+  token.def("block_until_ready", &PyToken::Await);
+  py::class_<PyShardedToken> sharded_token(m, "ShardedToken");
+  sharded_token.def("block_until_ready", &PyShardedToken::Await);
+  sharded_token.def("get_token", &PyShardedToken::GetPyToken);
 
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
         py::arg("buffer"), py::arg("take_ownership") = true);
@@ -387,6 +418,22 @@ PYBIND11_MODULE(xla_extension, m) {
   jax::BuildTransferGuardSubmodule(m);
   BuildTracebackSubmodule(m);
   BuildMlirSubmodule(m);
+
+  py::class_<tensorflow::PreemptionSyncManager,
+             std::unique_ptr<tensorflow::PreemptionSyncManager>>
+      preemption_sync_manager(m, "PreemptionSyncManager");
+  preemption_sync_manager
+      .def(
+          "initialize",
+          [](tensorflow::PreemptionSyncManager& manager,
+             DistributedRuntimeClient* client) { manager.Initialize(client); },
+          py::arg("distributed_client"))
+      .def("reached_sync_point",
+           [](tensorflow::PreemptionSyncManager& manager, int step_counter) {
+             return manager.ReachedSyncPoint(step_counter);
+           });
+  m.def("create_preemption_sync_manager",
+        []() { return tensorflow::CreatePreemptionSyncManager(); });
 
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>

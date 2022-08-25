@@ -18,6 +18,10 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <limits>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
@@ -25,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "third_party/tensorflow_serving/apis/predict.pb.h"
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
-#include "tfrt/tensor/btf_util.h"  // from @tf_runtime
 
 ABSL_DECLARE_FLAG(bool, enable_optimizer);
 ABSL_DECLARE_FLAG(std::string, force_data_format);
@@ -103,7 +106,7 @@ void ComputeCurrentTFResult(const std::string& saved_model_dir,
                             bool disable_grappler = false);
 
 void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
-                       absl::optional<double> error = absl::nullopt);
+                       std::optional<double> error = std::nullopt);
 
 SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
@@ -112,7 +115,7 @@ SavedModel::Options DefaultTpuModelOptions(
 tensorflow::StatusOr<std::vector<tensorflow::serving::PredictRequest>>
 GetWarmupRequests(absl::string_view saved_model_dir);
 
-std::vector<tensorflow::Tensor> ProcessPredictRequestsAndMaybeProfile(
+void ProcessPredictRequestsAndMaybeProfile(
     const std::vector<tensorflow::serving::PredictRequest>& requests,
     SavedModel* saved_model, const bool profile = false,
     const int32_t num_steps = 1);

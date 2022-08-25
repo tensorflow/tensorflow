@@ -30,50 +30,48 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 namespace xla {
 namespace gpu {
 
-class GpuAotCompilationResult : public AotCompilationResult {
+// TODO(b/232263665): It should be shared between GPU and CPU.
+class JitRtAotCompilationResult : public AotCompilationResult {
  public:
-  static StatusOr<std::unique_ptr<GpuAotCompilationResult>> FromString(
+  static StatusOr<std::unique_ptr<JitRtAotCompilationResult>> FromString(
       const std::string& serialized) {
-    GpuBefExecutableProto bef_executable;
-    if (!bef_executable.ParseFromString(serialized)) {
-      return InternalError("Failed to parse serialized GpuBefExecutableProto.");
+    JitRtExecutableProto jitrt_executable;
+    if (!jitrt_executable.ParseFromString(serialized)) {
+      return InternalError("Failed to parse serialized JitRtExecutableProto.");
     }
-    return std::unique_ptr<GpuAotCompilationResult>(
-        new GpuAotCompilationResult(std::move(bef_executable)));
+    return std::unique_ptr<JitRtAotCompilationResult>(
+        new JitRtAotCompilationResult(std::move(jitrt_executable)));
   }
 
-  GpuAotCompilationResult(HloModuleProto hlo_module_proto,
-                          const std::string& bef,
-                          EntryFunctionAttributes entry_func_attrs) {
-    *bef_executable_.mutable_hlo_module_proto() = hlo_module_proto;
-    bef_executable_.set_bef(bef);
-    *bef_executable_.mutable_entry_func_attrs() = entry_func_attrs;
+  JitRtAotCompilationResult(HloModuleProto hlo, const std::string& obj_file,
+                            const std::string& mlir_module,
+                            EntryFunctionAttributes entry_func_attrs) {
+    *jitrt_executable_.mutable_hlo_module_proto() = hlo;
+    *jitrt_executable_.mutable_entry_func_attrs() = entry_func_attrs;
+    jitrt_executable_.set_obj_file(obj_file);
+    jitrt_executable_.set_mlir_module(mlir_module);
   }
-  ~GpuAotCompilationResult() override = default;
 
   StatusOr<std::string> SerializeAsString() const override {
-    return bef_executable_.SerializeAsString();
+    return jitrt_executable_.SerializeAsString();
   }
 
   StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       Compiler* compiler, se::StreamExecutor* executor) const override;
 
-  const GpuBefExecutableProto& bef_executable() const {
-    return bef_executable_;
-  }
-
  private:
-  explicit GpuAotCompilationResult(GpuBefExecutableProto bef_executable)
-      : bef_executable_(std::move(bef_executable)) {}
+  explicit JitRtAotCompilationResult(JitRtExecutableProto jitrt_executable)
+      : jitrt_executable_(std::move(jitrt_executable)) {}
 
-  GpuBefExecutableProto bef_executable_;
+  JitRtExecutableProto jitrt_executable_;
 };
 
 // The GPU compiler generates efficient GPU executables.
@@ -98,9 +96,6 @@ class GpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
-      const std::string& serialized_aot_result) override;
-
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      AotCompilationOptions const& options) override;
@@ -114,6 +109,13 @@ class GpuCompiler : public LLVMCompiler {
   se::Platform::Id PlatformId() const override { return platform_id_; }
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
+
+  // Returns a (deserialized) AotCompilationResult from a serialized
+  // AotCompilationResult.
+  StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
+      const std::string& serialized_aot_result) override {
+    return JitRtAotCompilationResult::FromString(serialized_aot_result);
+  }
 
  protected:
   virtual Status OptimizeHloPostLayoutAssignment(
@@ -151,9 +153,6 @@ class GpuCompiler : public LLVMCompiler {
     return Unimplemented("LinkModules is not implemented.");
   }
 
-  // Optional HloProto, stashed for dumping snapshots.
-  std::unique_ptr<HloProto> hlo_proto_;
-
   se::Platform::Id platform_id_;
 
   // The triple that represents our target.
@@ -168,8 +167,6 @@ class GpuCompiler : public LLVMCompiler {
   GpuCompiler(const GpuCompiler&) = delete;
   GpuCompiler& operator=(const GpuCompiler&) = delete;
 };
-
-GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec);
 
 // Compile `hlo_module` using XLA GPU and return the LLVM module thus generated.
 // The GpuExecutable (and the Thunks that are part of it) are not returned.

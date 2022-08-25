@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/toco/graph_transformations/identify_util.h"
 
+#include <string>
+
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
 

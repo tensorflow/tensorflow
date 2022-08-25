@@ -32,8 +32,10 @@ Java and C++.
 
 To use the Task Library in your Android app, use the AAR from MavenCentral for
 [Task Vision library](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-task-vision)
-and
+,
 [Task Text library](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-task-text)
+and
+[Task Audio Library](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-task-audio)
 , respectively.
 
 You can specify this in your `build.gradle` dependencies as follows:

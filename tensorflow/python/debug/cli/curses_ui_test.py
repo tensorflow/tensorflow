@@ -16,11 +16,11 @@
 import argparse
 import curses
 import os
+import queue
 import tempfile
 import threading
 
 import numpy as np
-from six.moves import queue
 
 from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_test_utils

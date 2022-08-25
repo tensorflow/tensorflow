@@ -135,8 +135,20 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       if (int8_forward_inference) {
         const Tensor& min_input_t = MklGetInput(context, 1);
         const Tensor& max_input_t = MklGetInput(context, 2);
-        const float min_input = min_input_t.flat<float>()(0);
-        const float max_input = max_input_t.flat<float>()(0);
+
+        OP_REQUIRES(
+            context, TensorShapeUtils::IsScalar(min_input_t.shape()),
+            errors::InvalidArgument(
+                "min_input shape must be rank 0 but is rank ",
+                min_input_t.dims(), ", received shape: ", min_input_t.shape()));
+        OP_REQUIRES(
+            context, TensorShapeUtils::IsScalar(max_input_t.shape()),
+            errors::InvalidArgument(
+                "max_input shape must be rank 0 but is rank ",
+                max_input_t.dims(), ", received shape: ", max_input_t.shape()));
+
+        const float min_input = min_input_t.scalar<float>()();
+        const float max_input = max_input_t.scalar<float>()();
 
         Tensor* output_min = nullptr;
         Tensor* output_max = nullptr;
@@ -192,7 +204,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       auto shape_vec = orig_input_tensor.vec<int32>();
       TensorShape orig_input_shape;
       for (int i = 0; i < orig_input_tensor.NumElements(); i++) {
-        orig_input_shape.AddDim(shape_vec(i));
+        orig_input_shape.AddDimWithStatus(shape_vec(i));
       }
 
       bool is_pool2d = (this->ksize_.size() == 4);

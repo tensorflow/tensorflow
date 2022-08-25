@@ -41,10 +41,13 @@ jobs:
             const domain = await script.get_email_domain({github, username});
             switch(domain) {
             case "intel.com":
-              console.log(await script.filter({github, context}));
+              console.log(await script.filter({github, context, domain}));
               break;
             case "apple.com":
-              console.log(await script.filter({github, context}));
+              console.log(await script.filter({github, context, domain}));
+              break;
+            case "nvidia.com":
+              console.log(await script.filter({github, context, domain}));
               break;
             case "google.com":
               console.log("Googler. No action necessary");

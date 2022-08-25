@@ -309,6 +309,12 @@ class MklConvCustomBackpropInputOp
       const Tensor& filter_tensor = MklGetInput(context, kFilterIdx);
       const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
 
+      OP_REQUIRES(
+          context, diff_dst_tensor.dims() == 4 || diff_dst_tensor.dims() == 5,
+          errors::InvalidArgument("input_sizes must be 4 or 5-dimensional, "
+                                  "got: ",
+                                  diff_dst_tensor.dims()));
+
       MklDnnShape src_mkl_shape, filter_mkl_shape, diff_dst_mkl_shape;
       GetMklShape(context, kInputIdx, &src_mkl_shape, native_format);
       GetMklShape(context, kFilterIdx, &filter_mkl_shape, native_format);

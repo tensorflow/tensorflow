@@ -191,6 +191,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
   _inner_shape: ops.Tensor
   _static_inner_shape: tensor_shape.TensorShape
   __batch_encoder__ = _DynamicRaggedShapeBatchEncoder()
+  __name__ = "tf.DynamicRaggedShape"
 
   def __init__(self,
                row_partitions: Sequence[RowPartition],
@@ -1092,7 +1093,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
 
     If the shape is truly ragged, then this adds the row_partitions.
 
-    The the shape is dense, then this just returns flat_values.
+    The shape is dense, then this just returns flat_values.
 
     Args:
       flat_values: the flat_values of a ragged tensor with this shape, or a

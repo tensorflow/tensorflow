@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/activity_watcher/activity.h"
+#include "tensorflow/core/activity_watcher/activity_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
@@ -307,7 +309,7 @@ class IteratorStateVariant {
     if (data.type_name() != TypeName()) {
       return false;
     }
-    auto tensor_data = absl::make_unique<VariantTensorData>();
+    auto tensor_data = std::make_unique<VariantTensorData>();
     std::swap(*tensor_data, data);
     data_ = std::move(tensor_data);
     return true;
@@ -391,7 +393,7 @@ class IteratorVariantSerializer {
       }
       data.push_back(w->GetData());
     }
-    reader_ = absl::make_unique<VariantTensorDataReader>(data);
+    reader_ = std::make_unique<VariantTensorDataReader>(data);
     num_tensors_ = data.size();
     return OkStatus();
   }
@@ -526,13 +528,13 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
   // in that device's resource manager.
 
   *device_mgr =
-      absl::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
+      std::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
           ctx->device()->name(), down_cast<Device*>(ctx->device()),
           false /* owns_underlying */, false /* isolate_session_state */));
-  *flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  *flib_def = std::make_unique<FunctionLibraryDefinition>(
       *ctx->function_library()->GetFunctionLibraryDefinition());
   const auto* config = ctx->function_library()->config_proto();
-  *pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  *pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr->get(), ctx->env(),
       /*config=*/config, graph_def_version_, flib_def->get(),
       config->graph_options().optimizer_options());
@@ -620,6 +622,8 @@ class ToSingleElementOp : public AsyncOpKernel {
  public:
   explicit ToSingleElementOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
+        metrics_collector_(ctx->device()->attributes().device_type(),
+                           *ctx->env()),
         unbounded_threadpool_(ctx->env(), "tf_data_to_single_element") {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
@@ -664,8 +668,10 @@ class ToSingleElementOp : public AsyncOpKernel {
     components.reserve(dataset->output_dtypes().size());
     bool end_of_sequence = false;
 
+    const absl::Time start_time = metrics_collector_.RecordStart();
     TF_RETURN_IF_ERROR(
         iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
+    metrics_collector_.RecordStop(start_time, components);
 
     if (end_of_sequence) {
       return errors::InvalidArgument("Dataset was empty.");
@@ -685,6 +691,7 @@ class ToSingleElementOp : public AsyncOpKernel {
     return OkStatus();
   }
 
+  IteratorMetricsCollector metrics_collector_;
   UnboundedThreadPool unbounded_threadpool_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
@@ -892,6 +899,11 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   auto cleanup = gtl::MakeCleanup([ctx] {
     VLOG(3) << "IteratorGetNextOp exit. iter_id=" << ctx->frame_iter().iter_id;
   });
+  activity_watcher::ActivityScope activity_scope([ctx = ctx]() {
+    return activity_watcher::ActivityFromContext(
+        ctx, "IteratorGetNextOp::DoCompute",
+        activity_watcher::ActivityCategory::kDatasetOp);
+  });
   profiler::TraceMe traceme(
       [&] {
         return profiler::TraceMeEncode(
@@ -926,6 +938,11 @@ Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
   auto cleanup = gtl::MakeCleanup([ctx] {
     VLOG(3) << "IteratorGetNextAsOptionalOp exit. iter_id="
             << ctx->frame_iter().iter_id;
+  });
+  activity_watcher::ActivityScope activity_scope([ctx = ctx]() {
+    return activity_watcher::ActivityFromContext(
+        ctx, "IteratorGetNextAsOptionalOp::DoCompute",
+        activity_watcher::ActivityCategory::kDatasetOp);
   });
   profiler::TraceMe traceme(
       [&] {

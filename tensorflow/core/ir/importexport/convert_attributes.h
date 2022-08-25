@@ -54,13 +54,11 @@ ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type);
 // exclused in this function because the function might be renamed when the
 // function definition is imported.
 tensorflow::StatusOr<Attribute> ConvertNonFuncAttributeValue(
-    const tensorflow::AttrValue& value, Builder& builder,
-    TFGraphDialect* tfgDialect);
+    const tensorflow::AttrValue& value, Builder& builder);
 
 // Converts all kinds of AttrValue proto into an MLIR attribute.
 tensorflow::StatusOr<Attribute> ConvertAttributeValue(
-    const tensorflow::AttrValue& value, Builder& builder,
-    TFGraphDialect* tfgDialect);
+    const tensorflow::AttrValue& value, Builder& builder);
 
 // Convert the MLIR FullTyoe attribute `attr` and return a
 // `tensorflow::FullTypeDef`.
@@ -69,8 +67,7 @@ tensorflow::StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
 
 // Converts fulltype proto to attribute.
 tensorflow::StatusOr<::mlir::tf_type::FullTypeAttr> ConvertAttribute(
-    const tensorflow::FullTypeDef& full_type, Builder& builder,
-    TFGraphDialect* tfgDialect);
+    const tensorflow::FullTypeDef& full_type, Builder& builder);
 
 // Convert an array of handle data (pairs of data types and shapes) to an array
 // attribute of tensor types.

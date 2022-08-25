@@ -110,7 +110,8 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
 
   // This operation is cheap because we allocate the CPU context resources (i.e.
   // threads) lazily.
-  own_external_cpu_backend_context_.reset(new ExternalCpuBackendContext());
+  own_external_cpu_backend_context_ =
+      std::make_unique<ExternalCpuBackendContext>();
   external_contexts_[kTfLiteCpuBackendContext] =
       own_external_cpu_backend_context_.get();
 }
@@ -191,9 +192,9 @@ void Interpreter::AddSubgraphs(int subgraphs_to_add,
 
   subgraphs_.reserve(base_index + subgraphs_to_add);
   for (int i = 0; i < subgraphs_to_add; ++i) {
-    Subgraph* subgraph =
-        new Subgraph(error_reporter_, external_contexts_, &subgraphs_,
-                     &resources_, &resource_ids_, &initialization_status_map_);
+    Subgraph* subgraph = new Subgraph(
+        error_reporter_, external_contexts_, &subgraphs_, &resources_,
+        &resource_ids_, &initialization_status_map_, subgraphs_.size());
     subgraphs_.emplace_back(subgraph);
   }
 }

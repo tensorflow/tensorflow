@@ -26,6 +26,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
@@ -349,12 +350,13 @@ class ShapeUtil {
 
   // Constructs a new shape with the given minor_to_major order in its Layout.
   // Returns a value shape such that shape.has_layout().
-  static Shape MakeShapeWithLayout(PrimitiveType element_type,
-                                   absl::Span<const int64_t> dimensions,
-                                   absl::Span<const int64_t> minor_to_major,
-                                   absl::Span<const Tile> tiles = {},
-                                   int64_t element_size_in_bits = 0,
-                                   int64_t memory_space = 0);
+  static Shape MakeShapeWithLayout(
+      PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+      absl::Span<const int64_t> minor_to_major,
+      absl::Span<const DimLevelType> dim_level_types = {},
+      absl::Span<const Tile> tiles = {}, int64_t element_size_in_bits = 0,
+      int64_t memory_space = 0,
+      std::optional<Shape> physical_shape = std::nullopt);
 
   // Constructs a new shape with the given dimension `dim` as the most major
   // dimension in the layout. If the shape does not have a layout, assumes a
@@ -505,6 +507,16 @@ class ShapeUtil {
   static Shape PermuteDimensions(absl::Span<const int64_t> permutation,
                                  const Shape& shape);
 
+  // Describes how we can go from shape A to shape B by inserting degenerate
+  // 1-sized dimensions in `added_dimensions` and removing degenerate 1-sized
+  // dimensions from B in `removed_dimensions`.
+  //
+  // Only exists if shapes A and B only differ by degenerate dimensions.
+  struct ShapeEqualityDescriptor {
+    std::vector<int64_t> deleted_dimensions;
+    std::vector<int64_t> inserted_dimensions;
+  };
+
   // If we can go from `shape_pre` to `shape_post` by merely inserting or
   // deleting 1-sized dimensions, return the indices in `shape_pre` of the
   // deleted dimensions and the indices in `dims_post` of the inserted
@@ -515,7 +527,7 @@ class ShapeUtil {
   // `j` and `a_(k-s) = b_(k-t)` where `s` and `t` are the number of `i`s and
   // `j`s less than `k` for all other `k`, we return the `i`s and `j`s.
   // For another example, if `shape_pre = shape_post = {}`, we return `{}`.
-  static std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
+  static std::optional<ShapeEqualityDescriptor>
   InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
                                     const Shape& shape_post);
 
@@ -561,8 +573,8 @@ class ShapeUtil {
                                  const Shape& output_shape,
                                  absl::Span<const int64_t> dimension_mapping);
 
-  // Returns whether a reshape from "input_shape" to "output_shape" is a
-  // bitcast.
+  // Returns whether a reshape from `input_shape` to `output_shape` is a
+  // bitcast, when minor_to_major in layout is considered.
   //
   // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool ReshapeIsBitcast(const Shape& input_shape,
@@ -720,8 +732,8 @@ class ShapeUtil {
   //
   // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
   // normalized shape of `b` or the 0-2-1 shape.
-  static std::optional<std::vector<int64_t>> FindTranspose021(const Shape& a,
-                                                              const Shape& b);
+  static std::optional<Vector3> FindTranspose021(const Shape& a,
+                                                 const Shape& b);
 
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.

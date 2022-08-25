@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/quantize_and_dequantize.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
@@ -37,24 +38,23 @@ GPUOperation CreateQuantizeAndDequantize(
     adjusted_attr.scale = 0.000062f;
   }
 
-  GPUOperation op(definition);
-  op.elementwise_ = true;
+  ElementwiseDescriptor op_desc;
   if (definition.precision == CalculationsPrecision::F32) {
-    op.args_.AddFloat("min", adjusted_attr.min);
-    op.args_.AddFloat("max", adjusted_attr.max);
-    op.args_.AddFloat("scale", adjusted_attr.scale);
+    op_desc.args.AddFloat("min", adjusted_attr.min);
+    op_desc.args.AddFloat("max", adjusted_attr.max);
+    op_desc.args.AddFloat("scale", adjusted_attr.scale);
   } else {
-    op.args_.AddHalf("min", half(adjusted_attr.min));
-    op.args_.AddHalf("max", half(adjusted_attr.max));
-    op.args_.AddHalf("scale", half(adjusted_attr.scale));
+    op_desc.args.AddHalf("min", half(adjusted_attr.min));
+    op_desc.args.AddHalf("max", half(adjusted_attr.max));
+    op_desc.args.AddHalf("scale", half(adjusted_attr.scale));
   }
-  op.code_ = R"(
-FLT4 clamped_value = min(INIT_FLT4(args.max), max(INIT_FLT4(args.min), in_out_value));
+  op_desc.code = R"(
+FLT4 clamped_value = min(INIT_FLT4(args.max), max(INIT_FLT4(args.min), in_value));
 FLT4 quantized_value = round((clamped_value - INIT_FLT4(args.min)) / INIT_FLT4(args.scale));
 FLT4 dequantized_value = quantized_value * INIT_FLT4(args.scale) + INIT_FLT4(args.min);
-in_out_value = dequantized_value;)";
+out_value = dequantized_value;)";
 
-  return op;
+  return CreateGpuOperation(definition, std::move(op_desc));
 }
 
 }  // namespace gpu

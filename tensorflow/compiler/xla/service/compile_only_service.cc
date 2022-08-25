@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -103,7 +102,8 @@ CompileOnlyService::CompileAheadOfTime(
     TF_RET_CHECK(instance.computation.has_host_program_shape());
     auto update_shape_with_empty_tiles = [this](Shape* subshape,
                                                 const xla::ShapeIndex& index) {
-      if (subshape->IsArray() && subshape->layout().tiles().empty()) {
+      if (subshape->IsArray() &&
+          (!subshape->has_layout() || subshape->layout().tiles().empty())) {
         *subshape = compiler_->DefaultDeviceShapeRepresentation(*subshape);
       }
     };

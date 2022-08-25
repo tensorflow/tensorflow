@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Helpers to traverse the Dataset dependency structure."""
-from six.moves import queue as Queue  # pylint: disable=redefined-builtin
+import queue
 
 from tensorflow.python.framework import dtypes
 
@@ -28,7 +28,7 @@ TENSOR_TYPES_ALLOWLIST = [dtypes.variant]
 def _traverse(dataset, op_filter_fn):
   """Traverse a dataset graph, returning nodes matching `op_filter_fn`."""
   result = []
-  bfs_q = Queue.Queue()
+  bfs_q = queue.Queue()
   bfs_q.put(dataset._variant_tensor.op)  # pylint: disable=protected-access
   visited = []
   while not bfs_q.empty():

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -139,6 +140,9 @@ void TrtShapeOptimizationProfile::OptimalStrategy(
 // Collects the values of tensors that are ShapeTensorCompatible to. The values
 // are stored in the actual_shape_values_ member variable.
 Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
+  tensorflow::profiler::TraceMe activity(
+      "TrtShapeOptimizationProfile::CollectShapeValues",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   const cudaStream_t* stream = CHECK_NOTNULL(
       reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
                                                 ->stream()
@@ -344,7 +348,8 @@ Status TrtShapeOptimizationProfile::AddProfiles(
   if (!calib_profiles_.min.empty()) {
     VLOG(2) << "Setting up calibration profies";
     auto* calibProfile = builder->createOptimizationProfile();
-    Status status = calib_profiles_.SetDimensions(network, calibProfile);
+    Status status =
+        calib_profiles_.SetDimensions(network, calibProfile, input_mask_);
     if (!status.ok()) {
       return status;
     }
@@ -367,7 +372,8 @@ Status TrtShapeOptimizationProfile::AddProfiles(
   // Create a vector of optimization profiles.
   for (int i = 0; i < profiles_.size(); i++) {
     auto* optProfile = builder->createOptimizationProfile();
-    Status status = profiles_[i].SetDimensions(network, optProfile);
+    Status status =
+        profiles_[i].SetDimensions(network, optProfile, input_mask_);
     if (!status.ok()) {
       return status;
     }
@@ -466,6 +472,9 @@ void TrtShapeOptimizationProfile::SetShapeTensorMask(
 
 int TrtShapeOptimizationProfile::GetProfileNumber(
     const std::vector<TensorShape>& shapes) {
+  tensorflow::profiler::TraceMe activity(
+      "TrtShapeOptimizationProfile::GetProfileNumber",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   if (!need_profiles_) return 0;
   // TODO(tfeher): Return the best profile not just the first compatible.
   for (int i = 0; i < profiles_.size(); i++) {
@@ -509,6 +518,9 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
 Status TrtShapeOptimizationProfile::SetInputShapeBinding(
     int input_index, int binding_index, nvinfer1::ICudaEngine* cuda_engine,
     nvinfer1::IExecutionContext* exec_context) const {
+  tensorflow::profiler::TraceMe activity(
+      "TrtShapeOptimizationProfile::SetInputShapeBinding",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   if (cuda_engine->isShapeBinding(binding_index)) {
     // Input shape binding data has to be in host memory. That is the reason
     // we can't use input_tensor.flat().data(). which contains the same
@@ -558,10 +570,10 @@ Status TrtShapeOptimizationProfile::SetPrunedMask(
   for (int j = 0; j < n_network_inputs; j++) {
     int binding_idx;
     Status status = GetTrtBindingIndex(j, 0, engine, &binding_idx);
-    if (IS_TRT_VERSION_GE(8, 0, 0, 0)) {
-      TF_RETURN_IF_ERROR(status);
-    } else if (!status.ok()) {
+    if (!status.ok()) {
       // Before TRT 8, an input tensor can be pruned (nvbugs/3153064)
+      // Resource inputs are also unknown by TRT, so we can treat them as
+      // pruned (the engine includes the variable as weights).
       is_pruned_input_[j] = true;
       VLOG(2) << "Skipping pruned input " << j;
       continue;

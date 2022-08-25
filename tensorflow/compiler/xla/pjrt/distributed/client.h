@@ -27,6 +27,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
 
+namespace tensorflow {
+class CoordinationServiceAgent;
+}  // namespace tensorflow
+
 namespace xla {
 
 class DistributedRuntimeClient {
@@ -117,6 +121,11 @@ class DistributedRuntimeClient {
   // `barrier_id` should be unique across barriers.
   virtual xla::Status WaitAtBarrier(std::string barrier_id,
                                     absl::Duration timeout) = 0;
+
+  // Returns pointer to coordination service agent, or InternalError if the
+  // client does not use coordination service.
+  virtual StatusOr<tensorflow::CoordinationServiceAgent*>
+  GetCoordinationServiceAgent() = 0;
 };
 
 // Creates a distributed runtime client.

@@ -29,10 +29,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/stream_executor/gpu/gpu_types.h"
 
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess

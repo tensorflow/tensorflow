@@ -63,8 +63,8 @@ LogicalResult VerifyTensorTypesCompatible(Type t1, Type t2) {
 
 LogicalResult GlobalTensorOp::verify() {
   GlobalTensorOp global_tensor = *this;
-  if (failed(VerifyTensorTypesCompatible(
-          global_tensor.type(), global_tensor.value().Attribute::getType()))) {
+  if (failed(VerifyTensorTypesCompatible(global_tensor.type(),
+                                         global_tensor.value().getType()))) {
     return global_tensor.emitError() << "'type' and 'value' attributes should "
                                         "have compatible tensor types";
   }
@@ -304,7 +304,7 @@ static LogicalResult VerifySavedModelModule(
 
   SymbolTable symbol_table(module);
   auto symbol_uses = SymbolTable::getSymbolUses(&module.getBodyRegion());
-  if (!symbol_uses.hasValue()) {
+  if (!symbol_uses.has_value()) {
     return module.emitError() << "modules with 'tf_saved_model.semantics' must "
                                  "have analyzable symbol uses";
   }

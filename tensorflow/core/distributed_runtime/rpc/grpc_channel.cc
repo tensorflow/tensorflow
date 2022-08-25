@@ -269,7 +269,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
         job_id_(job_id),
         host_ports_(host_ports),
         channel_func_(std::move(channel_func)) {
-    LOG(INFO) << "Initialize GrpcChannelCache for job " << ToString();
+    VLOG(2) << "Initialize GrpcChannelCache for job " << ToString();
   }
   ~SparseGrpcChannelCache() override {}
 

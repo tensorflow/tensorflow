@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -50,8 +49,9 @@ constexpr char kJobName[] = "test_worker";
 // Send fake preemption notices at any time for testing.
 class FakePreemptionNotifier : public PreemptionNotifier {
  public:
+  FakePreemptionNotifier() : PreemptionNotifier(/*env=*/nullptr) {}
+
   ~FakePreemptionNotifier() override {
-    mutex_lock l(mu_);
     NotifyRegisteredListeners(
         errors::Cancelled("~FakePreemptionNotifier() was called."));
   }
@@ -59,14 +59,8 @@ class FakePreemptionNotifier : public PreemptionNotifier {
   void AnnounceDeath(absl::Time death_time) {
     LOG(WARNING) << "Received preemption notice with death time: "
                  << death_time;
-    {
-      mutex_lock l(mu_);
-      death_time_ = death_time;
-      NotifyRegisteredListeners(death_time_);
-    }
+    NotifyRegisteredListeners(death_time);
   }
-
-  void Reset() override {}
 };
 
 class PreemptionSyncManagerTest : public ::testing::Test {
@@ -128,7 +122,7 @@ class PreemptionSyncManagerTest : public ::testing::Test {
   std::unique_ptr<PreemptionSyncManager> preempt_sync_mgr2_ =
       CreatePreemptionSyncManager();
 
- private:
+ protected:
   // Utility methods to set up coordination service and agents.
   void StartCoordinationService() {
     ::grpc::ServerBuilder builder;
@@ -240,6 +234,19 @@ TEST_F(PreemptionSyncManagerTest, UnhealthyTask_NoSyncPoint) {
   SendPreemptionNotice();
 
   // No sync point is created since one of the tasks is unhealthy.
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+}
+
+TEST_F(PreemptionSyncManagerTest, ShutdownTasksWithoutPreemption) {
+  int step_counter = 0;
+  // Simulate task doing work and making progress.
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+
+  // Shutdown coordination service agents.
+  TF_CHECK_OK(coord_agent_->Shutdown());
+  TF_CHECK_OK(coord_agent2_->Shutdown());
+  // Protocol is not triggerred, so there should be no sync point.
   EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 }
 

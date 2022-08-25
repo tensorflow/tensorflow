@@ -61,7 +61,7 @@ class DTensorDevice(object):
     if any(not isinstance(mesh, layout_lib.Mesh) for mesh in meshes):
       raise TypeError(
           "Expected a flat list of Mesh objects, got {}".format(meshes))
-    global _next_device_number, _next_device_number_lock
+    global _next_device_number
     ctx = context.context()
     with _next_device_number_lock:
       self.name = "{}/device:CUSTOM:{}".format(ctx.host_address_space(),
@@ -79,6 +79,7 @@ class DTensorDevice(object):
     for mesh in meshes:
       self._register_mesh(mesh)
 
+# FIXME(b/241819185): Reuse the logic in api.py.
 # LINT.IfChange
   def _num_clients(self):
     """Returns number of clients in current DTensor cluster."""
@@ -95,12 +96,11 @@ class DTensorDevice(object):
   def _job_name(self):
     """Returns the DTensor Borg job name."""
     # If missing, the program is likely running locally or on Forge.
-    return os.environ.get(_DT_JOB_NAME, "localhost")
+    return os.environ.get(_DT_JOB_NAME,
+                          "localhost" if self._num_clients() == 1 else "worker")
 
   def _full_job_name(self):
-    """Returns the fully qualified TF job name for this or another task."""
-    if self._job_name() == "localhost":
-      return "localhost/replica:0/task:0"
+    """Returns the fully qualified TF job name for this task."""
     return self._job_name() + "/replica:0/task:" + str(self._client_id())
 
   def _create_host_array(self, shape, host_id):
@@ -366,6 +366,17 @@ class DTensorDevice(object):
         context.context()._handle,  # pylint: disable=protected-access
         self._device_info,
         tpu_core_locations)
+
+  def _get_function_cache_hit_and_miss_count(self):
+    """Returns the number of cache hit and miss for function compilation.
+
+    Returns:
+      A dictionary keyed with miss and hit, corresponding to the cache hit and
+      miss count.
+    """
+    return _pywrap_dtensor_device.GetFunctionCacheHitAndMissCount(
+        context.context()._handle,  # pylint: disable=protected-access,
+        self._device_info)
 
   @contextlib.contextmanager
   def _experimental_default_mesh(self, mesh: layout_lib.Mesh):

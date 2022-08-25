@@ -321,9 +321,9 @@ Status RunCollective(CollectiveTestEnv* test_env, CollectiveParams* col_params,
   op_params.cancellation_manager = &cancellation_manager;
   gtl::InlinedVector<TensorValue, 4> inputs;
   inputs.push_back(TensorValue(&input_buffer));
-  op_params.inputs = &inputs;
+  op_params.inputs = inputs;
   gtl::InlinedVector<AllocatorAttributes, 4> input_aa({AllocatorAttributes()});
-  op_params.input_alloc_attrs = &input_aa;
+  op_params.input_alloc_attrs = input_aa;
   DeviceContext* dev_ctx = nullptr;
   auto* dev_info = device->tensorflow_accelerator_device_info();
   if (dev_info) {

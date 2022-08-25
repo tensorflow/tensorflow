@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/DenseMap.h"
@@ -46,30 +47,27 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
-#include "tensorflow/compiler/tf2xla/layout_util.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 using ::int64_t;
 using ::stream_executor::port::StatusOr;
@@ -118,6 +116,25 @@ static mlir::LogicalResult GetXlaOp(
   return mlir::success();
 }
 
+bool IsBoundedOrStatic(mlir::Type ty) {
+  auto ranked_ty = ty.dyn_cast_or_null<mlir::RankedTensorType>();
+  if (!ranked_ty) return false;
+
+  if (ranked_ty.hasStaticShape()) return true;
+
+  auto encoding = ranked_ty.getEncoding()
+                      .dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>();
+  if (!encoding || encoding.getBounds().empty()) return false;
+
+  int64_t rank = ranked_ty.getRank();
+  for (int64_t dim = 0; dim < rank; ++dim) {
+    if (ranked_ty.isDynamicDim(dim) &&
+        encoding.getBounds()[dim] == mlir::ShapedType::kDynamicSize)
+      return false;
+  }
+  return true;
+}
+
 // Convert APInt into an int.
 // TODO(hpucha): This should be consolidated into a general place.
 static int ConvertAPInt(llvm::APInt i) { return i.getSExtValue(); }
@@ -157,7 +174,7 @@ static std::vector<int64_t> ConvertDenseIntAttr(
 // numbers (empty if the attribute is absent).
 static std::vector<int64_t> Convert_broadcast_dimensions(
     llvm::Optional<mlir::DenseIntElementsAttr> broadcast_dimensions) {
-  if (!broadcast_dimensions.hasValue()) return {};
+  if (!broadcast_dimensions.has_value()) return {};
 
   return ConvertDenseIntAttr(*broadcast_dimensions);
 }
@@ -176,6 +193,12 @@ static xla::FftType Convert_fft_type(mlir::mhlo::FftType fft_type) {
 static std::vector<std::pair<int64_t, int64_t>> Convert_padding(
     llvm::Optional<mlir::DenseIntElementsAttr> padding) {
   return xla::ConvertNx2Attribute(padding).ValueOrDie();
+}
+
+static std::optional<bool> Convert_use_global_device_ids(
+    llvm::Optional<bool> use_global_device_ids) {
+  if (!use_global_device_ids) return {};
+  return *use_global_device_ids;
 }
 
 static std::vector<std::pair<int64_t, int64_t>> Convert_source_target_pairs(
@@ -301,7 +324,7 @@ static std::vector<int64_t> Convert_ArrayRef(llvm::ArrayRef<int64_t> values) {
 // Precision enum. This should have been checked in the op verify method.
 static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
     llvm::Optional<mlir::ArrayAttr> optional_precision_config_attr) {
-  if (!optional_precision_config_attr.hasValue()) return nullptr;
+  if (!optional_precision_config_attr.has_value()) return nullptr;
 
   auto precision_config = std::make_unique<xla::PrecisionConfig>();
   for (auto attr : optional_precision_config_attr.getValue()) {
@@ -370,7 +393,7 @@ xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandleAttr attr) {
 
 std::optional<xla::ChannelHandle> Convert_channel_handle(
     llvm::Optional<mlir::mhlo::ChannelHandleAttr> attr) {
-  if (!attr.hasValue()) return std::nullopt;
+  if (!attr.has_value()) return std::nullopt;
   return Convert_channel_handle(attr.getValue());
 }
 
@@ -543,17 +566,14 @@ class ConvertToHloModule {
   // are converted to a tuple even when there is only a single return value.
   // Multiple return values are always converted to a tuple and returned as a
   // single value.
-  explicit ConvertToHloModule(
-      mlir::ModuleOp module, xla::XlaBuilder& module_builder,
-      bool use_tuple_args, bool return_tuple,
-      tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns
-          shape_determination_fns,
-      MlirToHloConversionOptions options)
+  explicit ConvertToHloModule(mlir::ModuleOp module,
+                              xla::XlaBuilder& module_builder,
+                              bool use_tuple_args, bool return_tuple,
+                              MlirToHloConversionOptions options)
       : module_(module),
         module_builder_(module_builder),
         use_tuple_args_(use_tuple_args),
         return_tuple_(return_tuple),
-        shape_determination_fns_(shape_determination_fns),
         options_(options) {}
 
   // Perform the lowering to XLA. This function returns failure if an error was
@@ -653,11 +673,6 @@ class ConvertToHloModule {
   // Whether to always return a tuple.
   bool return_tuple_;
 
-  // Shape determination functions to determine entry function argument and
-  // result shapes.
-  tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns
-      shape_determination_fns_;
-
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
 
@@ -723,7 +738,7 @@ LogicalResult ExportXlaOp(AddDependencyOp op, OpLoweringContext ctx) {
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
   if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
-  auto operand_shape = ctx.builder->GetShape(operand).ConsumeValueOrDie();
+  auto operand_shape = ctx.builder->GetShape(operand).value();
   value_map[op] = xla::internal::XlaBuilderFriend::BuildAddDependency(
       ctx.builder, operand, token, operand_shape);
   return success();
@@ -757,9 +772,10 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
 
-  value_map[op] = xla::AllReduce(operand, computation,
-                                 Convert_replica_groups(op.replica_groups()),
-                                 Convert_channel_handle(op.channel_handle()));
+  value_map[op] = xla::AllReduce(
+      operand, computation, Convert_replica_groups(op.replica_groups()),
+      Convert_channel_handle(op.channel_handle()), std::nullopt,
+      Convert_use_global_device_ids(op.use_global_device_ids()));
   return success();
 }
 
@@ -811,6 +827,17 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(CosineOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Cos(Unwrap(arg));
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(DotOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
@@ -836,6 +863,23 @@ LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
       Unwrap(Convert_precision_config(op.precision_config())),
       preferred_element_type);
   return mlir::success();
+}
+
+LogicalResult ExportXlaOp(DomainOp op, OpLoweringContext ctx) {
+  auto& valueMap = *ctx.values;
+
+  xla::Shape shape = xla::TypeToShape(op.getResult().getType());
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
+
+  auto entry = CreateOpShardingFromStringRef(op.entry_metadata());
+  if (!entry) return failure();
+  auto exit = CreateOpShardingFromStringRef(op.exit_metadata());
+  if (!exit) return failure();
+
+  valueMap[op] = xla::internal::XlaBuilderFriend::BuildDomain(
+      ctx.builder, operand, *exit, *entry, shape);
+  return success();
 }
 
 LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
@@ -1014,7 +1058,7 @@ LogicalResult ExportXlaOp(ConstantOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(mlir::mhlo::ConvolutionOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
   if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
@@ -1408,24 +1452,20 @@ LogicalResult ExportXlaOp(BatchNormTrainingOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(RngNormalOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp mu, sigma;
-  if (failed(GetXlaOp(op.mu(), value_map, &mu, op))) return failure();
-  if (failed(GetXlaOp(op.sigma(), value_map, &sigma, op))) return failure();
-
-  value_map[op] = xla::RngNormal(mu, sigma, xla::TypeToShape(op.getType()));
-  return success();
-}
-
-LogicalResult ExportXlaOp(RngUniformOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(RngOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp a, b;
   if (failed(GetXlaOp(op.a(), value_map, &a, op))) return failure();
   if (failed(GetXlaOp(op.b(), value_map, &b, op))) return failure();
 
-  value_map[op] = xla::RngUniform(a, b, xla::TypeToShape(op.getType()));
-  return success();
+  if (op.rng_distribution() == RngDistribution::UNIFORM) {
+    value_map[op] = xla::RngUniform(a, b, xla::TypeToShape(op.getType()));
+    return success();
+  } else if (op.rng_distribution() == RngDistribution::NORMAL) {
+    value_map[op] = xla::RngNormal(a, b, xla::TypeToShape(op.getType()));
+    return success();
+  }
+  return failure();
 }
 
 LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
@@ -1502,14 +1542,24 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
 
   if (op.is_host_transfer()) {
     value_map[op] = xla::SendToHost(
-        operand, token,
-        operand.builder()->GetShape(operand).ConsumeValueOrDie(),
+        operand, token, operand.builder()->GetShape(operand).value(),
         Convert_channel_handle(op.channel_handle()));
     return success();
   }
   value_map[op] = xla::SendWithToken(
       operand, token, Convert_channel_handle(op.channel_handle()));
   return success();
+}
+
+mlir::LogicalResult ExportXlaOp(mlir::mhlo::SineOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Sin(Unwrap(arg));
+  value_map[result] = xla_result;
+  return mlir::success();
 }
 
 LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
@@ -1543,6 +1593,20 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
     value_map[it.value()] = xla::GetTupleElement(sorted, it.index());
   }
   return success();
+}
+
+LogicalResult ExportXlaOp(SubtractOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp lhs;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &lhs, op)))
+    return mlir::failure();
+  xla::XlaOp rhs;
+  if (failed(GetXlaOp(*op.getODSOperands(1).begin(), value_map, &rhs, op)))
+    return mlir::failure();
+  auto xla_result = xla::Sub(Unwrap(lhs), Unwrap(rhs));
+  value_map[result] = xla_result;
+  return mlir::success();
 }
 
 LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
@@ -1698,10 +1762,6 @@ LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(PrintOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
 LogicalResult ExportXlaOp(UniformQuantizeOp op, OpLoweringContext ctx) {
   // Currently, it doesn't have an XLA builder equivalent.
   // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
@@ -1725,17 +1785,17 @@ namespace {
 
 StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
                                                   xla::Layout layout) {
-  if (attr.isa<OpaqueElementsAttr>())
+  auto dense_attr = attr.dyn_cast<DenseElementsAttr>();
+  if (!dense_attr)
     return tensorflow::errors::Unimplemented(
-        "Opaque elements attr not supported");
+        "Only dense elements attr are supported");
 
-  xla::Shape shape = xla::TypeToShape(attr.getType());
+  xla::Shape shape = xla::TypeToShape(dense_attr.getType());
 
 #define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)                         \
   case xla_type: {                                                           \
     xla::Array<cpp_type> source_data(shape.dimensions());                    \
-    source_data.SetValues(                                                   \
-        attr.cast<DenseElementsAttr>().getValues<cpp_type>());               \
+    source_data.SetValues(dense_attr.getValues<cpp_type>());                 \
     return xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout); \
   }
 
@@ -2063,11 +2123,11 @@ LogicalResult ConvertToHloModule::Lower(
   if (auto op = dyn_cast<mlir::tensor::CastOp>(inst)) {
     Value operand = op.getOperand();
     auto ty = operand.getType().dyn_cast<ShapedType>();
-    // If this was a cast from a static shaped tensors, then it is a noop for
-    // export to HLO and we can use the operand.
-    if (!ty || !ty.hasStaticShape()) {
+    // If this was a cast from a static or bounded tensors, then it is a noop
+    // for export to HLO and we can use the operand.
+    if (!ty || !IsBoundedOrStatic(ty)) {
       inst->emitOpError()
-          << "requires static shaped operand for HLO translation";
+          << "requires static or bounded operand for HLO translation";
       return failure();
     }
 
@@ -2116,8 +2176,9 @@ LogicalResult ConvertToHloModule::Lower(
 
         xla::Shape return_shape = xla::TypeToShape(ret.get().getType());
         StatusOr<xla::XlaOp> reshape =
-            tensorflow::ReshapeWithCorrectRepresentationAndSharding(
-                builder, returns[index], return_shape, shape_determination_fns_,
+            ReshapeWithCorrectRepresentationAndSharding(
+                builder, returns[index], return_shape,
+                options_.layout_preference_fn, options_.shape_representation_fn,
                 ret_shardings[index], /*fast_mem=*/false);
         if (!reshape.ok())
           return inst->emitError() << reshape.status().error_message();
@@ -2265,24 +2326,18 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
   for (BlockArgument& arg : block->getArguments()) {
     arg_shapes->push_back(xla::TypeToShape(arg.getType()));
     xla::Shape& arg_shape = arg_shapes->back();
-    tensorflow::TensorShape arg_tensor_shape;
-    auto status =
-        tensorflow::XLAShapeToTensorShape(arg_shape, &arg_tensor_shape);
-    if (!status.ok())
-      return block->getParentOp()->emitError() << status.error_message();
+    auto layout_preference_status =
+        options_.layout_preference_fn ? options_.layout_preference_fn(arg_shape)
+                                      : XlaLayoutPreference::kNoPreference;
+    if (!layout_preference_status.ok())
+      return block->getParentOp()->emitError()
+             << layout_preference_status.status().error_message();
 
-    tensorflow::DataType arg_dtype;
-    status = tensorflow::ConvertToDataType(arg.getType(), &arg_dtype);
-    if (!status.ok())
-      return block->getParentOp()->emitError() << status.error_message();
-
-    CHECK(shape_determination_fns_.layout_preference_fn &&  // Crash OK
-          shape_determination_fns_.shape_representation_fn);
-    auto layout_preference = shape_determination_fns_.layout_preference_fn(
-        arg_tensor_shape, arg_dtype, std::nullopt);
-    auto arg_shape_status = shape_determination_fns_.shape_representation_fn(
-        arg_tensor_shape, arg_dtype, /*use_fast_memory=*/false,
-        layout_preference);
+    auto arg_shape_status = options_.shape_representation_fn
+                                ? options_.shape_representation_fn(
+                                      arg_shape, /*use_fast_memory=*/false,
+                                      layout_preference_status.ValueOrDie())
+                                : arg_shape;
     if (!arg_shape_status.ok())
       return block->getParentOp()->emitError()
              << arg_shape_status.status().error_message();
@@ -2311,9 +2366,10 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
         return block->getParentOp()->emitError()
                << hlo_sharding.status().error_message();
 
-      auto status = tensorflow::RewriteLayoutWithShardedShape(
+      auto status = RewriteLayoutWithShardedShape(
           hlo_sharding.ValueOrDie(), /*use_fast_memory=*/false,
-          shape_determination_fns_, &(*arg_shapes)[arg_sharding.index()]);
+          options_.layout_preference_fn, options_.shape_representation_fn,
+          &(*arg_shapes)[arg_sharding.index()]);
       if (!status.ok())
         return block->getParentOp()->emitError() << status.error_message();
 
@@ -2367,7 +2423,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   } else {
     if (ensure_single_arg) {
       // Applicable for mhlo.IfOp or mhlo.CaseOp or mhlo.WhileOp.
-      llvm::SmallVector<xla::Shape> arg_shapes;
+      llvm::SmallVector<xla::Shape, 4> arg_shapes;
 
       auto args_size = block->getNumArguments();
       if (implicit_operands) args_size = implicit_operands->size();
@@ -2497,24 +2553,21 @@ Status ConvertRegionToComputation(mlir::Region* region,
                                   MlirToHloConversionOptions options) {
   mlir::ModuleOp module;
   xla::XlaBuilder module_builder("main");
-  ConvertToHloModule converter(module, module_builder, true, true, {}, options);
+  ConvertToHloModule converter(module, module_builder, true, true, options);
   if (failed(converter.LowerRegionAsComputation(region, func)))
     return tensorflow::errors::Internal(
         "failed to convert region to computation");
   return ::tensorflow::OkStatus();
 }
 
-Status ConvertMlirHloToHlo(
-    mlir::ModuleOp module, xla::HloProto* hlo_proto, bool use_tuple_args,
-    bool return_tuple,
-    const tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns
-        shape_determination_fns,
-    MlirToHloConversionOptions options) {
+Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
+                           bool use_tuple_args, bool return_tuple,
+                           MlirToHloConversionOptions options) {
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder("main");
   ConvertToHloModule converter(module, module_builder, use_tuple_args,
-                               return_tuple, shape_determination_fns, options);
+                               return_tuple, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   StringRef module_name = module.getName() ? *module.getName() : "main";
@@ -2531,7 +2584,7 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   ConvertToHloModule converter(module, builder,
                                /*use_tuple_args=*/false, /*return_tuple=*/false,
-                               /*shape_determination_fns=*/{}, options);
+                               options);
 
   ConvertToHloModule::ValueLoweringMap lowering;
   // xla_params should only include non-constant parameters the block arguments

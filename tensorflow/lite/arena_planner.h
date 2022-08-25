@@ -50,7 +50,8 @@ class ArenaPlanner : public MemoryPlanner {
   // memory with any other tensor, effectively preserving them until the end
   // of inference.
   ArenaPlanner(TfLiteContext* context, std::unique_ptr<GraphInfo> graph_info,
-               bool preserve_all_tensors, int tensor_alignment);
+               bool preserve_all_tensors, int tensor_alignment,
+               int subgraph_index = 0);
   ~ArenaPlanner() override;
   ArenaPlanner(const ArenaPlanner&) = delete;
   ArenaPlanner& operator=(const ArenaPlanner&) = delete;
@@ -63,6 +64,8 @@ class ArenaPlanner : public MemoryPlanner {
   TfLiteStatus AcquireNonPersistentMemory() override;
   bool HasNonPersistentMemory() override;
   void DumpDebugInfo(const std::vector<int>& execution_plan) const override;
+  void GetAllocInfo(size_t* arena_size,
+                    size_t* arena_persist_size) const override;
 
   // Returns the base arena location for a given allocation type.
   std::intptr_t BasePointer(TfLiteAllocationType type);

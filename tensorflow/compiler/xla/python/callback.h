@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_CALLBACK_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_CALLBACK_H_
 
+#include <optional>
 #include <utility>
 
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
+#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -55,15 +57,33 @@ class CpuCallback {
         results_(std::move(results)),
         transpose_cache_(/*capacity=*/16) {}
 
+  ~CpuCallback() {
+    // The destructor may be called without GIL held. In that case, we defer it
+    // to GlobalPyRefManager.
+    pybind11::object object = std::move(callable_);
+    GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&object, 1));
+  }
+
   const std::vector<Arg>& args() const { return args_; }
   size_t num_args() const { return args_.size(); }
 
   const std::vector<Result>& results() const { return results_; }
   size_t num_results() const { return results_.size(); }
 
-  void Call(void* result, void** arg_ptrs, XlaCustomCallStatus* status);
+  xla::TransposePlanCache& transpose_cache() { return transpose_cache_; }
+
+  void PrepareAndCall(void* result, void** arg_ptrs,
+                      XlaCustomCallStatus* status);
+  Status PrepareAndCall(void* result, void** arg_ptrs);
+
+  std::optional<pybind11::tuple> Call(pybind11::tuple args,
+                                      XlaCustomCallStatus* status);
+  StatusOr<pybind11::tuple> Call(pybind11::tuple args);
 
  private:
+  Status PrepareAndCallInternal(void* result, void** arg_ptrs);
+  StatusOr<pybind11::tuple> CallInternal(pybind11::tuple args);
+
   pybind11::function callable_;
   std::vector<Arg> const args_;
   std::vector<Result> const results_;

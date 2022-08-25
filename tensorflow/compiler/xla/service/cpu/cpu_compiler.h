@@ -31,6 +31,8 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
+class CpuExecutable;
+
 // This class wraps the configurability options that LLVM exposes including: the
 // target triple, the target cpu and the target features.  It also includes the
 // desired linkage name for the computation entry point.
@@ -173,7 +175,8 @@ class CpuCompiler : public LLVMCompiler {
       HloModule* module, bool is_aot_compile,
       LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile);
 
-  mutable std::unique_ptr<HloProto> hlo_proto_;
+  StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
+      std::unique_ptr<HloModule> module);
 
   CpuCompiler(const CpuCompiler&) = delete;
   CpuCompiler& operator=(const CpuCompiler&) = delete;

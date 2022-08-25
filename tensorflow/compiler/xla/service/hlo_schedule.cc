@@ -15,14 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 
+#include <cstdint>
+#include <ostream>
 #include <queue>
+#include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -93,6 +100,8 @@ void HloSchedule::set_sequence(const HloComputation* computation,
                                HloInstructionSequence sequence) {
   CHECK(computation->parent() == module_);
   sequences_[computation->unique_id()] = std::move(sequence);
+  execution_threads_[computation->unique_id()] =
+      std::string(computation->execution_thread());
 }
 
 HloInstructionSequence& HloSchedule::GetOrCreateSequence(
@@ -101,6 +110,8 @@ HloInstructionSequence& HloSchedule::GetOrCreateSequence(
   if (it == sequences_.end()) {
     // No sequence found for computation. Create and return an empty one.
     CHECK(computation->parent() == module_);
+    execution_threads_[computation->unique_id()] =
+        std::string(computation->execution_thread());
     return sequences_[computation->unique_id()];
   } else {
     return it->second;
@@ -200,17 +211,31 @@ Status HloSchedule::UpdateComputationSchedule(
   return OkStatus();
 }
 
-Status HloSchedule::Update() {
+Status HloSchedule::Update(
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // The schedule must contain a sequence for every non-fusion computation in
-  // the module, but can have sequences for computations which no longer exist
-  // (these are removed).
+  // the module for the specified threads, but can have sequences for
+  // computations which no longer exist (these are removed).
   std::vector<HloComputation*> nonfusion_computations =
-      module_->MakeNonfusionComputations();
+      module_->MakeNonfusionComputations(execution_threads);
   for (const HloComputation* computation : nonfusion_computations) {
     TF_RET_CHECK(sequences_.contains(computation->unique_id()))
         << "Computation " << computation->name() << " not in HloSchedule.";
   }
-  if (sequences_.size() > nonfusion_computations.size()) {
+  auto sum_of_sequences_for_threads = [&]() -> int64_t {
+    if (execution_threads.empty()) {
+      return sequences_.size();
+    }
+    int64_t sequences_num_for_threads = 0;
+    for (const auto& [thread_name, sequence_num] :
+         num_sequences_by_execution_thread()) {
+      sequences_num_for_threads +=
+          execution_threads.contains(thread_name) ? sequence_num : 0;
+    }
+    return sequences_num_for_threads;
+  };
+  int64_t sequence_sum = sum_of_sequences_for_threads();
+  if (sequence_sum > nonfusion_computations.size()) {
     // Schedule contains some computations which have been removed from the
     // HloModule. Remove them from the schedule as well.
     absl::flat_hash_set<int64_t> nonfusion_computations_ids;
@@ -218,14 +243,22 @@ Status HloSchedule::Update() {
       nonfusion_computations_ids.insert(computation->unique_id());
     }
     for (auto it = sequences_.begin(); it != sequences_.end();) {
-      if (!nonfusion_computations_ids.contains(it->first)) {
+      std::string sequence_thread_name = tensorflow::gtl::FindWithDefault(
+          execution_threads_, it->first, HloInstruction::kMainExecutionThread);
+      bool is_thread_included =
+          execution_threads.empty() ||
+          execution_threads.contains(sequence_thread_name);
+      if (!nonfusion_computations_ids.contains(it->first) &&
+          is_thread_included) {
+        execution_threads_.erase(it->first);
         sequences_.erase(it++);
       } else {
         ++it;
       }
     }
   }
-  CHECK_EQ(sequences_.size(), nonfusion_computations.size());
+  sequence_sum = sum_of_sequences_for_threads();
+  CHECK_EQ(sequence_sum, nonfusion_computations.size());
 
   for (const HloComputation* computation : nonfusion_computations) {
     TF_RETURN_IF_ERROR(UpdateComputationSchedule(computation));
@@ -235,60 +268,77 @@ Status HloSchedule::Update() {
   return OkStatus();
 }
 
+absl::flat_hash_map<std::string, int64_t>
+HloSchedule::num_sequences_by_execution_thread() const {
+  absl::flat_hash_map<std::string, int64_t> sequence_num_by_execution_threads;
+  for (const auto& id_sequence_item : sequences_) {
+    ++sequence_num_by_execution_threads[tensorflow::gtl::FindWithDefault(
+        execution_threads_, id_sequence_item.first,
+        HloInstruction::kMainExecutionThread)];
+  }
+  return sequence_num_by_execution_threads;
+}
+
 Status HloSchedule::Verify() const {
   VLOG(2) << "VerifySchedule()";
   XLA_VLOG_LINES(2, ToString());
 
   // Verify schedule contains exactly the same set of non-fusion computations as
-  // module currently does.
-  std::vector<HloComputation*> nonfusion_computations =
-      module_->MakeNonfusionComputations();
-  TF_RET_CHECK(nonfusion_computations.size() == sequences_.size())
-      << "Schedule has " << sequences_.size() << " sequences, but module has "
-      << nonfusion_computations.size() << " non-fusion computations";
-  for (const HloComputation* computation : nonfusion_computations) {
-    TF_RET_CHECK(sequences_.contains(computation->unique_id()))
-        << "Computation " << computation->name()
-        << " missing from HLO schedule.";
-  }
-
-  // For each computation verify the set of instructions is the same and that
-  // each dependency and control edge is honored.
-  for (const HloComputation* computation : nonfusion_computations) {
-    absl::flat_hash_map<const HloInstruction*, int> instruction_position;
-    int pos = 0;
-    for (const HloInstruction* instruction :
-         sequence(computation).instructions()) {
-      TF_RET_CHECK(instruction_position.insert({instruction, pos}).second)
-          << "Instruction " << instruction->name()
-          << " appears more than once in the schedule";
-      pos++;
+  // module currently does for each thread that has schedule.
+  absl::flat_hash_map<std::string, int64_t> sequence_num_by_execution_threads =
+      num_sequences_by_execution_thread();
+  for (const auto& [thread_name, sequence_size] :
+       sequence_num_by_execution_threads) {
+    std::vector<HloComputation*> nonfusion_computations =
+        module_->MakeNonfusionComputations({thread_name});
+    TF_RET_CHECK(nonfusion_computations.size() == sequence_size)
+        << "For thread " << thread_name << ", schedule has " << sequence_size
+        << " sequences, but module has " << nonfusion_computations.size()
+        << " non-fusion computations for thread " << thread_name;
+    for (const HloComputation* computation : nonfusion_computations) {
+      TF_RET_CHECK(sequences_.contains(computation->unique_id()))
+          << "Computation " << computation->name()
+          << " missing from HLO schedule.";
     }
 
-    TF_RET_CHECK(instruction_position.size() ==
-                 computation->instruction_count())
-        << "Schedule for computation " << computation->name() << " has "
-        << instruction_position.size() << " instructions, expected "
-        << computation->instruction_count();
-    for (const HloInstruction* instruction : computation->instructions()) {
-      TF_RET_CHECK(instruction_position.contains(instruction))
-          << "Instruction " << instruction->name() << " is not in schedule";
-    }
-
-    for (const HloInstruction* instruction : computation->instructions()) {
-      for (const HloInstruction* operand : instruction->operands()) {
-        TF_RET_CHECK(instruction_position.at(operand) <
-                     instruction_position.at(instruction))
+    // For each computation verify the set of instructions is the same and
+    // that each dependency and control edge is honored.
+    for (const HloComputation* computation : nonfusion_computations) {
+      absl::flat_hash_map<const HloInstruction*, int> instruction_position;
+      int pos = 0;
+      for (const HloInstruction* instruction :
+           sequence(computation).instructions()) {
+        TF_RET_CHECK(instruction_position.insert({instruction, pos}).second)
             << "Instruction " << instruction->name()
-            << " is not scheduled after its operand " << operand->name();
+            << " appears more than once in the schedule";
+        pos++;
       }
 
-      for (const HloInstruction* pred : instruction->control_predecessors()) {
-        TF_RET_CHECK(instruction_position.at(pred) <
-                     instruction_position.at(instruction))
-            << "Instruction " << instruction->name()
-            << " is not scheduled after its control predecessor "
-            << pred->name();
+      TF_RET_CHECK(instruction_position.size() ==
+                   computation->instruction_count())
+          << "Schedule for computation " << computation->name() << " has "
+          << instruction_position.size() << " instructions, expected "
+          << computation->instruction_count();
+      for (const HloInstruction* instruction : computation->instructions()) {
+        TF_RET_CHECK(instruction_position.contains(instruction))
+            << "Instruction " << instruction->name() << " is not in schedule";
+      }
+
+      for (const HloInstruction* instruction : computation->instructions()) {
+        for (const HloInstruction* operand : instruction->operands()) {
+          TF_RET_CHECK(instruction_position.at(operand) <
+                       instruction_position.at(instruction))
+              << "Instruction " << instruction->name()
+              << " is not scheduled after its operand " << operand->name();
+        }
+
+        for (const HloInstruction* pred : instruction->control_predecessors()) {
+          TF_RET_CHECK(instruction_position.at(pred) <
+                       instruction_position.at(instruction))
+              << "Instruction " << instruction->name()
+              << " is not scheduled after its control predecessor "
+              << pred->name();
+        }
       }
     }
   }

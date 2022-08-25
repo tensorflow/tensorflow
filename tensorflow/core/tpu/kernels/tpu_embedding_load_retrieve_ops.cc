@@ -25,6 +25,9 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -33,10 +36,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_embedding_configuration_proto_rewrite.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
-
 
 using tensorflow::tpu::TPUEmbeddingConfiguration;
 using tensorflow::tpu::TpuEmbeddingShapeUtil;
@@ -221,8 +220,8 @@ void LoadAllTPUEmbeddingParametersOp::Compute(OpKernelContext* ctx) {
       params->c_params.parameters[i][table_id] = &(params_data[i][table_id]);
       params->c_params.parameters[i][table_id]->size =
           state_variable_vector[i][table_id].size();
-      params->c_params.parameters[i][table_id]->ptr = const_cast<float_t*>(
-          state_variable_vector[i][table_id].data());
+      params->c_params.parameters[i][table_id]->ptr =
+          const_cast<float*>(state_variable_vector[i][table_id].data());
     }
   }
   StatusHelper status;

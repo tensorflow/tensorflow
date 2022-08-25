@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_TEST_UTIL_H_
 
 #include <functional>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,10 @@ DatasetDef RangeSquareDataset(int64_t range);
 // Returns a test dataset representing
 // tf.data.Dataset.range(range).shard(SHARD_HINT, SHARD_HINT).
 DatasetDef RangeDatasetWithShardHint(int64_t range);
+
+// Returns a test dataset representing
+// tf.data.Dataset.range(100000000).repeat().
+DatasetDef InfiniteDataset();
 
 // Returns a test dataset representing
 // tf.data.Dataset.from_tensor_slices(["filenames"]).interleave(

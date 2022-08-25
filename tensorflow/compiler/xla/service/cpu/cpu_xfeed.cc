@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/notification.h"
 
@@ -195,11 +195,11 @@ Status TransferLiteralToInfeedOnCpu(int device_ordinal,
   // infeed manager.
   std::vector<cpu::runtime::XfeedBuffer*> buffers;
   buffers.reserve(ShapeUtil::TupleElementCount(shape));
-  auto cleanup = tensorflow::gtl::MakeCleanup([&buffers]() {
+  absl::Cleanup cleanup = [&buffers]() {
     for (cpu::runtime::XfeedBuffer* b : buffers) {
       b->Done(Cancelled("Failed to infeed buffer to device."));
     }
-  });
+  };
 
   for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
     const Shape& tuple_element_shape = ShapeUtil::GetSubshape(shape, {i});
@@ -215,7 +215,7 @@ Status TransferLiteralToInfeedOnCpu(int device_ordinal,
       cpu::runtime::GetXfeedManager(device_ordinal);
   xfeed_manager->infeed()->EnqueueBuffersAtomically(buffers);
 
-  cleanup.release();
+  std::move(cleanup).Cancel();
   return OkStatus();
 }
 

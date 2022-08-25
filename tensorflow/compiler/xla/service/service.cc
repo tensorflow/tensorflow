@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -52,17 +53,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/util/ptr_util.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace {
@@ -818,7 +818,14 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                               backend->compiler(), std::placeholders::_1));
   DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
 
+  std::unique_ptr<HloProto> hlo_proto_before_opt;
   if (!run_backend_only) {
+    // Save proto state before optimizations if we want a snapshot.
+    // When run_backend_only is enabled the post-optimization HLO will be the
+    // same as the pre-optimization HLO.
+    if (DumpingEnabledForHloModule(*module)) {
+      hlo_proto_before_opt = std::make_unique<HloProto>(MakeHloProto(*module));
+    }
     TF_ASSIGN_OR_RETURN(module, backend->compiler()->RunHloPasses(
                                     std::move(module), executor, options));
   }
@@ -827,6 +834,19 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       std::unique_ptr<Executable> executable,
       backend->compiler()->RunBackend(std::move(module), executor, options));
 
+  const HloProto* hlo_proto_after_opt = executable->hlo_proto();
+
+  // If dumping is enabled RunBackend(...) will emit a hlo_proto in the
+  // executable. This contains the buffer_assignment that is only available
+  // after RunBackend(). If hlo_proto_before_opt is not null, then we replace
+  // its buffer_assignment with the one from after_opt and then store it into
+  // the executable.
+  if (hlo_proto_before_opt != nullptr && hlo_proto_after_opt != nullptr) {
+    CHECK(DumpingEnabledForHloModule(executable->module()));
+    *hlo_proto_before_opt->mutable_buffer_assignment() =
+        hlo_proto_after_opt->buffer_assignment();
+    executable->set_hlo_proto(std::move(hlo_proto_before_opt));
+  }
   return std::move(executable);
 }
 

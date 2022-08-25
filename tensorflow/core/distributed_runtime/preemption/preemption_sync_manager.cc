@@ -23,18 +23,15 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
-#include "learning/brain/runtime/preemption/borg_preemption_notifier.h"
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
 
 namespace tensorflow {
 namespace {
@@ -54,15 +51,12 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
  public:
   PreemptionSyncManagerImpl() = default;
   ~PreemptionSyncManagerImpl() override {
-    call_opts_->StartCancel();
-    call_opts_->ClearCancelCallback();
     shutdown_.Notify();
   }
   Status Initialize(CoordinationServiceAgent* agent) override;
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
-  Status InitWithBorgPreemptionNotifier(
-      CoordinationServiceAgent* agent) override;
-#endif
+  Status Initialize(xla::DistributedRuntimeClient* client) override;
+  Status Initialize(CoordinationServiceAgent* agent,
+                    const std::string& preemption_notifier_type) override;
   Status Initialize(CoordinationServiceAgent* agent,
                     std::unique_ptr<PreemptionNotifier> notifier) override;
   bool ReachedSyncPoint(int step_counter) override;
@@ -90,18 +84,24 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
   std::shared_ptr<CallOptions> call_opts_;
 };
 
-Status PreemptionSyncManagerImpl::Initialize(CoordinationServiceAgent* agent) {
-  TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
-  return Initialize(agent, CreateSigtermNotifier(env));
+Status PreemptionSyncManagerImpl::Initialize(
+    xla::DistributedRuntimeClient* client) {
+  TF_ASSIGN_OR_RETURN(CoordinationServiceAgent * coord_agent,
+                      client->GetCoordinationServiceAgent());
+  return Initialize(coord_agent);
 }
 
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
-Status PreemptionSyncManagerImpl::InitWithBorgPreemptionNotifier(
-    CoordinationServiceAgent* agent) {
-  TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
-  return Initialize(agent, CreateBorgPreemptionNotifier(env));
+Status PreemptionSyncManagerImpl::Initialize(CoordinationServiceAgent* agent) {
+  return Initialize(agent, "sigterm");
 }
-#endif
+
+Status PreemptionSyncManagerImpl::Initialize(
+    CoordinationServiceAgent* agent,
+    const std::string& preemption_notifier_type) {
+  TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
+  return Initialize(agent, PreemptionNotifier::CreatePreemptionNotifier(
+                               preemption_notifier_type, env));
+}
 
 Status PreemptionSyncManagerImpl::Initialize(
     CoordinationServiceAgent* agent,
@@ -121,10 +121,15 @@ Status PreemptionSyncManagerImpl::Initialize(
   preemption_notifier_->WillBePreemptedAtAsync(
       [agent = agent_, task_name](StatusOr<absl::Time> death_time) {
         if (!death_time.ok()) {
-          // This usually happens when the preemption notifier dtor is called
-          // and blocking calls are cancelled.
-          LOG(ERROR) << "Error from preemption notifier: "
-                     << death_time.status();
+          // The preemption notifier invokes callback with Cancelled error when
+          // its being destructed.
+          if (errors::IsCancelled(death_time.status())) {
+            LOG(INFO) << "Preemption sync protocol cancelled by notifier: "
+                      << death_time.status();
+          } else {
+            LOG(ERROR) << "Error from preemption notifier: "
+                       << death_time.status();
+          }
           return;
         }
         // Notify coordination service about preemption notice.
@@ -141,8 +146,12 @@ Status PreemptionSyncManagerImpl::Initialize(
   call_opts_ = agent_->GetKeyValueAsync(
       kPreemptionNoticeKey,
       [this, agent = agent_](StatusOr<std::string> status_or_death_time) {
-        // Retrieve preemption notice and parse death time.
-        if (!status_or_death_time.ok()) {
+        if (errors::IsCancelled(status_or_death_time.status())) {
+          // The agent cancels pending GetKeyValue RPCs because of shutdown,
+          // so simply log and return.
+          LOG(INFO) << "Cancelled call to retrive preemption notice.";
+          return;
+        } else if (!status_or_death_time.ok()) {
           LOG(ERROR) << "Failed to retrieve preemption notice from "
                         "coordination service: "
                      << status_or_death_time.status();

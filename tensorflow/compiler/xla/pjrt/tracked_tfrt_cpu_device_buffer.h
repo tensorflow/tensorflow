@@ -81,7 +81,7 @@ struct CpuEvent {
 
 // Class that represents CPU buffers. It optionally owns the buffers. It also
 // tracks the definition and usage of the memory to allow for synchronized usage
-// and deletion of CPU memory.
+// and deletion of CPU memory. This class is thread-compatible.
 class TrackedTfrtCpuDeviceBuffer {
  public:
   // For non-tuple, takes a single buffer.
@@ -91,6 +91,12 @@ class TrackedTfrtCpuDeviceBuffer {
       bool is_tuple,
       absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
       absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events,
+      std::function<void()> on_delete_callback = nullptr);
+
+  TrackedTfrtCpuDeviceBuffer(
+      bool is_tuple,
+      absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
+      tfrt::AsyncValueRef<CpuEvent> definition_event,
       std::function<void()> on_delete_callback = nullptr);
 
   // Move-only.
@@ -108,8 +114,8 @@ class TrackedTfrtCpuDeviceBuffer {
 
   std::shared_ptr<MaybeOwningCpuMemory> Buffer(const ShapeIndex& shape_index);
 
-  absl::Span<const tfrt::AsyncValueRef<CpuEvent>> DefinitionEvents() const {
-    return definition_events_;
+  const tfrt::AsyncValueRef<CpuEvent>& definition_event() const {
+    return definition_event_;
   }
 
   absl::Span<const tfrt::AsyncValueRef<CpuEvent>> UsageEvents() const {
@@ -117,9 +123,6 @@ class TrackedTfrtCpuDeviceBuffer {
   }
 
   void AddUsageEvents(absl::Span<tfrt::AsyncValueRef<CpuEvent>> events);
-
-  absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4>
-  ConsumeBuffers();
 
   // Return the usage events for the buffers. After
   // LockUseAndTransferUsageEvents is called, it is illegal to AddUsageEvent.
@@ -132,17 +135,16 @@ class TrackedTfrtCpuDeviceBuffer {
 
  private:
   bool is_tuple_;
-  absl::Mutex mu_;
   // If tuple, tuple index table is created and stored.
   std::shared_ptr<MaybeOwningCpuMemory> tuple_index_table_;
   // If non-tuple, `buffers_` contains 1 buffer; otherwise all leaf buffers.
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers_;
-  // Definition events are associated with CPU operations that write to the
+  // The definition event are associated with CPU operations that write to the
   // buffers.
-  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events_;
+  tfrt::AsyncValueRef<CpuEvent> definition_event_;
+
   // Usage events are associated with CPU operations that read from the buffers.
-  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> usage_events_
-      TF_GUARDED_BY(mu_);
+  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> usage_events_;
   // A callback to call when the TrackedTfrtCpuDeviceBuffer is about to be
   // destroyed.
   std::function<void()> on_delete_callback_;

@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/slice.h"
 
 #include <algorithm>
+#include <any>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -35,7 +38,7 @@ class Slice : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr = absl::any_cast<const SliceAttributes&>(ctx.op_attr);
+    const auto& attr = std::any_cast<const SliceAttributes&>(ctx.op_attr);
 
     const int4 channels(attr.starts.c, attr.strides.c, attr.ends.c, 0);
     const int4 heights(attr.starts.h, attr.strides.h, attr.ends.h, 0);
@@ -111,7 +114,7 @@ class Slice : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewSliceNodeShader() {
-  return absl::make_unique<Slice>();
+  return std::make_unique<Slice>();
 }
 
 }  // namespace gl

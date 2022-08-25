@@ -294,8 +294,11 @@ using ConstDfsHloVisitorWithDefault =
 class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
  public:
   // Runs a visitor on the module and returns whether the module has changed.
-  StatusOr<bool> RunOnModule(HloModule* module) {
-    for (const auto& computation : module->MakeNonfusionComputations()) {
+  StatusOr<bool> RunOnModule(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {}) {
+    for (const auto& computation :
+         module->MakeNonfusionComputations(execution_threads)) {
       TF_RETURN_IF_ERROR(computation->Accept(this));
     }
     return changed();

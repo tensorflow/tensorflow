@@ -49,7 +49,7 @@ const get_email_domain = async ({github, username}) => {
     context has the commit message details in the payload
   @return {string} Returns the message with labels attached and assignees added
 */
-const filter_action = async ({github, context}) => {
+const filter_action = async ({github, context, domain}) => {
   const labels = ['kokoro:force-run', 'ready to pull'];
 
   let assignees = [];
@@ -58,11 +58,26 @@ const filter_action = async ({github, context}) => {
   if (title && title.toLowerCase().includes("onednn"))
     assignees = onednn_assignees;
   const intel_windows_assignees = ['nitins17', 'learning-to-play'];
-  if (title && title.toLowerCase().includes("intel") && title.toLowerCase().includes("windows"))
+  if (title && title.toLowerCase().includes('intel') &&
+      title.toLowerCase().includes('windows') && domain.includes('intel.com'))
     assignees = intel_windows_assignees;
   const apple_silicon_assignees = ['penpornk', 'nitins17'];
-  if (title && title.toLowerCase().includes("apple") && title.toLowerCase().includes("silicon"))
+  if (title && title.toLowerCase().includes('apple') &&
+      title.toLowerCase().includes('silicon') && domain.includes('apple.com'))
     assignees = apple_silicon_assignees;
+  if (title && title.toLowerCase().includes('nvidia') &&
+      domain.includes('nvidia.com')) {
+    if (title.toLowerCase().includes('jax')) {
+      assignees.push('hawkinsp', 'yashk2810', 'skye');
+    }
+    if (title.toLowerCase().includes('xla') ||
+        title.toLowerCase().includes('gpu')) {
+      assignees.push('cheshire', 'gcforster', 'reedwm', 'chsigg');
+    }
+    if (title.toLowerCase().includes('tf')) {
+      assignees.push('rohan100jain', 'bfontain', 'penpornk');
+    }
+  }
 
   const resp_label = await github.rest.issues.addLabels({
     issue_number: context.issue.number,

@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -58,6 +59,8 @@ from tensorflow.python.ops import unconnected_gradients
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import nest
 
@@ -1181,6 +1184,71 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.evaluate(variables.global_variables_initializer())
       dw = self.evaluate(math_ops.reduce_sum(grads[1]))
       self.assertEqual(12., dw)
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="Eager",
+          decorator=lambda f: f),
+      dict(
+          testcase_name="Function",
+          decorator=def_function.function),
+  ])
+  def testCustomGradientRaggedTensor(self, decorator):
+    with context.eager_mode():
+      @custom_gradient.custom_gradient
+      def F(x):
+        out = x * x
+
+        def Grad(*grad):
+          return 3 * grad[0]
+
+        return out, Grad
+
+      rt = ragged_factory_ops.constant([[1., 2.], [3.]])
+      with backprop.GradientTape() as tape:
+        tape.watch(rt.values)
+        out = decorator(F)(rt)
+        result = tape.gradient(out, rt)
+
+      self.assertIsInstance(out, ragged_tensor.RaggedTensor)
+      self.assertAllEqual(out, [[1., 4.], [9.]])
+      self.assertIsInstance(result, ragged_tensor.RaggedTensor)
+      self.assertAllEqual(result, [[3., 3.], [3.]])
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="Eager",
+          decorator=lambda f: f),
+      dict(
+          testcase_name="Function",
+          decorator=def_function.function),
+  ])
+  def testCustomGradientMultipleRaggedTensors(self, decorator):
+    with context.eager_mode():
+      @custom_gradient.custom_gradient
+      def F(x, y):
+        out = (x * x, 2 * y)
+
+        def Grad(*grad):
+          return (3 * grad[0], 4 * grad[1])
+
+        return out, Grad
+
+      rt1 = ragged_factory_ops.constant([[1., 2.], [3.]])
+      rt2 = ragged_factory_ops.constant([[4.], [5., 6.]])
+      with backprop.GradientTape() as tape:
+        tape.watch((rt1, rt2))
+        out1, out2 = decorator(F)(rt1, rt2)
+        grad1, grad2 = tape.gradient((out1, out2), (rt1, rt2))
+
+      self.assertIsInstance(out1, ragged_tensor.RaggedTensor)
+      self.assertAllEqual(out1, [[1., 4.], [9.]])
+      self.assertIsInstance(out2, ragged_tensor.RaggedTensor)
+      self.assertAllEqual(out2, [[8.], [10., 12.]])
+      self.assertIsInstance(grad1, ragged_tensor.RaggedTensor)
+      self.assertAllEqual(grad1, [[3., 3.], [3.]])
+      self.assertIsInstance(grad2, ragged_tensor.RaggedTensor)
+      self.assertAllEqual(grad2, [[4.], [4., 4.]])
 
   def testCustomGradientWithCapture(self):
     with ops.Graph().as_default():

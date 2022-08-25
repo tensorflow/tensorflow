@@ -389,6 +389,8 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION_OPTIONAL(
       libneuralnetworks,
       SL_ANeuralNetworksDiagnosticExecutionInfo_areDynamicTensorsUsed);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         SL_ANeuralNetworksDiagnostic_registerCallbacks);
 
 #ifndef __ANDROID__
   // If libneuralnetworks.so is loaded, but android_sdk_version is not set,
@@ -561,6 +563,7 @@ std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
       SL_ANeuralNetworksDiagnosticExecutionInfo_isControlFlowUsed);
   ASSIGN_SL_FUNCTION_TO_NNAPI(
       SL_ANeuralNetworksDiagnosticExecutionInfo_areDynamicTensorsUsed);
+  ASSIGN_SL_FUNCTION_TO_NNAPI(SL_ANeuralNetworksDiagnostic_registerCallbacks);
 
   // There are several functions that are defined in the SL but are not yet used
   // in the delegate:

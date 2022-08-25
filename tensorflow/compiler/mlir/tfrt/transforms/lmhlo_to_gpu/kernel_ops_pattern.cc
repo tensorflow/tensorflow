@@ -38,9 +38,9 @@
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -51,11 +51,11 @@
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 
 #if TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
 #else
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
@@ -64,9 +64,13 @@
 namespace tensorflow {
 
 using mlir::ArrayRef;
+using mlir::FloatType;
 using mlir::Operation;
 using mlir::SmallVector;
 using mlir::Value;
+using mlir::arith::ConstantFloatOp;
+using mlir::arith::ConstantIntOp;
+using mlir::arith::ConstantOp;
 using mlir::memref::GetGlobalOp;
 using xla::gpu::DeviceToDeviceCopyThunk;
 using xla::gpu::IrEmitterContext;
@@ -78,12 +82,39 @@ using ConstantInfo = xla::gpu::GpuExecutable::ConstantInfo;
 
 namespace {
 
+mlir::Value MakeBitPatternConstant(mlir::OpBuilder& builder, mlir::Location loc,
+                                   mlir::Type type, uint32_t bit_pattern) {
+  // In XLA a 1-byte bit pattern copied to fill a 32-byte word when
+  // `Memset32BitValueThunk` is constructed, so to get back an `i1` constant we
+  // only need to check if any bit is set to `1`.
+  if (type.isInteger(1)) {
+    return builder.create<ConstantOp>(loc, builder.getBoolAttr(bit_pattern));
+  }
+
+  if (type.isInteger(32)) {
+    llvm::APInt i32(32, bit_pattern);
+    return builder.create<ConstantIntOp>(loc, i32.getSExtValue(), type);
+  }
+
+  if (type.isF32()) {
+    llvm::APFloat f32(llvm::APInt(32, bit_pattern).bitsToFloat());
+    return builder.create<ConstantFloatOp>(loc, f32, type.cast<FloatType>());
+  }
+
+  llvm_unreachable("unsupported type");
+}
+
 // Replaces lmhlo ops within a module with gpu.launch_func and gpu.memcpy ops.
 struct KernelOpsPattern : mlir::OpRewritePattern<mlir::ModuleOp> {
+  KernelOpsPattern(mlir::MLIRContext* context, GpuBinaryOptions options)
+      : mlir::OpRewritePattern<mlir::ModuleOp>(context), options(options) {}
+
   using OpRewritePattern<mlir::ModuleOp>::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
       mlir::ModuleOp module_op, mlir::PatternRewriter& rewriter) const override;
+
+  GpuBinaryOptions options;
 };
 
 struct RewriteData {
@@ -121,9 +152,15 @@ CloneToModule(Operation* op, mlir::ValueRange arguments,
   for (auto pair : llvm::enumerate(get_global_ops)) {
     if (!pair.value()) continue;
     Operation* global_op = mlir::SymbolTable::lookupNearestSymbolFrom(
-        pair.value(), pair.value().nameAttr());
+        pair.value(), pair.value().getNameAttr());
     auto attr = builder.getIndexAttr(pair.index());
     builder.clone(*global_op)->setAttr("lmhlo.alloc", attr);
+  }
+
+  // If 'op' is a gpu.launch_func, clone referenced gpu.module.
+  if (auto launch_func_op = llvm::dyn_cast<mlir::gpu::LaunchFuncOp>(op)) {
+    builder.clone(*mlir::SymbolTable::lookupNearestSymbolFrom(
+        op, launch_func_op.getKernelModuleName()));
   }
 
   auto func_type = builder.getType<mlir::FunctionType>(
@@ -133,7 +170,7 @@ CloneToModule(Operation* op, mlir::ValueRange arguments,
   // Annotate the function arguments if they refer to a memref.global op.
   for (auto pair : llvm::enumerate(get_global_ops)) {
     if (!pair.value()) continue;
-    auto attr = builder.getStringAttr(pair.value().name());
+    auto attr = builder.getStringAttr(pair.value().getName());
     func_op.setArgAttr(pair.index(), "lmhlo.constant_name", attr);
   }
   func_op.setPublic();
@@ -179,40 +216,23 @@ static llvm::Expected<
     std::tuple<std::unique_ptr<ThunkSequence>, std::vector<ConstantInfo>>>
 Emit(mlir::func::FuncOp func_op,
      absl::Span<const xla::BufferAllocation> allocations,
-     const stream_executor::CudaComputeCapability& cuda_compute_capability,
-     const stream_executor::RocmComputeCapability& rocm_compute_capability,
+     const GpuBinaryOptions& gpu_options,
      const xla::HloModuleConfig& hlo_module_config, llvm::Module* llvm_module) {
 #if TENSORFLOW_USE_ROCM
-  const char target_triple[] = "amdgcn-amd-amdhsa";
-  const char data_layout[] =
-      "e-p:64:64-p1:64:64-p2:64:64-p3:32:32-p4:32:32-p5:32:32-i64:64-v16:16-"
-      "v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-"
-      "v2048:2048-n32:64-A5";
-  const char platform_name[] = "ROCm";
+  const char* target_triple = xla::gpu::amdgpu::TargetTriple();
+  const char* data_layout = xla::gpu::amdgpu::DataLayout();
 #else
-  const char target_triple[] = "nvptx64-nvidia-cuda";
-  const char data_layout[] = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
-  const char platform_name[] = "CUDA";
+  const char* target_triple = xla::gpu::nvptx::TargetTriple();
+  const char* data_layout = xla::gpu::nvptx::DataLayout();
 #endif
-  xla::gpu::GpuDeviceInfo gpu_device_info = {};
-  gpu_device_info.threads_per_block_limit = 1024;
-  gpu_device_info.threads_per_warp = 32;
-  gpu_device_info.shared_memory_per_block = 49152;  // static shmem limit.
-  // Should be 1024 for sm7.5, 1536 for sm8.6. This results in more blocks than
-  // SMs on those architectures, but doesn't hit any resource limit.
-  gpu_device_info.threads_per_core_limit = 2048;
-  // This is higher than any SKU, resulting in more blocks than SMs.
-  gpu_device_info.core_count = 128;
-  gpu_device_info.block_dim_limit_x = 2147483647;
-  gpu_device_info.block_dim_limit_y = 65535;
-  gpu_device_info.block_dim_limit_z = 65535;
 
   llvm_module->setTargetTriple(target_triple);
   llvm_module->setDataLayout(data_layout);
 
   IrEmitterContext ir_emitter_context(
-      /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, rocm_compute_capability,
+      /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr,
+      gpu_options.platform_name, gpu_options.gpu_device_info,
+      gpu_options.cuda_compute_capability, gpu_options.rocm_compute_capability,
       func_op->getContext(), llvm_module);
 
   ir_emitter_context.set_allocations(allocations);
@@ -229,8 +249,13 @@ Emit(mlir::func::FuncOp func_op,
 }
 
 // Returns the data to rewrite op without changing the IR.
-static llvm::Expected<RewriteData> Match(Operation* op) {
-  mlir::SmallVector<Value, 4> arguments = op->getOperands();
+static llvm::Expected<RewriteData> Match(Operation* op,
+                                         GpuBinaryOptions gpu_options) {
+  mlir::SmallVector<Value> arguments;
+  llvm::copy_if(
+      op->getOperands(), std::back_inserter(arguments),
+      // Filter block/thread size arguments of gpu.launch_func.
+      [](Value value) { return value.getType().isa<mlir::ShapedType>(); });
   mlir::SetVector<Value> captures;
   getUsedValuesDefinedAbove(op->getRegions(), captures);
   llvm::copy(captures, std::back_inserter(arguments));
@@ -251,25 +276,12 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
   xla::HloModuleConfig hlo_module_config;
   xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
   hlo_module_config.set_debug_options(options);
-  // TODO(b/228163857): pass down capability from CompileModuleToLlvmIrImpl().
-  stream_executor::CudaComputeCapability cuda_compute_capability = {5, 2};
-  stream_executor::RocmComputeCapability rocm_compute_capability("gfx900");
-#if TENSORFLOW_USE_ROCM
-  auto platform = xla::PlatformUtil::GetPlatform("gpu");
-  if (!platform.ok()) return MakeError(platform.status());
-  auto stream_executors = xla::PlatformUtil::GetStreamExecutors(*platform);
-  if (!stream_executors.ok()) return MakeError(stream_executors.status());
-  if (stream_executors->empty()) return MakeError("No gpu stream executors");
-  rocm_compute_capability = stream_executors->front()
-                                ->GetDeviceDescription()
-                                .rocm_compute_capability();
-#endif
+
   llvm::LLVMContext llvm_context;
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
 
   auto emit_result = Emit(std::get<mlir::func::FuncOp>(module_op), *allocations,
-                          cuda_compute_capability, rocm_compute_capability,
-                          hlo_module_config, llvm_module.get());
+                          gpu_options, hlo_module_config, llvm_module.get());
   if (!emit_result) return emit_result.takeError();
   auto thunks = std::move(std::get<0>(*emit_result));
   auto constants = std::move(std::get<1>(*emit_result));
@@ -303,9 +315,9 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
   StatusOr<std::string> ptx(std::string(hsaco->begin(), hsaco->end()));
 #else
   auto libdevice_dir = xla::gpu::GetLibdeviceDir(hlo_module_config);
-  auto ptx =
-      xla::gpu::nvptx::CompileToPtx(llvm_module.get(), cuda_compute_capability,
-                                    hlo_module_config, libdevice_dir);
+  auto ptx = xla::gpu::nvptx::CompileToPtx(llvm_module.get(),
+                                           gpu_options.cuda_compute_capability,
+                                           hlo_module_config, libdevice_dir);
   if (!ptx.ok()) return MakeError(ptx.status());
 #endif
 
@@ -430,25 +442,47 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
   rewriter.eraseOp(op);
 }
 
+// An overload set for defining predicates for operations that should
+// conditionally go through the XLA GPU code emitters.
+template <typename OpTy>
+static bool HasGpuEmitter(OpTy) {
+  return true;
+}
+
+// Select custom calls that have corresponding GPU emitters.
+static bool HasGpuEmitter(mlir::lmhlo::CustomCallOp custom_call) {
+  llvm::StringRef target = custom_call.getCallTargetName();
+  return target == "SliceToDynamic" || target == "PadToStatic";
+}
+
 mlir::LogicalResult KernelOpsPattern::matchAndRewrite(
     mlir::ModuleOp module_op, mlir::PatternRewriter& rewriter) const {
   SmallVector<RewriteData, 4> rewrites;
 
   // Get data to rewrite kernel ops without changing the IR.
-  auto walk = [&](auto concrete_op) {
-    return module_op.walk([&](decltype(concrete_op) op) -> mlir::WalkResult {
-      auto data = Match(op);
-      if (!data)
-        return rewriter.notifyMatchFailure(op, toString(data.takeError()));
+  auto walk = [&](auto op_type_tag) {
+    using OpTy = decltype(op_type_tag);
+
+    return module_op.walk([&](OpTy op) -> mlir::WalkResult {
+      if (!HasGpuEmitter(op)) return mlir::success();
+
+      auto data = Match(op, options);
+      if (auto err = data.takeError())
+        return rewriter.notifyMatchFailure(op, toString(std::move(err)));
+
       rewrites.emplace_back(std::move(*data));
       return mlir::success();
     });
   };
+
+  // Compile all operations that have GPU code emitters to the GPU binary,
   if (walk(mlir::lmhlo::FusionOp()).wasInterrupted() ||
       walk(mlir::lmhlo::RngGetAndUpdateStateOp()).wasInterrupted() ||
       walk(mlir::lmhlo::ScatterOp()).wasInterrupted() ||
       walk(mlir::lmhlo::SelectAndScatterOp()).wasInterrupted() ||
-      walk(mlir::lmhlo::SortOp()).wasInterrupted())
+      walk(mlir::lmhlo::SortOp()).wasInterrupted() ||
+      walk(mlir::lmhlo::CustomCallOp()).wasInterrupted() ||
+      walk(mlir::gpu::LaunchFuncOp()).wasInterrupted())
     return mlir::failure();
 
   if (rewrites.empty()) {
@@ -471,8 +505,9 @@ mlir::LogicalResult KernelOpsPattern::matchAndRewrite(
   return mlir::success();
 }
 
-void populateKernelOpsPattern(mlir::RewritePatternSet& patterns) {
-  patterns.add<KernelOpsPattern>(patterns.getContext());
+void populateKernelOpsPattern(mlir::RewritePatternSet& patterns,
+                              GpuBinaryOptions options) {
+  patterns.add<KernelOpsPattern>(patterns.getContext(), options);
 }
 
 }  // namespace tensorflow

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 /// \file
 /// Main abstraction controlling the tflite interpreter.
-/// See context.h for the API for defining operations (TfLiteRegistration).
+/// See c/common.h for the API for defining operations (TfLiteRegistration).
 #ifndef TENSORFLOW_LITE_INTERPRETER_H_
 #define TENSORFLOW_LITE_INTERPRETER_H_
 
@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/interpreter_options.h"
-#include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/profiling/root_profiler.h"
 #include "tensorflow/lite/signature_runner.h"

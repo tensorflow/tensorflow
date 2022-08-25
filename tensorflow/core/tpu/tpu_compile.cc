@@ -387,7 +387,7 @@ Status CompileTFFunctionToHlo(
   compiler_options.graph_def_version = graph_def_version;
   compiler_options.shape_determination_fns = shape_determination_fns;
 
-  auto compiler = absl::make_unique<XlaCompiler>(compiler_options);
+  auto compiler = std::make_unique<XlaCompiler>(compiler_options);
 
   std::vector<XlaCompiler::Argument> args;
   TF_RETURN_IF_ERROR(BuildComputationArgumentDescriptions(

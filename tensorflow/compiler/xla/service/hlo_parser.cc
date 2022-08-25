@@ -486,6 +486,7 @@ class HloParserImpl : public HloParser {
   bool ParseLayout(Layout* layout);
   bool ParseLayoutIntAttribute(int64_t* attr_value,
                                absl::string_view attr_description);
+  bool ParseDimLevelTypes(std::vector<DimLevelType>* dim_level_types);
   bool ParseTiles(std::vector<Tile>* tiles);
   bool ParseOpcode(HloOpcode* opcode,
                    std::optional<HloOpcode>* async_wrapped_opcode);
@@ -1009,7 +1010,8 @@ bool HloParserImpl::ParseComputations(HloModule* module) {
   return true;
 }
 
-// computation ::= ('ENTRY')? name (param_list_to_shape)? instruction_list
+// computation ::= ('ENTRY')? name (param_list_to_shape)? instruction_list(,
+// 'execution_thread='execution_thread)?
 bool HloParserImpl::ParseComputation(HloComputation** entry_computation) {
   LocTy maybe_entry_loc = lexer_.GetLoc();
   const bool is_entry_computation = EatIfPresent(TokKind::kw_ENTRY);
@@ -1042,7 +1044,14 @@ bool HloParserImpl::ParseComputation(HloComputation** entry_computation) {
             computation->root_instruction()->name(), ", ",
             ShapeUtil::HumanString(computation->root_instruction()->shape())));
   }
-
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
+  optional<std::string> execution_thread = HloInstruction::kMainExecutionThread;
+  attrs["execution_thread"] = {/*required=*/false, AttrTy::kString,
+                               &execution_thread};
+  if (!ParseAttributes(attrs)) {
+    return false;
+  }
+  computation->SetExecutionThread(*execution_thread);
   if (is_entry_computation) {
     if (*entry_computation != nullptr) {
       return Error(maybe_entry_loc, "expects only one ENTRY");
@@ -1609,6 +1618,10 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<int64_t> async_group_id;
       attrs["async_group_id"] = {/*required=*/false, AttrTy::kInt64,
                                  &async_group_id};
+      optional<std::string> async_execution_thread =
+          HloInstruction::kMainExecutionThread;
+      attrs["async_execution_thread"] = {/*required=*/false, AttrTy::kString,
+                                         &async_execution_thread};
       if (async_wrapped_opcode) {
         std::vector<HloInstruction*> async_wrapped_operands;
         std::vector<Shape> async_wrapped_operand_shapes;
@@ -1669,14 +1682,17 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       if (opcode == HloOpcode::kAsyncStart) {
         return builder->AddInstruction(HloInstruction::CreateAsyncStart(
-            *shape, operands, *async_computation, async_group_id));
+            *shape, operands, *async_computation, async_group_id,
+            *async_execution_thread));
       }
       if (opcode == HloOpcode::kAsyncUpdate) {
         return builder->AddInstruction(HloInstruction::CreateAsyncUpdate(
-            *shape, operands[0], *async_computation, async_group_id));
+            *shape, operands[0], *async_computation, async_group_id,
+            *async_execution_thread));
       }
       return builder->AddInstruction(HloInstruction::CreateAsyncDone(
-          *shape, operands[0], *async_computation, async_group_id));
+          *shape, operands[0], *async_computation, async_group_id,
+          *async_execution_thread));
     }
     case HloOpcode::kCopyStart: {
       // If the is_cross_program_prefetch attribute is not present then default
@@ -4991,6 +5007,41 @@ bool HloParserImpl::ParseDimensionSizes(std::vector<int64_t>* dimension_sizes,
                    parse_and_add_item);
 }
 
+// dim_level_types
+//   ::=  /* empty */
+//   ::= 'D' '(' dim_level_type_list ')'
+// dim_level_type_list
+//   ::= /* empty */
+//   ..= dim_level_type (',' dim_level_type)*
+// dim_level_type
+//   ::= 'D'
+//   ::= 'C'
+//   ::= 'S'
+bool HloParserImpl::ParseDimLevelTypes(
+    std::vector<DimLevelType>* dim_level_types) {
+  auto parse_and_add_item = [&]() {
+    if (lexer_.GetKind() == TokKind::kIdent) {
+      if (lexer_.GetStrVal() == "D") {
+        lexer_.Lex();
+        dim_level_types->push_back(DIM_DENSE);
+        return true;
+      } else if (lexer_.GetStrVal() == "C") {
+        dim_level_types->push_back(DIM_COMPRESSED);
+        lexer_.Lex();
+        return true;
+      } else if (lexer_.GetStrVal() == "S") {
+        dim_level_types->push_back(DIM_SINGLETON);
+        lexer_.Lex();
+        return true;
+      }
+    }
+    return Error(lexer_.GetLoc(),
+                 "expected a DimLevelType abbreviation (D, C, or S)");
+  };
+  return ParseList(TokKind::kLparen, TokKind::kRparen, TokKind::kComma,
+                   parse_and_add_item);
+}
+
 // tiles
 //   ::= /*empty*/
 //   ::= 'T' '(' dim_list ')'
@@ -5047,7 +5098,10 @@ bool HloParserImpl::ParseLayoutIntAttribute(
   return true;
 }
 
-// layout ::= '{' int64_list (':' tiles element_size_in_bits memory_space)? '}'
+// layout
+//   ::= '{' int64_list
+//       (':' dim_level_types tiles element_size_in_bits memory_space)?
+//       '}'
 // element_size_in_bits
 //   ::= /*empty*/
 //   ::= 'E' '(' int64_t ')'
@@ -5056,6 +5110,7 @@ bool HloParserImpl::ParseLayoutIntAttribute(
 //   ::= 'S' '(' int64_t ')'
 bool HloParserImpl::ParseLayout(Layout* layout) {
   std::vector<int64_t> minor_to_major;
+  std::vector<DimLevelType> dim_level_types;
   std::vector<Tile> tiles;
   int64_t element_size_in_bits = 0;
   int64_t memory_space = 0;
@@ -5086,6 +5141,12 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
 
     if (lexer_.GetKind() == TokKind::kColon) {
       lexer_.Lex();
+
+      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "D") {
+        lexer_.Lex();
+        ParseDimLevelTypes(&dim_level_types);
+      }
+
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "T") {
         lexer_.Lex();
         ParseTiles(&tiles);
@@ -5112,7 +5173,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   for (int i = 0; i < tiles.size(); i++) {
     vec_tiles[i] = Tile(tiles[i]);
   }
-  *layout = LayoutUtil::MakeLayout(minor_to_major, vec_tiles,
+  *layout = LayoutUtil::MakeLayout(minor_to_major, dim_level_types, vec_tiles,
                                    element_size_in_bits, memory_space);
   return true;
 }
@@ -5159,19 +5220,6 @@ bool HloParserImpl::ParseShape(Shape* result) {
     result->add_dimensions(dimension_sizes[i]);
     result->set_dynamic_dimension(i, dynamic_dimensions[i]);
   }
-  if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "invalid") {
-    lexer_.Lex();
-    if (lexer_.GetKind() != TokKind::kLbrace) {
-      return false;
-    }
-    lexer_.Lex();
-    if (lexer_.GetKind() != TokKind::kRbrace) {
-      return false;
-    }
-    lexer_.Lex();
-    result->mutable_layout()->Clear();
-    return true;
-  }
   LayoutUtil::SetToDefaultLayout(result);
   // We need to lookahead to see if a following open brace is the start of a
   // layout. The specific problematic case is:
@@ -5190,11 +5238,23 @@ bool HloParserImpl::ParseShape(Shape* result) {
     if (!ParseLayout(&layout)) {
       return false;
     }
+    if (layout.dim_level_types_size() != 0 &&
+        layout.dim_level_types_size() != result->rank()) {
+      return Error(
+          lexer_.GetLoc(),
+          StrFormat("Dimensions size is %ld, but dim level types size is %ld.",
+                    result->rank(), layout.dim_level_types_size()));
+    }
     if (layout.minor_to_major_size() != result->rank()) {
       return Error(
           lexer_.GetLoc(),
           StrFormat("Dimensions size is %ld, but minor to major size is %ld.",
                     result->rank(), layout.minor_to_major_size()));
+    }
+    if (LayoutUtil::IsSparse(layout) && layout.tiles_size() > 0) {
+      return Error(lexer_.GetLoc(),
+                   StrFormat("Layout has tiles, but is for a sparse array: %s",
+                             layout.ToString()));
     }
     *result->mutable_layout() = layout;
   }

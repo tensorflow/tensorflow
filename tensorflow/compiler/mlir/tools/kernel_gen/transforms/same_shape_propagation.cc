@@ -33,9 +33,9 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 
 #define DEBUG_TYPE "kernel-gen-shapes"
 
@@ -199,7 +199,8 @@ class ShapeEqualityKnowledge {
   void build(func::FuncOp function) {
     function.walk([&](Operation *op) {
       if (auto reshape = dyn_cast<memref::ReshapeOp>(op)) {
-        registerAssociation(ShapeValue{reshape.shape()}, reshape.result());
+        registerAssociation(ShapeValue{reshape.getShape()},
+                            reshape.getResult());
         return;
       }
       if (auto cast = dyn_cast<memref::ReinterpretCastOp>(op)) {
@@ -210,7 +211,7 @@ class ShapeEqualityKnowledge {
             return;
           }
         }
-        registerAssociation(ShapeValue{cast.sizes()}, cast.result());
+        registerAssociation(ShapeValue{cast.getSizes()}, cast.getResult());
         return;
       }
       if (auto alloc = dyn_cast<memref::AllocOp>(op)) {
@@ -290,10 +291,11 @@ class ShapeEqualityKnowledge {
             if (val.isConstant()) return false;
             auto dimOp = val.value().getDefiningOp<memref::DimOp>();
             if (!dimOp) return false;
-            if (!candidate) candidate = dimOp.source();
+            if (!candidate) candidate = dimOp.getSource();
             auto index = dimOp.getConstantIndex();
-            if (!index.hasValue()) return false;
-            return candidate == dimOp.source() && p.index() == index.getValue();
+            if (!index.has_value()) return false;
+            return candidate == dimOp.getSource() &&
+                   p.index() == index.getValue();
           });
       if (all_are_dimops && candidate) {
         equal_shapes_.unionSets(candidate.getAsOpaquePointer(),

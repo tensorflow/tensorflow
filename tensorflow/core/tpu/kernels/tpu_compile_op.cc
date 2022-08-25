@@ -17,9 +17,9 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
-#include "tensorflow/stream_executor/tpu/tpu_node_context.h"
 
 namespace tensorflow {
 namespace tpu {

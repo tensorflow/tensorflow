@@ -813,7 +813,7 @@ filegroup(name="cudnn-include")
     )
 
     # Create dummy files for the CUDA toolkit since they are still required by
-    # tensorflow/core/platform/default/build_config:cuda.
+    # tensorflow/tsl/platform/default/build_config:cuda.
     repository_ctx.file("cuda/cuda/include/cuda.h")
     repository_ctx.file("cuda/cuda/include/cublas.h")
     repository_ctx.file("cuda/cuda/include/cudnn.h")
@@ -833,7 +833,7 @@ filegroup(name="cudnn-include")
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cusparse", cpu_value))
 
     # Set up cuda_config.h, which is used by
-    # tensorflow/stream_executor/dso_loader.cc.
+    # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
     _tpl(
         repository_ctx,
         "cuda:cuda_config.h",
@@ -1297,7 +1297,7 @@ def _create_local_cuda_repository(repository_ctx):
     )
 
     # Set up cuda_config.h, which is used by
-    # tensorflow/stream_executor/dso_loader.cc.
+    # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
     repository_ctx.template(
         "cuda/cuda/cuda_config.h",
         tpl_paths["cuda:cuda_config.h"],

@@ -20,20 +20,25 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -79,6 +84,28 @@ std::string PrecisionConfigToString(const PrecisionConfig& precision_config) {
           }),
       "}");
 }
+
+void SetThreadName(HloComputation* called_computation,
+                   absl::string_view execution_thread,
+                   bool skip_async_execution_thread_overwrite) {
+  called_computation->SetExecutionThread(execution_thread);
+  for (HloInstruction* instr : called_computation->instructions()) {
+    if (instr->IsAsynchronous()) {
+      if (!skip_async_execution_thread_overwrite) {
+        // Set async instruction thread name and also recursively set async
+        // computations.
+        instr->set_async_execution_thread(execution_thread);
+      }
+      continue;
+    }
+    for (HloComputation* nested_called_computation :
+         instr->called_computations()) {
+      SetThreadName(nested_called_computation, execution_thread,
+                    skip_async_execution_thread_overwrite);
+    }
+  }
+}
+
 }  // namespace
 
 HloBatchNormInstruction::HloBatchNormInstruction(
@@ -216,8 +243,11 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
 HloAsyncInstruction::HloAsyncInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
-    HloComputation* async_computation, std::optional<int64_t> async_group_id)
-    : HloInstruction(opcode, shape), async_group_id_(async_group_id) {
+    HloComputation* async_computation, std::optional<int64_t> async_group_id,
+    absl::string_view async_execution_thread)
+    : HloInstruction(opcode, shape),
+      async_group_id_(async_group_id),
+      async_execution_thread_(async_execution_thread) {
   CHECK(opcode == HloOpcode::kAsyncStart || operands.size() == 1);
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -226,18 +256,22 @@ HloAsyncInstruction::HloAsyncInstruction(
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
   async_computation->AddAsyncInstruction(this);
+  set_async_execution_thread(async_execution_thread);
 }
 
-HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                                         HloInstruction* operand,
-                                         HloComputation* async_computation,
-                                         std::optional<int64_t> async_group_id)
-    : HloInstruction(opcode, shape), async_group_id_(async_group_id) {
+HloAsyncInstruction::HloAsyncInstruction(
+    HloOpcode opcode, const Shape& shape, HloInstruction* operand,
+    HloComputation* async_computation, std::optional<int64_t> async_group_id,
+    absl::string_view async_execution_thread)
+    : HloInstruction(opcode, shape),
+      async_group_id_(async_group_id),
+      async_execution_thread_(async_execution_thread) {
   AppendOperand(operand);
   AppendComputation(async_computation);
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
   async_computation->AddAsyncInstruction(this);
+  set_async_execution_thread(async_execution_thread);
 }
 
 HloAsyncInstruction::~HloAsyncInstruction() {
@@ -274,6 +308,10 @@ std::vector<std::string> HloAsyncInstruction::ExtraAttributesToStringImpl(
   if (async_group_id_.has_value()) {
     result.push_back(StrCat("async_group_id=", *async_group_id_));
   }
+  if (async_execution_thread_ != kMainExecutionThread) {
+    result.push_back(
+        StrCat("async_execution_thread=\"", async_execution_thread_, "\""));
+  }
   if (options.syntax_sugar_async_ops()) {
     std::vector<std::string> wrapped_extra_attributes =
         async_wrapped_instruction()->ExtraAttributesToString(options);
@@ -304,8 +342,9 @@ std::unique_ptr<HloInstruction> HloAsyncInstruction::CloneWithNewOperandsImpl(
     new_wrapped_computation = module->AddEmbeddedComputation(
         async_wrapped_computation()->Clone("clone", context));
   }
-  return std::make_unique<HloAsyncInstruction>(opcode(), shape, new_operands,
-                                               new_wrapped_computation);
+  return std::make_unique<HloAsyncInstruction>(
+      opcode(), shape, new_operands, new_wrapped_computation, async_group_id_,
+      async_execution_thread_);
 }
 
 void HloAsyncInstruction::set_async_group_id(
@@ -313,9 +352,20 @@ void HloAsyncInstruction::set_async_group_id(
   async_group_id_ = async_group_id;
 }
 
+void HloAsyncInstruction::set_async_execution_thread(
+    absl::string_view async_execution_thread) {
+  async_execution_thread_ = std::string(async_execution_thread);
+  SetThreadName(async_wrapped_computation(), async_execution_thread,
+                /*skip_async_execution_thread_overwrite=*/false);
+}
+
 HloInstructionProto HloAsyncInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_async_group_id(async_group_id_.has_value() ? *async_group_id_ : -1);
+  proto.set_async_execution_thread(async_execution_thread_ ==
+                                           HloInstruction::kMainExecutionThread
+                                       ? ""
+                                       : async_execution_thread_);
   return proto;
 }
 
@@ -1497,14 +1547,38 @@ HloCallableInstruction::HloCallableInstruction(HloOpcode opcode,
 
 HloCallableInstruction::HloCallableInstruction(
     HloOpcode opcode, const Shape& shape,
-    absl::Span<HloInstruction* const> operands,
-    HloComputation* called_computation)
+    absl::Span<HloInstruction* const> operands)
     : HloInstruction(opcode, shape) {
   for (auto operand : operands) {
     AppendOperand(operand);
   }
   SetAndSanitizeName(HloOpcodeString(opcode));
+}
+
+HloCallableInstruction::HloCallableInstruction(
+    HloOpcode opcode, const Shape& shape,
+    absl::Span<HloInstruction* const> operands,
+    HloComputation* called_computation, absl::string_view prefix)
+    : HloInstruction(opcode, shape) {
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+  SetAndSanitizeName(std::string(prefix) + HloOpcodeString(opcode));
   AppendComputation(called_computation);
+}
+
+HloCallableInstruction::HloCallableInstruction(
+    HloOpcode opcode, const Shape& shape,
+    absl::Span<HloInstruction* const> operands,
+    absl::Span<HloComputation* const> called_computations)
+    : HloInstruction(opcode, shape) {
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+  SetAndSanitizeName(HloOpcodeString(opcode));
+  for (auto called_computation : called_computations) {
+    AppendComputation(called_computation);
+  }
 }
 
 HloCallableInstruction::~HloCallableInstruction() { ClearCalledComputations(); }
@@ -1706,6 +1780,34 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   return clone;
 }
 
+absl::InlinedVector<HloComputation*, 1>
+HloCallableInstruction::GetOrCloneCalledComputations(
+    HloCloneContext* context) const {
+  HloModule* module = context != nullptr ? context->module() : GetModule();
+  absl::InlinedVector<HloComputation*, 1> new_called_computations;
+  for (auto* comp : called_computations()) {
+    HloComputation* new_custom_call_computation = nullptr;
+    if (context != nullptr) {
+      new_custom_call_computation = context->FindComputation(comp);
+    }
+    if (new_custom_call_computation == nullptr) {
+      new_custom_call_computation =
+          module->AddEmbeddedComputation(comp->Clone("clone", context));
+    }
+    new_called_computations.push_back(new_custom_call_computation);
+  }
+  return new_called_computations;
+}
+
+void HloCallableInstruction::RecursivelySetComputationsThreadName(
+    absl::string_view execution_thread,
+    bool skip_async_execution_thread_overwrite) {
+  for (HloComputation* comp : called_computations()) {
+    SetThreadName(comp, execution_thread,
+                  skip_async_execution_thread_overwrite);
+  }
+}
+
 HloFusionInstruction::HloFusionInstruction(const Shape& shape,
                                            FusionKind fusion_kind,
                                            HloInstruction* fused_root)
@@ -1722,9 +1824,9 @@ HloFusionInstruction::HloFusionInstruction(const Shape& shape,
 HloFusionInstruction::HloFusionInstruction(
     const Shape& shape, FusionKind fusion_kind,
     absl::Span<HloInstruction* const> operands,
-    HloComputation* fusion_computation)
+    HloComputation* fusion_computation, absl::string_view prefix)
     : HloCallableInstruction(HloOpcode::kFusion, shape, operands,
-                             fusion_computation),
+                             fusion_computation, prefix),
       fusion_kind_(fusion_kind) {
   fusion_computation->SetFusionInstruction(this);
 }
@@ -1990,7 +2092,6 @@ int64_t HloFusionInstruction::fused_instruction_count() const {
   return fused_instructions_computation()->instruction_count();
 }
 
-
 std::vector<std::string> HloFusionInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("kind=", xla::ToString(fusion_kind()))};
@@ -2008,18 +2109,10 @@ bool HloFusionInstruction::IdenticalSlowPath(
 std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  HloModule* module = context != nullptr ? context->module() : GetModule();
-  HloComputation* new_fused_computation = nullptr;
-  if (context != nullptr) {
-    new_fused_computation =
-        context->FindComputation(fused_instructions_computation());
-  }
-  if (new_fused_computation == nullptr) {
-    new_fused_computation = module->AddEmbeddedComputation(
-        fused_instructions_computation()->Clone("clone", context));
-  }
+  auto new_fused_computation = GetOrCloneCalledComputations(context);
+  CHECK_EQ(new_fused_computation.size(), 1);
   return std::make_unique<HloFusionInstruction>(
-      shape, fusion_kind(), new_operands, new_fused_computation);
+      shape, fusion_kind(), new_operands, new_fused_computation.front());
 }
 
 Status HloFusionInstruction::DeduplicateFusionOperands() {
@@ -2547,7 +2640,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target, std::string opaque,
     CustomCallApiVersion api_version)
-    : HloInstruction(HloOpcode::kCustomCall, shape),
+    : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
       feature_group_count_(1),
       batch_group_count_(1),
@@ -2557,16 +2650,13 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE),
       api_version_(api_version) {
   set_raw_backend_config_string(std::move(opaque));
-  for (auto operand : operands) {
-    AppendOperand(operand);
-  }
 }
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* to_apply, absl::string_view custom_call_target,
     std::string opaque, CustomCallApiVersion api_version)
-    : HloInstruction(HloOpcode::kCustomCall, shape),
+    : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands, to_apply),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
       feature_group_count_(1),
       batch_group_count_(1),
@@ -2576,10 +2666,6 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE),
       api_version_(api_version) {
   set_raw_backend_config_string(std::move(opaque));
-  for (auto operand : operands) {
-    AppendOperand(operand);
-  }
-  AppendComputation(to_apply);
   to_apply->SetCustomCallInstruction(this);
 }
 
@@ -2588,7 +2674,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     absl::Span<HloComputation* const> called_computations,
     absl::string_view custom_call_target, std::string opaque,
     CustomCallApiVersion api_version)
-    : HloInstruction(HloOpcode::kCustomCall, shape),
+    : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands,
+                             called_computations),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
       feature_group_count_(1),
       batch_group_count_(1),
@@ -2598,11 +2685,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE),
       api_version_(api_version) {
   set_raw_backend_config_string(std::move(opaque));
-  for (auto operand : operands) {
-    AppendOperand(operand);
-  }
   for (auto comp : called_computations) {
-    AppendComputation(comp);
+    comp->SetCustomCallInstruction(this);
   }
 }
 
@@ -2611,7 +2695,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     absl::string_view custom_call_target, std::string opaque,
     absl::Span<const Shape> operand_shapes_with_layout,
     CustomCallApiVersion api_version)
-    : HloInstruction(HloOpcode::kCustomCall, shape),
+    : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
       feature_group_count_(1),
       batch_group_count_(1),
@@ -2623,9 +2707,6 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE),
       api_version_(api_version) {
   set_raw_backend_config_string(std::move(opaque));
-  for (auto operand : operands) {
-    AppendOperand(operand);
-  }
 }
 
 HloInstructionProto HloCustomCallInstruction::ToProto() const {
@@ -2819,8 +2900,11 @@ std::unique_ptr<HloInstruction>
 HloCustomCallInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
+  absl::InlinedVector<HloComputation*, 1> new_called_computations =
+      GetOrCloneCalledComputations(context);
+
   auto cloned = std::make_unique<HloCustomCallInstruction>(
-      shape, new_operands, called_computations(), custom_call_target(),
+      shape, new_operands, new_called_computations, custom_call_target(),
       opaque(), api_version_);
   if (layout_constrained()) {
     cloned->layout_constrained_ = true;

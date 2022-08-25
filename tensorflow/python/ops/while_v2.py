@@ -49,6 +49,7 @@ from tensorflow.python.ops import while_v2_indexed_slices_rewriter
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
+from tensorflow.python.util import variable_utils
 
 # pylint: disable=protected-access
 
@@ -77,6 +78,7 @@ def while_loop(cond,
                return_same_structure=True,
                back_prop=True):
   """Like tf.while_loop, except emits a single While op."""
+  loop_vars = variable_utils.convert_variables_to_tensors(loop_vars)
   # Keep the original loop_vars around to know which args were TensorArrays.
   orig_loop_vars = loop_vars
   flat_orig_loop_vars = nest.flatten(orig_loop_vars, expand_composites=True)
@@ -197,13 +199,20 @@ def while_loop(cond,
       # structure of `loop_vars_signature`.
       outputs = body(
           *_pack_sequence_as(loop_vars_signature, flat_orig_loop_vars, args))
-      if not nest.is_nested_or_composite(outputs):
+      if not nest.is_nested(outputs):
         outputs = [outputs]
-      # Compare the structure of input and output of body converting the
-      # top-level tuples to list to be compatible with legacy while_loop.
-      nest.assert_same_structure(list(outputs), list(orig_loop_vars),
-                                 expand_composites=True)
-
+      try:
+        # The legacy while_loop considers list and tuple to be the same
+        # structure.
+        nest.assert_same_structure(outputs, orig_loop_vars, check_types=False,
+                                   expand_composites=True)
+      except ValueError:
+        # Traditionally we consider variables and tensors to be the same
+        # structure.
+        vars1 = variable_utils.convert_variables_to_tensors(outputs)
+        vars2 = variable_utils.convert_variables_to_tensors(orig_loop_vars)
+        nest.assert_same_structure(vars1, vars2, check_types=False,
+                                   expand_composites=True)
       outputs = _tensor_array_to_flow(outputs)
 
       # TODO(srbs): Update lowering code to create _Enter nodes with

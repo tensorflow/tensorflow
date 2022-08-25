@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -112,7 +113,7 @@ TEST_F(GpuConvRewriterTest, BackwardFilterConvolve) {
           /*batch_group_count=*/1, conv_window,
           tf_default_dnums_for_backward_filter_,
           /*preferred_element_type=*/std::nullopt)
-          .ConsumeValueOrDie(),
+          .value(),
       activations, gradients, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
@@ -153,7 +154,7 @@ TEST_F(GpuConvRewriterTest,
           /*batch_group_count=*/1, conv_window,
           tf_default_dnums_for_backward_filter_,
           /*preferred_element_type=*/std::nullopt)
-          .ConsumeValueOrDie(),
+          .value(),
       activations, gradients, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
@@ -346,7 +347,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolve1x1Filter) {
           /*batch_group_count=*/1, conv_window,
           tf_default_dnums_for_backward_input_,
           /*preferred_element_type=*/std::nullopt)
-          .ConsumeValueOrDie(),
+          .value(),
       /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
@@ -381,7 +382,7 @@ TEST_F(GpuConvRewriterTest,
           /*batch_group_count=*/1, default_conv_window_,
           tf_default_dnums_for_backward_input_,
           /*preferred_element_type=*/std::nullopt)
-          .ConsumeValueOrDie(),
+          .value(),
       /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, default_conv_window_,
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));

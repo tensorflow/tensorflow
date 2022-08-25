@@ -23,18 +23,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/proto_helper.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_executable.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
 
 namespace xla {
 
@@ -104,7 +104,7 @@ class TpuCompiler : public Compiler {
     }
 
     std::unique_ptr<Executable> exec =
-        absl::make_unique<TpuExecutable>(result, std::move(module));
+        std::make_unique<TpuExecutable>(result, std::move(module));
     return exec;
   }
 
@@ -171,7 +171,7 @@ class TpuCompiler : public Compiler {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                           ApiConverter::FromC(c_module));
       std::shared_ptr<HloModule> module_shared(module.release());
-      executables.emplace_back(absl::make_unique<TpuExecutable>(
+      executables.emplace_back(std::make_unique<TpuExecutable>(
           se_executables[i], std::move(module_shared)));
     }
 
@@ -217,7 +217,7 @@ class TpuCompiler : public Compiler {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       tensorflow::tpu::GetTpuPlatformId(),
-      []() { return absl::make_unique<TpuCompiler>(); });
+      []() { return std::make_unique<TpuCompiler>(); });
   return true;
 }
 

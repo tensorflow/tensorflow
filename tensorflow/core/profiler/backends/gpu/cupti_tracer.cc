@@ -1272,7 +1272,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     cuda_event_recorders_.reserve(num_gpus);
     for (int i = 0; i < num_gpus; ++i) {
       cuda_event_recorders_.emplace_back(
-          absl::make_unique<CudaEventRecorder>(cupti_interface, collector, i));
+          std::make_unique<CudaEventRecorder>(cupti_interface, collector, i));
     }
   }
   ~CuptiDriverApiHookWithCudaEvent() {

@@ -45,13 +45,13 @@ HloInstruction* FindFirstWhile(HloModule* m) {
 class WhileLoopSimplifierTest : public HloTestBase {
  protected:
   // Makes an HloModule that contains a loop with `num_iters` iteration.
-  ABSL_MUST_USE_RESULT std::unique_ptr<VerifiedHloModule>
-  MakeModuleWithSimpleLoop(int num_iters);
+  [[nodiscard]] std::unique_ptr<VerifiedHloModule> MakeModuleWithSimpleLoop(
+      int num_iters);
 
   // Similar to MakeModuleWithSimpleLoop except that the loop bound is passed to
   // the loop-condition through an element of a tuple which is the
   // loop-condition parameter.
-  ABSL_MUST_USE_RESULT std::unique_ptr<VerifiedHloModule>
+  [[nodiscard]] std::unique_ptr<VerifiedHloModule>
   MakeModuleWithSimpleLoopTupleElementLoopBound(int num_iters);
 };
 

@@ -14,6 +14,7 @@
 # ==============================================================================
 """Options for saving SavedModels."""
 
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -27,12 +28,13 @@ class LoadOptions(object):
 
   # Define object attributes in __slots__ for improved memory and performance.
   __slots__ = ("allow_partial_checkpoint", "experimental_io_device",
-               "experimental_skip_checkpoint")
+               "experimental_skip_checkpoint", "experimental_variable_policy")
 
   def __init__(self,
                allow_partial_checkpoint=False,
                experimental_io_device=None,
-               experimental_skip_checkpoint=False):
+               experimental_skip_checkpoint=False,
+               experimental_variable_policy=None):
     """Creates an object that stores options for SavedModel loading.
 
     *When to set `allow_partial_checkpoint=True`?*
@@ -96,6 +98,11 @@ class LoadOptions(object):
       experimental_skip_checkpoint: bool. Defaults to `False`. If set to `True`,
         checkpoints will not be restored. Note that this in the majority of
         cases will generate an unusable model.
+      experimental_variable_policy: string. The policy to apply to variables
+        when loading. This is either a `saved_model.experimental.VariablePolicy`
+        enum instance or one of its value strings (case is not important). See
+        that enum documentation for details. A value of `None` corresponds to
+        the default policy.
 
     Example:
 
@@ -108,3 +115,5 @@ class LoadOptions(object):
     self.experimental_io_device = experimental_io_device
     self.allow_partial_checkpoint = allow_partial_checkpoint
     self.experimental_skip_checkpoint = experimental_skip_checkpoint
+    self.experimental_variable_policy = (
+        save_options.VariablePolicy.from_obj(experimental_variable_policy))

@@ -220,7 +220,7 @@ tf_py_test(
     name = "filter_test",
     size = "small",
     srcs = ["filter_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -711,12 +711,8 @@ cuda_py_test(
 
 tf_py_test(
     name = "prefetch_test",
-    size = "small",
+    size = "medium",
     srcs = ["prefetch_test.py"],
-    tags = [
-        "noasan",  # TODO(b/231979296): re-enable after flakiness resolved.
-        "notap",  # TODO(b/235851493): re-enable after flakiness resolved.
-    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -761,7 +757,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "reduce_test",
-    size = "small",
+    size = "medium",
     srcs = ["reduce_test.py"],
     tags = [
         "no_cuda_asan",  # times out
@@ -797,7 +793,6 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 
@@ -845,7 +840,7 @@ tf_py_test(
     name = "shard_test",
     size = "medium",
     srcs = ["shard_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",

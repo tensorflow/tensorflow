@@ -467,7 +467,7 @@ func.func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type
         finalize_func = @__finalize_func_790,
         init_func = @__init_func_530, next_func = @__next_func_680,
         next_func.experimental_ints_on_device = true,
-        operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
+        operand_segment_sizes = array<i32: 2, 2, 1>,
         output_shapes = [#tf_type.shape<?>],
         output_types = [f32],
         metadata = ""
@@ -479,7 +479,7 @@ func.func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type
         finalize_func = @__finalize_func_790,
         init_func = @__init_func_530, next_func = @__next_func_680,
         next_func.experimental_ints_on_device = true,
-        operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
+        operand_segment_sizes = array<i32: 2, 2, 1>,
         output_shapes = [#tf_type.shape<?>],
         output_types = [f32],
         metadata = ""
@@ -487,6 +487,76 @@ func.func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type
          (tensor<!tf_type.string>, tensor<*x!tf_type.string>, tensor<!tf_type.string>, tensor<*xi64>, tensor<!tf_type.string>) -> tensor<*x!tf_type.variant>
       tf_executor.yield
     }
+    tf_executor.fetch
+  }
+  func.return
+}
+
+
+func.func @then_function() {
+  tf_executor.graph {
+    tf_executor.island {
+      "tf.OpA"() : () -> ()
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  func.return
+}
+
+func.func @else_function() {
+  tf_executor.graph {
+    tf_executor.island {
+      "tf.OpB"() : () -> ()
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// Check that stateful control-flow ops always have an outgoing control
+// dependency to `tf_executor.fetch`.
+func.func @stateful_control_flow_has_outgoing_control(%arg : tensor<i1>) {
+  tf_executor.graph {
+    tf_executor.island {
+      "tf.OpC"() {is_stateless = true} : () -> ()
+      // CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.If"
+      "tf.If"(%arg) {then_branch = @then_function, else_branch = @else_function, is_stateless = false} : (tensor<i1>) -> ()
+      tf_executor.yield
+    }
+    // CHECK: tf_executor.fetch %[[CONTROL]]
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// Test case where an island is not a direct parent of a user (`tf.OpC` consumes
+// a value produced by the first island but its direct parent is
+// `tf_device.launch`). See related bug b/242920486.
+func.func @island_not_direct_parent_of_user() -> () {
+  tf_executor.graph {
+    %island1:2 = tf_executor.island {
+      // CHECK: %[[VAL_0:.*]], %[[VAL_1:.*]] = tf_executor.island wraps "tf.OpA"() : () -> tensor<i64>
+      %0 = "tf.OpA"() : () -> (tensor<i64>)
+      // CHECK: %[[VAL_2:.*]] = tf_executor.island(%[[VAL_1]]) wraps "tf.OpB"() : () -> ()
+      "tf.OpB"() : () -> ()
+      tf_executor.yield %0 : tensor<i64>
+    }
+    // CHECK: "tf_device.launch"()
+    // CHECK:   "tf.OpC"(%[[VAL_0]]) : (tensor<i64>) -> ()
+    // CHECK:   "tf.OpD"() : () -> ()
+    // CHECK:   tf_device.return
+    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+    %island2 = tf_executor.island {
+      "tf_device.launch"() ({
+        "tf.OpC"(%island1#0) : (tensor<i64>) -> ()
+        "tf.OpD"() : () -> ()
+        tf_device.return
+      }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+      tf_executor.yield
+    }
+    // CHECK: tf_executor.fetch
     tf_executor.fetch
   }
   func.return
