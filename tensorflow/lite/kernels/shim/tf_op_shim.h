@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/registration/registration.h"
@@ -29,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/kernels/shim/op_kernel.h"
 #include "tensorflow/lite/kernels/shim/shape.h"
-#include "tensorflow/lite/kernels/shim/tf_tensor_view.h"
 
 // This file contains the TF adapter. That is, it takes a `OpKernelShim`
 // class and provides a TF kernel out of it.
@@ -128,7 +126,7 @@ static_assert(::tensorflow::shape_inference::InferenceContext::kUnknownRank ==
                   Shape::kUnknownRank,
               "The values must match.");
 
-// Builds the OpDef to register theop with the TF runtime
+// Builds the OpDef to register the op with the TF runtime
 template <typename Kernel>
 ::tensorflow::register_op::OpDefBuilderWrapper CreateOpDefBuilderWrapper() {
   auto ret =
@@ -156,9 +154,9 @@ struct ContextTypeForRuntime<Runtime::kTf> {
           TF_INIT_ON_STARTUP_IF(SHOULD_REGISTER_OP(op_kernel_cls::OpName())) \
           << ::tflite::shim::CreateOpDefBuilderWrapper<op_kernel_cls>()
 
-#define REGISTER_TF_OP_SHIM(op_kernel_cls) \
-  TF_ATTRIBUTE_ANNOTATE("tf:op")           \
-  TF_NEW_ID_FOR_INIT(REGISTER_OP_SHIM_IMPL, op_kernel_cls)
+#define REGISTER_TF_OP_SHIM(...) \
+  TF_ATTRIBUTE_ANNOTATE("tf:op") \
+  TF_NEW_ID_FOR_INIT(REGISTER_OP_SHIM_IMPL, __VA_ARGS__)
 
 }  // namespace shim
 }  // namespace tflite

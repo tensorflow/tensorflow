@@ -15,9 +15,11 @@ limitations under the License.
 #include "tensorflow/lite/kernels/shim/tflite_op_shim.h"
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
