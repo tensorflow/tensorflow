@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
 
+#include <utility>
+
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -140,9 +142,8 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
   int rank;
   tensorflow::Status status = th->NumDims(&rank);
   if (!status.ok())
-    return tfrt::MakeErrorAsyncValueRef(
-        host, tfrt::StrCat("error getting rank from TF tensor handle: ",
-                           status.error_message()));
+    return tfrt::MakeErrorAsyncValueRef(tfrt::StrCat(
+        "error getting rank from TF tensor handle: ", status.error_message()));
 
   llvm::SmallVector<tfrt::Index, 4> dims;
   for (auto i = 0; i < rank; ++i) {
@@ -150,15 +151,15 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
     status = th->Dim(i, &dim);
     if (!status.ok())
       return tfrt::MakeErrorAsyncValueRef(
-          host, tfrt::StrCat("error getting dimension from TFE tensor handle: ",
-                             status.error_message()));
+          tfrt::StrCat("error getting dimension from TFE tensor handle: ",
+                       status.error_message()));
     dims.push_back(dim);
   }
 
   TensorShape shape{dims};
   DataType dtype = th->DataType();
   return tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-      host, shape, GetTfrtDtype(dtype), std::move(th));
+      shape, GetTfrtDtype(dtype), std::move(th));
 }
 
 // Kernel for moving DHT to RuntimeFallbackTensor. Note that the buffer of the
@@ -640,7 +641,7 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
           exec_ctx, tfrt::StrCat(expected_fallback_tensor.takeError()));
     else
       results[i] = tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-          host, std::move(*expected_fallback_tensor));
+          std::move(*expected_fallback_tensor));
   }
 
   return tfrt::GetReadyChain();
@@ -793,11 +794,11 @@ static void RuntimeFallbackKernel(
         std::move(owned_th), host);
     if (!fallback_tensor) {
       output_tensors[i] = tfrt::MakeErrorAsyncValueRef(
-          host, tfrt::StrCat(fallback_tensor.takeError()));
+          tfrt::StrCat(fallback_tensor.takeError()));
     } else {
       output_tensors[i] =
           tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-              host, std::move(*fallback_tensor));
+              std::move(*fallback_tensor));
     }
   }
   out_chain.Set(in_chain);
@@ -882,7 +883,7 @@ void CoreRTTensorHandleToFallbackTensorInternal(
     auto& src_device = *tensor_handle.GetAvailableDevice();
     AsyncValueRef<Tensor> knfb_tensor;
     if (!tensor_av->IsAvailable()) {
-      auto ind_av = tfrt::MakeIndirectAsyncValue(exec_ctx.host());
+      auto ind_av = tfrt::MakeIndirectAsyncValue();
       knfb_tensor = AsyncValueRef<Tensor>(ind_av.CopyRef());
       tensor_av->AndThen(
           [tensor_avref = std::move(tensor_avref), ind_av = std::move(ind_av),
@@ -897,7 +898,7 @@ void CoreRTTensorHandleToFallbackTensorInternal(
     }
 
     if (!knfb_tensor.IsAvailable()) {
-      auto result_ref = tfrt::MakeIndirectAsyncValue(exec_ctx.host());
+      auto result_ref = tfrt::MakeIndirectAsyncValue();
       tf_tensor_results[i] = result_ref;
       auto knfb_tensor_av = knfb_tensor.GetAsyncValue();
       knfb_tensor_av->AndThen([knfb_tensor = std::move(knfb_tensor),
@@ -1010,7 +1011,6 @@ static void FallbackTensorToCoreRTTensorHandleInternal(
 
     tensorhandle_results[i] =
         tfrt::MakeAvailableAsyncValueRef<tfrt::TensorHandle>(
-            host,
             host->GetDeviceManager()->GetDeviceRef<tfrt::Device>(
                 {device.data(), device.size()}),
             metadata, std::move(kernel_fallback_tensor));
@@ -1096,8 +1096,6 @@ static void RuntimeFallbackExecuteOp(
   std::string device_name = device_attr.GetValue().str();
   if (!absl::StartsWith(device_name, "/")) device_name = kDefaultCpuDevice;
 
-  auto* host = exec_ctx.host();
-
   // Set up OpAttrs.
   tfrt::OpAttrs op_attrs;
   tfrt::SetUpOpAttrs(op_attr_array, &op_attrs);
@@ -1168,7 +1166,7 @@ static void RuntimeFallbackExecuteOp(
         runtime_fallback_tensor.GetTensorHandle()->Tensor(&tf_tensor);
     DCHECK(s.ok()) << s.ToString();
     results[i] =
-        tfrt::MakeAvailableAsyncValueRef<tensorflow::Tensor>(host, *tf_tensor);
+        tfrt::MakeAvailableAsyncValueRef<tensorflow::Tensor>(*tf_tensor);
   }
 }
 

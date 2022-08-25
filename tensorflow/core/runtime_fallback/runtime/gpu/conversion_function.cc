@@ -151,7 +151,7 @@ ConvertRuntimeFallbackTensorToDenseGpuTensor(
             std::move(*gpu_buffer))};
 
     return tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::DenseGpuTensor>(
-        exec_ctx.host(), std::move(gpu_tensor));
+        std::move(gpu_tensor));
   } else {
     // TODO(chuanhao): clean up the branch after cl/325503773. Currently this
     // branch is needed since we don't know what type of tensor that
@@ -182,7 +182,7 @@ ConvertRuntimeFallbackTensorToDenseGpuTensor(
       return EmitErrorAsync(exec_ctx, expected_gpu_tensor.takeError());
     }
     return tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::DenseGpuTensor>(
-        exec_ctx.host(), std::move(expected_gpu_tensor.get()));
+        std::move(expected_gpu_tensor.get()));
   }
 }
 
@@ -190,8 +190,6 @@ static tfrt::AsyncValueRef<RuntimeFallbackTensor>
 ConvertDenseGpuTensorToRuntimeFallbackTensor(
     const tfrt::gpu::DenseGpuTensor& tensor, const tfrt::gpu::GpuDevice& src,
     const tfrt::gpu::GpuDevice& dst, const tfrt::ExecutionContext& exec_ctx) {
-  auto* host = exec_ctx.host();
-
   tfrt::ResourceContext* resource_context = exec_ctx.resource_context();
   tensorflow::tfd::EagerContextResource* eager_context_resource =
       resource_context
@@ -219,7 +217,7 @@ ConvertDenseGpuTensorToRuntimeFallbackTensor(
       tensor, device, device, eager_ctx);
   if (fallback_tensor) {
     return tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-        host, std::move(*fallback_tensor));
+        std::move(*fallback_tensor));
   } else {
     return EmitErrorAsync(exec_ctx, fallback_tensor.takeError());
   }
