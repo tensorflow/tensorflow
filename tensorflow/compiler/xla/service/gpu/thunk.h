@@ -52,6 +52,7 @@ class Thunk {
     kCublasLtMatmul,
     kCustomCall,
     kFft,
+    kFor,
     kGemm,
     kInfeed,
     kKernel,
