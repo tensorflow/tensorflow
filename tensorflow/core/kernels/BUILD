@@ -6558,7 +6558,6 @@ filegroup(
         "random_op_cpu.h",
         "random_ops_util.h",
         "random_poisson_op.cc",
-        "shuffle_common.h",
         "sparse_utils.cc",
         "random_shuffle_op.cc",
         "reduce_join_op.cc",
