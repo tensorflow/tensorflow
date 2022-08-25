@@ -155,15 +155,10 @@ class StableHLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
       return true;
     }
   }];
-  let extraClassDefinition = [{
-    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
-      return ::mlir::stablehlo::parseUnaryOp(parser, result);
-    }
-    void $cppClass::print(OpAsmPrinter &p) {
-      ::mlir::stablehlo::printUnaryOp(getOperation(), p);
-    }
+
+  let assemblyFormat = [{
+    $operand attr-dict `:` custom<SameOperandsAndResultType>(type($operand), type($result))
   }];
-  let hasCustomAssemblyFormat = 1;
 }
 
 // Abs supports complex to real, so element type is not guaranteed to match.
@@ -177,6 +172,12 @@ def StableHLO_AbsOp: StableHLO_UnaryElementwiseOp<"abs",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.abs %arg0 : tensor<3xi32>
+    ```
   }];
 }
 
@@ -188,6 +189,12 @@ def StableHLO_CbrtOp: StableHLO_UnaryElementwiseOp<"cbrt",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.cbrt %arg0 : tensor<3x4xf32>
+    ```
   }];
 }
 def StableHLO_CeilOp: StableHLO_UnaryElementwiseOp<"ceil",
@@ -198,6 +205,12 @@ def StableHLO_CeilOp: StableHLO_UnaryElementwiseOp<"ceil",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.ceil %arg0 : tensor<2xf32>
+    ```
   }];
 }
 def StableHLO_ConvertOp : StableHLO_UnaryElementwiseOp<"convert",
@@ -208,6 +221,12 @@ def StableHLO_ConvertOp : StableHLO_UnaryElementwiseOp<"convert",
     float to int.
 
     See https://www.tensorflow.org/xla/operation_semantics#convertelementtype.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.convert %arg0 : (tensor<2xi32>) -> tensor<2xf32>
+    ```
   }];
   let builders = [
     OpBuilder<(ins "Value":$operand, "Type":$result_element_ty)>];
@@ -221,6 +240,12 @@ def StableHLO_ClzOp: StableHLO_UnaryElementwiseOp<"count_leading_zeros",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.count_leading_zeros %arg0 : tensor<2x2xi32>
+    ```
   }];
 }
 
@@ -232,6 +257,12 @@ def StableHLO_CosineOp: StableHLO_UnaryElementwiseOp<"cosine",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.cosine %arg0 : tensor<2xf32>
+    ```
   }];
 }
 
@@ -243,6 +274,12 @@ def StableHLO_ExpOp: StableHLO_UnaryElementwiseOp<"exponential",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.exponential %arg0 : tensor<2xf32>
+    ```
   }];
 }
 def StableHLO_Expm1Op: StableHLO_UnaryElementwiseOp<"exponential_minus_one",
@@ -253,6 +290,12 @@ def StableHLO_Expm1Op: StableHLO_UnaryElementwiseOp<"exponential_minus_one",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.exponential_minus_one %arg0 : tensor<2x2xf32>
+    ```
   }];
 }
 def StableHLO_FloorOp: StableHLO_UnaryElementwiseOp<"floor",
@@ -263,16 +306,27 @@ def StableHLO_FloorOp: StableHLO_UnaryElementwiseOp<"floor",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.floor %arg0 : tensor<2xf32>
+    ```
   }];
 }
 def StableHLO_ImagOp: StableHLO_UnaryElementwiseOp<"imag",
     [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>],
-    HLO_FpOrComplexTensor> {
+    HLO_FpOrComplexTensor, HLO_FpTensor> {
   let summary = "Imag operator";
   let description = [{
     Returns `Imag(operand)` element-wise.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.imag %arg0 : (tensor<complex<f64>>) -> tensor<f64>
+    ```
   }];
-  let results = (outs HLO_FpTensor);
 }
 
 def StableHLO_IsFiniteOp: StableHLO_UnaryElementwiseOp<"is_finite", [NoSideEffect,
@@ -286,9 +340,19 @@ def StableHLO_IsFiniteOp: StableHLO_UnaryElementwiseOp<"is_finite", [NoSideEffec
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.is_finite %arg0 : (tensor<2xf32>) -> tensor<2xi1>
+    ```
   }];
   let arguments = (ins HLO_FpTensor:$x);
   let results = (outs HLO_PredTensor:$y);
+
+  let assemblyFormat = [{
+    operands attr-dict `:` functional-type(operands, results)
+  }];
 }
 
 def StableHLO_LogOp: StableHLO_UnaryElementwiseOp<"log",
@@ -299,6 +363,12 @@ def StableHLO_LogOp: StableHLO_UnaryElementwiseOp<"log",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.log %arg0 : tensor<2xf32>
+    ```
   }];
 }
 def StableHLO_Log1pOp: StableHLO_UnaryElementwiseOp<"log_plus_one",
@@ -309,6 +379,12 @@ def StableHLO_Log1pOp: StableHLO_UnaryElementwiseOp<"log_plus_one",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.log_plus_one %arg0 : tensor<2xf32>
+    ```
   }];
 }
 def StableHLO_LogisticOp: StableHLO_UnaryElementwiseOp<"logistic",
@@ -319,6 +395,12 @@ def StableHLO_LogisticOp: StableHLO_UnaryElementwiseOp<"logistic",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.logistic %arg0 : tensor<2x2xf32>
+    ```
   }];
 }
 def StableHLO_NotOp: StableHLO_UnaryElementwiseOp<"not",
@@ -329,6 +411,12 @@ def StableHLO_NotOp: StableHLO_UnaryElementwiseOp<"not",
     of type integer `HLO_Int` or boolean `HLO_Pred`.
 
     Note: For boolean tensor, the bitwise-NOT is equivalent to logical-NOT.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.not %arg0 : tensor<5x3x1xi1>
+    ```
   }];
 }
 
@@ -340,6 +428,12 @@ def StableHLO_NegOp: StableHLO_UnaryElementwiseOp<"negate",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.negate %arg0 : tensor<2x3xi32>
+    ```
   }];
 }
 
@@ -351,16 +445,27 @@ def StableHLO_PopulationCountOp: StableHLO_UnaryElementwiseOp<"popcnt",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.popcnt %arg0 : tensor<2x2xi32>
+    ```
   }];
 }
 def StableHLO_RealOp: StableHLO_UnaryElementwiseOp<"real",
     [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>],
-    HLO_FpOrComplexTensor> {
+    HLO_FpOrComplexTensor, HLO_FpTensor> {
   let summary = "Real operator";
   let description = [{
     Returns `Real(operand)` element-wise.
+
+    Example:
+
+    ```mlir
+    %1 = stablehlo.real %arg2 : (tensor<complex<f32>>) -> tensor<f32>
+    ```
   }];
-  let results = (outs HLO_FpTensor);
 }
 
 def StableHLO_RoundOp: StableHLO_UnaryElementwiseOp<"round_nearest_afz",
@@ -372,6 +477,12 @@ def StableHLO_RoundOp: StableHLO_UnaryElementwiseOp<"round_nearest_afz",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.round_nearest_afz %11 : tensor<10x10xbf16>
+    ```
   }];
 }
 
@@ -384,6 +495,12 @@ def StableHLO_RoundNearestEvenOp: StableHLO_UnaryElementwiseOp<"round_nearest_ev
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.round_nearest_even %arg0 : tensor<10x10xbf16>
+    ```
   }];
 }
 
@@ -395,6 +512,12 @@ def StableHLO_RsqrtOp: StableHLO_UnaryElementwiseOp<"rsqrt",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.rsqrt %arg0 : tensor<2xf32>
+    ```
   }];
 }
 def StableHLO_SignOp: StableHLO_UnaryElementwiseOp<"sign",
@@ -414,6 +537,12 @@ def StableHLO_SignOp: StableHLO_UnaryElementwiseOp<"sign",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.sign %arg0 : tensor<1x2x3x4xf32>
+    ```
   }];
 }
 
@@ -425,6 +554,12 @@ def StableHLO_SineOp: StableHLO_UnaryElementwiseOp<"sine",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.sine %arg0 : tensor<2xf32>
+    ```
   }];
 }
 
@@ -436,6 +571,12 @@ def StableHLO_SqrtOp: StableHLO_UnaryElementwiseOp<"sqrt",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.sqrt %arg0 : tensor<2xf32>
+    ```
   }];
 }
 
@@ -448,6 +589,12 @@ def StableHLO_TanhOp: StableHLO_UnaryElementwiseOp<"tanh",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.tanh %arg0 : tensor<2xf32>
+    ```
   }];
 }
 //===----------------------------------------------------------------------===//
@@ -455,7 +602,7 @@ def StableHLO_TanhOp: StableHLO_UnaryElementwiseOp<"tanh",
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
-class StableHLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
+class StableHLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
     StableHLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
     SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
@@ -483,19 +630,11 @@ class StableHLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> trait
   }];
 
   let results = (outs HLO_Tensor:$result);
-}
 
-class StableHLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
-    StableHLO_BinaryElementwiseOpNoAssembly<mnemonic, traits> {
-  let extraClassDefinition = [{
-    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
-      return ::mlir::stablehlo::parseBinaryOp(parser, result);
-    }
-    void $cppClass::print(OpAsmPrinter &p) {
-      ::mlir::stablehlo::printBinaryOp(getOperation(), p);
-    }
+  let assemblyFormat = [{
+    $lhs `,` $rhs attr-dict
+      `:` custom<SameOperandsAndResultType>(type($lhs), type($rhs), type($result))
   }];
-  let hasCustomAssemblyFormat = 1;
 }
 
 def StableHLO_AddOp : StableHLO_BinaryElementwiseOp<"add",
@@ -506,6 +645,13 @@ def StableHLO_AddOp : StableHLO_BinaryElementwiseOp<"add",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.add %arg0, %arg1 : tensor<4xf32>
+    %1 = stablehlo.add %arg2, %arg3 : (tensor<4xf32, #CSR>, tensor<4xf32, #DCSR>) -> tensor<4xf32, #CSR>
+    ```
   }];
 }
 
@@ -517,10 +663,16 @@ def StableHLO_Atan2Op : StableHLO_BinaryElementwiseOp<"atan2",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.atan2 %arg0, %arg1 : tensor<4xi32>
+    ```
   }];
 }
 
-def StableHLO_ComplexOp: StableHLO_BinaryElementwiseOpNoAssembly<"complex", [NoSideEffect,
+def StableHLO_ComplexOp: StableHLO_BinaryElementwiseOp<"complex", [NoSideEffect,
     SameOperandsElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
@@ -542,6 +694,12 @@ def StableHLO_DivOp : StableHLO_BinaryElementwiseOp<"divide",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.divide %arg0, %arg0 : tensor<2xi32>
+    ```
   }];
 }
 
@@ -553,6 +711,12 @@ def StableHLO_MaxOp : StableHLO_BinaryElementwiseOp<"maximum",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.maximum %arg0, %arg1 : tensor<4xf32>
+    ```
   }];
 }
 
@@ -564,6 +728,12 @@ def StableHLO_MinOp : StableHLO_BinaryElementwiseOp<"minimum",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.minimum %arg0, %arg1 : tensor<4xf32>
+    ```
   }];
 }
 
@@ -575,6 +745,12 @@ def StableHLO_MulOp : StableHLO_BinaryElementwiseOp<"multiply",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.multiply %arg0, %arg0 : tensor<2xi32>
+    ```
   }];
 }
 
@@ -586,6 +762,12 @@ def StableHLO_PowOp : StableHLO_BinaryElementwiseOp<"power",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.power %arg0, %arg0 : tensor<2xf32>
+    ```
   }];
 }
 def StableHLO_RemOp : StableHLO_BinaryElementwiseOp<"remainder",
@@ -596,6 +778,12 @@ def StableHLO_RemOp : StableHLO_BinaryElementwiseOp<"remainder",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.remainder %arg0, %arg1 : (ensor<4xi64>
+    ```
   }];
 }
 
@@ -607,6 +795,12 @@ def StableHLO_ShiftLeftOp : StableHLO_BinaryElementwiseOp<"shift_left",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.shift_left %arg0, %arg1 : tensor<4xi32>
+    ```
   }];
 }
 
@@ -618,6 +812,12 @@ def StableHLO_ShiftRightArithmeticOp : StableHLO_BinaryElementwiseOp<"shift_righ
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.shift_right_arithmetic %arg0, %arg1 : tensor<4xi32>
+    ```
   }];
 }
 
@@ -629,6 +829,12 @@ def StableHLO_ShiftRightLogicalOp : StableHLO_BinaryElementwiseOp<"shift_right_l
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.shift_right_logical %arg0, %arg1 : tensor<4xi32>
+    ```
   }];
 }
 
@@ -640,6 +846,12 @@ def StableHLO_SubtractOp : StableHLO_BinaryElementwiseOp<"subtract",
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.subtract %arg0, %arg0 : tensor<2xi32>
+    ```
   }];
 }
 
@@ -664,6 +876,12 @@ def StableHLO_AndOp: StableHLO_BinaryBiwiseOrLogicalElementwiseOp<"and"> {
     be of type integer `HLO_Int` or boolean `HLO_Pred`.
 
     Note: For boolean tensor, the bitwise-AND is equivalent to logical-AND.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.and %arg0, %arg1 : tensor<i1>
+    ```
   }];
 }
 
@@ -674,6 +892,12 @@ def StableHLO_OrOp: StableHLO_BinaryBiwiseOrLogicalElementwiseOp<"or"> {
     be of type integer `HLO_Int` or boolean `HLO_Pred`.
 
     Note: For boolean tensor, the bitwise-OR is equivalent to logical-OR.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.or %arg0, %arg1 : tensor<2xi1>
+    ```
   }];
 }
 
@@ -684,6 +908,12 @@ def StableHLO_XorOp : StableHLO_BinaryBiwiseOrLogicalElementwiseOp<"xor"> {
     be of type integer `HLO_Int` or boolean `HLO_Pred`.
 
     Note: For boolean tensor, the bitwise-XOR is equivalent to logical-XOR.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.xor %arg0, %arg1 : tensor<2xi32>
+    ```
   }];
 }
 
@@ -1070,27 +1300,42 @@ def StableHLO_GetTupleElementOp: StableHLO_Op<"get_tuple_element", [NoSideEffect
     See https://www.tensorflow.org/xla/operation_semantics#gettupleelement.
   }];
   let arguments = (ins
-    HLO_Tuple,
+    HLO_Tuple:$operand,
     I32Attr:$index
   );
 
   let results = (outs HLO_TensorOrTokenOrTuple);
 
   let hasVerifier = 1;
+
+  let assemblyFormat = [{
+    $operand `[` $index `]` attr-dict `:` functional-type(operands, results)
+  }];
 }
 
 def StableHLO_TupleOp : StableHLO_Op<"tuple", [NoSideEffect,
      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "XLA's tuple op";
   let description = [{
-     Groups a set of tensor inputs into a single tuple object.
+    Groups a set of tensor inputs into a single tuple object.
 
-     See https://www.tensorflow.org/xla/operation_semantics#tuple.
+    See https://www.tensorflow.org/xla/operation_semantics#tuple.
+
+    Example:
+
+    ```mlir
+    %0 = stablehlo.tuple %arg0, %arg0 : tuple<tensor<i32>, tensor<i32>>
+    ```
    }];
+
   let arguments = (ins Variadic<HLO_TensorOrTokenOrTuple>:$val);
-  let results = (outs HLO_Tuple);
+  let results = (outs HLO_Tuple:$result);
 
   let hasVerifier = 1;
+
+  let assemblyFormat = [{
+    $val attr-dict `:` custom<TupleOpType>(type($val), type($result))
+  }];
 }
 
 def StableHLO_CompareOp: StableHLO_Op<"compare", [NoSideEffect, SameOperandsElementType,
@@ -2240,7 +2485,9 @@ def StableHLO_OptimizationBarrierOp : StableHLO_Op<"optimization_barrier",
     Example:
 
     ```mlir
-    %0:2 = stablehlo.optimization_barrier %arg0, %arg1 : (tensor<4x4xf32>, tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>)
+    %0:2 = stablehlo.optimization_barrier %arg0, %arg1 : tensor<1xf32>, tensor<1xi32>
+    %1 = stablehlo.optimization_barrier %arg0 : tensor<1xf32>
+    stablehlo.optimization_barrier()
     ```
   }];
 
@@ -2254,10 +2501,18 @@ def StableHLO_OptimizationBarrierOp : StableHLO_Op<"optimization_barrier",
 
   let arguments = (ins Variadic<HLO_TensorOrToken>:$operand);
 
-  let results = (outs Variadic<HLO_TensorOrToken>);
+  let results = (outs Variadic<HLO_TensorOrToken>:$result);
 
-  // TODO(b/241767462): Enhance type printing to condense pairwise ops.
-  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
+  // Use `attr-dict` before `$operand` because Optional Group anchors in custom
+  // directives are currently not supported. Also since inputs are variadic,
+  // print `()` if no arguments are present, otherwise parsing is ambiguous:
+  //   stablehlo.optimization_barrier
+  //   %1 = stablehlo.add ...
+  //   ^ Without lookahead, ambiguous if this is an operand to the previous line
+  //     or the start of a separate operation, since newlines are ignored.
+  let assemblyFormat = [{
+    attr-dict ($operand^ `:` custom<PairwiseOpType>(type($operand), type($result))):(`(` `)`)?
+  }];
 }
 
 //===----------------------------------------------------------------------===//

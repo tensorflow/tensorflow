@@ -35,6 +35,11 @@ if(POLICY CMP0116)
 endif()
 
 #-------------------------------------------------------------------------------
+# Options and settings
+#-------------------------------------------------------------------------------
+option(STABLEHLO_ENABLE_BINDINGS_PYTHON "Enables StableHLO Python bindings" OFF)
+
+#-------------------------------------------------------------------------------
 # Project setup and globals
 #-------------------------------------------------------------------------------
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -70,6 +75,31 @@ if(STABLEHLO_STANDALONE_BUILD)
   add_definitions(${LLVM_DEFINITIONS})
 else()
   message(STATUS "Building StableHLO as part of another project")
+  set(MLIR_MAIN_SRC_DIR ${LLVM_MAIN_SRC_DIR}/../mlir ) # --src-root
+  set(MLIR_INCLUDE_DIR ${MLIR_MAIN_SRC_DIR}/include ) # --includedir
+  set(MLIR_GENERATED_INCLUDE_DIR ${LLVM_BINARY_DIR}/tools/mlir/include)
+
+  include_directories(SYSTEM ${MLIR_INCLUDE_DIR})
+  include_directories(SYSTEM ${MLIR_GENERATED_INCLUDE_DIR})
+  include_directories(SYSTEM ${MLIR_TABLEGEN_OUTPUT_DIR})
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+  include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+  set(BACKEND_PACKAGE_STRING "${PACKAGE_STRING}")
+  list(APPEND CMAKE_MODULE_PATH "${MLIR_MAIN_SRC_DIR}/cmake/modules")
+endif()
+
+#-------------------------------------------------------------------------------
+# Python configuration
+#-------------------------------------------------------------------------------
+
+if(STABLEHLO_ENABLE_BINDINGS_PYTHON)
+  if(STABLEHLO_STANDALONE_BUILD)
+    message(WARNING "StableHLO Python bindings are not supported in standalone mode. See build_tools/README.md for instructions.")
+  endif()
+
+  include(MLIRDetectPythonEnv)
+  mlir_configure_python_dev_packages()
 endif()
 
 #-------------------------------------------------------------------------------
@@ -82,5 +112,6 @@ set(STABLEHLO_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 add_custom_target(check-stablehlo)
 
 add_subdirectory(dialect)
+add_subdirectory(integrations)
 add_subdirectory(tests)
 add_subdirectory(tools)

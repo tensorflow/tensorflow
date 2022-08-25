@@ -218,7 +218,7 @@ func.func @clamp(%arg0: tensor<1xi32>) -> tensor<1xindex> {
 
 // CHECK: func @uniform_dequantize
 func.func @uniform_dequantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xindex> {
-  %0 = stablehlo.uniform_dequantize(%arg) : (tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32>
+  %0 = stablehlo.uniform_dequantize %arg : (tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32>
   %1 = "hlo_test_infer.get_return_type_components"(%0)
       : (tensor<16x16xf32>) -> tensor<16x16xindex>
 // CHECK: %1 = "hlo_test_infer.return_type_components"(%0) {dims0 = [16, 16], element_type0 = f32} : (tensor<16x16xf32>) -> tensor<16x16xindex>
