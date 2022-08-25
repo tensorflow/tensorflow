@@ -543,7 +543,7 @@ class Array {
     }
     Array<T> permuted(permuted_dims);
     std::vector<int64_t> src_indices(sizes_.size(), -1);
-    permuted.Each([&](absl::Span<const int64_t> indices, int64_t* value) {
+    permuted.Each([&](absl::Span<const int64_t> indices, T* value) {
       CHECK_EQ(sizes_.size(), indices.size());
       for (int64_t i = 0; i < sizes_.size(); ++i) {
         src_indices[permutation[i]] = indices[i];
