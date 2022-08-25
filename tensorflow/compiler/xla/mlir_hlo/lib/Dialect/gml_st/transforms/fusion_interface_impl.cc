@@ -258,7 +258,7 @@ struct LinalgGenericFusionInterface
           loc, subResultTy, materializedOperands.back());
     }
 
-    linalg::LinalgOp linalgOp = genericOp;
+    linalg::DestinationStyleOpInterface linalgOp = genericOp;
     auto outputOp = cast<linalg::GenericOp>(
         *linalgOp.clone(builder, loc, subResultTy, materializedOperands));
 

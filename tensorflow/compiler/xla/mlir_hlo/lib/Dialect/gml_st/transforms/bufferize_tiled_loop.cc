@@ -202,16 +202,17 @@ struct BufferizeInsertSliceOp : public OpConversionPattern<InsertSliceOp> {
 
 /// Create linalg op on buffers given the original tensor-based operation and
 /// the buffers for the outputs.
-linalg::LinalgOp createLinalgOpOnBuffers(ConversionPatternRewriter &rewriter,
-                                         linalg::LinalgOp linalgOp,
-                                         ValueRange inputs,
-                                         ValueRange outputs) {
+linalg::DestinationStyleOpInterface createDstStyleOpOnBuffers(
+    ConversionPatternRewriter &rewriter,
+    linalg::DestinationStyleOpInterface dstStyleOp, ValueRange inputs,
+    ValueRange outputs) {
   SmallVector<Value, 8> newOperands = inputs;
   newOperands.append(outputs.begin(), outputs.end());
-  auto *newOp = linalgOp.cloneWithoutRegions(rewriter, linalgOp.getLoc(),
-                                             /*resultTypes=*/ArrayRef<Type>{},
-                                             newOperands);
-  for (auto regions : llvm::zip(linalgOp->getRegions(), newOp->getRegions())) {
+  auto *newOp = dstStyleOp.cloneWithoutRegions(rewriter, dstStyleOp.getLoc(),
+                                               /*resultTypes=*/ArrayRef<Type>{},
+                                               newOperands);
+  for (auto regions :
+       llvm::zip(dstStyleOp->getRegions(), newOp->getRegions())) {
     auto &oldRegion = std::get<0>(regions);
     auto &newRegion = std::get<1>(regions);
     rewriter.inlineRegionBefore(oldRegion, newRegion, newRegion.begin());
@@ -230,14 +231,14 @@ ValueRange getVariadicOperands(DenseI32ArrayAttr sizeAttr,
   return operands.slice(start, sizeIt[index]);
 }
 
-// Bufferize LinalgOps in-place.
-struct BufferizeLinalgOp
-    : public OpInterfaceConversionPattern<linalg::LinalgOp> {
+// Bufferize DestinationStyleOpInterface in-place.
+struct BufferizeDstStyleOpInterface
+    : public OpInterfaceConversionPattern<linalg::DestinationStyleOpInterface> {
   using OpInterfaceConversionPattern<
-      linalg::LinalgOp>::OpInterfaceConversionPattern;
+      linalg::DestinationStyleOpInterface>::OpInterfaceConversionPattern;
 
   LogicalResult matchAndRewrite(
-      linalg::LinalgOp op, ArrayRef<Value> operands,
+      linalg::DestinationStyleOpInterface op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
     if (!op->getParentOfType<LoopOp>()) return failure();
 
@@ -249,7 +250,7 @@ struct BufferizeLinalgOp
     const auto getOperands = [&](unsigned index) {
       return getVariadicOperands(operandSegments, operands, index);
     };
-    createLinalgOpOnBuffers(rewriter, op, getOperands(0), getOperands(1));
+    createDstStyleOpOnBuffers(rewriter, op, getOperands(0), getOperands(1));
     rewriter.replaceOp(op, getOperands(1));
     return success();
   }
@@ -433,10 +434,10 @@ void populateTiledLoopBufferizePattern(
     mlir::RewritePatternSet *patterns) {
   // clang-format off
   patterns->add<
+    BufferizeDstStyleOpInterface,
     BufferizeExtractSliceOp,
     BufferizeInitTensorOp,
     BufferizeInsertSliceOp,
-    BufferizeLinalgOp,
     BufferizeLinalgYieldOp,
     BufferizeLoopOp,
     BufferizeVectorTransferReadOp,
