@@ -21,6 +21,8 @@ cc_library(
         ":types",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:type_converter",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -291,9 +293,11 @@ cc_library(
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
 )

@@ -16,9 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 
 #include <cstddef>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Casting.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -28,39 +32,16 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
+using absl::StrFormat;
+using absl::StrJoin;
+
 using llvm::dyn_cast;
 using llvm::isa;
 
-using llvm::ArrayRef;
 using llvm::Error;
 using llvm::MutableArrayRef;
-using llvm::Optional;
-using llvm::raw_ostream;
 
-static raw_ostream& operator<<(raw_ostream& os, PrimitiveType& type) {
-  return os << primitive_util::LowercasePrimitiveTypeName(type);
-}
-
-raw_ostream& OpaqueArg::print(raw_ostream& os) const {
-  return os << "OpaqueArg: ptr=" << ptr_;
-}
-
-raw_ostream& MemrefDesc::print(raw_ostream& os) const {
-  auto print_arr = [&](llvm::StringRef name, ArrayRef<int64_t> arr) {
-    os << " " << name << ": [";
-    if (!arr.empty()) {
-      os << arr[0];
-      for (int i = 1; i < arr.size(); ++i) os << ", " << arr[i];
-    }
-    os << "]";
-  };
-
-  os << "MemrefDesc: dtype: " << dtype() << " offset: " << offset();
-  print_arr("sizes", sizes());
-  print_arr("strides", strides());
-
-  return os;
-}
+using xla::primitive_util::LowercasePrimitiveTypeName;
 
 //===----------------------------------------------------------------------===//
 // OpaqueArg.
@@ -74,6 +55,10 @@ Error OpaqueArg::Verify(const Type& type) const {
 size_t OpaqueArg::Pack(MutableArrayRef<void*> args, size_t offset) const {
   args[offset] = ptr_;
   return ++offset;
+}
+
+std::string OpaqueArg::ToString() const {
+  return StrFormat("OpaqueArg: ptr=%p", ptr_);
 }
 
 //===----------------------------------------------------------------------===//
@@ -98,9 +83,9 @@ static bool AreCompatibleTypes(PrimitiveType type1, PrimitiveType type2) {
   return type1 == type2;
 }
 
-static Error VerifyMemrefArgument(PrimitiveType element_type,
-                                  Optional<absl::Span<const int64_t>> sizes,
-                                  const MemrefDesc& memref) {
+static Error VerifyMemrefArgument(
+    PrimitiveType element_type, std::optional<absl::Span<const int64_t>> sizes,
+    const MemrefDesc& memref) {
   // Format memref argument and expected type for user-friendly error messages.
   auto pretty_print = [&]() -> std::string {
     std::string err;
@@ -110,21 +95,21 @@ static Error VerifyMemrefArgument(PrimitiveType element_type,
       return d == MemrefType::kDynamicSize ? "?" : std::to_string(d);
     };
 
-    auto print_shaped = [&](Optional<absl::Span<const int64_t>> dims,
+    auto print_shaped = [&](std::optional<absl::Span<const int64_t>> dims,
                             PrimitiveType dtype) {
       if (!dims.has_value()) {
-        os << "[*x" << dtype << "]";
+        os << "[*x" << LowercasePrimitiveTypeName(dtype) << "]";
         return;
       }
 
       if (dims->empty()) {
-        os << "[" << dtype << "]";
+        os << "[" << LowercasePrimitiveTypeName(dtype) << "]";
         return;
       }
 
       os << "[" << dim((*dims)[0]);
       for (int i = 1; i < dims->size(); ++i) os << "x" << dim((*dims)[i]);
-      os << "x" << dtype << "]";
+      os << "x" << LowercasePrimitiveTypeName(dtype) << "]";
     };
 
     os << "got ";
@@ -223,6 +208,12 @@ size_t MemrefDesc::Pack(MutableArrayRef<void*> args, size_t offset) const {
   }
 }
 
+std::string MemrefDesc::ToString() const {
+  return StrFormat("MemrefDesc: dtype: %s offset: %i sizes: [%s] strides: [%s]",
+                   LowercasePrimitiveTypeName(dtype()), offset(),
+                   StrJoin(sizes(), ", "), StrJoin(strides(), ", "));
+}
+
 //===----------------------------------------------------------------------===//
 // Verify that argument type is compatible with the run-time memref argument.
 //===----------------------------------------------------------------------===//
@@ -231,12 +222,12 @@ static Error VerifyMemrefArgument(const Type& type, const MemrefDesc& arg) {
   if (auto* memref = dyn_cast<MemrefType>(&type))
     return VerifyMemrefArgument(memref->element_type(), memref->sizes(), arg);
   if (auto* memref = dyn_cast<UnrankedMemrefType>(&type))
-    return VerifyMemrefArgument(memref->element_type(), llvm::None, arg);
+    return VerifyMemrefArgument(memref->element_type(), std::nullopt, arg);
 
   if (auto* tensor = dyn_cast<RankedTensorType>(&type))
     return VerifyMemrefArgument(tensor->element_type(), tensor->sizes(), arg);
   if (auto* tensor = dyn_cast<UnrankedTensorType>(&type))
-    return VerifyMemrefArgument(tensor->element_type(), llvm::None, arg);
+    return VerifyMemrefArgument(tensor->element_type(), std::nullopt, arg);
 
   return MakeStringError("unsupported memref type: ", type);
 }
@@ -252,14 +243,10 @@ Error VerifyMemrefArgument(unsigned index, const Type& type,
 // BufferDesc.
 // -------------------------------------------------------------------------- //
 
-raw_ostream& BufferDesc::print(raw_ostream& os) const {
-  return os << "BufferDesc: data: " << data() << " size: " << size();
-}
-
 static Error VerifyBufferDesc(PrimitiveType element_type,
-                              Optional<absl::Span<const int64_t>> sizes,
+                              std::optional<absl::Span<const int64_t>> sizes,
                               const BufferDesc& buffer) {
-  size_t n_elem = !sizes.hasValue() || sizes->empty() ? 1 : (*sizes)[0];
+  size_t n_elem = !sizes.has_value() || sizes->empty() ? 1 : (*sizes)[0];
   size_t expected_buffer_size =
       primitive_util::ByteWidth(element_type) * n_elem;
   if (LLVM_UNLIKELY(expected_buffer_size != buffer.size())) {
@@ -285,6 +272,10 @@ size_t BufferDesc::Pack(MutableArrayRef<void*> args, size_t offset) const {
   p[1] = cast(&data_);
   p[2] = cast(&size_);
   return offset + 3;
+}
+
+std::string BufferDesc::ToString() const {
+  return StrFormat("BufferDesc: data: %p size: %i", data(), size());
 }
 
 }  // namespace runtime

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -81,14 +82,14 @@ class Type : public llvm::RTTIExtends<Type, llvm::RTTIRoot> {
     return absl::UnimplementedError("result ABI is not implemented");
   }
 
-  virtual llvm::raw_ostream& print(llvm::raw_ostream& os) const = 0;
+  virtual std::string ToString() const = 0;
 
  protected:
   Type() = default;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Type& type) {
-  return type.print(os);
+  return os << type.ToString();
 }
 
 //===----------------------------------------------------------------------===//
@@ -101,7 +102,7 @@ class AsyncTokenType : public llvm::RTTIExtends<AsyncTokenType, Type> {
 
   absl::StatusOr<ResultAbi> AsResult() const final;
 
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  std::string ToString() const final;
 };
 
 //===----------------------------------------------------------------------===//
@@ -119,7 +120,7 @@ class AsyncValueType : public llvm::RTTIExtends<AsyncValueType, Type> {
 
   absl::StatusOr<ResultAbi> AsResult() const final;
 
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  std::string ToString() const final;
 
  private:
   std::unique_ptr<Type> value_type_;
@@ -143,7 +144,7 @@ class RankedTensorType : public llvm::RTTIExtends<RankedTensorType, Type> {
   unsigned rank() const { return sizes_.size(); }
   PrimitiveType element_type() const { return element_type_; }
 
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  std::string ToString() const final;
 
  private:
   std::vector<int64_t> sizes_;
@@ -163,7 +164,7 @@ class UnrankedTensorType : public llvm::RTTIExtends<UnrankedTensorType, Type> {
 
   PrimitiveType element_type() const { return element_type_; }
 
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  std::string ToString() const final;
 
  private:
   PrimitiveType element_type_;
@@ -190,7 +191,7 @@ class MemrefType : public llvm::RTTIExtends<MemrefType, Type> {
   absl::StatusOr<ArgumentAbi> AsArgument() const final;
   absl::StatusOr<ResultAbi> AsResult() const final;
 
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  std::string ToString() const final;
 
  private:
   std::vector<int64_t> sizes_;
@@ -210,7 +211,7 @@ class UnrankedMemrefType : public llvm::RTTIExtends<UnrankedMemrefType, Type> {
 
   PrimitiveType element_type() const { return element_type_; }
 
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  std::string ToString() const final;
 
  private:
   PrimitiveType element_type_;
@@ -227,7 +228,7 @@ class KernelContextOperandType
 
   absl::StatusOr<ArgumentAbi> AsArgument() const final;
 
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  std::string ToString() const final;
 };
 
 //===----------------------------------------------------------------------===//

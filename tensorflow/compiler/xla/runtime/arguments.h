@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_RUNTIME_ARGUMENTS_H_
 
 #include <cstddef>
+#include <string>
 #include <type_traits>
 
 #include "llvm/ADT/SmallVector.h"
@@ -49,12 +50,12 @@ class Argument : public llvm::RTTIExtends<Type, llvm::RTTIRoot> {
   virtual size_t Pack(llvm::MutableArrayRef<void*> args,
                       size_t offset) const = 0;
 
-  virtual llvm::raw_ostream& print(llvm::raw_ostream& os) const = 0;
+  virtual std::string ToString() const = 0;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
                                      const Argument& arg) {
-  return arg.print(os);
+  return os << arg.ToString();
 }
 
 //===----------------------------------------------------------------------===//
@@ -209,7 +210,7 @@ class OpaqueArg final : public llvm::RTTIExtends<OpaqueArg, Argument> {
 
   llvm::Error Verify(const Type& type) const final;
   size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  std::string ToString() const final;
 
  private:
   void* ptr_;
@@ -273,7 +274,7 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
 
   llvm::Error Verify(const Type& type) const final;
   size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  std::string ToString() const final;
 
  private:
   unsigned rank_;
@@ -321,7 +322,7 @@ class BufferDesc final : public llvm::RTTIExtends<BufferDesc, Argument> {
 
   llvm::Error Verify(const Type& type) const final;
   size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  std::string ToString() const final;
 
  private:
   void* data_;
