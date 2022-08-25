@@ -2650,6 +2650,23 @@ class Conv2DTest(test.TestCase):
             dilations=[1, 1, 1, 1])
         self.evaluate(t)
 
+  def testConv2DBfloat16Error(self):
+    x1 = self._CreateNumpyTensor((2, 2, 2, 2)).astype(
+        dtypes.bfloat16.as_numpy_dtype)
+    x2 = self._CreateNumpyTensor((2, 2, 2, 2)).astype(
+        dtypes.bfloat16.as_numpy_dtype)
+    with context.eager_mode():
+      # Conv2D used to return an empty output of shape [0] when given bfloat16
+      # inputs. Test that either a proper error message is now raised or that
+      # the output is the correct shape.
+      try:
+        y = nn_ops.conv2d(x1, x2, strides=[1, 1], padding="SAME")
+        self.assertEqual(y.shape, (2, 2, 2, 2))
+      except errors_impl.InvalidArgumentError as e:
+        self.assertIn("Op does not support bfloat16 inputs", e.message)
+      except errors_impl.NotFoundError as e:
+        self.assertIn("Could not find device for node", e.message)
+
 
 @test_util.run_all_without_tensor_float_32("Avoid TF32 conv on GPU")
 class DepthwiseConv2DTest(test.TestCase):

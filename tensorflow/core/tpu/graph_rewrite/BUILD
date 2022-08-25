@@ -9,8 +9,8 @@ load(
 package(
     default_visibility = [
         "//tensorflow/compiler:__subpackages__",
+        "//tensorflow/compiler/xla/stream_executor/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
-        "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -174,8 +174,8 @@ cc_library(
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/tpu:tpu_fingerprint_utils",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
-        "//tensorflow/stream_executor/tpu:tpu_platform_interface",
-        "//tensorflow/stream_executor/tpu:tpu_topology_external",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
     ] + if_static(
         [
             "//tensorflow/core/common_runtime:function",
@@ -321,6 +321,7 @@ cc_library(
     hdrs = ["tpu_embedding_software_deduplication_rewrite_pass.h"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -330,7 +331,6 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
         "//tensorflow/core/tpu:tpu_embedding_configuration_utils",
         "//tensorflow/core/tpu/graph_rewrite:tpu_embedding_rewrite_pass_utils",
-        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

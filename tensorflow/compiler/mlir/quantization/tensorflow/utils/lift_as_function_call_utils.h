@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_OPS_LIFTING_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_OPS_LIFTING_UTILS_H_
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -25,6 +26,13 @@ limitations under the License.
 // passes to lift op compositions to a function.
 namespace mlir {
 namespace quant {
+
+inline constexpr absl::string_view kAttrMapAttribute = "attr_map";
+// This attribute will be set for functions created by this pass.
+inline constexpr absl::string_view kFusedFunctionAttr =
+    "tf_quant.composite_function";
+// The keyword to detect if this is a `NullAttribute`.
+inline constexpr absl::string_view kNullAttributeValue = "N/A";
 
 // Checks if the op is inside a lifted function.
 bool IsInLiftedFunc(Operation *op);

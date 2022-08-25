@@ -18,7 +18,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
+#include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/variant.h"

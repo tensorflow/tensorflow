@@ -26,8 +26,7 @@ namespace quant {
 
 // TODO(b/228928859): Improve the getter function to match attributes rather
 // than function name.
-std::unique_ptr<OpQuantSpec> TFOpQuantSpec::GetOpQuantSpec(
-    Operation* op) const {
+std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
   auto spec = std::make_unique<OpQuantSpec>();
   if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
     StringRef function_name =
@@ -59,6 +58,26 @@ std::unique_ptr<OpQuantSpec> TFOpQuantSpec::GetOpQuantSpec(
     }
   }
   return spec;
+}
+
+std::unique_ptr<OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op) {
+  auto scale_spec = std::make_unique<OpQuantScaleSpec>();
+  if (llvm::isa<
+          // clang-format off
+          // go/keep-sorted start
+          TF::AvgPoolOp,
+          TF::ConcatV2Op,
+          TF::IdentityOp,
+          TF::MaxPoolOp,
+          TF::PadV2Op,
+          TF::ReshapeOp,
+          TF::SqueezeOp
+          // go/keep-sorted end
+          // clang-format on
+          >(op)) {
+    scale_spec->has_same_scale_requirement = true;
+  }
+  return scale_spec;
 }
 
 }  // namespace quant

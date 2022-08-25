@@ -117,6 +117,8 @@ void AddSupportedFunctionalOps(MLIRContext* context,
   supported_ops->insert(
       OperationName(TF::WhileRegionOp::getOperationName(), context));
   supported_ops->insert(
+      OperationName(TF::XlaCallModuleOp::getOperationName(), context));
+  supported_ops->insert(
       OperationName(TF::XlaReduceOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::XlaReduceWindowOp::getOperationName(), context));

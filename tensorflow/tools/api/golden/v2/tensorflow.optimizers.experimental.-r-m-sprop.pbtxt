@@ -36,7 +36,7 @@ tf_class {
   }
   member_method {
     name: "apply_gradients"
-    argspec: "args=[\'self\', \'grads_and_vars\', \'name\', \'skip_gradients_aggregation\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'self\', \'grads_and_vars\', \'name\', \'skip_gradients_aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "build"

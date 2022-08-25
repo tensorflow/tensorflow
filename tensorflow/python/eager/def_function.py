@@ -65,7 +65,6 @@ import os
 import threading
 import types as types_lib
 import weakref
-import six
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
@@ -310,7 +309,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
 
     # Use the constructor for UninitializedVariable to start. Outside the name
     # scope so we don't double up the prefix.
-    super(UnliftedInitializerVariable, self).__init__(
+    super().__init__(
         trainable=trainable,
         caching_device=caching_device,
         name=name,
@@ -508,7 +507,8 @@ def _evaluate_var_is_initialized(variables):
   return var_is_initialized
 
 
-class FunctionDeleter(object):
+class FunctionDeleter:
+  """An object responsible for cleaning up the function graph."""
 
   __slots__ = ["func_graph"]
 
@@ -523,7 +523,7 @@ class FunctionDeleter(object):
       pass
 
 
-class OptionalXlaContext(object):
+class OptionalXlaContext:
   """Wrapper for XLA context optionally applied under a context manager."""
 
   def __init__(self, is_compiled):
@@ -694,10 +694,9 @@ class Function(core.GenericFunction, trackable.Trackable):
       # 'name' field of the NameAttrList. Else, it is just a string
       # corresponding to the function name.
       try:
-        implements_attr = six.ensure_text(self._implements, "utf-8")
         attr_value = attr_value_pb2.AttrValue()
         nameattrlist = attr_value_pb2.NameAttrList()
-        _text_format.Merge(implements_attr, nameattrlist)
+        _text_format.Merge(self._implements, nameattrlist)
         attr_value.func.CopyFrom(nameattrlist)
         attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = attr_value
       except (_text_format.ParseError, DecodeError):
@@ -1228,7 +1227,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     # `instance` here is the instance that this `Function` was accessed through
     # e.g., for
     #
-    #   class Foo(object):
+    #   class Foo:
     #
     #     @function.defun
     #     def bar(self):

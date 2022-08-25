@@ -4,7 +4,7 @@
 # Throughout this file, all targets are built with the standard crosstool and
 # do not link against restricted binary blobs.
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
@@ -243,14 +243,9 @@ cc_library(
 
 cc_library(
     name = "scratch_allocator",
-    srcs = ["scratch_allocator.cc"],
     hdrs = ["scratch_allocator.h"],
     deps = [
-        ":device_memory",
-        ":stream_header",
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform",
-        "@com_google_absl//absl/container:inlined_vector",
+        "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
     ],
 )
 
@@ -269,24 +264,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:dnn",
     ],
 )
-
-cc_library(
-    name = "lazy_op_runner",
-    hdrs = ["lazy_op_runner.h"],
-    deps = [
-        ":dnn",
-        ":stream_header",
-    ],
-)
-
-# This is terrible, but we need to defeat the dependency check to depend on the
-# header-only lazy_op_runner template in fused_conv2d_bias_activation (being
-# header-only means it can't cause linkage issues), so export the actual header
-# file itself and add a target for it in core/kernels.  Unsophisticated checks
-# beget dumb circumventions :(
-#
-# TODO(b/202546057) get rid of this once fused_conv is moved out of contrib.
-exports_files(["lazy_op_runner.h"])
 
 cc_library(
     name = "stream_executor_internal",
@@ -356,6 +333,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
     ],
 )
@@ -397,10 +375,7 @@ cc_library(
 
 cc_library(
     name = "stream_executor_impl",
-    deps = [
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
-    ],
+    deps = ["//tensorflow/compiler/xla/stream_executor:stream_executor_impl"],
 )
 
 cc_library(
@@ -421,35 +396,15 @@ cc_library(
 
 cc_library(
     name = "tf_allocator_adapter",
-    srcs = ["tf_allocator_adapter.cc"],
     hdrs = ["tf_allocator_adapter.h"],
     deps = [
-        ":device_memory",
-        ":device_memory_allocator",
-        ":platform",
-        ":stream_executor_headers",
-        "//tensorflow/core/framework:allocator",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-tf_cc_test(
-    name = "stream_test",
-    size = "small",
-    srcs = ["stream_test.cc"],
-    deps = [
-        ":stream_executor",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/stream_executor/host:host_platform",
+        "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
     ],
 )
 
 alias(
     name = "cuda_platform",
-    actual = "//tensorflow/stream_executor/cuda:all_runtime",
+    actual = "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
 )
 
 alias(

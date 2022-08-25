@@ -44,7 +44,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass();
 
 // Lifts the dynamic range quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsDRQPass();
+CreateLiftQuantizableSpotsAsFunctionsDRQPass(int min_num_elements_for_weights);
 
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.
@@ -67,7 +67,7 @@ CreateInsertCustomAggregationOpsPass();
 // pass runs, functions in the given graph will be replaced with their quantized
 // versions. By doing so, the quantization will be applied to the given input.
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
-    QuantizationMethod quantization_method);
+    QuantizationMethod quantization_method, OpSet target_opset = OpSet::TF);
 
 // Converts dequantize-(quantizable) call-quantize pattern to a single call op
 // that has quantized input and output types. It is expected for this pass to

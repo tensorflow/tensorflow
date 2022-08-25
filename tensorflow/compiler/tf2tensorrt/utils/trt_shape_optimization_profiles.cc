@@ -348,7 +348,8 @@ Status TrtShapeOptimizationProfile::AddProfiles(
   if (!calib_profiles_.min.empty()) {
     VLOG(2) << "Setting up calibration profies";
     auto* calibProfile = builder->createOptimizationProfile();
-    Status status = calib_profiles_.SetDimensions(network, calibProfile);
+    Status status =
+        calib_profiles_.SetDimensions(network, calibProfile, input_mask_);
     if (!status.ok()) {
       return status;
     }
@@ -371,7 +372,8 @@ Status TrtShapeOptimizationProfile::AddProfiles(
   // Create a vector of optimization profiles.
   for (int i = 0; i < profiles_.size(); i++) {
     auto* optProfile = builder->createOptimizationProfile();
-    Status status = profiles_[i].SetDimensions(network, optProfile);
+    Status status =
+        profiles_[i].SetDimensions(network, optProfile, input_mask_);
     if (!status.ok()) {
       return status;
     }
@@ -568,10 +570,10 @@ Status TrtShapeOptimizationProfile::SetPrunedMask(
   for (int j = 0; j < n_network_inputs; j++) {
     int binding_idx;
     Status status = GetTrtBindingIndex(j, 0, engine, &binding_idx);
-    if (IS_TRT_VERSION_GE(8, 0, 0, 0)) {
-      TF_RETURN_IF_ERROR(status);
-    } else if (!status.ok()) {
+    if (!status.ok()) {
       // Before TRT 8, an input tensor can be pruned (nvbugs/3153064)
+      // Resource inputs are also unknown by TRT, so we can treat them as
+      // pruned (the engine includes the variable as weights).
       is_pruned_input_[j] = true;
       VLOG(2) << "Skipping pruned input " << j;
       continue;

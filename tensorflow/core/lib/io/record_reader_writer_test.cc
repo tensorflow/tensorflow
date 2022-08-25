@@ -13,17 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// clang-format off
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
+// clang-format on
 
 #include <zlib.h>
+
+#include <memory>
 #include <vector>
-#include "tensorflow/core/platform/env.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -226,6 +230,40 @@ TEST(RecordReaderWriterTest, TestSkipOutOfRange) {
       EXPECT_EQ(2, num_skipped);
       EXPECT_EQ(error::OUT_OF_RANGE, s.code());
     }
+  }
+}
+
+TEST(RecordReaderWriterTest, TestMalformedInput) {
+  Env* env = Env::Default();
+  string fname =
+      testing::TmpDir() + "/record_reader_writer_malformed_input_test";
+
+  {
+    // Write some junk bytes (enough to read length+crc from offset 0 or 1).
+    std::unique_ptr<WritableFile> file;
+    TF_CHECK_OK(env->NewWritableFile(fname, &file));
+    TF_CHECK_OK(file->Append("abcdefghijklmno"));
+    TF_CHECK_OK(file->Close());
+  }
+
+  {
+    // Test checksum failure for reading junk bytes.
+    std::unique_ptr<RandomAccessFile> read_file;
+    TF_CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
+    io::RecordReader reader(read_file.get());
+    tstring record;
+    // At offset 0, the error message reminds of the file type.
+    uint64 offset = 0;
+    Status s = reader.ReadRecord(&offset, &record);
+    EXPECT_EQ(error::DATA_LOSS, s.code());
+    EXPECT_EQ("corrupted record at 0 (Is this even a TFRecord file?)",
+              s.error_message());
+    // Beyond offset 0, we assume that earlier read or skip operations found
+    // a usable TFRecord format or else messaged about that already.
+    offset = 1;
+    s = reader.ReadRecord(&offset, &record);
+    EXPECT_EQ(error::DATA_LOSS, s.code());
+    EXPECT_EQ("corrupted record at 1", s.error_message());
   }
 }
 

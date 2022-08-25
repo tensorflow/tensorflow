@@ -366,7 +366,7 @@ func.func @concatenate_const_2D_horizontal() -> tensor<2x2xi32> {
 
 // CHECK-LABEL: constant_like_constant
 func.func @constant_like_constant(%arg0: tensor<3x4xi32>) -> tensor<3x4xf32> {
-  // CHECK: mhlo.constant dense<3.200000e+00>
+  // CHECK: chlo.constant dense<3.200000e+00>
   %0 = "chlo.constant_like"(%arg0) { value = 3.2 : f32 } : (tensor<3x4xi32>) -> tensor<3x4xf32>
   func.return %0 : tensor<3x4xf32>
 }

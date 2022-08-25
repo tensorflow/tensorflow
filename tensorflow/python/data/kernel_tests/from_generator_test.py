@@ -337,7 +337,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Use an `Event` to signal that the generator has been deleted.
     event = threading.Event()
 
-    class GeneratorWrapper(object):
+    class GeneratorWrapper:
 
       def __iter__(self):
         return self

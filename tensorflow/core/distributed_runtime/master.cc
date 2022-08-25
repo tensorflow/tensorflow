@@ -67,10 +67,11 @@ Master::Master(MasterEnv* env, double session_gc_seconds)
       last_1000_steps_(1000),
       step_count_(0),
       session_gc_seconds_(session_gc_seconds),
-      recent_request_ids_(10000) {
+      recent_request_ids_(10000, env_->experimental_num_shards) {
   // Right now, a master service must be co-located with a device.
   // Otherwise, fetches do not work.
   CHECK(!env->local_devices.empty());
+  DCHECK_GT(env_->experimental_num_shards, 0);
 
   if (session_gc_seconds_ > 0.0) {
     gc_thread_ = env_->env->StartThread(ThreadOptions(), "TF_master_GC",

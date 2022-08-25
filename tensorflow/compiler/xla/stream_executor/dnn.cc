@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 
+#include <cstdint>
+
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -46,8 +48,8 @@ constexpr DataType ToDataType<float>::value;
 constexpr DataType ToDataType<double>::value;
 constexpr DataType ToDataType<Eigen::half>::value;
 constexpr DataType ToDataType<Eigen::bfloat16>::value;
-constexpr DataType ToDataType<int8>::value;
-constexpr DataType ToDataType<int32>::value;
+constexpr DataType ToDataType<int8_t>::value;
+constexpr DataType ToDataType<int32_t>::value;
 constexpr DataType ToDataType<std::complex<float>>::value;
 constexpr DataType ToDataType<std::complex<double>>::value;
 
@@ -143,7 +145,8 @@ port::Status DnnSupport::GetFusedConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType element_type, dnn::DataType bias_type,
     dnn::DataType output_type, double conv_input_scale, double side_input_scale,
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+    double leakyrelu_alpha, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
@@ -158,7 +161,8 @@ DnnSupport::FusedConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType element_type,
     dnn::DataType bias_type, dnn::DataType output_type, double conv_scale,
-    double side_input_scale, const dnn::BatchDescriptor& input_descriptor,
+    double side_input_scale, double leakyrelu_alpha,
+    const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
@@ -561,7 +565,7 @@ std::string BatchDescriptor::ToShortString() const {
     case DataLayout::kBatchDepthYX32:
       return absl::StrCat(batch, depth, spatial, suffix, "(VECT_C)");
     default:
-      LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout());
+      LOG(FATAL) << "Unknown layout " << static_cast<int32_t>(layout());
       return "";  // Avoid return warning (unreachable)
   }
 }
@@ -670,7 +674,7 @@ std::string FilterDescriptor::ToShortString() const {
     case FilterLayout::kYXInputOutput:
       return absl::StrCat(spatial, id, od);
     default:
-      LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout());
+      LOG(FATAL) << "Unknown layout " << static_cast<int32_t>(layout());
       return "";  // Avoid return warning (unreachable)
   }
 }
@@ -877,7 +881,7 @@ port::Status DnnSupport::DoCtcLoss(
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const RnnStateTensorDescriptor& grads_desc, DeviceMemoryBase grads_data,
-    DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id) {
+    DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id) {
   return port::UnimplementedError("CtcLoss not implemented");
 }
 

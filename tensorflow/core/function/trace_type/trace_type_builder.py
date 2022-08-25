@@ -65,12 +65,12 @@ class InternalTracingContext(trace.TracingContext):
   # TODO(b/202772221): Consider dropping after alias pattern matching is
   # supported.
   def make_reference_type(self, base_type: trace.TraceType,
-                          local_id: Hashable) -> trace.TraceType:
-    if local_id not in self._global_to_local_id:
-      self._global_to_local_id[local_id] = len(self._global_to_local_id)
+                          global_id: Hashable) -> trace.TraceType:
+    if global_id not in self._global_to_local_id:
+      self._global_to_local_id[global_id] = len(self._global_to_local_id)
 
     return default_types.Reference(base_type,
-                                   self._global_to_local_id[local_id])
+                                   self._global_to_local_id[global_id])
 
   @property
   def deletion_observer(self):

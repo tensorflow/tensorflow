@@ -31,9 +31,8 @@ limitations under the License.
 namespace tensorflow {
 
 using ::tfrt::HostContext;
-using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
-using ::tfrt::jitrt::MemrefType;
+using ::xla::runtime::MemrefType;
 
 const bool kStaticDim = false;
 const bool kDynamicDim = true;
@@ -62,19 +61,20 @@ JitExecutable& CreateJitExecutable(
   copts.alignment = EIGEN_MAX_ALIGN_BYTES;
   copts.num_worker_threads = host.GetNumWorkerThreads();
 
-  CompilationOptions opts;
-  opts.register_dialects = [](mlir::DialectRegistry& registry) {
+  JitExecutable::Options opts;
+  opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
     mlir::RegisterAllTensorFlowDialects(registry);
     tfrt::jitrt::RegisterDefaultJitRtDialects(registry);
   };
-  opts.create_compilation_pipeline =
+  opts.compiler.create_compilation_pipeline =
       [&, copts, lower_from_tensorflow](mlir::PassManager& pm) {
         if (lower_from_tensorflow)
           tensorflow::CreateTfJitRtPipeline(pm, tf_jitrt_opts);
         tfrt::jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
       };
-  opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
-  opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+  opts.compiler.create_specialization_pipeline =
+      CreateJitRtSpecializationPipeline;
+  opts.compiler.calling_convention = xla::runtime::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
 
   // Cache all jit executables, otherwise different benchmark runs will produce
@@ -107,11 +107,11 @@ MemrefDesc TensorToMemrefDesc(const Tensor& tensor) {
   for (int d = 0; d < tensor.shape().dims(); ++d)
     dims[d] = tensor.shape().dim_size(d);
 
-  tfrt::DType dtype;
+  xla::PrimitiveType dtype;
   if (tensor.dtype() == DT_FLOAT)
-    dtype = tfrt::GetDType<float>();
+    dtype = xla::PrimitiveType::F32;
   else if (tensor.dtype() == DT_INT64)
-    dtype = tfrt::GetDType<int64_t>();
+    dtype = xla::PrimitiveType::S64;
   else
     LOG(FATAL) << "Unsupported tensor dtype: " << tensor.dtype();
 

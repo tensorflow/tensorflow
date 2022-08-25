@@ -2434,3 +2434,12 @@ func.func @testReluI64(%arg0: tensor<1xi64>) -> tensor<1xi64> {
 // CHECK:  %[[RES0:.*]] = "tfl.maximum"(%arg0, %[[CONST_0]]) : (tensor<1xi64>, tensor<i64>) -> tensor<1xi64>
 // CHECK:  return %[[RES0]] : tensor<1xi64>
 }
+
+func.func @atan2(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = "tf.Atan2"(%arg0, %arg1) : (tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+
+// CHECK-LABEL: atan2
+// CHECK: %[[RES0:.*]] = "tfl.atan2"(%arg0, %arg1) : (tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
+// CHECK:  return %[[RES0]] : tensor<8xf32>
+}

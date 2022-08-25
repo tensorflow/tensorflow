@@ -67,13 +67,16 @@ def CastElementsToI64Elements : NativeCodeCall<
 class HLO_ComparisonDirectionValue<string enumStr> :
   ConstantAttr<HLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
 
+class CHLO_ComparisonDirectionValue<string enumStr> :
+  ConstantAttr<CHLO_ComparisonDirectionAttr, "::mlir::chlo::ComparisonDirection::" # enumStr>;
+
 // TODO(b/228291745): Assert that $x and $y have the same shape.
 def : Pat<(TF_ApproximateEqualOp:$result $x, $y, $tolerance),
           (CHLO_BroadcastCompareOp
            (HLO_AbsOp:$abs (HLO_SubtractOp $x, $y)),
            (CastValueToElementType $result, (HLO_ConstantOp $tolerance), $abs),
            (NullDenseIntElementsAttr),
-           HLO_ComparisonDirectionValue<"LT">,
+           CHLO_ComparisonDirectionValue<"LT">,
            (HLO_DEFAULT_COMPARISON_TYPE))>;
 
 //===----------------------------------------------------------------------===//
@@ -150,19 +153,19 @@ def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
           (CHLO_BroadcastDivOp:$div $l, $r,
            (BinBroadcastDimensions $l, $r)),
           $r, (BinBroadcastDimensions $div, $r)),
-         $l, (BinBroadcastDimensions $mul, $l), HLO_ComparisonDirectionValue<"NE">,
-         (HLO_DEFAULT_COMPARISON_TYPE)),
+         $l, (BinBroadcastDimensions $mul, $l), CHLO_ComparisonDirectionValue<"NE">,
+         (CHLO_DEFAULT_COMPARISON_TYPE)),
         (CHLO_BroadcastCompareOp
          (CHLO_BroadcastCompareOp:$l_cmp $l,
           (HLO_ConstantOp:$l_zeros (GetScalarOfType<0> $l)),
-          (NullDenseIntElementsAttr), HLO_ComparisonDirectionValue<"LT">,
-          (HLO_DEFAULT_COMPARISON_TYPE)),
+          (NullDenseIntElementsAttr), CHLO_ComparisonDirectionValue<"LT">,
+          (CHLO_DEFAULT_COMPARISON_TYPE)),
          (CHLO_BroadcastCompareOp:$r_cmp $r,
           (HLO_ConstantOp:$r_zeros (GetScalarOfType<0> $r)),
-          (NullDenseIntElementsAttr), HLO_ComparisonDirectionValue<"LT">,
-          (HLO_DEFAULT_COMPARISON_TYPE)),
-         (BinBroadcastDimensions $l_cmp, $r_cmp), HLO_ComparisonDirectionValue<"NE">,
-         (HLO_DEFAULT_COMPARISON_TYPE)),
+          (NullDenseIntElementsAttr), CHLO_ComparisonDirectionValue<"LT">,
+          (CHLO_DEFAULT_COMPARISON_TYPE)),
+         (BinBroadcastDimensions $l_cmp, $r_cmp), CHLO_ComparisonDirectionValue<"NE">,
+         (CHLO_DEFAULT_COMPARISON_TYPE)),
         (NullDenseIntElementsAttr)),
        (CHLO_BroadcastSubOp $div,
         (HLO_ConstantOp:$ones (GetScalarOfType<1> $div)),
@@ -186,18 +189,18 @@ def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
         (CHLO_BroadcastCompareOp
          (CHLO_BroadcastRemOp:$rem $l, $r, (BinBroadcastDimensions $l, $r)),
          (HLO_ConstantOp:$l_zeros (GetScalarOfType<0> $l)),
-         (NullDenseIntElementsAttr), HLO_ComparisonDirectionValue<"NE">,
-         (HLO_DEFAULT_COMPARISON_TYPE)),
+         (NullDenseIntElementsAttr), CHLO_ComparisonDirectionValue<"NE">,
+         (CHLO_DEFAULT_COMPARISON_TYPE)),
         (CHLO_BroadcastCompareOp
          (CHLO_BroadcastCompareOp:$r_cmp $r,
           (HLO_ConstantOp:$r_zeros (GetScalarOfType<0> $r)),
-          (NullDenseIntElementsAttr), HLO_ComparisonDirectionValue<"LT">,
-          (HLO_DEFAULT_COMPARISON_TYPE)),
+          (NullDenseIntElementsAttr), CHLO_ComparisonDirectionValue<"LT">,
+          (CHLO_DEFAULT_COMPARISON_TYPE)),
          (CHLO_BroadcastCompareOp:$rem_cmp $rem, $r_zeros,
-          (BinBroadcastDimensions $rem, $r_zeros), HLO_ComparisonDirectionValue<"LT">,
-          (HLO_DEFAULT_COMPARISON_TYPE)),
-         (BinBroadcastDimensions $r_cmp, $rem_cmp), HLO_ComparisonDirectionValue<"NE">,
-         (HLO_DEFAULT_COMPARISON_TYPE)),
+          (BinBroadcastDimensions $rem, $r_zeros), CHLO_ComparisonDirectionValue<"LT">,
+          (CHLO_DEFAULT_COMPARISON_TYPE)),
+         (BinBroadcastDimensions $r_cmp, $rem_cmp), CHLO_ComparisonDirectionValue<"NE">,
+         (CHLO_DEFAULT_COMPARISON_TYPE)),
         (NullDenseIntElementsAttr)),
        (CHLO_BroadcastAddOp $r,
         $rem, (BinBroadcastDimensions $r, $rem)), $rem),
@@ -239,27 +242,27 @@ foreach fromToBinPair = [[TF_LogicalAndOp, CHLO_BroadcastAndOp],
 // Compare op patterns.
 //===----------------------------------------------------------------------===//
 
-class DirectComparePat<Op FromOp, HLO_ComparisonDirectionValue direction>
+class DirectComparePat<Op FromOp, CHLO_ComparisonDirectionValue direction>
   : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
         (CHLO_BroadcastCompareOp
            $l, $r, (BinBroadcastDimensions $l, $r), direction,
-           (HLO_DEFAULT_COMPARISON_TYPE))>;
+           (CHLO_DEFAULT_COMPARISON_TYPE))>;
 
-def : DirectComparePat<TF_GreaterOp, HLO_ComparisonDirectionValue<"GT">>;
-def : DirectComparePat<TF_GreaterEqualOp, HLO_ComparisonDirectionValue<"GE">>;
-def : DirectComparePat<TF_LessOp, HLO_ComparisonDirectionValue<"LT">>;
-def : DirectComparePat<TF_LessEqualOp, HLO_ComparisonDirectionValue<"LE">>;
+def : DirectComparePat<TF_GreaterOp, CHLO_ComparisonDirectionValue<"GT">>;
+def : DirectComparePat<TF_GreaterEqualOp, CHLO_ComparisonDirectionValue<"GE">>;
+def : DirectComparePat<TF_LessOp, CHLO_ComparisonDirectionValue<"LT">>;
+def : DirectComparePat<TF_LessEqualOp, CHLO_ComparisonDirectionValue<"LE">>;
 
-class EqualityPat<Op FromOp, HLO_ComparisonDirectionValue direction>
+class EqualityPat<Op FromOp, CHLO_ComparisonDirectionValue direction>
     : Pat<(FromOp AnyTensor:$l, AnyTensor:$r,
            TrueBoolAttr:$incompatible_shape_error),
         (CHLO_BroadcastCompareOp
          $l, $r, (BinBroadcastDimensions $l, $r), direction,
-         (HLO_DEFAULT_COMPARISON_TYPE)),
+         (CHLO_DEFAULT_COMPARISON_TYPE)),
         [(HLO_Tensor $l)]>;
 
-def : EqualityPat<TF_EqualOp, HLO_ComparisonDirectionValue<"EQ">>;
-def : EqualityPat<TF_NotEqualOp, HLO_ComparisonDirectionValue<"NE">>;
+def : EqualityPat<TF_EqualOp, CHLO_ComparisonDirectionValue<"EQ">>;
+def : EqualityPat<TF_NotEqualOp, CHLO_ComparisonDirectionValue<"NE">>;
 
 //===----------------------------------------------------------------------===//
 // Concat op patterns.
@@ -458,12 +461,12 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
               (createIotaOp<"1"> $op, $input, $num_lower),
               (createIotaOp<"0"> $op, $input, $num_lower)
              ),
-             (NullDenseIntElementsAttr), HLO_ComparisonDirectionValue<"LE">,
-             (HLO_DEFAULT_COMPARISON_TYPE)
+             (NullDenseIntElementsAttr), CHLO_ComparisonDirectionValue<"LE">,
+             (CHLO_DEFAULT_COMPARISON_TYPE)
             ),
             (CHLO_BroadcastCompareOp $offset, $num_upper_or_n,
-             (NullDenseIntElementsAttr), HLO_ComparisonDirectionValue<"LE">,
-             (HLO_DEFAULT_COMPARISON_TYPE)
+             (NullDenseIntElementsAttr), CHLO_ComparisonDirectionValue<"LE">,
+             (CHLO_DEFAULT_COMPARISON_TYPE)
             )
            ),
            $input,
@@ -503,7 +506,7 @@ def : Pat<(TF_EluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$featur
               $features,
               (HLO_ConstantOp:$zero (GetScalarOfType<0> $features)),
               (BinBroadcastDimensions $zero, $features),
-              HLO_ComparisonDirectionValue<"GT">, (HLO_DEFAULT_COMPARISON_TYPE)),
+              CHLO_ComparisonDirectionValue<"GT">, (CHLO_DEFAULT_COMPARISON_TYPE)),
             $gradients,
             (HLO_MulOp
              $gradients,
@@ -771,8 +774,8 @@ def : Pattern<(TF_SoftplusOp AnyTensor:$features),
                   $features,
                   (HLO_NegOp $threshold),
                   (NullDenseIntElementsAttr),
-                  HLO_ComparisonDirectionValue<"GT">,
-                  (HLO_DEFAULT_COMPARISON_TYPE)
+                  CHLO_ComparisonDirectionValue<"GT">,
+                  (CHLO_DEFAULT_COMPARISON_TYPE)
                  ),
                  $features,
                  (HLO_SelectOp
@@ -780,8 +783,8 @@ def : Pattern<(TF_SoftplusOp AnyTensor:$features),
                    $features,
                    $threshold,
                    (NullDenseIntElementsAttr),
-                   HLO_ComparisonDirectionValue<"LT">,
-                   (HLO_DEFAULT_COMPARISON_TYPE)
+                   CHLO_ComparisonDirectionValue<"LT">,
+                   (CHLO_DEFAULT_COMPARISON_TYPE)
                   ),
                   $features_exp,
                   (HLO_Log1pOp $features_exp)

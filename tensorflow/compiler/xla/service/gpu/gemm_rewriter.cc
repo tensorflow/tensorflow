@@ -33,9 +33,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -216,10 +216,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                         .WithOneUser())
                              .WithOneUser(),
                          m::Op(&bias)))) {
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * new_add,
-          MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
-                        MakeBitcastHlo(bias, existing_gemm->shape())));
+      HloInstruction *new_bitcast =
+          MakeBitcastHlo(bias, existing_gemm->shape(), &bias->metadata());
+      TF_ASSIGN_OR_RETURN(HloInstruction * new_add,
+                          MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
+                                        new_bitcast, &bias->metadata()));
       TF_RETURN_IF_ERROR(
           ReplaceInstruction(instr, MakeBitcastHlo(new_add, instr->shape())));
 

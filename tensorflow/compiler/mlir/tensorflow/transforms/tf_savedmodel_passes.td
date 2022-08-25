@@ -65,3 +65,27 @@ def DedupBoundInputBindingPass : Pass<"tf-saved-model-dedup-bound-input-binding-
   let summary = "Remove duplicate 'tf_saved_model.bound_input' bindings.";
   let constructor = "mlir::tf_saved_model::CreateDedupBoundInputBindingPass()";
 }
+
+def LowerGlobalsToMlProgramPass: Pass<"tf-saved-model-lower-globals-to-mlprogram", "mlir::ModuleOp"> {
+  let summary = "Remove (and remap) function arguments that map to global tensors.";
+  let description = [{
+    This pass will lower AssignVariableOp and ReadVariableOp to their ml_program
+    equivalents, for those resources which stem from a "bound input" function argument
+    that maps to a GlobalTensorOp. The arguments in question will be removed.
+
+    So this will lower e.g.
+
+      func @f(%arg0 {tf_saved_model.bound_input = @v}) {
+        %0 = "tf.ReadVariableOp"(%arg0)
+        ...
+      }
+
+    to
+
+      func @f() {
+        %0 = ml_program.global_load @v
+        ...
+      }
+  }];
+  let constructor = "mlir::tf_saved_model::CreateLowerGlobalsToMlProgramPass()";
+}

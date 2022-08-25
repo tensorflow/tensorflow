@@ -206,6 +206,12 @@ Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
     return s;
   }
 
+  if (dim_size > NPY_MAXDIMS) {
+    return errors::InvalidArgument(
+        "Cannot convert tensor with ", dim_size,
+        " dimensions to NumPy array. NumPy arrays can have at most ",
+        NPY_MAXDIMS, " dimensions");
+  }
   auto* np_array = reinterpret_cast<PyArrayObject*>(
       PyArray_SimpleNewFromData(dim_size, dims, type_num, data));
   PyArray_CLEARFLAGS(np_array, NPY_ARRAY_OWNDATA);

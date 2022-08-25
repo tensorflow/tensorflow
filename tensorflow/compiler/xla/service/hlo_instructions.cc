@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
@@ -1557,12 +1558,12 @@ HloCallableInstruction::HloCallableInstruction(
 HloCallableInstruction::HloCallableInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
-    HloComputation* called_computation)
+    HloComputation* called_computation, absl::string_view prefix)
     : HloInstruction(opcode, shape) {
   for (auto operand : operands) {
     AppendOperand(operand);
   }
-  SetAndSanitizeName(HloOpcodeString(opcode));
+  SetAndSanitizeName(std::string(prefix) + HloOpcodeString(opcode));
   AppendComputation(called_computation);
 }
 
@@ -1823,9 +1824,9 @@ HloFusionInstruction::HloFusionInstruction(const Shape& shape,
 HloFusionInstruction::HloFusionInstruction(
     const Shape& shape, FusionKind fusion_kind,
     absl::Span<HloInstruction* const> operands,
-    HloComputation* fusion_computation)
+    HloComputation* fusion_computation, absl::string_view prefix)
     : HloCallableInstruction(HloOpcode::kFusion, shape, operands,
-                             fusion_computation),
+                             fusion_computation, prefix),
       fusion_kind_(fusion_kind) {
   fusion_computation->SetFusionInstruction(this);
 }
@@ -2090,7 +2091,6 @@ HloFusionInstruction::fused_instructions() {
 int64_t HloFusionInstruction::fused_instruction_count() const {
   return fused_instructions_computation()->instruction_count();
 }
-
 
 std::vector<std::string> HloFusionInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {

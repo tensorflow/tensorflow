@@ -329,16 +329,40 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Sometimes Bazel reports darwin_x86_64 as "darwin" and sometimes as
+# "darwin_x86_64". The former shows up when building on a Mac x86_64 host for a Mac x86_64 target.
+# The latter shows up when cross-compiling for Mac x86_64 from a Mac ARM machine and in internal
+# Google builds.
 config_setting(
-    name = "macos_x86_64",
+    name = "macos_x86_64_default",
     flag_values = if_google(
         {"//tools/cpp:cc_target_os": "apple"},
         {},
     ),
     values = {
         "apple_platform_type": "macos",
-        "cpu": if_google("darwin_x86_64", "darwin"),
+        "cpu": "darwin",
     },
+)
+
+config_setting(
+    name = "macos_x86_64_crosscompile",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "apple"},
+        {},
+    ),
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_x86_64",
+    },
+)
+
+selects.config_setting_group(
+    name = "macos_x86_64",
+    match_any = [
+        ":macos_x86_64_default",
+        ":macos_x86_64_crosscompile",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -891,6 +915,19 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# copybara:uncomment_begin(configurable API loading)
+# bool_flag(
+#     name = "enable_api_indexable",
+#     build_setting_default = False,
+# )
+#
+# config_setting(
+#     name = "api_indexable",
+#     flag_values = {":enable_api_indexable": "True"},
+#     visibility = ["//visibility:public"],
+# )
+# copybara:uncomment_end
+
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
@@ -944,7 +981,7 @@ bzl_library(
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
-        "//tensorflow/core/platform/default:cuda_build_defs_bzl",
+        "//tensorflow/tsl/platform/default:cuda_build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
         "//third_party/mkl:build_defs_bzl",
@@ -1178,12 +1215,16 @@ tf_cc_shared_library(
         ],
     }),
     per_os_targets = True,
+    roots = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:const_op",
+        "//tensorflow/cc:scope",
+    ],
     soversion = VERSION,
     static_deps = PACKAGE_STATIC_DEPS,
     visibility = ["//visibility:public"],
-    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = ":tensorflow_filtered_def_file",
-    # copybara:comment_end
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:env",
@@ -1194,9 +1235,6 @@ tf_cc_shared_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/cc:scope",
         "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",

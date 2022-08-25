@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
-#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 using tensorflow::errors::InvalidArgument;
@@ -308,6 +308,23 @@ void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
   ::tensorflow::Set_TF_Status_from_Status(status, s);
   if (s.ok()) {
     cc_ctx->set_output(i, cc_tensor);
+  }
+}
+
+TF_Tensor* TF_GetMutableOutput(TF_OpKernelContext* ctx, int i,
+                               TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (i < 0 || i >= cc_ctx->num_outputs()) {
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "output index out of range");
+    return nullptr;
+  }
+  const ::tensorflow::Tensor& cc_tensor = *(cc_ctx->mutable_output(i));
+  TF_Tensor* result =
+      ::tensorflow::TF_TensorFromTensor(cc_tensor, &status->status);
+  if (TF_GetCode(status) == TF_OK) {
+    return result;
+  } else {
+    return nullptr;
   }
 }
 

@@ -17,13 +17,11 @@
 import collections
 import hashlib
 import operator
-
 import os
 import os.path
 import sys
 
 import numpy as np
-import six
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.eager import monitoring
@@ -393,7 +391,7 @@ def keras_layer_tracepoint(layer, checkpoint_name):
   return layer
 
 
-class TensorTracer(object):
+class TensorTracer:
   """A software construct for tracing tensor values in a TF graph.
 
   This utility is disabled by default. It is hooked into tpu.rewrite, so it can
@@ -1980,7 +1978,7 @@ class TensorTracer(object):
           # Collecting multiple statistics are only supported in the summary
           # mode that uses compact format(self._use_tensor_values_cache = true).
           # Non-compact mode currently allows single stat per tensor.
-          processed_out_tensor = six.next(six.itervalues(processed_tensors))
+          processed_out_tensor = next(iter(processed_tensors.values()))
           trace_op = tpu_wrap_trace_fn(processed_out_tensor, tensor_name)
 
         if op_control_flow_context:

@@ -17,7 +17,7 @@ limitations under the License.
 // operation about to be enqueued onto a stream.
 //
 //    std::unique_ptr<TemporaryDeviceMemory<float>> temporary_memory =
-//        stream.AllocateTemporaryArray<float>(1024).ConsumeValueOrDie();
+//        stream.AllocateTemporaryArray<float>(1024).value();
 //    // ... enqueue stuff onto the stream using the temporary memory ...
 //    // Note that the memory is accessible via
 //    // temporary_memory->device_memory() and similar.

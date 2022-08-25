@@ -217,7 +217,7 @@ class CheckpointPosition(object):
       existing_op = self._checkpoint.restore_ops_by_name.get(
           saveable_name, None)
       if existing_op is not None:
-        return existing_op, {}
+        return [existing_op], {}
 
       saveables_cache = self._checkpoint.saveables_cache.setdefault(
           self.trackable, {})
@@ -265,7 +265,7 @@ class CheckpointPosition(object):
         existing_restore_ops.append(existing_op)
         continue
 
-      if any(name.startswith(serialized_tensor.name)
+      if any(serialized_tensor.name.startswith(name)
              for name in created_compat_names):
         continue  # Saveable has already been created for this tensor.
 

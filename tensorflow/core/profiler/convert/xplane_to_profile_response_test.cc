@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -29,6 +30,8 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+using ::testing::Property;
 
 void CreateXSpace(XSpace* space) {
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
@@ -91,7 +94,9 @@ TEST(ConvertXPlaneToProfileResponse, ExtractTpuMxuUtilizationFromXSpace) {
   constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
 
   XSpace xspace;
-  XPlaneBuilder devicePlane(GetOrCreateTpuXPlane(&xspace, 0, "TPU V4"));
+  XPlaneBuilder devicePlane(
+      GetOrCreateTpuXPlane(&xspace, 0, "TPU V4", kDevCapPeakTeraflopsPerSecond,
+                           kDevCapPeakHbmBwGigabytesPerSecond));
   auto xplane = FindOrAddMutablePlaneWithName(&xspace, kHostThreadsPlaneName);
   XPlaneBuilder xplaneBuilder(xplane);
   xplaneBuilder.ReserveLines(1);
@@ -99,12 +104,6 @@ TEST(ConvertXPlaneToProfileResponse, ExtractTpuMxuUtilizationFromXSpace) {
       *xplaneBuilder.GetOrCreateStatMetadata(
           GetStatTypeStr(StatType::kMatrixUnitUtilizationPercent)),
       20.0);
-  devicePlane.AddStatValue(*devicePlane.GetOrCreateStatMetadata(GetStatTypeStr(
-                               StatType::kDevCapPeakTeraflopsPerSecond)),
-                           kDevCapPeakTeraflopsPerSecond);
-  devicePlane.AddStatValue(*devicePlane.GetOrCreateStatMetadata(GetStatTypeStr(
-                               StatType::kDevCapPeakHbmBwGigabytesPerSecond)),
-                           kDevCapPeakHbmBwGigabytesPerSecond);
   devicePlane.AddStatValue(*devicePlane.GetOrCreateStatMetadata(
                                GetStatTypeStr(StatType::kDevCapCoreCount)),
                            80);
@@ -178,6 +177,21 @@ TEST(ConvertXPlaneToProfileResponse, XPlane) {
   EXPECT_EQ(1, response.tool_data_size());
   EXPECT_EQ("xplane.pb", response.tool_data(0).name());
   ASSERT_TRUE(xspace.ParseFromString(response.tool_data(0).data()));
+}
+
+TEST(ConvertXPlaneToProfileResponse, OpProfile) {
+  XSpace xspace;
+  CreateXSpace(&xspace);
+  ProfileRequest request;
+  request.add_tools("op_profile");
+  ProfileResponse response;
+  TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
+  EXPECT_EQ(1, response.tool_data_size());
+  EXPECT_THAT(
+      response.tool_data(),
+      UnorderedElementsAre(Property(&ProfileToolData::name, "op_profile.pb")));
+  tensorflow::profiler::op_profile::Profile op_profile;
+  ASSERT_TRUE(op_profile.ParseFromString(response.tool_data(0).data()));
 }
 
 }  // namespace

@@ -372,6 +372,9 @@ tensorflow::ProfilerSession::~ProfilerSession
 tensorflow::profiler::ProfilerServer::StartProfilerServer
 tensorflow::profiler::ProfilerServer::~ProfilerServer
 
+[//tensorflow/core/profiler/convert:hlo_to_tools_data_impl] # profiler
+tensorflow::profiler::ConvertHloProtoToToolData
+
 [//tensorflow/core/profiler/rpc/client:profiler_client_impl] # profiler
 tensorflow::profiler::ProfileGrpc
 tensorflow::profiler::NewSessionGrpc
@@ -419,6 +422,7 @@ tensorflow::metrics::SavedModelWriteApi
 tensorflow::metrics::SavedModelReadApi
 tensorflow::metrics::CheckpointReadDuration
 tensorflow::metrics::CheckpointWriteDuration
+tensorflow::metrics::AsyncCheckpointWriteDuration
 tensorflow::metrics::TrainingTimeSaved
 tensorflow::metrics::CheckpointSize
 

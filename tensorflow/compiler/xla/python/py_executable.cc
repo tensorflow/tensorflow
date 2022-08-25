@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/pjrt/host_callback.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/fingerprint.h"
 
 namespace xla {
@@ -30,6 +31,16 @@ Status PyToken::Await() {
   CHECK(future_.IsValid());
   py::gil_scoped_release gil_release;
   return future_.Await();
+}
+
+Status PyShardedToken::Await() {
+  py::gil_scoped_release gil_release;
+  Status status = OkStatus();
+  for (auto& future : futures_) {
+    auto s = future.Await();
+    if (!s.ok()) status = std::move(s);
+  }
+  return status;
 }
 
 PyExecutable::PyExecutable(std::shared_ptr<PyClient> client,
@@ -81,7 +92,7 @@ std::vector<ClientAndPtr<PjRtDevice>> PyExecutable::AddressableDevices() const {
 
 StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
 PyExecutable::ExecuteInternal(
-    absl::Span<PyBuffer::object const> args,
+    absl::Span<PyBuffer::object const> args, PjRtDevice* device,
     std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   {
@@ -107,7 +118,7 @@ PyExecutable::ExecuteInternal(
 
       for (const py::capsule& host_callback : host_callbacks_) {
         contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
-            host_callback.get_pointer<HostCallback>(),
+            *host_callback.get_pointer<HostCallback>(),
             host_memory_for_device_manager, send_callbacks, recv_callbacks));
       }
       options.send_callbacks = host_callback_states->send_callbacks;
@@ -119,9 +130,21 @@ PyExecutable::ExecuteInternal(
     absl::c_transform(
         args, arg_buffers.begin(),
         [](const PyBuffer::object& buf) { return buf.buf()->buffer(); });
-    TF_ASSIGN_OR_RETURN(
-        output_buffers,
-        executable_->Execute({arg_buffers}, options, returned_futures));
+    if (device) {
+      std::optional<PjRtFuture<Status>> future;
+      output_buffers.resize(1);
+      TF_ASSIGN_OR_RETURN(
+          output_buffers[0],
+          executable_->ExecutePortable(arg_buffers, device, options, future,
+                                       returned_futures.has_value()));
+      if (future) {
+        returned_futures->emplace_back(std::move(*future));
+      }
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          output_buffers,
+          executable_->Execute({arg_buffers}, options, returned_futures));
+    }
 
     if (!host_callbacks_.empty()) {
       // For host callbacks to work, `returned_futures` must not be nullopt.
@@ -150,22 +173,22 @@ PyExecutable::ExecuteInternal(
 }
 
 StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
-PyExecutable::ExecuteWithToken(absl::Span<PyBuffer::object const> args) {
+PyExecutable::ExecuteWithToken(absl::Span<PyBuffer::object const> args,
+                               PjRtDevice* device) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   if (executable_->IsReturnedFutureSupported()) returned_futures.emplace();
-  return ExecuteInternal(args, returned_futures);
+  return ExecuteInternal(args, device, returned_futures);
 }
 
 StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
-    absl::Span<PyBuffer::object const> args) {
+    absl::Span<PyBuffer::object const> args, PjRtDevice* device) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   TF_ASSIGN_OR_RETURN(auto outputs_and_token,
-                      ExecuteInternal(args, returned_futures));
+                      ExecuteInternal(args, device, returned_futures));
   return std::move(outputs_and_token.first);
 }
 
-StatusOr<
-    std::pair<std::vector<std::vector<PyBuffer::object>>, std::vector<PyToken>>>
+StatusOr<std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
 PyExecutable::ExecuteShardedOnLocalDevicesInternal(
     absl::Span<const std::vector<PyBuffer::object>> args,
     std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
@@ -194,7 +217,7 @@ PyExecutable::ExecuteShardedOnLocalDevicesInternal(
 
         for (const py::capsule& host_callback : host_callbacks_) {
           contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
-              host_callback.get_pointer<HostCallback>(),
+              *host_callback.get_pointer<HostCallback>(),
               host_memory_for_device_manager, send_callbacks, recv_callbacks));
         }
       }
@@ -257,20 +280,14 @@ PyExecutable::ExecuteShardedOnLocalDevicesInternal(
   // implement this. So we have to check whether returned_futures is empty.
   // Remove this check once the implementation is fixed.
   if (!returned_futures.has_value()) {
-    std::vector<PyToken> tokens(num_computations, PyToken::ReadyPyToken());
     return std::pair<std::vector<std::vector<PyBuffer::object>>,
-                     std::vector<PyToken>>(std::move(outputs),
-                                           std::move(tokens));
+                     PyShardedToken>(std::move(outputs), PyShardedToken());
   }
 
-  std::vector<PyToken> tokens;
-  tokens.reserve(returned_futures->size());
-  for (auto& future : *returned_futures) {
-    tokens.emplace_back(std::move(future));
-  }
+  PyShardedToken py_sharded_token(std::move(*returned_futures));
 
-  return std::pair<std::vector<std::vector<PyBuffer::object>>,
-                   std::vector<PyToken>>(std::move(outputs), std::move(tokens));
+  return std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>(
+      std::move(outputs), std::move(py_sharded_token));
 }
 
 StatusOr<std::vector<std::vector<PyBuffer::object>>>
@@ -283,8 +300,7 @@ PyExecutable::ExecuteShardedOnLocalDevices(
   return std::move(outputs_and_tokens.first);
 }
 
-StatusOr<
-    std::pair<std::vector<std::vector<PyBuffer::object>>, std::vector<PyToken>>>
+StatusOr<std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
 PyExecutable::ExecuteShardedOnLocalDevicesWithTokens(
     absl::Span<const std::vector<PyBuffer::object>> args) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;

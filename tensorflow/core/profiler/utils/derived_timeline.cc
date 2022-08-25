@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -378,6 +379,10 @@ void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
   for (XPlane* plane : FindMutablePlanesWithPrefix(space, kGpuPlanePrefix)) {
     DeriveStepEventsFromGroups(group_metadata_map, plane);
     DeriveEventsFromAnnotations(dummy_symbol_resolver, plane);
+  }
+  for (XPlane* plane : FindMutableTensorCorePlanes(space)) {
+    DeriveLinesFromStats(plane);
+    SortXPlane(plane);
   }
 }
 

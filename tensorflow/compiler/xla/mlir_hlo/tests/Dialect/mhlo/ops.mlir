@@ -41,6 +41,26 @@ func.func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x5xf32> {
 
 // -----
 
+func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %0 = "mhlo.all_reduce"(%arg0) ({
+  // Perform max reduction inside the region
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  {
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2
+    >,
+    use_global_device_ids
+  } : (tensor<10xf32>) -> tensor<10xf32>
+  func.return %0 : tensor<10xf32>
+}
+
+// -----
+
 func.func @invalid_reduce_scatter(%data: tensor<4x0xf32>) -> tensor<4x4xf32> {
   // expected-error@+1 {{operand scatter dimension cannot be zero}}
   %0 = "mhlo.reduce_scatter"(%data) ({
@@ -4795,6 +4815,30 @@ func.func @is_compatible_quant_storage_mismatch(%arg0: tensor<1x!quant.uniform<i
 func.func @is_compatible_quant_signedness_mismatch(%arg0: tensor<1x!quant.uniform<i8:f32, 1.0:17>>) {
   // expected-error@+1 {{op requires compatible types for all operands and results}}
   %0 = "mhlo.add"(%arg0, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<u8:f32, 1.0:17>>
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: is_compatible_dynamism_bounds
+func.func @is_compatible_dynamism_bounds_mismatch(
+  %arg0: tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>,
+  %arg1: tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>) {
+  %0 = "mhlo.add"(%arg0, %arg1) : (
+    tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>) -> tensor<3xf32>
+  func.return
+}
+
+// -----
+
+func.func @is_compatible_dynamism_bounds_mismatch(
+  %arg0: tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>,
+  %arg1: tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>) {
+  // expected-error@+1 {{requires compatible types for all operands and results}}
+  %0 = "mhlo.add"(%arg0, %arg1) : (
+    tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>) -> tensor<5xf32>
   func.return
 }
 

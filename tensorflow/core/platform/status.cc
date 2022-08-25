@@ -289,6 +289,34 @@ std::ostream& operator<<(std::ostream& os, const Status& x) {
 
 Status OkStatus() { return Status(); }
 
+Status FromAbslStatus(const absl::Status& s) {
+  if (s.ok()) {
+    return Status();
+  }
+  Status converted(static_cast<tensorflow::error::Code>(s.code()), s.message());
+  s.ForEachPayload(
+      [&converted](absl::string_view key, const absl::Cord& value) {
+        converted.SetPayload(key, std::string(value));
+      });
+
+  return converted;
+}
+
+absl::Status ToAbslStatus(const ::tensorflow::Status& s) {
+  if (s.ok()) {
+    return absl::OkStatus();
+  }
+
+  absl::Status converted(static_cast<absl::StatusCode>(s.code()),
+                         s.error_message());
+  s.ForEachPayload(
+      [&converted](tensorflow::StringPiece key, tensorflow::StringPiece value) {
+        converted.SetPayload(key, absl::Cord(value));
+      });
+
+  return converted;
+}
+
 std::string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
                                       const char* msg) {
   std::string r("Non-OK-status: ");

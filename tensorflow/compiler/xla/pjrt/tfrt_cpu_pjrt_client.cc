@@ -100,7 +100,7 @@ static constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 static tfrt::AsyncValueRef<CpuEvent> GetOrCreateReadyEvent(
     tfrt::HostContext* host_context) {
   static const auto* ready_event = new tfrt::AsyncValueRef<CpuEvent>(
-      tfrt::MakeAvailableAsyncValueRef<CpuEvent>(host_context));
+      tfrt::MakeAvailableAsyncValueRef<CpuEvent>());
   return ready_event->CopyRef();
 }
 
@@ -184,7 +184,7 @@ TfrtCpuClient::TfrtCpuClient(
           new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
                                       eigen_intraop_pool_->NumThreads())),
       last_collective_launch_event_(
-          tfrt::MakeAvailableAsyncValueRef<CpuEvent>(host_ctx_.get())),
+          tfrt::MakeAvailableAsyncValueRef<CpuEvent>()),
       transpose_cache_(1024) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
@@ -556,7 +556,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
         }
       } else {
         tfrt::AsyncValueRef<CpuEvent> copy_event =
-            tfrt::MakeConstructedAsyncValueRef<CpuEvent>(host_ctx_.get());
+            tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
         definition_events.push_back(copy_event.CopyRef());
         tfrt::EnqueueWork(
             host_ctx_.get(),
@@ -599,7 +599,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
   int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes_size() : 1;
   for (int i = 0; i < num_leaf_buffers; ++i) {
     tfrt::AsyncValueRef<CpuEvent> definition_event =
-        tfrt::MakeConstructedAsyncValueRef<CpuEvent>(GetHostContext());
+        tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
     definition_events.push_back(definition_event.CopyRef());
     avs.push_back(std::move(definition_event));
   }

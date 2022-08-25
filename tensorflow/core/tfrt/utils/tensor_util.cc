@@ -133,11 +133,10 @@ llvm::Expected<tensorflow::Tensor> TFRTTensorToTFTensor(const Tensor& tensor,
 
 AsyncValueRef<TensorHandle> TFTensorToTFRTTensorHandle(
     const tensorflow::Tensor& tf_tensor, HostContext* host_ctx) {
-  auto knfbt = MakeAvailableAsyncValueRef<tensorflow::KernelFallbackTensor>(
-      host_ctx, tf_tensor);
+  auto knfbt =
+      MakeAvailableAsyncValueRef<tensorflow::KernelFallbackTensor>(tf_tensor);
   return MakeAvailableAsyncValueRef<TensorHandle>(
-      host_ctx, host_ctx->GetHostDeviceRef(), knfbt->metadata(),
-      std::move(knfbt));
+      host_ctx->GetHostDeviceRef(), knfbt->metadata(), std::move(knfbt));
 }
 
 StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(

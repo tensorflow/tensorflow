@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Common DSO loading functionality: exposes callables that dlopen DSOs
-// in either the runfiles directories
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_
 

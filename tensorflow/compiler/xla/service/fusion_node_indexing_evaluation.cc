@@ -25,17 +25,11 @@ limitations under the License.
 namespace xla {
 
 FusionNodeIndexingEvaluation::FusionNodeIndexingEvaluation(
-    const HloInstruction* fusion, int64_t root_usage_count,
-    const absl::flat_hash_set<const HloInstruction*>* other_fusion_instructions)
+    const HloInstruction* fusion, int64_t root_usage_count)
     : fusion_(fusion) {
   HloInstruction* root = fusion->fused_expression_root();
   indexing_users_[root].insert(fusion);
   index_usage_count_[fusion] = root_usage_count;
-  if (other_fusion_instructions != nullptr) {
-    fusion_instructions_.insert(other_fusion_instructions->begin(),
-                                other_fusion_instructions->end());
-  }
-  fusion_instructions_.insert(fusion);
   RecomputeCache();
 }
 
@@ -69,37 +63,15 @@ bool OpInvalidatesCache(const HloInstruction* hlo) {
 // Counts the number of "real" users of 'hlo'. When 'hlo' has a fusion node as
 // user, we consider the users of the fusion parameter corresponding to 'hlo' as
 // the real users.
-int64_t UserCount(
-    const HloInstruction* hlo,
-    const absl::flat_hash_set<const HloInstruction*>& fusion_instructions,
-    bool skip_outside_users) {
-  // If 'hlo' is the root of the fusion computation, check the fusion
-  // instruction instead. This is needed in case 'hlo' is part of a fusion we
-  // want to merge into a consumer fusion, and we want to know how many users
-  // this op has in the consumer fusion when those two fusions are merged.
-  const HloComputation* parent = hlo->parent();
-  if (parent->IsFusionComputation() && hlo == parent->root_instruction()) {
-    hlo = parent->FusionInstruction();
-  }
+int64_t UserCount(const HloInstruction* hlo) {
   int64_t cnt = 0;
   for (HloInstruction* user : hlo->users()) {
     if (user->opcode() == HloOpcode::kFusion) {
       // Count the number of users of the parameter corresponding to the fusion
       // operand.
       int64_t operand_index = user->operand_index(hlo);
-      if (skip_outside_users) {
-        for (const HloInstruction* instr :
-             user->fused_parameter(operand_index)->users()) {
-          if (fusion_instructions.contains(instr)) {
-            ++cnt;
-          }
-        }
-      } else {
-        // TODO(b/241898015): Remove this once the miscompare on CPU is fixed.
-        cnt += user->fused_parameter(operand_index)->user_count();
-      }
-    } else if (fusion_instructions.contains(user)) {
-      // Only count users from the same fusion node.
+      cnt += user->fused_parameter(operand_index)->user_count();
+    } else {
       ++cnt;
     }
   }
@@ -112,17 +84,14 @@ bool FusionNodeIndexingEvaluation::CodeDuplicationTooHigh(
   int64_t emitted_instructions = EvaluateEmittedInstructions(producer);
   return emitted_instructions > kAllowedCodeDuplication ||
          (OpInvalidatesCache(producer) &&
-          (emitted_instructions > 1 ||
-           UserCount(producer, fusion_instructions_,
-                     /*skip_outside_users=*/false) > 1));
+          (emitted_instructions > 1 || UserCount(producer) > 1));
 }
 
 bool FusionNodeIndexingEvaluation::MaxCodeDuplicationTooHigh() const {
   for (const auto& entry : index_usage_count_) {
     if (entry.second > kAllowedCodeDuplication ||
         (OpInvalidatesCache(entry.first) &&
-         (entry.second > 1 || UserCount(entry.first, fusion_instructions_,
-                                        /*skip_outside_users=*/true) > 1))) {
+         (entry.second > 1 || UserCount(entry.first) > 1))) {
       return true;
     }
   }
@@ -177,7 +146,6 @@ void FusionNodeIndexingEvaluation::UpdateIndexUsageCount(
     total += index_usage_count_.at(user);
   }
   CHECK(index_usage_count_.emplace(instruction, total).second);
-  fusion_instructions_.insert(instruction);
 }
 
 void FusionNodeIndexingEvaluation::UpdateIndexingUsersOfOperands(

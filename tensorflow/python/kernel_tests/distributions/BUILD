@@ -20,7 +20,6 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -304,6 +303,5 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )

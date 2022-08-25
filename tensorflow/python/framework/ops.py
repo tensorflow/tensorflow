@@ -23,8 +23,6 @@ import types
 from absl import app
 
 import numpy as np
-import six
-from six.moves import map  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import full_type_pb2
@@ -1894,7 +1892,7 @@ def _NodeDef(op_type, name, attrs=None):
   node_def = node_def_pb2.NodeDef(op=compat.as_bytes(op_type),
                                   name=compat.as_bytes(name))
   if attrs:
-    for k, v in six.iteritems(attrs):
+    for k, v in attrs.items():
       node_def.attr[k].CopyFrom(v)
   return node_def
 
@@ -2519,8 +2517,8 @@ class Operation(object):
     if self._inputs_val is None:
       # pylint: disable=protected-access
       self._inputs_val = tuple(
-          map(self.graph._get_tensor_by_tf_output,
-              pywrap_tf_session.GetOperationInputs(self._c_op)))
+          self.graph._get_tensor_by_tf_output(i)
+          for i in pywrap_tf_session.GetOperationInputs(self._c_op))
       # pylint: enable=protected-access
     return self._inputs_val
 
@@ -2818,7 +2816,7 @@ class RegisterGradient(object):
     Raises:
       TypeError: If `op_type` is not string.
     """
-    if not isinstance(op_type, six.string_types):
+    if not isinstance(op_type, str):
       raise TypeError("op_type must be a string")
     self._op_type = op_type
 
@@ -2858,7 +2856,7 @@ def no_gradient(op_type):
     TypeError: If `op_type` is not a string.
 
   """
-  if not isinstance(op_type, six.string_types):
+  if not isinstance(op_type, str):
     raise TypeError("op_type must be a string")
   gradient_registry.register(None, op_type)
 
@@ -2989,12 +2987,12 @@ class RegisterStatistics(object):
 
   def __init__(self, op_type, statistic_type):
     """Saves the `op_type` as the `Operation` type."""
-    if not isinstance(op_type, six.string_types):
+    if not isinstance(op_type, str):
       raise TypeError("op_type must be a string.")
     if "," in op_type:
       raise TypeError("op_type must not contain a comma.")
     self._op_type = op_type
-    if not isinstance(statistic_type, six.string_types):
+    if not isinstance(statistic_type, str):
       raise TypeError("statistic_type must be a string.")
     if "," in statistic_type:
       raise TypeError("statistic_type must not contain a comma.")
@@ -4120,7 +4118,7 @@ class Graph(object):
       KeyError: If `name` does not correspond to an operation in this graph.
     """
 
-    if not isinstance(name, six.string_types):
+    if not isinstance(name, str):
       raise TypeError("Operation names are strings (or similar), not %s." %
                       type(name).__name__)
     return self.as_graph_element(name, allow_tensor=False, allow_operation=True)
@@ -4168,7 +4166,7 @@ class Graph(object):
       KeyError: If `name` does not correspond to a tensor in this graph.
     """
     # Names should be strings.
-    if not isinstance(name, six.string_types):
+    if not isinstance(name, str):
       raise TypeError("Tensor names are strings (or similar), not %s." %
                       type(name).__name__)
     return self.as_graph_element(name, allow_tensor=True, allow_operation=False)
@@ -4292,7 +4290,7 @@ class Graph(object):
       value: The value to add to the collections.
     """
     # Make sure names are unique, but treat strings as a single collection name
-    names = (names,) if isinstance(names, six.string_types) else set(names)
+    names = (names,) if isinstance(names, str) else set(names)
     for name in names:
       self.add_to_collection(name, value)
 
@@ -4364,7 +4362,7 @@ class Graph(object):
   def get_all_collection_keys(self):
     """Returns a list of collections used in this graph."""
     with self._lock:
-      return [x for x in self._collections if isinstance(x, six.string_types)]
+      return [x for x in self._collections if isinstance(x, str)]
 
   def clear_collection(self, name):
     """Clears all values in a collection.
@@ -5098,6 +5096,14 @@ class Graph(object):
       if c not in current:
         control_ops.append(c)
         current.add(c)
+        # Mark this op with an attribute indicating that it is used as a manual
+        # control dep in order to allow tracking how common utilization of
+        # manual control deps in graphs run through the MLIR Bridge are. See
+        # go/manual-control-dependencies-bridge for details.
+        # pylint: disable=protected-access
+        c._set_attr("_has_manual_control_dependencies",
+                    attr_value_pb2.AttrValue(b=True))
+        # pylint: enable=protected-access
     return self._ControlDependenciesController(self, control_ops)
 
   # pylint: disable=g-doc-return-or-yield
@@ -5139,7 +5145,7 @@ class Graph(object):
     saved_attrs = {}
     # Install the given attribute
     for name, attr in attr_map.items():
-      if not (isinstance(name, six.string_types) and
+      if not (isinstance(name, str) and
               (isinstance(attr, (type(None), attr_value_pb2.AttrValue)) or
                callable(attr))):
         raise TypeError("attr_map must be a dictionary mapping "
@@ -5208,8 +5214,8 @@ class Graph(object):
     saved_labels = {}
     # Install the given label
     for op_type, label in op_to_kernel_label_map.items():
-      if not (isinstance(op_type, six.string_types) and
-              isinstance(label, six.string_types)):
+      if not (isinstance(op_type, str) and
+              isinstance(label, str)):
         raise TypeError("op_to_kernel_label_map must be a dictionary mapping "
                         "strings to strings")
       try:
@@ -5285,8 +5291,8 @@ class Graph(object):
     saved_mappings = {}
     # Install the given label
     for op_type, mapped_op_type in op_type_map.items():
-      if not (isinstance(op_type, six.string_types) and
-              isinstance(mapped_op_type, six.string_types)):
+      if not (isinstance(op_type, str) and
+              isinstance(mapped_op_type, str)):
         raise TypeError("op_type_map must be a dictionary mapping "
                         "strings to strings")
       try:
@@ -6775,7 +6781,7 @@ class internal_name_scope_v1(object):  # pylint: disable=invalid-name
     Raises:
       TypeError: if `default_name` is passed in but not a string.
     """
-    if not (default_name is None or isinstance(default_name, six.string_types)):
+    if not (default_name is None or isinstance(default_name, str)):
       raise TypeError(
           "`default_name` type (%s) is not a string type. You likely meant to "
           "pass this into the `values` kwarg." % type(default_name))
@@ -6956,7 +6962,7 @@ class name_scope_v2(object):
     Raises:
       ValueError: If name is not a string.
     """
-    if not isinstance(name, six.string_types):
+    if not isinstance(name, str):
       raise ValueError("name for name_scope must be a string.")
     self._name = name
     self._exit_fns = []

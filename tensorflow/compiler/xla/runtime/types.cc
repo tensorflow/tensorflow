@@ -20,21 +20,19 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 
 namespace xla {
 namespace runtime {
 
-using llvm::ArrayRef;
-using llvm::raw_ostream;
-
 //===----------------------------------------------------------------------===//
 // Pretty printing for canonical types.
 //===----------------------------------------------------------------------===//
 
-static raw_ostream& operator<<(raw_ostream& os, const ArrayRef<int64_t>& arr) {
+using llvm::raw_ostream;
+
+static raw_ostream& operator<<(raw_ostream& os, absl::Span<const int64_t> arr) {
   auto str = llvm::map_range(arr, [](int64_t i) { return std::to_string(i); });
   return os << llvm::join(str, "x") << (arr.empty() ? "" : "x");
 }
@@ -75,17 +73,17 @@ using ArgumentAbi = Type::ArgumentAbi;
 using ResultAbi = Type::ResultAbi;
 
 // Async token returned as a pointer to the runtime async token.
-llvm::ErrorOr<ResultAbi> AsyncTokenType::AsResult() const {
+absl::StatusOr<ResultAbi> AsyncTokenType::AsResult() const {
   return ResultAbi{sizeof(void*)};
 }
 
 // Async value returned as a pointer to the runtime async token.
-llvm::ErrorOr<ResultAbi> AsyncValueType::AsResult() const {
+absl::StatusOr<ResultAbi> AsyncValueType::AsResult() const {
   return ResultAbi{sizeof(void*)};
 }
 
 // Memref passed as an unrolled strided memref type.
-llvm::ErrorOr<ArgumentAbi> MemrefType::AsArgument() const {
+absl::StatusOr<ArgumentAbi> MemrefType::AsArgument() const {
   return ArgumentAbi{3 + 2 * rank()};
 }
 
@@ -94,7 +92,7 @@ llvm::ErrorOr<ArgumentAbi> MemrefType::AsArgument() const {
 //
 // Memrefs are returned as StridedMemref<T, rank> type:
 //   basePtr, data, offset, sizes[rank], strides[rank]
-llvm::ErrorOr<ResultAbi> MemrefType::AsResult() const {
+absl::StatusOr<ResultAbi> MemrefType::AsResult() const {
   return ResultAbi{
       sizeof(void*) * 2 +           // pointers
       sizeof(int64_t) +             // offset
@@ -103,7 +101,7 @@ llvm::ErrorOr<ResultAbi> MemrefType::AsResult() const {
 }
 
 // Kernel context passed as a single opaque pointer.
-llvm::ErrorOr<ArgumentAbi> KernelContextOperandType::AsArgument() const {
+absl::StatusOr<ArgumentAbi> KernelContextOperandType::AsArgument() const {
   return ArgumentAbi{1};
 }
 

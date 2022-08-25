@@ -1508,7 +1508,7 @@ bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
   if (reduce_dim < 0) reduce_dim += iota_type.getRank();
 
   auto index =
-      llvm::Optional<SmallVector<int64_t>>(llvm::in_place, iota_type.getRank());
+      llvm::Optional<SmallVector<int64_t>>(std::in_place, iota_type.getRank());
   while (index.has_value()) {
     StridedArrayView<DenseIntElementsAttr> array_view(
         iota_const_attr, iota_shape, *index, reduce_dim);

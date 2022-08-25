@@ -16,13 +16,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/runtime/constraints.h"
 
 //===----------------------------------------------------------------------===//
 // RT Dialect
@@ -32,6 +37,16 @@ limitations under the License.
 
 namespace xla {
 namespace runtime {
+
+using llvm::Expected;
+
+static bool IsRtConstraintAttr(mlir::Attribute attr) {
+  // If attribute is not defined it means that there is no constraint
+  if (!attr) return true;
+  auto str = attr.dyn_cast_or_null<mlir::StringAttr>();
+  Expected<ArgumentConstraint> constraint = ParseArgumentConstraint(str);
+  return !constraint.takeError();
+}
 
 void RuntimeDialect::initialize() {
   allowUnknownTypes();
@@ -46,8 +61,59 @@ void RuntimeDialect::initialize() {
       >();
 }
 
+mlir::LogicalResult RuntimeDialect::verifyOperationAttribute(
+    mlir::Operation *op, mlir::NamedAttribute attribute) {
+  if (attribute.getName() == "rt.entrypoint") {
+    if (!(attribute.getValue().isa<mlir::UnitAttr>())) {
+      return op->emitOpError()
+             << "requires " << attribute.getName() << " to be a unit attribute";
+    }
+
+    auto func = llvm::dyn_cast<mlir::func::FuncOp>(op);
+    if (!func) {
+      return op->emitError()
+             << attribute.getName() << " can only be applied to a function";
+    }
+    if (func.empty()) {
+      return op->emitOpError()
+             << "requires non-empty body for function with attribute "
+             << attribute.getName();
+    }
+  }
+
+  if (attribute.getName() == "rt.custom_call" ||
+      attribute.getName() == "rt.direct_custom_call") {
+    if (!(attribute.getValue().isa<mlir::StringAttr>())) {
+      return op->emitOpError() << "requires " << attribute.getName()
+                               << " to only accept string value";
+    }
+
+    auto func = llvm::dyn_cast<mlir::func::FuncOp>(op);
+    if (!func) {
+      return op->emitError()
+             << attribute.getName() << " can only be applied to a function";
+    }
+    if (!func.empty()) {
+      return op->emitOpError() << "requires " << attribute.getName()
+                               << " to only apply to a function declaration";
+    }
+  }
+
+  if (auto func = llvm::dyn_cast<mlir::func::FuncOp>(op)) {
+    for (int i = 0; i < func.getNumArguments(); ++i) {
+      if (!IsRtConstraintAttr(
+              func.getArgAttr(i, kArgumentConstraintAttrName))) {
+        return op->emitOpError()
+               << "has illegal attribute value of "
+               << kArgumentConstraintAttrName << " for argument " << i;
+      }
+    }
+  }
+
+  return mlir::success();
+}
 }  // namespace runtime
-}  // end namespace xla
+}  // namespace xla
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.cpp.inc"

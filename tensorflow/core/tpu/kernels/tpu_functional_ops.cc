@@ -19,11 +19,11 @@ limitations under the License.
 #include <memory>
 
 #include "absl/strings/match.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 #define EIGEN_USE_THREADS
 
@@ -2220,10 +2220,8 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
       runtime_params_.enable_auto_xla_input_sharding) {
     // Currently we remove `TPUReplicatedInput` nodes when the input tensors are
     // not sharded, input tensors packing optimization is enabled or when
-    // auto xla input sharding is there.
-    //
-    // In all thse cases, we want to remove both the TPUReplicatedInput and
-    // XlaSharding ops or else downstream rewrites will be confused.
+    // auto xla input sharding is there, or else downstream rewrites will be
+    // confused.
     RemoveDescendantNodeOfArg(graph, "TPUReplicatedInput",
                               /*must_be_child_of=*/{});
   }

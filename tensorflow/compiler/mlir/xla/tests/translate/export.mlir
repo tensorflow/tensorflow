@@ -134,6 +134,36 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // -----
 
 // CHECK:  HloModule
+func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %0 = "mhlo.all_reduce"(%arg0) ({
+  // Perform max reduction inside the region
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  {
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2
+    >,
+    use_global_device_ids 
+  } : (tensor<10xf32>) -> tensor<10xf32>
+  func.return %0 : tensor<10xf32>
+}
+
+// CHECK:  %[[COMPUTATION:.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> f32[]
+// CHECK:  ENTRY
+// CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
+// CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
+// CHECK-SAME:  channel_id=5
+// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
+// CHECK-SAME:  use_global_device_ids=true
+// CHECK-SAME:  to_apply=%[[COMPUTATION]]
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
   %0 = "mhlo.reduce_scatter"(%arg0) ({
   // Perform max reduction inside the region
@@ -1443,6 +1473,21 @@ func.func @main(%arg0: tensor<4xi32>) -> tensor<*xi32> {
 // CHECK: ROOT %[[RESULT:.*]] = s32[4] not(s32[4] %[[ARG0]])
 
 // -----
+
+// CHECK:  HloModule
+func.func @main(%arg: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf32> {
+  %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 0 : i64} : (tensor<4xf32>, tensor<i32>) -> tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>
+  %1 = tensor.cast %0 : tensor<?xf32, #mhlo.type_extensions<bounds = [4]>> to tensor<?xf32>
+  func.return %1 : tensor<?xf32>
+}
+
+// CHECK: ENTRY
+// CHECK: %[[ARG0:.*]] = f32[4] parameter(0)
+// CHECK: %[[ARG1:.*]] = s32[] parameter(1)
+// CHECK: ROOT %[[RESULT:.*]] = f32[<=4] set-dimension-size
+
+// -----
+
 
 // Tests ops with different frontend attributes have such attributes set
 // correctly in HloModule as frontend_attributes.

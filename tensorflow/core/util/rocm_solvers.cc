@@ -38,6 +38,12 @@ rocblas_Xtrsm   //    ----           //     ----                   / / Ungqr //
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocblas_wrapper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -49,12 +55,6 @@ rocblas_Xtrsm   //    ----           //     ----                   / / Ungqr //
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_solvers.h"
-#include "tensorflow/stream_executor/gpu/gpu_activation.h"
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/stream_executor/lib/env.h"
-#include "tensorflow/stream_executor/platform/default/dso_loader.h"
-#include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/rocm/rocblas_wrapper.h"
 
 namespace tensorflow {
 namespace {

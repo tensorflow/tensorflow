@@ -17,18 +17,16 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
-#include "tfrt/support/error_util.h"  // from @tf_runtime
+#include "tensorflow/compiler/xla/runtime/errors.h"
 
 namespace xla {
 namespace runtime {
 
 using llvm::Expected;
-
-using tfrt::DType;
-using tfrt::MakeStringError;
 
 // Type conversion for the canonical MLIR types supported by the runtime.
 static std::unique_ptr<Type> ConvertCanonicalType(
@@ -75,22 +73,23 @@ static std::unique_ptr<Type> ConvertCanonicalType(
   return {};
 }
 
-/*static*/ Expected<DType> TypeConverter::ConvertElementType(mlir::Type type) {
-  if (type.isF32()) return DType::F32;
-  if (type.isF64()) return DType::F64;
-  if (type.isUnsignedInteger(8)) return DType::UI8;
-  if (type.isUnsignedInteger(16)) return DType::UI16;
-  if (type.isUnsignedInteger(32)) return DType::UI32;
-  if (type.isUnsignedInteger(64)) return DType::UI64;
-  if (type.isInteger(1)) return DType::I1;
-  if (type.isInteger(8)) return DType::I8;
-  if (type.isInteger(16)) return DType::I16;
-  if (type.isInteger(32)) return DType::I32;
-  if (type.isInteger(64)) return DType::I64;
+/*static*/ Expected<PrimitiveType> TypeConverter::ConvertElementType(
+    mlir::Type type) {
+  if (type.isF32()) return PrimitiveType::F32;
+  if (type.isF64()) return PrimitiveType::F64;
+  if (type.isUnsignedInteger(8)) return PrimitiveType::U8;
+  if (type.isUnsignedInteger(16)) return PrimitiveType::U16;
+  if (type.isUnsignedInteger(32)) return PrimitiveType::U32;
+  if (type.isUnsignedInteger(64)) return PrimitiveType::U64;
+  if (type.isInteger(1)) return PrimitiveType::PRED;
+  if (type.isInteger(8)) return PrimitiveType::S8;
+  if (type.isInteger(16)) return PrimitiveType::S16;
+  if (type.isInteger(32)) return PrimitiveType::S32;
+  if (type.isInteger(64)) return PrimitiveType::S64;
   if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
     auto element_type = complex_type.getElementType();
-    if (element_type.isF32()) return DType::Complex64;
-    if (element_type.isF64()) return DType::Complex128;
+    if (element_type.isF32()) return PrimitiveType::C64;
+    if (element_type.isF64()) return PrimitiveType::C128;
   }
 
   return MakeStringError("unsupported element type: ", type);
@@ -108,8 +107,8 @@ Expected<std::unique_ptr<Type>> TypeConverter::Convert(mlir::Type type) const {
 Expected<FunctionType> TypeConverter::Convert(mlir::FunctionType type) const {
   assert(type && "function type must be not null");
 
-  llvm::SmallVector<std::unique_ptr<Type>> operands;
-  llvm::SmallVector<std::unique_ptr<Type>> results;
+  std::vector<std::unique_ptr<Type>> operands;
+  std::vector<std::unique_ptr<Type>> results;
 
   operands.reserve(type.getNumInputs());
   results.reserve(type.getNumResults());

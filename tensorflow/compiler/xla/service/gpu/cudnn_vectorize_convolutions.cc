@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 
+#include <optional>
+#include <vector>
+
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_support_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/stream_executor/device_description.h"
-#include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
@@ -309,6 +309,8 @@ static StatusOr<bool> TryRevectorizeConv(
   // We use XlaBuilder because it's a lot easier to get these tricky
   // reshape/transposes correct using that API.
   XlaBuilder b(absl::StrCat(conv->name(), ".revectorized"));
+  b.SetOpMetadata(conv->metadata());
+
   absl::InlinedVector<XlaOp, 4> new_operands = {
       RevectorizeInstr(Parameter(&b, 0, conv->operand(0)->shape(), "input"),
                        dnums.input_feature_dimension(), *input_vect_dim,
@@ -433,6 +435,7 @@ static StatusOr<bool> TryVectorizeConv(
   // We use XlaBuilder because it's a lot easier to get these tricky
   // reshape/transposes correct using that API.
   XlaBuilder b(absl::StrCat(conv->name(), ".revectorized"));
+  b.SetOpMetadata(conv->metadata());
 
   absl::InlinedVector<XlaOp, 4> new_operands = {
       SplitAtDim(Parameter(&b, 0, conv->operand(0)->shape(), "input"),

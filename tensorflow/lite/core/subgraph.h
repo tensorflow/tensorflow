@@ -238,6 +238,12 @@ class Subgraph {
   // AllocateTensors needs to be called before next invocation.
   TfLiteStatus ReleaseNonPersistentMemory();
 
+  // WARNING: Experimental interface, subject to change
+  // This API releases memory held by the given subgraph. This method is
+  // designed to release memory of control flow subgraphs.
+  // AllocateTensors needs to be called before next invocation.
+  TfLiteStatus ReleaseMemory();
+
   // Update allocations for all tensors. This will redim dependent tensors using
   // the input tensor dimensionality as given. This is relatively expensive.
   // If you know that your sizes are not changing, you need not call this.
@@ -379,10 +385,16 @@ class Subgraph {
   // information about tenosrs and ops.
   void DumpMemoryPlannerDebugInfo() const;
 
+  typedef struct SubgraphAllocInfo {
+    size_t arena_size;
+    size_t arena_persist_size;
+    size_t dynamic_size;
+    size_t resource_size;
+  } SubgraphAllocInfo;
+
   // WARNING: This is an experimental API and subject to change.
   // Returns memory allocation status.
-  void GetMemoryAllocInfo(size_t* arena_size, size_t* arena_persist_size,
-                          size_t* dynamic_size) const;
+  void GetMemoryAllocInfo(SubgraphAllocInfo* alloc_info) const;
 
   // WARNING: This is an experimental API and subject to change.
   // Set the given `InterpreterOptions` object.

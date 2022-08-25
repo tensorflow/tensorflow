@@ -89,6 +89,59 @@ absl::Status TestLinkingConvolution2InputMul2InputBroadcastMul(
 absl::Status TestLinkingConvolution2InputMul2InputMulCos(
     TestExecutionEnvironment* env);
 
+//      input
+//        |
+//   convolution
+//     /     \
+//   tanh     |
+//     \     /
+//  substraction
+//        |
+//     output
+absl::Status TestLinkingConvolutionFirstTanh2InputDiff(
+    TestExecutionEnvironment* env);
+
+//      input
+//        |
+//   convolution
+//     /     \
+//    |     tanh
+//     \     /
+//  substraction
+//        |
+//     output
+absl::Status TestLinkingConvolutionSecondTanh2InputDiff(
+    TestExecutionEnvironment* env);
+
+//      input
+//        |
+//   convolution
+//     /     \
+//   tanh    cos
+//     \     /
+//  substraction
+//        |
+//     output
+absl::Status TestLinkingConvolutionFirstTanhSecondCos2InputDiff(
+    TestExecutionEnvironment* env);
+
+//      input
+//        |
+//   convolution
+//      /    \
+//   tanh    cos
+//    /     /   \
+//   |    prelu  sin
+//   |      \   /
+//   |       pow
+//   |        |
+//   |       exp
+//    \       |
+//  substraction
+//        |
+//     output
+absl::Status TestLinkingComplex0(TestExecutionEnvironment* env);
+
 }  // namespace gpu
 }  // namespace tflite
 

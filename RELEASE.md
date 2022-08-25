@@ -2,7 +2,8 @@
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
-# Breaking Changes
+* `tensorflow::StatusOr::ConsumeValueOrDie`, deprecated in TF 2.10 has been
+  removed.
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
@@ -19,14 +20,26 @@
 
     *   New operations supported:
           * tf.unsortedsegmentmin op is supported.
+          * tf.atan2 op is supported.
     *   Updates to existing operations:
           * tfl.mul now supports complex32 inputs.
 
+*   `tf.experimental.StructuredTensor`
+    *   Introduced `tf.experimental.StructuredTensor`, which provides a flexible
+        and Tensorflow-native way to encode structured data such as protocol
+        buffers or pandas dataframes.
+
 # Bug Fixes and Other Changes
 
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
+*   `tf.image`
+    *   Added an optional parameter `return_index_map` to `tf.image.ssim` which
+        causes the returned value to be the local SSIM map instead of the global
+        mean.
+
+*   TF Core:
+
+    *   `tf.custom_gradient` can now be applied to functions that accept
+        "composite" tensors, such as `tf.RaggedTensor`, as inputs.
 
 # Thanks to our Contributors
 

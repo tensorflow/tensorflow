@@ -27,6 +27,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
@@ -57,6 +59,14 @@ std::unique_ptr<tflite::delegates::DelegatePluginInterface> LoadDelegatePlugin(
     const std::string& name, const tflite::TFLiteSettings& tflite_settings) {
   return tflite::delegates::DelegatePluginRegistry::CreateByName(
       name + "Plugin", tflite_settings);
+}
+
+void AddTensorDataToMap(TfLiteTensor* tensor,
+                        std::map<std::string, std::vector<char>>& output_map) {
+  std::vector<char> char_output(TfLiteTensorByteSize(tensor));
+  memcpy(char_output.data(), TfLiteTensorData(tensor),
+         TfLiteTensorByteSize(tensor));
+  output_map.emplace(TfLiteTensorName(tensor), std::move(char_output));
 }
 
 constexpr int64_t kMicrosInSecond = 1000 * 1000;
@@ -109,7 +119,7 @@ class ValidatorProfiler : public ::tflite::Profiler {
 
 }  // namespace
 
-MinibenchmarkStatus Validator::CheckGoldenOutput() {
+MinibenchmarkStatus Validator::CheckGoldenOutput(Results* results_out) {
   if (!interpreter_ || !model_loader_->GetModel()) {
     return kMinibenchmarkPreconditionNotMet;
   }
@@ -143,11 +153,17 @@ MinibenchmarkStatus Validator::CheckGoldenOutput() {
   }
 
   // Check if we have validation data embedded or need to run CPU for it. If
-  // the data is embedded, there is already an allocation for it from the model,
-  // and we can skip running it on CPU.
+  // the data is embedded, there is already an allocation for it from the model.
+  // We can skip running it on CPU, and copy the embedded golden output to
+  // results_out.
   TfLiteTensor* first_input_tensor =
       validation_entrypoint_->tensor(validation_entrypoint_->inputs()[0]);
   if (first_input_tensor->allocation) {
+    for (int i = 0; i < validation_entrypoint_->inputs().size() - 1; i++) {
+      AddTensorDataToMap(
+          validation_entrypoint_->tensor(validation_entrypoint_->inputs()[i]),
+          results_out->golden_inference_output);
+    }
     return kMinibenchmarkSuccess;
   }
 
@@ -169,7 +185,7 @@ MinibenchmarkStatus Validator::CheckGoldenOutput() {
   for (int i = 0; i < golden_validation_entrypoint->inputs().size() - 1; i++) {
     TfLiteTensor* input_tensor = golden_validation_entrypoint->tensor(
         golden_validation_entrypoint->inputs()[i]);
-    memset(input_tensor->data.raw, 0, input_tensor->bytes);
+    memset(input_tensor->data.data, 0, input_tensor->bytes);
   }
 
   if (golden_validation_entrypoint->Invoke() != kTfLiteOk) {
@@ -179,13 +195,17 @@ MinibenchmarkStatus Validator::CheckGoldenOutput() {
   for (int i = 0; i < validation_entrypoint_->inputs().size() - 1; i++) {
     TfLiteTensor* input_tensor =
         validation_entrypoint_->tensor(validation_entrypoint_->inputs()[i]);
-    TfLiteTensor* golden_tensor = golden_validation_entrypoint->tensor(
+    TfLiteTensor* golden_output_tensor = golden_validation_entrypoint->tensor(
         golden_validation_entrypoint->outputs()[i]);
-    if (input_tensor->bytes != golden_tensor->bytes) {
+    if (input_tensor->bytes != golden_output_tensor->bytes) {
       return kMinibenchmarkValidationSubgraphInputsDontMatchOutputs;
     }
-    memcpy(input_tensor->data.raw, golden_tensor->data.raw,
-           input_tensor->bytes);
+
+    memcpy(input_tensor->data.data, golden_output_tensor->data.data,
+           golden_output_tensor->bytes);
+
+    AddTensorDataToMap(golden_output_tensor,
+                       results_out->golden_inference_output);
   }
 
   return kMinibenchmarkSuccess;
@@ -323,7 +343,7 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
   MB_RETURN_IF_ERROR(CreateInterpreter(&results_out->delegate_error,
                                        &results_out->delegated_kernels));
   int64_t delegate_load_end_time_us = ElapsedTimeMicros();
-  MB_RETURN_IF_ERROR(CheckGoldenOutput());
+  MB_RETURN_IF_ERROR(CheckGoldenOutput(results_out));
   ValidatorProfiler profiler;
   main_model_->SetProfiler(&profiler, 0);
   TfLiteStatus status = validation_entrypoint_->Invoke();
@@ -331,10 +351,22 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
   if (status != kTfLiteOk) {
     return kMinibenchmarkInvokeFailed;
   }
+
+  // Create results_out.
+  int model_output_size = main_model_->outputs().size();
+  // Model output.
+  for (int i = 0; i < model_output_size; i++) {
+    AddTensorDataToMap(
+        validation_entrypoint_->tensor(validation_entrypoint_->outputs()[i]),
+        results_out->actual_inference_output);
+  }
+  // Accuracy metrics.
   const std::string kMetricPrefix = "metrics/";
   const std::string kOk("ok");
-  for (int i : validation_entrypoint_->outputs()) {
-    TfLiteTensor* tensor = validation_entrypoint_->tensor(i);
+  for (int i = model_output_size; i < validation_entrypoint_->outputs().size();
+       i++) {
+    TfLiteTensor* tensor =
+        validation_entrypoint_->tensor(validation_entrypoint_->outputs()[i]);
     std::string name = tensor->name;
     if (name.find(kMetricPrefix) != 0) {  // NOLINT
       continue;
@@ -359,6 +391,7 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
   }
   TFLITE_LOG_PROD(TFLITE_LOG_INFO, "  accuracy: %s",
                   results_out->ok ? "ok" : "not ok");
+  // Performance metrics.
   results_out->delegate_prep_time_us =
       (delegate_load_end_time_us == -1 || delegate_load_start_time_us == -1)
           ? -1

@@ -43,10 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 83
+_version = 89
 
 # Version number for MLIR:Python components.
-mlir_api_version = 31
+mlir_api_version = 32
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -323,7 +323,7 @@ def execute_with_python_values(executable, arguments, backend):
 
   arguments = [put(arg) for arg in arguments]
   outputs = executable.execute(arguments)
-  return [x.to_py() for x in outputs]
+  return [np.asarray(x) for x in outputs]
 
 
 def execute_with_python_values_replicated(executable, arguments, backend):
@@ -346,7 +346,7 @@ def execute_with_python_values_replicated(executable, arguments, backend):
 
   inputs = [copy_to_devices(pyvals) for pyvals in zip(*arguments)]
   outputs = executable.execute_sharded_on_local_devices(inputs)
-  return [[x.to_py() for x in xs] for xs in zip(*outputs)]
+  return [[np.asarray(x) for x in xs] for xs in zip(*outputs)]
 
 
 class PaddingType(enum.Enum):
@@ -670,3 +670,5 @@ XlaRuntimeError = _xla.XlaRuntimeError
 # Perform one last garbage collection of deferred Python references. This is
 # mostly to keep ASAN happy.
 atexit.register(_xla.collect_garbage)
+
+weakref_lru_cache = _xla.weakref_lru_cache

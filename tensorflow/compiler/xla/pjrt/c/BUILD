@@ -5,7 +5,7 @@ cc_library(
     hdrs = ["pjrt_c_api.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/stream_executor/tpu:c_api_decl",  # TODO(b/238999986): Remove this.
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",  # TODO(b/238999986): Remove this.
     ],
 )
 
@@ -25,12 +25,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
-        "//tensorflow/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
     ],
 )
 

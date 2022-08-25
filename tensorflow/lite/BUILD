@@ -984,6 +984,7 @@ cc_test(
         "testdata/test_model_broken.bin",
         "testdata/test_model_redux_precision.bin",
         "testdata/while_op_with_forwarding_input.bin",
+        "testdata/zero_size_constant.bin",
     ],
     tags = [
         "no_windows",  # TODO(b/194459105): the test is flaky.
@@ -994,7 +995,8 @@ cc_test(
         ":framework",
         ":interpreter_test_util",
         ":string",
-        "//tensorflow/lite:string_util",
+        ":string_util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/kernels:builtin_ops",

@@ -121,6 +121,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_shape_verifier.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
@@ -411,6 +412,20 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   const absl::flat_hash_map<const HloInstruction*, int64_t>& assigned_indices_;
 };
 
+// Adds the HloVerifier for CPU to the given pipeline.
+void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
+                    bool debug_only = false) {
+  std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
+      std::make_unique<CpuVerifierMetadata>(std::move(opts));
+  if (debug_only) {
+    pipeline->AddInvariantCheckerDebug<HloVerifier>(
+        std::move(verifier_metadata), "hlo verifier (debug)");
+  } else {
+    pipeline->AddInvariantChecker<HloVerifier>(std::move(verifier_metadata),
+                                               "hlo verifier");
+  }
+}
+
 }  // namespace
 
 Status CpuCompiler::RunHloPassesThroughLayoutAssn(
@@ -422,7 +437,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     if (num_partitions > 1) {
       // Run some IR cleanup passes before running the SPMD partitioning
       // passes.
-      spmd_pipeline.AddInvariantChecker<HloVerifier>(HloVerifierOpts{});
+      AddHloVerifier(&spmd_pipeline);
       spmd_pipeline.AddPass<CallInliner>();
       spmd_pipeline.AddPass<ZeroSizedHloElimination>();
       spmd_pipeline.AddPass<ConditionalCanonicalizer>();
@@ -441,7 +456,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   HloPassPipeline pipeline("HLO passes through layout assignment");
-  pipeline.AddInvariantChecker<HloVerifier>(HloVerifierOpts{});
+  AddHloVerifier(&pipeline);
 
   pipeline.AddPass<OperandUpcaster>();
   pipeline.AddPass<ResultCaster>();
@@ -534,7 +549,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Run the following passes to a fixed point.
   [&pipeline =
        pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
-    pipeline.AddInvariantCheckerDebug<HloVerifier>(HloVerifierOpts{});
+    AddHloVerifier(&pipeline, HloVerifierOpts{}, /*debug_only=*/true);
 
     AlgebraicSimplifierOptions options;
     options.set_enable_dot_strength_reduction(false);
@@ -623,9 +638,9 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   }
 
   // After layout assignment, use a layout-sensitive verifier.
-  pipeline.AddPass<HloPassPipeline>("after layout assignment")
-      .AddInvariantCheckerDebug<HloVerifier>(
-          HloVerifierOpts{}.MakeLayoutSensitive());
+  pipeline.AddPass<HloPassPipeline>("after layout assignment");
+  AddHloVerifier(&pipeline, HloVerifierOpts{}.MakeLayoutSensitive(),
+                 /*debug_only=*/true);
 
   pipeline.AddPass<ReshapeDecomposer>();
 
@@ -637,9 +652,11 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // Run this to a fixed point.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
        "simplification after layout assignment")] {
-    pipeline.AddInvariantCheckerDebug<HloVerifier>(
+    AddHloVerifier(
+        &pipeline,
         HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
-            LayoutAssignment::InstructionCanChangeLayout));
+            LayoutAssignment::InstructionCanChangeLayout),
+        /*debug_only=*/true);
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_dot_strength_reduction(false);
@@ -923,6 +940,15 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
       mlir::createLinalgElementwiseOpFusionPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::createConvertTensorToLinalgPass());
+
+  // mhlo ops on unit tensors generate trivial linalg.generics, which
+  // one-shot-bufferize generates unnecessary allocs for. The detensorize pass
+  // replaces these linalg.generics with scalar ops.
+  auto detensorize = mlir::createLinalgDetensorizePass();
+  if (detensorize->initializeOptions("aggressive-mode=true").failed()) {
+    return tensorflow::errors::Internal("Failed to set up detensorize pass.");
+  }
+  pm.addNestedPass<mlir::func::FuncOp>(std::move(detensorize));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createLinalgInitTensorToAllocTensorPass());
 
@@ -1096,19 +1122,8 @@ std::vector<ComputationToEmit> SubcomputationEmissionOrder(
 
 }  // namespace
 
-StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options) {
-  VLOG(1) << "Compiling: " << module->name();
-  XLA_SCOPED_LOGGING_TIMER(
-      absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
-  std::string slow_compilation_msg =
-      absl::StrCat("Compiling module ", module->name());
-  auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
-
-  absl::call_once(llvm_command_line_options_initialized,
-                  &InitializeLLVMCommandLineOptions, module->config());
-
+StatusOr<std::unique_ptr<CpuExecutable>>
+CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   ModuleHook pre_optimization_ir_hook;
   ModuleHook post_optimization_ir_hook;
   std::tie(pre_optimization_ir_hook, post_optimization_ir_hook) =
@@ -1280,6 +1295,27 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
         cpu_executable->buffer_assignment().ToProto();
     cpu_executable->set_hlo_proto(std::move(hlo_proto));
   }
+
+  return cpu_executable;
+}
+
+StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
+    std::unique_ptr<HloModule> module,
+    [[maybe_unused]] se::StreamExecutor* stream_exec,
+    [[maybe_unused]] const CompileOptions& options) {
+  VLOG(1) << "Compiling: " << module->name();
+  XLA_SCOPED_LOGGING_TIMER(
+      absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
+  std::string slow_compilation_msg =
+      absl::StrCat("Compiling module ", module->name());
+  auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
+
+  absl::call_once(llvm_command_line_options_initialized,
+                  &InitializeLLVMCommandLineOptions, module->config());
+
+  std::unique_ptr<CpuExecutable> cpu_executable;
+  TF_ASSIGN_OR_RETURN(cpu_executable,
+                      CompileLegacyCpuExecutable(std::move(module)));
 
   cpu_executable->set_debug_info(
       cpu_executable->buffer_assignment().GetStats().ToString());

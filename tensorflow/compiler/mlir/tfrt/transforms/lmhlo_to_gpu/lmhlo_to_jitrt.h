@@ -20,6 +20,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
 
 namespace tensorflow {
 
@@ -32,7 +33,9 @@ createConvertLmhloGpuToJitRtPass();
 void registerLmhloToJitRtPasses();
 
 // Passes to lower from the lmhlo to the JitRt compatible program.
-void populateLmhloToJitRtPasses(mlir::OpPassManager &pm);
+void populateLmhloToJitRtPasses(
+    mlir::OpPassManager &pm,
+    GpuBinaryOptions options = GpuBinaryOptions::DefaultGpuBinaryOptions());
 
 }  // namespace tensorflow
 

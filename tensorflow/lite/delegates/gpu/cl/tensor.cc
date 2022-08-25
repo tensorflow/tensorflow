@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 
 namespace tflite {
 namespace gpu {
@@ -329,18 +328,6 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
           "TensorStorageType::BUFFER/TensorStorageType::IMAGE_BUFFER.");
     }
     resources->buffers.push_back({"buffer", memory_});
-    return absl::OkStatus();
-  }
-  const auto* texture2d_desc =
-      dynamic_cast<const Texture2DDescriptor*>(obj_ptr);
-  if (texture2d_desc) {
-    if (descriptor_.GetStorageType() != TensorStorageType::TEXTURE_2D) {
-      return absl::InvalidArgumentError(
-          "Tensor can be used with Texture2DDescriptor only with "
-          "TensorStorageType::TEXTURE_2D.");
-    }
-    cl_mem mem = buffer_based_ ? image_buffer_memory_ : memory_;
-    resources->images2d.push_back({"tex2d", mem});
     return absl::OkStatus();
   }
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(obj_ptr);

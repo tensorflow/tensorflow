@@ -16,34 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDNN_VERSION_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDNN_VERSION_H_
 
-#include <string>
-
-#include "absl/strings/str_cat.h"
-
-namespace stream_executor {
-namespace gpu {
-
-struct CudnnVersion {
-  CudnnVersion() = default;
-
-  CudnnVersion(int major, int minor, int patch)
-      : major_version(major), minor_version(minor), patch_level(patch) {}
-
-  std::string ToString() const {
-    return absl::StrCat(major_version, ".", minor_version, ".", patch_level);
-  }
-
-  int major_version;
-  int minor_version;
-  int patch_level;
-};
-
-// Returns true if the given source CuDNN version is compatible with the given
-// loaded version.
-bool IsSourceCompatibleWithCudnnLibrary(CudnnVersion source_version,
-                                        CudnnVersion loaded_version);
-
-}  // namespace gpu
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/cuda/cudnn_version.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDNN_VERSION_H_

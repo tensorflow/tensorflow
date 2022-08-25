@@ -98,10 +98,10 @@ struct CustomCallOpInterface
         op->getLoc(), llvm::None, bufferArgs, op->getAttrs());
     // lmhlo.custom_call uses a segment_size attribute to tell input from output
     // arguments.
-    lhloOp->setAttr(
-        lhloOp.getOperandSegmentSizeAttr(),
-        rewriter.getI32VectorAttr({static_cast<int32_t>(op->getNumOperands()),
-                                   static_cast<int32_t>(op->getNumResults())}));
+    lhloOp->setAttr(lhloOp.getOperandSegmentSizeAttr(),
+                    rewriter.getDenseI32ArrayAttr(
+                        {static_cast<int32_t>(op->getNumOperands()),
+                         static_cast<int32_t>(op->getNumResults())}));
     bufferization::replaceOpWithBufferizedValues(
         rewriter, op, makeArrayRef(bufferArgs).slice(op->getNumOperands()));
     return success();

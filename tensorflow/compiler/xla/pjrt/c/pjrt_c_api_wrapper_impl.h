@@ -82,11 +82,13 @@ namespace pjrt {
 
 void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
 void PJRT_Error_Message(PJRT_Error_Message_Args* args);
+PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
 
 PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args);
 PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args);
 PJRT_Error* PJRT_Event_Error(PJRT_Event_Error_Args* args);
 PJRT_Error* PJRT_Event_Await(PJRT_Event_Await_Args* args);
+PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
 
 PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args);
 PJRT_Error* PJRT_Client_PlatformName(PJRT_Client_PlatformName_Args* args);
@@ -126,6 +128,7 @@ PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
+PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
 
 // Helper macros and functions
 

@@ -295,7 +295,7 @@ mlir::Attribute CoreRTConverter::ConvertAttribute(mlir::Attribute attr) {
 
   // Return directly if the attribute is already supported.
   if (attr.isa<mlir::IntegerAttr, mlir::FloatAttr, mlir::BoolAttr,
-               mlir::StringAttr, mlir::DenseIntOrFPElementsAttr>())
+               mlir::StringAttr, mlir::DenseIntOrFPElementsAttr, mlir::DenseI32ArrayAttr>())
     return attr;
 
   // For type attributes, we convert non-standard MLIR types to corresponding

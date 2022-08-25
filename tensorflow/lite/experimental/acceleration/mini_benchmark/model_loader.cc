@@ -133,8 +133,10 @@ std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
         !absl::SimpleAtoi(parts[3], &model_size)) {
       return nullptr;
     }
-    // Close the write pipe for the read process / thread.
-    close(write_fd);
+    // If set, close the write pipe for the read process / thread.
+    if (write_fd >= 0) {
+      close(write_fd);
+    }
     return std::make_unique<PipeModelLoader>(read_fd, model_size);
   }
   return std::make_unique<PathModelLoader>(path);

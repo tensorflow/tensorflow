@@ -969,6 +969,7 @@ cc_library(
     srcs = ["softmax1x1.cc"],
     hdrs = ["softmax1x1.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",

@@ -232,7 +232,6 @@ py_library(
         ":tensor_util",
         ":type_spec",
         "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/python/client:_pywrap_debug_events_writer",
         "//tensorflow/python/client:_pywrap_events_writer",
         "//tensorflow/python/eager:context",
@@ -489,7 +488,6 @@ py_library(
         "//tensorflow/core/config:flags_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 
@@ -938,7 +936,6 @@ py_library(
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 
@@ -971,6 +968,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":composite_tensor",
+        ":composite_tensor_gradient",
         ":dtypes",
         ":tensor_conversion_registry",
         ":tensor_shape",
@@ -978,6 +976,16 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
+    ],
+)
+
+tf_py_test(
+    name = "indexed_slices_test",
+    srcs = ["indexed_slices_test.py"],
+    deps = [
+        ":composite_tensor_gradient",
+        "//tensorflow/python:ops",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -1211,10 +1219,6 @@ py_library(
     srcs = ["composite_tensor_gradient.py"],
     deps = [
         ":composite_tensor",
-        ":for_generated_wrappers",
-        ":indexed_slices",
-        "//tensorflow/python/eager:backprop_util",
-        "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
 )
@@ -1402,7 +1406,6 @@ py_library(
         "//tensorflow/python/util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 

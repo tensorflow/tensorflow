@@ -147,6 +147,9 @@ StatusOr<bool> ReduceScatterCombiner::Run(
       if (!rs || !key) {
         return std::nullopt;
       }
+      if (!MatchReductionComputation(rs->to_apply())) {
+        return std::nullopt;
+      }
       return ReduceScatterKey{std::move(*key), rs->scatter_dimension()};
     };
 

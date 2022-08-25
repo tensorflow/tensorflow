@@ -2401,193 +2401,8 @@ func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi3
 // CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi32>)
 // CHECK-SAME: {someattr}
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = arith.addi %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.addi %[[RHS_IN]], %[[LHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
-
-// -----
-
-func.func @reduce_add_complex(%arg0: tensor<5x4xcomplex<f32>>) -> tensor<5xcomplex<f32>> {
-  %cst = mhlo.constant dense<(0.000000e+00,0.000000e+00)> : tensor<complex<f32>>
-  %0 = "mhlo.reduce"(%arg0, %cst) ({
-  ^bb0(%arg3: tensor<complex<f32>>, %arg4 : tensor<complex<f32>>):
-    %1 = mhlo.add %arg3, %arg4 : tensor<complex<f32>>
-    "mhlo.return"(%1) : (tensor<complex<f32>>) -> ()
-  }) {dimensions = dense<1> : tensor<1xi64>, someattr} : (tensor<5x4xcomplex<f32>>, tensor<complex<f32>>) -> tensor<5xcomplex<f32>>
-  func.return %0 : tensor<5xcomplex<f32>>
-}
-
-// CHECK-LABEL: @reduce_add_complex
-// CHECK: %[[INIT:.*]] = complex.constant [0.000000e+00 : f32, 0.000000e+00 : f32] : complex<f32>
-// CHECK: linalg.fill ins(%[[INIT]]
-// CHECK: complex.add
-
-// -----
-
-func.func @reduce_minimum_unsigned(%arg0: tensor<5x4xui32>, %arg1: tensor<ui32>) -> tensor<5xui32> {
-  %0 = "mhlo.reduce"(%arg0, %arg1) ({
-  ^bb0(%arg3: tensor<ui32>, %arg4 : tensor<ui32>):
-    %1 = mhlo.minimum %arg3, %arg4 : tensor<ui32>
-    "mhlo.return"(%1) : (tensor<ui32>) -> ()
-  }) {dimensions = dense<1> : tensor<1xi64>, someattr} : (tensor<5x4xui32>, tensor<ui32>) -> tensor<5xui32>
-  func.return %0 : tensor<5xui32>
-}
-// CHECK-LABEL: @reduce_minimum_unsigned
-// CHECK: linalg.generic
-// CHECK-NEXT: ^bb{{.}}(%[[ARG2:.+]]: i32, %[[ARG3:.+]]: i32)
-// CHECK-NEXT: arith.minui %[[ARG2]], %[[ARG3]] : i32
-
-// -----
-
-func.func @reduce_minimum(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi32> {
-  %0 = "mhlo.reduce"(%arg0, %arg1) ({
-  ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
-    %1 = mhlo.minimum %arg3, %arg4 : tensor<i32>
-    "mhlo.return"(%1) : (tensor<i32>) -> ()
-  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<5x4xi32>, tensor<i32>) -> tensor<5xi32>
-  func.return %0 : tensor<5xi32>
-}
-// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
-// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
-// CHECK-LABEL: @reduce_minimum
-// CHECK-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i32>
-// CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5]
-// CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[INIT]]{{.*}}outs(%[[INIT_TENSOR]]
-// CHECK: linalg.generic
-// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
-// CHECK-SAME: iterator_types = ["parallel", "reduction"]
-// CHECK-SAME: ins(%{{.*}}tensor<5x4xi32>)
-// CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi32>)
-// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = arith.minsi %[[LHS_IN]], %[[RHS_IN]] : i32
-// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
-
-// -----
-
-func.func @reduce_maximum(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi32> {
-  %0 = "mhlo.reduce"(%arg0, %arg1) ({
-  ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
-    %1 = mhlo.maximum %arg3, %arg4 : tensor<i32>
-    "mhlo.return"(%1) : (tensor<i32>) -> ()
-  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<5x4xi32>, tensor<i32>) -> tensor<5xi32>
-  func.return %0 : tensor<5xi32>
-}
-// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
-// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
-// CHECK-LABEL: @reduce_maximum
-// CHECK-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i32>
-// CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5]
-// CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[INIT]]{{.*}}outs(%[[INIT_TENSOR]]
-// CHECK: linalg.generic
-// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
-// CHECK-SAME: iterator_types = ["parallel", "reduction"]
-// CHECK-SAME: ins(%{{.*}}tensor<5x4xi32>)
-// CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi32>)
-// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = arith.maxsi %[[LHS_IN]], %[[RHS_IN]] : i32
-// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
-
-// -----
-
-func.func @reduce_and(%arg0: tensor<5x4xi1>, %arg1: tensor<i1>) -> tensor<5xi1> {
-  %0 = "mhlo.reduce"(%arg0, %arg1) ({
-  ^bb0(%arg3: tensor<i1>, %arg4 : tensor<i1>):
-    %1 = mhlo.and %arg3, %arg4 : tensor<i1>
-    "mhlo.return"(%1) : (tensor<i1>) -> ()
-  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<5x4xi1>, tensor<i1>) -> tensor<5xi1>
-  func.return %0 : tensor<5xi1>
-}
-// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
-// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
-// CHECK-LABEL: @reduce_and
-// CHECK-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i1>
-// CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5]
-// CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[INIT]]{{.*}}outs(%[[INIT_TENSOR]]
-// CHECK: linalg.generic
-// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
-// CHECK-SAME: iterator_types = ["parallel", "reduction"]
-// CHECK-SAME: ins(%{{.*}}tensor<5x4xi1>)
-// CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi1>)
-// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i1, %[[RHS_IN:.*]]: i1):
-// CHECK-NEXT:   %[[RESULT:.*]] = arith.andi %[[LHS_IN]], %[[RHS_IN]] : i1
-// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
-
-// -----
-
-func.func @reduce_or(%arg0: tensor<5x4xi1>, %arg1: tensor<i1>) -> tensor<5xi1> {
-  %0 = "mhlo.reduce"(%arg0, %arg1) ({
-  ^bb0(%arg3: tensor<i1>, %arg4 : tensor<i1>):
-    %1 = mhlo.or %arg3, %arg4 : tensor<i1>
-    "mhlo.return"(%1) : (tensor<i1>) -> ()
-  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<5x4xi1>, tensor<i1>) -> tensor<5xi1>
-  func.return %0 : tensor<5xi1>
-}
-// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
-// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
-// CHECK-LABEL: @reduce_or
-// CHECK-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i1>
-// CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5]
-// CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[INIT]]{{.*}}outs(%[[INIT_TENSOR]]
-// CHECK: linalg.generic
-// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
-// CHECK-SAME: iterator_types = ["parallel", "reduction"]
-// CHECK-SAME: ins(%{{.*}}tensor<5x4xi1>)
-// CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi1>)
-// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i1, %[[RHS_IN:.*]]: i1):
-// CHECK-NEXT:   %[[RESULT:.*]] = arith.ori %[[LHS_IN]], %[[RHS_IN]] : i1
-// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
-
-// -----
-
-func.func @reduce_or_of_zero_constant() -> tensor<5xi1> {
-  %0 = mhlo.constant dense<false> : tensor<5x4xi1>
-  %1 = mhlo.constant dense<false> : tensor<i1>
-  %2 = "mhlo.reduce"(%0, %1) ({
-  ^bb0(%arg1: tensor<i1>, %arg2 : tensor<i1>):
-    "mhlo.return"(%1) : (tensor<i1>) -> ()
-  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<5x4xi1>, tensor<i1>) -> tensor<5xi1>
-  func.return %2 : tensor<5xi1>
-}
-// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
-// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
-// CHECK-LABEL: @reduce_or_of_zero_constant
-// CHECK-DAG: %[[CST:.*]] = arith.constant dense<false> : tensor<5x4xi1>
-// CHECK-DAG: %[[FALSE:.*]] = arith.constant false
-// CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5]
-// CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[FALSE]]{{.*}}outs(%[[INIT_TENSOR]]
-// CHECK: linalg.generic
-// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
-// CHECK-SAME: iterator_types = ["parallel", "reduction"]
-// CHECK-SAME: ins(%{{.*}}tensor<5x4xi1>)
-// CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi1>)
-// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i1, %[[RHS_IN:.*]]: i1):
-// CHECK-NEXT:   linalg.yield %[[FALSE]] : i1
-
-// -----
-
-func.func @reduce_xor(%arg0: tensor<5x4xi1>,
-                      %arg1: tensor<i1>) -> tensor<5xi1> {
-  %0 = "mhlo.reduce"(%arg0, %arg1) ({
-  ^bb0(%arg3: tensor<i1>, %arg4 : tensor<i1>):
-    %1 = mhlo.xor %arg3, %arg4 : tensor<i1>
-    "mhlo.return"(%1) : (tensor<i1>) -> ()
-  }) {dimensions = dense<1> : tensor<1xi64>}
-   : (tensor<5x4xi1>, tensor<i1>) -> tensor<5xi1>
-  func.return %0 : tensor<5xi1>
-}
-// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
-// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
-// CHECK-LABEL: @reduce_xor
-// CHECK-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i1>
-// CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5]
-// CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[INIT]]{{.*}}outs(%[[INIT_TENSOR]]
-// CHECK: linalg.generic
-// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
-// CHECK-SAME: iterator_types = ["parallel", "reduction"]
-// CHECK-SAME: ins(%{{.*}}tensor<5x4xi1>)
-// CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi1>)
-// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i1, %[[RHS_IN:.*]]: i1):
-// CHECK-NEXT:   %[[RESULT:.*]] = arith.xori %[[LHS_IN]], %[[RHS_IN]] : i1
-// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
 
@@ -2611,7 +2426,7 @@ func.func @reduce_dim0(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<4xi
 // CHECK-SAME: ins(%{{.*}}tensor<5x4xi32>)
 // CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<4xi32>)
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = arith.maxsi %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.maxsi %[[RHS_IN]], %[[LHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -2636,7 +2451,7 @@ func.func @reduce_init_const(%arg0: tensor<1x10xf32>) -> tensor<1xf32> {
 // CHECK-SAME: ins(%{{.*}}tensor<1x10xf32>)
 // CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<1xf32>)
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = arith.addf %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.addf %[[RHS_IN]], %[[LHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -2662,7 +2477,7 @@ func.func @reduce_multi_dimensions(%arg0: tensor<5x4x3xi32>,
 // CHECK-SAME: ins(%{{.*}}tensor<5x4x3xi32>)
 // CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<4xi32>)
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = arith.addi %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.addi %[[RHS_IN]], %[[LHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -2732,7 +2547,7 @@ func.func @reduce_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<i32>) -> tensor<
 // CHECK-SAME: ins(%{{.*}}tensor<?x?xi32>)
 // CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<?xi32>)
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = arith.addi %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.addi %[[RHS_IN]], %[[LHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -2769,11 +2584,11 @@ func.func @variadic_reduce(%arg0: tensor<9x2xi32>, %arg1: tensor<9x2xi32>) -> (t
 // CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<9x2xi32>, tensor<9x2xi32>)
 // CHECK-SAME:    outs(%[[FILL0]], %[[FILL1]] : tensor<2xi32>, tensor<2xi32>)
 // CHECK-NEXT:   ^bb0(%[[IN0:.*]]: i32, %[[IN1:.*]]: i32, %[[OUT0:.*]]: i32, %[[OUT1:.*]]: i32):
-// CHECK-NEXT:     %[[T1:.*]] = arith.cmpi sge, %[[IN0]], %[[OUT0]] : i32
-// CHECK-NEXT:     %[[T2:.*]] = arith.select %[[T1]], %[[IN0]], %[[OUT0]] : i32
-// CHECK-NEXT:     %[[T3:.*]] = arith.cmpi eq, %[[IN0]], %[[OUT0]] : i32
-// CHECK-NEXT:     %[[T4:.*]] = arith.minsi %[[IN1:.*]], %[[OUT1]] : i32
-// CHECK-NEXT:     %[[T5:.*]] = arith.select %[[T1]], %[[IN1]], %[[OUT1]] : i32
+// CHECK-NEXT:     %[[T1:.*]] = arith.cmpi sge, %[[OUT0]], %[[IN0]] : i32
+// CHECK-NEXT:     %[[T2:.*]] = arith.select %[[T1]], %[[OUT0]], %[[IN0]] : i32
+// CHECK-NEXT:     %[[T3:.*]] = arith.cmpi eq, %[[OUT0]], %[[IN0]] : i32
+// CHECK-NEXT:     %[[T4:.*]] = arith.minsi %[[OUT1:.*]], %[[IN1]] : i32
+// CHECK-NEXT:     %[[T5:.*]] = arith.select %[[T1]], %[[OUT1]], %[[IN1]] : i32
 // CHECK-NEXT:     %[[T6:.*]] = arith.select %[[T3]], %[[T4]], %[[T5]] : i32
 // CHECK-NEXT:     linalg.yield %[[T2]], %[[T6]]
 
@@ -2808,9 +2623,9 @@ func.func @variadic_diff_type_reduce(%arg0: tensor<128x10xf32>, %arg1: tensor<12
 // CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<128x10xf32>, tensor<128x10xi32>)
 // CHECK-SAME:    outs(%[[FILL0]], %[[FILL1]] : tensor<128xf32>, tensor<128xi32>)
 // CHECK-NEXT:   ^bb0(%[[LHS0:.*]]: f32, %[[LHS1:.*]]: i32, %[[RHS0:.*]]: f32, %[[RHS1:.*]]: i32):
-// CHECK-NEXT:      %[[B0:.*]] = arith.cmpf oge, %[[LHS0]], %[[RHS0]] : f32
-// CHECK-NEXT:      %[[RES0:.*]] = arith.select %[[B0]], %[[LHS0]], %[[RHS0]] : f32
-// CHECK-NEXT:      %[[RES1:.*]] = arith.select %[[B0]], %[[LHS1]], %[[RHS1]] : i32
+// CHECK-NEXT:      %[[B0:.*]] = arith.cmpf oge, %[[RHS0]], %[[LHS0]] : f32
+// CHECK-NEXT:      %[[RES0:.*]] = arith.select %[[B0]], %[[RHS0]], %[[LHS0]] : f32
+// CHECK-NEXT:      %[[RES1:.*]] = arith.select %[[B0]], %[[RHS1]], %[[LHS1]] : i32
 // CHECK-NEXT:      linalg.yield %[[RES0]], %[[RES1]] : f32, i32
 
 // -----
@@ -3882,7 +3697,7 @@ func.func @reduce_window_sum_ndhwc_dilated_base(
 // CHECK: %[[WINDOW:.+]] = linalg.init_tensor [2] : tensor<2xf32>
 // CHECK: %[[REDUCE:.+]] = linalg.generic {indexing_maps = [#[[MAP2]], #[[MAP3]], #[[MAP4]]], iterator_types = ["parallel", "parallel", "reduction"]} ins(%[[PAD]], %[[WINDOW]] : tensor<7x9xf32>, tensor<2xf32>) outs(%[[FILL]] : tensor<4x7xf32>) {
 // CHECK: ^bb0(%arg2: f32, %arg3: f32, %arg4: f32):
-// CHECK:   %[[ADD:.+]] = arith.addf %arg2, %arg4 : f32
+// CHECK:   %[[ADD:.+]] = arith.addf %arg4, %arg2 : f32
 // CHECK:   linalg.yield %[[ADD]]
 
 // CHECK: return %[[REDUCE]]
@@ -4827,127 +4642,6 @@ func.func @pred_compare(%lhs: tensor<2x2xi1>, %rhs: tensor<2x2xi1>) -> tensor<2x
   %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<2x2xi1>, tensor<2x2xi1>) -> tensor<2x2xi1>
   func.return %0 : tensor<2x2xi1>
 }
-
-// -----
-
-func.func @scatter_update_scalar(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
-                            %arg2: tensor<1xi32>) -> tensor<3xi32> {
-  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
-  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
-    "mhlo.return"(%arg4) : (tensor<i32>) -> ()
-  }) {
-    indices_are_sorted = false,
-    scatter_dimension_numbers = #mhlo.scatter<
-      update_window_dims = [],
-      inserted_window_dims = [0],
-      scatter_dims_to_operand_dims = [0],
-      index_vector_dim = 1,
-    >,
-    unique_indices = false
-  } : (tensor<3xi32>, tensor<1x1xi32>, tensor<1xi32>) -> tensor<3xi32>
-  func.return %0 : tensor<3xi32>
-}
-// CHECK:   #[[MAP0:.*]] = affine_map<(d0, d1) -> (d1, 0)>
-// CHECK:   #[[MAP1:.*]] = affine_map<(d0, d1) -> (d1)>
-// CHECK:   #[[MAP2:.*]] = affine_map<(d0, d1) -> (d0)>
-// CHECK:       func @scatter_update_scalar
-// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
-// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
-// CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
-// CHECK:         %[[RES:.*]] = linalg.generic
-// CHECK-SAME:      indexing_maps = [#[[MAP0]], #[[MAP1]], #[[MAP2]]]
-// CHECK-SAME:      iterator_types = ["parallel", "parallel"]
-// CHECK-SAME:      ins(%[[ARG1]], %[[ARG2]] : tensor<1x1xi32>, tensor<1xi32>)
-// CHECK-SAME:     outs(%[[ARG0]] : tensor<3xi32>) {
-// CHECK:         ^bb0(%[[IDX_I32:.*]]: i32, %[[UPDATE:.*]]: i32, %[[OUT:.*]]: i32):
-// CHECK:           %[[CMP_IDX:.*]] = linalg.index 0 : index
-// CHECK:           %[[IDX:.*]] = arith.index_cast %[[IDX_I32]] : i32 to index
-// CHECK:           %[[PRED:.*]] = arith.cmpi eq, %[[CMP_IDX]], %[[IDX]] : index
-// CHECK:           %[[SELECT:.*]] = arith.select %[[PRED]], %[[UPDATE]], %[[OUT]] : i32
-// CHECK:           linalg.yield %[[SELECT]] : i32
-// CHECK:         } -> tensor<3xi32>
-// CHECK:         return %[[RES]] : tensor<3xi32>
-
-// -----
-
-func.func @scatter_update_slice(%arg0: tensor<6x3xi32>, %arg1: tensor<2x1xi32>,
-                           %arg2: tensor<2x3xi32>) -> tensor<6x3xi32> {
-  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
-  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
-    "mhlo.return"(%arg4) : (tensor<i32>) -> ()
-  }) {
-    indices_are_sorted = false,
-    scatter_dimension_numbers = #mhlo.scatter<
-      update_window_dims = [1],
-      inserted_window_dims = [0],
-      scatter_dims_to_operand_dims = [0],
-      index_vector_dim = 1,
-    >,
-    unique_indices = false
-  } : (tensor<6x3xi32>, tensor<2x1xi32>, tensor<2x3xi32>) -> tensor<6x3xi32>
-  func.return %0 : tensor<6x3xi32>
-}
-// CHECK-DAG:   #[[MAP0:.*]] = affine_map<(d0, d1, d2) -> (d2, 0)>
-// CHECK-DAG:   #[[MAP1:.*]] = affine_map<(d0, d1, d2) -> (d2, d1)>
-// CHECK-DAG:   #[[MAP2:.*]] = affine_map<(d0, d1, d2) -> (d0, d1)>
-// CHECK:       func @scatter_update_slice
-// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
-// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
-// CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
-// CHECK:         %[[RES:.*]] = linalg.generic
-// CHECK-SAME:      indexing_maps = [#[[MAP0]], #[[MAP1]], #[[MAP2]]]
-// CHECK-SAME:      iterator_types = ["parallel", "parallel", "parallel"]
-// CHECK-SAME:      ins(%[[ARG1]], %[[ARG2]] : tensor<2x1xi32>, tensor<2x3xi32>)
-// CHECK-SAME:     outs(%[[ARG0]] : tensor<6x3xi32>) {
-// CHECK:         ^bb0(%[[IDX_I32:.*]]: i32, %[[UPDATE:.*]]: i32, %[[OUT:.*]]: i32):
-// CHECK:           %[[CMP_IDX:.*]] = linalg.index 0 : index
-// CHECK:           %[[IDX:.*]] = arith.index_cast %[[IDX_I32]] : i32 to index
-// CHECK:           %[[PRED:.*]] = arith.cmpi eq, %[[CMP_IDX]], %[[IDX]] : index
-// CHECK:           %[[SELECT:.*]] = arith.select %[[PRED]], %[[UPDATE]], %[[OUT]] : i32
-// CHECK:           linalg.yield %[[SELECT]] : i32
-// CHECK:         } -> tensor<6x3xi32>
-// CHECK:         return %[[RES]] : tensor<6x3xi32>
-
-// -----
-
-func.func @scatter_update_nontrivial_computation(%arg0: tensor<3xi32>,
-  %arg1: tensor<6x1xi32>, %arg2: tensor<6xi32>) -> tensor<3xi32> {
-  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
-  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
-    %1 = mhlo.add %arg3, %arg4 : tensor<i32>
-    "mhlo.return"(%1) : (tensor<i32>) -> ()
-  }) {
-    indices_are_sorted = false,
-    scatter_dimension_numbers = #mhlo.scatter<
-      inserted_window_dims = [0],
-      scatter_dims_to_operand_dims = [0],
-      index_vector_dim = 1
-    >,
-    unique_indices = false
-  } : (tensor<3xi32>, tensor<6x1xi32>, tensor<6xi32>) -> tensor<3xi32>
-  return %0 : tensor<3xi32>
-}
-
-// CHECK-DAG:   #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0)>
-// CHECK-DAG:   #[[MAP1:.*]] = affine_map<(d0, d1) -> (d1, 0)>
-// CHECK-DAG:   #[[MAP2:.*]] = affine_map<(d0, d1) -> (d1)>
-// CHECK:       func @scatter_update_nontrivial_computation
-// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
-// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
-// CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
-// CHECK:         %[[RES:.*]] = linalg.generic
-// CHECK-SAME:      indexing_maps = [#[[MAP1]], #[[MAP2]], #[[MAP0]]]
-// CHECK-SAME:      iterator_types = ["parallel", "parallel"]
-// CHECK-SAME:      ins(%[[ARG1]], %[[ARG2]] : tensor<6x1xi32>, tensor<6xi32>)
-// CHECK-SAME:     outs(%[[ARG0]] : tensor<3xi32>) {
-// CHECK:         ^bb0(%[[IDX_I32:.*]]: i32, %{{.*}}: i32, %{{.*}}: i32):
-// CHECK:           %[[CMP_IDX:.*]] = linalg.index 0 : index
-// CHECK:           %[[IDX:.*]] = arith.index_cast %[[IDX_I32]] : i32 to index
-// CHECK:           %[[PRED:.*]] = arith.cmpi eq, %[[CMP_IDX]], %[[IDX]] : index
-// CHECK:           %[[SELECT:.*]] =  arith.select %[[PRED]], %{{.*}}, %{{.*}}: i32
-// CHECK:           linalg.yield %[[SELECT]] : i32
-// CHECK:         } -> tensor<3xi32>
-// CHECK:         return %[[RES]] : tensor<3xi32>
 
 // -----
 

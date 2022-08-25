@@ -101,6 +101,7 @@ package_group(
     packages = [
         "//tensorflow/...",
         "//tensorflow_text/...",
+        "//waymo/onboard/ml/...",
     ],
 )
 
@@ -512,6 +513,19 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_device_array",
+    hdrs = [
+        "gpu_device_array.h",
+        "gpu_device_array_gpu.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_headers_lib",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "gpu_prim_hdrs",
     hdrs = ["gpu_prim.h"],
     deps = if_cuda([
@@ -562,7 +576,7 @@ cc_library(
         #
         # TODO(b/202546057) get rid of this once fused_conv is moved out of
         # contrib.
-        "//tensorflow/stream_executor:lazy_op_runner.h",
+        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner.h",
     ],
 )
 
@@ -578,9 +592,9 @@ tf_cuda_library(
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util/proto:proto_utils",
-        "//tensorflow/stream_executor:lazy_op_runner",
-        "//tensorflow/stream_executor/gpu:asm_compiler",
-        "//tensorflow/stream_executor/gpu:redzone_allocator",
+        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
+        "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
+        "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
@@ -589,7 +603,7 @@ tf_cuda_library(
         "//tensorflow/core/util/autotune_maps:conv_parameters",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
-        "//tensorflow/stream_executor:tf_allocator_adapter",
+        "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
     ]),
 )
 
@@ -789,20 +803,6 @@ cc_library(
 )
 
 # Private support libraries ---------------------------------------------------
-
-cc_library(
-    name = "gpu_device_array",
-    hdrs = [
-        "gpu_device_array.h",
-        "gpu_device_array_gpu.h",
-    ],
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_headers_lib",
-        "//tensorflow/core:lib",
-    ],
-)
 
 # Depending on a build configuration this target provides custom kernel for Eigen
 # tensor contractions (small matrix multiplication kernel used to multiple together
@@ -1899,7 +1899,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/stream_executor/cuda:cudnn_plugin",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
     ] + if_mkl(["//tensorflow/core/kernels/mkl:mkl_conv_op"]),
 )
 
@@ -1914,6 +1914,7 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1922,7 +1923,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/stream_executor/cuda:cudnn_plugin",
     ],
 )
 
@@ -1937,6 +1937,7 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1945,7 +1946,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/stream_executor/cuda:cudnn_plugin",
     ],
 )
 
@@ -2026,6 +2026,7 @@ tf_cuda_cc_test(
         ":fused_batch_norm_op",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2033,7 +2034,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/stream_executor/cuda:cudnn_plugin",
     ],
 )
 
@@ -2053,6 +2053,7 @@ tf_cuda_cc_test(
         ":relu_op",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
@@ -2062,7 +2063,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/stream_executor/cuda:cudnn_plugin",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],
@@ -2077,6 +2077,7 @@ tf_cc_test(
         ":in_topk_op",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2084,7 +2085,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/stream_executor/cuda:cudnn_plugin",
     ],
 )
 
@@ -2288,6 +2288,7 @@ tf_cc_test(
         ":one_hot_op",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2295,7 +2296,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/stream_executor/cuda:cudnn_plugin",
     ],
 )
 
@@ -3012,9 +3012,9 @@ tf_kernel_library(
         ":fill_functor",
         ":tensor_list",
         ":tensor_list_util",
+        "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor",
         "//third_party/eigen3",
     ],
 )
@@ -3106,6 +3106,7 @@ tf_kernel_library(
     name = "partitioned_function_ops",
     prefix = "partitioned_function_ops",
     deps = [
+        "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3116,7 +3117,6 @@ tf_kernel_library(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/stream_executor:stream",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -3620,7 +3620,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
         ":matmul_util",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
     ]),
@@ -3636,9 +3636,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/util:env_var",
-        "//tensorflow/stream_executor/cuda:cublas_lt_header",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
     ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
@@ -3728,7 +3728,7 @@ tf_kernel_library(
     prefix = "fft_ops",
     deps = MATH_DEPS + [
     ] + if_cuda([
-        "//tensorflow/core/platform/default/build_config:cufft_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cufft_plugin",
     ]),
 )
 
@@ -4159,15 +4159,15 @@ tf_kernel_library(
         ],
         "//conditions:default": [],
     }) + if_cuda([
-        "//tensorflow/stream_executor/gpu:gpu_asm_opts",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
-        "//tensorflow/core/platform/default/build_config:cudnn_plugin",
-        "//tensorflow/stream_executor:tf_allocator_adapter",
-        "//tensorflow/stream_executor:stream_executor_headers",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cudnn_plugin",
+        "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/core/platform:stream_executor",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
-        "//tensorflow/stream_executor/gpu:redzone_allocator",
+        "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
         "//tensorflow/core/util/autotune_maps:conv_autotune_maps",
     ]),
@@ -4311,7 +4311,7 @@ tf_kernel_library(
     ]) + if_cuda([
         "@local_config_cuda//cuda:cub_headers",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/stream_executor/cuda:cuda_stream",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_stream",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),

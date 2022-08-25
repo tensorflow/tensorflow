@@ -284,8 +284,14 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
 
   switch (what) {
     case PyTrace_CALL: {
+#if PY_VERSION_HEX < 0x030b0000
       PyCodeObject* f_code = frame->f_code;
       thread_traces.active.emplace(now, 0, f_code);
+#else   // PY_VERSION_HEX < 0x030b0000
+      PyCodeObject* f_code = PyFrame_GetCode(frame);
+      thread_traces.active.emplace(now, 0, f_code);
+      Py_XDECREF(f_code);
+#endif  // PY_VERSION_HEX < 0x030b0000
       break;
     }
     case PyTrace_RETURN:
@@ -296,8 +302,14 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
         thread_traces.completed.emplace_back(std::move(entry));
         thread_traces.active.pop();
       } else if (options_.include_incomplete_events) {
+#if PY_VERSION_HEX < 0x030b0000
         PyCodeObject* f_code = frame->f_code;
         thread_traces.completed.emplace_back(start_timestamp_ns_, now, f_code);
+#else   // PY_VERSION_HEX < 0x030b0000
+        PyCodeObject* f_code = PyFrame_GetCode(frame);
+        thread_traces.completed.emplace_back(start_timestamp_ns_, now, f_code);
+        Py_XDECREF(f_code);
+#endif  // PY_VERSION_HEX < 0x030b0000
       }
       break;
     }

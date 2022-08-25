@@ -22,7 +22,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
-#include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -224,7 +223,7 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
  public:
   static constexpr char ID = 0;  // NOLINT
 
-  MemrefDesc(tfrt::DType dtype, void* data, int64_t offset,
+  MemrefDesc(PrimitiveType dtype, void* data, int64_t offset,
              llvm::ArrayRef<int64_t> sizes, llvm::ArrayRef<int64_t> strides)
       : rank_(sizes.size()), dtype_(dtype), data_(data), offset_(offset) {
     assert(sizes.size() == strides.size() && "invalid sizes and strides pair");
@@ -245,7 +244,7 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
   // inline it at the call site, because MemrefDesc construction is on a hot
   // path.
   template <typename InitializeSizesAndStrides>
-  MemrefDesc(unsigned rank, tfrt::DType dtype, void* data, int64_t offset,
+  MemrefDesc(unsigned rank, PrimitiveType dtype, void* data, int64_t offset,
              InitializeSizesAndStrides initialize);
 
   // Ensure that MemrefDesc is always moved around instead of copying.
@@ -255,7 +254,7 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
   MemrefDesc& operator=(MemrefDesc&&) = default;
 
   unsigned rank() const { return rank_; }
-  tfrt::DType dtype() const { return dtype_; }
+  PrimitiveType dtype() const { return dtype_; }
 
   void* data() const { return data_; }
   int64_t offset() const { return offset_; }
@@ -278,7 +277,7 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
 
  private:
   unsigned rank_;
-  tfrt::DType dtype_;
+  PrimitiveType dtype_;
   void* data_;
   int64_t offset_;
   // We keep sizes and strides in a single container to save one potential
@@ -288,7 +287,7 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
 };
 
 template <typename InitializeSizesAndStrides>
-MemrefDesc::MemrefDesc(unsigned rank, tfrt::DType dtype, void* data,
+MemrefDesc::MemrefDesc(unsigned rank, PrimitiveType dtype, void* data,
                        int64_t offset, InitializeSizesAndStrides initialize)
     : rank_(rank), dtype_(dtype), data_(data), offset_(offset) {
   sizes_and_strides_.resize(2 * rank_);
@@ -306,6 +305,28 @@ MemrefDesc::MemrefDesc(unsigned rank, tfrt::DType dtype, void* data,
 // error message in case of an error.
 llvm::Error VerifyMemrefArgument(unsigned index, const Type& type,
                                  const MemrefDesc& arg);
+
+//===----------------------------------------------------------------------===//
+// BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
+//===----------------------------------------------------------------------===//
+
+class BufferDesc final : public llvm::RTTIExtends<BufferDesc, Argument> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  BufferDesc(void* data, size_t size) : data_(data), size_(size) {}
+
+  void* data() const { return data_; }
+  size_t size() const { return size_; }
+
+  llvm::Error Verify(const Type& type) const final;
+  size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
+  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+
+ private:
+  void* data_;
+  size_t size_;
+};
 
 }  // namespace runtime
 }  // namespace xla

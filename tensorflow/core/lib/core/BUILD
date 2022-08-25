@@ -8,6 +8,7 @@ load(
 package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -144,6 +145,7 @@ tf_proto_library(
     visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/core/protobuf:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
     ],
     exports = ["//tensorflow/core/protobuf:error_codes_proto_impl"],
 )

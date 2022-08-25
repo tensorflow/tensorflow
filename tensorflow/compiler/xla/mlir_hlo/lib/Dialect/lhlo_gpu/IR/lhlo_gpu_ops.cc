@@ -59,7 +59,7 @@ static FailureOr<bool> parseBool(AsmParser &parser) {
 static FailureOr<SmallVector<int64_t>> parseI64Array(AsmParser &parser) {
   SmallVector<int64_t> elements;
   auto elementParser = [&]() {
-    int64_t element;
+    int64_t element = 0;
     if (failed(parser.parseInteger(element))) return failure();
     elements.push_back(element);
     return success();

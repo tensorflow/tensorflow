@@ -43,6 +43,8 @@ pybind_extension(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
         "//tensorflow/compiler/mlir/tfrt/python_tests:python_test_attrs_registration",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/core/platform:dynamic_annotations",
         "//third_party/eigen3",
         "//third_party/python_runtime:headers",  # build_cleaner: keep
@@ -53,8 +55,8 @@ pybind_extension(
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
-        "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
+        "@tf_runtime//backends/jitrt:results",
     ],
 )
 
@@ -77,6 +79,7 @@ pybind_extension(
         ":conversion_utils",
         "//tensorflow/compiler/mlir/tfrt:runtime_fallback_executor",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/runtime_fallback/util:type_util",
@@ -94,6 +97,5 @@ pybind_library(
     deps = [
         "//tensorflow/compiler/xla/runtime:arguments",
         "@tf_runtime//:dtype",
-        "@tf_runtime//backends/jitrt:xla",
     ],
 )

@@ -50,6 +50,9 @@ CreateRemoveVariablesInSessionInitializerPass();
 // Creates a pass that removes duplicate 'tf_saved_model.bound_input' bindings.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDedupBoundInputBindingPass();
 
+// Create a pass that removes function arguments that map to global tensors.
+std::unique_ptr<Pass> CreateLowerGlobalsToMlProgramPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 

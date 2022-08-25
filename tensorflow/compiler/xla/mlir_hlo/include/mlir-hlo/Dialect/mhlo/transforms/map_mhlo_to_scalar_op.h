@@ -402,7 +402,7 @@ inline Value mapCompareOpToStdScalarOp(Location loc,
     Optional<arith::CmpIPredicate> predicate =
         getCmpPredicate<arith::CmpIPredicate>(comparisonDirection, !isUnsigned);
     assert(predicate.has_value() && "expected valid comparison direction");
-    return b->create<ScalarIOp<mhlo::CompareOp>>(loc, predicate.getValue(), lhs,
+    return b->create<ScalarIOp<mhlo::CompareOp>>(loc, predicate.value(), lhs,
                                                  rhs);
   }
   if (elementType.isa<FloatType>()) {
@@ -410,7 +410,7 @@ inline Value mapCompareOpToStdScalarOp(Location loc,
         getCmpPredicate<arith::CmpFPredicate>(comparisonDirection,
                                               /*is_signed=*/true);
     assert(predicate.has_value() && "expected valid comparison direction");
-    return b->create<ScalarFOp<mhlo::CompareOp>>(loc, predicate.getValue(), lhs,
+    return b->create<ScalarFOp<mhlo::CompareOp>>(loc, predicate.value(), lhs,
                                                  rhs);
   }
   if (auto complexType = elementType.dyn_cast<ComplexType>()) {

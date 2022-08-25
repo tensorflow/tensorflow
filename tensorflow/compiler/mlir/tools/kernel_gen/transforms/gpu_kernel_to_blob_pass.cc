@@ -31,10 +31,10 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #elif TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #endif
 
 namespace mlir {

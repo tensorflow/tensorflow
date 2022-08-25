@@ -64,7 +64,7 @@ std::optional<int64_t> SelectDominantDevice(
 // Assigns all the instructions of a computation, to a given device.
 // This API does not recurse into called computations, and does not assign
 // instructions which already have sharding.
-Status AssignComputationDevice(HloComputation* computation, int64_t device);
+void AssignComputationDevice(HloComputation* computation, int64_t device);
 
 // Given an instruction container, returns the device which is most commonly
 // occurring among the instructions.
@@ -78,7 +78,7 @@ std::optional<int64_t> GetMostOccurringDevice(
 // This API does not recurse into called computations.
 // If no device exists that satisfies the condition, the returned optional will
 // hold no value.
-StatusOr<std::optional<int64_t>> GetDominantDevice(
+std::optional<int64_t> GetDominantDevice(
     absl::Span<HloComputation* const> computations, double dominant_factor);
 
 // Returns the HloSharding with the tile dimensions and tile assignment

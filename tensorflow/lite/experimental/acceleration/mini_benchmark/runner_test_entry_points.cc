@@ -18,9 +18,17 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <iostream>
+#include <memory>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 
 extern "C" {
+
+constexpr int kStdOutFd = 1;
 
 int JustReturnZero(int argc, char** argv) { return 0; }
 
@@ -36,14 +44,14 @@ int SigKill(int argc, char** argv) {
 }
 
 int WriteOk(int argc, char** argv) {
-  write(1, "ok\n", 3);
+  write(kStdOutFd, "ok\n", 3);
   return ::tflite::acceleration::kMinibenchmarkSuccess;
 }
 
 int Write10kChars(int argc, char** argv) {
   char buffer[10000];
   memset(buffer, 'A', 10000);
-  return write(1, buffer, 10000) == 10000
+  return write(kStdOutFd, buffer, 10000) == 10000
              ? ::tflite::acceleration::kMinibenchmarkSuccess
              : 1;
 }
@@ -54,6 +62,29 @@ int WriteArgs(int argc, char** argv) {
     write(1, "\n", 1);
   }
   return ::tflite::acceleration::kMinibenchmarkSuccess;
+}
+
+int ReadFromPipe(int argc, char** argv) {
+  std::unique_ptr<tflite::acceleration::ModelLoader> model_loader =
+      tflite::acceleration::CreateModelLoaderFromPath(argv[3]);
+  if (model_loader->Init() != tflite::acceleration::kMinibenchmarkSuccess) {
+    return 1;
+  }
+  tflite::ModelT model;
+  model_loader->GetModel()->GetModel()->UnPackTo(&model);
+  flatbuffers::FlatBufferBuilder fbb;
+  fbb.Finish(CreateModel(fbb, &model));
+
+  return write(kStdOutFd, fbb.GetBufferPointer(), fbb.GetSize()) ==
+                 fbb.GetSize()
+             ? ::tflite::acceleration::kMinibenchmarkSuccess
+             : 1;
+}
+
+int ReadFromPipeInProcess(int argc, char** argv) {
+  std::unique_ptr<tflite::acceleration::ModelLoader> model_loader =
+      tflite::acceleration::CreateModelLoaderFromPath(argv[3]);
+  return model_loader->Init();
 }
 
 }  // extern "C"

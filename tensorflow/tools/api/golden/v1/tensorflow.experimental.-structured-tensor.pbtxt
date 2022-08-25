@@ -1,0 +1,88 @@
+path: "tensorflow.experimental.StructuredTensor"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.structured.structured_tensor.StructuredTensor\'>"
+  is_instance: "<class \'tensorflow.python.framework.extension_type.BatchableExtensionType\'>"
+  is_instance: "<class \'tensorflow.python.framework.extension_type.ExtensionType\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "FieldFn"
+    mtype: "<class \'typing._CallableGenericAlias\'>"
+  }
+  member {
+    name: "FieldName"
+    mtype: "typing.Union"
+  }
+  member {
+    name: "FieldValue"
+    mtype: "typing.Union"
+  }
+  member {
+    name: "Spec"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "rank"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "row_partitions"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'fields\', \'ragged_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "field_names"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "field_value"
+    argspec: "args=[\'self\', \'field_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_fields"
+    argspec: "args=[\'cls\', \'fields\', \'shape\', \'nrows\', \'row_partitions\', \'validate\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "from_fields_and_rank"
+    argspec: "args=[\'cls\', \'fields\', \'rank\', \'validate\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "from_pyval"
+    argspec: "args=[\'cls\', \'pyval\', \'typespec\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_shape"
+    argspec: "args=[\'cls\', \'ragged_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "merge_dims"
+    argspec: "args=[\'self\', \'outer_axis\', \'inner_axis\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "nrows"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "partition_outer_dimension"
+    argspec: "args=[\'self\', \'row_partition\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "promote"
+    argspec: "args=[\'self\', \'source_path\', \'new_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_pyval"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_updates"
+    argspec: "args=[\'self\', \'updates\', \'validate\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+}

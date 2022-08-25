@@ -129,6 +129,14 @@ HloInstruction* HloComputation::AddInstruction(
   return AddInstructionInternal(std::move(instruction));
 }
 
+HloInstruction* HloComputation::AddInstruction(
+    std::unique_ptr<HloInstruction> instruction, const OpMetadata* metadata) {
+  if (metadata != nullptr) {
+    instruction->set_metadata(*metadata);
+  }
+  return AddInstruction(std::move(instruction));
+}
+
 HloInstruction* HloComputation::AddInstructionInternal(
     std::unique_ptr<HloInstruction> instruction) {
   if (parent() != nullptr) {

@@ -376,24 +376,34 @@ HloInstruction* SpmdBuilder::AddInstruction(
   return hlo;
 }
 
-PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target) {
+PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
+                                       std::optional<Literal> pad_value) {
   if (sharding() == target) {
     return *this;
   }
   auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
+  // Replace existing reshard cache for target if we are sharding with new
+  // padding value.
+  const bool replace_cache = pad_value.has_value();
   const bool is_to_replicate =
       hlo_->shape().IsArray() && target.NumTiles() < sharding().NumTiles();
   const bool use_cache =
       !is_to_replicate || state_.partitioner->options().cache_all_gather;
-  if (use_cache) {
+  if (!replace_cache && use_cache) {
     auto it = cache.find(target);
     if (it != cache.end()) {
       return it->second;
     }
   }
-  auto resharded = ReshardNoCache(target);
-  state_.reshard_cache->per_hlo_cache[resharded.hlo()]
-      .reshard_cache.insert_or_assign(sharding(), *this);
+
+  auto resharded = ReshardNoCache(target, std::move(pad_value));
+  // Update cache for resharded hlo.
+  {
+    auto& cache =
+        state_.reshard_cache->per_hlo_cache[resharded.hlo()].reshard_cache;
+    cache.insert_or_assign(sharding(), *this);
+  }
+  // Update cache for to-reshard hlo.
   if (use_cache) {
     // Get the cache again as it might be invalidated by the insertion above.
     auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
@@ -404,6 +414,7 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target) {
 }
 
 PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target,
+                                              std::optional<Literal> pad_value,
                                               bool allow_full_replication) {
   VLOG(2) << "Resharding " << hlo_->ToString() << " from "
           << hlo_->sharding().ToString() << " to " << target.ToString();
@@ -542,8 +553,8 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target,
   }
 
   // 'Replicated' to 'Tiled'.
-  auto padded_hlo =
-      PadBaseShapeBeforeUnevenTiledSharding(hlo_, target, state_.b);
+  auto padded_hlo = PadBaseShapeBeforeUnevenTiledSharding(
+      hlo_, target, state_.b, std::move(pad_value));
   auto shard_shape = MakePartitionedShape(shape, target);
   auto slice = state_.b->AddInstruction(HloInstruction::CreateDynamicSlice(
       shard_shape, padded_hlo,
@@ -1781,6 +1792,7 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
         sharding().tile_assignment().dim(reshape->second), before_sharding);
     VLOG(5) << "Reshaped shape: " << reshaped.hlo()->shape().ToString();
     auto reshard = reshaped.ReshardNoCache(reshape->first,
+                                           /*pad_value=*/std::nullopt,
                                            /*allow_full_replication=*/false);
     if (reshard.sharding() != reshape->first) {
       return std::nullopt;
@@ -1789,8 +1801,8 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
         reshard.sharding(), reshape->second);
     reshaped = MergeReshapeHelper(reshard, reshape->second, reshaped_sharding);
     if (reshaped.sharding() != target) {
-      reshaped =
-          reshaped.ReshardNoCache(target, /*allow_full_replication=*/false);
+      reshaped = reshaped.ReshardNoCache(target, /*pad_value=*/std::nullopt,
+                                         /*allow_full_replication=*/false);
       if (reshaped.sharding() != target) {
         return std::nullopt;
       }
@@ -1803,7 +1815,7 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
             << intermediate_target->ToString();
     auto intermediate_reshard = Reshard(*intermediate_target);
     auto final_reshard = intermediate_reshard.ReshardNoCache(
-        target, /*allow_full_replication=*/false);
+        target, /*pad_value=*/std::nullopt, /*allow_full_replication=*/false);
     if (final_reshard.sharding() != target) {
       return std::nullopt;
     }
@@ -1840,7 +1852,7 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
         hlo_sharding_util::TransposeSharding(sharding(), transpose_dims);
     auto intermediate_reshard = Reshard(intermediate_sharding);
     auto reshard = intermediate_reshard.ReshardNoCache(
-        target, /*allow_full_replication=*/false);
+        target, /*pad_value=*/std::nullopt, /*allow_full_replication=*/false);
     if (reshard.sharding() != target) {
       return std::nullopt;
     }
@@ -3919,7 +3931,9 @@ Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
           ? hlo->sharding().GetTupleSharding(hlo->shape()).ValueOrDie()
           : hlo->sharding();
   Shape shard_shape = MakePartitionedShape(hlo->shape(), result_sharding);
-  *sharded_rw_shape.mutable_layout() = shard_shape.layout();
+  if (shard_shape.has_layout()) {
+    *sharded_rw_shape.mutable_layout() = shard_shape.layout();
+  }
   SetPartitionedHlo(hlo, [&]() {
     HloInstruction* sharded_rw =
         b_.AddInstruction(HloInstruction::CreateReduceWindow(

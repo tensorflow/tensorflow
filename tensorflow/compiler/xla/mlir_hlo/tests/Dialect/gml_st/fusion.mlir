@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --split-input-file --gml-fusion | FileCheck %s
+// RUN: mlir-hlo-opt %s --split-input-file --gml-deprecated-fusion | FileCheck %s
 
 // CHECK-LABEL: @dynamic_broadcast_in_dim_at_tile
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?xf32>, %[[SHAPE:.*]]: tensor<3xindex>, %[[TILE:.*]]: !gml_st.tile<3x4x?>
@@ -32,7 +32,7 @@ func.func @dynamic_broadcast_in_dim_at_tile(%arg : tensor<?x?xf32>,
   // CHECK:      %[[BCAST_SUB:.*]] = thlo.dynamic_broadcast_in_dim
   // CHECK-SAME:   ins(%[[ARG_SUB]] : tensor<?x?xf32>)
   // CHECK-SAME:   outs(%[[INIT_SUB]] : tensor<3x4x?xf32>)
-  // CHECK-SAME:   {broadcast_dimensions = [:i64 0, 2]}
+  // CHECK-SAME:   broadcast_dimensions = [0, 2]
   // CHECK:      return %[[BCAST_SUB]]
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -43,7 +43,7 @@ func.func @dynamic_broadcast_in_dim_at_tile(%arg : tensor<?x?xf32>,
   %dst = linalg.init_tensor [%d0, %d1, %d2] : tensor<?x?x?xf32>
   %bcast = thlo.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
       outs(%dst: tensor<?x?x?xf32>)
-      { broadcast_dimensions = [:i64 0, 2] }
+      broadcast_dimensions = [0, 2]
   %bcast_sub = gml_st.materialize %bcast[%tile]
       : tensor<?x?x?xf32>[!gml_st.tile<3x4x?>]
   func.return %bcast_sub : tensor<3x4x?xf32>
@@ -82,7 +82,7 @@ func.func @dynamic_broadcast_in_dim_at_point(%arg : tensor<?x?xf32>,
   %dst = linalg.init_tensor [%d0, %d1, %d2] : tensor<?x?x?xf32>
   %bcast = thlo.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
       outs(%dst: tensor<?x?x?xf32>)
-      { broadcast_dimensions = [:i64 0, 2] }
+      broadcast_dimensions = [0, 2]
   %bcast_sub = gml_st.materialize %bcast[%point]
       : tensor<?x?x?xf32>[!gml_st.point]
   func.return %bcast_sub : f32
@@ -621,9 +621,27 @@ func.func @dim_reification_dynamic_broadcast_in_dim(%arg: tensor<?xf32>,
   %c1 = arith.constant 1 : index
   %0 = thlo.dynamic_broadcast_in_dim
       ins(%arg : tensor<?xf32>) outs(%init : tensor<?x?xf32>)
-      {broadcast_dimensions = [:i64 1]}
+      broadcast_dimensions = [1]
   %1 = tensor.dim %0, %c1 : tensor<?x?xf32>
   return %1 : index
+}
+
+// -----
+
+// CHECK-LABEL: @dim_reification_concatenate
+// CHECK-SAME:  %[[INIT:.*]]: tensor<?x?xi32>, %[[A:.*]]: tensor<?x?xi32>, %[[B:.*]]: tensor<?x?xi32>, %[[C:.*]]: tensor<?x?xi32>
+func.func @dim_reification_concatenate(%init : tensor<?x?xi32>,
+    %a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>) -> index {
+  // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+  // CHECK-DAG:  %[[DIM:.*]] = tensor.dim %[[INIT]], %[[C1]] : tensor<?x?xi32>
+  // CHECK:      return %[[DIM]] : index
+  %c1 = arith.constant 1 : index
+  %concat = thlo.concatenate
+      ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
+      outs(%init : tensor<?x?xi32>)
+      {dimension = 1 : i64}
+  %dim = tensor.dim %concat, %c1 : tensor<?x?xi32>
+  func.return %dim : index
 }
 
 // -----

@@ -22,7 +22,7 @@ namespace xla {
 Status HostCallbackContext::OnSend(int arg_num,
                                    const PjRtTransferMetadata& metadata,
                                    PjRtChunk data) {
-  const auto& arg_info = host_callback_->operands.at(arg_num);
+  const auto& arg_info = host_callback_.operands.at(arg_num);
   const auto& host_shape = arg_info.shape;
   const auto& device_shape = metadata.device_shape;
 
@@ -58,13 +58,13 @@ Status HostCallbackContext::OnSend(int arg_num,
   results.reserve(result_channels_.size());
   result_ptrs.reserve(result_channels_.size());
   for (int i = 0; i < result_channels_.size(); ++i) {
-    const auto& host_shape = host_callback_->results.at(i).shape;
+    const auto& host_shape = host_callback_.results.at(i).shape;
     size_t host_size = ShapeUtil::ByteSizeOf(host_shape);
     results.push_back(PjRtChunk::AllocateDefault(host_size));
     result_ptrs.push_back(results.back().data());
   }
 
-  auto status = host_callback_->callback(result_ptrs.data(), arg_ptrs.data());
+  auto status = host_callback_.callback(result_ptrs.data(), arg_ptrs.data());
   // TODO(chky): Consider populating garbage data in results upon errors.
 
   // Clear the arguments for this invocation. This won't race with next
@@ -89,7 +89,7 @@ void HostCallbackContext::Receive(int res_num,
   auto& result_channel = result_channels_.at(res_num);
   PjRtChunk chunk = result_channel->Pop();
 
-  const auto& host_shape = host_callback_->results.at(res_num).shape;
+  const auto& host_shape = host_callback_.results.at(res_num).shape;
   const auto& device_shape = metadata.device_shape;
 
   auto statusor_linearized = host_memory_for_device_manager_->ToDeviceLayout(
@@ -99,15 +99,16 @@ void HostCallbackContext::Receive(int res_num,
 
 std::unique_ptr<HostCallbackContext>
 CreateHostCallbackStateAndAppendSendRecvCallbacks(
-    const HostCallback* host_callback,
+    HostCallback host_callback,
     PjRtHostMemoryForDeviceManager* host_memory_for_device_manager,
     std::vector<SendCallback>& send_callbacks,
     std::vector<RecvCallback>& recv_callbacks) {
   auto context = std::make_unique<HostCallbackContext>(
-      host_callback, host_memory_for_device_manager);
+      std::move(host_callback), host_memory_for_device_manager);
 
-  for (int arg_num = 0; arg_num < host_callback->operands.size(); ++arg_num) {
-    const auto& operand_info = host_callback->operands[arg_num];
+  const auto& hb = context->host_callback();
+  for (int arg_num = 0; arg_num < hb.operands.size(); ++arg_num) {
+    const auto& operand_info = hb.operands[arg_num];
     send_callbacks.push_back(SendCallback{
         /*channel_id=*/operand_info.channel_id,
         /*callback=*/[arg_num, context = context.get()](
@@ -117,8 +118,8 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
         }});
   }
 
-  for (int res_num = 0; res_num < host_callback->results.size(); ++res_num) {
-    const auto& result_info = host_callback->results[res_num];
+  for (int res_num = 0; res_num < hb.results.size(); ++res_num) {
+    const auto& result_info = hb.results[res_num];
     recv_callbacks.push_back(
         RecvCallback{/*channel_id=*/result_info.channel_id,
                      /*callback=*/[res_num, context = context.get()](

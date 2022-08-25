@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
 namespace tpu {

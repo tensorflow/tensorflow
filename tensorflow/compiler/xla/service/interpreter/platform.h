@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
-#include "tensorflow/stream_executor/executor_cache.h"
-#include "tensorflow/stream_executor/plugin.h"
-#include "tensorflow/stream_executor/stream_executor.h"
-#include "tensorflow/stream_executor/trace_listener.h"
+#include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
+#include "tensorflow/compiler/xla/stream_executor/plugin.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
 
 namespace stream_executor {
 namespace interpreter {

@@ -570,7 +570,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:   tf_device.return
     "tf_device.cluster"() ({
       %0 = "tf.RecvTPUEmbeddingActivations"() {config = "test_config_recv_embedding"} : () -> tensor<512x256xf32>
-      "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> ()
+      "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = array<i32: 1, 0>} : (tensor<512x256xf32>) -> ()
       "tf.A"() {_xla_outside_compilation = "cluster1"} : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
@@ -595,7 +595,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.UnknownOp"() : () -> ()
       "tf.A"() {_xla_outside_compilation = "cluster1"} : () -> ()
       %0 = "tf.RecvTPUEmbeddingActivations"() {config = "test_config_recv_embedding"} : () -> tensor<512x256xf32>
-      "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> ()
+      "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = array<i32: 1, 0>} : (tensor<512x256xf32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     func.return

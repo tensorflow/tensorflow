@@ -163,7 +163,7 @@ class CopyRemoval : bufferization::BufferPlacementTransformationBase {
   /// Insert the original userange intervals of the operation in the map.
   UseInterval::Vector &insertUserangeInterval(
       Value v, DenseMap<Value, UseInterval::Vector> &updateMap) {
-    const auto *original = userange.getUserangeInterval(v).getValue();
+    const auto *original = userange.getUserangeInterval(v).value();
     auto &entry = updateMap[v];
     entry = *original;
     return entry;

@@ -21,7 +21,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
+include "dialect/Base.td"
 include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_base.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_base.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.td"
@@ -29,7 +29,7 @@ include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.td"
 class LHLOGPU_Op<string mnemonic, list<Trait> traits = []> :
   Op<LmhloGpuDialect, mnemonic,
     !listconcat([MemoryEffects<[MemRead, MemWrite]>], traits)>;
- 
+
 // Type for scratch buffers used by GPU library calls (memref<?xi8>)
 def UntypedBuffer : MemRefRankOf<[I8], [1]>;
 
@@ -174,9 +174,9 @@ def LHLOGPU_AllReduceStartOp :
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
     I64ElementsAttr:$replica_groups,
-    DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$constrain_layout,
     OptionalAttr<ChannelHandle>:$channel_id,
-    DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids
   );
   let results = (outs HLO_Token:$token);
   let regions = (region SizedRegion<1>:$computation);
