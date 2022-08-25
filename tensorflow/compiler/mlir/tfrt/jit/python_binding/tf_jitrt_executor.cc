@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 #include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs_registration.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
+#include "tfrt/jitrt/results.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -53,16 +53,16 @@ using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::StrCat;
 
-using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
-using ::tfrt::jitrt::Executable;
-using ::tfrt::jitrt::HostContextAsyncTaskRunner;
-using ::tfrt::jitrt::JitExecutable;
-using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::RemainingResultsConverter;
 using ::tfrt::jitrt::ReturnStridedMemref;
+
+using ::xla::runtime::Executable;
+using ::xla::runtime::HostContextAsyncTaskRunner;
+using ::xla::runtime::JitExecutable;
+using ::xla::runtime::MemrefDesc;
 
 namespace tensorflow {
 
@@ -83,15 +83,15 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
   copts.alignment = EIGEN_MAX_ALIGN_BYTES;
   copts.num_worker_threads = 4;
 
-  CompilationOptions opts;
-  opts.register_dialects = [](mlir::DialectRegistry& registry) {
+  JitExecutable::Options opts;
+  opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
     mlir::RegisterAllTensorFlowDialects(registry);
     RegisterDefaultJitRtDialects(registry);
     // Needed to verify function argument attributes which are used to
     // annotate dynamic shaped types with static type information.
     mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
   };
-  opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
+  opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
     tensorflow::TfJitRtPipelineOptions opts;
     opts.vectorize = vectorize;
     opts.codegen_transpose = codegen_transpose;
@@ -101,10 +101,11 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
     CreateDefaultJitRtCompilationPipeline(pm, copts);
   };
   if (specialization != Specialization::kDisabled) {
-    opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
+    opts.compiler.create_specialization_pipeline =
+        CreateJitRtSpecializationPipeline;
   }
   opts.specialization = specialization;
-  opts.calling_convention = xla::runtime::DefaultCallingConvention(
+  opts.compiler.calling_convention = xla::runtime::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
 
   // Instantiate new JitExecutable from the MLIR source.

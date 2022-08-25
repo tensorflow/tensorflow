@@ -81,11 +81,11 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
                        original_dnums.lhs_contracting_dimensions().begin(),
                        original_dnums.lhs_contracting_dimensions().end());
   HloInstruction* lhs_operand = original_dot->mutable_operand(0);
-  HloInstruction* transposed_lhs =
-      computation->AddInstruction(HloInstruction::CreateTranspose(
+  HloInstruction* transposed_lhs = computation->AddInstruction(
+      HloInstruction::CreateTranspose(
           ShapeUtil::PermuteDimensions(lhs_transpose, lhs_shape), lhs_operand,
-          lhs_transpose));
-  transposed_lhs->set_metadata(lhs_operand->metadata());
+          lhs_transpose),
+      &lhs_operand->metadata());
 
   std::vector<int64_t> lhs_reshape_dims = batch_dim_sizes;
   if (lhs_non_contracting_size > 1) {
@@ -93,11 +93,11 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   }
   lhs_reshape_dims.push_back(lhs_contracting_size);
   // Reshape the contracting and non-contracting dimensions together.
-  HloInstruction* reshaped_lhs =
-      computation->AddInstruction(HloInstruction::CreateReshape(
+  HloInstruction* reshaped_lhs = computation->AddInstruction(
+      HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(lhs_shape.element_type(), lhs_reshape_dims),
-          transposed_lhs));
-  reshaped_lhs->set_metadata(transposed_lhs->metadata());
+          transposed_lhs),
+      &transposed_lhs->metadata());
 
   const auto& rhs_shape = original_dot->operand(1)->shape();
   const int64_t rhs_rank = rhs_shape.rank();
@@ -131,11 +131,11 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   rhs_transpose.insert(rhs_transpose.end(), rhs_non_contracting_dims.begin(),
                        rhs_non_contracting_dims.end());
   HloInstruction* rhs_operand = original_dot->mutable_operand(1);
-  HloInstruction* transposed_rhs =
-      computation->AddInstruction(HloInstruction::CreateTranspose(
+  HloInstruction* transposed_rhs = computation->AddInstruction(
+      HloInstruction::CreateTranspose(
           ShapeUtil::PermuteDimensions(rhs_transpose, rhs_shape), rhs_operand,
-          rhs_transpose));
-  transposed_rhs->set_metadata(rhs_operand->metadata());
+          rhs_transpose),
+      &rhs_operand->metadata());
 
   std::vector<int64_t> rhs_reshape_dims = batch_dim_sizes;
   rhs_reshape_dims.push_back(rhs_contracting_size);
@@ -143,11 +143,11 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
     rhs_reshape_dims.push_back(rhs_non_contracting_size);
   }
   // Reshape the contracting and non-contracting dimensions together.
-  HloInstruction* reshaped_rhs =
-      computation->AddInstruction(HloInstruction::CreateReshape(
+  HloInstruction* reshaped_rhs = computation->AddInstruction(
+      HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(rhs_shape.element_type(), rhs_reshape_dims),
-          transposed_rhs));
-  reshaped_rhs->set_metadata(transposed_rhs->metadata());
+          transposed_rhs),
+      &transposed_rhs->metadata());
 
   std::vector<int64_t> dot_dims = batch_dim_sizes;
   if (lhs_non_contracting_size > 1) {

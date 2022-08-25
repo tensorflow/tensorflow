@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
-#include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
@@ -108,15 +107,6 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
     RETURN_IF_ERROR(
         gpu_buffer.CreateFromBufferDescriptor(*buffer_desc, context));
     *result = std::make_unique<Buffer>(std::move(gpu_buffer));
-    return absl::OkStatus();
-  }
-
-  const auto* texture_desc = dynamic_cast<const Texture2DDescriptor*>(desc);
-  if (texture_desc) {
-    Texture2D gpu_texture;
-    RETURN_IF_ERROR(
-        gpu_texture.CreateFromTexture2DDescriptor(*texture_desc, context));
-    *result = std::make_unique<Texture2D>(std::move(gpu_texture));
     return absl::OkStatus();
   }
 

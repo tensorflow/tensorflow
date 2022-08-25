@@ -76,7 +76,8 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
 void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
                             double input_scale, int32_t input_zp,
                             std::function<double(double)> func,
-                            Value& upper_const, Value& lower_const);
+                            Value& first_const, Value& second_const,
+                            Value& third_const, Value& fourth_const);
 
 // Create a 32-bit float constant operator from a float
 Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,

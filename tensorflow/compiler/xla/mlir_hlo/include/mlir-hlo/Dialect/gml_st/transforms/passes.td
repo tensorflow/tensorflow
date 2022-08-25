@@ -24,6 +24,18 @@ def TilingPass : Pass<"gml-tiling", "mlir::func::FuncOp"> {
   let summary = "Tile operations to produce gml_st.parallel or gml_st.for";
   let constructor = "::mlir::gml_st::createTilingPass()";
   let options = [
+    Option<"tileSizesOpt", "tile-sizes", "std::string", /*default=*/"",
+        "Tile sizes in the format `[[d0,d1,...],[d0_,d1_,...],...]`. This "
+        "allows to express nested tiling sizes.">,
+  ];
+}
+
+def TileToForPass : Pass<"gml-tile-to-for", "mlir::func::FuncOp"> {
+  let summary = "Tile operations using TilingInterface to produce gml_st.for";
+  let constructor = "::mlir::gml_st::createTileToForPass()";
+  let options = [
+    Option<"tilingTarget", "tiling-target", "std::string", /*default=*/"",
+           "Operation with this label is the anchor to latch on.">,
     ListOption<"tileSizes", "tile-sizes", "int64_t", "Tile sizes",
                "llvm::cl::ZeroOrMore">,
   ];
@@ -32,6 +44,16 @@ def TilingPass : Pass<"gml-tiling", "mlir::func::FuncOp"> {
 def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
   let summary = "Compose set operations.";
   let constructor = "::mlir::gml_st::createComposeSetOpsPass()";
+}
+
+def CollapseMaterializeOpsPass : Pass<"gml-collapse-materialize-ops",
+    "mlir::func::FuncOp"> {
+  let summary = "Collapse (or uncollapse) materialize operations.";
+  let constructor = "::mlir::gml_st::createCollapseMaterializeOpsPass()";
+  let options = [
+    Option<"reverse_", "reverse", "bool", /*default=*/"false", "Whether to "
+        "revert collapsing of materialize operations.">,
+  ];
 }
 
 def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {

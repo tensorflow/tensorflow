@@ -23,11 +23,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/stream_executor/device_description.h"
-#include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
@@ -62,10 +62,9 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
 
   auto* zero = comp->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
-  auto* pad = comp->AddInstruction(
-      HloInstruction::CreatePad(new_shape, instr, zero, pad_config));
-  pad->set_metadata(instr->metadata());
-  return pad;
+  return comp->AddInstruction(
+      HloInstruction::CreatePad(new_shape, instr, zero, pad_config),
+      &instr->metadata());
 }
 
 // Modifies the given convolution to have the given input and result shapes.

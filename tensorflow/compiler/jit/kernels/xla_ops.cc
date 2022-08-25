@@ -16,43 +16,31 @@ limitations under the License.
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 
 #include <map>
+#include <memory>
+#include <tuple>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
-#include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
-#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -240,7 +228,7 @@ XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
                                        const std::vector<int>& resources,
                                        const NameAttrList& function,
                                        bool has_ref_vars)
-    : OpKernel(ctx),
+    : AsyncOpKernel(ctx),
       constants_(constants),
       resources_(resources),
       function_(function),
@@ -292,7 +280,27 @@ static Status CompileToLocalExecutable(
                         compilation_result, executable);
 }
 
-void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
+// Get-or-create thread pool for a given collective.
+static thread::ThreadPool* GetOrCreateThreadPoolForCollective(
+    const XlaCompilationResult::CollectiveInfo& collective_info) {
+  static absl::Mutex m(absl::kConstInit);
+  static auto& thread_pool_cache ABSL_GUARDED_BY(m) =
+      *new absl::node_hash_map<XlaCompilationResult::CollectiveInfo,
+                               thread::ThreadPool>();
+  absl::MutexLock l(&m);
+  auto it = thread_pool_cache.find(collective_info);
+  if (it == thread_pool_cache.end()) {
+    // Create & cache thread pool.
+    auto inserted_it = thread_pool_cache.emplace(
+        std::piecewise_construct, std::forward_as_tuple(collective_info),
+        std::forward_as_tuple(Env::Default(), "xla_collective_thread_pool",
+                              collective_info.group_size));
+    return &inserted_it.first->second;
+  }
+  return &it->second;
+}
+
+void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   VLOG(1) << "XlaLocalLaunchOpBase::Compute "
           << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
   xla_launch_counter->GetCell(platform_info_.device_type().type_string())
@@ -305,7 +313,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   auto args_and_variables_snapshot = GetXlaCompilerArgsAndSnapshotVariables(
       resources_, constants_, inputs, ctx);
-  OP_REQUIRES_OK(ctx, args_and_variables_snapshot.status());
+  OP_REQUIRES_OK_ASYNC(ctx, args_and_variables_snapshot.status(), done);
   const std::vector<XlaCompiler::Argument>& args =
       args_and_variables_snapshot->first;
   ResourceVarsSnapshot& variables_snapshot =
@@ -316,64 +324,85 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
       XlaCompilationCache::CompileMode::kStrict,
       /*may_alias_resource_update=*/true, &client, &compilation_result,
       &executable);
-  OP_REQUIRES_OK(ctx, s);
+  OP_REQUIRES_OK_ASYNC(ctx, s, done);
 
-  std::map<int, const Tensor*> snapshot_ptrs;
-  for (const auto& [variable_index, variable_tensor] : variables_snapshot) {
-    snapshot_ptrs.emplace(variable_index, variable_tensor.has_value()
-                                              ? &variable_tensor.value()
-                                              : nullptr);
-  }
-  std::shared_ptr<se::DeviceMemoryAllocator> allocator =
-      GetAllocator(ctx->device(), GetStream(ctx), platform_info_);
-  XlaComputationLaunchContext launch_context =
-      GetLaunchContext(platform_info_, ctx, client, allocator.get());
+  // Continuation of the execution, may be run in a different thread.
+  auto run_xla_cluster = [ctx, variables_snapshot, client, executable,
+                          compilation_result, done, inputs,
+                          resources = resources_] {
+    auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
+    std::map<int, const Tensor*> snapshot_ptrs;
+    for (const auto& [variable_index, variable_tensor] : variables_snapshot) {
+      snapshot_ptrs.emplace(variable_index, variable_tensor.has_value()
+                                                ? &variable_tensor.value()
+                                                : nullptr);
+    }
 
-  const xla::HloInputOutputAliasConfig& input_output_alias =
-      executable->executable()->module().input_output_alias_config();
-  StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
-      launch_context.PopulateInputs(ctx, compilation_result, snapshot_ptrs,
-                                    /*missing_ctx_input_prefix=*/0,
-                                    input_output_alias);
-  OP_REQUIRES_OK(ctx, execution_inputs.status());
+    std::shared_ptr<se::DeviceMemoryAllocator> allocator =
+        GetAllocator(ctx->device(), GetStream(ctx), platform_info);
+    XlaComputationLaunchContext launch_context =
+        GetLaunchContext(platform_info, ctx, client, allocator.get());
 
-  // Execute the computation.
-  xla::gpu::GpuExecutableRunOptions gpu_options;
-  xla::DeviceAssignment device_assignment;
-  xla::ExecutableRunOptions run_options;
+    const xla::HloInputOutputAliasConfig& input_output_alias =
+        executable->executable()->module().input_output_alias_config();
+    StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
+        launch_context.PopulateInputs(ctx, compilation_result, snapshot_ptrs,
+                                      /*missing_ctx_input_prefix=*/0,
+                                      input_output_alias);
+    OP_REQUIRES_OK_ASYNC(ctx, execution_inputs.status(), done);
+
+    xla::gpu::GpuExecutableRunOptions gpu_options;
+    xla::DeviceAssignment device_assignment;
+    xla::ExecutableRunOptions run_options;
+    if (compilation_result->collective_info.has_value()) {
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          ResolveDeviceAssignment(ctx, *compilation_result->collective_info,
+                                  run_options, device_assignment, gpu_options),
+          done);
+    }
+
+    // Hardcode run id to always be zero: TF distributed strategy differentiates
+    // between subsequent runs using dependency edges.
+    // This is safe, as only TF dist-strat can produce distributed ops, and we
+    // can rely on TF dist-strat invariants.
+    xla::RunId run_id(0);
+    run_options.set_run_id(run_id);
+
+    StatusOr<xla::ExecutionOutput> execution_output = RunExecutable(
+        platform_info, launch_context, std::move(*execution_inputs),
+        run_options, executable, ctx, allocator.get());
+    OP_REQUIRES_ASYNC(ctx, execution_output.ok(), execution_output.status(),
+                      done);
+
+    std::vector<VariableInfo> variable_infos;
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
+                                   inputs, resources, &variable_infos),
+        done);
+    OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
+                         done);
+
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        launch_context.PopulateOutputs(
+            ctx, compilation_result, execution_output->ConsumeResult(),
+            /*missing_ctx_input_prefix=*/0, absl::MakeSpan(variable_infos),
+            input_output_alias, snapshot_ptrs),
+        done);
+    VLOG(1) << "Done";
+    done();
+  };
+
+  // If we are using collectives, we need to run in a separate threadpool.
   if (compilation_result->collective_info.has_value()) {
-    OP_REQUIRES_OK(ctx, ResolveDeviceAssignment(
-                            ctx, *compilation_result->collective_info,
-                            run_options, device_assignment, gpu_options));
+    GetOrCreateThreadPoolForCollective(*compilation_result->collective_info)
+        ->Schedule(run_xla_cluster);
   } else {
-    VLOG(2) << "No collective info provided: skipping device assignment";
+    // Otherwise, just run normally: we merely "pretend" to be asynchronous.
+    run_xla_cluster();
   }
-
-  // Hardcode run id to always be zero: TF distributed strategy differentiates
-  // between subsequent runs using dependency edges.
-  // This is safe, as only TF dist-strat can produce distributed ops, and we can
-  // rely on TF dist-strat invariants.
-  xla::RunId run_id(0);
-  run_options.set_run_id(run_id);
-
-  StatusOr<xla::ExecutionOutput> execution_output = RunExecutable(
-      platform_info_, launch_context, std::move(*execution_inputs), run_options,
-      executable, ctx, allocator.get());
-  OP_REQUIRES(ctx, execution_output.ok(), execution_output.status());
-
-  std::vector<VariableInfo> variable_infos;
-  OP_REQUIRES_OK(
-      ctx, GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
-                                      inputs, resources_, &variable_infos));
-  OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(variable_infos)));
-
-  OP_REQUIRES_OK(
-      ctx, launch_context.PopulateOutputs(
-               ctx, compilation_result, execution_output->ConsumeResult(),
-               /*missing_ctx_input_prefix=*/0, absl::MakeSpan(variable_infos),
-               input_output_alias, snapshot_ptrs));
-
-  VLOG(1) << "Done";
 }
 
 namespace {

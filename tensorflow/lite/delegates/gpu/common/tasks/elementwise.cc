@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/substitute.h"
 
 namespace tflite {
@@ -227,7 +228,7 @@ std::string GetTwoInputCode(const OperationType& op_type,
 
 // Creates simple two input (first input is runtime tensor and second input is
 // scalar argument) operation, for example sub, div, pow, etc.
-GPUOperation CreateElementwiseOneRuntimeOneScalar(
+ElementwiseDescriptor CreateElementwiseOneRuntimeOneScalar(
     const OperationDef& definition, const OperationType& op_type,
     float scalar_parameter, bool swap_inputs) {
   ElementwiseDescriptor op_desc;
@@ -239,12 +240,12 @@ GPUOperation CreateElementwiseOneRuntimeOneScalar(
   op_desc.code = "FLT4 second_val = INIT_FLT4(args.scalar);\n";
   op_desc.code += GetTwoInputCode(op_type, "out_value", "in_value",
                                   "second_val", swap_inputs);
-  return CreateGpuOperation(definition, std::move(op_desc));
+  return op_desc;
 }
 
 // Creates simple two input(first input is runtime tensor and second input is
 // constant linear tensor) operation, for example sub, div and etc.
-GPUOperation CreateElementwiseTwoInput(
+ElementwiseDescriptor CreateElementwiseTwoInput(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const OperationType& op_type,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
@@ -265,12 +266,12 @@ GPUOperation CreateElementwiseTwoInput(
   }
   op_desc.code += GetTwoInputCode(op_type, "out_value", "in_value",
                                   "second_val", swap_inputs);
-  return CreateGpuOperation(definition, std::move(op_desc));
+  return op_desc;
 }
 
 // Creates simple two input(first input is runtime tensor and second input is
 // constant HWC tensor) operation, for example sub, div and etc.
-GPUOperation CreateElementwiseTwoInput(
+ElementwiseDescriptor CreateElementwiseTwoInput(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const OperationType& op_type,
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& constant_tensor,
@@ -298,24 +299,13 @@ GPUOperation CreateElementwiseTwoInput(
   op_desc.code += GetTwoInputCode(op_type, "out_value", "in_value",
                                   "second_val", swap_inputs);
 
-  return CreateGpuOperation(definition, std::move(op_desc));
+  return op_desc;
 }
 
-}  // namespace
-
-GPUOperation CreateElementwiseOneInput(const GpuInfo& gpu_info,
-                                       const OperationDef& definition,
-                                       const OperationType& op_type) {
-  ElementwiseDescriptor op_desc;
-  op_desc.code = GetOneInputCode(gpu_info, op_type, definition.precision,
-                                 "in_value", "out_value");
-  return CreateGpuOperation(definition, std::move(op_desc));
-}
-
-GPUOperation CreateElementwise(const GpuInfo& gpu_info,
-                               const OperationDef& definition,
-                               const OperationType& op_type,
-                               const ElementwiseAttributes& attr) {
+ElementwiseDescriptor CreateElementwiseDesc(const GpuInfo& gpu_info,
+                                            const OperationDef& definition,
+                                            const OperationType& op_type,
+                                            const ElementwiseAttributes& attr) {
   const float* scalar = absl::get_if<float>(&attr.param);
   const auto* linear_tensor =
       absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.param);
@@ -333,8 +323,27 @@ GPUOperation CreateElementwise(const GpuInfo& gpu_info,
     return CreateElementwiseTwoInput(gpu_info, definition, op_type, *hwc_tensor,
                                      attr.runtime_tensor_is_second);
   } else {
-    return GPUOperation(definition);
+    return ElementwiseDescriptor();
   }
+}
+
+}  // namespace
+
+GPUOperation CreateElementwiseOneInput(const GpuInfo& gpu_info,
+                                       const OperationDef& definition,
+                                       const OperationType& op_type) {
+  ElementwiseDescriptor op_desc;
+  op_desc.code = GetOneInputCode(gpu_info, op_type, definition.precision,
+                                 "in_value", "out_value");
+  return CreateGpuOperation(definition, std::move(op_desc));
+}
+
+GPUOperation CreateElementwise(const GpuInfo& gpu_info,
+                               const OperationDef& definition,
+                               const OperationType& op_type,
+                               const ElementwiseAttributes& attr) {
+  return CreateGpuOperation(
+      definition, CreateElementwiseDesc(gpu_info, definition, op_type, attr));
 }
 
 GPUOperation CreateElementwiseTwoInput(const OperationDef& definition,
@@ -344,6 +353,122 @@ GPUOperation CreateElementwiseTwoInput(const OperationDef& definition,
   op_desc.code =
       GetTwoInputCode(op_type, "out_value", "in_value", "in2_value", false);
   return CreateGpuOperation(definition, std::move(op_desc), shape);
+}
+
+namespace {
+std::string GetKernelBodyCode(const TensorDescriptor& dst_desc) {
+  std::string c;
+  c += "MAIN_FUNCTION($$0) {\n";
+  if (dst_desc.HasAxis(Axis::BATCH)) {
+    c += "  int linear_id = GLOBAL_ID_0;\n";
+    c += "  int X = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+  } else {
+    c += "  int X = GLOBAL_ID_0;\n";
+  }
+  c += "  int Y = GLOBAL_ID_1;\n";
+  c += "  int S = GLOBAL_ID_2;\n";
+  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
+       "S >= args.dst_tensor.Slices()) return; \n";
+  c += "  args.dst_tensor::type result;\n";
+  c += "  $0\n";
+  c += "  args.dst_tensor.Write(result, X, Y, S);\n";
+  c += "} \n";
+  return c;
+}
+std::string GetReadBroadcastedValueCode(const BHWC& src_shape,
+                                        const TensorDescriptor& src_desc,
+                                        const BHWC& dst_shape) {
+  const std::string x_coord = src_shape.w != dst_shape.w ? "0" : "X";
+  const std::string y_coord = src_shape.h != dst_shape.h ? "0" : "Y";
+  const std::string s_coord = src_shape.c != dst_shape.c ? "0" : "S";
+  std::string coords = absl::StrCat(x_coord, ", ", y_coord, ", ", s_coord);
+  if (src_desc.HasAxis(Axis::BATCH)) {
+    const std::string b_coord = src_shape.b != dst_shape.b ? "0" : "B";
+    coords += ", " + b_coord;
+  }
+  std::string read_value_code =
+      absl::StrCat("args.$0::type $1 = args.$0.Read(", coords, ");\n");
+  if (src_shape.c != dst_shape.c) {
+    read_value_code += "  $1.y = $1.x;\n";
+    read_value_code += "  $1.z = $1.x;\n";
+    read_value_code += "  $1.w = $1.x;\n";
+  }
+  return read_value_code;
+}
+}  // namespace
+
+GPUOperation CreateElementwiseOneInputWithBroadcast(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const OperationType& op_type, const BHWC& input_shape,
+    const BHWC& output_shape) {
+  GPUOperation op(definition);
+  op.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  op.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  std::string c;
+  c += "  " + absl::Substitute(
+                  GetReadBroadcastedValueCode(
+                      input_shape, definition.src_tensors[0], output_shape),
+                  "src_tensor", "first_value");
+  c += "  " + GetOneInputCode(gpu_info, op_type, definition.precision,
+                              "first_value", "result");
+  op.code_ = absl::Substitute(GetKernelBodyCode(definition.dst_tensors[0]), c);
+  return op;
+}
+
+GPUOperation CreateElementwiseWithBroadcast(const GpuInfo& gpu_info,
+                                            const OperationDef& definition,
+                                            const OperationType& op_type,
+                                            const ElementwiseAttributes& attr,
+                                            const BHWC& input_shape,
+                                            const BHWC& output_shape) {
+  ElementwiseDescriptor op_desc =
+      CreateElementwiseDesc(gpu_info, definition, op_type, attr);
+
+  GPUOperation op(definition);
+  op.args_ = std::move(op_desc.args);
+  op.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  op.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  std::string c;
+  c += "  " + absl::Substitute(
+                  GetReadBroadcastedValueCode(
+                      input_shape, definition.src_tensors[0], output_shape),
+                  "src_tensor", "first_value");
+  c += "  " + absl::StrReplaceAll(op_desc.code, {{"in_value", "first_value"},
+                                                 {"out_value", "result"},
+                                                 {"X_COORD", "X"},
+                                                 {"Y_COORD", "Y"},
+                                                 {"S_COORD", "S"},
+                                                 {"B_COORD", "B"}});
+  op.code_ = absl::Substitute(GetKernelBodyCode(definition.dst_tensors[0]), c);
+  return op;
+}
+
+GPUOperation CreateElementwiseTwoInputWithBroadcast(
+    const OperationDef& definition, const OperationType& op_type,
+    const BHWC& first_input_shape, const BHWC& second_input_shape,
+    const BHWC& output_shape) {
+  GPUOperation op(definition);
+  op.AddSrcTensor("src0_tensor", definition.src_tensors[0]);
+  op.AddSrcTensor("src1_tensor", definition.src_tensors[1]);
+  op.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  std::string c;
+  c += "  " + absl::Substitute(GetReadBroadcastedValueCode(
+                                   first_input_shape, definition.src_tensors[0],
+                                   output_shape),
+                               "src0_tensor", "first_value");
+  c += "  " + absl::Substitute(GetReadBroadcastedValueCode(
+                                   second_input_shape,
+                                   definition.src_tensors[1], output_shape),
+                               "src1_tensor", "second_value");
+  c += "  " +
+       GetTwoInputCode(op_type, "result", "first_value", "second_value", false);
+  op.code_ = absl::Substitute(GetKernelBodyCode(definition.dst_tensors[0]), c);
+  return op;
 }
 
 }  // namespace gpu

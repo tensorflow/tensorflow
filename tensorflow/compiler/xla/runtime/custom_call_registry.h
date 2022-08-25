@@ -54,15 +54,21 @@ class CustomCallRegistry {
   std::unique_ptr<Impl> impl_;
 };
 
+// TODO(ezhulenev): Remove static registration mechanism, and pass custom call
+// registry explicitly to the JitExecutable. It should be passed around as a
+// part of XLA runtime execution context.
+
 // Use this macro to add a function that will register custom calls that are
 // statically linked in the binary. FUNC should be a function pointer with the
 // prototype given by the CustomCallRegistry::RegistrationFunction alias.
 #define XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION(FUNC) \
   XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL(FUNC, __COUNTER__)
-#define XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL(FUNC, N)       \
-  static bool XLA_RUNTIME_static_custom_call_##N##_registered_ = []() { \
-    ::xla::runtime::AddStaticCustomCallRegistration(FUNC);              \
-    return true;                                                        \
+#define XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL(FUNC, N) \
+  XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL_EXPAND(FUNC, N)
+#define XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL_EXPAND(FUNC, N) \
+  static bool XLA_RUNTIME_static_custom_call_##N##_registered_ = []() {  \
+    ::xla::runtime::AddStaticCustomCallRegistration(FUNC);               \
+    return true;                                                         \
   }()
 
 // Registers all statically linked custom calls in the given registry.

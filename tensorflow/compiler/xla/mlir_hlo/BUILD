@@ -29,6 +29,7 @@ td_library(
     compatible_with = get_compatible_with_cloud(),
     includes = ["include"],
     deps = [
+        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:base_td_files",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:CopyOpInterfaceTdFiles",
@@ -103,6 +104,42 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "chlo_ops_attrs_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-attrdef-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_attrs.h.inc",
+        ),
+        (
+            ["-gen-attrdef-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_attrs.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td",
+    deps = [":hlo_ops_td_files"],
+)
+
+gentbl_cc_library(
+    name = "chlo_ops_enums_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-enum-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td",
+    deps = [":hlo_ops_td_files"],
+)
+
+gentbl_cc_library(
     name = "hlo_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
@@ -122,57 +159,38 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
-    name = "hlo_ops_base_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
-    deps = [":hlo_ops_td_files"],
-)
-
-gentbl_cc_library(
-    name = "hlo_ops_base_attrs_inc_gen",
+    name = "hlo_ops_attrs_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-attrdef-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc",
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.h.inc",
         ),
         (
             ["-gen-attrdef-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc",
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
 gentbl_cc_library(
-    name = "hlo_ops_base_enums_inc_gen",
+    name = "hlo_ops_enums_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-enum-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc",
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.h.inc",
         ),
         (
             ["-gen-enum-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.cc.inc",
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
@@ -450,12 +468,18 @@ cc_library(
 cc_library(
     name = "mlir_hlo",
     srcs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_attrs.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_attrs.h.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.h.inc",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.h.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.h.inc",
         "lib/Dialect/mhlo/IR/chlo_ops.cc",
         "lib/Dialect/mhlo/IR/hlo_ops.cc",
         "lib/utils/broadcast_utils.cc",
@@ -464,20 +488,22 @@ cc_library(
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h",
         "include/mlir-hlo/utils/broadcast_utils.h",
         "include/mlir-hlo/utils/hlo_utils.h",
     ],
     includes = ["include"],
     deps = [
         ":canonicalize_inc_gen",
+        ":chlo_ops_attrs_inc_gen",
+        ":chlo_ops_enums_inc_gen",
         ":chlo_ops_inc_gen",
         ":convert_op_folder",
-        ":hlo_ops_base_attrs_inc_gen",
-        ":hlo_ops_base_inc_gen",
+        ":hlo_ops_attrs_inc_gen",
         ":hlo_ops_common",
+        ":hlo_ops_enums_inc_gen",
         ":hlo_ops_inc_gen",
         ":hlo_ops_pattern_gen",
+        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:base",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithmeticDialect",
@@ -613,6 +639,7 @@ cc_library(
     includes = ["include"],
     deps = [
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -1643,10 +1670,12 @@ cc_library(
         ":copy_removal",
         ":expand_hlo_tuples",
         ":generic_host_to_llvm",
+        ":gml_st_collapse_materialize_ops",
         ":gml_st_compose_set_ops",
         ":gml_st_fusion",
         ":gml_st_passes_inc_gen",
         ":gml_st_tiling",
+        ":gml_st_tiling_using_interface",
         ":gml_st_to_scf",
         ":group_reduction_dimensions",
         ":hlo_legalize_shape_ops_to_standard",
@@ -2170,7 +2199,6 @@ cc_library(
     deps = [
         ":mlir_hlo",
         ":transforms_pass_inc_gen",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:kernel_gen_passes_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithmeticDialect",
@@ -2579,6 +2607,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tiling_interface_impl",
+    srcs = [
+        "lib/Dialect/gml_st/transforms/tiling_interface_impl.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        ":tiling_interface",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:LinalgUtils",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TensorUtils",
+    ],
+)
+
 gentbl_cc_library(
     name = "fusion_interface_inc_gen",
     compatible_with = get_compatible_with_cloud(),
@@ -2749,14 +2802,43 @@ cc_library(
     deps = [
         ":gml_st",
         ":gml_st_passes_inc_gen",
+        ":gml_st_tiling_using_interface",
+        ":gml_st_transforms",
+        ":tiling_interface_impl",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "gml_st_tiling_using_interface",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
+        "lib/Dialect/gml_st/transforms/tiling_using_interface.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
+        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_using_interface.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        ":gml_st_passes_inc_gen",
+        ":gml_st_transforms",
+        ":tiling_interface",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithmeticUtils",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
 )
 
@@ -2778,6 +2860,27 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "gml_st_collapse_materialize_ops",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
+        "lib/Dialect/gml_st/transforms/collapse_materialize_ops.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        ":gml_st_passes_inc_gen",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -2847,6 +2950,7 @@ td_library(
     compatible_with = get_compatible_with_cloud(),
     includes = ["include"],
     deps = [
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],

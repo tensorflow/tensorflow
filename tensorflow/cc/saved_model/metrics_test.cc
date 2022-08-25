@@ -55,6 +55,12 @@ TEST(MetricsTest, TestCheckpointWrite) {
   EXPECT_EQ(CheckpointWriteDuration("foo").value().num(), 1);
 }
 
+TEST(MetricsTest, TestAsyncCheckpointWrite) {
+  EXPECT_EQ(AsyncCheckpointWriteDuration("foo").value().num(), 0);
+  AsyncCheckpointWriteDuration("foo").Add(100);
+  EXPECT_EQ(AsyncCheckpointWriteDuration("foo").value().num(), 1);
+}
+
 TEST(MetricsTest, TestTrainingTimeSaved) {
   EXPECT_EQ(TrainingTimeSaved("foo").value(), 0);
   TrainingTimeSaved("foo").IncrementBy(100);

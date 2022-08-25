@@ -1542,50 +1542,6 @@ static Status ProcessFusionForConversion(mlir::Region* region,
   return OkStatus();
 }
 
-// We can iterate the output buffer in logical order instead of physical order
-// when it is safe and profitable to do so.
-static bool EnableLogicalIndexGenerationForOutput(
-    LaunchDimensionsConfig launch_config, LaunchDimensions launch_dimensions,
-    absl::Span<llvm_ir::IrArray> operand_arrays,
-    absl::Span<llvm_ir::IrArray> output_arrays) {
-  // Safety checks.  Currently the logical index generation code has
-  // limitations. Violating these conditions can give wrong output.
-  if (launch_config.row_vectorized || launch_config.few_waves) return false;
-  if (output_arrays.size() != 1) return false;
-  const Shape& output_shape = output_arrays[0].GetShape();
-  if (output_shape.is_dynamic()) return false;
-  // Currently we require that the number of threads * unroll factor should
-  // exactly equal the number of output elements. It simplifies bounds checking
-  // within the LLVM code generated for the fused kernel.
-  if (ShapeUtil::ElementsIn(output_shape) !=
-      (launch_dimensions.launch_bound() * launch_config.unroll_factor)) {
-    return false;
-  }
-  if (launch_dimensions.thread_counts_per_block().y > 1 ||
-      launch_dimensions.thread_counts_per_block().z > 1) {
-    return false;
-  }
-  // Safety checks finish.
-
-  // Profitability checks.
-  // TODO(b/228209668) Investigate alternative profitability heuristics.
-  // We should have a single output and not in row-major layout.
-  if (LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
-    return false;
-  }
-  // We should have multiple inputs and all of them should have row-major
-  // layout.
-  if (operand_arrays.size() <= 1) return false;
-  for (const llvm_ir::IrArray& input : operand_arrays) {
-    const Shape& input_shape = input.GetShape();
-    if (input_shape.is_dynamic()) return false;
-    if (!LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout())) {
-      return false;
-    }
-  }
-  return true;
-}
-
 Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
   auto launch_func = mlir::cast<mlir::gpu::LaunchFuncOp>(op);
   auto kernel_func =
@@ -1763,8 +1719,6 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
           return ir_array.EmitReadArrayElement(index, builder);
         });
   }
-  launch_config.logical_order = EnableLogicalIndexGenerationForOutput(
-      launch_config, launch_dimensions, operand_arrays, output_element_arrays);
   TF_ASSIGN_OR_RETURN(
       auto element_generator,
       fused_emitter.GetGenerator(*fused_computation->root_instruction()));

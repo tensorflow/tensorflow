@@ -43,22 +43,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-
-// NOLINTNEXTLINE
-llvm::cl::opt<mlir::quant::QuantizationMethod> quantization_method_option(
-    "quant-quantize-quantization-method",
-    llvm::cl::init(mlir::quant::QuantizationMethod::kPostTrainingQuantization),
-    llvm::cl::desc("Select quantization method for quantize pass."),
-    llvm::cl::values(
-        clEnumValN(mlir::quant::QuantizationMethod::kPostTrainingQuantization,
-                   "ptq_static_range",
-                   "Post-training static-range quantization"),
-        clEnumValN(mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
-                   "ptq_dynamic_range",
-                   "Post-training dynamic-range quantizaiton")));
 
 namespace mlir {
 namespace quant {
@@ -356,22 +343,25 @@ struct QuantizeAvgPoolOpPattern
 };
 
 // Applies quantization on the model in TF dialect.
-struct QuantizePass
+class QuantizePass
     : public PassWrapper<QuantizePass, OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizePass)
 
   // Constructor used by the PassRegistration and only used by test.
   explicit QuantizePass() {
-    quant_specs.inference_type = tensorflow::DT_QINT8;
-    quant_specs.weight_quantization =
-        (quantization_method_option ==
-         mlir::quant::QuantizationMethod::kDynamicRangeQuantization);
+    quant_specs_.inference_type = tensorflow::DT_QINT8;
   }
 
   // Constructor used by manually creating the pass.
   explicit QuantizePass(const QuantizationSpecs& quant_specs)
-      : quant_specs(quant_specs) {}
+      : quant_specs_(quant_specs) {
+    weight_quantization_ = quant_specs.weight_quantization;
+  }
+
+  QuantizePass(const QuantizePass& other) : quant_specs_(other.quant_specs_) {
+    weight_quantization_ = other.weight_quantization_;
+  }
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -386,7 +376,11 @@ struct QuantizePass
   void runOnOperation() override;
 
  private:
-  QuantizationSpecs quant_specs;
+  QuantizationSpecs quant_specs_;
+
+  Option<bool> weight_quantization_{
+      *this, "weight-quantization", llvm::cl::init(false),
+      llvm::cl::desc("Whether to enable weight quantization.")};
 };
 
 void QuantizePass::runOnOperation() {
@@ -394,12 +388,13 @@ void QuantizePass::runOnOperation() {
   auto func = getOperation();
   auto* ctx = func.getContext();
 
+  quant_specs_.weight_quantization = weight_quantization_;
   const QuantPassSpec quant_params = {
-      {quant_specs.verify_numeric, /*error_tolerance=*/5.0f,
-       quant_specs.whole_model_verify, /*enable_log_if_failed=*/false},
-      quant_specs};
+      {quant_specs_.verify_numeric, /*error_tolerance=*/5.0f,
+       quant_specs_.whole_model_verify, /*enable_log_if_failed=*/false},
+      quant_specs_};
 
-  if (quant_specs.weight_quantization) {
+  if (quant_specs_.weight_quantization) {
     patterns.add<TFDynamicRangeQuantization>(ctx, quant_params);
   } else {
     patterns.add<TFFullQuantization, TFFullQuantizationReverse>(ctx,

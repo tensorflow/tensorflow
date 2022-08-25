@@ -2509,13 +2509,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
   Status Postprocess(HloInstruction* instruction) override {
     if (!opts_.InstructionCanChangeLayout(instruction) &&
-        LayoutUtil::IsDenseArray(instruction->shape())) {
+        LayoutUtil::IsDenseArray(instruction->shape()) &&
+        instruction->shape().has_layout()) {
       const Shape& result_shape = instruction->shape();
       const Layout& result_layout = result_shape.layout();
       for (HloInstruction* operand : instruction->operands()) {
         const Shape& operand_shape = operand->shape();
         if (LayoutUtil::IsDenseArray(operand_shape) &&
-            operand_shape.rank() == result_shape.rank()) {
+            operand_shape.rank() == result_shape.rank() &&
+            operand_shape.has_layout()) {
           const Layout& operand_layout = operand_shape.layout();
           TF_RET_CHECK(LayoutUtil::Equal(result_layout, operand_layout))
               << "Instruction shouldn't change layouts "

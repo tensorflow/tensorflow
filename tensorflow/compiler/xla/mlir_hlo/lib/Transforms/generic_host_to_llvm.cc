@@ -66,8 +66,10 @@ class GenericHostToLLVMPass
     populateSCFToControlFlowConversionPatterns(patterns);
     populateComplexToLLVMConversionPatterns(typeConverter, patterns);
     populateVectorToLLVMConversionPatterns(typeConverter, patterns);
-    // MathToLibm patterns are a last resort, so they have a 0 benefit.
-    populateMathToLibmConversionPatterns(patterns, 0);
+    // MathToLibm patterns are a last resort, so they have a 0 benefit (except
+    // for log1p, which has accuracy issues near 0 if implemented naively).
+    populateMathToLibmConversionPatterns(patterns, 0,
+                                         /*logp1Benefit=*/{2});
 
     //  Set target.
     ConversionTarget target(*ctx);

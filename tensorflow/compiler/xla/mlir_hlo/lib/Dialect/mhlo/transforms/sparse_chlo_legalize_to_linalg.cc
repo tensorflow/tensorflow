@@ -78,8 +78,8 @@ struct ChloLegalizeToLinalgPass
       return !encDst && !encSrc;
     };
     target.addDynamicallyLegalOp<chlo::AsinOp, chlo::AsinhOp, chlo::AtanOp,
-                                 chlo::AtanhOp, chlo::BesselI1eOp>(
-        isNotSparseOp);
+                                 chlo::AtanhOp, chlo::BesselI1eOp, chlo::SinhOp,
+                                 chlo::TanOp>(isNotSparseOp);
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
       return signalPassFailure();
@@ -118,6 +118,8 @@ ADD_OP(chlo::AsinhOp)
 ADD_OP(chlo::AtanOp)
 ADD_OP(chlo::AtanhOp)
 ADD_OP(chlo::BesselI1eOp)
+ADD_OP(chlo::SinhOp)
+ADD_OP(chlo::TanOp)
 
 #undef ADD_OP
 
@@ -130,6 +132,8 @@ void populateLegalizeSparseChloToLinalgPatterns(MLIRContext* context,
                 PointwiseToLinalgConverter<chlo::AsinhOp>,
                 PointwiseToLinalgConverter<chlo::AtanOp>,
                 PointwiseToLinalgConverter<chlo::AtanhOp>,
+                PointwiseToLinalgConverter<chlo::SinhOp>,
+                PointwiseToLinalgConverter<chlo::TanOp>,
                 PointwiseToLinalgConverter<chlo::BesselI1eOp>>(typeConverter,
                                                                context);
 }

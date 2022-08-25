@@ -90,6 +90,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -129,7 +130,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -1927,16 +1927,14 @@ mlir::Operation* ImporterBase::CreateOperation(
       [&](const NameRangeMap& arg_ranges,
           const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
           llvm::StringRef attr_name) {
-        std::vector<mlir::Attribute> values;
+        std::vector<int32_t> values;
         values.reserve(args.size());
         for (const auto& arg : args) {
           auto range = arg_ranges.at(arg.name());
           values.push_back(
-              island_builder.getI32IntegerAttr(range.second - range.first));
+              range.second - range.first);
         }
-        auto attr_type =
-            mlir::VectorType::get(args.size(), builder_.getIntegerType(32));
-        auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
+        auto attr_value = mlir::DenseI32ArrayAttr::get(inner_op->getContext(), values);
         inner_op->setAttr(attr_name, attr_value);
       };
 

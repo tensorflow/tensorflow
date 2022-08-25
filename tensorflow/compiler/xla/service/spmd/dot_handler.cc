@@ -3037,6 +3037,13 @@ bool PrioritizeContractingDimensionsPartitioning(
         lhs_contracting_partitions > 1)) {
     return false;
   }
+
+  // Return false if lhs/rhs sharding would have to be transposed.
+  if (RequiresTransposeSharding(lhs.hlo()->sharding(), rhs.hlo()->sharding(),
+                                dims_mapping.contracting_dims)) {
+    return false;
+  }
+
   // Estimate the iterations in the case we perform the partitioning on the
   // contracting dimensions instead.
   std::vector<int64_t> lhs_dims;

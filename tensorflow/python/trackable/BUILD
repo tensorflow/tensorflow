@@ -149,6 +149,13 @@ py_library(
     name = "resource",
     srcs = ["resource.py"],
     srcs_version = "PY3",
+    # TODO(b/238780047): Clean up the Grand Vision code and
+    # revert to only default_visibility here once automated
+    # tracking of resources is implemented.
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/grand_vision/google:__subpackages__",
+    ],
     deps = [
         ":base",
     ],
@@ -205,6 +212,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
     ],
 )

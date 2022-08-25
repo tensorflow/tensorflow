@@ -19,6 +19,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_HOST_HOST_GPU_EXECUTOR_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_HOST_HOST_GPU_EXECUTOR_H_
 
+#include <cstdint>
+
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
@@ -82,10 +84,10 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   port::Status MemZero(Stream* stream, DeviceMemoryBase* location,
                        uint64_t size) override;
-  port::Status Memset(Stream* stream, DeviceMemoryBase* location, uint8 pattern,
-                      uint64_t size) override;
+  port::Status Memset(Stream* stream, DeviceMemoryBase* location,
+                      uint8_t pattern, uint64_t size) override;
   port::Status Memset32(Stream* stream, DeviceMemoryBase* location,
-                        uint32 pattern, uint64_t size) override;
+                        uint32_t pattern, uint64_t size) override;
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }

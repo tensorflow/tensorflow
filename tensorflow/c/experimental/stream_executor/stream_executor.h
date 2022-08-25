@@ -137,7 +137,7 @@ typedef enum SE_EventStatus {
 
 // Memory allocation information.
 // This matches DeviceMemoryBase defined here:
-// https://cs.opensource.google/tensorflow/tensorflow/+/refs/tags/v2.3.0:tensorflow/stream_executor/device_memory.h;l=57
+// https://cs.opensource.google/tensorflow/tensorflow/+/refs/tags/v2.3.0:tensorflow/compiler/xla/stream_executor/device_memory.h;l=57
 typedef struct SP_DeviceMemoryBase {
   size_t struct_size;
   void* ext;  // Reserved for future use

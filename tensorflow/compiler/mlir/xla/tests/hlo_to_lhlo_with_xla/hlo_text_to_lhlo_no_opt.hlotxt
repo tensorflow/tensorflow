@@ -92,7 +92,7 @@ HloModule SliceToDynamic
 // CHECK-LABEL: func @main
 // CHECK: "lmhlo.custom_call"
 // CHECK: backend_config = "", call_target_name = "SliceToDynamic"
-// CHECK-SAME: operand_segment_sizes = dense<[4, 1]> : vector<2xi32>
+// CHECK-SAME: operand_segment_sizes = array<i32: 4, 1>
 // CHECK-NOT: target_arg_mapping
 // CHECK: (memref<2x2x2xi32>, memref<i32>, memref<i32>, memref<i32>, memref<2x2x2xi32>) -> ()
 ENTRY main {

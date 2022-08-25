@@ -29,8 +29,6 @@ template <class T>
 using EnableIfDerivedFromHlo =
     typename std::enable_if<std::is_base_of<HloInstruction, T>::value>::type;
 
-// TODO(b/93238915): Switch implementation from C++'s dynamic_cast to LLVM-like
-// RTTI if it turns out to be a performance issue.
 // Casts an HloInstruction pointer to one of its subclasses, dies if argument is
 // nullptr or runtime information does not match.
 //
@@ -38,10 +36,16 @@ using EnableIfDerivedFromHlo =
 template <class T, EnableIfDerivedFromHlo<T>* = nullptr>
 const T* Cast(const HloInstruction* instruction) {
   CHECK(instruction != nullptr);
-  const T* casted = dynamic_cast<const T*>(instruction);
-  CHECK(casted != nullptr)
+  CHECK(T::ClassOf(instruction))
       << "Invalid HloInstruction casting. Destination type: "
       << typeid(T).name() << ". Instruction: " << instruction->name();
+  const T* casted = static_cast<const T*>(instruction);
+#ifndef NDEBUG
+  const T* dynamic_casted = dynamic_cast<const T*>(instruction);
+  CHECK(dynamic_casted != nullptr)
+      << "Invalid HloInstruction casting. Destination type: "
+      << typeid(T).name() << ". Instruction: " << instruction->name();
+#endif
   return casted;
 }
 
@@ -75,7 +79,12 @@ T* CastOrNull(HloInstruction* instruction) {
 template <class T, EnableIfDerivedFromHlo<T>* = nullptr>
 const T* DynCast(const HloInstruction* instruction) {
   CHECK(instruction != nullptr);
-  return dynamic_cast<const T*>(instruction);
+  const T* casted =
+      T::ClassOf(instruction) ? static_cast<const T*>(instruction) : nullptr;
+#ifndef NDEBUG
+  CHECK_EQ(casted, dynamic_cast<const T*>(instruction));
+#endif
+  return casted;
 }
 
 // Non-const overload of DynCast.

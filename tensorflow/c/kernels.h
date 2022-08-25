@@ -198,6 +198,14 @@ TF_CAPI_EXPORT extern void TF_SetOutput(TF_OpKernelContext* ctx, int i,
                                         const TF_Tensor* tensor,
                                         TF_Status* status);
 
+// Retrieves the ith output from ctx. If TF_GetCode(status) is TF_OK, *tensor is
+// populated and its ownership is passed to the caller. In any other case,
+// *tensor is not modified.
+//
+// If i < 0 or i >= TF_NumOutputs(ctx), *status is set to TF_OUT_OF_RANGE.
+TF_CAPI_EXPORT extern TF_Tensor* TF_GetMutableOutput(TF_OpKernelContext* ctx,
+                                                     int i, TF_Status* status);
+
 // Retrieves a serialized FunctionDefLibrary. Status will be set.
 TF_CAPI_EXPORT extern void TF_GetSerializedFunctionDefLibrary(
     TF_OpKernelContext* ctx, TF_Buffer* serialized_function_def_library,

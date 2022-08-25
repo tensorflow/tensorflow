@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Declares the "host" platform, which is a CPU-only implementation of the
-// StreamExecutor. The host platform only supports memory operations and plugin
-// routines, and is primarily used for testing.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_PLATFORM_H_
 #define TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_PLATFORM_H_
 

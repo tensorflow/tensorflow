@@ -270,10 +270,10 @@ TEST_F(HloMatchersTest, ComparisonMatcher) {
 
 TEST_F(HloMatchersTest, AsyncCopyMatcher) {
   Shape shape_memspace1 = ShapeUtil::MakeShapeWithLayout(
-      F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
+      F32, {16}, /*minor_to_major=*/{0}, /*dim_level_types=*/{}, /*tiles=*/{},
       /*element_size_in_bits=*/0, /*memory_space=*/1);
   Shape shape_memspace2 = ShapeUtil::MakeShapeWithLayout(
-      F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
+      F32, {16}, /*minor_to_major=*/{0}, /*dim_level_types=*/{}, /*tiles=*/{},
       /*element_size_in_bits=*/0, /*memory_space=*/2);
 
   auto p0 = HloInstruction::CreateParameter(0, shape_memspace1, "p0");

@@ -73,19 +73,23 @@ limitations under the License.
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <thread>  // NOLINT(build/c++11)
+#include <vector>
 
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
+#include "tensorflow/lite/minimal_logging.h"
+
 #ifdef __ANDROID__
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_executable.h"
 #endif  // __ANDROID__
 
 namespace tflite {
 namespace acceleration {
-
 namespace {
 std::string ShellEscape(const std::string& src);
-}
+}  // namespace
 
 ProcessRunner::ProcessRunner(const std::string& temporary_path,
                              const std::string& function_name,
@@ -167,7 +171,8 @@ MinibenchmarkStatus ProcessRunner::Init() {
 #endif  // !__ANDROID__
 }
 
-MinibenchmarkStatus ProcessRunner::Run(const std::vector<std::string>& args,
+MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
+                                       const std::vector<std::string>& args,
                                        std::string* output, int* exitcode,
                                        int* signal) {
 #ifdef _WIN32
@@ -179,7 +184,7 @@ MinibenchmarkStatus ProcessRunner::Run(const std::vector<std::string>& args,
   int benchmark_process_status = 0;
 #ifndef __ANDROID__
   if (function_pointer_) {
-    benchmark_process_status = RunInprocess(args);
+    benchmark_process_status = RunInprocess(model, args);
   } else {
     return kMinibenchmarkPreconditionNotMet;
   }
@@ -190,14 +195,49 @@ MinibenchmarkStatus ProcessRunner::Run(const std::vector<std::string>& args,
   // runner_path_ components are escaped earlier.
   std::string cmd = runner_path_ + " " + ShellEscape(soname_) + " " +
                     ShellEscape(function_name_);
+
+  // If model is not null, open a pipe() and add pipe model path as cmdline
+  // argv[3]. If model is null, argv[0] should be the model path.
+  int pipe_fds[2];
+  if (model != nullptr) {
+    if (pipe(pipe_fds) < 0) {
+      *exitcode = errno;
+      return kMinibenchmarkPipeFailed;
+    }
+    std::string pipe_model_path = absl::StrCat(
+        "pipe:", pipe_fds[0], ":", pipe_fds[1], ":", model->GetSize());
+    cmd = cmd + " " + ShellEscape(pipe_model_path);
+  }
+
+  // Add the rest of the cmdline args.
   for (const auto& arg : args) {
     cmd = cmd + " " + ShellEscape(arg);
   }
+
   FILE* f = popen(cmd.c_str(), "r");
   if (!f) {
     *exitcode = errno;
     return kMinibenchmarkPopenFailed;
   }
+
+  // Write model to MiniBenchmark process.
+  if (model != nullptr) {
+    close(pipe_fds[0]);
+    int written_bytes = 0;
+    int remaining_bytes = model->GetSize();
+    uint8_t* buffer = model->GetBufferPointer();
+    while (remaining_bytes > 0 &&
+           (written_bytes = write(pipe_fds[1], buffer, remaining_bytes)) > 0) {
+      remaining_bytes -= written_bytes;
+      buffer += written_bytes;
+    }
+    close(pipe_fds[1]);
+    if (written_bytes <= 0 || remaining_bytes > 0) {
+      *exitcode = errno;
+      return kMinibenchmarkPipeFailed;
+    }
+  }
+
   std::vector<char> buffer(4 * 1024, 0);
   ssize_t length;
   std::string ret;
@@ -228,33 +268,76 @@ MinibenchmarkStatus ProcessRunner::Run(const std::vector<std::string>& args,
 #define __W_EXITCODE(ret, sig) ((ret) << 8 | (sig))
 #endif
 
-int ProcessRunner::RunInprocess(const std::vector<std::string>& user_args) {
-  int argc = user_args.size() + 3;
-  std::vector<std::string> args(argc);
-  args[0] = "inprocess";
-  args[1] = "inprocess";
-  args[2] = function_name_;
+int ProcessRunner::RunInprocess(flatbuffers::FlatBufferBuilder* model,
+                                const std::vector<std::string>& user_args) {
+  std::vector<std::string> args_string;
+  args_string.push_back("inprocess");
+  args_string.push_back("inprocess");
+  args_string.push_back(function_name_);
+
+  std::thread write_thread;
+  if (model != nullptr) {
+    int pipe_fds[2];
+    if (pipe(pipe_fds) < 0) {
+      return __W_EXITCODE(kMinibenchmarkPipeFailed, 0);
+    }
+
+    // Add pipe_model_path when model is not null.
+    // Model loader won't close the write file descriptor when it's -1.
+    args_string.push_back(
+        absl::StrCat("pipe:", pipe_fds[0], ":-1:", model->GetSize()));
+
+    // When running MiniBenchmark in-process, we start a separate thread for
+    // writing to pipe.
+    write_thread = std::thread([pipe_fds, model]() {
+      int written_bytes = 0;
+      int remaining_bytes = model->GetSize();
+      uint8_t* buffer = model->GetBufferPointer();
+      while (remaining_bytes > 0 &&
+             (written_bytes = write(pipe_fds[1], buffer, remaining_bytes)) >
+                 0) {
+        remaining_bytes -= written_bytes;
+        buffer += written_bytes;
+      }
+      close(pipe_fds[1]);
+      if (written_bytes < 0 || remaining_bytes > 0) {
+        TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+                        "Failed to write Model to pipe: %s. Expect to write %d "
+                        "bytes, %d bytes written.",
+                        strerror(errno), remaining_bytes, written_bytes);
+      }
+    });
+  }
+
   for (int i = 0; i < user_args.size(); i++) {
-    args[3 + i] = user_args[i];
+    args_string.push_back(user_args[i]);
   }
-  std::vector<std::vector<char>> mutable_args(argc);
-  std::vector<char*> argv(argc);
-  for (int i = 0; i < mutable_args.size(); i++) {
-    mutable_args[i] = {args[i].data(), args[i].data() + args[i].size()};
-    mutable_args[i].push_back('\0');
-    argv[i] = mutable_args[i].data();
+  std::vector<std::vector<char>> args_char(args_string.size());
+  std::vector<char*> argv(args_string.size());
+  for (int i = 0; i < args_string.size(); i++) {
+    args_char[i] = {args_string[i].begin(), args_string[i].end()};
+    // Compiler adds '\0' for std::string to indicate the end of string
+    // automatically. For char* string, '\0' needs to be add at the end of
+    // string manually.
+    args_char[i].push_back('\0');
+    argv[i] = args_char[i].data();
   }
+
   int (*function_pointer)(int, char**) =
       reinterpret_cast<int (*)(int, char**)>(function_pointer_);
-  return __W_EXITCODE(function_pointer(argc, argv.data()), 0);
+  int exit_code = __W_EXITCODE(function_pointer(argv.size(), argv.data()), 0);
+  if (write_thread.joinable()) {
+    write_thread.join();
+  }
+  return exit_code;
 }
 #endif  // !__ANDROID__
 
 namespace {
 
-// kDontNeedShellEscapeChars and ShellEscape are copied from absl, which copied
-// them from Python. Copied here because tflite core libraries should not depend
-// on absl (both for size reasons and for possible version skew):
+// kDontNeedShellEscapeChars and ShellEscape are copied from absl, which
+// copied them from Python. Copied here because tflite core libraries should
+// not depend on absl (both for size reasons and for possible version skew):
 
 static const char kDontNeedShellEscapeChars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"

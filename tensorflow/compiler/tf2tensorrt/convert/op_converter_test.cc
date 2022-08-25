@@ -33,15 +33,11 @@ using ::testing::HasSubstr;
 
 class ExampleOpConverter : public OpConverterBase<ExampleOpConverter> {
  public:
-  explicit ExampleOpConverter(OpConverterParams* params)
-      : OpConverterBase<ExampleOpConverter>(params) {}
+  explicit ExampleOpConverter(const OpConverterParams* params)
+      : OpConverterBase<ExampleOpConverter>(params, {DataType::DT_FLOAT}) {}
 
   static constexpr const char* NodeDefDataTypeAttributeName() {
     return "data_type";
-  }
-
-  static constexpr std::array<DataType, 2> AllowedDataTypes() {
-    return {DataType::DT_FLOAT};
   }
 
   static constexpr std::array<InputArgSpec, 2> InputSpec() {

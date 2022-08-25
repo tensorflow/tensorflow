@@ -1419,17 +1419,18 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
           op2_reducemax_op1.getResult());
 
       // Step 2. get exp() result
-      // Implemented with two 8-bit -> 16-bit table lookup
-      // Since table output is allowed to be [-32768, 32767]
-      // And lower 16 bits are unsigned and ranges [0, 65535]
-      // Lower table is generated with offset -32768, and this need to be
-      // recovered before adding with higher 16 bits.
+      // Implemented with 4 16-bit table lookup
+      // We use a 16-bit table lookup, as the result of x - max(x) for
+      // 8-bit values is a 9-bit value. We only use the bottom 8 bits of each
+      // table to avoid having the slope between two 16-bit table entries be
+      // greater than 16 bits, causing potential interpolation errors
       auto exp_func = [](double x) -> double { return std::exp(x); };
 
-      Value exp_table_const_upper, exp_table_const_lower;
+      Value exp_table_const_01, exp_table_const_02, exp_table_const_03,
+          exp_table_const_04;
       getTosaConst32bitTable(rewriter, op, beta * in_quant_type.getScale(), 0,
-                             exp_func, exp_table_const_upper,
-                             exp_table_const_lower);
+                             exp_func, exp_table_const_01, exp_table_const_02,
+                             exp_table_const_03, exp_table_const_04);
 
       Value op4_rescale_op3 =
           buildRescale(rewriter, op, int16_logits_type,
@@ -1438,70 +1439,97 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // Input is 9.7, where lower 7 bits are all zeros.
       // Output is 23 bits, where lower 7 bits should be all zeros as well,
       // since there's no interpolation here.
-      auto op5_table_op4_upper = CreateOpAndInfer<tosa::TableOp>(
+      auto op5_table_op4_bits_31_24 = CreateOpAndInfer<tosa::TableOp>(
           rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
-          exp_table_const_upper);
+          exp_table_const_01);
 
-      auto op6_table_op4_lower = CreateOpAndInfer<tosa::TableOp>(
+      auto op6_table_op4_bits_23_16 = CreateOpAndInfer<tosa::TableOp>(
           rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
-          exp_table_const_lower);
+          exp_table_const_02);
+
+      auto op7_table_op4_bits_15_8 = CreateOpAndInfer<tosa::TableOp>(
+          rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
+          exp_table_const_03);
+
+      auto op8_table_op4_bits_7_0 = CreateOpAndInfer<tosa::TableOp>(
+          rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
+          exp_table_const_04);
 
       // To get 16 bits upper/lower value, we need to right shift 7 bits
-      // And then we reconstruct 32-bit value we need (upper << 16) + lower
-      // So effectively we left shift upper with 9 bits
+      // And then we reconstruct 32-bit value we need (upper << 24) + lower
+      // So effectively we left shift the 1st group of 8-bit with 17 bits
       auto op7_lshift_op5 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
-          op5_table_op4_upper.getResult(),
+          op5_table_op4_bits_31_24.getResult(),
+          getTosaConstTensorSingleI32(rewriter, op, 17));
+
+      // For the 2nd group of 8-bit, we need to >> 7 AND << 16 ==> << 9
+      auto op8_lshift_op6 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op6_table_op4_bits_23_16.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 9));
 
-      // Right shift 7 bits to get lower 16 bits.
-      auto op8_rshift_op6 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+      // For the 3rd 8-bit, we need to >> 7 AND << 8 ==> << 1
+      auto op9_lshift_op7 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
-          op6_table_op4_lower.getResult(),
+          op7_table_op4_bits_15_8.getResult(),
+          getTosaConstTensorSingleI32(rewriter, op, 1));
+
+      // For the last 8-bit, we only need to >> 7
+      auto op10_rshift_op8 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op8_table_op4_bits_7_0.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 7), true);
 
-      // Recover lower bits from [-32768, 32767] back to [0, 65535]
-      auto op9_add_op8_32768 = CreateOpAndInfer<tosa::AddOp>(
-          rewriter, op->getLoc(), int32_logits_type, op8_rshift_op6.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 32768));
-
-      auto op10_add_op7_op9 = CreateOpAndInfer<tosa::AddOp>(
+      // Add together all the 8-bit groups
+      // Add [1+2]
+      auto op11_add_op7_op8 = CreateOpAndInfer<tosa::AddOp>(
           rewriter, op->getLoc(), int32_logits_type, op7_lshift_op5.getResult(),
-          op9_add_op8_32768.getResult());
+          op8_lshift_op6.getResult());
+
+      // Add [1+2+3]
+      auto op12_add_op11_op9 = CreateOpAndInfer<tosa::AddOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op11_add_op7_op8.getResult(), op9_lshift_op7.getResult());
+
+      // Add [1+2+3+4]
+      auto op13_add_op12_op10 = CreateOpAndInfer<tosa::AddOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op12_add_op11_op9.getResult(), op10_rshift_op8.getResult());
 
       // Step 3. get sum(exp()). output 12.19
-      auto op11_rshift_op10_12 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+      auto op14_rshift_op13_12 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
-          op10_add_op7_op9.getResult(),
+          op13_add_op12_op10.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 12), true);
 
-      auto op12_reducesum_op11 = CreateOpAndInfer<tosa::ReduceSumOp>(
+      auto op15_reducesum_op14 = CreateOpAndInfer<tosa::ReduceSumOp>(
           rewriter, op->getLoc(), int32_rsum_type,
-          op11_rshift_op10_12.getResult(),
+          op14_rshift_op13_12.getResult(),
           rewriter.getI64IntegerAttr(input_rank - 1));
 
       // Step 4. calculate reciprocal(sum(exp()))
-      // CLZ returns headroom_plus_one
-      auto op13_clz_op12 =
+      // CLZ returns the number of leading zeros which equals to headroom + 1
+      auto op16_clz_op15 =
           CreateOpAndInfer<tosa::ClzOp>(rewriter, op->getLoc(), int32_rsum_type,
-                                        op12_reducesum_op11.getResult());
+                                        op15_reducesum_op14.getResult());
 
       // minus one to get headroom
-      auto op14_sub_op13 = CreateOpAndInfer<tosa::SubOp>(
-          rewriter, op->getLoc(), int32_rsum_type, op13_clz_op12.getResult(),
+      auto op17_sub_op16 = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op16_clz_op15.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 1));
 
       // Left shift to get s1.30 format
-      auto op15_lshift_op12_op14 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
+      auto op18_lshift_op15_op17 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
           rewriter, op->getLoc(), int32_rsum_type,
-          op12_reducesum_op11.getResult(), op14_sub_op13.getResult());
+          op15_reducesum_op14.getResult(), op17_sub_op16.getResult());
 
       // Step 5. Calculate one_over_one_plus_x() with Newton-Raphson division
       // with 3 iterations.
       // Need two magic constants 48/17 and -32/17 from Newton-Raphson algorithm
-      // We need to operator in s2.29 since 48/17 is > 2.0
+      // We need to operate in s2.29 since 48/17 is > 2.0
       // Reference: gemmlowp/fixedpoint/fixedpoint.h
-      Value half_denominator = op15_lshift_op12_op14.getResult();
+      Value half_denominator = op18_lshift_op15_op17.getResult();
       Value four = getTosaConstTensorSingleI32(rewriter, op, 4);
       Value F2_one = getTosaConstTensorSingleI32(rewriter, op, (1U << 29));
       Value constant_48_over_17 =
@@ -1511,70 +1539,70 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       // F2 x = constant_48_over_17 + half_denominator *
       // constant_neg_32_over_17;
-      auto op16_mul_half_denominator = CreateOpAndInfer<tosa::MulOp>(
+      auto op19_mul_half_denominator = CreateOpAndInfer<tosa::MulOp>(
           rewriter, op->getLoc(), int32_rsum_type, half_denominator,
           constant_neg_32_over_17, 31);
 
-      auto op17_add_op16 = CreateOpAndInfer<tosa::AddOp>(
+      auto op20_add_op19 = CreateOpAndInfer<tosa::AddOp>(
           rewriter, op->getLoc(), int32_rsum_type,
-          op16_mul_half_denominator.getResult(), constant_48_over_17);
+          op19_mul_half_denominator.getResult(), constant_48_over_17);
 
       // Newton-Raphson 3x iteration
-      Value nr_x = op17_add_op16.getResult();
+      Value nr_x = op20_add_op19.getResult();
       for (int i = 0; i < 3; i++) {
         // half_denominator_times_x =
         // SaturatingRoundingDoublingHighMul(half_denominator, x)
-        auto op18_mul_x_half_denominator = CreateOpAndInfer<tosa::MulOp>(
+        auto op21_mul_x_half_denominator = CreateOpAndInfer<tosa::MulOp>(
             rewriter, op->getLoc(), int32_rsum_type, nr_x, half_denominator,
             31);
 
         // F2 one_minus_half_denominator_times_x = F2::One() -
         // half_denominator_times_x
-        auto op19_sub_one_op18 = CreateOpAndInfer<tosa::SubOp>(
+        auto op22_sub_one_op21 = CreateOpAndInfer<tosa::SubOp>(
             rewriter, op->getLoc(), int32_rsum_type, F2_one,
-            op18_mul_x_half_denominator.getResult());
+            op21_mul_x_half_denominator.getResult());
 
         // SaturatingRoundingDoublingHighMul(x,
         // one_minus_half_denominator_times_x)
-        auto op20_mul_x_op19 = CreateOpAndInfer<tosa::MulOp>(
+        auto op23_mul_x_op22 = CreateOpAndInfer<tosa::MulOp>(
             rewriter, op->getLoc(), int32_rsum_type, nr_x,
-            op19_sub_one_op18.getResult(), 31);
+            op22_sub_one_op21.getResult(), 31);
 
         // x + Rescale<2>(x * one_minus_half_denominator_times_x)
-        auto op21_mul_op20_four = CreateOpAndInfer<tosa::MulOp>(
+        auto op24_mul_op23_four = CreateOpAndInfer<tosa::MulOp>(
             rewriter, op->getLoc(), int32_rsum_type,
-            op20_mul_x_op19.getResult(), four, 0);
+            op23_mul_x_op22.getResult(), four, 0);
 
-        auto op22_add_x_op21 = CreateOpAndInfer<tosa::AddOp>(
+        auto op25_add_x_op24 = CreateOpAndInfer<tosa::AddOp>(
             rewriter, op->getLoc(), int32_rsum_type, nr_x,
-            op21_mul_op20_four.getResult());
+            op24_mul_op23_four.getResult());
 
-        nr_x = op22_add_x_op21.getResult();
+        nr_x = op25_add_x_op24.getResult();
       }
 
       // Step 6. multiply exp(x) with 1 / sum(exp(x))
       // combined with Rescale<0>(ExactMulByPot<-1>(x))
       // so shift 30 instead of 31
-      auto op23_mul_op10_x = CreateOpAndInfer<tosa::MulOp>(
+      auto op26_mul_op13_x = CreateOpAndInfer<tosa::MulOp>(
           rewriter, op->getLoc(), int32_logits_type,
-          op10_add_op7_op9.getResult(), nr_x, 31 - 1);
+          op13_add_op12_op10.getResult(), nr_x, 31 - 1);
 
       // Right shift amount is
       // num_bits_over_unit + 31 - (sizeof(OutputT) * 8 =
       // (12 - headroom_plus_one) + 31 - 8 =
       // (12 + 31 - 8) - headroom_plus_one
-      auto op24_sub_op13 = CreateOpAndInfer<tosa::SubOp>(
+      auto op27_sub_op16 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_rsum_type,
           getTosaConstTensorSingleI32(rewriter, op, 12 + 31 - 8),
-          op13_clz_op12.getResult());
+          op16_clz_op15.getResult());
 
-      auto op25_rshift_op23_op24 =
+      auto op28_rshift_op26_op27 =
           CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
               rewriter, op->getLoc(), int32_logits_type,
-              op23_mul_op10_x.getResult(), op24_sub_op13.getResult(), true);
+              op26_mul_op13_x.getResult(), op27_sub_op16.getResult(), true);
 
       return buildRescale(rewriter, op, output_type,
-                          op25_rshift_op23_op24.getResult(), 1.0, 0,
+                          op28_rshift_op26_op27.getResult(), 1.0, 0,
                           out_quant_type.getZeroPoint(), false, true);
 
     } else if (in_quant_type.getStorageTypeIntegralWidth() == 16) {

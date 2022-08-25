@@ -32,7 +32,6 @@ py_library(
         "//tensorflow/python/summary/writer",
         "//tensorflow/python/training:training_util",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 

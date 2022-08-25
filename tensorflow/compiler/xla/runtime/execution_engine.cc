@@ -32,7 +32,7 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "tfrt/support/error_util.h"  // from @tf_runtime
+#include "tensorflow/compiler/xla/runtime/errors.h"
 
 namespace xla {
 namespace runtime {
@@ -54,8 +54,6 @@ using llvm::orc::RTDyldObjectLinkingLayer;
 using llvm::orc::SymbolMap;
 using llvm::orc::ThreadSafeModule;
 using llvm::orc::TMOwningSimpleCompiler;
-
-using tfrt::MakeStringError;
 
 ExecutionEngine::ExecutionEngine(bool enable_gdb_listener,
                                  bool enable_perf_listener) {

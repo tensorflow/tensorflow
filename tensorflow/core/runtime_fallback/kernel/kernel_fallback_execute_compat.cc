@@ -228,8 +228,7 @@ static void KernelFallbackExecuteCompatAsyncInternal(
     const OpKernelRunner& kernel_runner,
     tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results) {
-  auto chain =
-      tfrt::MakeUnconstructedAsyncValueRef<tfrt::Chain>(exec_ctx.host());
+  auto chain = tfrt::MakeUnconstructedAsyncValueRef<tfrt::Chain>();
   if (op_chain) *op_chain = chain.CopyRef();
 
   // Allocate unconstructed result tensors and set them in the output `results`.
@@ -237,7 +236,7 @@ static void KernelFallbackExecuteCompatAsyncInternal(
   result_refs.reserve(results.size());
   for (auto& result : results) {
     result_refs.emplace_back(
-        tfrt::MakeUnconstructedAsyncValueRef<TensorType>(exec_ctx.host()));
+        tfrt::MakeUnconstructedAsyncValueRef<TensorType>());
     result = result_refs.back().CopyRef();
   }
 

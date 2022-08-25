@@ -89,6 +89,39 @@ absl::Status TryMeanStdDevNormalization(
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph);
 
+class LayerNormalization : public GPUOperation {
+ public:
+  LayerNormalization(const OperationDef& definition, const GpuInfo& gpu_info,
+                     const BHWC& shape, float variance_bias,
+                     const Tensor<Linear, DataType::FLOAT32>& mul_linear,
+                     const Tensor<Linear, DataType::FLOAT32>& sub_linear,
+                     bool two_step);
+
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const GpuInfo& gpu_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
+  }
+  int3 GetGridSize() const override;
+
+  // Move only
+  LayerNormalization(LayerNormalization&& kernel) = default;
+  LayerNormalization& operator=(LayerNormalization&& kernel) = default;
+  LayerNormalization(const LayerNormalization&) = delete;
+  LayerNormalization& operator=(const LayerNormalization&) = delete;
+
+ private:
+  std::string GetNormalizationCode(const GpuInfo& gpu_info, bool channels_x4,
+                                   bool two_step);
+};
+
+// std dev can be calculated in single step, but two step algorithm can
+// provide more stable and robust results
+LayerNormalization CreateLayerNormalization(
+    const OperationDef& definition, const GpuInfo& gpu_info, const BHWC& shape,
+    float variance_bias, const Tensor<Linear, DataType::FLOAT32>& mul_linear,
+    const Tensor<Linear, DataType::FLOAT32>& sub_linear, bool two_step);
 }  // namespace gpu
 }  // namespace tflite
 

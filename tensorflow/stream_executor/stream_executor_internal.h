@@ -13,11 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Interfaces for platform-dependent implementations to satisfy. This are
-// delegated to from the StreamExecutor in pointer-to-implementation style; i.e.
-// the StreamExecutor is just a husk that delegates calls to the
-// platform-specific objects which implement the interfaces defined here.
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
 #define TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
 

@@ -18,8 +18,6 @@
 import copy
 import re
 
-import six
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import _proto_comparators
@@ -244,7 +242,7 @@ def extract_sub_graph(graph_def, dest_nodes):
     raise TypeError("graph_def must be a graph_pb2.GraphDef proto, but got "
                     f"type {type(graph_def)}.")
 
-  if isinstance(dest_nodes, six.string_types):
+  if isinstance(dest_nodes, str):
     raise TypeError("dest_nodes must be an iterable of strings, but got "
                     f"type {type(dest_nodes)}.")
 

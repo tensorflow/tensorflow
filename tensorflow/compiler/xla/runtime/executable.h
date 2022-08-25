@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/memory_mapper.h"
 #include "tensorflow/compiler/xla/runtime/results.h"
+#include "tensorflow/compiler/xla/runtime/type_id.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
 namespace xla {
@@ -43,8 +44,12 @@ class JitCompiler;
 ExecutionEngine::SymbolsBinding RuntimeSymbolsBinding(
     ExecutionEngine::SymbolsBinding custom_binding);
 
-// Converts a custom call library into the execution engine symbols binding.
-ExecutionEngine::SymbolsBinding GetSymbolsBinding(DirectCustomCallLibrary lib);
+// Converts a custom call library and custom type id name registration function
+// (types required by the library) to the execution engine symbols binding. This
+// function automatically registeres type id symbols for all canonical types
+// supported by the XLA runtime custom calls.
+ExecutionEngine::SymbolsBinding ToSymbolsBinding(
+    DirectCustomCallLibrary lib, TypeIDNameRegistry::RegistrationFn types = {});
 
 class Executable {
  public:
@@ -191,7 +196,7 @@ class Executable {
       llvm::StringRef name, std::unique_ptr<llvm::MemoryBuffer> obj_file,
       llvm::StringRef entrypoint, FunctionType signature,
       FunctionType runtime_signature,
-      ExecutionEngine::SymbolsBinding runtime_symbol_map = {},
+      ExecutionEngine::SymbolsBinding symbols_binding = {},
       llvm::StringRef memory_region_name = "");
 
   // Verifies that all operands types in the entrypoint function signature are

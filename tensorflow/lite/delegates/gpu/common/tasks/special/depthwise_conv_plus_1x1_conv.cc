@@ -62,6 +62,7 @@ class ThinPointwiseFuser {
   bool IsNodeSupported(const GpuInfo& gpu_info, Node* node) const;
   bool IsElementwiseNode(Node* node) const;
   bool IsConvNode(Node* node) const;
+  bool IsDwConvNode(Node* node) const;
   void AddNode(const GpuInfo& gpu_info, Node* node);
   void AddElementwiseNode(ElementwiseDescriptor&& op_desc);
   void AddConvNode(const GpuInfo& gpu_info,
@@ -73,7 +74,6 @@ class ThinPointwiseFuser {
   void AddConvData(const Convolution2DAttributes& conv_attr);
   void AddDepthwiseConvData(const DepthwiseConvolution2DAttributes& dw_attr);
   void CreateConstantsGpuBuffer(const GpuInfo& gpu_info);
-  bool HasConvNode() const;
   std::vector<Node*> nodes_;
   OperationDef op_def_;
   Arguments args_;
@@ -81,6 +81,7 @@ class ThinPointwiseFuser {
   std::vector<std::string> outputs_;
   std::vector<float> gpu_data_;
   int weights_counter_ = 0;
+  int buffer_size_ = 0;
   std::string op_name_;
   int link_counter_ = 0;
   uint64_t flops_ = 0;
@@ -270,6 +271,24 @@ bool ThinPointwiseFuser::IsNodeSupported(const GpuInfo& gpu_info,
     if (!good_conv) {
       return false;
     }
+    if (gpu_info.IsAdreno() && gpu_info.IsApiOpenCl()) {
+      int conv_src_ch_aligned = AlignByN(conv_attr->weights.shape.i, 4);
+      int conv_dst_ch_aligned = AlignByN(conv_attr->weights.shape.o, 4);
+      int conv_weights_count =
+          conv_dst_ch_aligned + conv_src_ch_aligned * conv_dst_ch_aligned;
+
+      DataType data_type = op_def_.precision == CalculationsPrecision::F32
+                               ? DataType::FLOAT32
+                               : DataType::FLOAT16;
+      int weights_size = conv_weights_count * SizeOf(data_type);
+      if (convs_count_ >= 3 || buffer_size_ + weights_size > 1024 * 3) {
+        return false;
+      }
+    } else {
+      if (convs_count_ >= 1) {
+        return false;
+      }
+    }
     if (gpu_info.IsApple()) {
       if (op_def_.precision == CalculationsPrecision::F16) {
         return conv_shape.o <= 16 && conv_shape.i * conv_shape.o <= 16 * 16;
@@ -295,24 +314,40 @@ bool ThinPointwiseFuser::IsNodeSupported(const GpuInfo& gpu_info,
 }
 
 bool ThinPointwiseFuser::ReserveNode(const GpuInfo& gpu_info, Node* node) {
-  if (convs_count_ >= 1 || !IsNodeSupported(gpu_info, node)) {
+  if (!IsNodeSupported(gpu_info, node)) {
     return false;
   }
   nodes_.push_back(node);
   if (IsConvNode(node)) {
     convs_count_++;
+    Convolution2DAttributes* conv_attr =
+        absl::any_cast<Convolution2DAttributes>(&node->operation.attributes);
+
+    int conv_src_ch_aligned = AlignByN(conv_attr->weights.shape.i, 4);
+    int conv_dst_ch_aligned = AlignByN(conv_attr->weights.shape.o, 4);
+    int conv_weights_count =
+        conv_dst_ch_aligned + conv_src_ch_aligned * conv_dst_ch_aligned;
+
+    DataType data_type = op_def_.precision == CalculationsPrecision::F32
+                             ? DataType::FLOAT32
+                             : DataType::FLOAT16;
+    buffer_size_ += conv_weights_count * SizeOf(data_type);
+  }
+  if (IsDwConvNode(node)) {
+    DepthwiseConvolution2DAttributes* dw_attr =
+        absl::any_cast<DepthwiseConvolution2DAttributes>(
+            &node->operation.attributes);
+
+    int dw_dst_ch_aligned = AlignByN(dw_attr->weights.shape.i, 4);
+    int dw_weights_count = dw_dst_ch_aligned + dw_dst_ch_aligned *
+                                                   dw_attr->weights.shape.h *
+                                                   dw_attr->weights.shape.w;
+    DataType data_type = op_def_.precision == CalculationsPrecision::F32
+                             ? DataType::FLOAT32
+                             : DataType::FLOAT16;
+    buffer_size_ += dw_weights_count * SizeOf(data_type);
   }
   return true;
-}
-
-bool ThinPointwiseFuser::HasConvNode() const {
-  for (auto& node : nodes_) {
-    if (OperationTypeFromString(node->operation.type) ==
-        OperationType::CONVOLUTION_2D) {
-      return true;
-    }
-  }
-  return false;
 }
 
 void ThinPointwiseFuser::AddNode(const GpuInfo& gpu_info, Node* node) {
@@ -345,6 +380,11 @@ bool ThinPointwiseFuser::IsElementwiseNode(Node* node) const {
 bool ThinPointwiseFuser::IsConvNode(Node* node) const {
   auto op_type = OperationTypeFromString(node->operation.type);
   return op_type == OperationType::CONVOLUTION_2D;
+}
+
+bool ThinPointwiseFuser::IsDwConvNode(Node* node) const {
+  auto op_type = OperationTypeFromString(node->operation.type);
+  return op_type == OperationType::DEPTHWISE_CONVOLUTION;
 }
 
 void ThinPointwiseFuser::AddDepthwiseConvNode(
@@ -431,7 +471,10 @@ void ThinPointwiseFuser::AddDepthwiseConvNode(
 }
 
 void ThinPointwiseFuser::AddElementwiseNode(ElementwiseDescriptor&& op_desc) {
-  auto status = args_.Merge(std::move(op_desc.args), "");
+  std::string unique_postfix = absl::StrCat("_link_internal", link_counter_);
+  link_counter_++;
+  op_desc.args.RenameArgs(unique_postfix, &op_desc.code);
+  auto status = args_.Merge(std::move(op_desc.args), unique_postfix);
   for (int i = 0; i < outputs_.size(); ++i) {
     const std::string elementwise_new_code =
         absl::StrReplaceAll(op_desc.code, {{"in_value", outputs_[i]},
@@ -493,7 +536,7 @@ void ThinPointwiseFuser::AddConvNode(const GpuInfo& gpu_info,
       code_ += "  if(" + std::to_string(d) + " < args.dst_tensor.Slices()) {\n";
       code_ += "    args.dst_tensor.Write(" + dst + ", X, Y, " +
                std::to_string(d) + ");\n";
-      code_ += "  };\n";
+      code_ += "  }\n";
     }
   }
 }

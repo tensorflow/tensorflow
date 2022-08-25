@@ -602,7 +602,7 @@ retained with length 1.
     TFL_BoolTensor:$input,
     TFL_I32Tensor:$reduction_indices,
 
-    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
@@ -629,7 +629,7 @@ retained with length 1.
     TFL_BoolTensor:$input,
     TFL_I32Tensor:$reduction_indices,
 
-    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
@@ -665,8 +665,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOfOrNone<[F32, QI32, I64]>:$bias,
     TFL_PaddingAttr:$padding,
-    Confined<I32Attr, [IntPositive]>:$stride_h,
-    Confined<I32Attr, [IntPositive]>:$stride_w
+    ConfinedAttr<I32Attr, [IntPositive]>:$stride_h,
+    ConfinedAttr<I32Attr, [IntPositive]>:$stride_w
   );
 
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$output);
@@ -968,8 +968,8 @@ def TFL_CumsumOp: TFL_Op<"cumsum", [
   let arguments = (
     ins TFL_TensorOf<[F32, I32, I64]>:$input,
     TFL_I32Tensor:$axis,
-    DefaultValuedAttr<BoolAttr, "false">:$exclusive,
-    DefaultValuedAttr<BoolAttr, "false">:$reverse
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$exclusive,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$reverse
   );
 
   let results = (outs TFL_TensorOf<[F32, I32, I64]>:$output);
@@ -1094,8 +1094,8 @@ in the batch dimensions and broadcasting.
   let arguments = (ins
     TFL_TensorOf<[F32, QI8, QI16, I8]>:$x,
     TFL_TensorOf<[F32, QI8, QI16, I8]>:$y,
-    DefaultValuedAttr<BoolAttr, "false">:$adj_x,
-    DefaultValuedAttr<BoolAttr, "false">:$adj_y,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y,
     // Used in post-training dynamic range quantization. If the value is true,
     // input activations are asymmetrically quantized.
     OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
@@ -1134,7 +1134,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
     TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
     TFL_TensorOf<[I32, I64]>:$indices,
     I32Attr:$axis,
-    DefaultValuedAttr<I32Attr, "0">:$batch_dims
+    DefaultValuedOptionalAttr<I32Attr, "0">:$batch_dims
   );
 
   let builders =
@@ -1721,7 +1721,7 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 
   let arguments = (ins
     AnyTensor:$input,
-    Confined<DefaultValuedAttr<I64ArrayAttr, "{}">, [TFL_ArrayMaxCount<8>]>:$squeeze_dims
+    ConfinedAttr<DefaultValuedOptionalAttr<I64ArrayAttr, "{}">, [TFL_ArrayMaxCount<8>]>:$squeeze_dims
   );
 
   let results = (outs
@@ -2543,7 +2543,7 @@ def TFL_PackOp : TFL_Op<"pack", [
   let arguments = (ins
     TFL_VariadicTensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QUI8, QI16, TFL_Quint8]>:$values,
 
-    Confined<I32Attr, [IntPositive]>:$values_count,
+    ConfinedAttr<I32Attr, [IntPositive]>:$values_count,
     I32Attr:$axis
   );
 
@@ -2908,8 +2908,8 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
     TFL_TensorOf<[F32, I32, I64, QI16, QUI8, TFL_Quint8]>:$input,
     TFL_I32OrI64Tensor:$seq_lengths,
 
-    Confined<I32Attr, [IntNonNegative]>:$seq_dim,
-    Confined<I32Attr, [IntNonNegative]>:$batch_dim
+    ConfinedAttr<I32Attr, [IntNonNegative]>:$seq_dim,
+    ConfinedAttr<I32Attr, [IntNonNegative]>:$batch_dim
   );
 
   let results = (outs
@@ -3429,7 +3429,7 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
   let arguments = (ins
     TFL_TensorOf<[F32, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$input,
 
-    Confined<I32Attr, [IntNonNegative]>:$num,
+    ConfinedAttr<I32Attr, [IntNonNegative]>:$num,
     I32Attr:$axis
   );
 
@@ -3533,7 +3533,7 @@ def TFL_SpaceToDepthOp: TFL_Op<"space_to_depth", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
-    Confined<I32Attr, [IntPositive]>:$block_size
+    ConfinedAttr<I32Attr, [IntPositive]>:$block_size
   );
 
   let results = (outs
@@ -3564,7 +3564,7 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, I8, I32, I64, TFL_Quint8, UI8, QI8, QUI8]>:$input,
-    Confined<I32Attr, [IntPositive]>:$block_size
+    ConfinedAttr<I32Attr, [IntPositive]>:$block_size
   );
 
   let results = (outs
@@ -3590,7 +3590,7 @@ def TFL_SplitOp : TFL_Op<"split", [
   let arguments = (ins
     TFL_TensorOf<[I32]>:$split_dim,
     TFL_TensorOf<[F32, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$value,
-    Confined<I32Attr, [IntPositive]>:$num_splits
+    ConfinedAttr<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs
@@ -3618,7 +3618,7 @@ def TFL_SplitVOp : TFL_Op<"split_v", [
     TFL_TensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$value,
     TFL_1DTensorOf<[I32], [I32]>:$size_splits,
     TFL_0DTensorOf<[I32], [I32]>:$split_dim,
-    Confined<I32Attr, [IntPositive]>:$num_splits
+    ConfinedAttr<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs
@@ -3648,7 +3648,7 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
     TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8, QI16]>:$input,
     TFL_I32Tensor:$size,
     BoolAttr:$align_corners,
-    DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$half_pixel_centers
   );
 
   let results = (outs
@@ -3676,7 +3676,7 @@ def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
     TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8, QI16]>:$input,
     TFL_I32Tensor:$size,
     BoolAttr:$align_corners,
-    DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$half_pixel_centers
   );
 
   let results = (outs
@@ -3890,7 +3890,7 @@ def TFL_GeluOp: TFL_Op<"gelu", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, QI8, QUI8]>:$input,
-    DefaultValuedAttr<BoolAttr, "false">:$approximate
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$approximate
   );
 
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
@@ -3955,9 +3955,9 @@ def TFL_FakeQuantOp : TFL_Op<"fake_quant", [
     F32Attr:$max,
 
     // The bitwidth of the quantization; between 2 and 16, inclusive.
-    Confined<I32Attr, [IntMinValue<2>, IntMaxValue<16>]>:$num_bits,
+    ConfinedAttr<I32Attr, [IntMinValue<2>, IntMaxValue<16>]>:$num_bits,
     // Quantization range starts from 0 or 1; starts from 1 if true.
-    Confined<BoolAttr, [TFL_BoolFalse]>:$narrow_range);
+    ConfinedAttr<BoolAttr, [TFL_BoolFalse]>:$narrow_range);
 
   let results = (outs TFL_FpTensor:$output);
 
@@ -4142,11 +4142,11 @@ def TFL_BasicLSTMOp : TFL_Op<"basic_lstm", [NoSideEffect,
 
     // Attributes
     DefaultValuedStrAttr<TFL_AFAttr, "TANH">:$fused_activation_function,
-    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
-    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the BASIC kernel only, constrain it.
-    Confined<
-      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "mlir::TFL::LSTMKernelType::BASIC">,
+    ConfinedAttr<
+      DefaultValuedOptionalAttr<TFL_LSTMKernelTypeAttr, "mlir::TFL::LSTMKernelType::BASIC">,
       [TFL_LSTMKernelTypeEqualsTo<"mlir::TFL::LSTMKernelType::BASIC">]>:$kernel_type
   );
 
@@ -4248,11 +4248,11 @@ Ba et al. 'Layer Normalization'
 
     // Attributes
     TFL_AFAttr:$fused_activation_function,
-    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
-    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the FULL kernel only, constrain it.
-    Confined<
-      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "mlir::TFL::LSTMKernelType::FULL">,
+    ConfinedAttr<
+      DefaultValuedOptionalAttr<TFL_LSTMKernelTypeAttr, "mlir::TFL::LSTMKernelType::FULL">,
       [TFL_LSTMKernelTypeEqualsTo<"mlir::TFL::LSTMKernelType::FULL">]>:$kernel_type,
     // Used in post-training dynamic range quantization. If the value is true,
     // input activations are asymmetrically quantized.
@@ -4385,8 +4385,8 @@ def TFL_UnidirectionalSequenceLSTMOp :
 
     // Attributes
     TFL_AFAttr:$fused_activation_function,
-    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
-    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$time_major,
     // Used in post-training dynamic range quantization. If the value is true,
     // input activations are asymmetrically quantized.
@@ -4593,8 +4593,8 @@ def TFL_BidirectionalSequenceLSTMOp :
 
     // Attributes
     TFL_AFAttr:$fused_activation_function,
-    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
-    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$merge_outputs,
     BoolAttr:$time_major,
     // Used in post-training dynamic range quantization. If the value is true,
@@ -4737,8 +4737,8 @@ def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
     TFL_TensorOf<[F32]>:$ref,
 
     // Attributes
-    DefaultValuedAttr<F32Attr, "0.1">:$tolerance,
-    DefaultValuedAttr<BoolAttr, "false">:$log_if_failed
+    DefaultValuedOptionalAttr<F32Attr, "0.1">:$tolerance,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$log_if_failed
   );
 
   let results = (outs TFL_FpTensor:$output);
@@ -4779,7 +4779,7 @@ def TFL_SVDFOp :
     TFL_StatefulTensor:$activation_state,
 
     // Attributes
-    Confined<I32Attr, [IntPositive]>:$rank,
+    ConfinedAttr<I32Attr, [IntPositive]>:$rank,
     TFL_AFAttr:$fused_activation_function,
     // Used in post-training dynamic range quantization. If the value is true,
     // input activations are asymmetrically quantized.
@@ -5058,7 +5058,7 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
-    DefaultValuedAttr<BoolAttr, "false">:$is_stateless
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stateless
   );
   let results = (outs Variadic<AnyTensor>:$output);
 
@@ -5560,8 +5560,8 @@ lower bound 0 is included in the range, while the upper bound 1 is excluded.
 
   let arguments = (ins
     TFL_I32Tensor:$shape,
-    DefaultValuedAttr<I64Attr, "0">:$seed,
-    DefaultValuedAttr<I64Attr, "0">:$seed2
+    DefaultValuedOptionalAttr<I64Attr, "0">:$seed,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$seed2
   );
 
    let results = (outs
@@ -5579,8 +5579,8 @@ The generated values will have mean 0 and standard deviation 1.
 
   let arguments = (ins
     TFL_I32Tensor:$shape,
-    DefaultValuedAttr<I64Attr, "0">:$seed,
-    DefaultValuedAttr<I64Attr, "0">:$seed2
+    DefaultValuedOptionalAttr<I64Attr, "0">:$seed,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$seed2
   );
 
   let results = (outs
@@ -5600,8 +5600,8 @@ or unnormalized log-probabilities provided for all classes.
   let arguments = (ins
     TFL_FpTensor:$logits,
     TFL_I32Tensor:$num_samples,
-    DefaultValuedAttr<I64Attr, "0">:$seed,
-    DefaultValuedAttr<I64Attr, "0">:$seed2
+    DefaultValuedOptionalAttr<I64Attr, "0">:$seed,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$seed2
   );
 
   let results = (outs

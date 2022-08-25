@@ -2,7 +2,8 @@
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
-# Breaking Changes
+* `tensorflow::StatusOr::ConsumeValueOrDie`, deprecated in TF 2.10 has been
+  removed.
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
@@ -23,12 +24,22 @@
     *   Updates to existing operations:
           * tfl.mul now supports complex32 inputs.
 
+*   `tf.experimental.StructuredTensor`
+    *   Introduced `tf.experimental.StructuredTensor`, which provides a flexible
+        and Tensorflow-native way to encode structured data such as protocol
+        buffers or pandas dataframes.
+
 # Bug Fixes and Other Changes
 
 *   `tf.image`
     *   Added an optional parameter `return_index_map` to `tf.image.ssim` which
         causes the returned value to be the local SSIM map instead of the global
         mean.
+
+*   TF Core:
+
+    *   `tf.custom_gradient` can now be applied to functions that accept
+        "composite" tensors, such as `tf.RaggedTensor`, as inputs.
 
 # Thanks to our Contributors
 
@@ -60,6 +71,7 @@ This release contains contributions from many people at Google, as well as:
     *   Updates to existing operations:
           * tfl.scatter_nd now supports I1 for update arg.
     *   Upgrade Flatbuffers v2.0.5 from v1.12.0
+    *   Better supporting `tf_type.variant` type in flatbuffer import/export.
 
 *   `tf.keras`:
 

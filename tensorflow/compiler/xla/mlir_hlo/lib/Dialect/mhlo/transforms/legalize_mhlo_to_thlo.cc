@@ -49,7 +49,7 @@ struct ConcatenateOpPattern : public OpRewritePattern<mhlo::ConcatenateOp> {
 
   LogicalResult matchAndRewrite(mhlo::ConcatenateOp op,
                                 PatternRewriter& rewriter) const override {
-    const uint64_t concatDim = op.dimension();
+    const int64_t concatDim = op.dimension();
     const Location loc = op.getLoc();
     const Value anyOperand = op.val().front();
 

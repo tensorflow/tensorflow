@@ -130,7 +130,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
     for (auto& use : value.getUses()) {
       Operation* user = use.getOwner();
       int operand_num = use.getOperandNumber();
-      std::unique_ptr<OpQuantSpec> spec = op_spec_.GetOpQuantSpec(user);
+      std::unique_ptr<OpQuantSpec> spec = GetTFOpQuantSpec(user);
 
       if (quant_specs_.inference_type == tensorflow::DT_QINT8 &&
           spec->quantizable_operands.contains(operand_num)) {
@@ -209,7 +209,6 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
 
  protected:
   quant::QuantizationSpecs quant_specs_;
-  TFOpQuantSpec op_spec_;
 };
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.

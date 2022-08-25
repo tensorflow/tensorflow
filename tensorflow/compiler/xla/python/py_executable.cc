@@ -33,6 +33,16 @@ Status PyToken::Await() {
   return future_.Await();
 }
 
+Status PyShardedToken::Await() {
+  py::gil_scoped_release gil_release;
+  Status status = OkStatus();
+  for (auto& future : futures_) {
+    auto s = future.Await();
+    if (!s.ok()) status = std::move(s);
+  }
+  return status;
+}
+
 PyExecutable::PyExecutable(std::shared_ptr<PyClient> client,
                            std::unique_ptr<PjRtLoadedExecutable> executable,
                            std::shared_ptr<Traceback> traceback,
@@ -108,7 +118,7 @@ PyExecutable::ExecuteInternal(
 
       for (const py::capsule& host_callback : host_callbacks_) {
         contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
-            host_callback.get_pointer<HostCallback>(),
+            *host_callback.get_pointer<HostCallback>(),
             host_memory_for_device_manager, send_callbacks, recv_callbacks));
       }
       options.send_callbacks = host_callback_states->send_callbacks;
@@ -178,8 +188,7 @@ StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
   return std::move(outputs_and_token.first);
 }
 
-StatusOr<
-    std::pair<std::vector<std::vector<PyBuffer::object>>, std::vector<PyToken>>>
+StatusOr<std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
 PyExecutable::ExecuteShardedOnLocalDevicesInternal(
     absl::Span<const std::vector<PyBuffer::object>> args,
     std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
@@ -208,7 +217,7 @@ PyExecutable::ExecuteShardedOnLocalDevicesInternal(
 
         for (const py::capsule& host_callback : host_callbacks_) {
           contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
-              host_callback.get_pointer<HostCallback>(),
+              *host_callback.get_pointer<HostCallback>(),
               host_memory_for_device_manager, send_callbacks, recv_callbacks));
         }
       }
@@ -271,20 +280,14 @@ PyExecutable::ExecuteShardedOnLocalDevicesInternal(
   // implement this. So we have to check whether returned_futures is empty.
   // Remove this check once the implementation is fixed.
   if (!returned_futures.has_value()) {
-    std::vector<PyToken> tokens(num_computations, PyToken::ReadyPyToken());
     return std::pair<std::vector<std::vector<PyBuffer::object>>,
-                     std::vector<PyToken>>(std::move(outputs),
-                                           std::move(tokens));
+                     PyShardedToken>(std::move(outputs), PyShardedToken());
   }
 
-  std::vector<PyToken> tokens;
-  tokens.reserve(returned_futures->size());
-  for (auto& future : *returned_futures) {
-    tokens.emplace_back(std::move(future));
-  }
+  PyShardedToken py_sharded_token(std::move(*returned_futures));
 
-  return std::pair<std::vector<std::vector<PyBuffer::object>>,
-                   std::vector<PyToken>>(std::move(outputs), std::move(tokens));
+  return std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>(
+      std::move(outputs), std::move(py_sharded_token));
 }
 
 StatusOr<std::vector<std::vector<PyBuffer::object>>>
@@ -297,8 +300,7 @@ PyExecutable::ExecuteShardedOnLocalDevices(
   return std::move(outputs_and_tokens.first);
 }
 
-StatusOr<
-    std::pair<std::vector<std::vector<PyBuffer::object>>, std::vector<PyToken>>>
+StatusOr<std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
 PyExecutable::ExecuteShardedOnLocalDevicesWithTokens(
     absl::Span<const std::vector<PyBuffer::object>> args) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;

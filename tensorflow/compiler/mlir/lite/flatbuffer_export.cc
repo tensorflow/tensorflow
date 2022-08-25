@@ -78,6 +78,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
+#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -380,11 +381,13 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
     }
 
     // Verify that all operations except the terminator have exactly one
-    // result of type supported by TFLite.
+    // result of type supported by TFLite (or is a ControlType, which
+    // will be removed later by ExtractControlEdges.)
     for (auto& inst : bb) {
       if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;
 
       for (auto result : inst.getResults()) {
+        if (result.getType().isa<mlir::TFL::ControlType>()) continue;
         if (!HasValidTFLiteType(result, inst)) {
           auto elementType = getElementTypeOrSelf(result.getType());
           if (elementType.isa<mlir::TF::VariantType>()) {
@@ -542,6 +545,12 @@ class Translator {
   Optional<BufferOffset<tflite::Tensor>> BuildTensorFromType(
       mlir::Type type, const std::string& name);
 
+  // Builds TF::VariantType from the given element type. Returns llvm::None if
+  // failure. Returns empty vector if the element type is not TF::VariantType or
+  // there is empty TensorType in the TF::VariantType.
+  Optional<std::vector<BufferOffset<tflite::VariantSubType>>>
+  BuildTFVariantType(mlir::Type element_type);
+
   // Builds TFLite tensor from the given value. `buffer_idx` is index of the
   // corresponding buffer. Emits error and returns llvm::None on failure.
   Optional<BufferOffset<tflite::Tensor>> BuildTensor(
@@ -601,9 +610,15 @@ class Translator {
   GetQuantizationForQuantStatsOpOutput(mlir::quantfork::StatisticsOp stats_op);
 
   // Build a subgraph with a given name out of the region either corresponding
-  // to a function's body or while op.
+  // to a function's body or while op. Modifies *region by calling
+  // ExtractControlEdges.
   Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(
       const std::string& name, Region* region, const int index);
+
+  // Modifies *block by unwrapping all ControlNodeOps. The DAG of the control
+  // dependencies is returned as a vector of its edges, with node indices into
+  // *block.
+  std::vector<std::pair<int, int>> ExtractControlEdges(mlir::Block* block);
 
   // Builds Metadata with the given `name` and buffer `content`.
   BufferOffset<tflite::Metadata> BuildMetadata(StringRef name,
@@ -695,6 +710,11 @@ class Translator {
   // A mapping table to mlir::Operation objects for TFL subgraph and operator
   // index in a flatbuffer.
   std::vector<std::vector<Operation*>> subgraph_op_inst_map_;
+
+  // Will be populated by ExtractControlEdges to contain the control
+  // dependencies contained in the ControlNodeOps. Will then be used to populate
+  // metadata in the exported flatbuffer file.
+  tflite::ModelControlDependencies model_control_dependencies_;
 };
 
 bool Translator::EstimateArithmeticCount(int64_t* count) {
@@ -770,6 +790,36 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   return tflite::CreateBuffer(builder_, buffer_data);
 }
 
+Optional<std::vector<BufferOffset<tflite::VariantSubType>>>
+Translator::BuildTFVariantType(mlir::Type element_type) {
+  std::vector<BufferOffset<tflite::VariantSubType>> variant_params;
+  auto variant_type = element_type.dyn_cast<mlir::TF::VariantType>();
+  if (!variant_type) {
+    return variant_params;
+  }
+
+  // We only support up to one nested type in tf_type.variant_type.
+  if (variant_type.getSubtypes().size() > 1) {
+    return llvm::None;
+  }
+  if (variant_type.getSubtypes().empty()) {
+    return variant_params;
+  }
+  mlir::TensorType tensor_type = variant_type.getSubtypes().front();
+  tflite::TensorType tflite_element_type =
+      GetTFLiteType(tensor_type.getElementType()).ValueOrDie();
+  std::vector<int32_t> shape;
+  if (tensor_type.hasRank()) {
+    llvm::ArrayRef<int64_t> shape_ref = tensor_type.getShape();
+    shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
+  }
+
+  variant_params.push_back(
+      tflite::CreateVariantSubType(builder_, builder_.CreateVector(shape),
+                                   tflite_element_type, tensor_type.hasRank()));
+  return variant_params;
+}
+
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
     mlir::Type type, const std::string& name) {
   auto tensor_type = type.cast<TensorType>();
@@ -789,6 +839,11 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
   auto element_type = tensor_type.getElementType();
   tflite::TensorType tflite_element_type =
       GetTFLiteType(tensor_type.getElementType()).ValueOrDie();
+  Optional<std::vector<BufferOffset<tflite::VariantSubType>>> variant_params =
+      BuildTFVariantType(element_type);
+  if (!variant_params.hasValue()) {
+    return llvm::None;
+  }
   BufferOffset<tflite::QuantizationParameters> q_params = 0;
   if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
     std::vector<float> scales = {static_cast<float>(qtype.getScale())};
@@ -809,7 +864,8 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
       builder_, builder_.CreateVector(shape), tflite_element_type,
       /*buffer=*/0, builder_.CreateString(name), q_params,
       /*is_variable=*/false, /*sparsity=*/0, /*shape_signature=*/0,
-      /*has_rank=*/tensor_type.hasRank());
+      /*has_rank=*/tensor_type.hasRank(),
+      variant_params->empty() ? 0 : builder_.CreateVector(*variant_params));
 }
 
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
@@ -876,6 +932,12 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   tflite::TensorType tflite_element_type =
       GetTFLiteType(type.getElementType()).ValueOrDie();
 
+  Optional<std::vector<BufferOffset<tflite::VariantSubType>>> variant_params =
+      BuildTFVariantType(element_type);
+  if (!variant_params.hasValue()) {
+    return llvm::None;
+  }
+
   BufferOffset<tflite::QuantizationParameters> q_params;
   if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
     std::vector<float> scales = {static_cast<float>(qtype.getScale())};
@@ -920,14 +982,16 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
         /*is_variable=*/is_variable, s_params, /*shape_signature=*/0,
-        /*has_rank=*/has_rank);
+        /*has_rank=*/has_rank,
+        variant_params->empty() ? 0 : builder_.CreateVector(*variant_params));
   } else {
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
         /*is_variable=*/is_variable, s_params,
         /*shape_signature=*/builder_.CreateVector(shape_signature),
-        /*has_rank=*/has_rank);
+        /*has_rank=*/has_rank,
+        variant_params->empty() ? 0 : builder_.CreateVector(*variant_params));
   }
 }
 
@@ -1387,6 +1451,7 @@ Translator::GetQuantizationForQuantStatsOpOutput(
 
 Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     const std::string& name, Region* region, const int index) {
+  const auto control_edges = ExtractControlEdges(&region->front());
   bool has_input_attr = false;
   if (auto fn = dyn_cast<FuncOp>(region->getParentOp())) {
     InitializeNamesFromAttribute(fn, &has_input_attr);
@@ -1433,6 +1498,9 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
   };
 
   std::vector<BufferOffset<tflite::Operator>> operators;
+
+  // Maps positions of operations in bb to positions in operators
+  llvm::DenseMap<int, int> operation_index_to_operator_index;
   std::vector<Operation*> operators_in_mlir;
   auto& bb = region->front();
 
@@ -1449,7 +1517,9 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
   }
 
   bool failed_once = false;
-  for (auto& inst : bb) {
+  for (auto& item : llvm::enumerate(bb)) {
+    Operation& inst = item.value();
+    const int operation_index = item.index();
     if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;
     // For "quant.stats" op, it's used to store the quantization parameters info
     // and its output should be then replaced by its input value.
@@ -1533,9 +1603,10 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
             "Invalid CustomTfOp: Custom TF Op have empty region.");
       }
     }
-
     if (auto tfl_operator =
             BuildOperator(real_inst, operands, results, intermediates)) {
+      operation_index_to_operator_index.try_emplace(operation_index,
+                                                    operators.size());
       operators.push_back(*tfl_operator);
       operators_in_mlir.push_back(real_inst);
     } else {
@@ -1556,7 +1627,18 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
   for (auto result : bb.getTerminator()->getOperands()) {
     outputs.push_back(tensor_index_map[result]);
   }
-
+  for (const auto& [from, to] : control_edges) {
+    for (int what : {from, to}) {
+      if (operation_index_to_operator_index.count(what) == 0) {
+        module_.emitError(
+            "dangling control edge -- at least one vertex Operation isn't a "
+            "flatbuffer Operator.");
+      }
+    }
+    model_control_dependencies_[index].emplace_back(
+        operation_index_to_operator_index[from],
+        operation_index_to_operator_index[to]);
+  }
   return tflite::CreateSubGraph(
       builder_, builder_.CreateVector(tensors), builder_.CreateVector(inputs),
       builder_.CreateVector(outputs), builder_.CreateVector(operators),
@@ -1604,6 +1686,17 @@ Translator::CreateMetadataVector() {
     std::string value = std::string(kByteStringSize, '\0')
                             .assign(val.begin(), val.begin() + count);
     metadata.push_back(BuildMetadata(kv.first, value));
+  }
+
+  // Populate the model control dependencies metadata entry.
+  if (std::any_of(
+          model_control_dependencies_.begin(),
+          model_control_dependencies_.end(),
+          [](const tflite::ControlEdges& edges) { return !edges.empty(); })) {
+    metadata.push_back(
+        BuildMetadata(tflite::kModelControlDependenciesMetadataKey,
+                      tflite::SerializeModelControlDependencies(
+                          model_control_dependencies_)));
   }
   return builder_.CreateVector(metadata);
 }
@@ -1880,6 +1973,7 @@ Optional<std::string> Translator::TranslateInternal() {
   // Build subgraph for each of the named regions.
   std::vector<BufferOffset<tflite::SubGraph>> subgraphs;
   subgraphs.reserve(named_regions.size());
+  model_control_dependencies_.assign(named_regions.size(), {});
   int first_failed_func = -1;
 
   // When we export each function in the module op, intentionally, we export the
@@ -2136,6 +2230,52 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
   return tflite::CreateSparsityParameters(
       builder_, builder_.CreateVector(traversal_order),
       builder_.CreateVector(block_map), builder_.CreateVector(fb_dim_metadata));
+}
+
+std::vector<std::pair<int, int>> Translator::ExtractControlEdges(
+    mlir::Block* block) {
+  std::vector<std::pair<int, int>> control_edges;
+
+  mlir::IRRewriter rewriter(block->getParentOp()->getContext());
+
+  // Since we're modifying *block, we store integer offsets to block->begin().
+  llvm::DenseMap<Operation*, int> control_nodes_at;
+  std::vector<Operation*> control_nodes;
+  for (const auto& item : llvm::enumerate(*block)) {
+    if (llvm::isa<mlir::TFL::ControlNodeOp>(item.value())) {
+      control_nodes.push_back(&item.value());
+      control_nodes_at.try_emplace(&item.value(), item.index());
+    }
+  }
+
+  for (auto outer_op : control_nodes) {
+    auto control_node_op = dyn_cast<mlir::TFL::ControlNodeOp>(outer_op);
+    auto* inner_op = &control_node_op.body().front().front();
+    auto control_token = control_node_op.control();
+
+    // Now go through all uses. Since *block is in executable order, control
+    // edges always point to operations we haven't modified yet.
+    for (auto& use : control_token.getUses()) {
+      auto owner = use.getOwner();
+      // Control tokens can only be consumed by other ControlNodeOps,
+      assert(llvm::isa<mlir::TFL::ControlNodeOp>(owner));
+      assert(control_nodes_at.find(owner) != control_nodes_at.end());
+      // Control edge in terms of offsets.
+      control_edges.emplace_back(control_nodes_at[outer_op],
+                                 control_nodes_at[owner]);
+    }
+    control_token.dropAllUses();
+
+    // Replace the ControlNodeOp with the wrapped operation.
+    rewriter.setInsertionPointAfter(outer_op);
+    auto* cloned_inner = rewriter.clone(*inner_op);
+    for (auto it :
+         llvm::zip(control_node_op.outputs(), cloned_inner->getResults())) {
+      std::get<0>(it).replaceAllUsesWith(std::get<1>(it));
+    }
+    rewriter.eraseOp(outer_op);
+  }
+  return control_edges;
 }
 
 }  // namespace

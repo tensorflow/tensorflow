@@ -9,6 +9,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "check_deps",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
@@ -468,7 +469,10 @@ cc_library(
     name = "reporter",
     srcs = ["reporter.cc"],
     hdrs = ["reporter.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
+    ],
     deps = [
         ":test_log_proto_impl_cc",
         "//tensorflow/core/platform:env",
@@ -658,15 +662,36 @@ cc_library(
 # kernels (e.g. _pywrap_tensorflow_internal.so) must not contain the global
 # variable in determinism.cc, since the global variable is already in
 # libtensorflow_framework.so.
+#
+# To test that determinism.cc is not improperly included in the shared object
+# which contains the kernels, you can run the "determinism_check_deps" rule
+# below.
 alias(
     name = "determinism_for_kernels",
     actual = if_static(":determinism", ":determinism_hdr_lib"),
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+check_deps(
+    name = "determinism_check_deps",
+    disallowed_deps = if_static(
+        [],
+        otherwise = [":determinism"],
+    ),
+    deps = [
+        "//tensorflow:tensorflow_cc",
+        "//tensorflow/python:pywrap_tensorflow_internal",
+    ],
+)
+
 cc_library(
     name = "determinism_test_util",
     hdrs = [":determinism_test_util.h"],
+    data = [
+        # Adding this data dependency ensures determinism_check_deps is run
+        # whenever determinism tests are run.
+        ":determinism_check_deps",
+    ],
     deps = [":determinism"],
 )
 
@@ -686,11 +711,11 @@ tf_kernel_library(
     }),
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lib",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cusolver_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
-        "//tensorflow/stream_executor/cuda:cublas_lib",
-        "//tensorflow/stream_executor/cuda:cusolver_lib",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
     ],
 )
 
@@ -704,12 +729,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform:dso_loader",
-        "//tensorflow/stream_executor/rocm:rocblas_plugin",
-        "//tensorflow/stream_executor/rocm:rocblas_wrapper",
-        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
-        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -728,11 +753,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ] + if_cuda([
-        "//tensorflow/stream_executor/cuda:cusparse_lib",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cusparse_lib",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
-        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
-        "//tensorflow/stream_executor/rocm:hipsparse_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
 
@@ -957,5 +982,9 @@ tf_proto_library(
     ],
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",
+    ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
     ],
 )

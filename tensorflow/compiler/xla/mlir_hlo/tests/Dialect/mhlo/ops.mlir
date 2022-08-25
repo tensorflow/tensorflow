@@ -4820,6 +4820,30 @@ func.func @is_compatible_quant_signedness_mismatch(%arg0: tensor<1x!quant.unifor
 
 // -----
 
+// CHECK-LABEL: is_compatible_dynamism_bounds
+func.func @is_compatible_dynamism_bounds_mismatch(
+  %arg0: tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>,
+  %arg1: tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>) {
+  %0 = "mhlo.add"(%arg0, %arg1) : (
+    tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>) -> tensor<3xf32>
+  func.return
+}
+
+// -----
+
+func.func @is_compatible_dynamism_bounds_mismatch(
+  %arg0: tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>,
+  %arg1: tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>) {
+  // expected-error@+1 {{requires compatible types for all operands and results}}
+  %0 = "mhlo.add"(%arg0, %arg1) : (
+    tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>) -> tensor<5xf32>
+  func.return
+}
+
+// -----
+
 // CHECK-LABEL: scatter_update_scalar
 func.func @scatter_update_scalar(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
                             %arg2: tensor<1xi32>) -> tensor<3xi32> {

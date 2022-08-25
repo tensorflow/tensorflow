@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
@@ -711,76 +710,40 @@ bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
 // a reduce operations. In this case, the above description on "output" apply
 // to the result of such a use-chain, which provides the input to the reduce
 // operation.
-static bool IsInstructionSafeForShmemTranspose(const HloInstruction* hlo) {
-  if (hlo->IsElementwise()) {
-    return absl::c_all_of(hlo->users(), [&](const HloInstruction* user) {
-      return IsInstructionSafeForShmemTranspose(user);
-    });
+static bool IsInstructionSafeForShmemTransposeRec(
+    const HloInstruction* hlo,
+    absl::flat_hash_map<const HloInstruction*, bool>* memoized) {
+  auto it = memoized->find(hlo);
+  if (it != memoized->end()) {
+    return it->second;
   }
+  static const auto* const to_traverse = new absl::flat_hash_set<HloOpcode>{
+      HloOpcode::kGetTupleElement, HloOpcode::kMap, HloOpcode::kParameter,
+      HloOpcode::kTuple};
 
-  // Needs to be kept in sync with `ShmemTransposeSupportedForInputs` below.
-  switch (hlo->opcode()) {
-    // Non-elementwise instructions that don't cause the shmem transpose
-    // to be unsafe, including the instructions that don't currently fuse.
-    case HloOpcode::kGetDimensionSize:
+  bool is_safe = [&] {
+    if (hlo->IsElementwise() || to_traverse->contains(hlo->opcode())) {
+      return absl::c_all_of(hlo->users(), [&](const HloInstruction* user) {
+        return IsInstructionSafeForShmemTransposeRec(user, memoized);
+      });
+    } else if (hlo->opcode() == HloOpcode::kGetDimensionSize) {
       // The result of the operation doesn't rely on the content of the
       // tensor. As such, there is no need to further inspect its users.
       return true;
-    case HloOpcode::kGetTupleElement:
-    case HloOpcode::kMap:
-    case HloOpcode::kParameter:
-    case HloOpcode::kTuple:
-      return absl::c_all_of(hlo->users(), [&](const HloInstruction* user) {
-        return IsInstructionSafeForShmemTranspose(user);
-      });
-
-    default:
-      return false;
-  }
-}
-
-// Given a group of input parameters that are 0-2-1 transpose of the outputs
-// of a fusion kernel, returns the input parameters that are safe for the
-// shared memory transpose implementation.
-//
-// When a tile based shared memory transpose is used to implement an input
-// with 0-2-1 transpose, we preload a tile of the input elements [z, y..y+31,
-// x..x+31] to compute the output tile elements of the same indices.
-// Preloading the input tile this way is only safe when the computation of the
-// output tile elements do not need any input element outside the preloaded
-// tile. We inspect all the transitive users of the input parameter up to the
-// fusion root instruction to see if we can find any instruction that can make
-// preloading the input tile unsafe.
-static std::vector<int64_t> FilterInputsForShmemTranspose(
-    const HloComputation* fused_computation, std::vector<int64_t> input_ids) {
-  std::vector<int64_t> filtered_input_ids;
-  for (int64_t input_id : input_ids) {
-    const HloInstruction* instr =
-        fused_computation->parameter_instruction(input_id);
-    if (IsInstructionSafeForShmemTranspose(instr)) {
-      filtered_input_ids.push_back(input_id);
-    } else {
-      VLOG(10) << "Input not safe for shmem transpose " << instr->ToString();
     }
-  }
-  return filtered_input_ids;
+    return false;
+  }();
+
+  memoized->emplace(hlo, is_safe);
+  return is_safe;
 }
 
-// Whether code emission supports shared memory transposes for one or more
-// `input_ids`.
-bool ShmemTransposeSupportedForInputs(const HloInstruction& instr,
-                                      std::vector<int64_t> input_ids) {
-  if (instr.opcode() == HloOpcode::kFusion) {
-    return !FilterInputsForShmemTranspose(
-                instr.fused_instructions_computation(), input_ids)
-                .empty();
-  }
-  // Needs to be kept in sync with `IsInstructionSafeForShmemTranspose` above.
-  return instr.IsElementwise() ||
-         instr.opcode() == HloOpcode::kGetDimensionSize;
+static bool IsInstructionSafeForShmemTranspose(const HloInstruction* hlo) {
+  absl::flat_hash_map<const HloInstruction*, bool> mapping;
+  return IsInstructionSafeForShmemTransposeRec(hlo, &mapping);
 }
 
-std::optional<TransposeDimsAndParams> FindTranspose021DimsAndParameters(
+static std::optional<TransposeDimsAndParams> FindTranspose021DimsAndParameters(
     const std::vector<Shape>& operand_shapes, const Shape& output_shape) {
   std::vector<int64_t> params_012;
   std::optional<Vector3> reduced_dims_021;
@@ -790,12 +753,9 @@ std::optional<TransposeDimsAndParams> FindTranspose021DimsAndParameters(
         ShapeUtil::FindTranspose021(operand_shapes[operand_idx], output_shape);
     if (!find_transpose_result.has_value()) {
       continue;
-    }
-    const Vector3& curr_reduced_dims_021 = *find_transpose_result;
-    if (!reduced_dims_021.has_value()) {
-      reduced_dims_021 = curr_reduced_dims_021;
-    }
-    if (!absl::c_equal(*reduced_dims_021, curr_reduced_dims_021)) {
+    } else if (!reduced_dims_021.has_value()) {
+      reduced_dims_021 = *find_transpose_result;
+    } else if (!absl::c_equal(*reduced_dims_021, *find_transpose_result)) {
       // There is more than one possible transpose. Instead of picking one
       // transpose, we simply give up here.
       VLOG(3) << "021 transpose not matched; More than one possible "
@@ -848,8 +808,12 @@ std::optional<TransposeDimsAndParams> Match021Transpose(
     return std::nullopt;
   }
 
-  params_012 = FilterInputsForShmemTranspose(fused_computation, params_012);
-  if (params_012.empty()) {
+  auto safe_params = llvm::make_filter_range(params_012, [&](int64_t param_id) {
+    return IsInstructionSafeForShmemTranspose(
+        fused_computation->parameter_instruction(param_id));
+  });
+
+  if (safe_params.empty()) {
     VLOG(3) << "021 transpose on " << root->ToString()
             << "not matched: no inputs matched after filtering "
                "for shmem access";
@@ -875,109 +839,30 @@ std::optional<TransposeDimsAndParams> Match021Transpose(
   // shared memory in fusions.  If in the future other fusible ops use shared
   // memory, we'll have to adjust this heuristic.
   constexpr int kMinBlocksPerCore = 3;
-  constexpr int64_t kShmemPerCore = 48 * 1024;
+
   int64_t shmem_used = 0;
-  for (int64_t i = 0; i < params_012.size(); ++i) {
+  std::vector<int64_t> filtered_params;
+  for (int64_t param_id : safe_params) {
     const Shape& operand_shape =
-        fused_computation->parameter_instruction(params_012[i])->shape();
+        fused_computation->parameter_instruction(param_id)->shape();
     shmem_used +=
         32 * 33 *
         ShapeUtil::ByteSizeOfPrimitiveType(operand_shape.element_type());
 
-    if (kMinBlocksPerCore * shmem_used > kShmemPerCore) {
-      // Erase this element and everything after it from params_012.
-      params_012.resize(i);
+    if (kMinBlocksPerCore * shmem_used > kSharedMemoryBudgetInBytes) {
       break;
     }
+    filtered_params.push_back(param_id);
   }
 
-  if (params_012.empty()) {
+  if (filtered_params.empty()) {
     VLOG(3)
         << "021 transpose on :" << root->ToString()
         << " not matched: no inputs matched after filtering for shmem budget";
     return std::nullopt;
   }
 
-  return TransposeDimsAndParams{reduced_dims_021, params_012};
-}
-
-bool FusionCanBeEmittedAsShmemTranspose(const HloInstruction& producer,
-                                        const HloInstruction& consumer) {
-  const Shape& output_shape = consumer.shape();
-  std::vector<Shape> consumer_operand_shapes;
-  absl::c_for_each(consumer.operands(), [&](const HloInstruction* operand) {
-    consumer_operand_shapes.push_back(operand->shape());
-  });
-  std::optional<TransposeDimsAndParams> consumer_dims_and_params_021 =
-      FindTranspose021DimsAndParameters(consumer_operand_shapes, output_shape);
-
-  VLOG(3) << "Consumer " << consumer.name() << " has 021 transposed dimension: "
-          << consumer_dims_and_params_021.has_value();
-  // Whether the `consumer` will be emitted as shared memory transpose.
-  bool consumer_shmem_transpose =
-      consumer_dims_and_params_021.has_value() &&
-      ShmemTransposeSupportedForInputs(consumer,
-                                       consumer_dims_and_params_021->params);
-
-  std::vector<Shape> producer_operand_shapes;
-  absl::c_for_each(producer.operands(), [&](const HloInstruction* operand) {
-    producer_operand_shapes.push_back(operand->shape());
-  });
-  std::optional<TransposeDimsAndParams> producer_dims_and_params_021 =
-      FindTranspose021DimsAndParameters(producer_operand_shapes, output_shape);
-  VLOG(3) << "Producer " << producer.name() << " has 021 transposed dimension: "
-          << producer_dims_and_params_021.has_value();
-  // Whether the `producer` will be emitted as shared memory transpose.
-  bool producer_shmem_transpose =
-      producer_dims_and_params_021.has_value() &&
-      ShmemTransposeSupportedForInputs(producer,
-                                       producer_dims_and_params_021->params);
-
-  if (!consumer_shmem_transpose && !producer_shmem_transpose) {
-    // Neither `consumer` nor `producer` will be emitted as shared memory
-    // transpose. Hence, the fusion of both won't be either.
-    return false;
-  }
-
-  // The transposed dimensions of `producer` and `consumer` need to match.
-  if (consumer_dims_and_params_021.has_value() &&
-      producer_dims_and_params_021.has_value() &&
-      !absl::c_equal(consumer_dims_and_params_021->dims,
-                     producer_dims_and_params_021->dims)) {
-    VLOG(3) << producer.name() << " and " << consumer.name()
-            << " have different 021 transposed dimensions: "
-            << consumer_dims_and_params_021->ToString() << " vs "
-            << producer_dims_and_params_021->ToString();
-    return false;
-  }
-
-  std::vector<int64_t> producer_params_012;
-  if (producer_dims_and_params_021.has_value()) {
-    producer_params_012 = producer_dims_and_params_021->params;
-  }
-  int64_t producer_param_idx = consumer.operand_index(&producer);
-  // If the producer feeds into a 021 transposing param of the consumer, all
-  // consumer params need to be taken into account for further analysis.
-  if (consumer_dims_and_params_021.has_value() &&
-      absl::c_linear_search(consumer_dims_and_params_021->params,
-                            producer_param_idx)) {
-    producer_params_012.resize(producer.operand_count());
-    std::iota(producer_params_012.begin(), producer_params_012.end(), 0);
-  }
-  if (!producer_params_012.empty() &&
-      !ShmemTransposeSupportedForInputs(producer, producer_params_012)) {
-    VLOG(3) << "Producer " << producer.name()
-            << " has no operands that are considered safe for shared memory "
-               "transpose.";
-    return false;
-  }
-  if (!ShmemTransposeSupportedForInputs(consumer, {producer_param_idx})) {
-    VLOG(3) << "Consumer " << consumer.name()
-            << " has no operands that are considered safe for shared memory "
-               "transpose.";
-    return false;
-  }
-  return true;
+  return TransposeDimsAndParams{reduced_dims_021, filtered_params};
 }
 
 }  // namespace gpu

@@ -60,8 +60,8 @@ class TypeConverter {
         });
   }
 
-  // Converts MLIR element type to the DType.
-  static llvm::Expected<tfrt::DType> ConvertElementType(mlir::Type type);
+  // Converts MLIR element type to the PrimitiveType.
+  static llvm::Expected<PrimitiveType> ConvertElementType(mlir::Type type);
 
   // Converts MLIR type to the runtime type. Returns error if conversion was not
   // successful and the type has no corresponding run time type.

@@ -52,8 +52,8 @@ def RemoveRedundantDynamicBroadcast : Pat<
 // Convert DPad to Pad if edge_padding_low, edge_padding_high and
 // interior_padding are HLO_ConstantOp
 def DPadToPad: Pat<
-          (HLO_DynamicPadOp HLO_Tensor:$input,
-            HLO_Tensor:$padding_value,
+          (HLO_DynamicPadOp $input,
+            $padding_value,
             (ConstantLikeMatcher AnyIntElementsAttr:$edge_padding_low),
             (ConstantLikeMatcher AnyIntElementsAttr:$edge_padding_high),
             (ConstantLikeMatcher AnyIntElementsAttr:$interior_padding)),
@@ -65,7 +65,7 @@ def DPadToPad: Pat<
 // Convert RealDynamicSliceOp to SliceOp if start_indices, limit_indices and
 // strides are HLO_ConstantOp
 def RealDSliceToSlice: Pat<
-          (HLO_RealDynamicSliceOp HLO_Tensor:$operand,
+          (HLO_RealDynamicSliceOp $operand,
             (HLO_ConstantOp I64ElementsAttr:$start_indices),
             (HLO_ConstantOp I64ElementsAttr:$limit_indices),
             (HLO_ConstantOp I64ElementsAttr:$strides)),

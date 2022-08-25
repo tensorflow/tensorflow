@@ -141,9 +141,9 @@ const char* GetLogDir();
 }  // namespace tensorflow
 
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/tracing_impl.h"
+#include "tensorflow/tsl/platform/google/tracing_impl.h"
 #else
-#include "tensorflow/core/platform/default/tracing_impl.h"
+#include "tensorflow/tsl/platform/default/tracing_impl.h"
 #endif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_TRACING_H_

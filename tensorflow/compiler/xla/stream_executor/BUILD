@@ -9,16 +9,21 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
     default_visibility = [
-        "//tensorflow:__subpackages__",
+        ":friends",
     ],
     licenses = ["notice"],
 )
 
+package_group(
+    name = "friends",
+    packages = stream_executor_friends(),
+)
+
 # The stream_executor_headers target does not prescribe an implementation.
-# TODO(rdzhabarov): Keep populating this based on the tensorflow/stream_executor:stream_executor_headers.
 cc_library(
     name = "stream_executor_headers",
     textual_hdrs = [
@@ -244,17 +249,17 @@ cc_library(
     deps = [
         ":allocator_stats",
         ":data_type",
+        ":device_description",
+        ":device_memory",
+        ":device_options",
+        ":dnn_proto_cc",
+        ":fft",
+        ":kernel_cache_config",
+        ":kernel_spec",
+        ":launch_dim",
+        ":plugin",
+        ":rng",
         ":stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor:device_description",
-        "//tensorflow/compiler/xla/stream_executor:device_memory",
-        "//tensorflow/compiler/xla/stream_executor:device_options",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor:fft",
-        "//tensorflow/compiler/xla/stream_executor:kernel_cache_config",
-        "//tensorflow/compiler/xla/stream_executor:kernel_spec",
-        "//tensorflow/compiler/xla/stream_executor:launch_dim",
-        "//tensorflow/compiler/xla/stream_executor:plugin",
-        "//tensorflow/compiler/xla/stream_executor:rng",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core/platform:logging",
@@ -298,13 +303,13 @@ cc_library(
         ":device_description",
         ":device_memory",
         ":device_options",
+        ":dnn_proto_cc",
         ":kernel",
         ":kernel_cache_config",
         ":kernel_spec",
         ":launch_dim",
         ":plugin_registry",
         ":stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "@com_google_absl//absl/types:optional",
@@ -322,11 +327,11 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":device_description",
+        ":kernel_cache_config",
         ":platform",
         ":stream_executor_headers",
         ":stream_executor_internal",
-        "//tensorflow/compiler/xla/stream_executor:device_description",
-        "//tensorflow/compiler/xla/stream_executor:kernel_cache_config",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core/platform:logging",
@@ -357,11 +362,18 @@ tf_cuda_library(
         ":kernel",
         ":launch_dim",
         ":platform",
+        ":plugin_registry",
         ":rng",
         ":stream_executor_headers",
         ":stream_executor_internal",
+        ":temporary_device_memory",
         ":temporary_memory_manager",
         ":timer",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:logging",
+        "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -369,16 +381,6 @@ tf_cuda_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "//third_party/eigen3",
-        "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/compiler/xla/stream_executor/platform",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:logging",
-        # TODO(rdzhabarov): dependencies below only needed until stream_executor/cuda is migrated to xla/compiler.
-        "//tensorflow/stream_executor:dnn",
-        "//tensorflow/stream_executor:plugin_registry",
-        "//tensorflow/stream_executor:temporary_device_memory",
-        "//tensorflow/stream_executor/lib",
     ],
 )
 
@@ -413,19 +415,19 @@ cc_library(
     deps = [
         ":allocator_stats",
         ":data_type",
+        ":device_description",
         ":device_memory",
+        ":device_options",
+        ":dnn_proto_cc",
+        ":fft",
         ":kernel_cache_config",
+        ":kernel_spec",
+        ":launch_dim",
+        ":platform",
+        ":plugin",
+        ":plugin_registry",
+        ":rng",
         ":stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor:device_description",
-        "//tensorflow/compiler/xla/stream_executor:device_options",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor:fft",
-        "//tensorflow/compiler/xla/stream_executor:kernel_spec",
-        "//tensorflow/compiler/xla/stream_executor:launch_dim",
-        "//tensorflow/compiler/xla/stream_executor:platform",
-        "//tensorflow/compiler/xla/stream_executor:plugin",
-        "//tensorflow/compiler/xla/stream_executor:plugin_registry",
-        "//tensorflow/compiler/xla/stream_executor:rng",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core/platform:logging",
@@ -453,12 +455,12 @@ cc_library(
     ],
     deps = [
         ":data_type",
+        ":device_description",
+        ":dnn_proto_cc",
+        ":kernel_cache_config",
         ":platform",
         ":stream_executor_headers",
         ":stream_executor_pimpl_header",
-        "//tensorflow/compiler/xla/stream_executor:device_description",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor:kernel_cache_config",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core/platform:logging",
@@ -474,9 +476,9 @@ cc_library(
     hdrs = ["blas.h"],
     deps = [
         ":data_type",
+        ":dnn_proto_cc",
         ":host_or_device_scalar",
         ":stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "@com_google_absl//absl/strings",
@@ -522,20 +524,20 @@ cc_library(
     ],
     deps = [
         ":allocator_stats",
+        ":blas",
         ":data_type",
+        ":device_description",
+        ":device_memory",
+        ":device_options",
+        ":dnn_proto_cc",
+        ":fft",
+        ":kernel_cache_config",
+        ":kernel_spec",
+        ":launch_dim",
+        ":platform",
+        ":plugin",
+        ":rng",
         ":stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor:blas",
-        "//tensorflow/compiler/xla/stream_executor:device_description",
-        "//tensorflow/compiler/xla/stream_executor:device_memory",
-        "//tensorflow/compiler/xla/stream_executor:device_options",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor:fft",
-        "//tensorflow/compiler/xla/stream_executor:kernel_cache_config",
-        "//tensorflow/compiler/xla/stream_executor:kernel_spec",
-        "//tensorflow/compiler/xla/stream_executor:launch_dim",
-        "//tensorflow/compiler/xla/stream_executor:platform",
-        "//tensorflow/compiler/xla/stream_executor:plugin",
-        "//tensorflow/compiler/xla/stream_executor:rng",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core/platform:logging",
@@ -574,7 +576,7 @@ cc_library(
     deps = [
         ":data_type",
         ":device_memory",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
+        ":dnn_proto_cc",
         ":stream_executor_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
@@ -747,3 +749,13 @@ cc_library(
 )
 
 exports_files(["lazy_op_runner.h"])
+
+alias(
+    name = "cuda_platform",
+    actual = "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
+)
+
+alias(
+    name = "rocm_platform",
+    actual = "//tensorflow/stream_executor/rocm:all_runtime",
+)

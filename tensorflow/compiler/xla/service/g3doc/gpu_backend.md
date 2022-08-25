@@ -133,7 +133,7 @@ Besides emitting LLVM IR, `IrEmitter` also generates a sequence of
 Each thunk contains metadata for `GpuExecutable` to invoke an HLO instruction at
 runtime. For HLO instructions implemented as cuBLAS gemms, `IrEmitter` generates
 `GemmThunk`s whose `ExecuteOnStream` interface calls a cuBLAS gemm via
-[StreamExecutor](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/stream_executor)
+[StreamExecutor](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/xla/stream_executor)
 APIs. For instructions implemented as customized kernels, `IrEmitter` generates
 `KernelThunk`s which contain necessary arguments for launching kernels.
 

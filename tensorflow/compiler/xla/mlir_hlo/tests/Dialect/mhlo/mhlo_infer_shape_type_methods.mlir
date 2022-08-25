@@ -397,7 +397,7 @@ func.func @add_bounds(
 func.func @add_bounds_mismatch(
   %arg0: tensor<3xf32, #mhlo.type_extensions<bounds = [-1]>>,
   %arg1: tensor<?xf32, #mhlo.type_extensions<bounds = [2]>>) -> tensor<*xindex> {
-  // expected-error@+1 {{bound must not be less than static dimension size but has bound 2 vs static size 3}}
+  // expected-error@+1 {{requires compatible types for all operands and results}}
   %result = "mhlo.add"(%arg0, %arg1) : (
     tensor<3xf32, #mhlo.type_extensions<bounds = [-1]>>,
     tensor<?xf32, #mhlo.type_extensions<bounds = [2]>>) -> tensor<?xf32>

@@ -87,4 +87,14 @@ def ConvertToEntrypoint
   let dependentDialects = ["xla::runtime::RuntimeDialect"];
 }
 
+//===-----------------------------------------------------------------------===/
+// Conversions targeting `rt` dialect.
+//===-----------------------------------------------------------------------===/
+
+def ConvertRuntimeToLLVMPass : Pass<"xla-rt-to-llvm", "ModuleOp"> {
+  let summary = "Convert RT dialect to LLVM dialect";
+  let constructor = "::xla::runtime::CreateConvertRuntimeToLLVMPass()";
+  let dependentDialects = ["mlir::LLVM::LLVMDialect"];
+}
+
 #endif  // XLA_RUNTIME_PASSES

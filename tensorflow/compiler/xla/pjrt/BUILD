@@ -4,6 +4,10 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -84,10 +88,10 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
+        "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor:event",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
     ],
@@ -104,9 +108,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/core:test_main",
-        "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
 
@@ -138,10 +142,10 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
-        "//tensorflow/stream_executor:event",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
     ],
@@ -220,12 +224,15 @@ tf_cc_test(
 
 cc_library(
     name = "pjrt_executable",
+    srcs = ["pjrt_executable.cc"],
     hdrs = ["pjrt_executable.h"],
     visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -320,15 +327,15 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
-        "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:stream",
-        "//tensorflow/stream_executor/host:host_platform_id",
-        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -361,19 +368,19 @@ cc_library(
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:tpu_computation_placer",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executable",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executable_interface",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_interface",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_transfer_manager",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_initializer_helper",
         "//tensorflow/core/tpu:tpu_on_demand_compiler",
-        "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:stream",
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/tpu:tpu_executable",
-        "//tensorflow/stream_executor/tpu:tpu_executable_interface",
-        "//tensorflow/stream_executor/tpu:tpu_executor",
-        "//tensorflow/stream_executor/tpu:tpu_executor_interface",
-        "//tensorflow/stream_executor/tpu:tpu_platform_interface",
-        "//tensorflow/stream_executor/tpu:tpu_topology_external",
-        "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -430,13 +437,13 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
         "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:tf_allocator_adapter",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
     ] + if_cuda([
         ":nccl_id_store",
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core/common_runtime/gpu:gpu_cudamallocasync_allocator",
-        "//tensorflow/stream_executor/cuda:cuda_activation_header",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocm_headers",
     ]),
@@ -508,8 +515,8 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:legalize_trigonometric_to_approximation",
+        "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo_pass",
+        "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -644,6 +651,7 @@ cc_library(
         "transpose_kernels.h",
     ],
     hdrs = ["transpose.h"],
+    visibility = [":friends"],
     deps = [
         ":lru_cache",
         "//tensorflow/compiler/xla:permutation_util",
@@ -715,8 +723,8 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_wrapper_impl",  # TODO(skyewm): remove
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
         "//tensorflow/core/tpu:pjrt_api",
-        "//tensorflow/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
     ],
 )
 
@@ -737,4 +745,15 @@ tf_cc_test(
         "//tensorflow/core:test",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+tf_proto_library(
+    name = "compile_options_proto",
+    srcs = ["compile_options.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_proto",
+    ],
+    visibility = ["//visibility:public"],
 )

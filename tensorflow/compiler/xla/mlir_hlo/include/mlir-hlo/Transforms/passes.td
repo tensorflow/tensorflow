@@ -61,7 +61,7 @@ def BufferPacking : Pass<"buffer-packing", "func::FuncOp"> {
   ];
 }
 
-def CollapseParallelLoopsTo1DPass : Pass<"collapse-parallel-loops-to-1d", "func::FuncOp"> {
+def CollapseParallelLoopsTo1DPass : Pass<"collapse-parallel-loops-to-1d"> {
   let summary = "Collapses multidimensional loops.";
   let description = [{ The pass converts a multidimensional `scf.parallel` loop
   into a 1D `scf.parallel` and index computation from a 1D to multidimensional

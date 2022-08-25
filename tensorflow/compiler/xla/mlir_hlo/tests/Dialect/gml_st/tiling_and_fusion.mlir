@@ -1,10 +1,12 @@
 // TODO(jreiffers): Remove -cse below once the duplicate init_tensor instruction
 // is fixed.
 
-// RUN: mlir-hlo-opt %s -split-input-file --gml-tiling="tile-sizes=256,512" --gml-fusion -cse | \
+// RUN: mlir-hlo-opt %s --split-input-file --gml-tiling=tile-sizes=[256,512] \
+// RUN:     --gml-fusion --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-TILE
 
-// RUN: mlir-hlo-opt %s -split-input-file --gml-tiling="tile-sizes=1,1" --gml-fusion -cse | \
+// RUN: mlir-hlo-opt %s --split-input-file --gml-tiling=tile-sizes=[1,1] \
+// RUN:     --gml-fusion --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-POINT
 
 func.func @pointwise(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
@@ -77,7 +79,7 @@ func.func @broadcast(%arg0: tensor<?xf32>) -> tensor<?x?xf32> {
 // CHECK-TILE-SAME:  %[[ARG0:.*]]:
 // CHECK-TILE:       %[[INIT:.*]] = linalg.init_tensor
 // CHECK-TILE:       gml_st.parallel (%[[I:.*]], %[[J:.*]]) =
-// CHECK-TILE:       %[[D0_SIZE:.*]] = arith.select {{.*}}, %c256
+// CHECK-TILE:       %[[D0_SIZE:.*]] = arith.minsi {{.*}}, %c256
 // CHECK-TILE:       %[[OUTPUT_TILE:.*]] = gml_st.tile %{{.*}} [%[[I]], %[[J]]]
 // CHECK-TILE:       %[[INPUT_SPACE:.*]] = gml_st.space [%[[D0_SIZE]]]
 // CHECK-TILE:       %[[INPUT_TILE:.*]] = gml_st.tile %[[INPUT_SPACE]] [%[[I]]]

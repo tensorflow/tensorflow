@@ -39,6 +39,8 @@ def RuntimeDialect : Dialect {
   let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 
   let useDefaultTypePrinterParser = 1;
+
+  let hasOperationAttrVerify = 1;
 }
 
 class RT_Type<string name, string typeMnemonic> : TypeDef<RuntimeDialect,

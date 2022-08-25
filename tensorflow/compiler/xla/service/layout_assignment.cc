@@ -816,6 +816,10 @@ Status LayoutAssignment::AddMandatoryConstraints(
 namespace {
 
 bool LayoutsInShapesEqual(const Shape& lhs, const Shape& rhs) {
+  if (!lhs.has_layout() && !rhs.has_layout()) {
+    return true;
+  }
+  CHECK(lhs.has_layout() && rhs.has_layout());
   return Layout::Equal().MinorToMajorOnly()(lhs.layout(), rhs.layout());
 }
 
@@ -2324,6 +2328,9 @@ Status LayoutAssignment::PropagateMemorySpace(HloModule* module) {
     int64_t buffer_memory_space = Layout::kDefaultMemorySpace;
     for (auto value : buffer.values()) {
       const Shape& defining_shape = value->defining_position().shape();
+      if (!defining_shape.has_layout()) {
+        continue;
+      }
       int64_t memory_space = defining_shape.layout().memory_space();
       if (memory_space != Layout::kDefaultMemorySpace) {
         if (buffer_memory_space != Layout::kDefaultMemorySpace &&

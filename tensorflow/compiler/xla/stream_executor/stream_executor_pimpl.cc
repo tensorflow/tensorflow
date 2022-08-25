@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -315,7 +316,8 @@ port::Status StreamExecutor::GetFusedConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType input_type, dnn::DataType bias_type,
     dnn::DataType output_type, double conv_input_scale, double side_input_scale,
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+    double leakyrelu_alpha, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
@@ -328,8 +330,8 @@ port::Status StreamExecutor::GetFusedConvolveRunners(
   }
   return dnn_support->GetFusedConvolveRunners(
       use_cudnn_frontend, kind, input_type, bias_type, output_type,
-      conv_input_scale, side_input_scale, stream, input_descriptor,
-      filter_descriptor, bias_descriptor, output_descriptor,
+      conv_input_scale, side_input_scale, leakyrelu_alpha, stream,
+      input_descriptor, filter_descriptor, bias_descriptor, output_descriptor,
       convolution_descriptor, use_fallback, activation_mode, out_exec_plans);
 }
 
@@ -725,7 +727,7 @@ port::Status StreamExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
 
 port::Status StreamExecutor::Memset32(Stream* stream,
                                       DeviceMemoryBase* location,
-                                      uint32 pattern, uint64_t size) {
+                                      uint32_t pattern, uint64_t size) {
   CHECK_EQ(0, size % 4)
       << "need 32-bit multiple size to fill with 32-bit pattern";
   return implementation_->Memset32(stream, location, pattern, size);
@@ -912,7 +914,8 @@ port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
     int64_t memory_space) {
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
-  DeviceMemoryBase result = executor->AllocateArray<uint8>(size, memory_space);
+  DeviceMemoryBase result =
+      executor->AllocateArray<uint8_t>(size, memory_space);
   if (size > 0 && result == nullptr) {
     return tensorflow::errors::ResourceExhausted(absl::StrFormat(
         "Failed to allocate request for %s (%uB) on device ordinal %d",

@@ -40,6 +40,10 @@ class GmockMatcher {
                        ::testing::MatchResultListener* listener) const {
     return MatchAndExplainImpl(l, listener);
   }
+  bool MatchAndExplain(Layout* l,
+                       ::testing::MatchResultListener* listener) const {
+    return MatchAndExplainImpl(l, listener);
+  }
 
   bool MatchAndExplain(const Shape& s,
                        ::testing::MatchResultListener* listener) const {
@@ -49,12 +53,20 @@ class GmockMatcher {
                        ::testing::MatchResultListener* listener) const {
     return MatchAndExplainImpl(s, listener);
   }
+  bool MatchAndExplain(Shape* s,
+                       ::testing::MatchResultListener* listener) const {
+    return MatchAndExplainImpl(s, listener);
+  }
 
   bool MatchAndExplain(const HloInstruction& instr,
                        ::testing::MatchResultListener* listener) const {
     return MatchAndExplainImpl(&instr, listener);
   }
   bool MatchAndExplain(const HloInstruction* instr,
+                       ::testing::MatchResultListener* listener) const {
+    return MatchAndExplainImpl(instr, listener);
+  }
+  bool MatchAndExplain(HloInstruction* instr,
                        ::testing::MatchResultListener* listener) const {
     return MatchAndExplainImpl(instr, listener);
   }
@@ -68,7 +80,7 @@ class GmockMatcher {
 
  private:
   template <typename T>
-  bool MatchAndExplainImpl(const T* t,
+  bool MatchAndExplainImpl(T* t,
                            ::testing::MatchResultListener* listener) const {
     MatchOption options{/*.capture=*/true, /*.explain_os=*/listener->stream()};
     return Match(t, pattern_, options);

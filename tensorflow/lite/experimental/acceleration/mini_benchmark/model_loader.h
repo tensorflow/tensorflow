@@ -128,7 +128,7 @@ class PipeModelLoader : public ModelLoader {
 // parsed.
 // 2) Pipe descriptor path: path must be in the format of
 // "pipe:%read_pipe%:%write_pipe%:%model_size%". This function also closes the
-// write_pipe for the caller, so it should be called at the read thread /
+// write_pipe when write_pipe >= 0, so it should be called at the read thread /
 // process. Returns null if path cannot be parsed.
 // 3) File path: Always return a PathModelLoader.
 // NOTE: This helper function is designed for creating the ModelLoader from

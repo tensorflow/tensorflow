@@ -1788,9 +1788,9 @@ HloInstruction::CreateDynamicReshape(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind,
     absl::Span<HloInstruction* const> operands,
-    HloComputation* fusion_computation) {
+    HloComputation* fusion_computation, absl::string_view prefix) {
   return std::make_unique<HloFusionInstruction>(shape, fusion_kind, operands,
-                                                fusion_computation);
+                                                fusion_computation, prefix);
 }
 
 void HloInstruction::set_single_sharding(const HloSharding& sharding) {

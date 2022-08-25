@@ -22,7 +22,6 @@ import unittest
 import weakref
 
 from absl.testing import parameterized
-from six.moves import range
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.checkpoint.checkpoint import Checkpoint
@@ -220,7 +219,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
   def testMethod(self):
 
-    class MyModel(object):
+    class MyModel:
 
       def __init__(self):
         self.var = None
@@ -1088,7 +1087,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     if sys.version_info[0] < 3:
       self.skipTest('self.assertLogs() call is not available in Python 2.')
 
-    class Foo(object):
+    class Foo:
 
       @def_function.function
       def f(self, x):

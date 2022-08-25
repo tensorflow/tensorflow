@@ -36,6 +36,7 @@ add_mlir_dialect_library(ChloDialect
   MLIRComplexDialect
   MLIRIR
   MLIRMhloUtils
+  StablehloBase
 )
 
 add_mlir_library(HloOpsCommon
@@ -60,6 +61,7 @@ target_link_libraries(MhloDialect
   MLIRMhloUtils
   MLIRQuantDialect
   HloOpsCommon
+  StablehloBase
 )
 target_include_directories(MhloDialect
   PUBLIC

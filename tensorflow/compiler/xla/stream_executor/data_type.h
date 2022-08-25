@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DATA_TYPE_H_
 
 #include <complex>
+#include <cstdint>
 
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
@@ -51,11 +52,11 @@ struct ToDataType<Eigen::bfloat16> {
   static constexpr DataType value = DataType::kBF16;
 };
 template <>
-struct ToDataType<tensorflow::int8> {
+struct ToDataType<int8_t> {
   static constexpr DataType value = DataType::kInt8;
 };
 template <>
-struct ToDataType<tensorflow::int32> {
+struct ToDataType<int32_t> {
   static constexpr DataType value = DataType::kInt32;
 };
 template <>

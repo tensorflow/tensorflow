@@ -23,7 +23,13 @@
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/runtime/type_id.h"
+#include "tensorflow/compiler/xla/runtime/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
@@ -40,30 +46,27 @@
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tfrt_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/core/platform/human_readable_json.h"
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/stream_executor/gpu/gpu_types.h"
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
-#include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
-                                   xla::gpu::JitRtKernelsCache);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
-                                   xla::gpu::JitRtGemmConfigCache);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
-                                   xla::gpu::JitRtCollectiveSupport);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
-                                   xla::gpu::JitRtAsyncCollectiveSupport);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
-                                   const xla::ServiceExecutableRunOptions);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
-                                   const xla::DebugOptions);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          xla::gpu::JitRtKernelsCache);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          xla::gpu::JitRtGemmConfigCache);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          xla::gpu::JitRtCollectiveSupport);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(
+    xla::runtime::CustomCall, xla::gpu::JitRtAsyncCollectiveSupport);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(
+    xla::runtime::CustomCall, const xla::ServiceExecutableRunOptions);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          const xla::DebugOptions);
 
 namespace xla {
 namespace gpu {
@@ -82,12 +85,18 @@ using mlir::succeeded;
 using mlir::success;
 
 using tfrt::MakeStringError;
-using tfrt::jitrt::CustomCall;
-using tfrt::jitrt::DirectCustomCallLibrary;
-using tfrt::jitrt::Executable;
+
+using ::xla::runtime::AggregateAttrDef;
+using ::xla::runtime::AggregateAttrEncoding;
+using ::xla::runtime::CustomCall;
+using ::xla::runtime::CustomCallAttrEncodingSet;
+using ::xla::runtime::DirectCustomCallLibrary;
+using ::xla::runtime::EnumAttrEncoding;
+using ::xla::runtime::Executable;
+using ::xla::runtime::Tagged;
+using ::xla::runtime::TypeIDNameRegistry;
 
 namespace se = ::stream_executor;
-namespace jitrt = ::tfrt::jitrt;
 namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
 namespace mhlo = ::mlir::mhlo;
 
@@ -102,46 +111,61 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 
 // -------------------------------------------------------------------------- //
 
+// Populate mapping from XLA (SE) enums/structs type id to symbol names.
+void PopulateXlaTypeIdNames(TypeIDNameRegistry& registry) {
+  registry.Register<Tagged<se::dnn::ActivationMode>>(
+      "__type_id_se_dnn_activation");
+  registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
+      "__type_id_se_cublas_lt_epilogue");
+  registry.Register<Tagged<se::fft::Type>>("__type_id_se_fft_type");
+
+  registry.Register<Tagged<DotDimensionNumbers>>(
+      "__type_id_dot_dimension_numbers");
+  registry.Register<Tagged<ConvDimensionNumbers>>(
+      "__type_id_conv_dimension_numbers");
+  registry.Register<Tagged<ConvBackendConfig>>("__type_id_conv_backend_config");
+}
+
 // Add custom call arguments and attributes encoding for custom HLO enums and
 // structs, so that we can pass them to custom calls.
-void PopulateLmhloToXlaAttrEncoding(
-    jitrt::CustomCallAttrEncodingSet& encoding) {
-  encoding.Add<
-      jitrt::EnumAttrEncoding<lmhlo_gpu::ActivationAttr, lmhlo_gpu::Activation,
-                              se::dnn::ActivationMode>>(
-      [](lmhlo_gpu::Activation value) -> se::dnn::ActivationMode {
-        return ConvertConvActivationMode(value).value();
-      });
+void PopulateLmhloToXlaAttrEncoding(CustomCallAttrEncodingSet& encoding) {
+  encoding
+      .Add<EnumAttrEncoding<lmhlo_gpu::ActivationAttr, lmhlo_gpu::Activation,
+                            se::dnn::ActivationMode>>(
+          [](lmhlo_gpu::Activation value) -> se::dnn::ActivationMode {
+            return ConvertConvActivationMode(value).value();
+          });
 
-  encoding.Add<jitrt::EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
-                                       lmhlo_gpu::CublasLtMatmulEpilogue,
-                                       se::cuda::BlasLt::Epilogue>>(
+  encoding.Add<EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
+                                lmhlo_gpu::CublasLtMatmulEpilogue,
+                                se::cuda::BlasLt::Epilogue>>(
       [](lmhlo_gpu::CublasLtMatmulEpilogue value)
           -> se::cuda::BlasLt::Epilogue {
         return cublas_lt::AsBlasLtEpilogue(value).value();
       });
 
-  encoding.Add<
-      jitrt::EnumAttrEncoding<mhlo::FftTypeAttr, mhlo::FftType, se::fft::Type>>(
-      [](mhlo::FftType value) -> se::fft::Type {
-        switch (value) {
-          case mhlo::FftType::FFT:
-            return se::fft::Type::kC2CForward;
-          case mhlo::FftType::IFFT:
-            return se::fft::Type::kC2CInverse;
-          case mhlo::FftType::RFFT:
-            return se::fft::Type::kR2C;
-          case mhlo::FftType::IRFFT:
-            return se::fft::Type::kC2R;
-          default:
-            return se::fft::Type::kInvalid;
-        }
-      });
+  encoding
+      .Add<EnumAttrEncoding<mhlo::FftTypeAttr, mhlo::FftType, se::fft::Type>>(
+          [](mhlo::FftType value) -> se::fft::Type {
+            switch (value) {
+              case mhlo::FftType::FFT:
+                return se::fft::Type::kC2CForward;
+              case mhlo::FftType::IFFT:
+                return se::fft::Type::kC2CInverse;
+              case mhlo::FftType::RFFT:
+                return se::fft::Type::kR2C;
+              case mhlo::FftType::IRFFT:
+                return se::fft::Type::kC2R;
+              default:
+                return se::fft::Type::kInvalid;
+            }
+          });
 
   using DotDimsAttr = mhlo::DotDimensionNumbersAttr;
-  encoding.Add<jitrt::AggregateAttrEncoding<DotDimsAttr, DotDimensionNumbers>>(
+  encoding.Add<
+      xla::runtime::AggregateAttrEncoding<DotDimsAttr, DotDimensionNumbers>>(
       encoding,
-      jitrt::AggregateAttrDef<DotDimsAttr>()
+      xla::runtime::AggregateAttrDef<DotDimsAttr>()
           .Add("lhs_batch", &DotDimsAttr::getLhsBatchingDimensions)
           .Add("lhs_contract", &DotDimsAttr::getLhsContractingDimensions)
           .Add("rhs_batch", &DotDimsAttr::getRhsBatchingDimensions)
@@ -149,9 +173,9 @@ void PopulateLmhloToXlaAttrEncoding(
 
   using ConvDimsAttr = mhlo::ConvDimensionNumbersAttr;
   encoding.Add<
-      jitrt::AggregateAttrEncoding<ConvDimsAttr, ConvDimensionNumbers>>(
+      xla::runtime::AggregateAttrEncoding<ConvDimsAttr, ConvDimensionNumbers>>(
       encoding,
-      jitrt::AggregateAttrDef<ConvDimsAttr>()
+      xla::runtime::AggregateAttrDef<ConvDimsAttr>()
           .Add("input_batch_dim", &ConvDimsAttr::getInputBatchDimension)
           .Add("input_feature_dim", &ConvDimsAttr::getInputFeatureDimension)
           .Add("input_spatial_dims", &ConvDimsAttr::getInputSpatialDimensions)
@@ -166,9 +190,10 @@ void PopulateLmhloToXlaAttrEncoding(
                &ConvDimsAttr::getOutputSpatialDimensions));
 
   using ConvConfigAttr = lmhlo_gpu::ConvolutionBackendConfigAttr;
-  encoding.Add<jitrt::AggregateAttrEncoding<ConvConfigAttr, ConvBackendConfig>>(
+  encoding.Add<
+      xla::runtime::AggregateAttrEncoding<ConvConfigAttr, ConvBackendConfig>>(
       encoding,
-      jitrt::AggregateAttrDef<ConvConfigAttr>()
+      xla::runtime::AggregateAttrDef<ConvConfigAttr>()
           .Add("algorithm", &ConvConfigAttr::getAlgorithm)
           .Add("tensor_ops_enabled", &ConvConfigAttr::getTensorOpsEnabled)
           .Add("is_cudnn_frontend", &ConvConfigAttr::getIsCudnnFrontend)
@@ -208,12 +233,12 @@ se::KernelBase* JitRtKernelsCache::Set(se::StreamExecutor* executor,
 
 template <typename MemrefArg>
 static se::DeviceMemoryBase GetDeviceAddress(MemrefArg& memref) {
-  uint64_t size = tfrt::GetHostSize(memref.dtype);
+  uint64_t size = primitive_util::ByteWidth(memref.dtype);
   for (auto dim : memref.sizes) size *= dim;
   return se::DeviceMemoryBase(memref.data, size);
 }
 
-static se::DeviceMemoryBase GetDeviceAddress(jitrt::FlatMemrefView& memref) {
+static se::DeviceMemoryBase GetDeviceAddress(runtime::FlatMemrefView& memref) {
   return se::DeviceMemoryBase(memref.data, memref.size_in_bytes);
 }
 
@@ -278,9 +303,7 @@ LogicalResult JitRtAsyncCollectiveSupport::PushEvent(int32_t uid,
 
 // -------------------------------------------------------------------------- //
 
-static Shape ToShape(const jitrt::StridedMemrefView& memref) {
-  PrimitiveType type = TfrtToPrimitiveType(memref.dtype);
-
+static Shape ToShape(const runtime::StridedMemrefView& memref) {
   // Recover `minor_to_major` dimensions permutation from strides.
   auto indexed_strides_range =
       llvm::map_range(llvm::enumerate(memref.strides), [](auto pair) {
@@ -294,15 +317,19 @@ static Shape ToShape(const jitrt::StridedMemrefView& memref) {
   minor_to_major.reserve(indexed_strides.size());
   for (auto& pair : indexed_strides) minor_to_major.push_back(pair.second);
 
-  return ShapeUtil::MakeShapeWithLayout(type, memref.sizes, minor_to_major);
+  return ShapeUtil::MakeShapeWithLayout(memref.dtype, memref.sizes,
+                                        minor_to_major);
 }
 
-static StatusOr<GemmConfig> GetGemmConfig(
-    const jitrt::StridedMemrefView& lhs, const jitrt::StridedMemrefView& rhs,
-    const jitrt::StridedMemrefView& out, int64_t algorithm, double alpha_real,
-    double alpha_imag, double beta, ArrayRef<int64_t> lhs_batch,
-    ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
-    ArrayRef<int64_t> rhs_contract) {
+static StatusOr<GemmConfig> GetGemmConfig(const runtime::StridedMemrefView& lhs,
+                                          const runtime::StridedMemrefView& rhs,
+                                          const runtime::StridedMemrefView& out,
+                                          int64_t algorithm, double alpha_real,
+                                          double alpha_imag, double beta,
+                                          ArrayRef<int64_t> lhs_batch,
+                                          ArrayRef<int64_t> lhs_contract,
+                                          ArrayRef<int64_t> rhs_batch,
+                                          ArrayRef<int64_t> rhs_contract) {
   return GemmConfig::For(ToShape(lhs), lhs_batch, lhs_contract, ToShape(rhs),
                          rhs_batch, rhs_contract, ToShape(out), alpha_real,
                          alpha_imag, beta, algorithm,
@@ -345,8 +372,8 @@ FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
   std::vector<DeviceBufferPair> device_buffers;
   device_buffers.reserve(buffer_pairs);
   for (int i = 0; i < buffer_pairs; ++i) {
-    auto source = args.get<jitrt::StridedMemrefView>(i);
-    auto destination = args.get<jitrt::StridedMemrefView>(i + buffer_pairs);
+    auto source = args.get<runtime::StridedMemrefView>(i);
+    auto destination = args.get<runtime::StridedMemrefView>(i + buffer_pairs);
     if (failed(source) || failed(destination)) {
       // Unsupported argument type.
       return failure();
@@ -355,8 +382,8 @@ FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
     int element_count = 1;
     for (int size : source->sizes) element_count *= size;
     device_buffers.emplace_back(DeviceBufferPair{
-        TfrtToPrimitiveType(source->dtype), element_count,
-        GetDeviceAddress(*source), GetDeviceAddress(*destination)});
+        source->dtype, element_count, GetDeviceAddress(*source),
+        GetDeviceAddress(*destination)});
   }
   return device_buffers;
 }
@@ -420,7 +447,7 @@ Error LaunchFunc::operator()(const ServiceExecutableRunOptions* run_options,
   // Add MemRef arguments as buffer arguments.
   for (unsigned i = 0; i < args.size(); ++i) {
     // Simple row major memref passed as shapeless buffer.
-    auto memref = args.get<jitrt::FlatMemrefView>(i);
+    auto memref = args.get<runtime::FlatMemrefView>(i);
     if (succeeded(memref)) {
       buffer_args.emplace_back(GetDeviceAddress(*memref));
       continue;
@@ -428,7 +455,7 @@ Error LaunchFunc::operator()(const ServiceExecutableRunOptions* run_options,
 
     // Memref layout must be encoded in the compiled device kernel, so we don't
     // have to pass strides or minor to major dimensions order to the kernel.
-    auto strided = args.get<jitrt::StridedMemrefView>(i);
+    auto strided = args.get<runtime::StridedMemrefView>(i);
     if (succeeded(strided)) {
       buffer_args.emplace_back(GetDeviceAddress(*strided));
       continue;
@@ -471,11 +498,12 @@ struct Gemm {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   Error operator()(const ServiceExecutableRunOptions* run_options,
                    const DebugOptions* debug_options,
-                   JitRtGemmConfigCache* configs, jitrt::StridedMemrefView lhs,
-                   jitrt::StridedMemrefView rhs, jitrt::StridedMemrefView out,
-                   int64_t algorithm, double alpha_real, double alpha_imag,
-                   double beta, DotDimensionNumbers dot_dims,
-                   int64_t uid) const;
+                   JitRtGemmConfigCache* configs,
+                   runtime::StridedMemrefView lhs,
+                   runtime::StridedMemrefView rhs,
+                   runtime::StridedMemrefView out, int64_t algorithm,
+                   double alpha_real, double alpha_imag, double beta,
+                   DotDimensionNumbers dot_dims, int64_t uid) const;
 
   static Gemm Handler() { return Gemm(); }
 };
@@ -484,9 +512,9 @@ struct Gemm {
 Error Gemm::operator()(const ServiceExecutableRunOptions* run_options,
                        const DebugOptions* debug_options,
                        JitRtGemmConfigCache* configs,
-                       jitrt::StridedMemrefView lhs,
-                       jitrt::StridedMemrefView rhs,
-                       jitrt::StridedMemrefView out, int64_t algorithm,
+                       runtime::StridedMemrefView lhs,
+                       runtime::StridedMemrefView rhs,
+                       runtime::StridedMemrefView out, int64_t algorithm,
                        double alpha_real, double alpha_imag, double beta,
                        DotDimensionNumbers dot_dims, int64_t uid) const {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
@@ -520,9 +548,9 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
                              .UserData<JitRtGemmConfigCache*>()
-                             .Arg<jitrt::StridedMemrefView>()  // lhs
-                             .Arg<jitrt::StridedMemrefView>()  // rhs
-                             .Arg<jitrt::StridedMemrefView>()  // out
+                             .Arg<runtime::StridedMemrefView>()  // lhs
+                             .Arg<runtime::StridedMemrefView>()  // rhs
+                             .Arg<runtime::StridedMemrefView>()  // out
                              .Attr<int64_t>("algorithm")
                              .Attr<double>("alpha_real")
                              .Attr<double>("alpha_imag")
@@ -544,9 +572,9 @@ struct CublasLtMatmul {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   Error operator()(const ServiceExecutableRunOptions* run_options,
                    const DebugOptions* debug_options,
-                   jitrt::StridedMemrefView a, jitrt::StridedMemrefView b,
-                   jitrt::StridedMemrefView c, jitrt::StridedMemrefView d,
-                   Optional<jitrt::StridedMemrefView> bias, int64_t algorithm,
+                   runtime::StridedMemrefView a, runtime::StridedMemrefView b,
+                   runtime::StridedMemrefView c, runtime::StridedMemrefView d,
+                   Optional<runtime::StridedMemrefView> bias, int64_t algorithm,
                    double alpha_real, double alpha_imag, double beta,
                    DotDimensionNumbers dot_dims,
                    se::cuda::BlasLt::Epilogue epilogue,
@@ -558,9 +586,9 @@ struct CublasLtMatmul {
 
 Error CublasLtMatmul::operator()(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, jitrt::StridedMemrefView a,
-    jitrt::StridedMemrefView b, jitrt::StridedMemrefView c,
-    jitrt::StridedMemrefView d, Optional<jitrt::StridedMemrefView> bias,
+    const DebugOptions* debug_options, runtime::StridedMemrefView a,
+    runtime::StridedMemrefView b, runtime::StridedMemrefView c,
+    runtime::StridedMemrefView d, Optional<runtime::StridedMemrefView> bias,
     int64_t algorithm, double alpha_real, double alpha_imag, double beta,
     DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
     ArrayRef<int32_t> precision, int64_t uid) const {
@@ -599,7 +627,7 @@ Error CublasLtMatmul::operator()(
 
 // Adds custom call bindings for matmul operations.
 template <typename... Ts>
-static auto BindMatmulAttributes(jitrt::CustomCallBinding<Ts...> binding) {
+static auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
   return std::move(binding)
       .template Attr<int64_t>("algorithm")
       .template Attr<double>("alpha_real")
@@ -617,11 +645,11 @@ static bool CublasLtMatmul(runtime::KernelContext* ctx, void** args,
       BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul")
                                .UserData<const ServiceExecutableRunOptions*>()
                                .UserData<const DebugOptions*>()
-                               .Arg<jitrt::StridedMemrefView>()  // a
-                               .Arg<jitrt::StridedMemrefView>()  // b
-                               .Arg<jitrt::StridedMemrefView>()  // c
-                               .Arg<jitrt::StridedMemrefView>()  // d
-                               .Value(CustomCall::None)          // bias
+                               .Arg<runtime::StridedMemrefView>()  // a
+                               .Arg<runtime::StridedMemrefView>()  // b
+                               .Arg<runtime::StridedMemrefView>()  // c
+                               .Arg<runtime::StridedMemrefView>()  // d
+                               .Value(CustomCall::None)            // bias
                            )
           .To<RuntimeChecks()>(CublasLtMatmul::Handler())
           .release();
@@ -635,11 +663,11 @@ static bool CublasLtMatmulBias(runtime::KernelContext* ctx, void** args,
       BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul.bias")
                                .UserData<const ServiceExecutableRunOptions*>()
                                .UserData<const DebugOptions*>()
-                               .Arg<jitrt::StridedMemrefView>()  // a
-                               .Arg<jitrt::StridedMemrefView>()  // b
-                               .Arg<jitrt::StridedMemrefView>()  // c
-                               .Arg<jitrt::StridedMemrefView>()  // d
-                               .Arg<jitrt::StridedMemrefView>()  // bias
+                               .Arg<runtime::StridedMemrefView>()  // a
+                               .Arg<runtime::StridedMemrefView>()  // b
+                               .Arg<runtime::StridedMemrefView>()  // c
+                               .Arg<runtime::StridedMemrefView>()  // d
+                               .Arg<runtime::StridedMemrefView>()  // bias
                            )
           .To<RuntimeChecks()>(CublasLtMatmul::Handler())
           .release();
@@ -682,8 +710,8 @@ struct SideInputAttrs {
 static GpuConvDescriptor GetConvDescriptor(
     CudnnConvKind kind,
     // Arguments
-    jitrt::StridedMemrefView operand0, jitrt::StridedMemrefView operand1,
-    jitrt::StridedMemrefView output, jitrt::FlatMemrefView scratch,
+    runtime::StridedMemrefView operand0, runtime::StridedMemrefView operand1,
+    runtime::StridedMemrefView output, runtime::FlatMemrefView scratch,
     // Attributes
     ConvDimensionNumbers dims, Window w, ConvBackendConfig b, ConvAttrs attrs,
     // Conv-specific arguments and attributes
@@ -694,7 +722,7 @@ static GpuConvDescriptor GetConvDescriptor(
   descriptor.kind = kind;
 
   // Apply backend config layout to the shape.
-  auto apply_layout = [](jitrt::StridedMemrefView& memref,
+  auto apply_layout = [](runtime::StridedMemrefView& memref,
                          ArrayRef<int64_t> minor_to_major) {
     Shape shape = ToShape(memref);
     return ShapeUtil::MakeShapeWithLayout(shape.element_type(),
@@ -773,10 +801,11 @@ struct Conv {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   Error operator()(
       const ServiceExecutableRunOptions* run_options,
-      const DebugOptions* debug_options, jitrt::StridedMemrefView operand0,
-      jitrt::StridedMemrefView operand1, Optional<jitrt::FlatMemrefView> bias,
-      Optional<jitrt::StridedMemrefView> side_input,
-      jitrt::StridedMemrefView output, jitrt::FlatMemrefView scratch,
+      const DebugOptions* debug_options, runtime::StridedMemrefView operand0,
+      runtime::StridedMemrefView operand1,
+      Optional<runtime::FlatMemrefView> bias,
+      Optional<runtime::StridedMemrefView> side_input,
+      runtime::StridedMemrefView output, runtime::FlatMemrefView scratch,
       ConvDimensionNumbers conv_dims,
       // Window config
       ArrayRef<int64_t> window_strides, ArrayRef<int64_t> padding,
@@ -842,7 +871,7 @@ struct Conv {
 
 // Adds custom call bindings for convolution operations.
 template <typename... Ts>
-static auto BindConvAttributes(jitrt::CustomCallBinding<Ts...> binding) {
+static auto BindConvAttributes(runtime::CustomCallBinding<Ts...> binding) {
   return std::move(binding)
       // Convolution dimensions numbers
       .template Attr<ConvDimensionNumbers>("conv_dims")
@@ -865,12 +894,12 @@ static bool ConvFn(runtime::KernelContext* ctx, void** args, void** attrs) {
       BindConvAttributes(CustomCall::Bind("xla.gpu.conv")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
-                             .Arg<jitrt::StridedMemrefView>()  // operand0
-                             .Arg<jitrt::StridedMemrefView>()  // operand1
-                             .Value(CustomCall::None)          // bias
-                             .Value(CustomCall::None)          // side_input
-                             .Arg<jitrt::StridedMemrefView>()  // output
-                             .Arg<jitrt::FlatMemrefView>()     // scratch
+                             .Arg<runtime::StridedMemrefView>()  // operand0
+                             .Arg<runtime::StridedMemrefView>()  // operand1
+                             .Value(CustomCall::None)            // bias
+                             .Value(CustomCall::None)            // side_input
+                             .Arg<runtime::StridedMemrefView>()  // output
+                             .Arg<runtime::FlatMemrefView>()     // scratch
                          )
           .To(Conv::Handler(kind))
           .release();
@@ -885,12 +914,12 @@ static bool ConvFusedFn(runtime::KernelContext* ctx, void** args,
       BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
-                             .Arg<jitrt::StridedMemrefView>()  // operand0
-                             .Arg<jitrt::StridedMemrefView>()  // operand1
-                             .Arg<jitrt::FlatMemrefView>()     // bias
-                             .Value(CustomCall::None)          // side_input
-                             .Arg<jitrt::StridedMemrefView>()  // output
-                             .Arg<jitrt::FlatMemrefView>()     // scratch
+                             .Arg<runtime::StridedMemrefView>()  // operand0
+                             .Arg<runtime::StridedMemrefView>()  // operand1
+                             .Arg<runtime::FlatMemrefView>()     // bias
+                             .Value(CustomCall::None)            // side_input
+                             .Arg<runtime::StridedMemrefView>()  // output
+                             .Arg<runtime::FlatMemrefView>()     // scratch
                          )
           .Attr<se::dnn::ActivationMode>("activation_mode")
           .To(Conv::Handler(kind))
@@ -906,12 +935,12 @@ static bool ConvFuseSideInputdFn(runtime::KernelContext* ctx, void** args,
       BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused.side_input")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
-                             .Arg<jitrt::StridedMemrefView>()  // operand0
-                             .Arg<jitrt::StridedMemrefView>()  // operand1
-                             .Arg<jitrt::FlatMemrefView>()     // bias
-                             .Arg<jitrt::StridedMemrefView>()  // side_input
-                             .Arg<jitrt::StridedMemrefView>()  // output
-                             .Arg<jitrt::FlatMemrefView>()     // scratch
+                             .Arg<runtime::StridedMemrefView>()  // operand0
+                             .Arg<runtime::StridedMemrefView>()  // operand1
+                             .Arg<runtime::FlatMemrefView>()     // bias
+                             .Arg<runtime::StridedMemrefView>()  // side_input
+                             .Arg<runtime::StridedMemrefView>()  // output
+                             .Arg<runtime::FlatMemrefView>()     // scratch
                          )
           .Attr<se::dnn::ActivationMode>("activation_mode")
           .Attr<double>("side_input_scale")
@@ -947,7 +976,7 @@ Error Infeed::operator()(const ServiceExecutableRunOptions* run_options,
   size_t index = 0;
   for (auto& source : source_buffers.leaves()) {
     // Get the destination buffer.
-    auto dest = args.get<jitrt::StridedMemrefView>(index);
+    auto dest = args.get<runtime::StridedMemrefView>(index);
     if (failed(dest))
       return MakeStringError("Failed to get the destination buffer");
 
@@ -1021,7 +1050,7 @@ Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
   size_t index = 0;
   for (auto& dest : dest_buffers->leaves()) {
     // Get the source buffer.
-    auto source = args.get<jitrt::StridedMemrefView>(index);
+    auto source = args.get<runtime::StridedMemrefView>(index);
     if (failed(source))
       return MakeStringError("Failed to get the source buffer");
 
@@ -1075,15 +1104,16 @@ enum class MemcpyDirection { kDeviceToDevice, kDeviceToHost, kHostToDevice };
 template <MemcpyDirection direction>
 struct Memcpy {
   Error operator()(const ServiceExecutableRunOptions* run_options,
-                   jitrt::FlatMemrefView dst, jitrt::FlatMemrefView src) const;
+                   runtime::FlatMemrefView dst,
+                   runtime::FlatMemrefView src) const;
   static Memcpy Handler() { return Memcpy(); }
 };
 }  // namespace
 
 template <MemcpyDirection direction>
 Error Memcpy<direction>::operator()(
-    const ServiceExecutableRunOptions* run_options, jitrt::FlatMemrefView dst,
-    jitrt::FlatMemrefView src) const {
+    const ServiceExecutableRunOptions* run_options, runtime::FlatMemrefView dst,
+    runtime::FlatMemrefView src) const {
   se::Stream* stream = run_options->stream();
 
   if (dst.size_in_bytes != src.size_in_bytes) {
@@ -1122,8 +1152,8 @@ template <MemcpyDirection direction>
 static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
                              .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<jitrt::FlatMemrefView>()  // dst
-                             .Arg<jitrt::FlatMemrefView>()  // src
+                             .Arg<runtime::FlatMemrefView>()  // dst
+                             .Arg<runtime::FlatMemrefView>()  // src
                              .To<RuntimeChecks()>(Memcpy<direction>::Handler())
                              .release();
 
@@ -1136,7 +1166,7 @@ namespace {
 
 struct Memset {
   Error operator()(const ServiceExecutableRunOptions* run_options,
-                   jitrt::FlatMemrefView dst,
+                   runtime::FlatMemrefView dst,
                    CustomCall::VariantArg constant) const;
   static Memset Handler() { return Memset(); }
 };
@@ -1144,7 +1174,7 @@ struct Memset {
 }  // namespace
 
 Error Memset::operator()(const ServiceExecutableRunOptions* run_options,
-                         jitrt::FlatMemrefView dst,
+                         runtime::FlatMemrefView dst,
                          CustomCall::VariantArg constant) const {
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
@@ -1188,8 +1218,8 @@ Error Memset::operator()(const ServiceExecutableRunOptions* run_options,
 static bool MemsetFn(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.memset")
                              .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<jitrt::FlatMemrefView>()   // dst
-                             .Arg<CustomCall::VariantArg>()  // constant
+                             .Arg<runtime::FlatMemrefView>()  // dst
+                             .Arg<CustomCall::VariantArg>()   // constant
                              .To<RuntimeChecks()>(Memset::Handler())
                              .release();
 
@@ -1202,16 +1232,16 @@ namespace {
 struct Fft {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   Error operator()(const ServiceExecutableRunOptions* run_options,
-                   jitrt::StridedMemrefView input,
-                   jitrt::StridedMemrefView output,
+                   runtime::StridedMemrefView input,
+                   runtime::StridedMemrefView output,
                    ArrayRef<int64_t> fft_length, se::fft::Type fft_type) const;
   static Fft Handler() { return Fft(); }
 };
 }  // namespace
 
 Error Fft::operator()(const ServiceExecutableRunOptions* run_options,
-                      jitrt::StridedMemrefView input,
-                      jitrt::StridedMemrefView output,
+                      runtime::StridedMemrefView input,
+                      runtime::StridedMemrefView output,
                       ArrayRef<int64_t> fft_length,
                       se::fft::Type fft_type) const {
   // TODO(ezhulenev): Cache FFT plans in the GpuExecutable.
@@ -1220,8 +1250,7 @@ Error Fft::operator()(const ServiceExecutableRunOptions* run_options,
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
-  if (input.dtype == tfrt::DType::F64 ||
-      input.dtype == tfrt::DType::Complex128) {
+  if (input.dtype == PrimitiveType::F64 || input.dtype == PrimitiveType::C128) {
     // Adjust FFT type to reflect double precision.
     switch (fft_type) {
       case se::fft::Type::kC2CForward:
@@ -1253,13 +1282,12 @@ Error Fft::operator()(const ServiceExecutableRunOptions* run_options,
 static bool Fft(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.fft")
                              .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<jitrt::StridedMemrefView>()  // input
-                             .Arg<jitrt::StridedMemrefView>()  // output
+                             .Arg<runtime::StridedMemrefView>()  // input
+                             .Arg<runtime::StridedMemrefView>()  // output
                              .Attr<ArrayRef<int64_t>>("fft_length")
                              .Attr<se::fft::Type>("fft_type")
                              .To<RuntimeChecks()>(Fft::Handler())
                              .release();
-
   return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
@@ -1269,19 +1297,20 @@ namespace {
 struct Cholesky {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   Error operator()(const ServiceExecutableRunOptions* run_options,
-                   const DebugOptions* debug_options, jitrt::MemrefView operand,
-                   jitrt::MemrefView a, jitrt::MemrefView workspace,
-                   jitrt::MemrefView info, int64_t batch_size, bool is_lower,
-                   int64_t n) const;
+                   const DebugOptions* debug_options,
+                   runtime::MemrefView operand, runtime::MemrefView a,
+                   runtime::MemrefView workspace, runtime::MemrefView info,
+                   int64_t batch_size, bool is_lower, int64_t n) const;
   static Cholesky Handler() { return Cholesky(); }
 };
 }  // namespace
 
 Error Cholesky::operator()(const ServiceExecutableRunOptions* run_options,
                            const DebugOptions* debug_options,
-                           jitrt::MemrefView operand, jitrt::MemrefView a,
-                           jitrt::MemrefView workspace, jitrt::MemrefView info,
-                           int64_t batch_size, bool is_lower, int64_t n) const {
+                           runtime::MemrefView operand, runtime::MemrefView a,
+                           runtime::MemrefView workspace,
+                           runtime::MemrefView info, int64_t batch_size,
+                           bool is_lower, int64_t n) const {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
   se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
@@ -1300,9 +1329,8 @@ Error Cholesky::operator()(const ServiceExecutableRunOptions* run_options,
 
   CholeskyParams params{n,        batch_size,       uplo,
                         a_buffer, workspace_buffer, info_buffer};
-  auto executed =
-      RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
-                  TfrtToPrimitiveType(operand.dtype), &params, stream);
+  auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
+                              operand.dtype, &params, stream);
   if (!executed.ok()) return AsError(executed);
 
   return Error::success();
@@ -1315,10 +1343,10 @@ static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.cholesky")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
-                             .Arg<jitrt::MemrefView>()  // operand
-                             .Arg<jitrt::MemrefView>()  // a
-                             .Arg<jitrt::MemrefView>()  // workspace
-                             .Arg<jitrt::MemrefView>()  // info
+                             .Arg<runtime::MemrefView>()  // operand
+                             .Arg<runtime::MemrefView>()  // a
+                             .Arg<runtime::MemrefView>()  // workspace
+                             .Arg<runtime::MemrefView>()  // info
                              .Attr<int64_t>("batch_size")
                              .Attr<bool>("is_lower")
                              .Attr<int64_t>("n")
@@ -1345,9 +1373,10 @@ struct TriangularSolve {
 
   Error operator()(const ServiceExecutableRunOptions* run_options,
                    const DebugOptions* debug_options,
-                   jitrt::StridedMemrefView a, jitrt::StridedMemrefView b,
-                   jitrt::StridedMemrefView result, jitrt::FlatMemrefView temp,
-                   bool left_side, bool lower, bool unit_diagonal,
+                   runtime::StridedMemrefView a, runtime::StridedMemrefView b,
+                   runtime::StridedMemrefView result,
+                   runtime::FlatMemrefView temp, bool left_side, bool lower,
+                   bool unit_diagonal,
                    TriangularSolveOptions::Transpose transpose_a) const;
   static TriangularSolve Handler() { return TriangularSolve(); }
 };
@@ -1364,10 +1393,10 @@ Error TriangularSolve::run(const ServiceExecutableRunOptions* run_options,
     return MakeStringError("Expected 4 arguments, got %n", args.size());
 
   // Check if all arguments have the correct type.
-  auto a = args.get<jitrt::StridedMemrefView>(0);
-  auto b = args.get<jitrt::StridedMemrefView>(1);
-  auto result = args.get<jitrt::StridedMemrefView>(2);
-  auto temp = args.get<jitrt::FlatMemrefView>(3);
+  auto a = args.get<runtime::StridedMemrefView>(0);
+  auto b = args.get<runtime::StridedMemrefView>(1);
+  auto result = args.get<runtime::StridedMemrefView>(2);
+  auto temp = args.get<runtime::FlatMemrefView>(3);
   if (failed(a) || failed(b) || failed(result) || failed(temp))
     return MakeStringError("Incorrect argument types");
 
@@ -1383,10 +1412,10 @@ Error TriangularSolve::run(const ServiceExecutableRunOptions* run_options,
 
 Error TriangularSolve::operator()(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, jitrt::StridedMemrefView a,
-    jitrt::StridedMemrefView b, jitrt::StridedMemrefView result,
-    jitrt::FlatMemrefView temp, bool left_side, bool lower, bool unit_diagonal,
-    TriangularSolveOptions::Transpose transpose_a) const {
+    const DebugOptions* debug_options, runtime::StridedMemrefView a,
+    runtime::StridedMemrefView b, runtime::StridedMemrefView result,
+    runtime::FlatMemrefView temp, bool left_side, bool lower,
+    bool unit_diagonal, TriangularSolveOptions::Transpose transpose_a) const {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   se::Stream* stream = run_options->stream();
 
@@ -1407,7 +1436,7 @@ Error TriangularSolve::operator()(
       b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
       [](int64_t a, int64_t b) { return a * b; });
 
-  PrimitiveType elem_type = TfrtToPrimitiveType(b.dtype);
+  PrimitiveType elem_type = b.dtype;
   int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_type);
   int64_t a_batch_stride = left_side ? m * m * elem_size : n * n * elem_size;
   int64_t b_batch_stride = m * n * elem_size;
@@ -1493,13 +1522,13 @@ Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
   for (unsigned i = 0; i < args.size(); ++i) {
     // We use zero-sized memrefs to represent holes in custom calls with target
     // arguments mapping (see `CustomCallTargetArgMapping`).
-    if (auto memref = args.get<jitrt::FlatMemrefView>(i); succeeded(memref)) {
+    if (auto memref = args.get<runtime::FlatMemrefView>(i); succeeded(memref)) {
       buffers.push_back(memref->size_in_bytes == 0 ? nullptr : memref->data);
       continue;
     }
-    if (auto strided = args.get<jitrt::StridedMemrefView>(i);
+    if (auto strided = args.get<runtime::StridedMemrefView>(i);
         succeeded(strided)) {
-      int64_t size_in_bytes = GetHostSize(strided->dtype);
+      int64_t size_in_bytes = primitive_util::ByteWidth(strided->dtype);
       for (int64_t size : strided->sizes) size_in_bytes *= size;
       buffers.push_back(size_in_bytes == 0 ? nullptr : strided->data);
       continue;
@@ -1544,7 +1573,7 @@ static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
-                             .Arg<jitrt::CustomCall::RemainingArgs>()  // args
+                             .Arg<CustomCall::RemainingArgs>()  // args
                              .Attr<StringRef>("call_target_name")
                              .Attr<int32_t>("api_version")
                              .Attr<StringRef>("backend_config")
@@ -2055,13 +2084,13 @@ namespace {
 struct ReplicaId {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   Error operator()(const ServiceExecutableRunOptions* run_options,
-                   jitrt::FlatMemrefView result) const;
+                   runtime::FlatMemrefView result) const;
   static ReplicaId Handler() { return ReplicaId(); }
 };
 }  // namespace
 
 Error ReplicaId::operator()(const ServiceExecutableRunOptions* run_options,
-                            jitrt::FlatMemrefView result) const {
+                            runtime::FlatMemrefView result) const {
   VLOG(3) << "Running ReplicaId";
   se::Stream* stream = run_options->stream();
   NcclExecuteParams params(*run_options, stream);
@@ -2083,7 +2112,7 @@ Error ReplicaId::operator()(const ServiceExecutableRunOptions* run_options,
 static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.replica_id")
                              .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<jitrt::FlatMemrefView>()  // result
+                             .Arg<runtime::FlatMemrefView>()  // result
                              .To<RuntimeChecks()>(ReplicaId::Handler())
                              .release();
 
@@ -2096,13 +2125,13 @@ namespace {
 struct PartitionId {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   Error operator()(const ServiceExecutableRunOptions* run_options,
-                   jitrt::FlatMemrefView result) const;
+                   runtime::FlatMemrefView result) const;
   static PartitionId Handler() { return PartitionId(); }
 };
 }  // namespace
 
 Error PartitionId::operator()(const ServiceExecutableRunOptions* run_options,
-                              jitrt::FlatMemrefView result) const {
+                              runtime::FlatMemrefView result) const {
   VLOG(3) << "Running PartitionId";
   se::Stream* stream = run_options->stream();
   NcclExecuteParams params(*run_options, stream);
@@ -2125,7 +2154,7 @@ static bool PartitionId(runtime::KernelContext* ctx, void** args,
                         void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.partition_id")
                              .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<jitrt::FlatMemrefView>()  // result
+                             .Arg<runtime::FlatMemrefView>()  // result
                              .To<RuntimeChecks()>(PartitionId::Handler())
                              .release();
 

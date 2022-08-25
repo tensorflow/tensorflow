@@ -107,6 +107,7 @@ class PropagatorState {
       }
     }
     bool empty() const { return ready_.empty(); }
+    int size() const { return ready_.size() - front_index_; }
 
    private:
     // TODO(b/152925936): Re-evaluate these constants with current usage
@@ -539,6 +540,7 @@ class OrderedPropagatorState : public PropagatorState {
     TaggedNode front() const { return readyp_.top(); }
     void pop_front() { readyp_.pop(); }
     bool empty() const { return readyp_.empty(); }
+    int size() const { return readyp_.size(); }
 
    private:
     static bool compare(TaggedNode const& lhs, TaggedNode const& rhs) {

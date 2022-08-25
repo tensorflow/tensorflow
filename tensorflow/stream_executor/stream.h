@@ -13,11 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The Stream is used in conjunction with the StreamExecutor "parent" to
-// perform actions with a linear stream of dependencies. Dependencies can also
-// be created between Streams to do task management (i.e. limit which tasks
-// can be performed concurrently and specify what task dependencies exist).
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_STREAM_H_
 #define TENSORFLOW_STREAM_EXECUTOR_STREAM_H_
 

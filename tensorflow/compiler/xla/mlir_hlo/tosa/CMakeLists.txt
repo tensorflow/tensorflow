@@ -33,7 +33,7 @@ set(LIBS
         ${conversion_libs}
         MLIROptLib
 
-        MLIRTosa
+        MLIRTosaDialect
         MhloRegisterDialects
         MhloRegisterDialects
 
