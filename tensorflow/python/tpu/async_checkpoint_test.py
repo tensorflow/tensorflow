@@ -18,6 +18,7 @@ import os
 
 import numpy as np
 
+from tensorflow.core.framework import summary_pb2
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.framework import constant_op
@@ -30,6 +31,7 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.tpu import async_checkpoint
 from tensorflow.python.tpu import tpu_config
 from tensorflow.python.tpu import tpu_estimator
@@ -47,6 +49,17 @@ flags.DEFINE_string(
     'model_dir',
     os.environ.get('TEST_UNDECLARED_OUTPUTS_DIR'),
     'GCS path to store model and checkpoints.')
+
+
+def _get_checkpoint_metrics_counts() -> (int, int):
+  """Get the count for recorded sync and async checkpoint write durations."""
+  def get_count(method):
+    proto_bytes = method(api_label=async_checkpoint._ASYNC_CHECKPOINT_V1)
+    histogram_proto = summary_pb2.HistogramProto()
+    histogram_proto.ParseFromString(proto_bytes)
+    return int(histogram_proto.num)
+  return get_count(metrics.GetCheckpointWriteDurations), get_count(
+      metrics.GetAsyncCheckpointWriteDurations)
 
 
 def input_fn(params):
@@ -115,12 +128,12 @@ class AsyncCheckpointingTest(test.TestCase):
         params={},
     )
 
-    i = 10
+    max_steps = 100
     mock_listener = test.mock.create_autospec(
         basic_session_run_hooks.CheckpointSaverListener)
     estimator.train(
         input_fn=input_fn,
-        max_steps=i * 10,
+        max_steps=max_steps,
         hooks=[
             async_checkpoint.AsyncCheckpointSaverHook(
                 FLAGS.model_dir,
@@ -137,9 +150,15 @@ class AsyncCheckpointingTest(test.TestCase):
     checkpoint_count = len(checkpoints)
     logging.info('Found %d checkpoints: %s', checkpoint_count, checkpoints)
     self.assertLessEqual(checkpoint_count, 10)
-    self.assertEqual(current_step, i * 10)
+    self.assertEqual(current_step, max_steps)
     mock_listener.before_save.assert_called()
     mock_listener.after_save.assert_called()
+
+    # save called by hook in `after_create_session` and every `after_run`
+    num_save_calls = 1 + max_steps // checkpoint_interval
+    sync_count, async_count = _get_checkpoint_metrics_counts()
+    self.assertEqual(sync_count, num_save_calls)
+    self.assertLessEqual(async_count, num_save_calls)
 
   def testAsyncCheckpointHookWithoutListeners(self):
     resolver = tpu_cluster_resolver.TPUClusterResolver(
@@ -185,6 +204,12 @@ class AsyncCheckpointingTest(test.TestCase):
     logging.info('Found %d checkpoints: %s', checkpoint_count, checkpoints)
     self.assertLessEqual(checkpoint_count, keep_checkpoint_max)
     self.assertEqual(current_step, max_steps)
+
+    # save called by hook in `after_create_session` and every `after_run`
+    num_save_calls = 1 + max_steps // checkpoint_interval
+    sync_count, async_count = _get_checkpoint_metrics_counts()
+    self.assertEqual(sync_count, num_save_calls)
+    self.assertLessEqual(async_count, num_save_calls)
 
 
 if __name__ == '__main__':
