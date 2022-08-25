@@ -349,10 +349,8 @@ PYBIND11_MODULE(xla_extension, m) {
       "get_plugin_device_client",
       []() -> StatusOr<std::shared_ptr<PyClient>> {
         py::gil_scoped_release gil_release;
-
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetTfrtPluginDeviceClient());
-
         return std::make_shared<PyClient>(std::move(client));
       });
 #endif // XLA_PYTHON_ENABLE_PLUGIN_DEVICE

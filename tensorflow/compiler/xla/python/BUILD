@@ -727,7 +727,6 @@ config_setting(
     },
 )
 
-
 pybind_extension(
     name = "xla_extension",
     srcs = [
