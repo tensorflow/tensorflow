@@ -1441,7 +1441,10 @@ class DotOpConversion : public OpConversionPattern<mhlo::DotOp> {
         typeConverter->convertType(op.getType()).cast<ShapedType>();
     SmallVector<Value, 2> dynShape = getDotOpInitTensorDynSizes(
         rewriter, loc, adaptor.lhs(), adaptor.rhs(), op_type);
-    auto initTensor = getInitTensor(rewriter, loc, outputType, dynShape);
+    auto initTensor =
+        sparse_tensor::getSparseTensorEncoding(outputType) == nullptr
+            ? getInitTensor(rewriter, loc, outputType, dynShape)
+            : getInitSparseTensor(rewriter, loc, outputType, dynShape);
     Value zeroTensor = fillTensorWithZeros(rewriter, loc, initTensor);
     rewriter.replaceOpWithNewOp<LinalgOp>(
         op, TypeRange{outputType}, ValueRange{adaptor.lhs(), adaptor.rhs()},

@@ -55,6 +55,10 @@ SmallVector<StringRef, 3> getParallelAndReductionIterators(unsigned nLoops,
 /// Returns an ArrayAttr that contains `nParallelLoops` "parallel" attributes.
 SmallVector<StringRef, 3> getNParallelLoopsAttrs(unsigned nParallelLoops);
 
+/// Generates an init sparse tensor.
+Value getInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
+                          ArrayRef<Value> dynSizes);
+
 /// Generates an initTensor op in the linalg dialect.
 Value getInitTensor(OpBuilder& b, Location loc, ShapedType type,
                     ArrayRef<Value> dynSizes);
