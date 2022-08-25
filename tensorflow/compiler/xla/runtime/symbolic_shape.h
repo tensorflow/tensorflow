@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_RUNTIME_SYMBOLIC_SHAPE_H_
 #define XLA_RUNTIME_SYMBOLIC_SHAPE_H_
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
@@ -63,11 +64,11 @@ class SymbolicShapesResolver {
   using StaticShape = llvm::SmallVector<int64_t>;
 
   SymbolicShapesResolver(const FunctionType& signature,
-                         llvm::ArrayRef<ArgumentConstraint> constraints);
+                         absl::Span<const ArgumentConstraint> constraints);
 
   // Resolves symbolic shapes from the runtime arguments. Returns failure if
   // runtime dimensions do not match the statically known dimensions.
-  llvm::ErrorOr<llvm::SmallVector<SymbolicShape>> Resolve(
+  absl::StatusOr<llvm::SmallVector<SymbolicShape>> Resolve(
       ArgumentsRef arguments) const;
 
   // Resolves symbolic shapes and computes the hash value from the runtime
@@ -76,13 +77,13 @@ class SymbolicShapesResolver {
   //
   // This function might not return the same hash value as calling `Resolve` and
   // then `Hash`, because it might use more efficient hashing algorithm.
-  llvm::ErrorOr<llvm::hash_code> ResolveHash(ArgumentsRef arguments) const;
+  absl::StatusOr<llvm::hash_code> ResolveHash(ArgumentsRef arguments) const;
 
   // Replaces all symbolic dimensions with dynamic dimension.
   static llvm::SmallVector<int64_t> Normalize(const SymbolicShape& shape);
 
   // Computes a hash value of the symbolic shapes.
-  static llvm::hash_code Hash(llvm::ArrayRef<SymbolicShape> symbolic_shapes);
+  static llvm::hash_code Hash(absl::Span<const SymbolicShape> symbolic_shapes);
 
   ArgumentConstraint constraint(size_t index) const;
   size_t num_arguments() const;

@@ -20,10 +20,10 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
-#include "llvm/Support/Errc.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
@@ -43,7 +43,8 @@ using SymbolicShape = SymbolicShapesResolver::SymbolicShape;
 using StaticShape = SymbolicShapesResolver::StaticShape;
 
 SymbolicShapesResolver::SymbolicShapesResolver(
-    const FunctionType& signature, ArrayRef<ArgumentConstraint> constraints)
+    const FunctionType& signature,
+    absl::Span<const ArgumentConstraint> constraints)
     : constraints_(constraints.begin(), constraints.end()) {
   for (unsigned i = 0; i < signature.num_operands(); ++i) {
     auto* type = signature.operand(i);
@@ -219,15 +220,15 @@ LLVM_ATTRIBUTE_ALWAYS_INLINE static LogicalResult ResolveImpl(
   return success();
 }
 
-llvm::ErrorOr<llvm::SmallVector<SymbolicShape>> SymbolicShapesResolver::Resolve(
-    ArgumentsRef arguments) const {
+absl::StatusOr<llvm::SmallVector<SymbolicShape>>
+SymbolicShapesResolver::Resolve(ArgumentsRef arguments) const {
   // Prepare storage for resolving symbolic shapes.
   llvm::SmallVector<SymbolicShape> symbolic_shapes;
   symbolic_shapes.resize(arguments.size());
 
   if (LLVM_UNLIKELY(failed(
           ResolveImpl(*this, arguments, iteration_order_, symbolic_shapes))))
-    return llvm::errc::invalid_argument;
+    return absl::InternalError("failed to resolve symbolic shape");
 
   return symbolic_shapes;
 }
@@ -267,14 +268,14 @@ struct SymbolicShapesFingerprint {
 };
 }  // namespace
 
-llvm::ErrorOr<llvm::hash_code> SymbolicShapesResolver::ResolveHash(
+absl::StatusOr<llvm::hash_code> SymbolicShapesResolver::ResolveHash(
     ArgumentsRef arguments) const {
   // Accumulate symbolic shapes into the shapes fingerprint.
   SymbolicShapesFingerprint fingerprint;
 
   if (LLVM_UNLIKELY(failed(
           ResolveImpl(*this, arguments, hash_iteration_order_, fingerprint))))
-    return llvm::errc::invalid_argument;
+    return absl::InternalError("failed to resolve symbolic shape hash");
 
   return llvm::hash_combine_range(fingerprint.values.begin(),
                                   fingerprint.values.end());
@@ -294,7 +295,7 @@ static llvm::hash_code SymbolicShapeHash(const SymbolicShape& shape) {
 }
 
 /*static*/ llvm::hash_code SymbolicShapesResolver::Hash(
-    ArrayRef<SymbolicShape> symbolic_shapes) {
+    absl::Span<const SymbolicShape> symbolic_shapes) {
   if (LLVM_UNLIKELY(symbolic_shapes.empty())) return llvm::hash_code(0);
 
   llvm::hash_code hash = SymbolicShapeHash(symbolic_shapes[0]);

@@ -265,6 +265,8 @@ cc_library(
         ":constraints",
         ":logical_result",
         ":types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
     ],
 )

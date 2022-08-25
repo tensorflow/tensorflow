@@ -379,8 +379,8 @@ TEST(SymbolicShapeResolverTest, IncompatibleInput) {
     auto symbolic = resolver.Resolve(operands);
     auto hash = resolver.ResolveHash(operands);
 
-    EXPECT_TRUE(symbolic.getError());
-    EXPECT_TRUE(hash.getError());
+    EXPECT_FALSE(symbolic.ok());
+    EXPECT_FALSE(hash.ok());
   }
 
   {  // Operand with mismatched static shape.
@@ -388,8 +388,8 @@ TEST(SymbolicShapeResolverTest, IncompatibleInput) {
     auto symbolic = resolver.Resolve(operands);
     auto hash = resolver.ResolveHash(operands);
 
-    EXPECT_TRUE(symbolic.getError());
-    EXPECT_TRUE(hash.getError());
+    EXPECT_FALSE(symbolic.ok());
+    EXPECT_FALSE(hash.ok());
   }
 }
 
@@ -419,7 +419,7 @@ TEST(SymbolicShapeResolverTest, OpaqueAndShapedInputs) {
     auto symbolic = resolver.Resolve(arguments);
     auto hash = resolver.ResolveHash(arguments);
 
-    ASSERT_TRUE(symbolic);
+    ASSERT_TRUE(symbolic.ok());
     EXPECT_EQ(symbolic->size(), 3);
     EXPECT_EQ(*symbolic, SymbolicShapes({{}, {-2, 4}, {-3, 4}}));
 
@@ -436,7 +436,7 @@ TEST(SymbolicShapeResolverTest, OpaqueAndShapedInputs) {
     auto symbolic = resolver.Resolve(arguments);
     auto hash = resolver.ResolveHash(arguments);
 
-    ASSERT_TRUE(symbolic);
+    ASSERT_TRUE(symbolic.ok());
     EXPECT_EQ(symbolic->size(), 3);
     EXPECT_EQ(*symbolic, SymbolicShapes({{}, {-2, 4}, {-2, 4}}));
 
@@ -450,15 +450,15 @@ TEST(SymbolicShapeResolverTest, OpaqueAndShapedInputs) {
 // -------------------------------------------------------------------------- //
 
 struct Resolve {
-  static llvm::ErrorOr<llvm::SmallVector<SymbolicShape>> Run(
+  static absl::StatusOr<llvm::SmallVector<SymbolicShape>> Run(
       SymbolicShapesResolver& resolver, ArrayRef<MemrefDesc> operands) {
     return resolver.Resolve(operands);
   }
 };
 
 struct ResolveHash {
-  static llvm::ErrorOr<llvm::hash_code> Run(SymbolicShapesResolver& resolver,
-                                            ArrayRef<MemrefDesc> operands) {
+  static absl::StatusOr<llvm::hash_code> Run(SymbolicShapesResolver& resolver,
+                                             ArrayRef<MemrefDesc> operands) {
     return resolver.ResolveHash(operands);
   }
 };

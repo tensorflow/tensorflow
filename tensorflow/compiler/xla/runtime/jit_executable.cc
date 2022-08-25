@@ -26,6 +26,8 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
+using absl::StatusOr;
+
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
@@ -229,12 +231,12 @@ Expected<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
   // We rely on the hash code to find the specialized executable. In case of
   // a collision (practically impossible) incompatible arguments will be
   // rejected by the executable arguments verification.
-  ErrorOr<llvm::hash_code> hash =
+  StatusOr<llvm::hash_code> hash =
       symbolic_shapes_resolver_.ResolveHash(arguments);
 
   // If we failed to resolve the symbolic shapes hash, then we need to verify
   // all the operands to find the mismatch and report it to the user.
-  if (LLVM_UNLIKELY(hash.getError())) {
+  if (LLVM_UNLIKELY(!hash.ok())) {
     for (unsigned i = 0; i < arguments.size(); ++i) {
       auto* type = signature_.operand(i);
 
@@ -290,7 +292,7 @@ Expected<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
   }
 
   // Specialize executable to the concrete operands.
-  ErrorOr<llvm::SmallVector<SymbolicShapesResolver::SymbolicShape>>
+  StatusOr<llvm::SmallVector<SymbolicShapesResolver::SymbolicShape>>
       symbolic_shapes = symbolic_shapes_resolver_.Resolve(arguments);
   if (auto err = (*compiler)->Specialize(arguments, *symbolic_shapes,
                                          constraints_, listener)) {
