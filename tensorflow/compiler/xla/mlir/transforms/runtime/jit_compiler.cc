@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
+#include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
 namespace xla {
@@ -179,7 +180,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
   // Get the signature of the entrypoint function.
   auto signature = opts.type_converter.Convert(entry_func.getFunctionType());
-  if (auto err = signature.takeError()) return std::move(err);
+  if (!signature.ok()) return MakeStringError(signature.status().message());
 
   // Get the calling convention for the entrypoint function.
   if (!opts.calling_convention)
@@ -193,7 +194,8 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
   // Get the runtime signature of the entrypoint function.
   auto runtime_signature = opts.type_converter.Convert(runtime_type);
-  if (auto err = runtime_signature.takeError()) return std::move(err);
+  if (!runtime_signature.ok())
+    return MakeStringError(runtime_signature.status().message());
 
   // Get the memory layout for passing function arguments.
   auto arguments_memory_layout =

@@ -44,7 +44,7 @@ using SymbolicShape = SymbolicShapesResolver::SymbolicShape;
 static llvm::Error VerifyMemrefOperand(unsigned index, mlir::ShapedType shaped,
                                        const MemrefDesc& memref) {
   auto element_ty = TypeConverter::ConvertElementType(shaped.getElementType());
-  if (auto err = element_ty.takeError()) return err;
+  if (!element_ty.ok()) return MakeStringError(element_ty.status().message());
 
   // TODO(ezhulenev): Pass an instance of TypeConverter so we can convert shaped
   // type to the corresponding run-time type. For now we convert all shaped

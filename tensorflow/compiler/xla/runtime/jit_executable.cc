@@ -111,7 +111,7 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
   // compute the specialized function signature from the operands at runtime.
   auto signature = opts.compiler.type_converter.Convert(
       (*compiler)->entrypoint().getFunctionType());
-  if (auto err = signature.takeError()) return std::move(err);
+  if (!signature.ok()) return MakeStringError(signature.status().message());
 
   // If all of the operands have static shape, then we can always use default
   // binary for execution (unless specialization is explicitly required by the
