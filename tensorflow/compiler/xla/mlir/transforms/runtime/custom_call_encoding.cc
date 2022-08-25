@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -261,40 +262,34 @@ static Value CreateGlobalFromDenseArray(Globals &g, ImplicitLocOpBuilder &b,
                                         Type arr_type, StringRef symbol_base) {
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) {
     Value data = ib.create<LLVM::UndefOp>(arr_type);
-    switch (base_array.getElementType()) {
-      case DenseArrayBaseAttr::EltType::I8:
-        data = FillDataFromDenseArrayAttr<int8_t, IntegerAttr>(
-            b, &ImplicitLocOpBuilder::getI8IntegerAttr,
-            base_array.cast<mlir::DenseI8ArrayAttr>(), data);
-        break;
-      case DenseArrayBaseAttr::EltType::I16:
-        data = FillDataFromDenseArrayAttr<int16_t, IntegerAttr>(
-            b, &ImplicitLocOpBuilder::getI16IntegerAttr,
-            base_array.cast<mlir::DenseI16ArrayAttr>(), data);
-        break;
-      case DenseArrayBaseAttr::EltType::I32:
-        data = FillDataFromDenseArrayAttr<int32_t, IntegerAttr>(
-            b, &ImplicitLocOpBuilder::getI32IntegerAttr,
-            base_array.cast<mlir::DenseI32ArrayAttr>(), data);
-        break;
-      case DenseArrayBaseAttr::EltType::I64:
-        data = FillDataFromDenseArrayAttr<int64_t, IntegerAttr>(
-            b, &ImplicitLocOpBuilder::getI64IntegerAttr,
-            base_array.cast<mlir::DenseI64ArrayAttr>(), data);
-        break;
-      case DenseArrayBaseAttr::EltType::F32:
-        data = FillDataFromDenseArrayAttr<float, FloatAttr>(
-            b, &ImplicitLocOpBuilder::getF32FloatAttr,
-            base_array.cast<mlir::DenseF32ArrayAttr>(), data);
-        break;
-      case DenseArrayBaseAttr::EltType::F64:
-        data = FillDataFromDenseArrayAttr<double, FloatAttr>(
-            b, &ImplicitLocOpBuilder::getF64FloatAttr,
-            base_array.cast<mlir::DenseF64ArrayAttr>(), data);
-        break;
-      default:
-        assert(false && "unsupported DenseArrayAttr element type");
-    }
+    llvm::TypeSwitch<DenseArrayBaseAttr>(base_array)
+        .Case([&](DenseI8ArrayAttr attr) {
+          data = FillDataFromDenseArrayAttr<int8_t, IntegerAttr>(
+              b, &ImplicitLocOpBuilder::getI8IntegerAttr, attr, data);
+        })
+        .Case([&](DenseI16ArrayAttr attr) {
+          data = FillDataFromDenseArrayAttr<int16_t, IntegerAttr>(
+              b, &ImplicitLocOpBuilder::getI16IntegerAttr, attr, data);
+        })
+        .Case([&](DenseI32ArrayAttr attr) {
+          data = FillDataFromDenseArrayAttr<int32_t, IntegerAttr>(
+              b, &ImplicitLocOpBuilder::getI32IntegerAttr, attr, data);
+        })
+        .Case([&](DenseI64ArrayAttr attr) {
+          data = FillDataFromDenseArrayAttr<int64_t, IntegerAttr>(
+              b, &ImplicitLocOpBuilder::getI64IntegerAttr, attr, data);
+        })
+        .Case([&](DenseF32ArrayAttr attr) {
+          data = FillDataFromDenseArrayAttr<float, FloatAttr>(
+              b, &ImplicitLocOpBuilder::getF32FloatAttr, attr, data);
+        })
+        .Case([&](DenseF64ArrayAttr attr) {
+          data = FillDataFromDenseArrayAttr<double, FloatAttr>(
+              b, &ImplicitLocOpBuilder::getF64FloatAttr, attr, data);
+        })
+        .Default([&](DenseArrayBaseAttr attr) {
+          assert(false && "unsupported DenseArrayAttr element type");
+        });
     ib.create<LLVM::ReturnOp>(data);
   };
 
