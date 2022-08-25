@@ -99,7 +99,7 @@ static bool AreCompatibleTypes(PrimitiveType type1, PrimitiveType type2) {
 }
 
 static Error VerifyMemrefArgument(PrimitiveType element_type,
-                                  Optional<ArrayRef<int64_t>> sizes,
+                                  Optional<absl::Span<const int64_t>> sizes,
                                   const MemrefDesc& memref) {
   // Format memref argument and expected type for user-friendly error messages.
   auto pretty_print = [&]() -> std::string {
@@ -110,7 +110,7 @@ static Error VerifyMemrefArgument(PrimitiveType element_type,
       return d == MemrefType::kDynamicSize ? "?" : std::to_string(d);
     };
 
-    auto print_shaped = [&](Optional<ArrayRef<int64_t>> dims,
+    auto print_shaped = [&](Optional<absl::Span<const int64_t>> dims,
                             PrimitiveType dtype) {
       if (!dims.has_value()) {
         os << "[*x" << dtype << "]";
@@ -257,7 +257,7 @@ raw_ostream& BufferDesc::print(raw_ostream& os) const {
 }
 
 static Error VerifyBufferDesc(PrimitiveType element_type,
-                              Optional<ArrayRef<int64_t>> sizes,
+                              Optional<absl::Span<const int64_t>> sizes,
                               const BufferDesc& buffer) {
   size_t n_elem = !sizes.hasValue() || sizes->empty() ? 1 : (*sizes)[0];
   size_t expected_buffer_size =

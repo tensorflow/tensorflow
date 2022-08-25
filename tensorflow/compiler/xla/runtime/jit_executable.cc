@@ -54,7 +54,7 @@ static bool HasValueConstraints(ArrayRef<ArgumentConstraint> constraints) {
 
 // Returns true if all function operands have statically known shape.
 static bool HasStaticShapeOperands(const FunctionType& signature) {
-  auto is_dynamic = [](ArrayRef<int64_t> sizes) -> bool {
+  auto is_dynamic = [](absl::Span<const int64_t> sizes) -> bool {
     return llvm::any_of(sizes, mlir::ShapedType::isDynamic);
   };
 

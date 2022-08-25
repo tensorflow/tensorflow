@@ -263,6 +263,7 @@ cc_library(
     deps = [
         ":arguments",
         ":constraints",
+        ":logical_result",
         ":types",
         "@llvm-project//llvm:Support",
     ],
@@ -289,6 +290,8 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
     ],
 )

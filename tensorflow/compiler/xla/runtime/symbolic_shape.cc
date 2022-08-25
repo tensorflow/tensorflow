@@ -19,13 +19,14 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
-#include <system_error>  // NOLINT TODO(ezhulenev): Migrate to absl::Status.
 
 #include "llvm/ADT/Hashing.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
+#include "llvm/Support/Errc.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
+#include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
 namespace xla {
@@ -53,7 +54,7 @@ SymbolicShapesResolver::SymbolicShapesResolver(
       continue;
     }
 
-    auto emplace_sizes = [&](ArrayRef<int64_t> sizes) {
+    auto emplace_sizes = [&](absl::Span<const int64_t> sizes) {
       arguments_sizes_.emplace_back(llvm::to_vector(sizes));
 
       // Keep track of all statically known dimension sizes.
@@ -136,7 +137,7 @@ bool SymbolicShapesResolver::seen_static_size(size_t dim) const {
 }
 
 template <typename SymbolicShapes>
-LLVM_ATTRIBUTE_ALWAYS_INLINE static std::error_code ResolveImpl(
+LLVM_ATTRIBUTE_ALWAYS_INLINE static LogicalResult ResolveImpl(
     const SymbolicShapesResolver& resolver, ArgumentsRef arguments,
     ArrayRef<size_t> iteration_order, SymbolicShapes& symbolic_shapes) {
   // The number of arguments must match the function signature.
@@ -161,7 +162,7 @@ LLVM_ATTRIBUTE_ALWAYS_INLINE static std::error_code ResolveImpl(
     // Check that statically known rank matches the runtime rank.
     if (LLVM_UNLIKELY(has_static_sizes && resolver.argument_sizes(i).size() !=
                                               runtime_sizes.size()))
-      return llvm::errc::invalid_argument;
+      return failure();
 
     // For shape constrained argument use runtime shape.
     if (resolver.constraint(i) == ArgumentConstraint::kShape) {
@@ -195,8 +196,7 @@ LLVM_ATTRIBUTE_ALWAYS_INLINE static std::error_code ResolveImpl(
       // Skip statically known dimensions.
       if (symbolic_dim >= 0) {
         // Check that statically known dimension agrees with runtime dimension.
-        if (LLVM_UNLIKELY(symbolic_dim != runtime_dim))
-          return llvm::errc::invalid_argument;
+        if (LLVM_UNLIKELY(symbolic_dim != runtime_dim)) return failure();
         continue;
       }
 
@@ -216,7 +216,7 @@ LLVM_ATTRIBUTE_ALWAYS_INLINE static std::error_code ResolveImpl(
     }
   }
 
-  return {};
+  return success();
 }
 
 llvm::ErrorOr<llvm::SmallVector<SymbolicShape>> SymbolicShapesResolver::Resolve(
@@ -225,8 +225,8 @@ llvm::ErrorOr<llvm::SmallVector<SymbolicShape>> SymbolicShapesResolver::Resolve(
   llvm::SmallVector<SymbolicShape> symbolic_shapes;
   symbolic_shapes.resize(arguments.size());
 
-  if (LLVM_UNLIKELY(
-          ResolveImpl(*this, arguments, iteration_order_, symbolic_shapes)))
+  if (LLVM_UNLIKELY(failed(
+          ResolveImpl(*this, arguments, iteration_order_, symbolic_shapes))))
     return llvm::errc::invalid_argument;
 
   return symbolic_shapes;
@@ -272,8 +272,8 @@ llvm::ErrorOr<llvm::hash_code> SymbolicShapesResolver::ResolveHash(
   // Accumulate symbolic shapes into the shapes fingerprint.
   SymbolicShapesFingerprint fingerprint;
 
-  if (LLVM_UNLIKELY(
-          ResolveImpl(*this, arguments, hash_iteration_order_, fingerprint)))
+  if (LLVM_UNLIKELY(failed(
+          ResolveImpl(*this, arguments, hash_iteration_order_, fingerprint))))
     return llvm::errc::invalid_argument;
 
   return llvm::hash_combine_range(fingerprint.values.begin(),

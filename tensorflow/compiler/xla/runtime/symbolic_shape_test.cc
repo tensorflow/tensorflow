@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
@@ -36,7 +37,7 @@ using SymbolicShape = SymbolicShapesResolver::SymbolicShape;
 static FunctionType GetFunctionType(
     llvm::SmallVector<PrimitiveType> dtypes,
     llvm::SmallVector<llvm::Optional<SymbolicShape>> shapes) {
-  llvm::SmallVector<std::unique_ptr<Type>> operands;
+  std::vector<std::unique_ptr<Type>> operands;
   operands.reserve(shapes.size());
 
   for (auto tuple : llvm::zip(dtypes, shapes)) {
@@ -393,10 +394,10 @@ TEST(SymbolicShapeResolverTest, IncompatibleInput) {
 }
 
 TEST(SymbolicShapeResolverTest, OpaqueAndShapedInputs) {
-  llvm::SmallVector<int64_t> shape = {MemrefType::kDynamicSize, 4};
+  std::vector<int64_t> shape = {MemrefType::kDynamicSize, 4};
 
   // Operands: !async.token, tensor<?x4xf32>, tensor<?x4xf32>
-  llvm::SmallVector<std::unique_ptr<Type>> operands;
+  std::vector<std::unique_ptr<Type>> operands;
   operands.push_back(std::make_unique<AsyncTokenType>());
   operands.push_back(std::make_unique<MemrefType>(shape, PrimitiveType::F32));
   operands.push_back(std::make_unique<MemrefType>(shape, PrimitiveType::F32));

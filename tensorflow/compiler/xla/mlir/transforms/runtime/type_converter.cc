@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
@@ -106,8 +107,8 @@ Expected<std::unique_ptr<Type>> TypeConverter::Convert(mlir::Type type) const {
 Expected<FunctionType> TypeConverter::Convert(mlir::FunctionType type) const {
   assert(type && "function type must be not null");
 
-  llvm::SmallVector<std::unique_ptr<Type>> operands;
-  llvm::SmallVector<std::unique_ptr<Type>> results;
+  std::vector<std::unique_ptr<Type>> operands;
+  std::vector<std::unique_ptr<Type>> results;
 
   operands.reserve(type.getNumInputs());
   results.reserve(type.getNumResults());
