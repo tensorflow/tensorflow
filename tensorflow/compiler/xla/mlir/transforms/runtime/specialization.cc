@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <memory>
 #include <numeric>
+#include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Error.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -36,15 +39,18 @@ namespace runtime {
 
 using llvm::ArrayRef;
 using llvm::dyn_cast;
-using llvm::Error;
-using llvm::Expected;
+
+using absl::InvalidArgumentError;
+using absl::Status;
+using absl::StatusOr;
+using absl::StrCat;
 
 using SymbolicShape = SymbolicShapesResolver::SymbolicShape;
 
-static llvm::Error VerifyMemrefOperand(unsigned index, mlir::ShapedType shaped,
-                                       const MemrefDesc& memref) {
+static Status VerifyMemrefOperand(unsigned index, mlir::ShapedType shaped,
+                                  const MemrefDesc& memref) {
   auto element_ty = TypeConverter::ConvertElementType(shaped.getElementType());
-  if (!element_ty.ok()) return MakeStringError(element_ty.status().message());
+  if (!element_ty.ok()) element_ty.status();
 
   // TODO(ezhulenev): Pass an instance of TypeConverter so we can convert shaped
   // type to the corresponding run-time type. For now we convert all shaped
@@ -55,23 +61,33 @@ static llvm::Error VerifyMemrefOperand(unsigned index, mlir::ShapedType shaped,
   // operand types when we do compiled kernel specialization to shape.
   if (shaped.hasRank()) {
     MemrefType type(shaped.getShape(), *element_ty);
-    return VerifyMemrefArgument(index, type, memref);
+    if (auto err = VerifyMemrefArgument(index, type, memref))
+      return absl::InternalError("wrong type");
   } else {
     UnrankedMemrefType type(*element_ty);
-    return VerifyMemrefArgument(index, type, memref);
+    if (auto err = VerifyMemrefArgument(index, type, memref))
+      return absl::InternalError("wrong type");
   }
+
+  return absl::OkStatus();
+}
+
+static std::string ToString(mlir::Type type) {
+  std::string str;
+  llvm::raw_string_ostream(str) << type;
+  return str;
 }
 
 // Return input `type` specialized to the argument and its symbolic shape.
-static Expected<mlir::Type> SpecializeOperandType(
+static StatusOr<mlir::Type> SpecializeOperandType(
     unsigned index, mlir::Type type, const Argument& argument,
     const SymbolicShape& symbolic_shape) {
   // We do not yet support specializing non-memref arguments.
   auto* memref_arg = dyn_cast<MemrefDesc>(&argument);
   if (!memref_arg) {
     if (!symbolic_shape.empty())
-      return MakeStringError("unexpected symbolic shape for argument: ",
-                             argument);
+      return InvalidArgumentError(StrCat(
+          "unexpected symbolic shape for argument: ", argument.ToString()));
     return type;
   }
 
@@ -79,24 +95,25 @@ static Expected<mlir::Type> SpecializeOperandType(
   auto shape = SymbolicShapesResolver::Normalize(symbolic_shape);
 
   if (auto memref = type.dyn_cast<mlir::MemRefType>()) {
-    if (auto err = VerifyMemrefOperand(index, memref, *memref_arg))
-      return std::move(err);
+    if (auto st = VerifyMemrefOperand(index, memref, *memref_arg); !st.ok())
+      return st;
     return mlir::MemRefType::get(shape, memref.getElementType());
   }
 
   if (auto tensor = type.dyn_cast<mlir::RankedTensorType>()) {
-    if (auto err = VerifyMemrefOperand(index, tensor, *memref_arg))
-      return std::move(err);
+    if (auto st = VerifyMemrefOperand(index, tensor, *memref_arg); !st.ok())
+      return st;
     return mlir::RankedTensorType::get(shape, tensor.getElementType());
   }
 
   if (auto tensor = type.dyn_cast<mlir::UnrankedTensorType>()) {
-    if (auto err = VerifyMemrefOperand(index, tensor, *memref_arg))
-      return std::move(err);
+    if (auto st = VerifyMemrefOperand(index, tensor, *memref_arg); !st.ok())
+      return st;
     return mlir::RankedTensorType::get(shape, tensor.getElementType());
   }
 
-  return MakeStringError("Unsupported input type: ", type);
+  return InvalidArgumentError(
+      StrCat("Unsupported input type: ", ToString(type)));
 }
 
 // Gets (copies) the values from `desc`, returning them in a DenseElementsAttr.
@@ -133,10 +150,10 @@ static mlir::DenseElementsAttr GetMemrefValues(mlir::Builder& builder,
   return mlir::DenseElementsAttr::get(ranked_tensor, attributes);
 }
 
-Error SpecializeFunction(mlir::func::FuncOp func, ArgumentsRef arguments,
-                         ArrayRef<SymbolicShape> symbolic_shapes,
-                         ArrayRef<ArgumentConstraint> constraints,
-                         const SpecializationListener* listener) {
+Status SpecializeFunction(mlir::func::FuncOp func, ArgumentsRef arguments,
+                          ArrayRef<SymbolicShape> symbolic_shapes,
+                          ArrayRef<ArgumentConstraint> constraints,
+                          const SpecializationListener* listener) {
   mlir::MLIRContext* ctx = func.getContext();
 
   unsigned num_inputs = func.getNumArguments();
@@ -147,7 +164,7 @@ Error SpecializeFunction(mlir::func::FuncOp func, ArgumentsRef arguments,
     auto specialized =
         SpecializeOperandType(i, func.getFunctionType().getInput(i),
                               arguments[i], symbolic_shapes[i]);
-    if (auto err = specialized.takeError()) return err;
+    if (!specialized.ok()) return specialized.status();
     specialized_inputs[i] = *specialized;
   }
 
@@ -211,21 +228,23 @@ Error SpecializeFunction(mlir::func::FuncOp func, ArgumentsRef arguments,
     mlir::Type input = func.getFunctionType().getInput(i);
     mlir::TensorType tensor = input.dyn_cast<mlir::TensorType>();
     if (!tensor || !SupportsValueSpecialization(tensor)) {
-      return MakeStringError("non-sinkable operand was marked for sinking: ",
-                             input);
+      return InvalidArgumentError(StrCat(
+          "non-sinkable operand was marked for sinking: ", ToString(input)));
     }
 
     // Value specialized tensors must be passed as memref arguments.
     auto* memref = dyn_cast<MemrefDesc>(&arguments[i]);
     if (!memref) {
-      return MakeStringError("non-sinkable argument was marked for sinking: ",
-                             arguments[i]);
+      return InvalidArgumentError(
+          StrCat("non-sinkable argument was marked for sinking: ",
+                 arguments[i].ToString()));
     }
 
     // Get the argument value from the runtime memref argument.
     mlir::DenseElementsAttr value = GetMemrefValues(builder, tensor, *memref);
     if (!value) {
-      return MakeStringError("cannot get value from argument type: ", input);
+      return InvalidArgumentError(
+          StrCat("cannot get value from argument type: ", ToString(input)));
     }
 
     auto cst =
@@ -241,7 +260,7 @@ Error SpecializeFunction(mlir::func::FuncOp func, ArgumentsRef arguments,
     listener->notifyModuleSpecialized(specialized_inputs, specialized_attrs);
   }
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
 }  // namespace runtime

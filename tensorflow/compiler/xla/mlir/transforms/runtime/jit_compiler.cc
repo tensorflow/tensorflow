@@ -285,11 +285,12 @@ llvm::Error JitCompiler::Specialize(ArgumentsRef arguments,
   func::FuncOp func = entrypoint();
 
   // Update function signature and sink constant arguments into the body.
-  if (auto err = SpecializeFunction(func, arguments, symbolic_shapes,
-                                    constraints, listener)) {
+  if (auto specialized = SpecializeFunction(func, arguments, symbolic_shapes,
+                                            constraints, listener);
+      !specialized.ok()) {
     // No need to call this->Error() because we don't have diagnostic to report
     // in case of a failed specialization.
-    return MakeStringError("failed to specialize: ", err);
+    return MakeStringError("failed to specialize: ", specialized.message());
   }
 
   // Run the user-provided specialization pipeline to take advantage of the
