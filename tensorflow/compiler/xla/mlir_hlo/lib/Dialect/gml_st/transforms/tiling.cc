@@ -119,13 +119,13 @@ Value createNestedPloopTilingRecursively(
                                          steps, nestedTileSizes.front());
         Value innerResult = b.create<MaterializeOp>(loc, source, subset);
 
-        // Recur if needed.
-        if (nestedTileSizes.size() >= 2) {
+        // Recur if there are more tile sizes, and it's not a point yet.
+        nestedTileSizes = nestedTileSizes.drop_front();
+        if (!nestedTileSizes.empty() && subset.getType().isa<TileType>()) {
           auto materializedInitSubset =
               b.create<MaterializeOp>(loc, init, subset);
           innerResult = createNestedPloopTilingRecursively(
-              b, loc, materializedInitSubset, innerResult,
-              nestedTileSizes.drop_front());
+              b, loc, materializedInitSubset, innerResult, nestedTileSizes);
         }
 
         b.create<SetYieldOp>(loc, ValueRange{innerResult}, ValueRange{init},

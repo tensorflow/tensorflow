@@ -1655,6 +1655,7 @@ cc_library(
     deps = [
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
+        ":alloc_to_arg_pass",
         ":broadcast_propagation",
         ":buffer_packing",
         ":buffer_reuse",
@@ -1712,6 +1713,7 @@ cc_library(
         ":tile_loops_pass",
         ":transforms_pass_details",
         ":transforms_pass_inc_gen",
+        ":unbufferize_pass",
         ":userange_analysis",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
@@ -2259,6 +2261,50 @@ cc_library(
 )
 
 cc_library(
+    name = "unbufferize_pass",
+    srcs = [
+        "lib/Transforms/unbufferize_pass.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":mlir_hlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "alloc_to_arg_pass",
+    srcs = [
+        "lib/Transforms/alloc_to_arg_pass.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":mlir_hlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "hlo_to_gpu_pipeline",
     srcs = [
         "lib/Transforms/hlo_to_gpu_pipeline.cc",
@@ -2267,14 +2313,23 @@ cc_library(
         "include/mlir-hlo/Transforms/gpu_passes.h",
     ],
     deps = [
+        ":alloc_to_arg_pass",
         ":bufferize_pass",
         ":collapse_parallel_loops_to_1d_pass",
+        ":gml_st_collapse_materialize_ops",
+        ":gml_st_compose_set_ops",
+        ":gml_st_fusion",
+        ":gml_st_passes",
+        ":gml_st_tiling",
+        ":gml_st_to_scf",
         ":gpu_kernel_lowering_passes",
         ":legalize_to_linalg",
         ":mlir_hlo",
         ":propagate_static_shapes_to_kernel",
         ":tile_loops_pass",
+        ":unbufferize_pass",
         "@llvm-project//mlir:AffineToStandard",
+        "@llvm-project//mlir:ArithmeticTransforms",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUTransforms",
