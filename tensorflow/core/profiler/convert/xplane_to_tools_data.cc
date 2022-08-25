@@ -229,12 +229,7 @@ StatusOr<std::string> ConvertMultiXSpacesToToolData(
   } else if (tool_name == "tf_data_bottleneck_analysis") {
     return ConvertMultiXSpacesToTfDataBottleneckAnalysis(session_snapshot);
   } else if (tool_name == "hlo_proto") {
-    // <hlo_proto> is a special tool name to generate HLO proto files from
-    // XSpace and store them in profile repository, this method does not return
-    // actual tool data.
-    TF_RETURN_IF_ERROR(
-        GetHloProtoFromMultiXSpaceAndSaveToFile(session_snapshot));
-    return std::string();
+    return ConvertMultiXSpaceToHloProto(session_snapshot);
   } else if (tool_name == "op_profile") {
     return ConvertMultiXSpacesToOpProfileViewer(session_snapshot);
   } else if (tool_name == "memory_viewer" || tool_name == "graph_viewer") {
