@@ -24,6 +24,7 @@ cc_library(
     srcs = [
         "gif_io.cc",
         "//tensorflow/core/platform:gif_hdrs",
+        "//tensorflow/tsl/platform:gif_hdrs",
     ],
     hdrs = ["gif_io.h"],
     copts = tf_copts(),
@@ -45,6 +46,7 @@ cc_library(
     srcs = if_mobile([
         "gif_io.cc",
         "//tensorflow/core/platform:gif_hdrs",
+        "//tensorflow/tsl/platform:gif_hdrs",
     ]),
     hdrs = [
         "gif_io.h",

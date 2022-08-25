@@ -21,6 +21,15 @@ cc_library(
 )
 
 cc_library(
+    name = "gif",
+    hdrs = ["gif.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@gif",
+    ],
+)
+
+cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
     compatible_with = get_compatible_with_portable(),
@@ -61,10 +70,25 @@ filegroup(
 )
 
 filegroup(
+    name = "gif_hdrs",
+    srcs = [
+        "gif.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/core/lib/gif:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+    ],
+)
+
+filegroup(
     name = "legacy_lib_internal_headers",
     srcs = glob(
         [
             "*.h",
+        ],
+        exclude = [
+            "gif.h",
         ],
     ),
     compatible_with = get_compatible_with_portable(),

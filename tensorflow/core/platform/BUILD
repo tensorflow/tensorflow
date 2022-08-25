@@ -326,7 +326,7 @@ cc_library(
     name = "gif",
     hdrs = ["gif.h"],
     deps = [
-        "@gif",
+        "//tensorflow/tsl/platform:gif",
     ],
 )
 
