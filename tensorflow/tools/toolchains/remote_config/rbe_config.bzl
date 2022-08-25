@@ -165,7 +165,7 @@ tensorflow_rbe_win_config = _tensorflow_rbe_win_config
 tensorflow_local_config = _tensorflow_local_config
 
 # Streamlined platform configuration for the SIG Build containers.
-# See https://github.com/tensorflow/build/tree/master/tf_sig_build_dockerfiles
+# See //tensorflow/tools/tf_sig_build_dockerfiles
 # These containers do not support ROCm and all have CUDA. We demand that the configuration
 # provide all the env variables to remove hidden logic.
 def sigbuild_tf_configs(name_container_map, env):
