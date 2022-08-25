@@ -52,7 +52,6 @@ py_library(
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:row_partition",
-        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
