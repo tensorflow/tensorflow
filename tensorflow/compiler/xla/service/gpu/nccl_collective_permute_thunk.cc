@@ -174,21 +174,6 @@ Status RunCollectivePermute(
   const std::optional<int64_t> source_id = source_target.source;
   const std::optional<int64_t> target_id = source_target.target;
 
-  // NCCL 2.8.x has an issue with point-to-point communication primitives if
-  // different ranks process different amounts of data. This can happen in the
-  // case of a collective permute as certain nodes may not do any send or
-  // receives, or do only send or only receive. Sending and receiving to self
-  // as well (identity pair) causes this imbalance. NCCL 2.8.x requires the
-  // use of NCCL_LAUNCH_MODE=PARALLEL to avoid these issues. See
-  // https://docs.nvidia.com/deeplearning/nccl/release-notes/rel_2-8-4.html#rel_2-8-4
-  if (!IsNcclLaunchModeParallel()) {
-    static absl::once_flag log_once;
-    absl::call_once(log_once, [] {
-      LOG(WARNING) << "NCCL based collective permute may not work correctly if "
-                      "NCCL_LAUNCH_MODE is not set to PARALLEL";
-    });
-  }
-
   se::DeviceMemoryBase src_addr = buffer.source_buffer;
   se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
 
