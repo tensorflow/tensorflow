@@ -181,6 +181,12 @@ std::string Layout::ToString() const {
   if (memory_space() != 0) {
     absl::StrAppend(&colon_string, "S(", memory_space(), ")");
   }
+
+  if (has_physical_shape()) {
+    absl::StrAppend(&colon_string, "P(",
+                    physical_shape_->ToString(/*print_layout=*/true), ")");
+  }
+
   return absl::StrCat("{", absl::StrJoin(minor_to_major(), ","),
                       colon_string.empty() ? "" : ":", colon_string, "}");
 }

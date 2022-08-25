@@ -2265,7 +2265,21 @@ R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)})->f32[10,10
 ENTRY test {
   ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
 })",
-}
+},
+
+{
+"SparseShapeWithPhysicalShape",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))})->f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
+})",
+},
 });
   // clang-format on
 }
@@ -4103,6 +4117,20 @@ ENTRY test {
               tensorflow::testing::StatusIs(
                   tensorflow::error::INVALID_ARGUMENT,
                   HasSubstr("Layout has tiles, but is for a sparse array")));
+}
+
+TEST_F(HloParserTest, RejectDensePhysicalShape) {
+  const std::string original = R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:T(128,8)P(f32[10,10])} parameter(0)
+})";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(original).status(),
+      tensorflow::testing::StatusIs(
+          tensorflow::error::INVALID_ARGUMENT,
+          HasSubstr(
+              "Layout has physical shape, but is not for a sparse array")));
 }
 
 }  // namespace
