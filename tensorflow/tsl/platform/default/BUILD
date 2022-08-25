@@ -56,6 +56,7 @@ cc_library(
         "nobuilder",
     ],
     deps = [
+        "//tensorflow/core/platform",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:types",
