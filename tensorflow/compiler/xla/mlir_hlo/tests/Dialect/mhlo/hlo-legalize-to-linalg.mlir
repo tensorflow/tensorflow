@@ -584,6 +584,16 @@ func.func @is_finte(%input: tensor<2x2xf32>) -> tensor<2x2xi1> {
 
 // -----
 
+// CHECK-LABEL: func @round_nearest_even
+func.func @round_nearest_even(%val: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: %[[ROUND:.+]] = math.roundeven %arg1
+  // CHECK: linalg.yield %[[ROUND]]
+  %0 = "mhlo.round_nearest_even"(%val) : (tensor<2x2xf32>) -> (tensor<2x2xf32>)
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @round
 func.func @round(%val: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: %[[ROUND:.+]] = math.round %arg1

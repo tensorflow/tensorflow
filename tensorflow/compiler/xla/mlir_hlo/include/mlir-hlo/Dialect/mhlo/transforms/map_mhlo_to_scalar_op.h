@@ -134,6 +134,10 @@ struct MhloToScalarOp<mhlo::RsqrtOp> {
   using COp = ::mlir::complex::RsqrtOp;
 };
 template <>
+struct MhloToScalarOp<mhlo::RoundNearestEvenOp> {
+  using FOp = ::mlir::math::RoundEvenOp;
+};
+template <>
 struct MhloToScalarOp<mhlo::RoundOp> {
   using FOp = ::mlir::math::RoundOp;
 };
