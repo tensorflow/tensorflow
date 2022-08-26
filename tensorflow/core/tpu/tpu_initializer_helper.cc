@@ -31,10 +31,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_tpu.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/core/tpu/pjrt_api.h"
 #include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
@@ -216,6 +218,18 @@ Status InitializeTpuLibrary(void* library_handle) {
   return s;
 }
 
+typedef const PJRT_Api* (*PjRtFuncPtr)();
+void InitializePjRt(void* library_handle) {
+  PjRtFuncPtr fptr = &GetTpuPjrtApi;
+  *reinterpret_cast<void**>(&fptr) = dlsym(library_handle, "GetTpuPjrtApi");
+  if (fptr == nullptr) {
+    LOG(INFO) << "GetTpuPjrtApi not found";
+  } else {
+    LOG(INFO) << "GetTpuPjrtApi was found";
+    tensorflow::tpu::SetPjrtApi(fptr());
+  }
+}
+
 namespace {
 void* CreateGcsFilesystemFn() {
   return new tensorflow::RetryingGcsFileSystem();
@@ -266,6 +280,7 @@ Status FindAndLoadTpuLibrary() {
     // Try to acquire exclusive access.
     TF_RETURN_IF_ERROR(TryAcquireTpuLock());
     TF_RETURN_IF_ERROR(InitializeTpuLibrary(library));
+    InitializePjRt(library);
   }
 
   InitializeCreateGcsFileSystemFnPtr();
