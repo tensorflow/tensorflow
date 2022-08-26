@@ -1574,8 +1574,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     tags = {tag_constants.SERVING}
     data_gen = self._create_data_generator(
         input_key='input', shape=input_placeholder.shape)
-    with self.assertRaisesRegex(RuntimeError,
-                                'Failed to retrieve MetaGraphDef'):
+    with self.assertRaisesRegex(ValueError, 'Failed to import SavedModel'):
       quantize_model.quantize(
           input_saved_model_path,
           signature_keys,
