@@ -867,29 +867,17 @@ TEST_F(InsertTransferOpsTest, InsertTransferOps) {
       auto optimized_graph,
       graph_execution_state->CreateOptimizedGraph(graph_import_config));
 
-  GraphDef new_graphdef;
-  optimized_graph.graph->ToGraphDef(&new_graphdef);
-
-  GraphInfo graph_info =
-      GetGraphInfo(/*input=*/"a", /*output=*/"c", new_graphdef);
-
-  ASSERT_THAT(graph_info.input_node, NotNull());
-  ASSERT_THAT(graph_info.output_node, NotNull());
-  ASSERT_THAT(graph_info.partitioned_call_nodes, SizeIs(2));
-  ASSERT_THAT(graph_info.stateful_partitioned_call_node, NotNull());
-
-  // Verify that each partition contains a _Send op and a _Recv op.
-  for (const FunctionDef& fdef : graph_info.fdefs) {
-    int send_count = 0, recv_count = 0;
-    for (const NodeDef& node : fdef.node_def()) {
-      if (node.op() == "_Send")
-        ++send_count;
-      else if (node.op() == "_Recv")
-        ++recv_count;
-    }
-    EXPECT_EQ(send_count, 1);
-    EXPECT_EQ(recv_count, 1);
+  // Verify that two paris of Send/Recv nodes are added.
+  int send_count = 0, recv_count = 0;
+  for (const auto* op : optimized_graph.graph->op_nodes()) {
+    if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
   }
+  EXPECT_EQ(optimized_graph.graph->num_op_nodes(), 7);
+  EXPECT_EQ(send_count, 2);
+  EXPECT_EQ(recv_count, 2);
 }
 
 TEST_F(InsertTransferOpsTest, InsertTransferOpsWithFunctionInlining) {
@@ -978,29 +966,105 @@ TEST_F(InsertTransferOpsTest, InsertTransferOpsWithFunctionInlining) {
       auto optimized_graph,
       graph_execution_state->CreateOptimizedGraph(graph_import_config));
 
-  GraphDef new_graphdef;
-  optimized_graph.graph->ToGraphDef(&new_graphdef);
+  // Verify that the resultant graph has no PartitionedCall ops, function body
+  // is inlined into the main graph, and send/recv ops are added.
+  int partitioned_call_count = 0, mul_count = 0, send_count = 0, recv_count = 0;
+  for (const auto* op : optimized_graph.graph->op_nodes()) {
+    if (op->IsPartitionedCall())
+      ++partitioned_call_count;
+    else if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
+    else if (op->type_string() == "Mul")
+      ++mul_count;
+  }
 
-  GraphInfo graph_info =
-      GetGraphInfo(/*input=*/"a", /*output=*/"c", new_graphdef);
+  EXPECT_EQ(partitioned_call_count, 0);
+  EXPECT_EQ(send_count, 2);
+  EXPECT_EQ(recv_count, 2);
+  EXPECT_EQ(mul_count, 1);
+}
 
-  ASSERT_THAT(graph_info.input_node, NotNull());
-  ASSERT_THAT(graph_info.output_node, NotNull());
-  ASSERT_THAT(graph_info.partitioned_call_nodes, SizeIs(2));
-  ASSERT_THAT(graph_info.stateful_partitioned_call_node, NotNull());
+TEST_F(InsertTransferOpsTest, AppendIdentityN) {
+  GraphDef graphdef;
+  {
+    Scope scope = Scope::NewRootScope();
+    Scope scope1 = scope.WithDevice(device0_->name());
+    Scope scope2 = scope.WithDevice(device1_->name());
 
-  // Verify that each partition contains a _Send op and a _Recv op.
-  for (const FunctionDef& fdef : graph_info.fdefs) {
-    int send_count = 0, recv_count = 0;
-    for (const NodeDef& node : fdef.node_def()) {
-      if (node.op() == "_Send")
+    // A graph with two nodes assigned on different devices.
+    // a(Const, on device0) -> b(Abs, on device1)
+    Output a = ops::Const(scope1.WithOpName("a"), 2.0, {1, 1});
+    Output b = ops::Abs(scope2.WithOpName("b"), a);
+
+    TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
+
+    // There is no IdentityN/Send/Recv nodes originally.
+    int identity_count = 0, abs_count = 0, const_count = 0, send_count = 0,
+        recv_count = 0;
+    for (const auto* op : scope.graph()->op_nodes()) {
+      if (op->type_string() == "IdentityN")
+        ++identity_count;
+      else if (op->IsConstant())
+        ++const_count;
+      else if (op->type_string() == "Abs")
+        ++abs_count;
+      else if (op->IsSend())
         ++send_count;
-      else if (node.op() == "_Recv")
+      else if (op->IsRecv())
         ++recv_count;
     }
-    EXPECT_EQ(send_count, 1);
-    EXPECT_EQ(recv_count, 1);
+    ASSERT_EQ(scope.graph()->num_op_nodes(), 2);
+    ASSERT_EQ(identity_count, 0);
+    ASSERT_EQ(const_count, 1);
+    ASSERT_EQ(abs_count, 1);
+    ASSERT_EQ(send_count, 0);
+    ASSERT_EQ(recv_count, 0);
   }
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = false;
+  options.enable_tfrt_gpu = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state_));
+
+  tensorflow::GraphImportConfig graph_import_config;
+  graph_import_config.prune_unused_nodes = true;
+  graph_import_config.enable_shape_inference = false;
+  tensorflow::ArrayInfo array_info;
+  array_info.imported_dtype = DT_FLOAT;
+  array_info.shape.set_unknown_rank(true);
+  graph_import_config.inputs["a"] = array_info;
+  graph_import_config.outputs = {"b"};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+  GraphDef optimized_graphdef;
+  optimized_graph.graph->ToGraphDef(&optimized_graphdef);
+
+  // Verify that IdentityN/Send/Recv nodes are added.
+  int identity_count = 0, abs_count = 0, const_count = 0, send_count = 0,
+      recv_count = 0;
+  for (const auto* op : optimized_graph.graph->op_nodes()) {
+    if (op->type_string() == "IdentityN")
+      ++identity_count;
+    else if (op->IsConstant())
+      ++const_count;
+    else if (op->type_string() == "Abs")
+      ++abs_count;
+    else if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
+  }
+  EXPECT_EQ(optimized_graph.graph->num_op_nodes(), 7);
+  EXPECT_EQ(identity_count, 1);
+  EXPECT_EQ(const_count, 1);
+  EXPECT_EQ(abs_count, 1);
+  EXPECT_EQ(send_count, 2);
+  EXPECT_EQ(recv_count, 2);
 }
 
 std::unique_ptr<Graph> MakeOuterGraph(const FunctionLibraryDefinition& flib_def,
