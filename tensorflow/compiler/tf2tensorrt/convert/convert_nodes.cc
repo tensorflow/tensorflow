@@ -1126,8 +1126,7 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
     status = MaybeUpdateBatchSize(batch_size);
     if (!status.ok()) {
       return errors::CreateWithUpdatedMessage(
-          status, StrCat("Batch size doesn't match for tensor ", name, ": ",
-                         status.error_message()));
+          status, batch_size_error(name, status.error_message()));
     }
   }
   ITensorProxyPtr tensor = network()->addInput(name.c_str(), dtype, dims);
@@ -6129,6 +6128,28 @@ bool OutputEdgeValidator::operator()(const Edge* out_edge) const {
     return false;
   }
   return true;
+}
+
+std::string unexpected_type_error_msg(nvinfer1::DataType type_being_checked,
+                                      nvinfer1::DataType type_expected,
+                                      const NodeDef& node_def, int idx) {
+  return "The '" + node_def.input(idx) + "' parameter of " + node_def.op() +
+         " operation in " + node_def.name() + " is expected to be of type " +
+         DebugString(type_expected) + " type, got " +
+         DebugString(type_being_checked) + ".";
+}
+
+string batch_size_error(const string& name, const string& comment) {
+  return StrCat("Batch size doesn't match for tensor '", name, "' : ", comment);
+}
+
+Status check_type(nvinfer1::DataType type_being_checked,
+                  nvinfer1::DataType type_expected, const NodeDef& node_def,
+                  int idx) {
+  if (type_being_checked == type_expected) return Status::OK();
+
+  return errors::InvalidArgument(unexpected_type_error_msg(
+      type_being_checked, type_expected, node_def, idx));
 }
 
 std::string convert_not_supported_implicit(const std::string& pOpName,

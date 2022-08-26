@@ -680,6 +680,7 @@ tf_cuda_library(
         "convert/ops/like_ops.cc",
         "convert/ops/log_softmax.cc",
         "convert/ops/quantization_ops.cc",
+        "convert/ops/selectv2.cc",
         "convert/ops/slice_ops.cc",
         "convert/ops/softmax.cc",
         "convert/ops/tile.cc",

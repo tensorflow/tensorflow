@@ -59,13 +59,7 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
     }
 
     const auto &node = params.node_def;
-    if (dtype != nvinfer1::DataType::kINT32) {
-      return errors::InvalidArgument("The replication parameter of the ",
-                                     node.op(), " operation in ", node.name(),
-                                     " is expected to be of ",
-                                     DebugString(nvinfer1::DataType::kINT32),
-                                     " type, got ", DebugString(dtype), ".");
-    }
+    TF_RETURN_IF_ERROR(check_type(dtype, nvinfer1::DataType::kINT32, node, 1));
 
     const auto dims = inputs.at(0).GetTrtDims();
     const auto nb_dims =
