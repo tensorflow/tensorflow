@@ -144,8 +144,10 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     }
 
     auto loc = op.getLoc();
-    // TODO(jreiffers): Enable this optimization outside of linalg ops. This
-    // currently breaks KernelGen.
+    // Within a linalg op, we can immediately de-tensorsize if the computation
+    // is scalar. We do not do this on the top-level, as that would break the
+    // nice invariant that all programs are exclusively on tensors, which is
+    // currently relied on for fusion in some pipelines.
     if (nloops == 0 && isInBodyOfLinalgOps(op)) {
       // No need to create a linalg.generic if all inputs are scalars.
       SmallVector<Value> inputs;

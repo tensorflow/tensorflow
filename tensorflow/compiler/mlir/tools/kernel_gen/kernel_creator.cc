@@ -263,7 +263,6 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool embed_memref_prints,
       /*alignment=*/64,
       mlir::kernel_gen::transforms::populateExtraBufferizeDialects,
       mlir::kernel_gen::transforms::populateExtraBufferizePatterns));
-  // TODO(herhut): Enable once no-longer broken.
   pm.addNestedPass<FuncOp>(::mlir::bufferization::createBufferHoistingPass());
   pm.addNestedPass<FuncOp>(mlir::bufferization::createPromoteBuffersToStackPass(
       [](Value alloc) { return IsSmallAlloc(alloc); }));
@@ -272,9 +271,8 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool embed_memref_prints,
       ::mlir::bufferization::createBufferDeallocationPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  // Apply the mapping and go to GPU. We cannot do this earlier due to missing
-  // interfaces on the GPU dialect.
-  // TODO(b/174830459): Move up once implemented.
+  // Apply the mapping and go to GPU. We cannot do this earlier as the GPU
+  // dialect requires memrefs.
   pm.addNestedPass<FuncOp>(mlir::createParallelLoopToGpuPass());
 
   // Some basic cleanup.
