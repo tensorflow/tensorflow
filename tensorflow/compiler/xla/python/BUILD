@@ -556,6 +556,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

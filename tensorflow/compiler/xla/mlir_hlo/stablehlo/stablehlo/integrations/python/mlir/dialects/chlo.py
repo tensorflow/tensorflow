@@ -22,3 +22,8 @@ from ._chlo_ops_gen import *
 def register_dialect(context, load=True):
   from .._mlir_libs import _chlo
   _chlo.register_dialect(context, load=load)
+
+
+# Backward compatibility with the old way of registering CHLO dialect
+def register_chlo_dialect(context, load=True):
+  register_dialect(context, load)

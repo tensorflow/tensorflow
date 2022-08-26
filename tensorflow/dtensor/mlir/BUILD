@@ -164,6 +164,7 @@ cc_library(
         ":value_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:FuncDialect",

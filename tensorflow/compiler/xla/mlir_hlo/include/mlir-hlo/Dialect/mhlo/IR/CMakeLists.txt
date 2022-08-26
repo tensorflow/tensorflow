@@ -14,20 +14,6 @@
 # limitations under the License.
 #
 # Need a separate function because of the .cc vs .cpp used in the one provided by MLIR
-function(add_mlir_hlo_dialect dialect)
-  set(LLVM_TARGET_DEFINITIONS ${dialect}.td)
-  mlir_tablegen(${dialect}.h.inc -gen-op-decls)
-  mlir_tablegen(${dialect}.cc.inc -gen-op-defs)
-  mlir_tablegen(${dialect}_enums.h.inc -gen-enum-decls)
-  mlir_tablegen(${dialect}_enums.cc.inc -gen-enum-defs)
-  mlir_tablegen(${dialect}_attrs.h.inc -gen-attrdef-decls)
-  mlir_tablegen(${dialect}_attrs.cc.inc -gen-attrdef-defs)
-  add_public_tablegen_target(MLIR${dialect}IncGen)
-  add_dependencies(mlir-headers MLIR${dialect}IncGen)
-endfunction()
-
-add_mlir_hlo_dialect(chlo_ops)
-
 set(LLVM_TARGET_DEFINITIONS hlo_ops.td)
 mlir_tablegen(hlo_ops.h.inc -gen-op-decls)
 mlir_tablegen(hlo_ops.cc.inc -gen-op-defs)

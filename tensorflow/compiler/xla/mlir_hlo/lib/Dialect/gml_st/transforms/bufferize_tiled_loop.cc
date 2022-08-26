@@ -22,7 +22,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -56,6 +55,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 namespace {

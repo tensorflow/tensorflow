@@ -23,10 +23,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 namespace mhlo {

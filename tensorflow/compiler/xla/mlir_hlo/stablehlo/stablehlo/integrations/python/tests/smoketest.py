@@ -17,24 +17,20 @@
 
 # pylint: disable=wildcard-import,undefined-variable
 
-# TODO(burmako): Uncomment after deleting MLIR-HLO's CHLO.
-# from mlir.dialects import chlo
+from mlir.dialects import chlo
 from mlir.dialects import stablehlo
 from mlir.ir import *
 
 ASM = """
 func.func @test(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  // TODO(burmako): Uncomment after deleting MLIR-HLO's CHLO.
-  // %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-  %0 = stablehlo.add %arg1, %arg1 : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   %1 = stablehlo.add %0, %0 : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   func.return %1 : tensor<?x?xf32>
 }
 """
 
 with Context() as context:
-  # TODO(burmako): Uncomment after deleting MLIR-HLO's CHLO.
-  # chlo.register_dialect(context)
+  chlo.register_dialect(context)
   stablehlo.register_dialect(context)
 
   m = Module.parse(ASM)

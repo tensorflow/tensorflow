@@ -21,7 +21,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 

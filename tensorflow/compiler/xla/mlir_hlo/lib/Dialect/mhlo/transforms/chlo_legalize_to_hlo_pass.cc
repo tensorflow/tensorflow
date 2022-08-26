@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
@@ -24,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 namespace mhlo {

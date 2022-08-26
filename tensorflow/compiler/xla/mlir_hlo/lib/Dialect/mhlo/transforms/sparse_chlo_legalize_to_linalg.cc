@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 namespace mhlo {

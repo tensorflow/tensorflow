@@ -108,20 +108,46 @@ gentbl_cc_library(
     ],
 )
 
+CHLO_CAPI_SOURCES = [
+    "stablehlo/integrations/c/ChloAttributes.cpp",
+    "stablehlo/integrations/c/ChloDialect.cpp",
+]
+
+CHLO_CAPI_HEADERS = [
+    "stablehlo/integrations/c/ChloAttributes.h",
+    "stablehlo/integrations/c/ChloDialect.h",
+]
+
 cc_library(
     name = "chlo_capi",
-    srcs = [
-        "stablehlo/integrations/c/ChloAttributes.cpp",
-        "stablehlo/integrations/c/ChloDialect.cpp",
-    ],
-    hdrs = [
-        "stablehlo/integrations/c/ChloAttributes.h",
-        "stablehlo/integrations/c/ChloDialect.h",
-    ],
+    srcs = CHLO_CAPI_SOURCES,
+    hdrs = CHLO_CAPI_HEADERS,
     deps = [
         ":chlo_ops",
         "@llvm-project//mlir:CAPIIR",
     ],
+)
+
+# Header-only target, used when using the C API from a separate shared library.
+cc_library(
+    name = "chlo_capi_headers",
+    hdrs = CHLO_CAPI_HEADERS,
+    includes = ["."],
+    deps = [
+        "@llvm-project//mlir:CAPIIRHeaders",
+    ],
+)
+
+# Alwayslink target, used when exporting the C API from a shared library.
+cc_library(
+    name = "chlo_capi_objects",
+    srcs = CHLO_CAPI_SOURCES,
+    hdrs = CHLO_CAPI_HEADERS,
+    deps = [
+        ":chlo_ops",
+        "@llvm-project//mlir:CAPIIRObjects",
+    ],
+    alwayslink = True,
 )
 
 gentbl_cc_library(
@@ -282,22 +308,48 @@ gentbl_cc_library(
     ],
 )
 
+STABLEHLO_CAPI_SOURCES = [
+    "stablehlo/integrations/c/StablehloAttributes.cpp",
+    "stablehlo/integrations/c/StablehloDialect.cpp",
+    "stablehlo/integrations/c/StablehloTypes.cpp",
+]
+
+STABLEHLO_CAPI_HEADERS = [
+    "stablehlo/integrations/c/StablehloAttributes.h",
+    "stablehlo/integrations/c/StablehloDialect.h",
+    "stablehlo/integrations/c/StablehloTypes.h",
+]
+
 cc_library(
     name = "stablehlo_capi",
-    srcs = [
-        "stablehlo/integrations/c/StablehloAttributes.cpp",
-        "stablehlo/integrations/c/StablehloDialect.cpp",
-        "stablehlo/integrations/c/StablehloTypes.cpp",
-    ],
-    hdrs = [
-        "stablehlo/integrations/c/StablehloAttributes.h",
-        "stablehlo/integrations/c/StablehloDialect.h",
-        "stablehlo/integrations/c/StablehloTypes.h",
-    ],
+    srcs = STABLEHLO_CAPI_SOURCES,
+    hdrs = STABLEHLO_CAPI_HEADERS,
     deps = [
         ":stablehlo_ops",
         "@llvm-project//mlir:CAPIIR",
     ],
+)
+
+# Header-only target, used when using the C API from a separate shared library.
+cc_library(
+    name = "stablehlo_capi_headers",
+    hdrs = STABLEHLO_CAPI_HEADERS,
+    includes = ["."],
+    deps = [
+        "@llvm-project//mlir:CAPIIRHeaders",
+    ],
+)
+
+# Alwayslink target, used when exporting the C API from a shared library.
+cc_library(
+    name = "stablehlo_capi_objects",
+    srcs = STABLEHLO_CAPI_SOURCES,
+    hdrs = STABLEHLO_CAPI_HEADERS,
+    deps = [
+        ":stablehlo_ops",
+        "@llvm-project//mlir:CAPIIRObjects",
+    ],
+    alwayslink = True,
 )
 
 gentbl_cc_library(

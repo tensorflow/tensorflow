@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 namespace mhlo {
