@@ -512,37 +512,11 @@ StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
       GroupedSharding grouped_operand = hlo_sharding_util::GroupShardingOnDims(
           operand_sharding, operand_parallel_dims);
       int index_dim = dnums.index_vector_dim();
-      // Construct the required sharding for the new gather we are gonna form.
-      absl::InlinedVector<int64_t, 4> output_tiling(
-          output_shape.dimensions_size(), 1);
-      for (int i = 0, num_output_parallel_dims = output_parallel_dims.size();
-           i < num_output_parallel_dims; ++i) {
-        int output_idx = output_parallel_dims[i];
-        int indices_idx = indices_parallel_dims[i];
-        output_tiling[output_idx] =
-            indices_sharding.tile_assignment().dim(indices_idx);
-      }
-      const int64_t indices_num_tiles =
-          indices_sharding.NumTiles() *
-          (indices_sharding.ReplicateOnLastTileDim()
-               ? indices_sharding.tile_assignment().dim(
-                     indices_sharding.SubgroupReplicationDim())
-               : 1);
-      const int64_t output_num_tiles =
-          absl::c_accumulate(output_tiling, 1LL, std::multiplies<int64_t>());
-      const int64_t output_last_dim_replicated_size =
-          indices_num_tiles / output_num_tiles;
-      if (output_last_dim_replicated_size != 1) {
-        output_tiling.push_back(output_last_dim_replicated_size);
-      }
-      Array<int64_t> output_tile_assignment =
-          indices_sharding.tile_assignment();
-      output_tile_assignment.Reshape(output_tiling);
-      // New gather tiling.
-      HloSharding gather_output_sharding =
-          output_last_dim_replicated_size != 1
-              ? HloSharding::PartialTile(output_tile_assignment)
-              : HloSharding::Tile(output_tile_assignment);
+      HloSharding gather_output_sharding = hlo_sharding_util::
+          GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
+              indices_sharding, output_shape.rank(), indices_parallel_dims,
+              output_parallel_dims);
+
       // Refine output sharding from the operand. it should be inferred from
       // operand sharding, so that the partitioned gather can be either 1)
       // directly created on the partitioned operand, or 2) recursively created
@@ -813,35 +787,10 @@ StatusOr<HloInstruction*> PartitionScatterIndexParallelDimensions(
       }
       indices = indices.Reshard(indices_sharding);
       const int index_dim = dnums.index_vector_dim();
-      // Construct the required sharding for updates.
-      absl::InlinedVector<int64_t, 4> update_tiling(
-          updates[0].base_shape().dimensions_size(), 1);
-      for (int i = 0; i != update_parallel_dims.size(); ++i) {
-        const int update_idx = update_parallel_dims[i];
-        const int indices_idx = indices_parallel_dims[i];
-        update_tiling[update_idx] =
-            indices_sharding.tile_assignment().dim(indices_idx);
-      }
-      const int64_t indices_num_tiles =
-          indices_sharding.NumTiles() *
-          (indices_sharding.ReplicateOnLastTileDim()
-               ? indices_sharding.tile_assignment().dim(
-                     indices_sharding.SubgroupReplicationDim())
-               : 1);
-      const int64_t update_num_tiles =
-          absl::c_accumulate(update_tiling, 1LL, std::multiplies<int64_t>());
-      const int64_t update_last_dim_replicated_size =
-          indices_num_tiles / update_num_tiles;
-      if (update_last_dim_replicated_size != 1) {
-        update_tiling.push_back(update_last_dim_replicated_size);
-      }
-      Array<int64_t> update_tile_assignment =
-          indices_sharding.tile_assignment();
-      update_tile_assignment.Reshape(update_tiling);
-      HloSharding update_sharding =
-          update_last_dim_replicated_size != 1
-              ? HloSharding::PartialTile(update_tile_assignment)
-              : HloSharding::Tile(update_tile_assignment);
+      HloSharding update_sharding = hlo_sharding_util::
+          GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
+              indices_sharding, updates[0].base_shape().rank(),
+              indices_parallel_dims, update_parallel_dims);
       for (auto& update : updates) {
         update = update.Reshard(update_sharding);
       }

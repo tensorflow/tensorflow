@@ -1249,6 +1249,49 @@ std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
   return std::nullopt;
 }
 
+HloSharding GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
+    const HloSharding& indices_sharding,
+    const int64_t output_or_update_shape_rank,
+    absl::Span<const int64_t> indices_parallel_dims,
+    absl::Span<const int64_t> output_or_update_parallel_dims) {
+  CHECK_EQ(output_or_update_parallel_dims.size(), indices_parallel_dims.size());
+  absl::InlinedVector<int64_t, 4> output_or_update_tiling(
+      output_or_update_shape_rank, 1);
+  absl::InlinedVector<int64_t, 4> relevant_indices_dims;
+  // Pass through indices' sharding on index parallel dimensions.
+  for (int i = 0; i != output_or_update_parallel_dims.size(); ++i) {
+    const int output_or_update_idx = output_or_update_parallel_dims[i];
+    CHECK_LT(output_or_update_idx, output_or_update_shape_rank);
+    const int indices_idx = indices_parallel_dims[i];
+    output_or_update_tiling[output_or_update_idx] =
+        indices_sharding.tile_assignment().dim(indices_idx);
+    relevant_indices_dims.push_back(indices_idx);
+  }
+
+  HloSharding relevant_indices_sharding =
+      PartiallyReplicateTiledShardingOnAllDimsExcept(indices_sharding,
+                                                     relevant_indices_dims);
+  if (relevant_indices_sharding.IsTileMaximal()) {
+    return relevant_indices_sharding;
+  }
+
+  // Append subgroup dimensions.
+  for (int64_t i = relevant_indices_sharding.TiledDataRank();
+       i != relevant_indices_sharding.tile_assignment().num_dimensions(); ++i) {
+    output_or_update_tiling.push_back(
+        relevant_indices_sharding.tile_assignment().dim(i));
+  }
+  Array<int64_t> output_tile_assignment =
+      relevant_indices_sharding.tile_assignment();
+  output_tile_assignment.Reshape(output_or_update_tiling);
+  return relevant_indices_sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(output_tile_assignment,
+                                        indices_sharding.metadata())
+             : HloSharding::Subgroup(output_tile_assignment,
+                                     relevant_indices_sharding.subgroup_types(),
+                                     indices_sharding.metadata());
+}
+
 StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
 IdentityValueAndHloOpcodeForScatterReduceComputation(
     const HloScatterInstruction& scatter) {
