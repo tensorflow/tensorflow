@@ -25,7 +25,7 @@ autoconf
 automake
 build-essential
 ca-certificates
-clang-8
+clang-14
 clang-format-12
 colordiff
 curl
