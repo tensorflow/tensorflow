@@ -3879,6 +3879,20 @@ Computes Psi, the derivative of Lgamma (the log of the absolute value of
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_DisableCopyOnReadOp : TF_Op<"DisableCopyOnRead", []> {
+  let summary = "Turns off the copy-on-read mode.";
+
+  let description = [{
+Turns off the copy-on-read mode of a resource variable. If the variable is not in copy-on-read mode, this op has no effect.
+  }];
+
+  let arguments = (ins
+    Arg<TF_ResourceTensor, [{The resource handle of the resource variable.}]>:$resource
+  );
+
+  let results = (outs);
+}
+
 def TF_DivOp : TF_Op<"Div", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x / y element-wise.";
