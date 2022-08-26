@@ -19,8 +19,8 @@ limitations under the License.
 #pragma warning(disable : 4716)
 #endif  // _WIN32
 
-#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_
-#define TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_LOGGING_H_
+#define TENSORFLOW_TSL_PLATFORM_DEFAULT_LOGGING_H_
 
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/logging.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/logging.h
@@ -600,4 +600,4 @@ void UpdateLogVerbosityIfDefined(const char* env_var);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_LOGGING_H_

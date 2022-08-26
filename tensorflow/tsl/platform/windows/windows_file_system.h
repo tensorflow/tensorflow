@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
-#define TENSORFLOW_CORE_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
+#define TENSORFLOW_TSL_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/path.h"
@@ -91,4 +91,4 @@ class LocalWinFileSystem : public WindowsFileSystem {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
