@@ -632,7 +632,7 @@ static ConditionalThunkConfig GetConditionalThunkConfig(
   config.branch_thunks.reserve(branch_thunk_sequences.size());
   for (auto& branch_thunk_sequence : branch_thunk_sequences) {
     config.branch_thunks.emplace_back(new SequentialThunk(
-        Thunk::ThunkInfo(), std::move(branch_thunk_sequence)));
+        Thunk::ThunkInfo(op), std::move(branch_thunk_sequence)));
   }
   return config;
 }
@@ -1452,7 +1452,7 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
   // aren't the same buffer.
   if (b_slice != result_slice) {
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo(),
+        Thunk::ThunkInfo(op),
         /*source_address=*/b_slice,
         /*destination_buffer=*/result_slice,
         /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape)));
@@ -1892,7 +1892,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
           select_and_scatter_op,
           {select_and_scatter_op.getOperand(),
            select_and_scatter_op.getSource(), select_and_scatter_op.getOut()},
-          Thunk::ThunkInfo(), &ir_arrays, launch_dimensions));
+          Thunk::ThunkInfo(op), &ir_arrays, launch_dimensions));
 
   CHECK_EQ(ir_arrays.size(), 3);
   const IrArray& operand_array = ir_arrays[0];
@@ -2173,7 +2173,7 @@ Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
   // Copy the operand into the output if it's not the same buffer already.
   if (operand_buffer != output_buffer) {
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo(),
+        Thunk::ThunkInfo(op),
         /*source_address=*/operand_buffer,
         /*destination_buffer=*/output_buffer,
         /*mem_size=*/
@@ -2534,7 +2534,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
       // key/value sort.
       VLOG(2) << op_name << " requires initial D2D copy for operand " << i;
       thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-          Thunk::ThunkInfo(),
+          Thunk::ThunkInfo(op),
           /*source_address=*/source_address,
           /*destination_buffer=*/destination_buffer,
           /*mem_size=*/ShapeUtil::ByteSizeOf(GetShape(operands[i]))));
@@ -2648,7 +2648,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
                                              : standard_launch_dimensions;
     TF_ASSIGN_OR_RETURN(
         thunks.back(),
-        BuildKernelThunk(sort_op, sort_op.getOutput(), Thunk::ThunkInfo(),
+        BuildKernelThunk(sort_op, sort_op.getOutput(), Thunk::ThunkInfo(op),
                          &ir_arrays, launch_dimensions));
     std::vector<IrArray> values_arrays;
     values_arrays.reserve(operands.size());
@@ -2831,7 +2831,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   for (int64_t i = 0; i < buffers.size(); i++) {
     const Shape shape = GetShape(op.getOperands()[i]);
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-        buffers.size() == 1 ? GetThunkInfo(op) : Thunk::ThunkInfo(),
+        buffers.size() == 1 ? GetThunkInfo(op) : Thunk::ThunkInfo(op),
         /*source_address=*/buffers[i].source_buffer,
         /*destination_buffer=*/buffers[i].destination_buffer,
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
@@ -3079,11 +3079,11 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
-    absl::Span<const uint8_t> init_value, const BufferAllocation::Slice& dest,
-    const Shape& output_shape) {
+    mlir::Operation* op, absl::Span<const uint8_t> init_value,
+    const BufferAllocation::Slice& dest, const Shape& output_shape) {
   int64_t num_bytes = init_value.size();
   if (absl::c_all_of(init_value, [](uint8_t byte) { return byte == 0; })) {
-    return std::make_unique<MemzeroThunk>(Thunk::ThunkInfo(), dest);
+    return std::make_unique<MemzeroThunk>(Thunk::ThunkInfo(op), dest);
   }
 
   // If the literal is 8 or 16 bits wide, we can emit a 32-bit memset by
@@ -3099,7 +3099,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
       memcpy(&pattern16, init_value.data(), sizeof(pattern16));
     }
     uint32_t pattern32 = uint32_t{pattern16} | (uint32_t{pattern16} << 16);
-    return std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(),
+    return std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(op),
                                                    pattern32, dest);
   }
 
@@ -3110,7 +3110,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
           0) {
     uint32_t word;
     memcpy(&word, init_value.data(), sizeof(word));
-    return std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), word,
+    return std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(op), word,
                                                    dest);
   }
 
@@ -3118,7 +3118,8 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
 }
 
 StatusOr<std::unique_ptr<Thunk>>
-IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Value init_value,
+IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Operation* op,
+                                                    mlir::Value init_value,
                                                     mlir::Value dest) {
   mlir::DenseElementsAttr const_init;
   if (auto get_global_memref =
@@ -3147,8 +3148,8 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Value init_value,
     TF_ASSIGN_OR_RETURN(auto dest_slice, GetAllocationSlice(dest));
 
     const Shape dest_shape = GetShape(dest);
-    auto thunk =
-        BuildConstantInitializerThunk(literal_bytes, dest_slice, dest_shape);
+    auto thunk = BuildConstantInitializerThunk(op, literal_bytes, dest_slice,
+                                               dest_shape);
     if (thunk) {
       return {std::move(thunk)};
     }
@@ -3163,7 +3164,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
   TF_RET_CHECK(init_type.getRank() == 0);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> constant_init_thunk,
-                      TryBuildConstantInitializerThunk(init_value, dest));
+                      TryBuildConstantInitializerThunk(op, init_value, dest));
   if (constant_init_thunk) {
     return {std::move(constant_init_thunk)};
   }
@@ -3177,7 +3178,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
   std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Thunk> kernel_thunk,
-      BuildKernelThunk(op, {init_value, dest}, Thunk::ThunkInfo(), &ir_arrays,
+      BuildKernelThunk(op, {init_value, dest}, Thunk::ThunkInfo(op), &ir_arrays,
                        launch_dimensions));
 
   const llvm_ir::IrArray init_array = ir_arrays[0];
@@ -3204,8 +3205,9 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildFusedInitializerThunk(
 
   mlir::Value init_value = reduce.init_values()[0];
   mlir::Value dest = fusion.getOutputBuffers()[output_index];
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> constant_init_thunk,
-                      TryBuildConstantInitializerThunk(init_value, dest));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Thunk> constant_init_thunk,
+      TryBuildConstantInitializerThunk(fusion, init_value, dest));
   if (constant_init_thunk) {
     return {std::move(constant_init_thunk)};
   }
@@ -3218,8 +3220,8 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildFusedInitializerThunk(
                           dest_shape, ir_emitter_context_->gpu_device_info()));
   std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> kernel_thunk,
-                      BuildKernelThunk(fusion, Thunk::ThunkInfo(), &ir_arrays,
-                                       launch_dimensions));
+                      BuildKernelThunk(fusion, Thunk::ThunkInfo(fusion),
+                                       &ir_arrays, launch_dimensions));
 
   const llvm_ir::IrArray dest_array =
       ir_arrays[input_buffers.size() + output_index];
@@ -4892,8 +4894,8 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
 
   std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> kernel_thunk,
-                      BuildKernelThunk(fusion, Thunk::ThunkInfo(), &ir_arrays,
-                                       launch_dimensions));
+                      BuildKernelThunk(fusion, Thunk::ThunkInfo(fusion),
+                                       &ir_arrays, launch_dimensions));
 
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
                                           GetNestedComputer());
@@ -5165,7 +5167,7 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
 
     std::vector<llvm_ir::IrArray> ir_arrays;
     TF_ASSIGN_OR_RETURN(auto operand_thunk,
-                        BuildKernelThunk(fusion_op, Thunk::ThunkInfo(),
+                        BuildKernelThunk(fusion_op, Thunk::ThunkInfo(fusion_op),
                                          &ir_arrays, launch_dimensions));
     thunks.push_back(std::move(operand_thunk));
 
@@ -5202,7 +5204,7 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
                                   ir_emitter_context_->gpu_device_info()));
     std::vector<llvm_ir::IrArray> ir_arrays;
     TF_ASSIGN_OR_RETURN(auto scatter_thunk,
-                        BuildKernelThunk(fusion_op, Thunk::ThunkInfo(),
+                        BuildKernelThunk(fusion_op, Thunk::ThunkInfo(fusion_op),
                                          &ir_arrays, launch_dimensions));
     thunks.push_back(std::move(scatter_thunk));
     // Spin up a new fused emitter for the scatter kernel and emit it.
@@ -5426,7 +5428,7 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(mlir::Operation* op) {
     unique_id_str = absl::StrFormat(",program_id=%d",
                                     unique_id_attr.getValue().getZExtValue());
   }
-  Thunk::ThunkInfo thunk_info;
+  Thunk::ThunkInfo thunk_info(op);
   thunk_info.profile_annotation = absl::StrFormat(
       "Thunk:#hlo_op=%s,hlo_module=%s%s#", mlir::GetNameFromLoc(op->getLoc()),
       mlir::GetNameFromLoc(module->getLoc()), unique_id_str);

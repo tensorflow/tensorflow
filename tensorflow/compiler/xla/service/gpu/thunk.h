@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
@@ -73,8 +74,10 @@ class Thunk {
   };
 
   struct ThunkInfo {
+    explicit ThunkInfo(mlir::Operation* op) : op(op) {}
     std::optional<int64_t> profile_index;
     std::string profile_annotation;
+    mlir::Operation* op;
   };
 
   // The hlo_instruction argument is meant to be the instruction this thunk was
@@ -83,7 +86,8 @@ class Thunk {
   explicit Thunk(Kind kind, ThunkInfo thunk_info)
       : kind_(kind),
         profile_index_(thunk_info.profile_index),
-        profile_annotation_(thunk_info.profile_annotation) {}
+        profile_annotation_(thunk_info.profile_annotation),
+        op_(thunk_info.op) {}
   virtual ~Thunk() {}
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
@@ -91,6 +95,7 @@ class Thunk {
   virtual std::string ToStringExtra(int indent) const { return ""; }
   Kind kind() const { return kind_; }
   std::string profile_annotation() const { return profile_annotation_; }
+  mlir::Operation* op() { return op_; }
 
   // Prepares the thunk for execution on the given StreamExecutor.
   //
@@ -131,6 +136,7 @@ class Thunk {
   Kind kind_;
   std::optional<int64_t> profile_index_;
   std::string profile_annotation_;
+  mlir::Operation* op_;
 };
 
 // A sequence of thunks.

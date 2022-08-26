@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 
 #include <memory>
+#include <utility>
 
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -31,7 +32,7 @@ ForThunk::ForThunk(ThunkInfo thunk_info, const int64_t loop_limit,
           // Pass nullptr as the HloInstruction* to the body_thunk_sequence_
           // constructor because this SequentialThunk is logically "part of"
           // this ForThunk, and shouldn't be profiled separately from it.
-          ThunkInfo(), std::move(*body_thunk_sequence))) {}
+          ThunkInfo(thunk_info.op), std::move(*body_thunk_sequence))) {}
 
 Status ForThunk::Initialize(const GpuExecutable& executable,
                             se::StreamExecutor* executor) {
