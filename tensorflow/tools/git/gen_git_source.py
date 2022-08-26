@@ -211,6 +211,12 @@ def write_version_info(filename, git_version):
 #else
 #define TF_CXX11_ABI_FLAG 0
 #endif
+#ifdef __cplusplus
+#define TF_CXX_VERSION __cplusplus
+#else 
+#define TF_CXX_VERSION 0
+#endif
+#define 
 #ifdef TENSORFLOW_MONOLITHIC_BUILD
 #define TF_MONOLITHIC_BUILD 1
 #else
