@@ -144,6 +144,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/mlir/transforms/runtime:type_converter",
+        "//tensorflow/compiler/xla/mlir/utils:to_string",
         "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:constraints",
@@ -168,6 +169,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
+        "//tensorflow/compiler/xla/mlir/utils:to_string",
         "//tensorflow/compiler/xla/runtime:errors",
         "//tensorflow/compiler/xla/runtime:types",
         "@com_google_absl//absl/status",

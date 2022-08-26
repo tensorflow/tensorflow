@@ -30,8 +30,8 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
+#include "tensorflow/compiler/xla/mlir/utils/to_string.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
-#include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
 namespace xla {
@@ -70,12 +70,6 @@ static Status VerifyMemrefOperand(unsigned index, mlir::ShapedType shaped,
   }
 
   return absl::OkStatus();
-}
-
-static std::string ToString(mlir::Type type) {
-  std::string str;
-  llvm::raw_string_ostream(str) << type;
-  return str;
 }
 
 // Return input `type` specialized to the argument and its symbolic shape.

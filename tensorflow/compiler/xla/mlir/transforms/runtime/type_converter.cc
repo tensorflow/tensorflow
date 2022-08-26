@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
+#include "tensorflow/compiler/xla/mlir/utils/to_string.h"
 
 namespace xla {
 namespace runtime {
@@ -82,12 +83,6 @@ static std::unique_ptr<Type> ConvertCanonicalType(
 
   // For non-canonical types the user must provide type conversion function.
   return {};
-}
-
-static std::string ToString(mlir::Type type) {
-  std::string str;
-  llvm::raw_string_ostream(str) << type;
-  return str;
 }
 
 /*static*/ StatusOr<PrimitiveType> TypeConverter::ConvertElementType(
