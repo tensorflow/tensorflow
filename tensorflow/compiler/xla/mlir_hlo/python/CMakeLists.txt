@@ -18,13 +18,6 @@ declare_mlir_dialect_python_bindings(
   SOURCES dialects/mhlo.py
   DIALECT_NAME mhlo)
 
- declare_mlir_dialect_python_bindings(
-  ADD_TO_PARENT MLIRHLOPythonSources.Dialects
-  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/mlir"
-  TD_FILE dialects/ChloOps.td
-  SOURCES dialects/chlo.py
-  DIALECT_NAME chlo)
-
 ################################################################################
 # Extensions
 ################################################################################
