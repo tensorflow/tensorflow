@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/tpu/pjrt_api.h"
+#include "tensorflow/core/tpu/tpu_initializer_helper.h"
 
 // TODO(b/238999986): Remove this when we have decomposed shape.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
@@ -757,9 +758,13 @@ bool PjRtCApiBuffer::IsOnCpu() const {
 // -------------------------------- API access ---------------------------------
 
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient() {
+#if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
+  TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+#endif
   const PJRT_Api* c_api = tensorflow::tpu::PjrtApi();
-  // TODO(skyewm): make status
-  CHECK(c_api != nullptr);
+  if (c_api == nullptr) {
+    return InternalError("PJRT C API is nullptr");
+  }
 
   PJRT_Client_Create_Args init_args;
   init_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;

@@ -194,6 +194,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform/cloud:gcs_file_system",
+        "//tensorflow/core/tpu:pjrt_api",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
