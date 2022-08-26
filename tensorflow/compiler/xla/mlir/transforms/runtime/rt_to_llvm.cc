@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -109,7 +110,8 @@ struct RuntimeAPI {
 };
 
 // Adds function declaration if it doesn't already exist.
-static void AddDeclaration(ModuleOp module, StringRef name, FunctionType type) {
+static void AddDeclaration(ModuleOp module, std::string_view name,
+                           FunctionType type) {
   auto b = ImplicitLocOpBuilder::atBlockEnd(module.getLoc(), module.getBody());
   if (module.lookupSymbol(name)) return;
 
@@ -124,7 +126,7 @@ static void AddDeclaration(ModuleOp module, StringRef name, FunctionType type) {
 
 // Adds Runtime C API declarations to the module.
 static void AddRuntimeApiDeclarations(ModuleOp module) {
-  auto add = [&](StringRef name, FunctionType type) {
+  auto add = [&](std::string_view name, FunctionType type) {
     AddDeclaration(module, name, type);
   };
 

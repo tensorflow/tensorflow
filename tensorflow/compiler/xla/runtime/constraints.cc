@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/constraints.h"
 
+#include <string_view>
 #include <utility>
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
 
@@ -27,7 +27,6 @@ namespace runtime {
 using llvm::ArrayRef;
 using llvm::Expected;
 using llvm::raw_ostream;
-using llvm::StringRef;
 
 raw_ostream& operator<<(raw_ostream& os, const ArgumentConstraint& constraint) {
   auto str = [](ArgumentConstraint constraint) {
@@ -57,7 +56,7 @@ raw_ostream& operator<<(raw_ostream& os,
   return os;
 }
 
-Expected<ArgumentConstraint> ParseArgumentConstraint(StringRef str) {
+Expected<ArgumentConstraint> ParseArgumentConstraint(std::string_view str) {
   if (str == "rank") return ArgumentConstraint::kRank;
   if (str == "shape") return ArgumentConstraint::kShape;
   if (str == "value") return ArgumentConstraint::kValue;

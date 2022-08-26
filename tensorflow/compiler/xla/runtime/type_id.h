@@ -62,7 +62,7 @@ class TypeIDNameRegistry {
 
   std::string_view FindTypeIDSymbolName(TypeID type_id);
 
-  void ForEach(std::function<void(llvm::StringRef, TypeID)> f) const {
+  void ForEach(std::function<void(std::string_view, TypeID)> f) const {
     for (auto& kv : type_id_name_map_) f(kv.second, kv.first);
   }
 

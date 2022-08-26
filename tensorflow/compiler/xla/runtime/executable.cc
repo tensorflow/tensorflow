@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "llvm/ExecutionEngine/Orc/Core.h"
@@ -80,13 +81,13 @@ ExecutionEngine::SymbolsBinding ToSymbolsBinding(
 
     // Register direct custom calls.
     using DirectCustomCall = DirectCustomCallLibrary::DirectCustomCall;
-    lib.ForEach([&](llvm::StringRef name, DirectCustomCall custom_call) {
+    lib.ForEach([&](std::string_view name, DirectCustomCall custom_call) {
       symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
           llvm::pointerToJITTargetAddress(custom_call), llvm::JITSymbolFlags());
     });
 
     // Register type id symbols.
-    registry.ForEach([&](llvm::StringRef name, TypeID type_id) {
+    registry.ForEach([&](std::string_view name, TypeID type_id) {
       auto type_id_ptr =
           reinterpret_cast<std::uintptr_t>(type_id.getAsOpaquePointer());
       symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
@@ -355,11 +356,11 @@ Error Executable::ReturnResults(const ResultConverter& results,
 //===----------------------------------------------------------------------===//
 
 /*static*/ Expected<Executable> Executable::LoadFromObjFile(
-    llvm::StringRef name, std::unique_ptr<llvm::MemoryBuffer> obj_file,
-    llvm::StringRef entrypoint, FunctionType signature,
+    std::string_view name, std::unique_ptr<llvm::MemoryBuffer> obj_file,
+    std::string_view entrypoint, FunctionType signature,
     FunctionType runtime_signature,
     ExecutionEngine::SymbolsBinding symbols_binding,
-    llvm::StringRef memory_region_name) {
+    std::string_view memory_region_name) {
   // Memory region name to mmap executable code.
   std::string mapper_name = llvm::formatv(
       "/xla_aot{0}{1}:@{2}::@{3}", memory_region_name.empty() ? "" : ":",
@@ -385,7 +386,7 @@ Error Executable::ReturnResults(const ResultConverter& results,
   auto results_memory_layout = GetResultsMemoryLayout(runtime_signature);
   if (auto err = results_memory_layout.takeError()) return std::move(err);
 
-  return Executable(name.str(), std::move(memory_mapper), std::move(*engine),
+  return Executable(name, std::move(memory_mapper), std::move(*engine),
                     std::move(signature), std::move(runtime_signature),
                     std::move(*arguments_memory_layout),
                     std::move(*results_memory_layout),
@@ -433,7 +434,7 @@ mlir::LogicalResult Executable::Call(KernelContext* ctx, class CustomCall& call,
 SymbolMap RuntimeApiSymbolMap(MangleAndInterner mangle) {
   SymbolMap symbol_map;
 
-  auto bind = [&](llvm::StringRef name, auto symbol_ptr) {
+  auto bind = [&](std::string_view name, auto symbol_ptr) {
     symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
         llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
   };

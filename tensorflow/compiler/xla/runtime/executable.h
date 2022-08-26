@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "llvm/ADT/Optional.h"
@@ -103,7 +104,7 @@ class Executable {
 
   bool IsAsync() const { return results_memory_layout_.has_async_results; }
 
-  llvm::StringRef name() const { return name_; }
+  std::string_view name() const { return name_; }
 
   llvm::Optional<size_t> specialization() const { return specialization_; }
 
@@ -154,7 +155,7 @@ class Executable {
     // The error message which is available only if `is_error` is true. The
     // assumption is that the error message string is owned by the compiled
     // binary and the call frame can safely keep a non-owning pointer.
-    llvm::StringRef error;
+    std::string_view error;
   };
 
   // Requirements for passing arguments to the compiled function.
@@ -193,11 +194,11 @@ class Executable {
   // guarantee that signatures do match the compiled function in the object
   // file, otherwise it will surely lead to crash.
   static llvm::Expected<Executable> LoadFromObjFile(
-      llvm::StringRef name, std::unique_ptr<llvm::MemoryBuffer> obj_file,
-      llvm::StringRef entrypoint, FunctionType signature,
+      std::string_view name, std::unique_ptr<llvm::MemoryBuffer> obj_file,
+      std::string_view entrypoint, FunctionType signature,
       FunctionType runtime_signature,
       ExecutionEngine::SymbolsBinding symbols_binding = {},
-      llvm::StringRef memory_region_name = "");
+      std::string_view memory_region_name = "");
 
   // Verifies that all operands types in the entrypoint function signature are
   // supported at run time . Returns a pre-computed layout for the function
@@ -229,7 +230,7 @@ class Executable {
  private:
   friend class JitCompiler;  // see `mlir/transforms/runtime/compiler.h`
 
-  Executable(llvm::StringRef name,
+  Executable(std::string_view name,
              std::unique_ptr<XlaRuntimeMemoryMapper> memory_mapper,
              std::unique_ptr<ExecutionEngine> engine, FunctionType signature,
              FunctionType runtime_signature,
@@ -237,7 +238,7 @@ class Executable {
              ResultsMemoryLayout results_memory_layout,
              llvm::Optional<size_t> specialization,
              std::chrono::milliseconds time_to_compile)
-      : name_(name.str()),
+      : name_(name),
         memory_mapper_(std::move(memory_mapper)),
         engine_(std::move(engine)),
         fptr_(engine_->entrypoint()),
@@ -301,7 +302,7 @@ class Executable {
 //
 // The profiler's UI might interpret slashes as callchain separators,
 // whereas we want the region name to be shown in full.
-inline std::string EscapeMemRegionName(llvm::StringRef memory_region_name) {
+inline std::string EscapeMemRegionName(std::string_view memory_region_name) {
   return llvm::join(llvm::split(memory_region_name, '/'), "__");
 }
 

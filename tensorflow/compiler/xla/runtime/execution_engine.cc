@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -42,7 +43,6 @@ using llvm::cast;
 using llvm::Expected;
 using llvm::MemoryBuffer;
 using llvm::SectionMemoryManager;
-using llvm::StringRef;
 using llvm::Triple;
 
 using llvm::orc::DynamicLibrarySearchGenerator;
@@ -85,7 +85,7 @@ std::unique_ptr<MemoryBuffer> ExecutionEngine::obj_file() const {
 
 // -------------------------------------------------------------------------- //
 
-static std::string GetEntrypointName(StringRef name) {
+static std::string GetEntrypointName(std::string_view name) {
   return llvm::formatv("__xla__{0}", name);
 }
 
@@ -93,7 +93,7 @@ static std::string GetEntrypointName(StringRef name) {
 // arguments of the original function into an i8** pointer to provide a function
 // with trivial ABI.
 static llvm::Error SetUpEntrypointFunction(llvm::Module &module,
-                                           StringRef entrypoint) {
+                                           std::string_view entrypoint) {
   llvm::IRBuilder<> builder(module.getContext());
 
   // Check that we have an entrypoint function with a valid type.
@@ -189,7 +189,8 @@ std::unique_ptr<llvm::MemoryBuffer> ExecutionEngineObjectCache::stealObject(
 /*static*/ Expected<std::unique_ptr<ExecutionEngine>>
 ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
                                   std::unique_ptr<llvm::Module> module,
-                                  StringRef entrypoint, JitOptions options) {
+                                  std::string_view entrypoint,
+                                  JitOptions options) {
   auto engine = std::unique_ptr<ExecutionEngine>(new ExecutionEngine(
       options.enable_gdb_listener, options.enable_perf_listener));
 
@@ -303,7 +304,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
 
 /*static*/ Expected<std::unique_ptr<ExecutionEngine>>
 ExecutionEngine::CreateFromObjFile(std::unique_ptr<llvm::MemoryBuffer> obj_file,
-                                   llvm::StringRef entrypoint,
+                                   std::string_view entrypoint,
                                    AotOptions options) {
   auto engine = std::unique_ptr<ExecutionEngine>(new ExecutionEngine(
       options.enable_gdb_listener, options.enable_perf_listener));

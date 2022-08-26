@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
+#include <string_view>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -46,7 +48,7 @@ static void ConvertCustomCallOperations(func::FuncOp func, Value exec_ctx) {
   struct CustomCall {
     func::CallOp call;
     func::FuncOp callee;
-    llvm::StringRef target;
+    std::string_view target;
     bool direct;
   };
 
@@ -101,7 +103,8 @@ static void ConvertCustomCallOperations(func::FuncOp func, Value exec_ctx) {
 
     b.create<cf::AssertOp>(
         b.create<IsOkOp>(TypeRange(b.getI1Type()), call.status()),
-        b.getStringAttr("custom call '" + custom_call.target + "' failed"));
+        b.getStringAttr("custom call '" + std::string(custom_call.target) +
+                        "' failed"));
 
     // Forward users of the original results to custom call results.
     auto rets = llvm::zip(custom_call.call.getResults(),

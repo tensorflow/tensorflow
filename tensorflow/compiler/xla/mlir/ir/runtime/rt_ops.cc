@@ -44,7 +44,8 @@ static bool IsRtConstraintAttr(mlir::Attribute attr) {
   // If attribute is not defined it means that there is no constraint
   if (!attr) return true;
   auto str = attr.dyn_cast_or_null<mlir::StringAttr>();
-  Expected<ArgumentConstraint> constraint = ParseArgumentConstraint(str);
+  Expected<ArgumentConstraint> constraint =
+      ParseArgumentConstraint(str.getValue());
   return !constraint.takeError();
 }
 

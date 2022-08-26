@@ -274,7 +274,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   if (EnablePassTiming()) llvm::reportAndResetTimings();
 
   return Executable(
-      compiler->name().str(), std::move(memory_mapper), std::move(*engine),
+      compiler->name(), std::move(memory_mapper), std::move(*engine),
       std::move(*signature), std::move(*runtime_signature),
       std::move(*arguments_memory_layout), std::move(*results_memory_layout),
       specialization, time_to_compile);

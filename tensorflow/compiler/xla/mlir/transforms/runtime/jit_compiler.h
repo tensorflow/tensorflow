@@ -139,7 +139,7 @@ class JitCompiler {
 
   const Options& options() const { return opts_; }
 
-  llvm::StringRef name() const {
+  std::string_view name() const {
     return module().getName().value_or("<unknown>");
   }
 

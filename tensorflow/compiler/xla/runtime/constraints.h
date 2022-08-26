@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef XLA_RUNTIME_CONSTRAINTS_H_
 #define XLA_RUNTIME_CONSTRAINTS_H_
 
+#include <string_view>
+
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace xla {
@@ -152,7 +153,8 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
                               llvm::ArrayRef<ArgumentConstraint> constraints);
 
 // Converts argument constraint string to the corresponding enum class.
-llvm::Expected<ArgumentConstraint> ParseArgumentConstraint(llvm::StringRef str);
+llvm::Expected<ArgumentConstraint> ParseArgumentConstraint(
+    std::string_view str);
 
 }  // namespace runtime
 }  // namespace xla

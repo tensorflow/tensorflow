@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -110,7 +110,7 @@ class ExecutionEngine {
   // a native function using LLVM ORC stack.
   static llvm::Expected<std::unique_ptr<ExecutionEngine>> CreateFromModule(
       std::unique_ptr<llvm::LLVMContext> ctx,
-      std::unique_ptr<llvm::Module> module, llvm::StringRef entrypoint,
+      std::unique_ptr<llvm::Module> module, std::string_view entrypoint,
       JitOptions options);
 
   //------------------------------------------------------------------------- //
@@ -134,7 +134,7 @@ class ExecutionEngine {
   // Creates a new execution engine by loading AOT compiled XLA executable
   // object file.
   static llvm::Expected<std::unique_ptr<ExecutionEngine>> CreateFromObjFile(
-      std::unique_ptr<llvm::MemoryBuffer>, llvm::StringRef entrypoint,
+      std::unique_ptr<llvm::MemoryBuffer>, std::string_view entrypoint,
       AotOptions options);
 
   //------------------------------------------------------------------------- //

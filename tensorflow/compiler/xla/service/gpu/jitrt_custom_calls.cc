@@ -19,6 +19,7 @@
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <string_view>
 #include <utility>
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
@@ -483,8 +484,8 @@ static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .Arg<int32_t>()   // block_size_y
                              .Arg<int32_t>()   // block_size_x
                              .RemainingArgs()  // args
-                             .Attr<StringRef>("ptx")
-                             .Attr<StringRef>("kernel")
+                             .Attr<std::string_view>("ptx")
+                             .Attr<std::string_view>("kernel")
                              .To<RuntimeChecks()>(LaunchFunc::Handler())
                              .release();
 
@@ -1011,7 +1012,7 @@ static bool Infeed(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.infeed")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<StringRef>("config")
+                             .Attr<std::string_view>("config")
                              .To<RuntimeChecks()>(Infeed::Handler())
                              .release();
 
@@ -1088,7 +1089,7 @@ static bool Outfeed(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.outfeed")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<StringRef>("config")
+                             .Attr<std::string_view>("config")
                              .To<RuntimeChecks()>(Outfeed::Handler())
                              .release();
 
@@ -1574,9 +1575,9 @@ static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
                              .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<StringRef>("call_target_name")
+                             .Attr<std::string_view>("call_target_name")
                              .Attr<int32_t>("api_version")
-                             .Attr<StringRef>("backend_config")
+                             .Attr<std::string_view>("backend_config")
                              .To<RuntimeChecks()>(XlaCustomCall::Handler())
                              .release();
 
