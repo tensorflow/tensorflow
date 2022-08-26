@@ -11,10 +11,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "integrations/c/StablehloDialect.h"
+#include "stablehlo/integrations/c/ChloDialect.h"
 
-#include "dialect/StablehloOps.h"
 #include "mlir/CAPI/Registration.h"
+#include "stablehlo/dialect/ChloOps.h"
 
-MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(Stablehlo, stablehlo,
-                                      mlir::stablehlo::StablehloDialect)
+MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(Chlo, chlo, mlir::chlo::ChloDialect)

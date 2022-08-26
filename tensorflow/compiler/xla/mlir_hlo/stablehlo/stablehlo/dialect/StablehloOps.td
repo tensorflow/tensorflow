@@ -17,12 +17,12 @@ limitations under the License.
 #ifndef STABLEHLO_DIALECT_STABLEHLO_OPS
 #define STABLEHLO_DIALECT_STABLEHLO_OPS
 
-include "dialect/Base.td"
 include "mlir/Dialect/Shape/IR/ShapeBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
+include "stablehlo/dialect/Base.td"
 
 def StableHLO_Dialect : Dialect {
   let name = "stablehlo";
@@ -44,8 +44,8 @@ class StableHLO_Op<string mnemonic, list<Trait> traits> :
     Op<StableHLO_Dialect, mnemonic, traits> {
 }
 
-include "dialect/StablehloEnums.td"
-include "dialect/StablehloAttrs.td"
+include "stablehlo/dialect/StablehloEnums.td"
+include "stablehlo/dialect/StablehloAttrs.td"
 
 class StableHLO_ShapedInterfaceOp<string mnemonic, list<Trait> traits> :
     StableHLO_Op<mnemonic, traits # [DeclareOpInterfaceMethods<InferShapedTypeOpInterface,

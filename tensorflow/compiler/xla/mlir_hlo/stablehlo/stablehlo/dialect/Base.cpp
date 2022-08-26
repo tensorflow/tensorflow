@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "dialect/Base.h"
+#include "stablehlo/dialect/Base.h"
 
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 
 // Include order matters
-#include "dialect/BaseAttrInterfaces.cpp.inc"
+#include "stablehlo/dialect/BaseAttrInterfaces.cpp.inc"
 
 namespace mlir {
 namespace hlo {

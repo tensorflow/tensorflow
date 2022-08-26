@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS_H
 #define MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS_H
 
-#include "dialect/Base.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "stablehlo/dialect/Base.h"
 
 // Include order below matters.
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.h.inc"

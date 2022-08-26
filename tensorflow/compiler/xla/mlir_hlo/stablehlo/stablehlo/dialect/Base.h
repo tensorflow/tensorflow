@@ -36,7 +36,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 
 // Include order matters
-#include "dialect/BaseAttrInterfaces.h.inc"
+#include "stablehlo/dialect/BaseAttrInterfaces.h.inc"
 
 namespace mlir {
 namespace hlo {

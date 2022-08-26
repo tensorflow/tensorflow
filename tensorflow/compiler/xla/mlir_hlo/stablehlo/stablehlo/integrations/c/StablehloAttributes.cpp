@@ -11,11 +11,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "integrations/c/StablehloAttributes.h"
+#include "stablehlo/integrations/c/StablehloAttributes.h"
 
-#include "dialect/StablehloOps.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Support.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 //===----------------------------------------------------------------------===//
 // ScatterDimensionNumbers

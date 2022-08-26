@@ -17,7 +17,6 @@ limitations under the License.
 #ifndef STABLEHLO_DIALECT_CHLO_OPS_H
 #define STABLEHLO_DIALECT_CHLO_OPS_H
 
-#include "dialect/Base.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
@@ -36,11 +35,12 @@ limitations under the License.
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "stablehlo/dialect/Base.h"
 
 // Include order matters
-#include "dialect/ChloEnums.h.inc"
+#include "stablehlo/dialect/ChloEnums.h.inc"
 #define GET_ATTRDEF_CLASSES
-#include "dialect/ChloAttrs.h.inc"
+#include "stablehlo/dialect/ChloAttrs.h.inc"
 
 namespace mlir {
 namespace chlo {
@@ -74,6 +74,6 @@ class Broadcasting
 }  // namespace mlir
 
 #define GET_OP_CLASSES
-#include "dialect/ChloOps.h.inc"
+#include "stablehlo/dialect/ChloOps.h.inc"
 
 #endif  // STABLEHLO_DIALECT_CHLO_OPS_H

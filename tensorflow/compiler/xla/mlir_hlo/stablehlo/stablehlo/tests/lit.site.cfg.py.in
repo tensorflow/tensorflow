@@ -61,4 +61,4 @@ import lit.llvm
 lit.llvm.initialize(lit_config, config)
 
 # Let the main config do the real work.
-lit_config.load_config(config, "@STABLEHLO_SOURCE_DIR@/tests/lit.cfg.py")
+lit_config.load_config(config, "@STABLEHLO_SOURCE_DIR@/stablehlo/tests/lit.cfg.py")

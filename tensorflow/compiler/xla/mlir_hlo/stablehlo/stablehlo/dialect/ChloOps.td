@@ -30,12 +30,12 @@ limitations under the License.
 #ifndef STABLEHLO_DIALECT_CHLO_OPS
 #define STABLEHLO_DIALECT_CHLO_OPS
 
-include "dialect/Base.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "stablehlo/dialect/Base.td"
 
 def CHLO_Dialect : Dialect {
   let name = "chlo";
@@ -61,7 +61,7 @@ class CHLO_Op<string mnemonic, list<Trait> traits> :
     Op<CHLO_Dialect, mnemonic, traits> {
 }
 
-include "dialect/ChloEnums.td"
+include "stablehlo/dialect/ChloEnums.td"
 
 class CHLO_NativeOpTrait<string name> : NativeOpTrait<name> {
   let cppNamespace = "::mlir::chlo::OpTrait";

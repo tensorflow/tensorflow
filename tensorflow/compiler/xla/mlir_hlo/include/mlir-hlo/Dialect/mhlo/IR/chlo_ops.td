@@ -34,7 +34,7 @@ include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "dialect/Base.td"
+include "stablehlo/dialect/Base.td"
 
 def CHLO_Dialect : Dialect {
   let name = "chlo";

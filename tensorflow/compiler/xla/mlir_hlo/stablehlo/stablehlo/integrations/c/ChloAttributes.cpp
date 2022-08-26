@@ -11,11 +11,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "integrations/c/ChloAttributes.h"
+#include "stablehlo/integrations/c/ChloAttributes.h"
 
-#include "dialect/ChloOps.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Support.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 //===----------------------------------------------------------------------===//
 // ComparisonDirectionAttr

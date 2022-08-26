@@ -11,10 +11,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "integrations/c/StablehloTypes.h"
+#include "stablehlo/integrations/c/StablehloTypes.h"
 
-#include "dialect/StablehloOps.h"
 #include "mlir/CAPI/IR.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 MlirType stablehloTokenTypeGet(MlirContext ctx) {
   return wrap(mlir::stablehlo::TokenType::get(unwrap(ctx)));

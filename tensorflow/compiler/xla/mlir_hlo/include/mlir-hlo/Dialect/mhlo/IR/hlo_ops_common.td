@@ -25,7 +25,7 @@ def HLO_Dialect : Dialect {
   let useDefaultTypePrinterParser = 0;
 }
 
-include "dialect/Base.td"
+include "stablehlo/dialect/Base.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.td"
 

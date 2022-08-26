@@ -1,5 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
-   Copyright 2022 The StableHLO Authors.
+/* Copyright 2022 The StableHLO Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "dialect/Register.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/InitAllPasses.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "stablehlo/dialect/Register.h"
+#include "stablehlo/tests/TestUtils.h"
 
-#include "dialect/ChloOps.h"
-#include "dialect/StablehloOps.h"
+int main(int argc, char **argv) {
+  mlir::registerAllPasses();
+  mlir::hlo::registerAllTestPasses();
 
-namespace mlir {
-namespace stablehlo {
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::stablehlo::registerAllDialects(registry);
 
-void registerAllDialects(mlir::DialectRegistry &registry) {
-  // clang-format off
-  registry.insert<mlir::chlo::ChloDialect,
-                  mlir::stablehlo::StablehloDialect>();
-  // clang-format on
+  return failed(
+      mlir::MlirOptMain(argc, argv, "StableHLO optimizer driver\n", registry));
 }
-
-}  // namespace stablehlo
-}  // namespace mlir

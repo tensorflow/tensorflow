@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "dialect/Base.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
@@ -40,11 +39,12 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LogicalResult.h"
+#include "stablehlo/dialect/Base.h"
 
 // Include order matters.
-#include "dialect/StablehloEnums.h.inc"
+#include "stablehlo/dialect/StablehloEnums.h.inc"
 #define GET_ATTRDEF_CLASSES
-#include "dialect/StablehloAttrs.h.inc"
+#include "stablehlo/dialect/StablehloAttrs.h.inc"
 
 namespace mlir {
 namespace stablehlo {
@@ -187,7 +187,7 @@ ParseResult parseWindowAttributes(OpAsmParser &parser,
 }  // end namespace mlir
 
 #define GET_OP_CLASSES
-#include "dialect/StablehloOps.h.inc"
+#include "stablehlo/dialect/StablehloOps.h.inc"
 
 namespace mlir {
 namespace stablehlo {

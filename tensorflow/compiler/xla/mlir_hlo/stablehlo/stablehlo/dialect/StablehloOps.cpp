@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "dialect/StablehloOps.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -29,7 +29,6 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
-#include "dialect/StablehloOps.h.inc"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -70,11 +69,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "stablehlo/dialect/StablehloOps.h.inc"
 
 // Include order matters
-#include "dialect/StablehloEnums.cpp.inc"
+#include "stablehlo/dialect/StablehloEnums.cpp.inc"
 #define GET_ATTRDEF_CLASSES
-#include "dialect/StablehloAttrs.cpp.inc"
+#include "stablehlo/dialect/StablehloAttrs.cpp.inc"
 
 namespace mlir {
 namespace stablehlo {
@@ -5730,7 +5730,7 @@ ParseResult parsePairwiseOpType(OpAsmParser& parser,
 }  // namespace mlir
 
 #define GET_OP_CLASSES
-#include "dialect/StablehloOps.cpp.inc"
+#include "stablehlo/dialect/StablehloOps.cpp.inc"
 
 namespace mlir {
 namespace stablehlo {
@@ -5757,13 +5757,13 @@ StablehloDialect::StablehloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context, TypeID::get<StablehloDialect>()) {
   addOperations<
 #define GET_OP_LIST
-#include "dialect/StablehloOps.cpp.inc"
+#include "stablehlo/dialect/StablehloOps.cpp.inc"
       >();
   addInterfaces<HLOBoundedDialectInterface>();
   addTypes<TokenType>();
   addAttributes<
 #define GET_ATTRDEF_LIST
-#include "dialect/StablehloAttrs.cpp.inc"
+#include "stablehlo/dialect/StablehloAttrs.cpp.inc"
       >();
   context->loadDialect<tensor::TensorDialect>();
 }

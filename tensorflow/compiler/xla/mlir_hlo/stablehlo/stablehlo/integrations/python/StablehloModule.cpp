@@ -11,11 +11,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "integrations/c/StablehloAttributes.h"
-#include "integrations/c/StablehloDialect.h"
-#include "integrations/c/StablehloTypes.h"
 #include "mlir-c/IR.h"
 #include "mlir/Bindings/Python/PybindAdaptors.h"
+#include "stablehlo/integrations/c/StablehloAttributes.h"
+#include "stablehlo/integrations/c/StablehloDialect.h"
+#include "stablehlo/integrations/c/StablehloTypes.h"
 
 namespace py = pybind11;
 

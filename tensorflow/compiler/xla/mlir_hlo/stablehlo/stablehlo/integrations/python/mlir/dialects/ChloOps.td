@@ -14,10 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef STABLEHLO_INTEGRATIONS_PYTHON_STABLEHLO_OPS
-#define STABLEHLO_INTEGRATIONS_PYTHON_STABLEHLO_OPS
+#ifndef STABLEHLO_INTEGRATIONS_PYTHON_CHLO_OPS
+#define STABLEHLO_INTEGRATIONS_PYTHON_CHLO_OPS
 
 include "mlir/Bindings/Python/Attributes.td"
-include "dialect/StablehloOps.td"
+include "stablehlo/dialect/ChloOps.td"
 
 #endif

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tests/TestUtils.h"
+#include "stablehlo/tests/TestUtils.h"
 
 #include <memory>
 #include <utility>
@@ -131,7 +131,7 @@ struct ReifyReturnTypeShapesPattern : public RewritePattern {
 };
 
 #define GEN_PASS_CLASSES
-#include "tests/TestUtils.h.inc"
+#include "stablehlo/tests/TestUtils.h.inc"
 
 struct HloTestInferPass : public HloTestInferPassBase<HloTestInferPass> {
   void runOnOperation() override {
@@ -151,7 +151,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createHloTestInferPass() {
 }
 
 #define GEN_PASS_REGISTRATION
-#include "tests/TestUtils.h.inc"
+#include "stablehlo/tests/TestUtils.h.inc"
 
 }  // namespace
 

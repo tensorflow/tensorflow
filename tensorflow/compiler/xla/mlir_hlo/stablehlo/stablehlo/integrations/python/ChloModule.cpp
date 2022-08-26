@@ -11,10 +11,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "integrations/c/ChloAttributes.h"
-#include "integrations/c/ChloDialect.h"
 #include "mlir-c/IR.h"
 #include "mlir/Bindings/Python/PybindAdaptors.h"
+#include "stablehlo/integrations/c/ChloAttributes.h"
+#include "stablehlo/integrations/c/ChloDialect.h"
 
 namespace py = pybind11;
 

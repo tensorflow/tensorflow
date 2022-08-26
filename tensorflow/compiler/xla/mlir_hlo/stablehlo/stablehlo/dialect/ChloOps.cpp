@@ -14,9 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "dialect/ChloOps.h"
+#include "stablehlo/dialect/ChloOps.h"
 
-#include "dialect/BroadcastUtils.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -24,11 +23,12 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
+#include "stablehlo/dialect/BroadcastUtils.h"
 
 // Include order matters
-#include "dialect/ChloEnums.cpp.inc"
+#include "stablehlo/dialect/ChloEnums.cpp.inc"
 #define GET_ATTRDEF_CLASSES
-#include "dialect/ChloAttrs.cpp.inc"
+#include "stablehlo/dialect/ChloAttrs.cpp.inc"
 
 namespace mlir {
 namespace chlo {
@@ -507,7 +507,7 @@ LogicalResult ConstantOp::inferReturnTypes(
 }  // namespace mlir
 
 #define GET_OP_CLASSES
-#include "dialect/ChloOps.cpp.inc"
+#include "stablehlo/dialect/ChloOps.cpp.inc"
 
 namespace mlir {
 namespace chlo {
@@ -520,11 +520,11 @@ ChloDialect::ChloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context, TypeID::get<ChloDialect>()) {
   addOperations<
 #define GET_OP_LIST
-#include "dialect/ChloOps.cpp.inc"
+#include "stablehlo/dialect/ChloOps.cpp.inc"
       >();
   addAttributes<
 #define GET_ATTRDEF_LIST
-#include "dialect/ChloAttrs.cpp.inc"
+#include "stablehlo/dialect/ChloAttrs.cpp.inc"
       >();
 }
 
