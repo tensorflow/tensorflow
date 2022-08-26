@@ -55,9 +55,9 @@ class Registry(object):
     if name in self._registry:
       frame = self._registry[name][_LOCATION_TAG]
       raise KeyError(
-          "Registering two %s with name '%s'! "
-          "(Previous registration was in %s %s:%d)" %
-          (self._name, name, frame.name, frame.filename, frame.lineno))
+          f"Registration name must be unique. {name} already exists in "
+          f"registry {self._registry}. Previous registration is in "
+          f"{frame.filename}:{frame.lineno})")
 
     logging.vlog(1, "Registering %s (%s) in %s.", name, candidate, self._name)
     # stack trace is [this_function, Register(), user_function,...]
@@ -93,4 +93,5 @@ class Registry(object):
       return self._registry[name][_TYPE_TAG]
     else:
       raise LookupError(
-          "%s registry has no entry for: %s" % (self._name, name))
+          f"Entry does not exist in the registry {self._registry}.  "
+          f"Received: {name}")
