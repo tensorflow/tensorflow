@@ -308,16 +308,16 @@ class SortedPackingStrategy {
       size_t allocUserangeId = userangeAnalysis.computeId(v, v.getDefiningOp());
 
       // Computes the last use of the allocated buffer.
-      size_t lastUse = std::prev((*userangeIntervals.getValue()).end())->end;
+      size_t lastUse = std::prev((*userangeIntervals.value()).end())->end;
 
       // Computes the first use of the allocated buffer.
-      size_t firstUse = (*userangeIntervals.getValue()).begin()->start;
+      size_t firstUse = (*userangeIntervals.value()).begin()->start;
 
       // Computes the number of aligend segments of the buffer.
       size_t numSegments = computeAlignedSegments(v);
       maxUserangeId = std::max(maxUserangeId, lastUse);
       allocInfos.emplace_back(v, allocUserangeId, firstUse, lastUse,
-                              numSegments, 0, userangeIntervals.getValue());
+                              numSegments, 0, userangeIntervals.value());
     }
 
     // If the window size is zero we need no sorting anymore.

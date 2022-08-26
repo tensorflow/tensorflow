@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace {

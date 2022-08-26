@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -101,8 +102,15 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
       }
     }
 
+    // Case ConcatenateOp.
+    if (auto concat = llvm::dyn_cast<thlo::ConcatenateOp>(def)) {
+      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, concat.init(),
+                                                 op.getIndex());
+      return success();
+    }
+
     // Case DynamicBroadcastInDimOp.
-    if (auto bcast = llvm::dyn_cast<DynamicBroadcastInDimOp>(def)) {
+    if (auto bcast = llvm::dyn_cast<thlo::DynamicBroadcastInDimOp>(def)) {
       rewriter.replaceOpWithNewOp<tensor::DimOp>(op, bcast.init(),
                                                  op.getIndex());
       return success();
@@ -131,7 +139,8 @@ struct FusionPattern : public OpRewritePattern<MaterializeOp> {
   }
 };
 
-class FusionPass : public FusionPassBase<FusionPass> {
+class DeprecatedFusionPass
+    : public DeprecatedFusionPassBase<DeprecatedFusionPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
     registry.insert<scf::SCFDialect>();
     registerFusionInterfaceExternalModels(registry);
@@ -158,8 +167,8 @@ class FusionPass : public FusionPassBase<FusionPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass() {
-  return std::make_unique<FusionPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedFusionPass() {
+  return std::make_unique<DeprecatedFusionPass>();
 }
 
 }  // namespace gml_st

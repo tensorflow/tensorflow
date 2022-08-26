@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -52,36 +53,25 @@ std::vector<TensorStorageType> MetalExecutionEnvironment::GetSupportedStorages(
           TensorStorageType::TEXTURE_ARRAY};
 }
 
-absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
+absl::Status MetalExecutionEnvironment::ExecuteGpuOperationInternal(
     const std::vector<TensorDescriptor*>& src_cpu,
     const std::vector<TensorDescriptor*>& dst_cpu,
     std::unique_ptr<GPUOperation>&& operation) {
   const OperationDef& op_def = operation->GetDefinition();
   std::vector<MetalSpatialTensor> src(src_cpu.size());
   for (int i = 0; i < src_cpu.size(); ++i) {
-    auto src_shape = src_cpu[i]->GetBHWDCShape();
-    if (src_shape.b != 1 && !op_def.IsBatchSupported()) {
-      return absl::InvalidArgumentError(
-          "Layout doesn't have Batch dimension, but shape.b != 1");
-    }
     RETURN_IF_ERROR(src[i].CreateFromDescriptor(*src_cpu[i], device_.device()));
     operation->SetSrc(&src[i], i);
   }
 
   std::vector<MetalSpatialTensor> dst(dst_cpu.size());
   for (int i = 0; i < dst_cpu.size(); ++i) {
-    auto dst_shape = dst_cpu[i]->GetBHWDCShape();
-    if (dst_shape.b != 1 && !op_def.IsBatchSupported()) {
-      return absl::InvalidArgumentError(
-          "Layout doesn't have Batch dimension, but shape.b != 1");
-    }
     TensorDescriptor descriptor_with_shape = op_def.dst_tensors[i];
-    descriptor_with_shape.SetBHWDCShape(dst_shape);
+    descriptor_with_shape.SetBHWDCShape(dst_cpu[i]->GetBHWDCShape());
     RETURN_IF_ERROR(
         CreateTensor(device_.device(), descriptor_with_shape, &dst[i]));
     operation->SetDst(&dst[i], i);
   }
-  RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));
 
   ComputeTask gpu_task;
   gpu_task.Init(std::move(operation));

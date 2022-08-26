@@ -97,8 +97,21 @@ class HloTestBase : public ManifestCheckingTest {
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass
   // returns false as the StatusOr value.
+  //
+  // These three overloads all do the same thing.  The && overload lets you do
+  // `RunHloPass(MyPass(), module)` all in one line.  The reason for the
+  // overload that takes a pointer is that, at one point in the past, non-const
+  // lvalue references were banned in Google code.
   static StatusOr<bool> RunHloPass(HloPassInterface* hlo_pass,
                                    HloModule* module);
+  static StatusOr<bool> RunHloPass(HloPassInterface& hlo_pass,
+                                   HloModule* module) {
+    return RunHloPass(&hlo_pass, module);
+  }
+  static StatusOr<bool> RunHloPass(HloPassInterface&& hlo_pass,
+                                   HloModule* module) {
+    return RunHloPass(&hlo_pass, module);
+  }
 
   static PrecisionConfig DefaultPrecisionConfig(int operands);
 

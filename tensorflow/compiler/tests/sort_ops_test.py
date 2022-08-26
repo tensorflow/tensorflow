@@ -14,7 +14,9 @@
 # ==============================================================================
 """Tests for sorting operators."""
 
+import os
 import unittest
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -28,6 +30,11 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
+
+ALL_KEY_TYPES = [
+    dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64,
+    np.int32, np.uint32, np.int16, np.uint16, np.int8, np.uint8
+]
 
 
 class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
@@ -55,10 +62,7 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
     return x.reshape(shape)
 
   def _supported_key_types(self):
-    supported_key_types = set([
-        dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64,
-        np.int32, np.uint32, np.int16, np.uint16, np.int8, np.uint8
-    ])
+    supported_key_types = set(ALL_KEY_TYPES)
     res = supported_key_types.intersection(self.numeric_types)
     assert res
     return res
@@ -122,114 +126,117 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
       self._assertOpOutputMatchesExpected(wrap_sort, [x], expected=[expected])
 
-  @parameterized.parameters(0, 1, 2)
-  def testVariadicSortSeveral(self, dimension):
+  @parameterized.product(dimension=[0, 1, 2], key_type=ALL_KEY_TYPES)
+  def testVariadicSortSeveral(self, dimension, key_type):
     if np.__version__ < "1.15":
       raise unittest.SkipTest("np.take_along_axis was added in 1.15")
+    if key_type not in self._supported_key_types():
+      return
     shape = (2, 3, 4)
-    for key_type in self._supported_key_types():
-      for value_type_1 in self._supported_key_types():
-        for value_type_2 in self._supported_key_types():
-          inputs = [
-              self._shuffled_arange(shape, key_type),
-              self._shuffled_arange(shape, value_type_1),
-              self._shuffled_arange(shape, value_type_2)
-          ]
+    for value_type_1 in self._supported_key_types():
+      for value_type_2 in self._supported_key_types():
+        inputs = [
+            self._shuffled_arange(shape, key_type),
+            self._shuffled_arange(shape, value_type_1),
+            self._shuffled_arange(shape, value_type_2)
+        ]
 
-          # The first array is sorted, and the others are shuffled the same way
-          sorted_indices = np.argsort(inputs[0], axis=dimension)
-          expected = [
-              np.take_along_axis(inp, sorted_indices, axis=dimension)
-              for inp in inputs
-          ]
-          self.assertAllEqual(np.sort(inputs[0], axis=dimension), expected[0])
+        # The first array is sorted, and the others are shuffled the same way
+        sorted_indices = np.argsort(inputs[0], axis=dimension)
+        expected = [
+            np.take_along_axis(inp, sorted_indices, axis=dimension)
+            for inp in inputs
+        ]
+        self.assertAllEqual(np.sort(inputs[0], axis=dimension), expected[0])
 
-          @function.Defun(key_type, key_type, value_type_1, value_type_1,
-                          value_type_2, value_type_2)
-          def compare_lt(x1, x2, y1, y2, z1, z2):
-            del y1, y2, z1, z2
-            return x1 < x2
+        @function.Defun(key_type, key_type, value_type_1, value_type_1,
+                        value_type_2, value_type_2)
+        def compare_lt(x1, x2, y1, y2, z1, z2):
+          del y1, y2, z1, z2
+          return x1 < x2
 
-          def wrap_sort(*args):
-            return xla.variadic_sort(
-                args,  # Pass the arguments as a tuple
-                comparator=compare_lt,
-                dimension=dimension,
-                is_stable=False)
+        def wrap_sort(*args):
+          return xla.variadic_sort(
+              args,  # Pass the arguments as a tuple
+              comparator=compare_lt,
+              dimension=dimension,
+              is_stable=False)
 
-          self._assertOpOutputMatchesExpected(
-              wrap_sort, inputs, expected=expected)
+        self._assertOpOutputMatchesExpected(
+            wrap_sort, inputs, expected=expected)
 
+  @parameterized.parameters(ALL_KEY_TYPES)
   @test_util.disable_mlir_bridge("Not supported yet")
-  def testVariadicSortLexicographic(self):
+  def testVariadicSortLexicographic(self, key_type_2):
     # Three inputs: the first two are used for lexicographic sort, and the
     # third is just swapped accordingly.
     # The first array will contain only 0 and 1, to test lexicographic order
     if np.__version__ < "1.15":
       raise unittest.SkipTest("np.take_along_axis was added in 1.15")
     shape = (20,)
-    for key_type_1 in set([np.int16, np.uint16, np.int32, np.uint32]):
-      for key_type_2 in self._supported_key_types():
-        for value_type in self._supported_key_types():
-          inputs = [
-              # Ensure that some keys in the first input are equal
-              np.random.uniform(0, 2, shape).astype(key_type_1),
-              self._shuffled_arange(shape, key_type_2),
-              self._shuffled_arange(shape, value_type)
-          ]
-          # The first two arrays are sorted lexicographically, and the third
-          # is shuffled the same way
-          sorted_indices = np.argsort(100 * inputs[0] + inputs[1])
-          expected = [
-              np.take_along_axis(inp, sorted_indices, axis=0) for inp in inputs
-          ]
+    if key_type_2 not in self._supported_key_types():
+      return
+    for key_type_1 in [np.int16, np.uint16, np.int32, np.uint32]:
+      for value_type in self._supported_key_types():
+        inputs = [
+            # Ensure that some keys in the first input are equal
+            np.random.uniform(0, 2, shape).astype(key_type_1),
+            self._shuffled_arange(shape, key_type_2),
+            self._shuffled_arange(shape, value_type)
+        ]
+        # The first two arrays are sorted lexicographically, and the third
+        # is shuffled the same way
+        sorted_indices = np.argsort(100 * inputs[0] + inputs[1])
+        expected = [
+            np.take_along_axis(inp, sorted_indices, axis=0) for inp in inputs
+        ]
 
-          @function.Defun(key_type_1, key_type_1, key_type_2, key_type_2,
-                          value_type, value_type)
-          def compare_lexicographic(x1, x2, y1, y2, z1, z2):
-            del z1, z2
-            return math_ops.logical_or(
-                x1 < x2, math_ops.logical_and(math_ops.equal(x1, x2), y1 < y2))
+        @function.Defun(key_type_1, key_type_1, key_type_2, key_type_2,
+                        value_type, value_type)
+        def compare_lexicographic(x1, x2, y1, y2, z1, z2):
+          del z1, z2
+          return math_ops.logical_or(
+              x1 < x2, math_ops.logical_and(math_ops.equal(x1, x2), y1 < y2))
 
-          def wrap_sort(*args):
-            return xla.variadic_sort(
-                args,  # Pass the arguments as a tuple
-                comparator=compare_lexicographic,
-                dimension=0,
-                is_stable=False)
+        def wrap_sort(*args):
+          return xla.variadic_sort(
+              args,  # Pass the arguments as a tuple
+              comparator=compare_lexicographic,
+              dimension=0,
+              is_stable=False)
 
-          self._assertOpOutputMatchesExpected(
-              wrap_sort, inputs, expected=expected)
+        self._assertOpOutputMatchesExpected(
+            wrap_sort, inputs, expected=expected)
 
-  @parameterized.parameters(0, 1, 2)
-  def testVariadicSortSeveralStable(self, dimension):
+  @parameterized.product(dimension=[0, 1, 2], key_type=ALL_KEY_TYPES)
+  def testVariadicSortSeveralStable(self, dimension, key_type):
     shape = (2, 3, 4)
-    for key_type in self._supported_key_types():
-      for value_type_1 in self._supported_key_types():
-        for value_type_2 in self._supported_key_types():
-          # The first input is all 0s, there should be no changes for
-          # stable sort.
-          inputs = [
-              np.zeros(shape, key_type),
-              self._shuffled_arange(shape, value_type_1),
-              self._shuffled_arange(shape, value_type_2)
-          ]
+    if key_type not in self._supported_key_types():
+      return
+    for value_type_1 in self._supported_key_types():
+      for value_type_2 in self._supported_key_types():
+        # The first input is all 0s, there should be no changes for
+        # stable sort.
+        inputs = [
+            np.zeros(shape, key_type),
+            self._shuffled_arange(shape, value_type_1),
+            self._shuffled_arange(shape, value_type_2)
+        ]
 
-          @function.Defun(key_type, key_type, value_type_1, value_type_1,
-                          value_type_2, value_type_2)
-          def compare_lt(x1, x2, y1, y2, z1, z2):
-            del y1, y2, z1, z2
-            return x1 < x2
+        @function.Defun(key_type, key_type, value_type_1, value_type_1,
+                        value_type_2, value_type_2)
+        def compare_lt(x1, x2, y1, y2, z1, z2):
+          del y1, y2, z1, z2
+          return x1 < x2
 
-          def wrap_sort(*args):
-            return xla.variadic_sort(
-                args,  # Pass the arguments as a tuple
-                comparator=compare_lt,
-                dimension=dimension,
-                is_stable=True)
+        def wrap_sort(*args):
+          return xla.variadic_sort(
+              args,  # Pass the arguments as a tuple
+              comparator=compare_lt,
+              dimension=dimension,
+              is_stable=True)
 
-          self._assertOpOutputMatchesExpected(
-              wrap_sort, inputs, expected=inputs)
+        self._assertOpOutputMatchesExpected(wrap_sort, inputs, expected=inputs)
 
   def testTopK(self):
     supported_types = set([
@@ -352,6 +359,23 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
               in_topk,
               [x.astype(np.float32), y.astype(dtype)],
               expected=[expected])
+
+
+class XlaMlirSortOpTest(XlaSortOpTest):
+
+  def setUp(self):
+    self.original_xla_flags = os.environ.get("XLA_FLAGS")
+    os.environ["XLA_FLAGS"] = "--xla_cpu_enable_mlir_lowering=true "
+    if self.original_xla_flags:
+      os.environ["XLA_FLAGS"] += self.original_xla_flags
+    super().setUp()
+
+  def tearDown(self):
+    if self.original_xla_flags is None:
+      del os.environ["XLA_FLAGS"]
+    else:
+      os.environ["XLA_FLAGS"] = self.original_xla_flags
+    super().tearDown()
 
 
 if __name__ == "__main__":

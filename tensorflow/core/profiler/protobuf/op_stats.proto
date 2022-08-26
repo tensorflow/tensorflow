@@ -99,7 +99,13 @@ message CoreDetails {
   uint32 global_core_id = 6;  // unique within mesh, TPU core only
 }
 
-// Next ID: 13
+// Metrics based on hardware performance counters.
+message PerformanceCounterResult {
+  // Overall matrix unit utilization in percentage.
+  double matrix_unit_utilization_percent = 1;
+}
+
+// Next ID: 14
 // Operator Statistics.
 message OpStats {
   // The database for the op metrics collected from the host over the entire
@@ -126,5 +132,7 @@ message OpStats {
   Diagnostics diagnostics = 9;
   // A map from program ID to program name.
   map<uint64, string> program_id_to_name_map = 12;
+  // Performance counters.
+  PerformanceCounterResult performance_counter_result = 13;
   reserved 7;
 }

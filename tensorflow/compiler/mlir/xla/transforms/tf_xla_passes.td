@@ -15,7 +15,8 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LegalizeTFPass : Pass<"xla-legalize-tf-with-tf2xla", "mlir::func::FuncOp"> {
+def LegalizeTFWithTF2XLA
+    : Pass<"xla-legalize-tf-with-tf2xla", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow to the HLO dialect using tf2xla kernels";
   let dependentDialects = ["mhlo::MhloDialect"];
   let constructor = "::mlir::mhlo::createLegalizeTfWithTf2XlaPass()";

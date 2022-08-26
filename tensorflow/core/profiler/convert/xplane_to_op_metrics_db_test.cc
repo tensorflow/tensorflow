@@ -211,8 +211,9 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
 
 TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
   XSpace xspace;
-  XPlane* xplane =
-      GetOrCreateTpuXPlane(&xspace, /*device_ordinal=*/0, "TPU V4");
+  XPlane* xplane = GetOrCreateTpuXPlane(&xspace, /*device_ordinal=*/0, "TPU V4",
+                                        /*peak_tera_flops_per_second=*/0,
+                                        /*peak_hbm_bw_gigabytes_per_second=*/0);
   XPlaneBuilder device_plane(xplane);
   XLineBuilder stream1 = device_plane.GetOrCreateLine(/*line_id=*/10);
   AddTensorFlowTpuOpEvent("MatMul", "while:MatMul", 0, 10, "MatMul", 34, 45, 2,
@@ -222,11 +223,12 @@ TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
   EXPECT_THAT(op_metrics,
               EqualsProto(R"pb(metrics_db {
                                  self_time_ps: 10000
-                                 flops: 34
+                                 flops: 68
                                  occurrences: 2
                                  name: "MatMul"
                                  time_ps: 10000
                                  category: "MatMul"
+                                 provenance: "while:MatMul"
                                  min_time_ps: 10000
                                }
                                metrics_db { name: "IDLE" category: "IDLE" }

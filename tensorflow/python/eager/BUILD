@@ -557,7 +557,6 @@ py_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
-        "@six_archive//:six",
     ],
 )
 
@@ -614,7 +613,6 @@ py_library(
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -645,7 +643,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -713,7 +710,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
-        "@six_archive//:six",
     ],
 )
 
@@ -964,7 +960,6 @@ py_library(
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:op_selector",
-        "@six_archive//:six",
     ],
 )
 
@@ -1140,6 +1135,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "no_oss",  # This test launches local server.
+        "nofastbuild",  # times out
         "optonly",  # times out
     ],
     deps = [
@@ -1154,7 +1150,6 @@ cuda_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 
@@ -1193,6 +1188,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/distribute/failure_handling:check_preemption_py",
         "@absl_py//absl/testing:parameterized",
     ],
 )

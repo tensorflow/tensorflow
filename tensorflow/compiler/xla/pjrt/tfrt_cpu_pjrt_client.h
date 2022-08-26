@@ -537,6 +537,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
 
   bool IsDeleted() override;
 
+  bool IsReturnedFutureSupported() const override { return true; }
+
   StatusOr<std::optional<std::string>> Fingerprint() const;
 
  private:

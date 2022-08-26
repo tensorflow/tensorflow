@@ -1093,7 +1093,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateFusion(
       const Shape& shape, FusionKind fusion_kind,
       absl::Span<HloInstruction* const> operands,
-      HloComputation* fusion_computation);
+      HloComputation* fusion_computation, absl::string_view prefix = "");
 
   // Creates a call instruction that applies the given computation on the given
   // operands. "shape" is the resultant shape.

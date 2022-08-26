@@ -15,7 +15,9 @@ package_group(
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         "//tensorflow/core/tfrt/...",
+        "//tensorflow/core/tfrt/eager/backends/tpu/...",
         "//tensorflow/dtensor/...",
+        "//third_party/tf_runtime_google/...",
     ],
 )
 
@@ -34,5 +36,22 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@tf_runtime//:hostcontext",
+    ],
+)
+
+cc_library(
+    name = "async_value_tensor",
+    srcs = [
+        "async_value_tensor.cc",
+    ],
+    hdrs = [
+        "async_value_tensor.h",
+    ],
+    compatible_with = if_google(["//buildenv/target:libtpu"]),
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core:framework",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
     ],
 )

@@ -66,13 +66,10 @@ struct LegalizeJaxRandomPass
   void runOnOperation() override;
 };
 
-inline OpaqueElementsAttr CustomOption(ImplicitLocOpBuilder *builder,
-                                       const std::string &content) {
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
-  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
-                                 type,
-                                 StringRef(content.data(), content.size()));
+inline ConstBytesAttr CustomOption(ImplicitLocOpBuilder *builder,
+                                   const std::string &content) {
+  return ConstBytesAttr::get(builder->getContext(),
+                             StringRef(content.data(), content.size()));
 }
 
 inline bool IsJaxRandomUniform(mlir::func::FuncOp func) {

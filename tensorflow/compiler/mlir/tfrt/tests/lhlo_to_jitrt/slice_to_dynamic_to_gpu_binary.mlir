@@ -37,7 +37,7 @@ func.func @slice_to_dynamic(%arg0: memref<4xf32>,
     api_version = 1 : i32,
     backend_config = "",
     call_target_name = "SliceToDynamic",
-    operand_segment_sizes = dense<[2, 1]> : vector<2xi32>
+    operand_segment_sizes = array<i32: 2, 1>
   } : (memref<4xf32>, memref<i32>, memref<4xf32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }

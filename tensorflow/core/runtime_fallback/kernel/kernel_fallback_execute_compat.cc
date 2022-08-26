@@ -228,8 +228,7 @@ static void KernelFallbackExecuteCompatAsyncInternal(
     const OpKernelRunner& kernel_runner,
     tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results) {
-  auto chain =
-      tfrt::MakeUnconstructedAsyncValueRef<tfrt::Chain>(exec_ctx.host());
+  auto chain = tfrt::MakeUnconstructedAsyncValueRef<tfrt::Chain>();
   if (op_chain) *op_chain = chain.CopyRef();
 
   // Allocate unconstructed result tensors and set them in the output `results`.
@@ -237,7 +236,7 @@ static void KernelFallbackExecuteCompatAsyncInternal(
   result_refs.reserve(results.size());
   for (auto& result : results) {
     result_refs.emplace_back(
-        tfrt::MakeUnconstructedAsyncValueRef<TensorType>(exec_ctx.host()));
+        tfrt::MakeUnconstructedAsyncValueRef<TensorType>());
     result = result_refs.back().CopyRef();
   }
 
@@ -550,10 +549,13 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
   }
   if (is_cost_measurement_enabled) {
     op_chain->AndThen([run_start_time, exec_ctx, frame] {
-      auto execution_time = Env::Default()->NowMicros() - run_start_time;
+      // Adds 1 to make sure it's a positive integer.
+      auto execution_time = Env::Default()->NowMicros() - run_start_time + 1;
+      // Adds op_key as a suffix to distinguish the same operation with
+      // different shape.
       exec_ctx.host()
           ->GetOrCreateSharedContext<tensorflow::tfrt_stub::CostRecorder>()
-          .RecordCost(frame.op_name().GetValue(), execution_time);
+          .RecordCost(frame.op_key().GetValue(), execution_time);
     });
   }
 }

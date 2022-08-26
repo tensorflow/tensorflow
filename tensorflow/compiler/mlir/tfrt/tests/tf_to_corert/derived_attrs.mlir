@@ -13,7 +13,7 @@ func.func @derived_attrs(
     "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %dense_keys, %ragged_keys, %dense_default)
     // CHECK: Tdense = [i64]
     // CHECK-SAME: dense_shapes = [#corert.shape<>]
-    { device = "/device:CPU:0", num_sparse = 0 : i64, dense_shapes = [#tf_type.shape<>], result_segment_sizes = dense<[0, 0, 0, 1, 0, 0]> : vector<6xi32>}
+    { device = "/device:CPU:0", num_sparse = 0 : i64, dense_shapes = [#tf_type.shape<>], result_segment_sizes = array<i32: 0, 0, 0, 1, 0, 0>}
       : (tensor<?x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>, tensor<1x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0xi64>)
       -> tensor<?xi64>
 

@@ -27,7 +27,7 @@ func.func @complex_ranked_components(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32
 // -----
 // CHECK-LABEL: @compare_ranked_components
 func.func @compare_ranked_components(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xi1> {
-  %0 = chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xi1>
+  %0 = chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xi1>
   // CHECK: "mhlo_test.return_type_components"(%0) {dims0 = [-1, -1], element_type0 = i1}
   %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<?x?xi1>) -> tensor<?x?xi1>
   func.return %0 : tensor<?x?xi1>

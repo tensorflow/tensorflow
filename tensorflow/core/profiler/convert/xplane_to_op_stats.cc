@@ -15,23 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/op_stats_combiner.h"
+#include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
-#include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -45,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/step_intersection.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -145,7 +143,6 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options) {
-  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   std::vector<const XPlane*> device_planes = FindTensorCorePlanes(space);
   bool is_gpu = device_planes.empty();
   if (is_gpu) {
@@ -199,6 +196,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 
   bool has_device = !device_planes.empty();
   // Convert a host plane.
+  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   if (host_plane) {
     if (options.generate_op_metrics_db) {
       *op_stats.mutable_host_op_metrics_db() =
@@ -210,6 +208,12 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       StepEvents host_step_events =
           ConvertHostThreadsXPlaneToStepEvents(*host_plane, device_step_events);
       CombineStepEvents(host_step_events, &step_events);
+    }
+    XPlaneVisitor visitor = CreateTfXPlaneVisitor(host_plane);
+    auto stat = visitor.GetStat(StatType::kMatrixUnitUtilizationPercent);
+    if (stat.has_value()) {
+      op_stats.mutable_performance_counter_result()
+          ->set_matrix_unit_utilization_percent(stat->DoubleValue());
     }
   }
   if (options.generate_step_db) {
@@ -231,21 +235,27 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
   return op_stats;
 }
 
-Status ConvertMultiXSpacesToCombinedOpStats(const std::vector<XSpace>& xspaces,
-                                            const OpStatsOptions& options,
-                                            OpStats* combined_op_stats) {
+Status ConvertMultiXSpacesToCombinedOpStats(
+    const SessionSnapshot& session_snapshot, const OpStatsOptions& options,
+    OpStats* combined_op_stats) {
   // A shortcut code path for a single XSpace. There is no need to merge OpStats
   // if there is only a single XSpace.
-  if (xspaces.size() == 1) {
-    *combined_op_stats = ConvertXSpaceToOpStats(xspaces[0], options);
+  if (session_snapshot.XSpaceSize() == 1) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                        session_snapshot.GetXSpace(0));
+    *combined_op_stats = ConvertXSpaceToOpStats(*xspace, options);
     return OkStatus();
   }
 
   // Read multiple XSpaces and convert to multiple OpStats.
+  // TODO(profiler): Change the combiner to convert and combine one OpStats at a
+  // time, to reduce peak memory usage.
   std::vector<OpStats> all_op_stats;
-  all_op_stats.reserve(xspaces.size());
-  for (const XSpace& xspace : xspaces) {
-    all_op_stats.push_back(ConvertXSpaceToOpStats(xspace, options));
+  all_op_stats.reserve(session_snapshot.XSpaceSize());
+  for (int i = 0; i < session_snapshot.XSpaceSize(); i++) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                        session_snapshot.GetXSpace(i));
+    all_op_stats.push_back(ConvertXSpaceToOpStats(*xspace, options));
   }
 
   // Combine OpStats.

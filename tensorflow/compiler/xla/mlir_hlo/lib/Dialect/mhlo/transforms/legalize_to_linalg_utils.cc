@@ -37,13 +37,6 @@ bool hasIntegralShapeType(Operation* op) {
   return stp && stp.getElementType().isIntOrIndex();
 }
 
-Value getInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
-                          ArrayRef<Value> dynSizes) {
-  return b.create<bufferization::AllocTensorOp>(loc, type, dynSizes,
-                                                /*copy=*/Value(),
-                                                /*memory_space=*/IntegerAttr());
-}
-
 }  // namespace
 
 SmallVector<StringRef, 3> getParallelAndReductionIterators(
@@ -56,6 +49,13 @@ SmallVector<StringRef, 3> getParallelAndReductionIterators(
 
 SmallVector<StringRef, 3> getNParallelLoopsAttrs(unsigned nParallelLoops) {
   return getParallelAndReductionIterators(nParallelLoops, 0);
+}
+
+Value getInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
+                          ArrayRef<Value> dynSizes) {
+  return b.create<bufferization::AllocTensorOp>(loc, type, dynSizes,
+                                                /*copy=*/Value(),
+                                                /*memory_space=*/IntegerAttr());
 }
 
 Value getInitTensor(OpBuilder& b, Location loc, ShapedType type,
@@ -97,7 +97,8 @@ Value preSparsify(Operation* op, llvm::SmallVector<Value, 2>& values, Type rtp,
       (isa<mhlo::AbsOp>(op) && hasIntegralShapeType(op)) ||
       isa<chlo::AsinOp>(op) || isa<chlo::AsinhOp>(op) ||
       isa<chlo::AtanOp>(op) || isa<chlo::AtanhOp>(op) ||
-      isa<chlo::BesselI1eOp>(op)) {
+      isa<chlo::BesselI1eOp>(op) || isa<chlo::SinhOp>(op) ||
+      isa<chlo::TanOp>(op)) {
     if (!sparse_tensor::getSparseTensorEncoding(op->getResult(0).getType()) &&
         !sparse_tensor::getSparseTensorEncoding(op->getOperand(0).getType()))
       return Value();

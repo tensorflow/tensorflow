@@ -71,6 +71,10 @@ enum ActivationMode {
   kTanh = 5;
   // Like ReluX; but passes all values in the range [-X,X].
   kBandPass = 6;
+  // Exponential linear activation: f(x) = x < 0 ? e^x - 1 : x
+  kElu = 7;
+  // Leaky Rectified linear activation: f(x) = x < 0 ? alpha * x : x
+  kLeakyRelu = 8;
 }
 
 // Describe the math definition for the conv op. The popular behavior is

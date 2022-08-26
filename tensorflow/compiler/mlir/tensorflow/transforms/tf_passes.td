@@ -2189,3 +2189,44 @@ def DeviceIndexSelectorPass : Pass<"tf-device-index-selector", "mlir::func::Func
   let summary = "Fold tf.DeviceIndex to constant.";
   let constructor = "TF::CreateDeviceIndexSelectorPass()";
 }
+
+def OrderByDialectPass : Pass<"tf-order-by-dialect", "mlir::func::FuncOp"> {
+  let summary = "Reorders ops so ops of the same dialect are next to each other.";
+  let description = [{
+      Performs a reordering of ops so that
+        (a) ops of the same dialect are next to each other
+        (b) order within a dialect is preserved
+      .
+      For example, this would transform
+        %a = "x.f"()
+        %b = "y.f"(%a)
+        %c = "x.f"(%a)
+      to
+        %a = "x.f"()
+        %c = "x.f"(%a)
+        %b = "y.f"(%a)
+      so that the two "x" dialect instructions are next to each other.
+  }];
+  let constructor = "TF::CreateOrderByDialectPass()";
+}
+
+def GroupByDialectPass : Pass<"tf-group-by-dialect", "mlir::func::FuncOp"> {
+  let summary = "Groups ops into functions that only contain one dialect.";
+  let description = [{
+      Factors operations into subroutines such that all functions only
+      contain a single dialect. Which of the dialects are allowed in the
+      "top" function is configurable.
+
+      For example, the code
+        x.a()
+        x.b()
+        %c = y.c()
+        x.d(%c)
+      would be transformed into something like
+        call @x_1()
+        %c = call @y_1()
+        call @x_2(%c)
+      with @x_1, @x_2 and @y_1 filled in.
+  }];
+  let constructor = "TF::CreateGroupByDialectPass()";
+}

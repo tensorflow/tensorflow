@@ -133,7 +133,7 @@ def dummy_tf_decorator(method):
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    super(FunctionTest, self).setUp()
+    super().setUp()
     cpus = config.list_physical_devices('CPU')
     # Set 4 virtual CPUs
     config.set_logical_device_configuration(cpus[0], [
@@ -446,7 +446,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # instance method bounding.
     unknown_dim = [False]
 
-    class Foo(object):
+    class Foo:
 
       @def_function.function(reduce_retracing=True)
       def func(self, a):
@@ -1387,7 +1387,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testGraphModeCaptureVariable(self):
     with context.graph_mode(), self.cached_session():
 
-      class HasAVar(object):
+      class HasAVar:
 
         def __init__(self):
           self.v = resource_variable_ops.ResourceVariable(1.0)
@@ -1948,7 +1948,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testCacheObjectHashCollisions(self):
 
-    class Foo(object):
+    class Foo:
 
       def __hash__(self):
         return 42
@@ -2596,7 +2596,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     integer = constant_op.constant(2, dtypes.int64)
 
-    class Foo(object):
+    class Foo:
 
       def one(self, tensor):
         return tensor
@@ -2615,7 +2615,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     integer = constant_op.constant(2, dtypes.int64)
 
-    class Foo(object):
+    class Foo:
 
       @def_function.function
       def func(self, other=integer):
@@ -3091,7 +3091,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.skipTest('attr module is unavailable.')
 
     @attr.s
-    class TestClass(object):
+    class TestClass:
       a = attr.ib()
       b = attr.ib()
 
@@ -3223,7 +3223,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testDecoratedMethodInspect(self):
 
-    class DefunnedMiniModel(object):
+    class DefunnedMiniModel:
 
       @function.defun
       def call(self, inputs, training=True):
@@ -4666,7 +4666,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testMissingArgsTfFunctionedMethod(self):
 
-    class A(object):
+    class A:
 
       def func(self, position_arg1, position_arg2):
         return position_arg1, position_arg2
@@ -4692,7 +4692,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testMissingArgsTfFunctionedObject(self):
 
-    class A(object):
+    class A:
 
       def __call__(self, position_arg1, position_arg2):
         return position_arg1, position_arg2

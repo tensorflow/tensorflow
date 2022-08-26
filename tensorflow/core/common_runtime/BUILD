@@ -1601,10 +1601,27 @@ cc_library(
     hdrs = ["replicate_per_replica_nodes.h"],
     copts = tf_copts(),
     deps = [
+        ":optimize_cross_host_control_deps",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "optimize_cross_host_control_deps",
+    srcs = ["optimize_cross_host_control_deps.cc"],
+    hdrs = ["optimize_cross_host_control_deps.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2559,6 +2576,21 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "optimize_cross_host_control_deps_test",
+    size = "small",
+    srcs = ["optimize_cross_host_control_deps_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":optimize_cross_host_control_deps",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "partitioning_utils_test",
     size = "small",
     srcs = ["partitioning_utils_test.cc"],
@@ -2750,6 +2782,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:functional_ops",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:random_ops",
+        "//tensorflow/core/kernels:relu_op",
         "//tensorflow/core/kernels:state",
     ],
 )

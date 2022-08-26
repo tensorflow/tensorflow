@@ -139,8 +139,8 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
   ChannelHandleAttr channel_handle = ConvertChannel(builder, channel_id, mode);
   Location loc = op->getLoc();
   Type element_type = getElementTypeOrSelf(input.getType());
-  auto all_reduce = builder.create<AllReduceOp>(loc, result_type, input,
-                                                replica_groups, channel_handle);
+  auto all_reduce = builder.create<AllReduceOp>(
+      loc, result_type, input, replica_groups, channel_handle, nullptr);
   if (merge_op == "Add") {
     BuildReduceBody<AddOp>(element_type, &all_reduce.computation(), &builder);
   } else if (merge_op == "Mul") {

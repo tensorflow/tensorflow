@@ -1642,7 +1642,11 @@ bool RegisterNumpyDtype(PyObject* numpy) {
   arr_funcs.argmax = NPyCustomFloat_ArgMaxFunc<T>;
   arr_funcs.argmin = NPyCustomFloat_ArgMinFunc<T>;
 
+#if PY_VERSION_HEX < 0x030900A4 && !defined(Py_SET_TYPE)
   Py_TYPE(&CustomFloatTypeDescriptor<T>::npy_descr) = &PyArrayDescr_Type;
+#else
+  Py_SET_TYPE(&CustomFloatTypeDescriptor<T>::npy_descr, &PyArrayDescr_Type);
+#endif
   TypeDescriptor<T>::npy_type =
       PyArray_RegisterDataType(&CustomFloatTypeDescriptor<T>::npy_descr);
   TypeDescriptor<T>::type_ptr = &TypeDescriptor<T>::type;

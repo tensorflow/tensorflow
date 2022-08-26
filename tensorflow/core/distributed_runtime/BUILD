@@ -813,6 +813,7 @@ cc_library(
         ":message_wrappers",
         "//tensorflow/core:lib",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

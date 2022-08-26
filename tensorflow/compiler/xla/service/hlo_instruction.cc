@@ -1788,9 +1788,9 @@ HloInstruction::CreateDynamicReshape(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind,
     absl::Span<HloInstruction* const> operands,
-    HloComputation* fusion_computation) {
+    HloComputation* fusion_computation, absl::string_view prefix) {
   return std::make_unique<HloFusionInstruction>(shape, fusion_kind, operands,
-                                                fusion_computation);
+                                                fusion_computation, prefix);
 }
 
 void HloInstruction::set_single_sharding(const HloSharding& sharding) {
@@ -3236,8 +3236,10 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
                opcode() == HloOpcode::kSort) {
-      extra.push_back(
-          StrCat("to_apply=", PrintNameInternal(to_apply()->name(), options)));
+      if (!called_computations().empty()) {
+        extra.push_back(StrCat("to_apply=",
+                               PrintNameInternal(to_apply()->name(), options)));
+      }
     } else if (opcode() == HloOpcode::kCustomCall) {
       if (!called_computations().empty()) {
         extra.push_back(StrCat(
@@ -3305,8 +3307,10 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
-        extra.push_back(
-            StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+        if (!called_computations().empty()) {
+          extra.push_back(
+              StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+        }
         break;
       default:
         if (!called_computations().empty()) {

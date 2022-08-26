@@ -74,7 +74,7 @@ bool isClusterable(Operation *op) {
   if (op->getNumOperands() == 0) return false;
   return (op->hasTrait<mlir::OpTrait::Elementwise>() &&
           op->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>()) ||
-         op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>();
+         op->hasTrait<hlo::OpTrait::BroadcastingElementwise>();
 }
 
 struct RankSpecializationClusterPattern : public RewritePattern {

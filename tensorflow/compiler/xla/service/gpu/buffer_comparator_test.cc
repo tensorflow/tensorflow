@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
 namespace gpu {

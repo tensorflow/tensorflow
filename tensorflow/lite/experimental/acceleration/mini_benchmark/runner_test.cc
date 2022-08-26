@@ -24,6 +24,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #ifdef __ANDROID__
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_executable.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_unit_test_entry_points.h"
@@ -40,6 +42,8 @@ namespace acceleration {
 namespace {
 
 typedef int (*EntryPoint)(int, char**);
+using flatbuffers::FlatBufferBuilder;
+
 struct RunnerTest : ::testing::Test {
  protected:
   void* LoadEntryPointModule() {
@@ -81,6 +85,14 @@ struct RunnerTest : ::testing::Test {
                                              function);
     ASSERT_EQ(runner->Init(), kMinibenchmarkSuccess);
   }
+
+  FlatBufferBuilder CreateTestModel() {
+    ModelT model;
+    model.description = "test";
+    flatbuffers::FlatBufferBuilder fbb;
+    fbb.Finish(CreateModel(fbb, &model));
+    return fbb;
+  }
   int exitcode = 0;
   int signal = 0;
   std::string output;
@@ -111,7 +123,7 @@ TEST_F(RunnerTest, LoadSymbol) {
 
 TEST_F(RunnerTest, JustReturnZero) {
   ASSERT_NO_FATAL_FAILURE(Init("JustReturnZero"));
-  EXPECT_EQ(runner->Run({}, &output, &exitcode, &signal),
+  EXPECT_EQ(runner->Run(nullptr, {}, &output, &exitcode, &signal),
             kMinibenchmarkCommandFailed);
   EXPECT_EQ(exitcode, 0);
   EXPECT_EQ(signal, 0);
@@ -120,7 +132,7 @@ TEST_F(RunnerTest, JustReturnZero) {
 
 TEST_F(RunnerTest, ReturnOne) {
   ASSERT_NO_FATAL_FAILURE(Init("ReturnOne"));
-  EXPECT_EQ(runner->Run({}, &output, &exitcode, &signal),
+  EXPECT_EQ(runner->Run(nullptr, {}, &output, &exitcode, &signal),
             kMinibenchmarkCommandFailed);
   EXPECT_EQ(exitcode, 1);
   EXPECT_EQ(signal, 0);
@@ -129,17 +141,24 @@ TEST_F(RunnerTest, ReturnOne) {
 
 TEST_F(RunnerTest, ReturnSuccess) {
   ASSERT_NO_FATAL_FAILURE(Init("ReturnSuccess"));
-  EXPECT_EQ(runner->Run({}, &output, &exitcode, &signal),
+  EXPECT_EQ(runner->Run(nullptr, {}, &output, &exitcode, &signal),
             kMinibenchmarkSuccess);
   EXPECT_EQ(exitcode, kMinibenchmarkSuccess);
   EXPECT_EQ(signal, 0);
   EXPECT_EQ(output, "");
 }
 
+TEST_F(RunnerTest, NullFunctionPointer) {
+  ProcessRunner runner("foo", "bar", nullptr);
+  EXPECT_EQ(runner.Init(), kMinibenchmarkPreconditionNotMet);
+  EXPECT_EQ(runner.Run(nullptr, {}, &output, &exitcode, &signal),
+            kMinibenchmarkPreconditionNotMet);
+}
+
 #ifdef __ANDROID__
 TEST_F(RunnerTest, SigKill) {
   ASSERT_NO_FATAL_FAILURE(Init("SigKill"));
-  EXPECT_EQ(runner->Run({}, &output, &exitcode, &signal),
+  EXPECT_EQ(runner->Run(nullptr, {}, &output, &exitcode, &signal),
             kMinibenchmarkCommandFailed);
   EXPECT_EQ(exitcode, 0);
   EXPECT_EQ(signal, SIGKILL);
@@ -148,7 +167,7 @@ TEST_F(RunnerTest, SigKill) {
 
 TEST_F(RunnerTest, WriteOk) {
   ASSERT_NO_FATAL_FAILURE(Init("WriteOk"));
-  EXPECT_EQ(runner->Run({}, &output, &exitcode, &signal),
+  EXPECT_EQ(runner->Run(nullptr, {}, &output, &exitcode, &signal),
             kMinibenchmarkSuccess);
   EXPECT_EQ(exitcode, kMinibenchmarkSuccess);
   EXPECT_EQ(signal, 0);
@@ -157,7 +176,7 @@ TEST_F(RunnerTest, WriteOk) {
 
 TEST_F(RunnerTest, Write10kChars) {
   ASSERT_NO_FATAL_FAILURE(Init("Write10kChars"));
-  EXPECT_EQ(runner->Run({}, &output, &exitcode, &signal),
+  EXPECT_EQ(runner->Run(nullptr, {}, &output, &exitcode, &signal),
             kMinibenchmarkSuccess);
   EXPECT_EQ(exitcode, kMinibenchmarkSuccess);
   EXPECT_EQ(signal, 0);
@@ -166,31 +185,44 @@ TEST_F(RunnerTest, Write10kChars) {
 
 TEST_F(RunnerTest, ArgsArePassed) {
   ASSERT_NO_FATAL_FAILURE(Init("WriteArgs"));
-  EXPECT_EQ(runner->Run({"foo", "bar", "baz"}, &output, &exitcode, &signal),
-            kMinibenchmarkSuccess);
+  EXPECT_EQ(
+      runner->Run(nullptr, {"foo", "bar", "baz"}, &output, &exitcode, &signal),
+      kMinibenchmarkSuccess);
   EXPECT_EQ(exitcode, kMinibenchmarkSuccess);
   EXPECT_EQ(signal, 0);
   EXPECT_EQ(output, "foo\nbar\nbaz\n");
 }
-#endif  // __ANDROID__
 
-TEST_F(RunnerTest, NullFunctionPointer) {
-  ProcessRunner runner("foo", "bar", nullptr);
-  EXPECT_EQ(runner.Init(), kMinibenchmarkPreconditionNotMet);
-  EXPECT_EQ(runner.Run({}, &output, &exitcode, &signal),
-            kMinibenchmarkPreconditionNotMet);
-}
-
-#ifdef __ANDROID__
 TEST_F(RunnerTest, SymbolLookupFailed) {
   ProcessRunner runner(::testing::TempDir(), "FunctionInBinary",
                        FunctionInBinary);
   EXPECT_EQ(runner.Init(), kMinibenchmarkSuccess);
-  EXPECT_EQ(runner.Run({}, &output, &exitcode, &signal),
+  EXPECT_EQ(runner.Run(nullptr, {}, &output, &exitcode, &signal),
             kMinibenchmarkCommandFailed)
       << output;
   EXPECT_EQ(exitcode, kMinibenchmarkRunnerMainSymbolLookupFailed) << output;
 }
+
+TEST_F(RunnerTest, ReadModelFromPipe) {
+  ASSERT_NO_FATAL_FAILURE(Init("ReadFromPipe"));
+  FlatBufferBuilder model = CreateTestModel();
+  EXPECT_EQ(runner->Run(&model, {}, &output, &exitcode, &signal),
+            kMinibenchmarkSuccess);
+  EXPECT_EQ(exitcode, kMinibenchmarkSuccess);
+  EXPECT_EQ(signal, 0);
+  EXPECT_EQ(output,
+            std::string((char*)model.GetBufferPointer(), model.GetSize()));
+}
+
+#else  // __ANDROID__
+
+TEST_F(RunnerTest, ReadModelFromPipeNonAndroid) {
+  ASSERT_NO_FATAL_FAILURE(Init("ReadFromPipeInProcess"));
+  FlatBufferBuilder model = CreateTestModel();
+  EXPECT_EQ(runner->Run(&model, {}, &output, &exitcode, &signal),
+            kMinibenchmarkSuccess);
+}
+
 #endif  // __ANDROID__
 #endif  // !__aarch64__
 

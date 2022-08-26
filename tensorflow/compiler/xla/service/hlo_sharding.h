@@ -26,11 +26,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
@@ -336,7 +333,7 @@ class HloSharding {
     return -1;
   }
 
-  // Returns the manual subgroiup dim, or -1 if it doesn't exist.
+  // Returns the manual subgroup dim, or -1 if it doesn't exist.
   int64_t SubgroupManualDim() const {
     auto it = absl::c_find(subgroup_types_, OpSharding::MANUAL);
     if (it != subgroup_types_.end()) {

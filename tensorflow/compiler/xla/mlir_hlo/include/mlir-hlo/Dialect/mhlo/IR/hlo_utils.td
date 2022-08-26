@@ -15,10 +15,11 @@ limitations under the License.
 
 // This is the utils file for the HLO dialect.
 
-#ifndef HLO_UTILS
-#define HLO_UTILS
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_UTILS
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_UTILS
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/PatternBase.td"
 
 def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
 
@@ -64,4 +65,4 @@ def NonComplexElementType : Type<
   CPred<"!$_self.cast<ShapedType>().getElementType().isa<ComplexType>()">,
   "Non-complex element type">;
 
-#endif // HLO_UTILS
+#endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_UTILS

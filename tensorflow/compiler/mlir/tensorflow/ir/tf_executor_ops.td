@@ -398,8 +398,8 @@ def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
   let arguments = (ins
     AnyType:$data,
     StrAttr:$frame_name,
-    DefaultValuedAttr<BoolAttr, "false">:$is_constant,
-    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_constant,
+    DefaultValuedOptionalAttr<I64Attr, "10">:$parallel_iterations,
     // Optional extra control inputs.
     Variadic<TfeControlType>:$controlInputs
   );

@@ -354,9 +354,7 @@ ParseResult ReplicateOp::parse(OpAsmParser& parser, OperationState& result) {
   if (!result.attributes.get(kOperandSegmentSizesAttr)) {
     int32_t num_replicated_inputs = replicated_inputs.size() * n;
     int32_t num_packed_inputs = packed_inputs.size();
-    auto attr = DenseIntElementsAttr::get(
-        VectorType::get({2}, parser.getBuilder().getI32Type()),
-        {num_replicated_inputs, num_packed_inputs});
+    auto attr = parser.getBuilder().getDenseI32ArrayAttr({num_replicated_inputs, num_packed_inputs});
     result.addAttribute(kOperandSegmentSizesAttr, attr);
   }
 
@@ -388,7 +386,7 @@ void ReplicateOp::print(OpAsmPrinter& p) {
   //     %b as %block_arg1: type
   const int32_t n = this->n();
   const int32_t num_replicated_inputs =
-      (*operand_segment_sizes().value_begin<APInt>()).getSExtValue();
+      operand_segment_sizes()[0];
   const int32_t num_replicated_block_args = num_replicated_inputs / n;
 
   if (getNumOperands()) {
@@ -466,8 +464,7 @@ void BuildReplicateOp(
   int32_t num_replicated_inputs = replicated_inputs.size() * n;
   int32_t num_packed_inputs = packed_inputs.size();
   auto operand_segment_sizes =
-      DenseIntElementsAttr::get(VectorType::get({2}, builder->getI32Type()),
-                                {num_replicated_inputs, num_packed_inputs});
+      builder->getDenseI32ArrayAttr({num_replicated_inputs, num_packed_inputs});
   state->addAttribute(kOperandSegmentSizesAttr, operand_segment_sizes);
 
   for (const auto& output_type : replica_output_types)
@@ -506,9 +503,9 @@ LogicalResult ReplicateOp::verify() {
 
   auto operand_segment_sizes = op.operand_segment_sizes();
   const int32_t num_replicated_inputs =
-      operand_segment_sizes.getValues<APInt>()[0].getSExtValue();
+      operand_segment_sizes[0];
   const int32_t num_packed_inputs =
-      operand_segment_sizes.getValues<APInt>()[1].getSExtValue();
+      operand_segment_sizes[1];
 
   if (num_replicated_inputs % n != 0)
     return op.emitOpError()

@@ -61,7 +61,7 @@ def BufferPacking : Pass<"buffer-packing", "func::FuncOp"> {
   ];
 }
 
-def CollapseParallelLoopsTo1DPass : Pass<"collapse-parallel-loops-to-1d", "func::FuncOp"> {
+def CollapseParallelLoopsTo1DPass : Pass<"collapse-parallel-loops-to-1d"> {
   let summary = "Collapses multidimensional loops.";
   let description = [{ The pass converts a multidimensional `scf.parallel` loop
   into a 1D `scf.parallel` and index computation from a 1D to multidimensional
@@ -153,5 +153,23 @@ def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
   let constructor = "hlo::createGenericHostToLLVMPass()";
   let options = [];
 }
+
+def UnbufferizePass : Pass<"unbufferize", "mlir::func::FuncOp"> {
+  let summary = "Unbufferize partially bufferized functions.";
+  let description = [{
+    Removes bufferization.to_tensor and memref.tensor_store ops that are the 
+    result of XLA bufferizing during HLO to MHLO transformation.
+  }];
+  let constructor = "hlo::createUnbufferizePass()";
+}
+
+def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
+  let summary = "Hoist memref allocations to function arguments.";
+  let description = [{
+    Replaces memref.alloc uses with a new argument of the parent function.
+  }];
+  let constructor = "hlo::createAllocToArgPass()";
+}
+
 
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

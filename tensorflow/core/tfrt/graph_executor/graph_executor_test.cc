@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,17 +23,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
-#include "tensorflow/cc/ops/functional_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
+#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 
 namespace tensorflow {
 namespace tfrt_stub {

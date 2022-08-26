@@ -7,9 +7,15 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 load("@rules_cuda//cuda:dependencies.bzl", "rules_cuda_dependencies")
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 
-def workspace():
+# buildifier: disable=unnamed-macro
+def workspace(with_rules_cc = True):
+    """Loads a set of TensorFlow dependencies. To be used in a WORKSPACE file.
+
+    Args:
+      with_rules_cc: whether to load and patch rules_cc repository.
+    """
     native.register_toolchains("@local_config_python//:py_toolchain")
-    rules_cuda_dependencies()
+    rules_cuda_dependencies(with_rules_cc)
     rules_pkg_dependencies()
 
     closure_repositories()

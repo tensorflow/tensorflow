@@ -144,13 +144,13 @@ cc_library(
     srcs = ["mlir_graph_optimization_pass.cc"],
     hdrs = ["mlir_graph_optimization_pass.h"],
     deps = [
-        "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -233,31 +233,17 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:translate_tf_dialect_op",
         "//tensorflow/compiler/mlir/xla:translate_cl_registration",
         "//tensorflow/compiler/mlir/xla:xla_mlir_translate",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
-        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
-    ],
-)
-
-cc_library(
-    name = "mlir_bridge_rollout_policy",
-    srcs = ["mlir_bridge_rollout_policy.cc"],
-    hdrs = ["mlir_bridge_rollout_policy.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/jit:flags",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/types:optional",
-        "@llvm-project//mlir:IR",
     ],
 )
 

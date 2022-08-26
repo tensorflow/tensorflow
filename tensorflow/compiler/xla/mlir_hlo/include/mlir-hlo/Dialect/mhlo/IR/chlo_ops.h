@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS_H
 #define MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS_H
 
+#include "dialect/Base.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/utils/hlo_utils.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -31,20 +33,25 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
+// Include order below matters.
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops_enums.h.inc"
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops_attrs.h.inc"
+
 namespace mlir {
 namespace chlo {
 
 class ChloDialect : public Dialect {
-  void initialize();
-
  public:
-  explicit ChloDialect(MLIRContext* context)
-      : Dialect(getDialectNamespace(), context, TypeID::get<ChloDialect>()) {
-    initialize();
-  }
+  explicit ChloDialect(MLIRContext* context);
+  static StringRef getDialectNamespace() { return "chlo"; }
+
   Operation* materializeConstant(OpBuilder& builder, Attribute value, Type type,
                                  Location loc) override;
-  static StringRef getDialectNamespace() { return "chlo"; }
+
+  Attribute parseAttribute(DialectAsmParser& parser, Type type) const override;
+
+  void printAttribute(Attribute attr, DialectAsmPrinter& os) const override;
 };
 
 }  // namespace chlo
@@ -72,22 +79,11 @@ template <typename T>
 static Value getConstantLike(OpBuilder& b, Location loc, T constant,
                              Value val) {
   Type ty = getElementTypeOrSelf(val.getType());
-  if (auto complexTy = ty.dyn_cast<ComplexType>()) {
-    // TODO(b/190374484): This code will only work for static shapes.
-    // The proper way to support these constants is through chlo.constant_like
-    // which then legalizes to code which works well for both static and dynamic
-    // shapes of val.
-    // The problem with that approach for complex numbers is that constant_like
-    // doesn't work for complex numbers - it carries constants via attributes,
-    // and there's no built-in attribute that carries complex numbers.
-    return b.create<mhlo::ConstantOp>(
-        loc,
-        hlo::getSplat(&b, val.getType().cast<RankedTensorType>(), constant));
-  }
-
   auto getAttr = [&]() -> Attribute {
     if (ty.isa<IntegerType>()) return b.getIntegerAttr(ty, constant);
     if (ty.isa<FloatType>()) return b.getFloatAttr(ty, constant);
+    if (auto complexTy = ty.dyn_cast<ComplexType>())
+      return complex::NumberAttr::get(complexTy, constant, 0);
     llvm_unreachable("unhandled element type");
   };
   return b.create<ConstantLikeOp>(loc, getAttr(), val);

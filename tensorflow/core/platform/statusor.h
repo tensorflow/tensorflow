@@ -68,7 +68,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_STATUSOR_H_
 #define TENSORFLOW_CORE_PLATFORM_STATUSOR_H_
 
-#include "absl/base/attributes.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor_internals.h"
@@ -177,7 +176,7 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
 
   // StatusOr<T>::value()
   //
-  // absl::StatusOr compatible versions of ValueOrDie and ConsumeValueOrDie.
+  // absl::StatusOr compatible versions of ValueOrDie.
   const T& value() const&;
   T& value() &;
   const T&& value() const&&;
@@ -231,11 +230,6 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   // value.
   const T* operator->() const;
   T* operator->();
-
-  // DEPRECATED: Prefer value().
-  T ABSL_DEPRECATED("Use `value()` instead.") ConsumeValueOrDie() {
-    return std::move(ValueOrDie());
-  }
 
   // Ignores any errors. This method does nothing except potentially suppress
   // complaints from any tools that are checking that errors are not dropped on

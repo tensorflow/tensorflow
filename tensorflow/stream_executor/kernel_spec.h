@@ -13,36 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Kernel-loader specs are structures that describe how to load a data-parallel
-// kernel on a given platform for subsequent launching. Headers that instantiate
-// these data structures will typically be auto-generated. However, users can
-// also instantiate them by hand.
-//
-// A kernel with the same exact functionality and type signature may be
-// implemented on several different platforms. Typical usage is to create a
-// singleton that describes how to load a kernel on the various supported
-// platforms:
-//
-//  static const MultiKernelLoaderSpec &SaxpySpec() {
-//    static auto *mkls =
-//        (new MultiKernelLoaderSpec{4 /* = arity */})
-//            ->AddCudaPtxOnDisk(ptx_file_path, ptx_kernelname)
-//            ->AddOpenCLTextOnDisk(opencl_text_file_path, ocl_kernelname);
-//    };
-//
-//    return *mkls;
-//  }
-//
-// This lazily instantiates an object that describes how to load CUDA PTX
-// present on disk that implements saxpy for the for the CUDA platform, or
-// OpenCL text present on disk that implements saxpy for an OpenCL-based
-// platform. The CudaPtxOnDisk and OpenCLTextOnDisk objects are subtypes of
-// KernelLoaderSpec -- KernelLoaderSpec describes how to load a kernel for
-// subsequent launching on a single platform.
-//
-// For the loader functionality that accepts these KernelLoaderSpecs in order
-// to grab the kernel appropriately, see StreamExecutor::GetKernel().
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_KERNEL_SPEC_H_
 #define TENSORFLOW_STREAM_EXECUTOR_KERNEL_SPEC_H_
 

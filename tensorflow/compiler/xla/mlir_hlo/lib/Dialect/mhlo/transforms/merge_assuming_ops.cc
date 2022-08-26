@@ -196,7 +196,7 @@ struct MoveElementwiseOpsUpIntoAssumingOpPattern : public RewritePattern {
     // Apply to all elementwise and broadcasting elementwise operations with no
     // side effects.
     if (!op->hasTrait<mlir::OpTrait::Elementwise>() &&
-        !op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>()) {
+        !op->hasTrait<hlo::OpTrait::BroadcastingElementwise>()) {
       return failure();
     }
     if (!MemoryEffectOpInterface::hasNoEffect(op)) return failure();
@@ -244,7 +244,7 @@ struct MoveElementwiseOpsDownIntoAssumingOpPattern : public RewritePattern {
     // Apply to all elementwise and broadcasting elementwise operations with no
     // side effects.
     if (!op->hasTrait<mlir::OpTrait::Elementwise>() &&
-        !op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>()) {
+        !op->hasTrait<hlo::OpTrait::BroadcastingElementwise>()) {
       return failure();
     }
     if (!MemoryEffectOpInterface::hasNoEffect(op)) return failure();

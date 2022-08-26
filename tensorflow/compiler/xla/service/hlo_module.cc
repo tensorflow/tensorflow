@@ -338,6 +338,8 @@ HloModuleProto HloModule::ToProto() const {
     }
   }
 
+  proto.set_use_auto_spmd_partitioning(use_auto_spmd_partitioning_);
+
   for (const HloModuleProto::ProfileInfo& profile_info : profile_info_list_) {
     HloModuleProto::ProfileInfo& profile_info_proto =
         *proto.mutable_profile_info()->Add();
@@ -501,6 +503,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   if (!param_shardings.empty()) {
     module->set_spmd_parameters_shardings(param_shardings);
   }
+
+  module->set_use_auto_spmd_partitioning(proto.use_auto_spmd_partitioning());
 
   for (const auto& profile_info : proto.profile_info()) {
     module->add_profile_info(profile_info);

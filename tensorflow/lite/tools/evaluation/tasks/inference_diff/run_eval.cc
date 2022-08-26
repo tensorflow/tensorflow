@@ -71,7 +71,7 @@ std::vector<Flag> InferenceDiff::GetFlags() {
       tflite::Flag::CreateFlag(
           kDelegateFlag, &delegate_,
           "Delegate to use for test inference, if available. "
-          "Must be one of {'nnapi', 'gpu', 'hexagon', 'xnnpack'}"),
+          "Must be one of {'nnapi', 'gpu', 'hexagon', 'xnnpack', 'coreml'}"),
   };
 
   return flag_list;

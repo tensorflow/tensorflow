@@ -77,6 +77,12 @@ struct MasterEnv {
   // REQUIRES: !local_devices.empty().
   std::vector<Device*> local_devices;
 
+  // In large scaled distributed training, many singleton components (e.g.
+  // Rendezvous) can becomes the bottleneck of the system. This field allows
+  // us to shard the single components. This number will scale up with number
+  // of tasks in this cluster. It is always greater than 1.
+  int experimental_num_shards = 1;
+
   // Factory for creating master sessions, given session options and a
   // vector of devices.
   //

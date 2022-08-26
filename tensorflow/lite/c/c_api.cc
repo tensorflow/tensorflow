@@ -77,6 +77,19 @@ void TfLiteRegistrationExternalDelete(TfLiteRegistrationExternal* reg) {
   delete reg;
 }
 
+void TfLiteRegistrationExternalSetInit(
+    TfLiteRegistrationExternal* registration,
+    void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
+                  size_t length)) {
+  registration->init = init;
+}
+
+void TfLiteRegistrationExternalSetFree(
+    TfLiteRegistrationExternal* registration,
+    void (*free)(TfLiteOpaqueContext* context, void* data)) {
+  registration->free = free;
+}
+
 void TfLiteRegistrationExternalSetPrepare(
     TfLiteRegistrationExternal* registration,
     TfLiteStatus (*prepare)(TfLiteOpaqueContext* context,

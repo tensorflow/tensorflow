@@ -195,7 +195,9 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
       ResourceHandle& handle, Node* variable, const TPUMetadata& tpu_metadata)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status ShardInputsWithXlaSharding(Graph* graph, int num_cores_per_replica,
+  Status ShardInputsWithXlaSharding(Graph* graph,
+                                    const std::string& cluster_name,
+                                    int num_cores_per_replica,
                                     OpKernelContext* ctx)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 

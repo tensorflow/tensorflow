@@ -22,6 +22,7 @@ limitations under the License.
 #include <numeric>
 #include <string>
 
+#include "absl/strings/escaping.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Threading.h"
@@ -126,8 +128,20 @@ Operation *getDefiningBroadcastArgsOp(Value operand) {
   }
   return parent_of_defining_op;
 }
-
 }  // namespace
+
+// Returns true when the given type lists contain a single element of shaped
+// type with compatible shapes (unranked shape is compatible with any ranked
+// shape, ranked shapes are compatible if their respective dimensions are
+// compatible, dynamic dimensions are compatible with any size, static
+// dimensions must be equal to be compatible) and identical element types.
+bool VerifyCompatibleShapesSameElementType(TypeRange lhs, TypeRange rhs) {
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  auto lhsShaped = lhs[0].cast<ShapedType>();
+  auto rhsShaped = rhs[0].cast<ShapedType>();
+  return lhsShaped.getElementType() == rhsShaped.getElementType();
+}
 
 // Returns true when the given operand arguments have the same shape or
 // broadcastable shape within the given rank. If any given shapes are
@@ -354,7 +368,8 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
   // Allows I32, I64, QI16 and F32 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to four dimension or have same shapes.
   if (IsI32Type(element_type) || IsI64Type(element_type) ||
-      IsQI16Type(element_type) || element_type.isF32()) {
+      IsQI16Type(element_type) || element_type.isa<ComplexType>() ||
+      element_type.isF32()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -833,8 +848,9 @@ DenseElementsAttr ConstFoldConcatenateOpDense(ArrayRef<Attribute> operands,
   int64_t out = 0;
   for (int64_t outer = 0; outer < outer_size; ++outer) {
     for (auto op : operands) {
+      auto typed_attr = op.cast<TypedAttr>();
       const int64_t dim_size =
-          op.getType().cast<RankedTensorType>().getDimSize(axis);
+          typed_attr.getType().cast<RankedTensorType>().getDimSize(axis);
       const int64_t inner_size = dim_size * base_inner_size;
 
       auto input_attrs = op.cast<DenseElementsAttr>().getValues<Attribute>();
@@ -908,16 +924,10 @@ OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
 // CustomOp
 //===----------------------------------------------------------------------===//
 
+// TODO(b/241745316): Confirm that this is always valid
 mlir::LogicalResult CustomOp::verify() {
-  CustomOp op = *this;
-  OpaqueElementsAttr opaque_attr =
-      op.custom_option().cast<OpaqueElementsAttr>();
-  if (!opaque_attr.getType().hasStaticShape())
-    return op.emitOpError("custom_option should have a static shape.");
-  const int attribute_size = opaque_attr.getValue().size();
-  if (attribute_size != opaque_attr.getType().cast<ShapedType>().getDimSize(0))
-    return op.emitOpError(
-        "custom_option should have the same length of content with shape.");
+  // Currently, this is always valid as it is a wrapper around a StringRef of 0
+  // or more characters.
   return success();
 }
 
@@ -3944,6 +3954,33 @@ ParseResult ControlNodeOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 //===----------------------------------------------------------------------===//
+// ConstBytesAttr
+//===----------------------------------------------------------------------===//
+
+Attribute ConstBytesAttr::parse(AsmParser &parser, Type type) {
+  if (parser.parseColon()) {
+    return nullptr;
+  }
+
+  std::string data;
+  if (parser.parseString(&data)) {
+    return nullptr;
+  }
+  if (data.size() < 2 || data.substr(0, 2) != "0x") {
+    parser.emitError(parser.getNameLoc(), "Hex string doesn't start with `0x`");
+    return nullptr;
+  }
+
+  std::string bytes_data = absl::HexStringToBytes(data.substr(2));
+  return ConstBytesAttr::get(parser.getBuilder().getContext(), bytes_data);
+}
+
+void ConstBytesAttr::print(mlir::AsmPrinter &printer) const {
+  StringRef bytes_str = getValue();
+  printer << " : \"0x" << llvm::toHex(bytes_str) << "\"";
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
@@ -3980,10 +4017,11 @@ namespace TFL {
 
 Operation *TFLDialect::materializeConstant(OpBuilder &builder, Attribute value,
                                            Type type, Location loc) {
-  // If this is an opaque elements attribute or the result type doesn't match
-  // the attribute type, then generate a tfl.pseudo_const.
-  if (value.isa<OpaqueElementsAttr>() ||
-      (value.isa<ElementsAttr>() && value.getType() != type))
+  // If this is a constant bytes attribute or the result type doesn't match the
+  // attribute type, then generate a tfl.pseudo_const.
+  if (value.isa<ConstBytesAttr>() ||
+      (value.isa<ElementsAttr>() &&
+       value.cast<ElementsAttr>().getType() != type))
     return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
   if (arith::ConstantOp::isBuildableWith(value, type))
     return builder.create<arith::ConstantOp>(loc, type, value);

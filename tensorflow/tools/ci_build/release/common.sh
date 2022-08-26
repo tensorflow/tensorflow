@@ -424,7 +424,7 @@ function test_xml_summary_exit {
 }
 
 # Note: The Docker-based Ubuntu TF-nightly jobs do not use this list. They use
-# https://github.com/tensorflow/build/blob/master/tf_sig_build_dockerfiles/devel.usertools/wheel_verification.bats
+# //tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/wheel_verification.bats
 # instead. See go/tf-devinfra/docker.
 # CPU size
 MAC_CPU_MAX_WHL_SIZE=240M

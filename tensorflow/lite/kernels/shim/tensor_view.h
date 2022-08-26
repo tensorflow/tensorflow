@@ -15,10 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_SHIM_TENSOR_VIEW_H_
 #define TENSORFLOW_LITE_KERNELS_SHIM_TENSOR_VIEW_H_
 
+#include <variant>
+
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tstring.h"
 
@@ -47,10 +48,10 @@ class TensorView {
  protected:
   // Union over all data types
   using DataVariantType =
-      absl::variant<absl::Span<bool>, absl::Span<uint8_t>, absl::Span<uint64_t>,
-                    absl::Span<int8_t>, absl::Span<int16_t>,
-                    absl::Span<int32_t>, absl::Span<int64_t>, absl::Span<float>,
-                    absl::Span<double>, absl::Span<::tensorflow::tstring>>;
+      std::variant<absl::Span<bool>, absl::Span<uint8_t>, absl::Span<uint64_t>,
+                   absl::Span<int8_t>, absl::Span<int16_t>, absl::Span<int32_t>,
+                   absl::Span<int64_t>, absl::Span<float>, absl::Span<double>,
+                   absl::Span<::tensorflow::tstring>>;
 
   // An interface while provides convenient row-major indexing over the
   // underlying tensor.
@@ -171,11 +172,11 @@ class TensorView {
   // Data
   template <typename DType>
   absl::Span<DType> &Data() {
-    return absl::get<absl::Span<DType>>(data_);
+    return std::get<absl::Span<DType>>(data_);
   }
   template <typename DType>
   constexpr absl::Span<DType> Data() const {
-    return absl::get<absl::Span<DType>>(data_);
+    return std::get<absl::Span<DType>>(data_);
   }
 
   // Reads the tensor given the dtype and its rank and provides an indexing

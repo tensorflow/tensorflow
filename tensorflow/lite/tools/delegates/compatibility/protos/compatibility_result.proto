@@ -1,0 +1,138 @@
+// Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto2";
+
+package tflite.proto;
+
+enum CompatibilityFailureType {
+  // Quantization scale and/or zero point are not in the supported
+  // value(s) for the accelerated operation.
+  // Applied DDC(s): NNAPI
+  DCC_UNSUPPORTED_QUANTIZATION_PARAMETERS = 0;
+  // Indicates that the caller specified an invalid argument, such as
+  // incorrect stride values.
+  // Applied DDC(s): GPU
+  DCC_INVALID_ARGUMENT = 1;
+  // Indicates an internal error has occurred and some invariants
+  // expected by the underlying system have not been satisfied, such as
+  // expecting different number of input or ouput tensors.
+  // Applied DDC(s): GPU
+  DCC_INTERNAL_ERROR = 2;
+  // Indicates the operation is not implemented or supported in this
+  // service. In this case, the operation should not be re-attempted.
+  // Applied DDC(s): GPU
+  DCC_UNIMPLEMENTED_ERROR = 3;
+  // Indicates the operation was attempted past the valid range, such
+  // as requesting an index that goes beyond the array size.
+  // Applied DDC(s): GPU
+  DCC_OUT_OF_RANGE = 4;
+  // The operator is not supported by the Delegate.
+  // Applied DDC(s): NNAPI
+  DCC_UNSUPPORTED_OPERATOR = 5;
+  // The given operation or operands are not supported on the
+  // specified runtime feature level. The min supported version is specified in
+  // the compatibility failure message.
+  // Applied DDC(s): NNAPI
+  DCC_UNSUPPORTED_VERSION = 6;
+  // The version of the operator (value of OpSignature.version)
+  // for the given op is not supported. The max supported version
+  // is specified in the compatibility failure message.
+  // For more details on each operator version see
+  // the GetBuiltinOperatorVersion function in
+  // third_party/tensorflow/lite/tools/versioning/op_version.cc.
+  // Applied DDC(s): NNAPI
+  DCC_UNSUPPORTED_OPERATOR_VERSION = 7;
+  // The given input operand type is not supported for the current
+  // combination of operator type and runtime feature level.
+  // Applied DDC(s): NNAPI
+  DCC_UNSUPPORTED_INPUT_TYPE = 8;
+  // When using NN API version 1.0 or 1.1, the condition
+  //   input_scale * filter_scale < output_scale
+  // must be true for quantized versions of the following ops:
+  // * CONV_2D
+  // * DEPTHWISE_CONV_2D
+  // * FULLY_CONNECTED (where filter actually stands for weights)
+  // The condition is relaxed and no longer required since version 1.2.
+  // Applied DDC(s): NNAPI
+  DCC_NOT_RESTRICTED_SCALE_COMPLIANT = 9;
+  // The given output operand type is not supported for the current
+  // combination of operator type and runtime feature level.
+  // Applied DDC(s): NNAPI
+  DCC_UNSUPPORTED_OUTPUT_TYPE = 10;
+  // The size of the operand tensor is too large.
+  // Applied DDC(s): NNAPI
+  DCC_UNSUPPORTED_OPERAND_SIZE = 11;
+  // The value of one of the operands or of a combination of operands
+  // is not supported. Details are provided in the compatibility failure
+  // message.
+  // Applied DDC(s): NNAPI
+  DCC_UNSUPPORTED_OPERAND_VALUE = 12;
+  // The combination of float inputs and quantized weights or filters
+  // is not supported.
+  // Applied DDC(s): NNAPI
+  DCC_UNSUPPORTED_HYBRID_OPERATOR = 13;
+  // The quantization type (for example per-channel quantization) is
+  // not supported.
+  // Applied DDC(s): NNAPI
+  DCC_UNSUPPORTED_QUANTIZATION_TYPE = 14;
+  // The accelerated version of operation requires a specific operand
+  // to be specified.
+  // Applied DDC(s): NNAPI
+  DCC_MISSING_REQUIRED_OPERAND = 15;
+  // The rank of the operand is not supported. Details in the
+  // compatibility failure message.
+  // Applied DDC(s): NNAPI
+  DCC_UNSUPPORTED_OPERAND_RANK = 16;
+  // The input tensor cannot be dynamically-sized.
+  // Applied DDC(s): NNAPI
+  DCC_INPUT_TENSOR_SHOULD_HAVE_CONSTANT_SHAPE = 17;
+  // The operator has a different number of inputs of the one or ones
+  // that are supported by NNAPI.
+  // Applied DDC(s): NNAPI
+  DCC_UNSUPPORTED_OPERATOR_VARIANT = 18;
+  // The accelerated version of the operator cannot specify an
+  // activation function.
+  // Applied DDC(s): NNAPI
+  DCC_NO_ACTIVATION_EXPECTED = 19;
+}
+
+// Indicates the type and a human readable text for an error in an operation.
+message CompatibilityFailure {
+  // Type of the errors.
+  optional CompatibilityFailureType failure_type = 1;
+  // Human readable message explaining the error.
+  optional string description = 2;
+}
+
+// Result for one operation of the given model and stores if the operation
+// is supported. If it is supported, validation_failures will not have a value.
+// If it is not supported, validation_failures will contain all the errors for
+// that operation. Also saves the subgraph index inside the model and the
+// operator index inside the subgraph.
+message OpCompatibilityResult {
+  // True if the operation is supported for the required DCC.
+  optional bool is_supported = 1;
+  // Index of the subgraph where this operation is contained.
+  optional int32 subgraph_index_in_model = 2;
+  // Index of the operator inside the subgraph.
+  optional int32 operator_index_in_subgraph = 3;
+  // Type of the errors.
+  repeated CompatibilityFailure compatibility_failures = 4;
+}
+
+message CompatibilityResult {
+  // One result for each operation.
+  repeated OpCompatibilityResult compatibility_results = 1;
+}

@@ -21,7 +21,6 @@ import time
 
 from absl import app
 from absl import flags
-import six
 
 from google.protobuf import json_format
 from google.protobuf import text_format
@@ -109,7 +108,7 @@ def main(unused_args):
     file_name = FLAGS.test_log_output_filename
   else:
     file_name = (
-        six.ensure_str(name).strip("/").translate(str.maketrans("/:", "__")) +
+        name.strip("/").translate(str.maketrans("/:", "__")) +
         time.strftime("%Y%m%d%H%M%S", time.gmtime()))
   if FLAGS.test_log_output_use_tmpdir:
     tmpdir = test.get_temp_dir()
@@ -118,8 +117,7 @@ def main(unused_args):
     output_path = os.path.join(
         os.path.abspath(FLAGS.test_log_output_dir), file_name)
   json_test_results = json_format.MessageToJson(test_results)
-  gfile.GFile(six.ensure_str(output_path) + ".json",
-              "w").write(json_test_results)
+  gfile.GFile(output_path + ".json", "w").write(json_test_results)
   tf_logging.info("Test results written to: %s" % output_path)
 
 

@@ -30,11 +30,16 @@ class Logger : public nvinfer1::ILogger {
   Logger(string name = "DefaultLogger") : name_(name) {}
   void log(nvinfer1::ILogger::Severity severity,
            const char* msg) noexcept override;
-
+  void suppressLoggerMsgs(nvinfer1::ILogger::Severity severity);
+  void unsuppressLoggerMsgs(nvinfer1::ILogger::Severity severity);
+  void unsuppressAllLoggerMsgs() { suppressedMsg_ = 0; }
   static Logger* GetLogger();
 
  private:
-  string name_;
+  bool isValidSeverity(nvinfer1::ILogger::Severity severity,
+                       const char* msg = nullptr) noexcept;
+  const string name_;
+  unsigned int suppressedMsg_ = 0;
 };
 
 }  // namespace tensorrt

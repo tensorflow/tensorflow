@@ -7,10 +7,11 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts", "tf_xla_acl_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_openmp_copts")
 load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
+    "if_enable_acl",
 )
 
 # buildifier: disable=same-origin-load
@@ -149,9 +150,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:generic_transfer_manager",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "//tensorflow/stream_executor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
@@ -182,6 +183,7 @@ cc_library(
         ":cpu_instruction_fusion",
         ":cpu_layout_assignment",
         ":cpu_options",
+        ":cpu_shape_verifier",
         ":dot_op_emitter",
         "@com_google_absl//absl/base:dynamic_annotations",
         ":ir_emission_utils",
@@ -350,7 +352,7 @@ cc_library(
         "windows_compatibility.h",
     ],
     hdrs = ["simple_orc_jit.h"],
-    copts = tf_xla_acl_copts(),
+    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]),
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
@@ -444,12 +446,12 @@ cc_library(
         "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:xla_debug_info_manager",
+        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
+        "//tensorflow/compiler/xla/stream_executor/host:host_stream",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor/host:host_stream",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -602,7 +604,6 @@ cc_library(
     hdrs = [
         "dot_op_emitter.h",
     ],
-    copts = tf_xla_acl_copts(),
     deps = [
         ":cpu_options",
         ":cpu_runtime",
@@ -703,12 +704,12 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/stream_executor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -864,7 +865,7 @@ cc_library(
     name = "runtime_matmul_acl",
     srcs = ["runtime_matmul_acl.cc"],
     hdrs = ["runtime_matmul_acl.h"],
-    copts = tf_xla_acl_copts(),
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_lightweight_check",
@@ -883,7 +884,7 @@ cc_library(
         "runtime_conv2d_acl.cc",
     ],
     hdrs = ["runtime_conv2d_acl.h"],
-    copts = tf_xla_acl_copts(),
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_conv2d",
@@ -1045,6 +1046,7 @@ tf_cc_test(
         ":cpu_runtime",
         ":runtime_custom_call_status",
         ":runtime_matmul",
+        ":runtime_matmul_acl",
         ":runtime_matmul_mkl",
         ":runtime_single_threaded_matmul",
         "//tensorflow/compiler/xla:array2d",
@@ -1166,6 +1168,15 @@ cc_library(
         "//tensorflow/compiler/xla/service:layout_assignment",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "cpu_shape_verifier",
+    srcs = ["cpu_shape_verifier.cc"],
+    hdrs = ["cpu_shape_verifier.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_verifier",
     ],
 )
 
@@ -1312,6 +1323,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:ExecutionEngine",
     ],
 )

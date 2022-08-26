@@ -25,7 +25,7 @@ namespace gpu {
 
 ForThunk::ForThunk(ThunkInfo thunk_info, const int64_t loop_limit,
                    std::unique_ptr<ThunkSequence> body_thunk_sequence)
-    : Thunk(Kind::kWhile, thunk_info),
+    : Thunk(Kind::kFor, thunk_info),
       loop_limit_(loop_limit),
       body_thunk_sequence_(std::make_unique<SequentialThunk>(
           // Pass nullptr as the HloInstruction* to the body_thunk_sequence_

@@ -20,7 +20,7 @@ limitations under the License.
 #include <stdint.h>
 
 // TODO(b/238999986): Remove this.
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 
 #define PJRT_STRUCT_SIZE(struct_type, last_field) \
   offsetof(struct_type, last_field) + sizeof(((struct_type*)0)->last_field)
@@ -63,6 +63,126 @@ const size_t PJRT_Error_Message_Args_STRUCT_SIZE =
 // Gets the human-readable reason for `error`. `message` has the lifetime of
 // `error`.
 typedef void PJRT_Error_Message(PJRT_Error_Message_Args* args);
+
+// Codes are based on https://abseil.io/docs/cpp/guides/status-codes
+typedef enum {
+  PJRT_Error_Code_CANCELLED = 1,
+  PJRT_Error_Code_UNKNOWN = 2,
+  PJRT_Error_Code_INVALID_ARGUMENT = 3,
+  PJRT_Error_Code_DEADLINE_EXCEEDED = 4,
+  PJRT_Error_Code_NOT_FOUND = 5,
+  PJRT_Error_Code_ALREADY_EXISTS = 6,
+  PJRT_Error_Code_PERMISSION_DENIED = 7,
+  PJRT_Error_Code_RESOURCE_EXHAUSTED = 8,
+  PJRT_Error_Code_FAILED_PRECONDITION = 9,
+  PJRT_Error_Code_ABORTED = 10,
+  PJRT_Error_Code_OUT_OF_RANGE = 11,
+  PJRT_Error_Code_UNIMPLEMENTED = 12,
+  PJRT_Error_Code_INTERNAL = 13,
+  PJRT_Error_Code_UNAVAILABLE = 14,
+  PJRT_Error_Code_DATA_LOSS = 15,
+  PJRT_Error_Code_UNAUTHENTICATED = 16
+} PJRT_Error_Code;
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  const PJRT_Error* error;
+  PJRT_Error_Code code;  // out
+} PJRT_Error_GetCode_Args;
+const size_t PJRT_Error_GetCode_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Error_GetCode_Args, error);
+
+typedef PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
+
+// ---------------------------------- Events -----------------------------------
+
+// Represents a notifying event that is returned by PJRT APIs that enqueue
+// asynchronous work, informing callers when the work is complete and reporting
+// a value of type `PJRT_Error*` or `nullptr` as error status.
+//
+// Callers are always responsible for freeing `PJRT_Event`s by calling
+// `PJRT_Event_Destroy`.
+typedef struct PJRT_Event PJRT_Event;
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Event* event;
+} PJRT_Event_Destroy_Args;
+const size_t PJRT_Event_Destroy_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Event_Destroy_Args, event);
+
+// Frees `event`. `event` can be `nullptr`.
+typedef PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Event* event;
+  bool is_ready;  // out
+} PJRT_Event_IsReady_Args;
+const size_t PJRT_Event_IsReady_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Event_IsReady_Args, is_ready);
+
+// Returns true if this PJRT_Event has completed, including if an error has
+// occurred.
+typedef PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Event* event;
+} PJRT_Event_Error_Args;
+const size_t PJRT_Event_Error_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Event_Error_Args, event);
+
+// Should only be called if PJRT_Event_IsReady returns true.
+// Returns `nullptr` if there is no error.
+// The returned error should be freed with `PJRT_Error_Destroy`.
+//
+// If `PJRT_Event_Await` has been called, this will return a pointer to an
+// identical error status as that call, as will subsequent calls to
+// `PJRT_Event_Error`. However, each of these `PJRT_Error *` pointers are
+// independent of `PJRT_Error *`s returned by other function calls, so they must
+// each be freed separately using `PJRT_Error_Destroy`.
+typedef PJRT_Error* PJRT_Event_Error(PJRT_Event_Error_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Event* event;
+} PJRT_Event_Await_Args;
+
+const size_t PJRT_Event_Await_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Event_Await_Args, event);
+
+// Blocks the calling thread until `event` is ready, then returns the error
+// status (with `nullptr` indicating no error). The returned status should be
+// freed with `PJRT_Error_Destroy`.
+typedef PJRT_Error* PJRT_Event_Await(PJRT_Event_Await_Args* args);
+
+// A callback to be performed once an event is ready. It will be called on the
+// event's error state and a pointer to an object of the caller's choice.
+// Ownership of `error` is passed to the callback. The callback must destroy
+// `error` via `PJRT_Error_Destroy`. The caller retains ownership of `user_arg`.
+typedef void (*PJRT_Event_OnReadyCallback)(PJRT_Error* error, void* user_arg);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Event* event;
+  PJRT_Event_OnReadyCallback callback;
+  // `user_arg` allows `callback` to be called with arbitrary arguments (e.g.
+  // via pointers in a struct cast to void*).
+  void* user_arg;
+} PJRT_Event_OnReady_Args;
+const size_t PJRT_Event_OnReady_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Event_OnReady_Args, user_arg);
+
+// Registers `callback` to be called once `event` is ready, with `event`'s
+// error status and a pointer to an object of the caller's choice as arguments.
+typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
 
 // ---------------------------------- Client -----------------------------------
 
@@ -482,7 +602,32 @@ const size_t PJRT_Executable_Execute_Args_STRUCT_SIZE =
 // Executes on devices addressable by the client.
 typedef PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  size_t num_outputs;  // out
+} PJRT_Executable_NumOutputs_Args;
+const size_t PJRT_Executable_NumOutputs_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_NumOutputs_Args, num_outputs);
+
+// Gets the number of outputs per device produced by `executable`.
+typedef PJRT_Error* PJRT_Executable_NumOutputs(
+    PJRT_Executable_NumOutputs_Args* args);
+
 // ---------------------------------- Buffers ----------------------------------
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+} PJRT_Buffer_Destroy_Args;
+const size_t PJRT_Buffer_Destroy_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_Destroy_Args, buffer);
+
+// Deletes the underlying runtime objects as if 'PJRT_Buffer_Delete' were
+// called and frees `buffer`. `buffer` can be nullptr.
+typedef PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
 
 // This trimmed shape doesn't have any Tuple information. In case of Tuple,
 // assert is triggered from the C API  Client.
@@ -494,6 +639,7 @@ typedef struct {
   int element_type;             // out
   Int64List dimensions;         // out
   BoolList dynamic_dimensions;  // out
+  bool has_layout;
   XLA_Layout layout;            // out
 } PJRT_Buffer_OnDeviceTrimmedShape_Args;
 const size_t PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE =
@@ -585,6 +731,27 @@ const size_t PJRT_Buffer_Device_Args_STRUCT_SIZE =
 // Returns this buffer's storage device.
 typedef PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  // The caller is responsible for calling PJRT_Event_Destroy on `event`.
+  PJRT_Event* event;  // out
+} PJRT_Buffer_ReadyEvent_Args;
+const size_t PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_ReadyEvent_Args, event);
+
+// Returns an event that is triggered when either of the following happens:
+// * the data in the PJRT_Buffer becomes ready, or
+// * an error has occurred.
+//
+// TODO(b/241967811): change these weird semantics
+// If the buffer has been deleted or donated, the returned event will
+// immediately indicate an error. However, if PJRT_Buffer_ReadyEvent() is
+// called on the buffer before PJRT_Buffer_Delete() is, the returned event will
+// not transition to an error state after PJRT_Buffer_Delete() is called.
+typedef PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
+
 // -------------------------------- API access ---------------------------------
 
 #define _PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
@@ -596,6 +763,13 @@ typedef struct {
 
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Message);
+  _PJRT_API_STRUCT_FIELD(PJRT_Error_GetCode);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_Destroy);
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_IsReady);
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_Error);
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_Await);
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_OnReady);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Create);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Destroy);
@@ -619,10 +793,12 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_AddressableDevices);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumOutputs);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Execute);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);
@@ -630,10 +806,11 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToDevice);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
 } PJRT_Api;
 
 const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_IsOnCpu);
+    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_ReadyEvent);
 
 #undef _PJRT_API_STRUCT_FIELD
 

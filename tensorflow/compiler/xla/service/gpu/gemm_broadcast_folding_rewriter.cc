@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -93,6 +93,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWithDifferentShape(
           bcast_operand_index, bcast->mutable_operand(0)));
       TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
+      MarkAsChanged();
     }
     return OkStatus();
   }

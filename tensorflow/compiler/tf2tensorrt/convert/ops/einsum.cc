@@ -510,8 +510,8 @@ void AssembleOutput(InputIterator begin_a, InputIterator begin_b,
 // to expand x into and y the original free dims, e.g. C is reshaped to
 // [B, f_a1, f_a2, f_a3, f_b1, f_b2]. Finally, a permutation is applied to
 // transform the shape to the shape of the original Einsum output.
-Status ShuffleEinsumOutput(OpConverterParams* params, EinsumDescriptor desc_a,
-                           EinsumDescriptor desc_b,
+Status ShuffleEinsumOutput(const OpConverterParams* params,
+                           EinsumDescriptor desc_a, EinsumDescriptor desc_b,
                            const std::vector<int>& permutation,
                            ITensorProxyPtr* output) {
   if (permutation.empty() && (desc_a.f == 1 && desc_b.f == 1)) {
@@ -664,12 +664,8 @@ Status ParseEquation(const std::string& equation,
 
 class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
  public:
-  explicit ConvertEinsum(OpConverterParams* params)
+  explicit ConvertEinsum(const OpConverterParams* params)
       : OpConverterBase<ConvertEinsum>(params) {}
-
-  static constexpr std::array<DataType, 3> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF};
-  }
 
   static constexpr std::array<InputArgSpec, 2> InputSpec() {
     return {InputArgSpec::Create("input_a", TrtInputArg::kBoth),
@@ -677,12 +673,8 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
   }
 
   Status Validate() {
+    TF_RETURN_IF_ERROR(NotSupportedInImplicitBatch());
     const auto& inputs = params_->inputs;
-    if (params_->use_implicit_batch) {
-      return errors::Unimplemented(
-          "Einsum converter requires dynamic shape mode");
-    }
-
     input_a = std::make_unique<TRT_TensorOrWeights>(inputs.at(0));
     input_b = std::make_unique<TRT_TensorOrWeights>(inputs.at(1));
 
@@ -690,7 +682,6 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
     TRT_ENSURE_OK(eq);
     TF_RETURN_IF_ERROR(ParseEquation(*eq, &input_a, &input_b, &descriptor_a,
                                      &descriptor_b, &final_transpose));
-
     return Status::OK();
   }
 
@@ -786,12 +777,8 @@ class ReIndexer {
 
 class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
  public:
-  explicit ConvertEinsum(OpConverterParams* params)
+  explicit ConvertEinsum(const OpConverterParams* params)
       : OpConverterBase<ConvertEinsum>(params) {}
-
-  static constexpr std::array<DataType, 3> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF};
-  }
 
   Status ValidateInputs() {
     TRT_ENSURE(params_->inputs.size() <= 2);
@@ -860,11 +847,7 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
   Status Validate() {
     VLOG(2) << "Running validation using the new einsum "
                "converter";
-    if (params_->use_implicit_batch) {
-      return errors::Unimplemented(
-          "Einsum converter requires dynamic shape mode");
-    }
-
+    TF_RETURN_IF_ERROR(NotSupportedInImplicitBatch());
     StatusOr<std::string> eq = GetAttrValue<std::string>("equation");
     TRT_ENSURE_OK(eq);
 

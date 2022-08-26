@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 
 namespace tflite {
 namespace gpu {
@@ -286,17 +285,10 @@ GPUOperation CreateConvConstants(const GpuInfo& gpu_info,
     op.compiler_options_.push_back(CompilerOptions::kClDisableOptimizations);
   }
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::BUFFER;
-  desc.element_type = definition.GetDataType();
-  if (gpu_info.IsApiOpenCl() || gpu_info.IsApiMetal()) {
-    desc.memory_type = MemoryType::CONSTANT;
-  } else {
-    desc.memory_type = MemoryType::GLOBAL;
-  }
-  desc.UploadLinearData(attr.bias);
-  op.args_.AddObject("biases",
-                     std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  op.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                   std::move(bias_tensor_desc)));
   return op;
 }
 

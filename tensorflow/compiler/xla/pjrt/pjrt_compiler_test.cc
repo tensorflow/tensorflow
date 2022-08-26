@@ -60,6 +60,11 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
         const PjRtDeviceTopology& topology, PjRtClient* client) override {
       return tensorflow::errors::Unimplemented("test compiler!");
     }
+    StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+        CompileOptions options, mlir::ModuleOp module,
+        const PjRtDeviceTopology& topology, PjRtClient* client) override {
+      return tensorflow::errors::Unimplemented("test compiler!");
+    }
   };
   std::unique_ptr<PjRtCompiler> compiler = std::make_unique<PjRtTestCompiler>();
   PjRtRegisterCompiler(topology.platform_name(), std::move(compiler));

@@ -9,6 +9,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/lite/...",
+        "//third_party/cloud_tpu/inference_converter/...",  # TPU Inference Converter V1
     ] + internal_visibility_allowlist(),
 )
 
@@ -56,6 +57,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:eval_util",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -218,6 +220,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tf_op_quant_spec",
+    srcs = [
+        "ops/tf_op_quant_spec.cc",
+    ],
+    hdrs = ["ops/tf_op_quant_spec.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 gentbl_cc_library(
     name = "replace_cast_hacks_with_tf_xla_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
@@ -273,9 +291,10 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:fake_quant_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:quant_spec",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_to_xla_attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",

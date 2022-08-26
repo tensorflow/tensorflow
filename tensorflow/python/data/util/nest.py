@@ -31,8 +31,6 @@ The motivation for this change is twofold:
    arrays.
 """
 
-import six as _six
-
 from tensorflow.python.framework import sparse_tensor as _sparse_tensor
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
@@ -299,8 +297,8 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
             "The two structures don't have the same keys. Input "
             f"structure has keys {list(input_tree)}, while shallow structure "
             f"has keys {list(shallow_tree)}.")
-      input_tree = sorted(_six.iteritems(input_tree))
-      shallow_tree = sorted(_six.iteritems(shallow_tree))
+      input_tree = sorted(input_tree.items())
+      shallow_tree = sorted(shallow_tree.items())
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,

@@ -32,11 +32,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <variant>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/variant.h"
 #include "tensorflow/lite/kernels/shim/shape.h"
 #include "tensorflow/lite/kernels/shim/tensor_view.h"
 
@@ -61,7 +61,7 @@ using ConstTensorViewOr = absl::StatusOr<std::unique_ptr<const TensorView>>;
 // methods.
 
 // The attribute dictionary passed to the op
-using AttrValue = absl::variant<bool, int64_t, float, absl::string_view>;
+using AttrValue = std::variant<bool, int64_t, float, absl::string_view>;
 
 // The interface for available methods during an op kernel initialization
 template <typename SubType>
@@ -221,13 +221,13 @@ absl::Status GetAttr(const std::string& attr_name,
                      AttrType* value) {
   if (!attr_value_or.ok()) return attr_value_or.status();
   const AttrValue& attr_value = attr_value_or.value();
-  if (!absl::holds_alternative<AttrType>(attr_value)) {
+  if (!std::holds_alternative<AttrType>(attr_value)) {
     return absl::InternalError(
         absl::StrCat("The attribute type does not match the provided "
                      "type: attr_name: ",
                      attr_name));
   }
-  *value = absl::get<AttrType>(attr_value);
+  *value = std::get<AttrType>(attr_value);
   return absl::OkStatus();
 }
 }  // namespace internal

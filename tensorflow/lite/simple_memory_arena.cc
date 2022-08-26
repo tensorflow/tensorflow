@@ -44,15 +44,6 @@ T AlignTo(size_t alignment, T offset) {
 
 namespace tflite {
 
-#ifdef TF_LITE_TENSORFLOW_PROFILER
-SimpleMemoryArena::~SimpleMemoryArena() {
-  if (underlying_buffer_size_) {
-    OnTfLiteArenaDealloc(subgraph_index_, reinterpret_cast<std::intptr_t>(this),
-                         underlying_buffer_size_);
-  }
-}
-#endif
-
 TfLiteStatus SimpleMemoryArena::Allocate(
     TfLiteContext* context, size_t alignment, size_t size, int32_t tensor,
     int32_t first_node, int32_t last_node,
@@ -148,9 +139,11 @@ TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context) {
     }
 
 #ifdef TF_LITE_TENSORFLOW_PROFILER
-    OnTfLiteArenaDealloc(subgraph_index_,
-                         reinterpret_cast<std::uintptr_t>(this),
-                         underlying_buffer_size_);
+    if (underlying_buffer_size_ > 0) {
+      OnTfLiteArenaDealloc(subgraph_index_,
+                           reinterpret_cast<std::uintptr_t>(this),
+                           underlying_buffer_size_);
+    }
 #endif
     underlying_buffer_.reset(new_alloc);
     underlying_buffer_size_ = required_size;
