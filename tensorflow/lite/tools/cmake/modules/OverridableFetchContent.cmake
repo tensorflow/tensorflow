@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-include(FetchContent)
+include(OverridableFetchContent)
 
 # Pairs of regex --> replacement strings that map Git repositories to archive
 # URLs. GIT_COMMIT is replaced with the hash of the commit.
