@@ -126,7 +126,8 @@ TEST(RemoteProfilerSessionManagerTest, ExpiredDeadline) {
   EXPECT_EQ(responses.back().profile_response->tool_data_size(), 0);
 }
 
-TEST(RemoteProfilerSessionManagerTest, LongSession) {
+// TODO(b/243856125): Re-enable this test.
+TEST(RemoteProfilerSessionManagerTest, DISABLED_LongSession) {
   absl::Duration duration = absl::Seconds(3);
   RemoteProfilerSessionManagerOptions options;
   *options.mutable_profiler_options() =
