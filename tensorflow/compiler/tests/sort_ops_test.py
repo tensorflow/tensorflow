@@ -14,7 +14,6 @@
 # ==============================================================================
 """Tests for sorting operators."""
 
-import os
 import unittest
 
 from absl.testing import parameterized
@@ -359,23 +358,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
               in_topk,
               [x.astype(np.float32), y.astype(dtype)],
               expected=[expected])
-
-
-class XlaMlirSortOpTest(XlaSortOpTest):
-
-  def setUp(self):
-    self.original_xla_flags = os.environ.get("XLA_FLAGS")
-    os.environ["XLA_FLAGS"] = "--xla_cpu_enable_mlir_lowering=true "
-    if self.original_xla_flags:
-      os.environ["XLA_FLAGS"] += self.original_xla_flags
-    super().setUp()
-
-  def tearDown(self):
-    if self.original_xla_flags is None:
-      del os.environ["XLA_FLAGS"]
-    else:
-      os.environ["XLA_FLAGS"] = self.original_xla_flags
-    super().tearDown()
 
 
 if __name__ == "__main__":
