@@ -507,7 +507,6 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
   void InitDevices();
 };
 
-// Takes ownership of wrapped.
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient();
 
 }  // namespace xla
