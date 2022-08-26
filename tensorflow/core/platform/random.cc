@@ -23,24 +23,19 @@ namespace tensorflow {
 namespace random {
 
 namespace {
-std::mt19937_64 InitRngWithRandomSeed() {
+std::mt19937_64* InitRngWithRandomSeed() {
   std::random_device device("/dev/urandom");
-  return std::mt19937_64(device());
+  return new std::mt19937_64(device());
 }
 std::mt19937_64 InitRngWithDefaultSeed() { return std::mt19937_64(); }
 
 }  // anonymous namespace
 
 uint64 New64() {
-  static std::mt19937_64 rng = InitRngWithRandomSeed();
+  static std::mt19937_64* rng = InitRngWithRandomSeed();
   static mutex mu(LINKER_INITIALIZED);
   mutex_lock l(mu);
-  return rng();
-}
-
-uint64 ThreadLocalNew64() {
-  static thread_local std::mt19937_64 rng = InitRngWithRandomSeed();
-  return rng();
+  return (*rng)();
 }
 
 uint64 New64DefaultSeed() {
