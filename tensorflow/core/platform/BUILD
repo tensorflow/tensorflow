@@ -1179,6 +1179,29 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
 )
 
+# For a more maintainable build this target should not exist and the headers
+# should  be split into the existing cc_library targets, but this change was
+# automatically  done so that we can remove long standing issues and complexity
+# in the build system. It's up to the OWNERS of this package to get rid of it or
+# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
+# Here it is used to avoid header parsing errors in packages where the feature
+# parse_headers was enabled since loose headers were not being parsed. See
+# go/loose-lsc-one-target-approach for more details.
+cc_library(
+    name = "loose_headers",
+    tags = ["avoid_dep"],
+    textual_hdrs = [
+        "rocm.h",
+        "stream_executor.h",
+    ],
+    visibility = [
+        "//tensorflow/contrib/fused_conv:__pkg__",
+        "//tensorflow/contrib/image:__pkg__",
+        "//tensorflow/core/kernels:__pkg__",
+        "//tensorflow/core/kernels/image:__pkg__",
+    ],
+)
+
 filegroup(
     name = "enable_tf2_hdr",
     srcs = ["enable_tf2_utils.h"],

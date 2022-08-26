@@ -303,6 +303,7 @@ tf_kernel_library(
         "gpu_device_array_gpu.h",
     ],
     deps = [
+        ":loose_headers",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/framework:bounds_check",
@@ -1263,14 +1264,20 @@ tf_kernel_library(
     name = "split_op",
     gpu_srcs = ["gpu_device_array.h"],
     prefix = "split_op",
-    deps = ARRAY_DEPS + [":split_lib"],
+    deps = ARRAY_DEPS + [
+        ":loose_headers",
+        ":split_lib",
+    ],
 )
 
 tf_kernel_library(
     name = "split_v_op",
     gpu_srcs = ["gpu_device_array.h"],
     prefix = "split_v_op",
-    deps = ARRAY_DEPS + [":split_lib"],
+    deps = ARRAY_DEPS + [
+        ":loose_headers",
+        ":split_lib",
+    ],
 )
 
 tf_kernel_library(
@@ -2517,6 +2524,7 @@ tf_kernel_library(
     name = "ctc_ops",
     prefix = "ctc",
     deps = [
+        ":loose_headers",
         "//tensorflow/core/framework:bounds_check",
         ":ops_util",
         "//tensorflow/core:framework",
@@ -2756,7 +2764,7 @@ tf_kernel_library(
         "gpu_device_array_gpu.h",
     ],
     prefix = "dynamic_stitch_op",
-    deps = DYNAMIC_DEPS,
+    deps = DYNAMIC_DEPS + [":loose_headers"],
 )
 
 cc_library(
@@ -3615,6 +3623,7 @@ tf_kernel_library(
     deps = MATH_DEPS + [
         ":eigen_contraction_kernel",
         ":fused_eigen_output_kernels",
+        ":loose_headers",
     ] + select({
         ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
         "//conditions:default": [],
@@ -4139,6 +4148,7 @@ tf_kernel_library(
         ":eigen_contraction_kernel",
         ":fill_functor",
         ":fused_eigen_output_kernels",
+        ":loose_headers",
         ":ops_util",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/strings",
@@ -4303,6 +4313,7 @@ tf_kernel_library(
     name = "bias_op",
     prefix = "bias_op",
     deps = NN_DEPS + [
+        ":loose_headers",
         ":redux_functor",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/util:determinism_for_kernels",
@@ -4339,7 +4350,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "lrn_op",
     prefix = "lrn_op",
-    deps = NN_DEPS + if_rocm([":conv_ops_gpu_hdrs"]),
+    deps = NN_DEPS + if_rocm([":conv_ops_gpu_hdrs"]) + [":loose_headers"],
 )
 
 tf_kernel_library(
@@ -4366,7 +4377,10 @@ tf_kernel_library(
     prefix = "softmax_op",
     deps = NN_DEPS + if_cuda_or_rocm([
         ":reduction_ops",
-    ]) + [":gpu_prim_hdrs"],
+    ]) + [
+        ":gpu_prim_hdrs",
+        ":loose_headers",
+    ],
 )
 
 tf_kernel_library(
@@ -4576,6 +4590,7 @@ tf_kernel_library(
         ":conv_3d",
         ":conv_ops",
         ":eigen_helpers",
+        ":loose_headers",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -5181,6 +5196,7 @@ tf_kernel_library(
     name = "sparse_to_dense_op",
     prefix = "sparse_to_dense_op",
     deps = SPARSE_DEPS + [
+        ":loose_headers",
         "//third_party/eigen3",
     ] + if_cuda_or_rocm([
         ":gpu_utils",
@@ -5374,7 +5390,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scatter_op",
     prefix = "scatter_op",
-    deps = STATE_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
+    deps = STATE_DEPS + [
+        ":loose_headers",
+        "//tensorflow/core/util:determinism_for_kernels",
+    ],
 )
 
 tf_kernel_library(
@@ -7832,6 +7851,23 @@ cc_library(
         "//tensorflow/core/platform:platform_strings",
     ],
     alwayslink = 1,
+)
+
+# For a more maintainable build this target should not exist and the headers
+# should  be split into the existing cc_library targets, but this change was
+# automatically  done so that we can remove long standing issues and complexity
+# in the build system. It's up to the OWNERS of this package to get rid of it or
+# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
+# Here it is used to avoid header parsing errors in packages where the feature
+# parse_headers was enabled since loose headers were not being parsed. See
+# go/loose-lsc-one-target-approach for more details.
+cc_library(
+    name = "loose_headers",
+    tags = ["avoid_dep"],
+    textual_hdrs = glob(["*.h"]),
+    visibility = [
+        "//visibility:public",
+    ],
 )
 
 # Shared object that links all the kernels TF needs.
