@@ -2406,6 +2406,19 @@ func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi3
 
 // -----
 
+// CHECK-LABEL: @reduce_add_unranked
+func.func @reduce_add_unranked(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> tensor<*xi32> {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
+    %1 = mhlo.add %arg3, %arg4 : tensor<i32>
+    "mhlo.return"(%1) : (tensor<i32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>, someattr} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+  func.return %0 : tensor<*xi32>
+}
+// CHECK: mhlo.reduce
+
+// -----
+
 func.func @reduce_dim0(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<4xi32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):

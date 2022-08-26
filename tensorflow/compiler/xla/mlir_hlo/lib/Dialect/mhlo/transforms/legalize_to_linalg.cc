@@ -1611,7 +1611,7 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
     int numOperands = static_cast<int>(adaptor.operands().size());
 
     if (llvm::any_of(adaptor.operands(), [](Value v) {
-          return !v.getType().cast<ShapedType>().getRank();
+          return !v.getType().isa<RankedTensorType>();
         })) {
       return rewriter.notifyMatchFailure(op, "expects known-rank args");
     }
