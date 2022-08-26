@@ -21,6 +21,7 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "llvm/IR/PassTimingInfo.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/TargetSelect.h"
@@ -29,7 +30,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
-#include "tensorflow/compiler/xla/runtime/errors.h"
+#include "tensorflow/compiler/xla/mlir/utils/to_string.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
 namespace xla {
@@ -37,7 +38,8 @@ namespace runtime {
 
 using namespace mlir;  // NOLINT
 
-using llvm::Error;
+using absl::InternalError;
+using absl::StrCat;
 
 static bool DebugJitCompiler() {
 #if defined(DEBUG_XLA_RUNTIME_COMPILER)
@@ -152,7 +154,7 @@ JitCompiler::JitCompiler(JitCompiler::Options opts,
   if (module_) entrypoint_ = module_->lookupSymbol<func::FuncOp>(entrypoint);
 }
 
-/*static*/ llvm::Expected<std::unique_ptr<JitCompiler>>
+/*static*/ absl::StatusOr<std::unique_ptr<JitCompiler>>
 JitCompiler::Instantiate(JitCompiler::Options opts,
                          std::string_view mlir_module,
                          std::string_view entrypoint) {
@@ -168,7 +170,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   return {std::move(context)};
 }
 
-/*static*/ llvm::Expected<Executable> JitCompiler::Compile(
+/*static*/ absl::StatusOr<Executable> JitCompiler::Compile(
     std::unique_ptr<JitCompiler> compiler, std::string_view memory_region_name,
     llvm::Optional<size_t> specialization) {
   const JitCompiler::Options& opts = compiler->options();
@@ -180,7 +182,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
   // Get the signature of the entrypoint function.
   auto signature = opts.type_converter.Convert(entry_func.getFunctionType());
-  if (!signature.ok()) return MakeStringError(signature.status().message());
+  if (!signature.ok()) return signature.status();
 
   // Get the calling convention for the entrypoint function.
   if (!opts.calling_convention)
@@ -194,18 +196,19 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
   // Get the runtime signature of the entrypoint function.
   auto runtime_signature = opts.type_converter.Convert(runtime_type);
-  if (!runtime_signature.ok())
-    return MakeStringError(runtime_signature.status().message());
+  if (!runtime_signature.ok()) return runtime_signature.status();
 
   // Get the memory layout for passing function arguments.
   auto arguments_memory_layout =
       Executable::GetArgumentsMemoryLayout(*runtime_signature);
-  if (auto err = arguments_memory_layout.takeError()) return std::move(err);
+  if (auto err = arguments_memory_layout.takeError())
+    return InternalError(ToString(std::move(err)));
 
   // Get the memory layout for returning function results.
   auto results_memory_layout =
       Executable::GetResultsMemoryLayout(*runtime_signature);
-  if (auto err = results_memory_layout.takeError()) return std::move(err);
+  if (auto err = results_memory_layout.takeError())
+    return InternalError(ToString(std::move(err)));
 
   // Mark entry function with an attribute, so it can be converted to an Xla
   // entrypoint (see `rt-convert-to-entrypoint` pass).
@@ -220,10 +223,11 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
   // Prepare JIT target machine for code generation.
   auto builder = llvm::orc::JITTargetMachineBuilder::detectHost();
-  if (!builder) return builder.takeError();
+  if (!builder) return InternalError(ToString(builder.takeError()));
 
   auto target_machine = builder->createTargetMachine();
-  if (!target_machine) return target_machine.takeError();
+  if (!target_machine)
+    return InternalError(ToString(target_machine.takeError()));
 
   // Name of the compiled module if available.
   auto module_name = compiler->module().getSymName().value_or("<unknown>");
@@ -254,12 +258,13 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   auto llvm_ctx = std::make_unique<llvm::LLVMContext>();
   auto llvm_module = translateModuleToLLVMIR(compiler->module(), *llvm_ctx);
   if (!llvm_module)
-    return MakeStringError("failed to translate module to LLVM IR");
+    return InternalError("failed to translate module to LLVM IR");
 
   // Compile input module to the native function.
   auto engine = ExecutionEngine::CreateFromModule(
       std::move(llvm_ctx), std::move(llvm_module), entrypoint, engine_options);
-  if (auto err = engine.takeError()) return std::move(err);
+  if (auto err = engine.takeError())
+    return InternalError(ToString(std::move(err)));
 
   // At this point compilation is completed, and all symbols in the LLVM module
   // materialized as addresses (entrypoint is an executable function pointer).
@@ -275,10 +280,10 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
       specialization, time_to_compile);
 }
 
-llvm::Error JitCompiler::Specialize(ArgumentsRef arguments,
-                                    ArrayRef<SymbolicShape> symbolic_shapes,
-                                    ArrayRef<ArgumentConstraint> constraints,
-                                    const SpecializationListener* listener) {
+absl::Status JitCompiler::Specialize(ArgumentsRef arguments,
+                                     ArrayRef<SymbolicShape> symbolic_shapes,
+                                     ArrayRef<ArgumentConstraint> constraints,
+                                     const SpecializationListener* listener) {
   assert(!specialized_ && "can specialize executable only once");
   specialized_ = true;
 
@@ -290,7 +295,8 @@ llvm::Error JitCompiler::Specialize(ArgumentsRef arguments,
       !specialized.ok()) {
     // No need to call this->Error() because we don't have diagnostic to report
     // in case of a failed specialization.
-    return MakeStringError("failed to specialize: ", specialized.message());
+    return InternalError(
+        StrCat("failed to specialize: ", specialized.message()));
   }
 
   // Run the user-provided specialization pipeline to take advantage of the
@@ -298,7 +304,7 @@ llvm::Error JitCompiler::Specialize(ArgumentsRef arguments,
   if (failed(RunSpecializationPipeline(*module_, opts_)))
     return Error("failed to run specialization pipeline");
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
 }  // namespace runtime

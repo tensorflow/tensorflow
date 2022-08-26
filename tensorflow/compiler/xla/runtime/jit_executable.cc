@@ -33,7 +33,6 @@ using llvm::dyn_cast;
 using llvm::isa;
 
 using llvm::ArrayRef;
-using llvm::ErrorOr;
 using llvm::Expected;
 using llvm::Optional;
 
@@ -99,9 +98,9 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
     std::string_view mlir_module, std::string_view entrypoint, Options opts,
     std::string_view memory_region_name, CompilationTaskRunner runner) {
   // Try to instantiate compilation context from the mlir source.
-  Expected<std::unique_ptr<JitCompiler>> compiler =
+  StatusOr<std::unique_ptr<JitCompiler>> compiler =
       JitCompiler::Instantiate(opts.compiler, mlir_module, entrypoint);
-  if (auto err = compiler.takeError()) return std::move(err);
+  if (!compiler.ok()) return MakeStringError(compiler.status().message());
 
   // Get resolved operands constraints for the entrypoint function.
   auto constraints = GetArgumentsConstraints((*compiler)->entrypoint());
@@ -138,9 +137,9 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
                          /*default_executable=*/llvm::None, std::move(runner));
 
   // Otherwise try to compile the default executable.
-  Expected<Executable> executable =
+  StatusOr<Executable> executable =
       JitCompiler::Compile(std::move(*compiler), memory_region_name);
-  if (auto err = executable.takeError()) return std::move(err);
+  if (!executable.ok()) return MakeStringError(executable.status().message());
 
   return JitExecutable(mlir_module, entrypoint, memory_region_name,
                        std::move(opts), std::move(*constraints),
@@ -283,20 +282,22 @@ Expected<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
   // the caller thread. We only use compilation runner for expensive part.
 
   // Try to instantiate compilation context from the mlir source.
-  Expected<std::unique_ptr<JitCompiler>> compiler =
+  StatusOr<std::unique_ptr<JitCompiler>> compiler =
       JitCompiler::Instantiate(opts_.compiler, mlir_module_, entrypoint_);
 
-  if (auto err = compiler.takeError()) {
+  if (!compiler.ok()) {
     assert(false && "parsing mlir module must always succeed at this point");
-    return std::move(err);
+    return MakeStringError(compiler.status().message());
   }
 
   // Specialize executable to the concrete operands.
   StatusOr<llvm::SmallVector<SymbolicShapesResolver::SymbolicShape>>
       symbolic_shapes = symbolic_shapes_resolver_.Resolve(arguments);
-  if (auto err = (*compiler)->Specialize(arguments, *symbolic_shapes,
-                                         constraints_, listener)) {
-    return MakeStringError("failed to specialize executable: ", err);
+  if (auto specialized = (*compiler)->Specialize(arguments, *symbolic_shapes,
+                                                 constraints_, listener);
+      !specialized.ok()) {
+    return MakeStringError("failed to specialize executable: ",
+                           specialized.message());
   }
 
   // Allocate a placeholder for the compiled specialization only after we are
@@ -313,12 +314,12 @@ Expected<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
   auto compile = CompilationTask(
       [compiler = std::move(*compiler), ref = entry.ptr.CopyRef(),
        memory_region_name = memory_region_name_, specialization]() mutable {
-        Expected<Executable> executable = JitCompiler::Compile(
+        StatusOr<Executable> executable = JitCompiler::Compile(
             std::move(compiler), memory_region_name, specialization);
 
         // Set the allocated entry async value state to error or concrete.
-        if (auto err = executable.takeError()) {
-          ref.SetError(std::move(err));
+        if (!executable.ok()) {
+          ref.SetError(MakeStringError(executable.status().message()));
         } else {
           ref.emplace(std::move(*executable));
         }

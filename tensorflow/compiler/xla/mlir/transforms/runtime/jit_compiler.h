@@ -21,7 +21,8 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
-#include "llvm/Support/Error.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
-#include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
@@ -107,7 +107,7 @@ class JitCompiler {
   };
 
   // Instantiates compiler from the serialized mlir source.
-  static llvm::Expected<std::unique_ptr<JitCompiler>> Instantiate(
+  static absl::StatusOr<std::unique_ptr<JitCompiler>> Instantiate(
       Options opts, std::string_view mlir_module, std::string_view entrypoint);
 
   // Makes an executable from an instance of the JitCompiler. This is the end of
@@ -115,7 +115,7 @@ class JitCompiler {
   // to the executable (function pointer) using LLVM JIT code generation.
   // Optional specialization identifier specifies if the compiled executable is
   // a default one, or a specialization.
-  static llvm::Expected<Executable> Compile(
+  static absl::StatusOr<Executable> Compile(
       std::unique_ptr<JitCompiler> compiler,
       std::string_view memory_region_name,
       llvm::Optional<size_t> specialization = llvm::None);
@@ -132,10 +132,10 @@ class JitCompiler {
   //
   // Returns error if arguments are not compatible with compiled module
   // entrypoint signature.
-  llvm::Error Specialize(ArgumentsRef arguments,
-                         llvm::ArrayRef<SymbolicShape> symbolic_shapes,
-                         llvm::ArrayRef<ArgumentConstraint> constraints,
-                         const SpecializationListener* listener = nullptr);
+  absl::Status Specialize(ArgumentsRef arguments,
+                          llvm::ArrayRef<SymbolicShape> symbolic_shapes,
+                          llvm::ArrayRef<ArgumentConstraint> constraints,
+                          const SpecializationListener* listener = nullptr);
 
   const Options& options() const { return opts_; }
 
@@ -157,9 +157,9 @@ class JitCompiler {
   JitCompiler(Options opts, std::string_view mlir_module,
               std::string_view entrypoint);
 
-  template <typename OriginalError>
-  llvm::Error Error(OriginalError original_error) {
-    return tfrt::MakeStringError(original_error, ":\n", diagnostic_);
+  absl::Status Error(std::string_view error) {
+    // TODO(ezhulenev): Pass diagnstic as a status payload.
+    return absl::InternalError(absl::StrCat(error, ":\n", diagnostic_));
   }
 
   Options opts_;
