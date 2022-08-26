@@ -1318,7 +1318,11 @@ template <typename NativeT>
 inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
-  CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
+  if (shape().is_static()) {
+    CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
+  } else {
+    CHECK_EQ(GetDynamicSize(0), values.size());
+  }
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
   auto data_span = data<NativeT>();
@@ -1333,10 +1337,17 @@ void MutableLiteralBase::PopulateR2(
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
 
-  const int64_t dim0_size = values.size();
-  const int64_t dim1_size = values.begin()->size();
-  CHECK_EQ(dim0_size, shape().dimensions(0));
-  CHECK_EQ(dim1_size, shape().dimensions(1));
+  const int64_t values_dim0_size = values.size();
+  const int64_t values_dim1_size = values.begin()->size();
+  const int64_t literal_dim0_size = shape().is_dynamic_dimension(0)
+                                        ? GetDynamicSize(0)
+                                        : shape().dimensions(0);
+  const int64_t literal_dim1_size = shape().is_dynamic_dimension(1)
+                                        ? GetDynamicSize(1)
+                                        : shape().dimensions(1);
+
+  CHECK_EQ(values_dim0_size, literal_dim0_size);
+  CHECK_EQ(values_dim1_size, literal_dim1_size);
 
   int64_t dim0 = 0;
   for (auto inner_list : values) {
@@ -1345,7 +1356,7 @@ void MutableLiteralBase::PopulateR2(
       Set({dim0, dim1}, value);
       ++dim1;
     }
-    CHECK_EQ(dim1_size, dim1);
+    CHECK_EQ(values_dim1_size, dim1);
     ++dim0;
   }
 }
@@ -1357,7 +1368,10 @@ void MutableLiteralBase::PopulateFromArray(const Array<NativeT>& values) {
            primitive_util::NativeToPrimitiveType<NativeT>());
   CHECK_EQ(shape().rank(), values.num_dimensions());
   for (int dim = 0; dim < values.num_dimensions(); ++dim) {
-    CHECK_EQ(values.dim(dim), shape().dimensions(dim));
+    int64_t shape_size = shape().is_dynamic_dimension(dim)
+                             ? GetDynamicSize(dim)
+                             : shape().dimensions(dim);
+    CHECK_EQ(values.dim(dim), shape_size);
   }
   values.Each([this](absl::Span<const int64_t> indices, NativeT value) {
     this->Set(indices, value);

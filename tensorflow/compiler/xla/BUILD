@@ -506,6 +506,7 @@ tf_cc_test(
     name = "literal_test",
     srcs = ["literal_test.cc"],
     deps = [
+        ":array2d",
         ":array3d",
         ":array4d",
         ":literal",
@@ -513,11 +514,9 @@ tf_cc_test(
         ":shape_util",
         ":test",
         ":types",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
