@@ -547,14 +547,6 @@ cc_library(
 )
 
 cc_library(
-    name = "protobuf_compiler",
-    hdrs = ["protobuf_compiler.h"],
-    deps = [
-        "//tensorflow/tsl/platform:protobuf_compiler",
-    ],
-)
-
-cc_library(
     name = "protobuf_internal",
     hdrs = ["protobuf_internal.h"],
     deps = [
