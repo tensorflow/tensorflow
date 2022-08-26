@@ -5301,6 +5301,10 @@ tf_module {
     argspec: "args=[\'input\', \'scales\', \'zero_points\', \'Tout\', \'quantization_min_val\', \'quantization_max_val\', \'quantization_axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
+    name: "UniformQuantizedClipByValue"
+    argspec: "args=[\'operand\', \'min\', \'max\', \'scales\', \'zero_points\', \'quantization_min_val\', \'quantization_max_val\', \'quantization_axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
     name: "UniformQuantizedDotHybrid"
     argspec: "args=[\'lhs\', \'rhs\', \'rhs_scales\', \'rhs_zero_points\', \'Tout\', \'rhs_quantization_min_val\', \'rhs_quantization_max_val\', \'rhs_quantization_axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
