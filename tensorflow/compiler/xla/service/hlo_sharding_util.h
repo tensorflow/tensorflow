@@ -31,7 +31,7 @@ limitations under the License.
 namespace xla {
 namespace hlo_sharding_util {
 
-struct GatherParallelDims {
+struct GatherScatterParallelDims {
   absl::InlinedVector<int64_t, 1> indices_parallel_dims;
   absl::InlinedVector<int64_t, 1> operand_parallel_dims;
   std::vector<int64_t> index_parallel_in_dim;
@@ -181,6 +181,11 @@ std::optional<HloSharding> ScatterUpdateShardingFromOutput(
     const HloSharding& per_output_sharding,
     const HloScatterInstruction& scatter);
 
+// Returns an update operand sharding of scatter by passing through the output's
+// sharding on index parallel dimensions.
+std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
+    const HloSharding& output_sharding, const HloScatterInstruction& scatter);
+
 // Returns an identity value and an HloOpcode for reduce computation of scatter
 // instruction.
 // - If computation is add/or, return 0/false with corresponding op code;
@@ -230,20 +235,29 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
 // equivalent to kIota.
 std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota);
 
-// Returns identified parallel dimensions for Gather.
-std::optional<GatherParallelDims> GetGatherBatchParallelDims(
+// Returns identified parallel dimensions of operands and indices for Gather.
+std::optional<GatherScatterParallelDims> GetGatherBatchParallelDims(
+    const HloInstruction& hlo);
+
+// Returns identified parallel dimensions of operands and indices for Scatter.
+std::optional<GatherScatterParallelDims> GetScatterBatchParallelDims(
     const HloInstruction& hlo);
 
 // Returns the parallel dimensions of the output of a gather based on the
-// parallel dimensions of the input.
-absl::InlinedVector<int64_t, 1> GatherParallelOutputDims(
-    const HloInstruction& gather, const GatherParallelDims& parallel_dim);
+// parallel dimensions of the operands and indices.
+absl::InlinedVector<int64_t, 1> GetGatherOutputParallelDims(
+    const HloInstruction& hlo, const GatherScatterParallelDims& parallel_dim);
 
-// Returns the parallel dimensions of the data operand of a gather with the
-// order of the parallel dimensions matching that of the parallel dimensions
-// of the output.
-absl::InlinedVector<int64_t, 1> GatherOutputAlignedOperandParallelDims(
-    const HloInstruction& gather, const GatherParallelDims& parallel_dims);
+// Returns the parallel dimensions of the update of a scatter based on the
+// parallel dimensions of the operands and indices.
+absl::InlinedVector<int64_t, 1> GetScatterUpdateParallelDims(
+    const HloInstruction& hlo, const GatherScatterParallelDims& parallel_dim);
+
+// Returns the parallel dimensions of the data operand of a gather/scatter with
+// the order of the parallel dimensions matching that of the parallel dimensions
+// of the indices.
+absl::InlinedVector<int64_t, 1> IndexAlignedOperandParallelDims(
+    const HloInstruction& hlo, const GatherScatterParallelDims& parallel_dims);
 
 // Represents grouping devices in a tiled sharding along certain dimensions.
 // Elements in group dimensions define different device groups, and the sharding
