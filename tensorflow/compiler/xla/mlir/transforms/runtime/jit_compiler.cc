@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -172,7 +173,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
 /*static*/ absl::StatusOr<Executable> JitCompiler::Compile(
     std::unique_ptr<JitCompiler> compiler, std::string_view memory_region_name,
-    llvm::Optional<size_t> specialization) {
+    std::optional<size_t> specialization) {
   const JitCompiler::Options& opts = compiler->options();
   func::FuncOp entry_func = compiler->entrypoint();
   std::string entrypoint = entry_func.getName().str();

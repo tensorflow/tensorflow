@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <utility>
 
-#include "llvm/ADT/Optional.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
 
@@ -34,7 +34,6 @@ using llvm::isa;
 
 using llvm::ArrayRef;
 using llvm::Expected;
-using llvm::Optional;
 
 using tfrt::MakeAvailableAsyncValueRef;
 using tfrt::MakeErrorAsyncValueRef;
@@ -131,10 +130,10 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
   // compiled executable.
   if (opts.specialization == Specialization::kAlways ||
       IsSpecializationOnly(*constraints))
-    return JitExecutable(mlir_module, entrypoint, memory_region_name,
-                         std::move(opts), std::move(*constraints),
-                         std::move(*signature),
-                         /*default_executable=*/llvm::None, std::move(runner));
+    return JitExecutable(
+        mlir_module, entrypoint, memory_region_name, std::move(opts),
+        std::move(*constraints), std::move(*signature),
+        /*default_executable=*/std::nullopt, std::move(runner));
 
   // Otherwise try to compile the default executable.
   StatusOr<Executable> executable =
@@ -152,7 +151,7 @@ JitExecutable::JitExecutable(std::string_view mlir_module,
                              std::string_view memory_region_name, Options opts,
                              ArrayRef<ArgumentConstraint> constraints,
                              FunctionType signature,
-                             Optional<Executable> default_executable,
+                             std::optional<Executable> default_executable,
                              CompilationTaskRunner runner)
     : mlir_module_(mlir_module),
       entrypoint_(entrypoint),

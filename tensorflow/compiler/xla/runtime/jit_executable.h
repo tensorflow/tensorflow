@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <any>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -134,7 +135,7 @@ class JitExecutable {
                 std::string_view memory_region_name, Options opts,
                 llvm::ArrayRef<ArgumentConstraint> constraints,
                 FunctionType signature,
-                llvm::Optional<Executable> default_executable,
+                std::optional<Executable> default_executable,
                 CompilationTaskRunner runner);
 
   std::string mlir_module_;

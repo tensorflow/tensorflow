@@ -391,7 +391,7 @@ Error Executable::ReturnResults(const ResultConverter& results,
                     std::move(signature), std::move(runtime_signature),
                     std::move(*arguments_memory_layout),
                     std::move(*results_memory_layout),
-                    /*specialization=*/llvm::None,
+                    /*specialization=*/std::nullopt,
                     /*time_to_compile*/ std::chrono::milliseconds(0));
 }
 

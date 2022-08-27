@@ -17,11 +17,11 @@ limitations under the License.
 #define XLA_RUNTIME_EXECUTABLE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 
-#include "llvm/ADT/Optional.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
@@ -106,7 +106,7 @@ class Executable {
 
   std::string_view name() const { return name_; }
 
-  llvm::Optional<size_t> specialization() const { return specialization_; }
+  std::optional<size_t> specialization() const { return specialization_; }
 
   // Returns the number of results in the runtime signature.
   unsigned num_results() const;
@@ -236,7 +236,7 @@ class Executable {
              FunctionType runtime_signature,
              ArgumentsMemoryLayout arguments_memory_layout,
              ResultsMemoryLayout results_memory_layout,
-             llvm::Optional<size_t> specialization,
+             std::optional<size_t> specialization,
              std::chrono::milliseconds time_to_compile)
       : name_(name),
         memory_mapper_(std::move(memory_mapper)),
@@ -291,7 +291,7 @@ class Executable {
 
   // Specialization id if this executable is a specialization, or an empty
   // optional if this executable is a default one.
-  llvm::Optional<size_t> specialization_;
+  std::optional<size_t> specialization_;
 
   // The time it took to compile this binary.
   std::chrono::milliseconds time_to_compile_;

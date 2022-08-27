@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_RUNTIME_SYMBOLIC_SHAPE_H_
 #define XLA_RUNTIME_SYMBOLIC_SHAPE_H_
 
+#include <optional>
+
 #include "absl/status/statusor.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
@@ -97,7 +99,7 @@ class SymbolicShapesResolver {
 
   // Statically known sizes of shaped arguments from the function signature. For
   // non-shaped arguments (e.g. opaque pointers) we keep empty shape value.
-  llvm::SmallVector<llvm::Optional<StaticShape>> arguments_sizes_;
+  llvm::SmallVector<std::optional<StaticShape>> arguments_sizes_;
 
   // Values of statically known dimensions sizes in the function signature.
   llvm::DenseSet<int64_t> seen_static_sizes_;

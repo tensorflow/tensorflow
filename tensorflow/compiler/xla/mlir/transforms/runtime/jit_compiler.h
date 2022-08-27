@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -118,7 +119,7 @@ class JitCompiler {
   static absl::StatusOr<Executable> Compile(
       std::unique_ptr<JitCompiler> compiler,
       std::string_view memory_region_name,
-      llvm::Optional<size_t> specialization = llvm::None);
+      std::optional<size_t> specialization = std::nullopt);
 
   // Specialize compiled module to the arguments:
   //

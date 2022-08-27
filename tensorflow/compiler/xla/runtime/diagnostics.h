@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_RUNTIME_DIAGNOSTICS_H_
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -160,7 +161,7 @@ class InFlightDiagnostic {
 
   // Diagnostic engine that will report this diagnostic once its ready.
   const DiagnosticEngine *engine_ = nullptr;
-  llvm::Optional<Diagnostic> diagnostic_;
+  std::optional<Diagnostic> diagnostic_;
 };
 
 //===----------------------------------------------------------------------===//
