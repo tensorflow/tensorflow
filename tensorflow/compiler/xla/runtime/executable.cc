@@ -140,6 +140,9 @@ Executable::GetArgumentsMemoryLayout(const FunctionType& signature) {
     // Check if the type defines the ABI for passing it as an argument.
     if (StatusOr<Type::ArgumentAbi> abi = type->AsArgument(); abi.ok()) {
       layout.num_args_ptrs += abi->num_ptrs;
+      layout.num_ptrs.emplace_back(abi->num_ptrs);
+      layout.offsets.emplace_back(
+          i == 0 ? 0 : (layout.offsets[i - 1] + layout.num_ptrs[i - 1]));
       continue;
     }
 
@@ -236,19 +239,19 @@ Status Executable::InitializeCallFrame(ArgumentsRef arguments,
   // Add a placeholder for the kernel context as the first argument.
   call_frame->args[0] = nullptr;
 
-  // Keep offset of the next argument in the `args` array, and update it every
-  // time we pack a new argument.
-  size_t offset = 1;
-
   // Mutable view into the call frame arguments.
-  auto args = absl::Span<void*>(call_frame->args.data(), num_args_ptrs);
+  absl::Span<void*> args(call_frame->args);
 
   // Pack all arguments according to the ABI to the call frame arguments.
-  for (unsigned i = 0; i < arguments.size(); ++i)
-    offset = arguments[i].Pack(args, offset);
-
-  assert(offset == num_args_ptrs &&
-         "reserved number of args must match the argument offset");
+  //
+  // We use layout information starting with offset 1 because the kernel
+  // context argument packed above, and is not passed as a regular argument.
+  for (unsigned i = 0; i < arguments.size(); ++i) {
+    size_t offset = arguments_memory_layout_.offsets[i + 1];
+    size_t len = arguments_memory_layout_.num_ptrs[i + 1];
+    assert(offset >= 1 && (offset + len) <= num_args_ptrs);
+    arguments[i].Pack(args.subspan(offset, len));
+  }
 
   // Allocate storage for results.
   call_frame->results.resize_for_overwrite(results_memory_layout_.size);

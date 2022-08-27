@@ -40,14 +40,12 @@ class Argument : public llvm::RTTIExtends<Type, llvm::RTTIRoot> {
   // Verifies that the argument matches the expected type.
   virtual absl::Status Verify(const Type& type) const = 0;
 
-  // Packs argument into the `args` array starting at the given `offset`
-  // according to the expected executable ABI. Return offset incremented by
-  // the number of packed pointers, so that result will point to the offset for
-  // packing the next argument.
+  // Packs argument into the `args` view according to the expected executable
+  // ABI.
   //
-  // Arguments array is guaranteed to be properly sized to have space for all
+  // Arguments view is guaranteed to be properly sized to have space for all
   // arguments according to the arguments memory layout.
-  virtual size_t Pack(absl::Span<void*> args, size_t offset) const = 0;
+  virtual void Pack(absl::Span<void*> args) const = 0;
 
   virtual std::string ToString() const = 0;
 };
@@ -208,7 +206,7 @@ class OpaqueArg final : public llvm::RTTIExtends<OpaqueArg, Argument> {
   void* ptr() const { return ptr_; }
 
   absl::Status Verify(const Type& type) const final;
-  size_t Pack(absl::Span<void*> args, size_t offset) const final;
+  void Pack(absl::Span<void*> args) const final;
   std::string ToString() const final;
 
  private:
@@ -273,7 +271,7 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
   }
 
   absl::Status Verify(const Type& type) const final;
-  size_t Pack(absl::Span<void*> args, size_t offset) const final;
+  void Pack(absl::Span<void*> args) const final;
   std::string ToString() const final;
 
  private:
@@ -321,7 +319,7 @@ class BufferDesc final : public llvm::RTTIExtends<BufferDesc, Argument> {
   size_t size() const { return size_; }
 
   absl::Status Verify(const Type& type) const final;
-  size_t Pack(absl::Span<void*> args, size_t offset) const final;
+  void Pack(absl::Span<void*> args) const final;
   std::string ToString() const final;
 
  private:

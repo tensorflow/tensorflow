@@ -54,10 +54,7 @@ Status OpaqueArg::Verify(const Type& type) const {
       StrCat("unsupported opaque argument type: ", type.ToString()));
 }
 
-size_t OpaqueArg::Pack(absl::Span<void*> args, size_t offset) const {
-  args[offset] = ptr_;
-  return ++offset;
-}
+void OpaqueArg::Pack(absl::Span<void*> args) const { args[0] = ptr_; }
 
 std::string OpaqueArg::ToString() const {
   return StrFormat("OpaqueArg: ptr=%p", ptr_);
@@ -166,28 +163,22 @@ Status MemrefDesc::Verify(const Type& type) const {
       StrCat("unsupported memref type: ", type.ToString()));
 }
 
-size_t MemrefDesc::Pack(absl::Span<void*> args, size_t offset) const {
-  // Write into the arguments data starting from the given offset.
-  void** storage = &args[offset];
-
+void MemrefDesc::Pack(absl::Span<void*> args) const {
   auto cast = [](const void* p) { return const_cast<void*>(p); };
 
   // Packs memref with a rank not known at compile time.
-  auto pack_memref = [&](int64_t rank) -> size_t {
-    storage[0] = cast(&data_);  // memref.basePtr
-    storage[1] = cast(&data_);  // memref.data
-    storage[2] = cast(&offset_);
+  auto pack_memref = [&](int64_t rank) {
+    args[0] = cast(&data_);  // memref.basePtr
+    args[1] = cast(&data_);  // memref.data
+    args[2] = cast(&offset_);
     for (int64_t d = 0; d < rank; ++d) {
-      storage[3 + d] = cast(&sizes_and_strides_[d]);
-      storage[3 + rank + d] = cast(&sizes_and_strides_[rank_ + d]);
+      args[3 + d] = cast(&sizes_and_strides_[d]);
+      args[3 + rank + d] = cast(&sizes_and_strides_[rank_ + d]);
     }
-
-    // Move offsets to the next argument position.
-    return offset + 3 + rank * 2;
   };
 
   // Packs memref with a rank known at compile time.
-  auto pack_ranked_memref = [&](auto rank_tag) -> size_t {
+  auto pack_ranked_memref = [&](auto rank_tag) {
     static constexpr int64_t rank = decltype(rank_tag)::value;
     return pack_memref(rank);
   };
@@ -269,14 +260,12 @@ Status BufferDesc::Verify(const Type& type) const {
       StrCat("unsupported memref type: ", type.ToString()));
 }
 
-size_t BufferDesc::Pack(absl::Span<void*> args, size_t offset) const {
+void BufferDesc::Pack(absl::Span<void*> args) const {
   auto cast = [](const void* ptr) { return const_cast<void*>(ptr); };
-  // Write into the arguments data starting from the given offset.
-  void** p = &args[offset];
-  p[0] = cast(&data_);
-  p[1] = cast(&data_);
-  p[2] = cast(&size_);
-  return offset + 3;
+
+  args[0] = cast(&data_);
+  args[1] = cast(&data_);
+  args[2] = cast(&size_);
 }
 
 std::string BufferDesc::ToString() const {

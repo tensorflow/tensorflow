@@ -162,8 +162,9 @@ class Executable {
 
   // Requirements for passing arguments to the compiled function.
   struct ArgumentsMemoryLayout {
-    // Currently we always pass arguments as an array of pointers.
-    size_t num_args_ptrs = 0;
+    size_t num_args_ptrs = 0;            // total number of required pointers
+    llvm::SmallVector<size_t> num_ptrs;  // num_ptrs for each argument
+    llvm::SmallVector<size_t> offsets;   // offsets into the args array
   };
 
   // Requirements for the contiguous block of memory to store compiled function
