@@ -19,6 +19,7 @@
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -76,7 +77,6 @@ using Eigen::half;
 
 using llvm::ArrayRef;
 using llvm::Error;
-using llvm::Optional;
 
 using mlir::failure;
 using mlir::FailureOr;
@@ -575,9 +575,9 @@ struct CublasLtMatmul {
                    const DebugOptions* debug_options,
                    runtime::StridedMemrefView a, runtime::StridedMemrefView b,
                    runtime::StridedMemrefView c, runtime::StridedMemrefView d,
-                   Optional<runtime::StridedMemrefView> bias, int64_t algorithm,
-                   double alpha_real, double alpha_imag, double beta,
-                   DotDimensionNumbers dot_dims,
+                   std::optional<runtime::StridedMemrefView> bias,
+                   int64_t algorithm, double alpha_real, double alpha_imag,
+                   double beta, DotDimensionNumbers dot_dims,
                    se::cuda::BlasLt::Epilogue epilogue,
                    ArrayRef<int32_t> precision, int64_t uid) const;
 
@@ -589,8 +589,9 @@ Error CublasLtMatmul::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, runtime::StridedMemrefView a,
     runtime::StridedMemrefView b, runtime::StridedMemrefView c,
-    runtime::StridedMemrefView d, Optional<runtime::StridedMemrefView> bias,
-    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
+    runtime::StridedMemrefView d,
+    std::optional<runtime::StridedMemrefView> bias, int64_t algorithm,
+    double alpha_real, double alpha_imag, double beta,
     DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
     ArrayRef<int32_t> precision, int64_t uid) const {
   VLOG(3) << "Running CublasLtMatmul";
@@ -650,7 +651,7 @@ static bool CublasLtMatmul(runtime::KernelContext* ctx, void** args,
                                .Arg<runtime::StridedMemrefView>()  // b
                                .Arg<runtime::StridedMemrefView>()  // c
                                .Arg<runtime::StridedMemrefView>()  // d
-                               .Value(CustomCall::None)            // bias
+                               .Value(std::nullopt)                // bias
                            )
           .To<RuntimeChecks()>(CublasLtMatmul::Handler())
           .release();
@@ -716,8 +717,8 @@ static GpuConvDescriptor GetConvDescriptor(
     // Attributes
     ConvDimensionNumbers dims, Window w, ConvBackendConfig b, ConvAttrs attrs,
     // Conv-specific arguments and attributes
-    Optional<FusedConvAttrs> fused = llvm::None,
-    Optional<SideInputAttrs> side_input = llvm::None) {
+    std::optional<FusedConvAttrs> fused = std::nullopt,
+    std::optional<SideInputAttrs> side_input = std::nullopt) {
   // Build a convolution descriptor from the attributes.
   GpuConvDescriptor descriptor;
   descriptor.kind = kind;
@@ -804,8 +805,8 @@ struct Conv {
       const ServiceExecutableRunOptions* run_options,
       const DebugOptions* debug_options, runtime::StridedMemrefView operand0,
       runtime::StridedMemrefView operand1,
-      Optional<runtime::FlatMemrefView> bias,
-      Optional<runtime::StridedMemrefView> side_input,
+      std::optional<runtime::FlatMemrefView> bias,
+      std::optional<runtime::StridedMemrefView> side_input,
       runtime::StridedMemrefView output, runtime::FlatMemrefView scratch,
       ConvDimensionNumbers conv_dims,
       // Window config
@@ -817,13 +818,13 @@ struct Conv {
       // Remaining attributes
       int64_t feature_group_count, double result_scale,
       // Optional attributes for fused convolutions.
-      Optional<se::dnn::ActivationMode> activation_mode = llvm::None,
-      Optional<double> side_input_scale = llvm::None) const {
+      std::optional<se::dnn::ActivationMode> activation_mode = std::nullopt,
+      std::optional<double> side_input_scale = std::nullopt) const {
     // Build config for optional attributes.
-    Optional<FusedConvAttrs> fused_attrs = llvm::None;
+    std::optional<FusedConvAttrs> fused_attrs = std::nullopt;
     if (activation_mode.has_value()) fused_attrs = {*activation_mode};
 
-    Optional<SideInputAttrs> side_input_attrs = llvm::None;
+    std::optional<SideInputAttrs> side_input_attrs = std::nullopt;
     if (side_input_scale.has_value()) side_input_attrs = {*side_input_scale};
 
     // Prepare a descriptor for the XLA convolution.
@@ -897,8 +898,8 @@ static bool ConvFn(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .UserData<const DebugOptions*>()
                              .Arg<runtime::StridedMemrefView>()  // operand0
                              .Arg<runtime::StridedMemrefView>()  // operand1
-                             .Value(CustomCall::None)            // bias
-                             .Value(CustomCall::None)            // side_input
+                             .Value(std::nullopt)                // bias
+                             .Value(std::nullopt)                // side_input
                              .Arg<runtime::StridedMemrefView>()  // output
                              .Arg<runtime::FlatMemrefView>()     // scratch
                          )
@@ -918,7 +919,7 @@ static bool ConvFusedFn(runtime::KernelContext* ctx, void** args,
                              .Arg<runtime::StridedMemrefView>()  // operand0
                              .Arg<runtime::StridedMemrefView>()  // operand1
                              .Arg<runtime::FlatMemrefView>()     // bias
-                             .Value(CustomCall::None)            // side_input
+                             .Value(std::nullopt)                // side_input
                              .Arg<runtime::StridedMemrefView>()  // output
                              .Arg<runtime::FlatMemrefView>()     // scratch
                          )
