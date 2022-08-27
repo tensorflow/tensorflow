@@ -44,7 +44,6 @@ using llvm::Expected;
 using llvm::orc::MangleAndInterner;
 using llvm::orc::SymbolMap;
 
-
 // KernelContext encapsulates all the data that is required to implement XLA
 // Runtime <-> XLA Executable integration API.
 struct KernelContext {
@@ -221,9 +220,9 @@ Error Executable::InitializeCallFrame(ArgumentsRef arguments,
     // signature.
     for (unsigned i = 0; i < arguments.size(); ++i) {
       unsigned idx = i + 1;  // use 1-based index to fetch signature operand
-      if (auto err = arguments[i].Verify(*signature.operand(idx)))
+      if (auto st = arguments[i].Verify(*signature.operand(idx)); !st.ok())
         return MakeStringError("argument #", i,
-                               " doesn't match the signature: ", err);
+                               " doesn't match the signature: ", st.message());
     }
   }
 

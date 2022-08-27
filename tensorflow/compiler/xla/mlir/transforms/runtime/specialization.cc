@@ -61,12 +61,12 @@ static Status VerifyMemrefOperand(unsigned index, mlir::ShapedType shaped,
   // operand types when we do compiled kernel specialization to shape.
   if (shaped.hasRank()) {
     MemrefType type(shaped.getShape(), *element_ty);
-    if (auto err = VerifyMemrefArgument(index, type, memref))
-      return absl::InternalError("wrong type");
+    if (auto st = VerifyMemrefArgument(index, type, memref); !st.ok())
+      return st;
   } else {
     UnrankedMemrefType type(*element_ty);
-    if (auto err = VerifyMemrefArgument(index, type, memref))
-      return absl::InternalError("wrong type");
+    if (auto st = VerifyMemrefArgument(index, type, memref); !st.ok())
+      return st;
   }
 
   return absl::OkStatus();

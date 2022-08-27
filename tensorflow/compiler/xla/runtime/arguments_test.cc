@@ -87,7 +87,7 @@ static void BenchmarkVerifyMemrefOperand(benchmark::State& state,
   MemrefType type(memref.sizes(), memref.dtype());
 
   for (auto _ : state) {
-    if (auto err = VerifyMemrefArgument(0, type, memref)) break;
+    if (auto st = VerifyMemrefArgument(0, type, memref); !st.ok()) break;
   }
 }
 

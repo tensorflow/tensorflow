@@ -244,12 +244,12 @@ Expected<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
       if (!memref_arg) continue;
 
       if (auto* memref = dyn_cast<MemrefType>(type)) {
-        if (auto err = VerifyMemrefArgument(i, *memref, *memref_arg))
-          return std::move(err);
+        if (auto st = VerifyMemrefArgument(i, *memref, *memref_arg); !st.ok())
+          return MakeStringError(st.message());
 
       } else if (auto* tensor = dyn_cast<RankedTensorType>(type)) {
-        if (auto err = VerifyMemrefArgument(i, *tensor, *memref_arg))
-          return std::move(err);
+        if (auto st = VerifyMemrefArgument(i, *tensor, *memref_arg); !st.ok())
+          return MakeStringError(st.message());
 
       } else {
         return MakeStringError("expected shaped operand at #", i,

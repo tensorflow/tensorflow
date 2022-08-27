@@ -20,8 +20,9 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
+#include "absl/status/status.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
 namespace xla {
@@ -38,7 +39,7 @@ class Argument : public llvm::RTTIExtends<Type, llvm::RTTIRoot> {
   Argument() = default;
 
   // Verifies that the argument matches the expected type.
-  virtual llvm::Error Verify(const Type& type) const = 0;
+  virtual absl::Status Verify(const Type& type) const = 0;
 
   // Packs argument into the `args` array starting at the given `offset`
   // according to the expected executable ABI. Return offset incremented by
@@ -208,7 +209,7 @@ class OpaqueArg final : public llvm::RTTIExtends<OpaqueArg, Argument> {
 
   void* ptr() const { return ptr_; }
 
-  llvm::Error Verify(const Type& type) const final;
+  absl::Status Verify(const Type& type) const final;
   size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
   std::string ToString() const final;
 
@@ -272,7 +273,7 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
     return {sizes_and_strides_.data() + rank_, rank_};
   }
 
-  llvm::Error Verify(const Type& type) const final;
+  absl::Status Verify(const Type& type) const final;
   size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
   std::string ToString() const final;
 
@@ -304,8 +305,8 @@ MemrefDesc::MemrefDesc(unsigned rank, PrimitiveType dtype, void* data,
 // argument: type is a tensor of a memref with compatible element type, and all
 // statically known dimensions match the run-time sizes. Returns user-friendly
 // error message in case of an error.
-llvm::Error VerifyMemrefArgument(unsigned index, const Type& type,
-                                 const MemrefDesc& arg);
+absl::Status VerifyMemrefArgument(unsigned index, const Type& type,
+                                  const MemrefDesc& arg);
 
 //===----------------------------------------------------------------------===//
 // BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
@@ -320,7 +321,7 @@ class BufferDesc final : public llvm::RTTIExtends<BufferDesc, Argument> {
   void* data() const { return data_; }
   size_t size() const { return size_; }
 
-  llvm::Error Verify(const Type& type) const final;
+  absl::Status Verify(const Type& type) const final;
   size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
   std::string ToString() const final;
 
