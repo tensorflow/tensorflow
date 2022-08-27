@@ -104,7 +104,7 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
 
   // Get resolved operands constraints for the entrypoint function.
   auto constraints = GetArgumentsConstraints((*compiler)->entrypoint());
-  if (auto err = constraints.takeError()) return std::move(err);
+  if (!constraints.ok()) return MakeStringError(constraints.status().message());
 
   // Get the entrypoint function signature, it will be later required to
   // compute the specialized function signature from the operands at runtime.

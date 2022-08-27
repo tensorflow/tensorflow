@@ -77,6 +77,8 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":errors",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
     ],
 )

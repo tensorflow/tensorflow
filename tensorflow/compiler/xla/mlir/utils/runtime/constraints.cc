@@ -17,32 +17,37 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Error.h"
-#include "tensorflow/compiler/xla/runtime/errors.h"
+#include "tensorflow/compiler/xla/mlir/utils/to_string.h"
 
 namespace xla {
 namespace runtime {
 
 using namespace mlir;  // NOLINT
 
-using llvm::Expected;
+using absl::InvalidArgumentError;
+using absl::StatusOr;
+using absl::StrCat;
+
 using llvm::SmallVector;
 
-Expected<SmallVector<ArgumentConstraint>> GetArgumentsConstraints(
+StatusOr<SmallVector<ArgumentConstraint>> GetArgumentsConstraints(
     func::FuncOp func) {
   llvm::SmallVector<ArgumentConstraint> constraints;
   constraints.reserve(func.getNumArguments());
 
-  auto parse = [](Attribute attr) -> Expected<ArgumentConstraint> {
+  auto parse = [](Attribute attr) -> StatusOr<ArgumentConstraint> {
     // If attribute is not defined it means that there is no constraint.
     if (!attr) return ArgumentConstraint::kResolved;
 
     // Otherwise try to parse constraint from the string attribute.
     auto str = attr.dyn_cast_or_null<StringAttr>();
     if (!str)
-      return MakeStringError("unexpected ", kArgumentConstraintAttrName,
-                             " attribute");
+      return InvalidArgumentError(
+          StrCat("unexpected ", kArgumentConstraintAttrName, " attribute"));
     return ParseArgumentConstraint(str.getValue());
   };
 
@@ -50,10 +55,10 @@ Expected<SmallVector<ArgumentConstraint>> GetArgumentsConstraints(
     auto arg_type = func.getFunctionType().getInput(i);
 
     auto constraint = parse(func.getArgAttr(i, kArgumentConstraintAttrName));
-    if (auto err = constraint.takeError()) return std::move(err);
+    if (!constraint.ok()) return constraint.status();
 
     auto resolved = ResolveArgumentConstraint(*constraint, arg_type);
-    if (auto err = resolved.takeError()) return std::move(err);
+    if (!resolved.ok()) return resolved.status();
 
     constraints.push_back(*resolved);
   }
@@ -61,14 +66,16 @@ Expected<SmallVector<ArgumentConstraint>> GetArgumentsConstraints(
   return constraints;
 }
 
-Expected<ArgumentConstraint> ResolveArgumentConstraint(
+StatusOr<ArgumentConstraint> ResolveArgumentConstraint(
     ArgumentConstraint constraint, Type type) {
   // Skip already resolved constraints.
   if (constraint == ArgumentConstraint::kResolved) return constraint;
 
   // Operand must be a shaped type: memref or tensor.
   auto shaped = type.dyn_cast<ShapedType>();
-  if (!shaped) return MakeStringError("unsupported operand type: ", type);
+  if (!shaped)
+    return InvalidArgumentError(
+        StrCat("unsupported operand type: ", ToString(type)));
 
   // Resolve `rank` constraint if rank is known at compile time.
   if (constraint == ArgumentConstraint::kRank && shaped.hasRank())
@@ -81,7 +88,8 @@ Expected<ArgumentConstraint> ResolveArgumentConstraint(
   // Leave the `value` constraint unmodified if the operand is sinkable.
   if (constraint == ArgumentConstraint::kValue) {
     if (SupportsValueSpecialization(shaped)) return constraint;
-    return MakeStringError("cannot sink operand type: ", type);
+    return InvalidArgumentError(
+        StrCat("cannot sink operand type: ", ToString(type)));
   }
 
   return constraint;

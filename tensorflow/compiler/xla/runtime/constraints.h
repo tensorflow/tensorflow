@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string_view>
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -153,7 +154,7 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
                               llvm::ArrayRef<ArgumentConstraint> constraints);
 
 // Converts argument constraint string to the corresponding enum class.
-llvm::Expected<ArgumentConstraint> ParseArgumentConstraint(
+absl::StatusOr<ArgumentConstraint> ParseArgumentConstraint(
     std::string_view str);
 
 }  // namespace runtime

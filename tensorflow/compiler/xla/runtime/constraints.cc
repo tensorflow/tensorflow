@@ -18,14 +18,19 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
-#include "tensorflow/compiler/xla/runtime/errors.h"
 
 namespace xla {
 namespace runtime {
 
+using absl::InvalidArgumentError;
+using absl::StatusOr;
+using absl::StrCat;
+
 using llvm::ArrayRef;
-using llvm::Expected;
 using llvm::raw_ostream;
 
 raw_ostream& operator<<(raw_ostream& os, const ArgumentConstraint& constraint) {
@@ -56,11 +61,11 @@ raw_ostream& operator<<(raw_ostream& os,
   return os;
 }
 
-Expected<ArgumentConstraint> ParseArgumentConstraint(std::string_view str) {
+StatusOr<ArgumentConstraint> ParseArgumentConstraint(std::string_view str) {
   if (str == "rank") return ArgumentConstraint::kRank;
   if (str == "shape") return ArgumentConstraint::kShape;
   if (str == "value") return ArgumentConstraint::kValue;
-  return MakeStringError("unknown operand constraint: ", str);
+  return InvalidArgumentError(StrCat("unknown operand constraint: ", str));
 }
 
 }  // namespace runtime

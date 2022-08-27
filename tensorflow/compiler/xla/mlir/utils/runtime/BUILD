@@ -40,8 +40,12 @@ cc_library(
     hdrs = ["constraints.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/xla/mlir/utils:to_string",
         "//tensorflow/compiler/xla/runtime:constraints",
         "//tensorflow/compiler/xla/runtime:errors",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
