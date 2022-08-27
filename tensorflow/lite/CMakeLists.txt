@@ -201,6 +201,9 @@ if(CMAKE_SYSTEM_NAME MATCHES "Android")
 endif()
 # Build a list of source files to compile into the TF Lite library.
 populate_tflite_source_vars("." TFLITE_SRCS)
+if(CMAKE_SYSTEM_NAME MATCHES "Windows" AND BUILD_SHARED_LIBS)
+  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*simple_memory_arena_debug_dump\\.cc$")
+endif()
 
 # This particular file is excluded because the more explicit approach to enable
 # XNNPACK delegate is preferred to the weak-symbol one.
