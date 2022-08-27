@@ -43,6 +43,7 @@ class SysconfigTest(googletest.TestCase):
     self.assertTrue(list_contains(compile_flags, ".*/include"))
     self.assertTrue(list_contains(compile_flags, ".*_GLIBCXX_USE_CXX11_ABI.*"))
     self.assertTrue(list_contains(compile_flags, ".*EIGEN_MAX_ALIGN_BYTES.*"))
+    self.assertTrue(list_contains(compile_flags, ".*--std.*"))
 
 
 if __name__ == "__main__":
