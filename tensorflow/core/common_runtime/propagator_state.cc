@@ -504,6 +504,7 @@ int PropagatorState::FrameState::ActivateNodesSlowPathInternal(
 
     bool dst_dead = false;
     bool dst_ready = false;
+    bool dst_need_input = true;
 
     if (dst_item->is_merge) {
       // A merge node is ready if all control inputs have arrived and either
@@ -512,30 +513,17 @@ int PropagatorState::FrameState::ActivateNodesSlowPathInternal(
       // arrived.
       if ((*outputs)[src_slot].state != Entry::State::NO_VALUE) {
         // This is a live data input.
-
-        // We have an assumption that merge op has only one live edge. Based on
-        // this assumption, we set the total pending count of a merge op to be
-        // 2 * control_edge + 1. So if we got a live data input of merge op, it
-        // is fine to directly set the input.
-        // NOTE(fishx): If there are multiple live edge for merge op, it will
-        // be a race condition and the last live edge will override the input
-        // of merge op. This should indicates a graph level issue.
-        const int dst_loc = e.input_slot;
-        if (e.is_last) {
-          input_tensors[dst_loc] = std::move((*outputs)[src_slot]);
-        } else {
-          input_tensors[dst_loc] = (*outputs)[src_slot];
-        }
-
         const PendingCounts::AdjustResult adjust_result =
             atomic ? iter_state->adjust_for_mark_live_atomic(dst_pending_id)
                    : iter_state->adjust_for_mark_live(dst_pending_id);
-
-        // The low bit of count is set if and only if no live input has been
-        // used yet (mark_live clears it). The node should be started if and
-        // only if this is the first live input and there are no pending control
+        // Only the first live edge sets the input and (potentially)
+        // triggers execution. The low bit of count is set if and
+        // only if no live input has been used yet (mark_live clears
+        // it). The node should be started if and only if this is
+        // the first live input and there are no pending control
         // edges, i.e. count == 1.
         dst_ready = (adjust_result.pending_count == 1);
+        dst_need_input = ((adjust_result.pending_count & 0x1) == 1);
       } else {
         // This is a dead data input. Note that dst_node is dead if node is
         // a dead enter. We need this to handle properly a while loop on
@@ -549,20 +537,10 @@ int PropagatorState::FrameState::ActivateNodesSlowPathInternal(
         dst_dead = (adjust_result.dead_count == dst_item->num_inputs) ||
                    item->is_enter;
         dst_ready = (adjust_result.pending_count == 1) && dst_dead;
+        dst_need_input = false;
       }
     } else {
       // Handle all other (non-merge) nodes.
-
-      // We need to set the input of the op before adjusting activation.
-      // Otherwise it may have race condition since another thread may execute
-      // the op after adjusted activation.
-      const int dst_loc = e.input_slot;
-      if (e.is_last) {
-        input_tensors[dst_loc] = std::move((*outputs)[src_slot]);
-      } else {
-        input_tensors[dst_loc] = (*outputs)[src_slot];
-      }
-
       const bool increment_dead =
           (is_dead || ((*outputs)[src_slot].state == Entry::State::NO_VALUE));
       const PendingCounts::AdjustResult adjust_result =
@@ -572,6 +550,15 @@ int PropagatorState::FrameState::ActivateNodesSlowPathInternal(
                                                      increment_dead);
       dst_dead = adjust_result.dead_count > 0;
       dst_ready = !(adjust_result.pending_count > 0);
+    }
+
+    if (dst_need_input) {
+      const int dst_loc = e.input_slot;
+      if (e.is_last) {
+        input_tensors[dst_loc] = std::move((*outputs)[src_slot]);
+      } else {
+        input_tensors[dst_loc] = (*outputs)[src_slot];
+      }
     }
 
     maybe_add_to_ready(dst_id, dst_item, dst_ready, dst_dead);
