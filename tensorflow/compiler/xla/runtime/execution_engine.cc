@@ -21,12 +21,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/ObjectCache.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "llvm/ExecutionEngine/Orc/IRTransformLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/IR/IRBuilder.h"
@@ -37,6 +38,10 @@ limitations under the License.
 
 namespace xla {
 namespace runtime {
+
+using absl::InternalError;
+using absl::StatusOr;
+using absl::StrCat;
 
 using llvm::cast;
 
@@ -186,7 +191,13 @@ std::unique_ptr<llvm::MemoryBuffer> ExecutionEngineObjectCache::stealObject(
 
 // -------------------------------------------------------------------------- //
 
-/*static*/ Expected<std::unique_ptr<ExecutionEngine>>
+std::string ToString(const llvm::Error &err) {
+  std::string str;
+  llvm::raw_string_ostream(str) << err;
+  return str;
+}
+
+/*static*/ StatusOr<std::unique_ptr<ExecutionEngine>>
 ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
                                   std::unique_ptr<llvm::Module> module,
                                   std::string_view entrypoint,
@@ -199,7 +210,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
 
   // Set up the target machine details.
   if (!options.target_machine)
-    return MakeStringError("target machine was not provided");
+    return InternalError("target machine was not provided");
   module->setDataLayout(options.target_machine->createDataLayout());
   module->setTargetTriple(options.target_machine->getTargetTriple().str());
 
@@ -207,11 +218,13 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   auto transformer = options.make_optimizing_transformer(
       options.opt_level, /*sizeLevel=*/0, options.target_machine);
   if (auto err = transformer(module_ptr))
-    return MakeStringError("failed to run optimization pipeline: ", err);
+    return InternalError(
+        StrCat("failed to run optimization pipeline: ", ToString(err)));
 
   // Set up the entry point function compatible with XLA ABI.
   if (auto err = SetUpEntrypointFunction(*module, entrypoint))
-    return MakeStringError("failed to set up entrypoint ABI: ", err);
+    return InternalError(
+        StrCat("failed to set up entrypoint ABI: ", ToString(err)));
 
   // Callback to create the object layer with a user-provided section memory
   // mapper and JIT event listeners.
@@ -252,12 +265,13 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
                  .setObjectLinkingLayerCreator(obj_layer_creator)
                  .create();
   if (auto err = jit.takeError())
-    return MakeStringError("failed to construct LLJIT: ", err);
+    return InternalError(StrCat("failed to construct LLJIT: ", ToString(err)));
 
   // Register input module with the LLJIT.
   ThreadSafeModule tsm(std::move(module), std::move(ctx));
   if (auto err = (*jit)->addIRModule(std::move(tsm)))
-    return MakeStringError("failed to add source module: ", err);
+    return InternalError(
+        StrCat("failed to add source module: ", ToString(err)));
 
   llvm::orc::JITDylib &main_jd = (*jit)->getMainJITDylib();
   llvm::DataLayout data_layout = (*jit)->getDataLayout();
@@ -266,7 +280,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   auto generator = DynamicLibrarySearchGenerator::GetForCurrentProcess(
       data_layout.getGlobalPrefix());
   if (auto err = generator.takeError())
-    return MakeStringError("failed to construct DyLib search generator");
+    return InternalError("failed to construct DyLib search generator");
   main_jd.addGenerator(std::move(*generator));
 
   // Register user-provided symbols.
@@ -275,17 +289,19 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
                                                data_layout);
     auto symbols = absoluteSymbols(options.symbols_binding(mangle));
     if (auto err = main_jd.define(symbols))
-      return MakeStringError("failed to add symbols bindings: ", err);
+      return InternalError(
+          StrCat("failed to add symbols bindings: ", ToString(err)));
   }
 
   // Trigger compilation by looking up the entrypoint function.
   Expected<ExecutorAddr> addr = (*jit)->lookup(GetEntrypointName(entrypoint));
   if (auto err = addr.takeError())
-    return MakeStringError("failed to compile the entrypoint: ", err);
+    return InternalError(
+        StrCat("failed to compile the entrypoint: ", ToString(err)));
 
   // Check that we found an address of an entrypoint function.
   auto ptr = addr->toPtr<EntrypointFunctionPtr>();
-  if (!ptr) return MakeStringError("entrypoint function resolved to null");
+  if (!ptr) return InternalError("entrypoint function resolved to null");
 
   // Check that if we enabled object cache we have an object file for the
   // compiled module.
@@ -293,7 +309,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
       options.save_compiled_obj_file ? obj_cache->stealObject(module_ptr)
                                      : nullptr;
   if (options.save_compiled_obj_file && !obj_file)
-    return MakeStringError("could not find object file for the XLA module");
+    return InternalError("could not find object file for the XLA module");
 
   // Fill remaining fields and return constructed ExecutionEngine to the caller.
   engine->jit_ = std::move(*jit);
@@ -302,7 +318,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   return std::move(engine);
 }
 
-/*static*/ Expected<std::unique_ptr<ExecutionEngine>>
+/*static*/ StatusOr<std::unique_ptr<ExecutionEngine>>
 ExecutionEngine::CreateFromObjFile(std::unique_ptr<llvm::MemoryBuffer> obj_file,
                                    std::string_view entrypoint,
                                    AotOptions options) {
@@ -331,10 +347,10 @@ ExecutionEngine::CreateFromObjFile(std::unique_ptr<llvm::MemoryBuffer> obj_file,
                  .setObjectLinkingLayerCreator(obj_layer_creator)
                  .create();
   if (auto err = jit.takeError())
-    return MakeStringError("failed to construct LLJIT: ", err);
+    return InternalError(StrCat("failed to construct LLJIT: ", ToString(err)));
 
   if (auto err = (*jit)->addObjectFile(std::move(obj_file)))
-    return MakeStringError("failed to add object file: ", err);
+    return InternalError(StrCat("failed to add object file: ", ToString(err)));
 
   llvm::orc::JITDylib &main_jd = (*jit)->getMainJITDylib();
   llvm::DataLayout data_layout = (*jit)->getDataLayout();
@@ -343,7 +359,7 @@ ExecutionEngine::CreateFromObjFile(std::unique_ptr<llvm::MemoryBuffer> obj_file,
   auto generator = DynamicLibrarySearchGenerator::GetForCurrentProcess(
       data_layout.getGlobalPrefix());
   if (auto err = generator.takeError())
-    return MakeStringError("failed to construct DyLib search generator");
+    return InternalError("failed to construct DyLib search generator");
   main_jd.addGenerator(std::move(*generator));
 
   // Register user-provided symbols.
@@ -352,17 +368,19 @@ ExecutionEngine::CreateFromObjFile(std::unique_ptr<llvm::MemoryBuffer> obj_file,
                                                data_layout);
     auto symbols = absoluteSymbols(options.symbols_binding(mangle));
     if (auto err = main_jd.define(symbols))
-      return MakeStringError("failed to add symbols bindings: ", err);
+      return InternalError(
+          StrCat("failed to add symbols bindings: ", ToString(err)));
   }
 
   // Lookup entrypoint in the loaded object file.
   Expected<ExecutorAddr> addr = (*jit)->lookup(GetEntrypointName(entrypoint));
   if (auto err = addr.takeError())
-    return MakeStringError("failed to lookup the entrypoint: ", err);
+    return InternalError(
+        StrCat("failed to lookup the entrypoint: ", ToString(err)));
 
   // Check that we found an address of an entrypoint function.
   auto ptr = addr->toPtr<EntrypointFunctionPtr>();
-  if (!ptr) return MakeStringError("entrypoint function resolved to null");
+  if (!ptr) return InternalError("entrypoint function resolved to null");
 
   // Fill remaining fields and return constructed ExecutionEngine to the caller.
   engine->jit_ = std::move(*jit);

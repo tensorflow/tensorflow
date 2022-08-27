@@ -264,8 +264,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   // Compile input module to the native function.
   auto engine = ExecutionEngine::CreateFromModule(
       std::move(llvm_ctx), std::move(llvm_module), entrypoint, engine_options);
-  if (auto err = engine.takeError())
-    return InternalError(ToString(std::move(err)));
+  if (!engine.ok()) return engine.status();
 
   // At this point compilation is completed, and all symbols in the LLVM module
   // materialized as addresses (entrypoint is an executable function pointer).
