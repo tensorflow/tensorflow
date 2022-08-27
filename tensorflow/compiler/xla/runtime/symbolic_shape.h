@@ -82,7 +82,7 @@ class SymbolicShapesResolver {
   absl::StatusOr<llvm::hash_code> ResolveHash(ArgumentsRef arguments) const;
 
   // Replaces all symbolic dimensions with dynamic dimension.
-  static llvm::SmallVector<int64_t> Normalize(const SymbolicShape& shape);
+  static StaticShape Normalize(const SymbolicShape& shape);
 
   // Computes a hash value of the symbolic shapes.
   static llvm::hash_code Hash(absl::Span<const SymbolicShape> symbolic_shapes);

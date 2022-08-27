@@ -281,7 +281,7 @@ absl::StatusOr<llvm::hash_code> SymbolicShapesResolver::ResolveHash(
                                   fingerprint.values.end());
 }
 
-/*static*/ llvm::SmallVector<int64_t> SymbolicShapesResolver::Normalize(
+/*static*/ StaticShape SymbolicShapesResolver::Normalize(
     const SymbolicShape& shape) {
   auto normalize = llvm::map_range(shape, [](int64_t dim) {
     return std::max(dim, MemrefType::kDynamicSize);
