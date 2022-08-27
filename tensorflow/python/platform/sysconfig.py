@@ -64,13 +64,13 @@ def get_compile_flags():
   flags.append('-I%s' % get_include())
   flags.append('-D_GLIBCXX_USE_CXX11_ABI=%d' % _CXX11_ABI_FLAG)
   cxx_version_flag = None
-  if __CXX_VERSION == "201103L":
+  if __CXX_VERSION == 201103:
     cxx_version_flag = "--std=c++11"
-  elif __CXX_VERSION == "201402L":
+  elif __CXX_VERSION == 201402:
     cxx_version_flag = "--std=c++14"
-  elif __CXX_VERSION == "201703L":
+  elif __CXX_VERSION == 201703:
     cxx_version_flag = "--std=c++17"
-  elif __CXX_VERSION == "202002L":
+  elif __CXX_VERSION == 202002:
     cxx_version_flag = "--std=c++20"
   if (cxx_version_flag):
     flags.append(cxx_version_flag)

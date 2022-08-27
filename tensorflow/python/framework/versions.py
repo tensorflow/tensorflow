@@ -53,7 +53,7 @@ tf_export(
 CXX_VERSION = __cxx_version__
 tf_export(
     "sysconfig.CXX_VERSION",
-    "__cxx11_abi_flag__",
+    "__cxx_version__",
     v1=["sysconfig.CXX_VERSION", "CXX_VERSION",
         "__cxx_version__"]).export_constant(__name__, "CXX_VERSION")
 MONOLITHIC_BUILD = __monolithic_build__
