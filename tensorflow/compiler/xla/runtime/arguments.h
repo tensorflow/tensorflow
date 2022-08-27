@@ -140,7 +140,7 @@ class Arguments {
 };
 
 // A constant reference to an array of arguments, somewhat similar to the
-// `ArrayRef<Argument>`, however because `ArrayRef` of a virtual base is not
+// `absl::Span<const Argument>`, however because `Span` of a virtual base is not
 // possible, we have our own type that is constructible from the `Arguments`
 // and array reference or vector of any argument subtype.
 class ArgumentsRef {

@@ -73,13 +73,13 @@ class JitExecutable {
   // that the runner will be called in the same thread as `GetExecutable`.
   //
   using CompilationTaskRunner =
-      llvm::unique_function<void(size_t, llvm::ArrayRef<ArgumentConstraint>,
+      llvm::unique_function<void(size_t, absl::Span<const ArgumentConstraint>,
                                  ArgumentsRef, CompilationTask, UserData)>;
 
   // Inline compilation task runner runs compilation task in the caller thread.
   static void InlineCompilationTaskRunner(
       size_t num_specializations,
-      llvm::ArrayRef<ArgumentConstraint> constraints, ArgumentsRef arguments,
+      absl::Span<const ArgumentConstraint> constraints, ArgumentsRef arguments,
       CompilationTask task, UserData user_data);
 
   static llvm::Expected<JitExecutable> Instantiate(
@@ -89,7 +89,7 @@ class JitExecutable {
 
   // Returns entrypoint operands constraints after resolving them using the
   // statically known information in the entrypoint function signature.
-  llvm::ArrayRef<ArgumentConstraint> constraints() const;
+  absl::Span<const ArgumentConstraint> constraints() const;
 
   // Returns default executable that accepts all compatible operands
   // (operands rank and all static dimensions should match the operands).
@@ -133,7 +133,7 @@ class JitExecutable {
  private:
   JitExecutable(std::string_view mlir_module, std::string_view entrypoint,
                 std::string_view memory_region_name, Options opts,
-                llvm::ArrayRef<ArgumentConstraint> constraints,
+                absl::Span<const ArgumentConstraint> constraints,
                 FunctionType signature,
                 std::optional<Executable> default_executable,
                 CompilationTaskRunner runner);

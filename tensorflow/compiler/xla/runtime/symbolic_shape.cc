@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"

@@ -20,17 +20,17 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace xla {
 namespace runtime {
 
 using absl::InvalidArgumentError;
+using absl::Span;
 using absl::StatusOr;
 using absl::StrCat;
 
-using llvm::ArrayRef;
 using llvm::raw_ostream;
 
 raw_ostream& operator<<(raw_ostream& os, const ArgumentConstraint& constraint) {
@@ -54,7 +54,7 @@ raw_ostream& operator<<(raw_ostream& os, const ArgumentConstraint& constraint) {
 }
 
 raw_ostream& operator<<(raw_ostream& os,
-                        ArrayRef<ArgumentConstraint> constraints) {
+                        Span<const ArgumentConstraint> constraints) {
   os << "[";
   llvm::interleaveComma(constraints, os);
   os << "]";

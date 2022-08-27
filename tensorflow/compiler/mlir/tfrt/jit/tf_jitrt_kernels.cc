@@ -339,7 +339,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // Custom runner for compiling specializations that schedules compilation task
   // into the dedicated thread pool and adds tracing.
   auto runner = [kernel_info](size_t specialization,
-                              ArrayRef<ArgumentConstraint> constraints,
+                              absl::Span<const ArgumentConstraint> constraints,
                               ArgumentsRef arguments,
                               JitExecutable::CompilationTask compile,
                               JitExecutable::UserData user_data) {

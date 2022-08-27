@@ -19,7 +19,6 @@ limitations under the License.
 #include <string_view>
 
 #include "absl/status/statusor.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace xla {
@@ -151,7 +150,7 @@ enum class ArgumentConstraint {
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
                               const ArgumentConstraint& constraint);
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
-                              llvm::ArrayRef<ArgumentConstraint> constraints);
+                              absl::Span<const ArgumentConstraint> constraints);
 
 // Converts argument constraint string to the corresponding enum class.
 absl::StatusOr<ArgumentConstraint> ParseArgumentConstraint(

@@ -26,13 +26,13 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
+using absl::Span;
 using absl::StatusOr;
 
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-using llvm::ArrayRef;
 using llvm::Expected;
 
 using tfrt::MakeAvailableAsyncValueRef;
@@ -40,13 +40,13 @@ using tfrt::MakeErrorAsyncValueRef;
 
 using Specialization = JitExecutable::Specialization;
 
-static bool IsSpecializationOnly(ArrayRef<ArgumentConstraint> constraints) {
+static bool IsSpecializationOnly(Span<const ArgumentConstraint> constraints) {
   return llvm::any_of(constraints, [](ArgumentConstraint constraint) {
     return constraint != ArgumentConstraint::kResolved;
   });
 }
 
-static bool HasValueConstraints(ArrayRef<ArgumentConstraint> constraints) {
+static bool HasValueConstraints(Span<const ArgumentConstraint> constraints) {
   return llvm::any_of(constraints, [](ArgumentConstraint constraint) {
     return constraint == ArgumentConstraint::kValue;
   });
@@ -54,7 +54,7 @@ static bool HasValueConstraints(ArrayRef<ArgumentConstraint> constraints) {
 
 // Returns true if all function operands have statically known shape.
 static bool HasStaticShapeOperands(const FunctionType& signature) {
-  auto is_dynamic = [](absl::Span<const int64_t> sizes) -> bool {
+  auto is_dynamic = [](Span<const int64_t> sizes) -> bool {
     return llvm::any_of(sizes, mlir::ShapedType::isDynamic);
   };
 
@@ -88,7 +88,7 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
 }
 
 /*static*/ void JitExecutable::InlineCompilationTaskRunner(
-    size_t num_specializations, ArrayRef<ArgumentConstraint> constraints,
+    size_t num_specializations, Span<const ArgumentConstraint> constraints,
     ArgumentsRef arguments, CompilationTask task, UserData user_data) {
   task();
 }
@@ -149,7 +149,7 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
 JitExecutable::JitExecutable(std::string_view mlir_module,
                              std::string_view entrypoint,
                              std::string_view memory_region_name, Options opts,
-                             ArrayRef<ArgumentConstraint> constraints,
+                             Span<const ArgumentConstraint> constraints,
                              FunctionType signature,
                              std::optional<Executable> default_executable,
                              CompilationTaskRunner runner)
@@ -178,14 +178,14 @@ AsyncValuePtr<Executable> JitExecutable::DefaultExecutable() const {
   return default_executable_.AsPtr();
 }
 
-ArrayRef<ArgumentConstraint> JitExecutable::constraints() const {
+Span<const ArgumentConstraint> JitExecutable::constraints() const {
   return constraints_;
 }
 
 // Combines `hash` with a hash value computed from a value constrained operands.
 static llvm::hash_code CombineWithValueConstraineOperands(
     llvm::hash_code hash, ArgumentsRef arguments,
-    ArrayRef<ArgumentConstraint> constraints) {
+    Span<const ArgumentConstraint> constraints) {
   for (int i = 0; i < constraints.size(); ++i) {
     if (LLVM_LIKELY(constraints[i] != ArgumentConstraint::kValue)) continue;
 

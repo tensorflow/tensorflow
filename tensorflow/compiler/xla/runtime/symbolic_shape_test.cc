@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
