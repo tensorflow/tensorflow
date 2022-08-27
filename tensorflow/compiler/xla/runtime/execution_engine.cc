@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/ObjectCache.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "tensorflow/compiler/xla/runtime/errors.h"
 
 namespace xla {
 namespace runtime {
@@ -42,6 +42,7 @@ namespace runtime {
 using absl::InternalError;
 using absl::StatusOr;
 using absl::StrCat;
+using absl::StrFormat;
 
 using llvm::cast;
 
@@ -97,16 +98,17 @@ static std::string GetEntrypointName(std::string_view name) {
 // Converts entrypoint function to an interface function that wraps all the
 // arguments of the original function into an i8** pointer to provide a function
 // with trivial ABI.
-static llvm::Error SetUpEntrypointFunction(llvm::Module &module,
-                                           std::string_view entrypoint) {
+static absl::Status SetUpEntrypointFunction(llvm::Module &module,
+                                            std::string_view entrypoint) {
   llvm::IRBuilder<> builder(module.getContext());
 
   // Check that we have an entrypoint function with a valid type.
   llvm::Function *func = module.getFunction(entrypoint);
   if (!func)
-    return MakeStringError("entrypoint function not found: ", entrypoint);
+    return InternalError(
+        StrFormat("entrypoint function not found: %s", entrypoint));
   if (!func->getReturnType()->isVoidTy())
-    return MakeStringError("entrypoint function must return void");
+    return InternalError("entrypoint function must return void");
 
   // Add an XLA interface function for the entrypoint.
   llvm::FunctionType *xla_runtime_type = llvm::FunctionType::get(
@@ -145,7 +147,7 @@ static llvm::Error SetUpEntrypointFunction(llvm::Module &module,
   builder.CreateCall(func, args);
   builder.CreateRetVoid();
 
-  return llvm::Error::success();
+  return absl::OkStatus();
 }
 
 // -------------------------------------------------------------------------- //
@@ -222,9 +224,9 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
         StrCat("failed to run optimization pipeline: ", ToString(err)));
 
   // Set up the entry point function compatible with XLA ABI.
-  if (auto err = SetUpEntrypointFunction(*module, entrypoint))
+  if (auto status = SetUpEntrypointFunction(*module, entrypoint); !status.ok())
     return InternalError(
-        StrCat("failed to set up entrypoint ABI: ", ToString(err)));
+        StrCat("failed to set up entrypoint ABI: ", status.message()));
 
   // Callback to create the object layer with a user-provided section memory
   // mapper and JIT event listeners.

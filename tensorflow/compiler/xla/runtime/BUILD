@@ -180,6 +180,7 @@ cc_library(
         ":errors",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:ARMAsmParser",
         "@llvm-project//llvm:ARMCodeGen",
         "@llvm-project//llvm:Core",
@@ -260,7 +261,6 @@ cc_library(
     deps = [
         ":logical_result",
         ":types",
-        "@llvm-project//llvm:Support",
     ],
 )
 

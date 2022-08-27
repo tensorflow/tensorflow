@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/utils/runtime/c_runner_utils.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
-#include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/runtime.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
@@ -303,7 +302,7 @@ Status Executable::Execute(ArgumentsRef arguments,
   // pointer. See mlir::ExecutionEngine `packFunctionArguments` for the details.
   if (auto st = InitializeCallFrame(arguments, &call_frame, verify_arguments);
       !st.ok())
-    return (results.ReturnError(MakeStringError(st.message())), st);
+    return (results.ReturnError(st), st);
 
   Execute(call_frame, opts);
 
@@ -339,7 +338,7 @@ Status Executable::ReturnResults(const ResultConverter& results,
   // If execution failed, forward error to all results.
   if (call_frame->is_error) {
     auto err = InternalError(StrCat("run time error: %s", call_frame->error));
-    return (results.ReturnError(MakeStringError(err.message())), err);
+    return (results.ReturnError(err), err);
   }
 
   // Try to convert results using registered conversion functions.
