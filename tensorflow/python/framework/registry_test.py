@@ -47,8 +47,8 @@ class RegistryTest(test.TestCase, parameterized.TestCase):
     myreg = registry.Registry('testbar')
     myreg.register(bar, 'Bar')
     with self.assertRaisesRegex(
-        KeyError, r'Registration name must be unique. Bar already exists '
-        r'in registry [^ ]+ .*.py:[0-9]+'):
+        KeyError, r'Registering two testbar with name \'Bar\'! '
+        r'\(Previous registration was in [^ ]+ .*.py:[0-9]+\)'):
       myreg.register(bar, 'Bar')
 
 
