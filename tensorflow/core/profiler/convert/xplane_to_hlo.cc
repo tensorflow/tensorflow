@@ -42,7 +42,7 @@ constexpr char kHloProtoSuffix[] = ".hlo_proto.pb";
 
 // Extracts and deduplicates the HLO protos from all the XSpaces.
 // Stores the HLO protos as files in the same directory as the xspace files.
-StatusOr<std::string> GetHloProtoFromMultiXSpaceAndSaveToFile(
+StatusOr<bool> GetHloProtoFromMultiXSpaceAndSaveToFile(
     const SessionSnapshot& session_snapshot) {
   // Get all HLO protos from XSpaces and deduplicate.
   HloProtoMap hlo_proto_map;
@@ -62,7 +62,7 @@ StatusOr<std::string> GetHloProtoFromMultiXSpaceAndSaveToFile(
     TF_RETURN_IF_ERROR(tensorflow::WriteBinaryProto(tensorflow::Env::Default(),
                                                     file_name, empty_hlo));
     // The profile does not have HLO proto.
-    return std::string("false");
+    return false;
   }
 
   // Save HLO protos to session run directory.
@@ -79,7 +79,7 @@ StatusOr<std::string> GetHloProtoFromMultiXSpaceAndSaveToFile(
   }
 
   // The profile has HLO proto.
-  return std::string("true");
+  return true;
 }
 
 }  // namespace
@@ -96,7 +96,7 @@ StatusOr<xla::HloProto> GetHloProtoByModuleName(
   return hlo_proto;
 }
 
-StatusOr<std::string> ConvertMultiXSpaceToHloProto(
+StatusOr<bool> ConvertMultiXSpaceToHloProto(
     const SessionSnapshot& session_snapshot) {
   // Gets all the files in session run directory.
   // TODO(profiler): Move this glob to SessionSnapshot and build a map from file
@@ -111,14 +111,17 @@ StatusOr<std::string> ConvertMultiXSpaceToHloProto(
     if (absl::EndsWith(path, kHloProtoSuffix)) {
       if (absl::EndsWith(path,
                          absl::StrCat(kNoModuleIdentifier, kHloProtoSuffix))) {
-        return std::string("false");
+        return false;
       } else {
-        return std::string("true");
+        return true;
       }
     }
   }
 
   // Generate HLO proto.
+  // TODO(jiesun): Maybe generate a tag file at profile collection time, so
+  // don't need to read XSpace files for checking whether HLO proto exists or
+  // not.
   return GetHloProtoFromMultiXSpaceAndSaveToFile(session_snapshot);
 }
 
