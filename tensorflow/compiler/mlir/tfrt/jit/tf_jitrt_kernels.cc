@@ -606,8 +606,7 @@ static xla::PrimitiveType DataTypeToPrimitiveType(DataType data_type) {
 
 static MemrefDesc ConvertTensorToMemrefDesc(const tensorflow::Tensor& tensor) {
   // Fills memref sizes and strides with a tensor shape;
-  auto fill_desc = [&](MutableArrayRef<Index> sizes,
-                       MutableArrayRef<Index> strides) {
+  auto fill_desc = [&](absl::Span<Index> sizes, absl::Span<Index> strides) {
     int64_t multiplier = 1;
     for (int i = tensor.dims() - 1; i >= 0; --i) {
       int64_t dim_size = tensor.dim_size(i);

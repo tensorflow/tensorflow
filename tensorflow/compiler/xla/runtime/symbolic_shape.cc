@@ -158,7 +158,7 @@ LLVM_ATTRIBUTE_ALWAYS_INLINE static LogicalResult ResolveImpl(
     // At this point it's guaranteed that the argument at `i` is a shaped one,
     // because non-shaped argument are not in the `iteration_order`.
     const MemrefDesc* shaped = cast<MemrefDesc>(&arguments[i]);
-    ArrayRef<int64_t> runtime_sizes = shaped->sizes();
+    absl::Span<const int64_t> runtime_sizes = shaped->sizes();
 
     // Check that statically known rank matches the runtime rank.
     if (LLVM_UNLIKELY(has_static_sizes && resolver.argument_sizes(i).size() !=

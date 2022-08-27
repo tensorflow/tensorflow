@@ -139,7 +139,8 @@ static mlir::DenseElementsAttr GetMemrefValues(mlir::Builder& builder,
 
   // Update operand type to a ranked tensor type with statically known shape.
   auto element_type = operand_type.getElementType();
-  auto ranked_tensor = mlir::RankedTensorType::get(desc.sizes(), element_type);
+  auto ranked_tensor = mlir::RankedTensorType::get(
+      {desc.sizes().begin(), desc.sizes().size()}, element_type);
 
   return mlir::DenseElementsAttr::get(ranked_tensor, attributes);
 }

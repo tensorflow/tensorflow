@@ -21,7 +21,6 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/status/status.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
@@ -48,8 +47,7 @@ class Argument : public llvm::RTTIExtends<Type, llvm::RTTIRoot> {
   //
   // Arguments array is guaranteed to be properly sized to have space for all
   // arguments according to the arguments memory layout.
-  virtual size_t Pack(llvm::MutableArrayRef<void*> args,
-                      size_t offset) const = 0;
+  virtual size_t Pack(absl::Span<void*> args, size_t offset) const = 0;
 
   virtual std::string ToString() const = 0;
 };
@@ -210,7 +208,7 @@ class OpaqueArg final : public llvm::RTTIExtends<OpaqueArg, Argument> {
   void* ptr() const { return ptr_; }
 
   absl::Status Verify(const Type& type) const final;
-  size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
+  size_t Pack(absl::Span<void*> args, size_t offset) const final;
   std::string ToString() const final;
 
  private:
@@ -226,7 +224,7 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
   static constexpr char ID = 0;  // NOLINT
 
   MemrefDesc(PrimitiveType dtype, void* data, int64_t offset,
-             llvm::ArrayRef<int64_t> sizes, llvm::ArrayRef<int64_t> strides)
+             absl::Span<const int64_t> sizes, absl::Span<const int64_t> strides)
       : rank_(sizes.size()), dtype_(dtype), data_(data), offset_(offset) {
     assert(sizes.size() == strides.size() && "invalid sizes and strides pair");
     sizes_and_strides_.reserve(2 * rank_);
@@ -239,8 +237,8 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
   //
   // Expected `InitializeSizesAndStrides` callback signature:
   //
-  //   void operator()(MutableArrayRef<int64_t> sizes,
-  //                   MutableArrayRef<int64_t> strides);
+  //   void operator()(absl::Span<int64_t> sizes,
+  //                   absl::Span<int64_t> strides);
   //
   // We pass the init callback as a template argument to be able to
   // inline it at the call site, because MemrefDesc construction is on a hot
@@ -266,15 +264,16 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
     return sizes_and_strides_[rank_ + index];
   }
 
-  llvm::ArrayRef<int64_t> sizes() const {
+  absl::Span<const int64_t> sizes() const {
     return {sizes_and_strides_.data(), rank_};
   }
-  llvm::ArrayRef<int64_t> strides() const {
+
+  absl::Span<const int64_t> strides() const {
     return {sizes_and_strides_.data() + rank_, rank_};
   }
 
   absl::Status Verify(const Type& type) const final;
-  size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
+  size_t Pack(absl::Span<void*> args, size_t offset) const final;
   std::string ToString() const final;
 
  private:
@@ -293,8 +292,8 @@ MemrefDesc::MemrefDesc(unsigned rank, PrimitiveType dtype, void* data,
                        int64_t offset, InitializeSizesAndStrides initialize)
     : rank_(rank), dtype_(dtype), data_(data), offset_(offset) {
   sizes_and_strides_.resize(2 * rank_);
-  llvm::MutableArrayRef<int64_t> ref = sizes_and_strides_;
-  initialize(ref.drop_back(rank_), ref.drop_front(rank_));
+  auto ref = absl::Span<int64_t>(sizes_and_strides_);
+  initialize(ref.subspan(0, rank_), ref.subspan(rank_));
 }
 
 //===----------------------------------------------------------------------===//
@@ -322,7 +321,7 @@ class BufferDesc final : public llvm::RTTIExtends<BufferDesc, Argument> {
   size_t size() const { return size_; }
 
   absl::Status Verify(const Type& type) const final;
-  size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
+  size_t Pack(absl::Span<void*> args, size_t offset) const final;
   std::string ToString() const final;
 
  private:

@@ -38,7 +38,6 @@ using absl::StatusOr;
 using llvm::dyn_cast;
 
 using llvm::Error;
-using llvm::ErrorOr;
 using llvm::Expected;
 
 using llvm::orc::MangleAndInterner;
@@ -236,9 +235,12 @@ Error Executable::InitializeCallFrame(ArgumentsRef arguments,
   // time we pack a new argument.
   size_t offset = 1;
 
+  // Mutable view into the call frame arguments.
+  auto args = absl::Span<void*>(call_frame->args.data(), num_args_ptrs);
+
   // Pack all arguments according to the ABI to the call frame arguments.
   for (unsigned i = 0; i < arguments.size(); ++i)
-    offset = arguments[i].Pack(call_frame->args, offset);
+    offset = arguments[i].Pack(args, offset);
 
   assert(offset == num_args_ptrs &&
          "reserved number of args must match the argument offset");

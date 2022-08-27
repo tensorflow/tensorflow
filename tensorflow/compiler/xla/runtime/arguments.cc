@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
@@ -42,8 +42,6 @@ using absl::StrJoin;
 using llvm::dyn_cast;
 using llvm::isa;
 
-using llvm::MutableArrayRef;
-
 using xla::primitive_util::LowercasePrimitiveTypeName;
 
 //===----------------------------------------------------------------------===//
@@ -56,7 +54,7 @@ Status OpaqueArg::Verify(const Type& type) const {
       StrCat("unsupported opaque argument type: ", type.ToString()));
 }
 
-size_t OpaqueArg::Pack(MutableArrayRef<void*> args, size_t offset) const {
+size_t OpaqueArg::Pack(absl::Span<void*> args, size_t offset) const {
   args[offset] = ptr_;
   return ++offset;
 }
@@ -168,7 +166,7 @@ Status MemrefDesc::Verify(const Type& type) const {
       StrCat("unsupported memref type: ", type.ToString()));
 }
 
-size_t MemrefDesc::Pack(MutableArrayRef<void*> args, size_t offset) const {
+size_t MemrefDesc::Pack(absl::Span<void*> args, size_t offset) const {
   // Write into the arguments data starting from the given offset.
   void** storage = &args[offset];
 
@@ -271,7 +269,7 @@ Status BufferDesc::Verify(const Type& type) const {
       StrCat("unsupported memref type: ", type.ToString()));
 }
 
-size_t BufferDesc::Pack(MutableArrayRef<void*> args, size_t offset) const {
+size_t BufferDesc::Pack(absl::Span<void*> args, size_t offset) const {
   auto cast = [](const void* ptr) { return const_cast<void*>(ptr); };
   // Write into the arguments data starting from the given offset.
   void** p = &args[offset];

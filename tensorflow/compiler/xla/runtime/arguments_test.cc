@@ -16,6 +16,7 @@
 
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 
+#include <array>
 #include <type_traits>
 #include <utility>
 
@@ -23,8 +24,6 @@
 
 namespace xla {
 namespace runtime {
-
-using llvm::ArrayRef;
 
 //===----------------------------------------------------------------------===//
 // Benchmarks for constructing MemrefDesc.
@@ -41,8 +40,8 @@ static void BM_CreateMemrefDesc_1d(benchmark::State& state) {
     Arguments<MemrefDesc> memrefs(num_memrefs);
 
     for (unsigned i = 0; i < num_memrefs; ++i) {
-      ArrayRef<int64_t> sizes = size;
-      ArrayRef<int64_t> strides = stride;
+      std::array<int64_t, 1> sizes = {size};
+      std::array<int64_t, 1> strides = {stride};
       memrefs.emplace_back(PrimitiveType::S8, ptr, 0, sizes, strides);
     }
 
@@ -77,7 +76,7 @@ BENCHMARK(BM_CreateBufferDesc_1d)->Arg(1)->Arg(4)->Arg(8)->Arg(12)->Arg(16);
 // Run benchmarks for verifying operands.
 //===----------------------------------------------------------------------===//
 
-static MemrefDesc GetFakeMemref(ArrayRef<int64_t> sizes) {
+static MemrefDesc GetFakeMemref(absl::Span<const int64_t> sizes) {
   return MemrefDesc(PrimitiveType::F32, nullptr, 0, sizes,
                     sizes /* fake strides*/);
 }
