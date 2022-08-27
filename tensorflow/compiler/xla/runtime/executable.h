@@ -22,6 +22,7 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
@@ -73,14 +74,15 @@ class Executable {
   // This function leaves the kernel context argument (the first argument of an
   // entry function) uninitialized. It will be initialized in the `Execute`
   // function right before the actual execution.
-  llvm::Error InitializeCallFrame(ArgumentsRef arguments, CallFrame* call_frame,
-                                  bool verify_arguments = true) const;
+  absl::Status InitializeCallFrame(ArgumentsRef arguments,
+                                   CallFrame* call_frame,
+                                   bool verify_arguments = true) const;
 
   // Converts returned values owned by the call frame using provided result
   // converter. If compiled function execution finished with an error (error
   // flag is `true` in the call frame) returns error for all results.
-  llvm::Error ReturnResults(const ResultConverter& results,
-                            CallFrame* call_frame) const;
+  absl::Status ReturnResults(const ResultConverter& results,
+                             CallFrame* call_frame) const;
 
   // Executes compiled function with given arguments.
   //
@@ -92,9 +94,9 @@ class Executable {
   //
   // Returns compiled function results via the user-provided results converter.
   // If execution completed in the error state, returns error for all results.
-  llvm::Error Execute(ArgumentsRef arguments, const ResultConverter& results,
-                      const ExecuteOpts& opts,
-                      bool verify_arguments = true) const;
+  absl::Status Execute(ArgumentsRef arguments, const ResultConverter& results,
+                       const ExecuteOpts& opts,
+                       bool verify_arguments = true) const;
 
   // Executes compiled function using user provided call frame.
   //
@@ -193,7 +195,7 @@ class Executable {
   // Loads executable from an object file. It is the caller responsibility to
   // guarantee that signatures do match the compiled function in the object
   // file, otherwise it will surely lead to crash.
-  static llvm::Expected<Executable> LoadFromObjFile(
+  static absl::StatusOr<Executable> LoadFromObjFile(
       std::string_view name, std::unique_ptr<llvm::MemoryBuffer> obj_file,
       std::string_view entrypoint, FunctionType signature,
       FunctionType runtime_signature,
@@ -203,13 +205,13 @@ class Executable {
   // Verifies that all operands types in the entrypoint function signature are
   // supported at run time . Returns a pre-computed layout for the function
   // arguments. If some arguments are not supported returns an error.
-  static llvm::Expected<ArgumentsMemoryLayout> GetArgumentsMemoryLayout(
+  static absl::StatusOr<ArgumentsMemoryLayout> GetArgumentsMemoryLayout(
       const FunctionType& signature);
 
   // Verifies that all results types in the entrypoint function signature are
   // supported at run time . Returns a pre-computed layout for the function
   // results. If some results are not supported returns an error.
-  static llvm::Expected<ResultsMemoryLayout> GetResultsMemoryLayout(
+  static absl::StatusOr<ResultsMemoryLayout> GetResultsMemoryLayout(
       const FunctionType& signature);
 
   // TODO(ezhulenev): The following three functions should be decoupled from

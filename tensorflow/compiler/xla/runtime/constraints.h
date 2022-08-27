@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_RUNTIME_CONSTRAINTS_H_
 #define XLA_RUNTIME_CONSTRAINTS_H_
 
+#include <string>
 #include <string_view>
 
 #include "absl/status/statusor.h"
@@ -147,14 +148,11 @@ enum class ArgumentConstraint {
   kValue = 3
 };
 
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
-                              const ArgumentConstraint& constraint);
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
-                              absl::Span<const ArgumentConstraint> constraints);
-
 // Converts argument constraint string to the corresponding enum class.
 absl::StatusOr<ArgumentConstraint> ParseArgumentConstraint(
     std::string_view str);
+
+std::string ArgumentConstraintToString(ArgumentConstraint constraint);
 
 }  // namespace runtime
 }  // namespace xla

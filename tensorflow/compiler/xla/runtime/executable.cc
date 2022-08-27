@@ -20,6 +20,9 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/Support/ErrorOr.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
@@ -33,13 +36,14 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
+using absl::InternalError;
+using absl::InvalidArgumentError;
+using absl::Status;
 using absl::StatusOr;
+using absl::StrCat;
+using absl::StrFormat;
 
 using llvm::dyn_cast;
-
-using llvm::Error;
-using llvm::Expected;
-
 using llvm::orc::MangleAndInterner;
 using llvm::orc::SymbolMap;
 
@@ -126,7 +130,7 @@ ExecutionEngine::SymbolsBinding RuntimeSymbolsBinding(
 // Get executable arguments and results memory layouts.
 //===----------------------------------------------------------------------===//
 
-/*static*/ Expected<Executable::ArgumentsMemoryLayout>
+/*static*/ StatusOr<Executable::ArgumentsMemoryLayout>
 Executable::GetArgumentsMemoryLayout(const FunctionType& signature) {
   // Requirements for passing function arguments.
   ArgumentsMemoryLayout layout;
@@ -140,13 +144,14 @@ Executable::GetArgumentsMemoryLayout(const FunctionType& signature) {
       continue;
     }
 
-    return MakeStringError("unknown operand #", i, " argument ABI: ", *type);
+    return InternalError(
+        StrFormat("unknown operand #%i argument ABI: %s", i, type->ToString()));
   }
 
   return layout;
 }
 
-/*static*/ Expected<Executable::ResultsMemoryLayout>
+/*static*/ StatusOr<Executable::ResultsMemoryLayout>
 Executable::GetResultsMemoryLayout(const FunctionType& signature) {
   // Requirements for returning function results.
   ResultsMemoryLayout layout;
@@ -168,7 +173,8 @@ Executable::GetResultsMemoryLayout(const FunctionType& signature) {
       continue;
     }
 
-    return MakeStringError("unknown result #", i, " type result ABI: ", *type);
+    return InternalError(
+        StrFormat("unknown result #%i argument ABI: %s", i, type->ToString()));
   }
 
   return layout;
@@ -186,9 +192,9 @@ static bool VerifyArguments(bool verify_arguments) {
   return true;
 }
 
-Error Executable::InitializeCallFrame(ArgumentsRef arguments,
-                                      CallFrame* call_frame,
-                                      bool verify_arguments) const {
+Status Executable::InitializeCallFrame(ArgumentsRef arguments,
+                                       CallFrame* call_frame,
+                                       bool verify_arguments) const {
   // TODO(ezhulenev): If executable is specialized for concrete shapes then
   // there is no need to verify them once more here. However currently we rely
   // on a hash code to look up specializations, and this can lead to collisions.
@@ -200,17 +206,17 @@ Error Executable::InitializeCallFrame(ArgumentsRef arguments,
     // arguments. We subtract one argument from the signature because it
     // corresponds to the context that we prepend to the given arguments.
     if (LLVM_UNLIKELY(arguments.size() != signature.num_operands() - 1))
-      return MakeStringError(
-          "number of arguments doesn't match the function signature: ",
-          arguments.size(), " vs ", signature.num_operands() - 1);
+      return InvalidArgumentError(StrFormat(
+          "number of arguments doesn't match the function signature: %i vs %i",
+          arguments.size(), signature.num_operands() - 1));
 
     // Verify that all arguments passed at runtime are compatible with compiled
     // function signature.
     auto kctx = dyn_cast<KernelContextOperandType>(signature.operand(0));
     if (LLVM_UNLIKELY(!kctx)) {
-      return MakeStringError(
-          "expected KernelContext in first argument of signature, got: ",
-          signature.operand(0));
+      return InvalidArgumentError(StrFormat(
+          "expected KernelContext in first argument of signature, got: %s",
+          signature.operand(0)->ToString()));
     }
 
     // We use 0-based index for arguments, because the kernel context argument
@@ -220,8 +226,8 @@ Error Executable::InitializeCallFrame(ArgumentsRef arguments,
     for (unsigned i = 0; i < arguments.size(); ++i) {
       unsigned idx = i + 1;  // use 1-based index to fetch signature operand
       if (auto st = arguments[i].Verify(*signature.operand(idx)); !st.ok())
-        return MakeStringError("argument #", i,
-                               " doesn't match the signature: ", st.message());
+        return InvalidArgumentError(StrFormat(
+            "argument #%i doesn't match the signature: %s", i, st.message()));
     }
   }
 
@@ -252,17 +258,17 @@ Error Executable::InitializeCallFrame(ArgumentsRef arguments,
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(call_frame->results.data(),
                                       call_frame->results.size());
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
 // Execute the compiled XLA runtime executable.
 //===----------------------------------------------------------------------===//
 
-Error Executable::Execute(ArgumentsRef arguments,
-                          const ResultConverter& results,
-                          const ExecuteOpts& opts,
-                          bool verify_arguments) const {
+Status Executable::Execute(ArgumentsRef arguments,
+                           const ResultConverter& results,
+                           const ExecuteOpts& opts,
+                           bool verify_arguments) const {
   // CallFrame can be allocated on the stack because compiled function will
   // unpack all the arguments it needs, and async regions will not access
   // the data after the initial function will return the result.
@@ -295,15 +301,16 @@ Error Executable::Execute(ArgumentsRef arguments,
 
   // Compiled function takes arguments and results as `void**` type erased
   // pointer. See mlir::ExecutionEngine `packFunctionArguments` for the details.
-  if (auto err = InitializeCallFrame(arguments, &call_frame, verify_arguments))
-    return (results.ReturnError(err), std::move(err));
+  if (auto st = InitializeCallFrame(arguments, &call_frame, verify_arguments);
+      !st.ok())
+    return (results.ReturnError(MakeStringError(st.message())), st);
 
   Execute(call_frame, opts);
 
   // Convert compiled function return values into results.
-  if (auto err = ReturnResults(results, &call_frame)) return err;
+  if (auto st = ReturnResults(results, &call_frame); !st.ok()) return st;
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
 void Executable::Execute(CallFrame& call_frame, const ExecuteOpts& opts) const {
@@ -327,12 +334,12 @@ void Executable::Execute(CallFrame& call_frame, const ExecuteOpts& opts) const {
   (*fptr_)(call_frame.args.data());
 }
 
-Error Executable::ReturnResults(const ResultConverter& results,
-                                CallFrame* call_frame) const {
+Status Executable::ReturnResults(const ResultConverter& results,
+                                 CallFrame* call_frame) const {
   // If execution failed, forward error to all results.
   if (call_frame->is_error) {
-    auto err = MakeStringError("run time error: ", call_frame->error);
-    return (results.ReturnError(err), std::move(err));
+    auto err = InternalError(StrCat("run time error: %s", call_frame->error));
+    return (results.ReturnError(MakeStringError(err.message())), err);
   }
 
   // Try to convert results using registered conversion functions.
@@ -347,16 +354,16 @@ Error Executable::ReturnResults(const ResultConverter& results,
   }
 
   if (LLVM_UNLIKELY(!converted))
-    return MakeStringError("failed to convert all returned values");
+    return InternalError("failed to convert all returned values");
   else
-    return Error::success();
+    return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
 // Load AOT compiled executable from an object file.
 //===----------------------------------------------------------------------===//
 
-/*static*/ Expected<Executable> Executable::LoadFromObjFile(
+/*static*/ StatusOr<Executable> Executable::LoadFromObjFile(
     std::string_view name, std::unique_ptr<llvm::MemoryBuffer> obj_file,
     std::string_view entrypoint, FunctionType signature,
     FunctionType runtime_signature,
@@ -381,11 +388,11 @@ Error Executable::ReturnResults(const ResultConverter& results,
 
   // Get the memory layout for passing function arguments.
   auto arguments_memory_layout = GetArgumentsMemoryLayout(runtime_signature);
-  if (auto err = arguments_memory_layout.takeError()) return std::move(err);
+  if (!arguments_memory_layout.ok()) return arguments_memory_layout.status();
 
   // Get the memory layout for returning function results.
   auto results_memory_layout = GetResultsMemoryLayout(runtime_signature);
-  if (auto err = results_memory_layout.takeError()) return std::move(err);
+  if (!results_memory_layout.ok()) return results_memory_layout.status();
 
   return Executable(name, std::move(memory_mapper), std::move(*engine),
                     std::move(signature), std::move(runtime_signature),

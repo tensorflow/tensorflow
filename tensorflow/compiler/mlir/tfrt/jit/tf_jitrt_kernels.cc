@@ -487,7 +487,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     auto compile_start_time = absl::Now();
     LOG(INFO) << "Started JitExecutable instantiation compilation for "
               << kernel_info.name << " (" << session_name << ")";
-    Expected<JitExecutable> jit_executable = JitExecutable::Instantiate(
+    absl::StatusOr<JitExecutable> jit_executable = JitExecutable::Instantiate(
         kernel_info.serialized_operation, kernel_info.entrypoint,
         std::move(opts), session_name, runner);
     auto compile_duration = absl::Now() - compile_start_time;
@@ -505,8 +505,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
                       compile_duration);
 
     // Set the entry async value state to error or concrete.
-    if (auto err = jit_executable.takeError())
-      ref.SetError(std::move(err));
+    if (!jit_executable.ok())
+      ref.SetError(MakeStringError(jit_executable.status().message()));
     else
       ref.emplace(std::move(*jit_executable));
   });
@@ -709,9 +709,9 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
 
   // Execution error automatically forwarded to all results, we only need to
   // notify the HostContext to emit the diagnostics for the kernel invocation.
-  auto err = executable.Execute(memrefs, converter, opts);
-  if (LLVM_UNLIKELY(err)) {
-    EmitError(exec_ctx, StrCat(err));
+  auto status = executable.Execute(memrefs, converter, opts);
+  if (LLVM_UNLIKELY(!status.ok())) {
+    EmitError(exec_ctx, status.message());
     return;
   }
 }
@@ -732,11 +732,13 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   // Pass request context to the compilation task runner.
   JitExecutable::UserData user_data = exec_ctx.request_ctx();
 
-  Expected<AsyncValuePtr<Executable>> executable = jit_executable.GetExecutable(
-      memrefs, user_data, debug ? &debug_listener : nullptr);
+  absl::StatusOr<AsyncValuePtr<Executable>> executable =
+      jit_executable.GetExecutable(memrefs, user_data,
+                                   debug ? &debug_listener : nullptr);
 
-  if (LLVM_UNLIKELY(!executable))
-    return ReturnErrors(results, executable.takeError(), exec_ctx);
+  if (LLVM_UNLIKELY(!executable.ok()))
+    return ReturnErrors(results, MakeStringError(executable.status().message()),
+                        exec_ctx);
 
   // If executable is available execute it inline ...
   if (LLVM_LIKELY(executable->IsConcrete()))

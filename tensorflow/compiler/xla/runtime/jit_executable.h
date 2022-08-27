@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/jit_compiler.h"
 #include "tensorflow/compiler/xla/runtime/async_values_cache.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
@@ -82,7 +83,7 @@ class JitExecutable {
       absl::Span<const ArgumentConstraint> constraints, ArgumentsRef arguments,
       CompilationTask task, UserData user_data);
 
-  static llvm::Expected<JitExecutable> Instantiate(
+  static absl::StatusOr<JitExecutable> Instantiate(
       std::string_view mlir_module, std::string_view entrypoint, Options opts,
       std::string_view memory_region_name = "",
       CompilationTaskRunner runner = InlineCompilationTaskRunner);
@@ -118,7 +119,7 @@ class JitExecutable {
   //
   // Note: This function never falls back on the default executable if
   // specialization compilation fails.
-  llvm::Expected<tfrt::AsyncValuePtr<Executable>> GetExecutable(
+  absl::StatusOr<tfrt::AsyncValuePtr<Executable>> GetExecutable(
       ArgumentsRef arguments, UserData user_data = {},
       const SpecializationListener* listener = nullptr);
 

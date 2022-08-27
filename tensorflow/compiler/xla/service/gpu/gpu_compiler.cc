@@ -1485,9 +1485,9 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     // Instantiate new JitExecutable from the MLIR source.
     auto jit_executable = runtime::JitExecutable::Instantiate(
         program->module, program->entry_point, opts);
-    if (auto err = jit_executable.takeError())
-      return InternalError("Failed to compile JitRt program: %s",
-                           tfrt::StrCat(err));
+    if (!jit_executable.ok())
+      return InternalError("Failed to compile XLA program: %s",
+                           jit_executable.status().message());
 
     // For static shapes we can always serialize only the default executable.
     runtime::Executable& executable = jit_executable->DefaultExecutable().get();

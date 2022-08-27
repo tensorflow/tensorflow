@@ -15,57 +15,40 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/constraints.h"
 
+#include <string>
 #include <string_view>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/raw_ostream.h"
 
 namespace xla {
 namespace runtime {
 
 using absl::InvalidArgumentError;
-using absl::Span;
 using absl::StatusOr;
 using absl::StrCat;
-
-using llvm::raw_ostream;
-
-raw_ostream& operator<<(raw_ostream& os, const ArgumentConstraint& constraint) {
-  auto str = [](ArgumentConstraint constraint) {
-    switch (constraint) {
-      case ArgumentConstraint::kResolved:
-        return "resolved";
-      case ArgumentConstraint::kRank:
-        return "rank";
-      case ArgumentConstraint::kShape:
-        return "shape";
-      case ArgumentConstraint::kValue:
-        return "value";
-      default:
-        llvm_unreachable("unknown operand constraint");
-    }
-  };
-
-  os << str(constraint);
-  return os;
-}
-
-raw_ostream& operator<<(raw_ostream& os,
-                        Span<const ArgumentConstraint> constraints) {
-  os << "[";
-  llvm::interleaveComma(constraints, os);
-  os << "]";
-  return os;
-}
 
 StatusOr<ArgumentConstraint> ParseArgumentConstraint(std::string_view str) {
   if (str == "rank") return ArgumentConstraint::kRank;
   if (str == "shape") return ArgumentConstraint::kShape;
   if (str == "value") return ArgumentConstraint::kValue;
   return InvalidArgumentError(StrCat("unknown operand constraint: ", str));
+}
+
+std::string ArgumentConstraintToString(ArgumentConstraint constraint) {
+  switch (constraint) {
+    case ArgumentConstraint::kResolved:
+      return "resolved";
+    case ArgumentConstraint::kRank:
+      return "rank";
+    case ArgumentConstraint::kShape:
+      return "shape";
+    case ArgumentConstraint::kValue:
+      return "value";
+    default:
+      llvm_unreachable("unknown operand constraint");
+  }
 }
 
 }  // namespace runtime

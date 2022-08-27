@@ -936,8 +936,9 @@ template <CustomCall::RuntimeChecks checks>
 struct CustomCallAttrDecoding<std::string_view, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<std::string_view> Decode(
       std::string_view name, TypeID type_id, void* value) {
-    if (!CustomCall::CheckType<Tagged<std::string_view>>(checks, type_id))
+    if (!CustomCall::CheckType<Tagged<std::string_view>>(checks, type_id)) {
       return mlir::failure();
+    }
 
     auto* encoded = reinterpret_cast<internal::EncodedArray<char>*>(value);
     return std::string_view(encoded->data, encoded->size);

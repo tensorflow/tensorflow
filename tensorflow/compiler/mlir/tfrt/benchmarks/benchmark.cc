@@ -89,11 +89,12 @@ JitExecutable& CreateJitExecutable(
   // Compile and cache MLIR function.
   auto it = cache->find(key);
   if (it == cache->end()) {
-    llvm::Expected<JitExecutable> jit_executable =
+    absl::StatusOr<JitExecutable> jit_executable =
         JitExecutable::Instantiate(mlir_input, function_name, opts);
-    if (auto err = jit_executable.takeError())
+    if (!jit_executable.ok())
       LOG(FATAL) << "Failed to instantiate JitExecutable from the function: "
-                 << function_name.str() << "; error: " << tfrt::StrCat(err);
+                 << function_name.str()
+                 << "; error: " << jit_executable.status().message();
 
     auto storage = std::make_unique<JitExecutable>(std::move(*jit_executable));
     it = cache->insert_or_assign(key, std::move(storage)).first;

@@ -135,9 +135,9 @@ class GpuExecutable::JitRtExecutable {
     // Instantiate new JitExecutable from the MLIR source.
     auto jit_executable = runtime::JitExecutable::Instantiate(
         program->module, program->entry_point, opts);
-    if (auto err = jit_executable.takeError())
+    if (!jit_executable.ok())
       return InternalError("Failed to compile JitRt program: %s",
-                           tfrt::StrCat(err));
+                           jit_executable.status().message());
 
     // Pass ownership to the GpuExecutable.
     return new JitRtExecutable(
@@ -668,10 +668,10 @@ static Status ExecuteJitRt(const std::string& module_name,
   runtime::Executable& executable = jitrt_executable->executable();
   executable.Execute(call_frame, opts);
 
-  if (auto err = executable.ReturnResults(converter, &call_frame)) {
+  if (auto st = executable.ReturnResults(converter, &call_frame); !st.ok()) {
     return InternalError(
         "Failed to execute JitRt executable: %s.",
-        tfrt::StrCat(err,
+        tfrt::StrCat(st.message(),
                      diagnostic.empty() ? "" : tfrt::StrCat(": ", diagnostic)));
   }
 
@@ -1093,9 +1093,9 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
       hlo_module->name(), std::move(buffer),
       hlo_module->entry_computation()->name(), std::move(signature),
       std::move(rt_signature), symbol_map);
-  if (auto err = executable.takeError())
+  if (!executable.ok())
     return InternalError("Failed to load JitRt executable: %s",
-                         tfrt::StrCat(err));
+                         executable.status().message());
 
   // Move runtime::Executable ownership to the JitRtExecutable.
   TF_ASSIGN_OR_RETURN(

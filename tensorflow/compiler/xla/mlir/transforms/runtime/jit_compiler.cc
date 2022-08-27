@@ -202,14 +202,12 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   // Get the memory layout for passing function arguments.
   auto arguments_memory_layout =
       Executable::GetArgumentsMemoryLayout(*runtime_signature);
-  if (auto err = arguments_memory_layout.takeError())
-    return InternalError(ToString(std::move(err)));
+  if (!arguments_memory_layout.ok()) return arguments_memory_layout.status();
 
   // Get the memory layout for returning function results.
   auto results_memory_layout =
       Executable::GetResultsMemoryLayout(*runtime_signature);
-  if (auto err = results_memory_layout.takeError())
-    return InternalError(ToString(std::move(err)));
+  if (!results_memory_layout.ok()) return results_memory_layout.status();
 
   // Mark entry function with an attribute, so it can be converted to an Xla
   // entrypoint (see `rt-convert-to-entrypoint` pass).
