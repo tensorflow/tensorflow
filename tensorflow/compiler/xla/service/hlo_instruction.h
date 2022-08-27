@@ -1172,6 +1172,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAddDependency(
       HloInstruction* data_operand, HloInstruction* token_operand);
 
+  // Returns true if `execution_thread` is included in the
+  // `execution_threads_set`.
+  static bool IsThreadIncluded(
+      absl::string_view execution_thread,
+      const absl::flat_hash_set<absl::string_view>& execution_threads_set);
+
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
   HloOpcode* mutable_opcode() { return &opcode_; }
