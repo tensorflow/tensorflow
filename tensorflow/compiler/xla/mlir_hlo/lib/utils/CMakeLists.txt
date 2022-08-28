@@ -20,6 +20,10 @@ add_mlir_library(MLIRMhloUtils
   cycle_detector.cc
   hlo_utils.cc
 
+  DEPENDS
+  ChloOpsIncGen
+  StablehloBaseIncGen
+
   LINK_LIBS PUBLIC
   MLIRArithmeticDialect
   MLIRFuncDialect

@@ -100,7 +100,9 @@ add_mlir_library(GmlStPasses
   vectorization.cc
 
   DEPENDS
+  ChloOpsIncGen
   MLIRGmlStPassIncGen
+  StablehloBaseIncGen
 
   LINK_COMPONENTS
   Core

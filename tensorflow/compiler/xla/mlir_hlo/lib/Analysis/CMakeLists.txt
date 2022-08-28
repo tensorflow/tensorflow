@@ -4,6 +4,7 @@ add_mlir_library(MLIRHLOAnalysis
 
   DEPENDS
   mlir-headers
+  StablehloBaseIncGen
 
   LINK_LIBS PUBLIC
   MLIRAnalysis

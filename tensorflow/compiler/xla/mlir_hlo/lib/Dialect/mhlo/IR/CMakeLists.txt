@@ -36,9 +36,11 @@ add_mlir_dialect_library(MhloDialect
   hlo_ops.cc
 
   DEPENDS
+  ChloOpsIncGen
   MLIRhlo_opsIncGen
   MLIRMhloCanonicalizeIncGen
   MLIRMhloRewriterIncGen
+  StablehloBaseIncGen
 )
 target_link_libraries(MhloDialect
   PUBLIC
@@ -58,7 +60,9 @@ target_include_directories(MhloDialect
 add_mlir_dialect_library(MhloRegisterDialects
   init.cc
 DEPENDS
+  ChloOpsIncGen
   MLIRhlo_opsIncGen
+  StablehloBaseIncGen
 )
 target_link_libraries(MhloRegisterDialects
   PUBLIC
