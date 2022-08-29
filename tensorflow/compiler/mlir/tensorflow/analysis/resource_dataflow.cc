@@ -59,6 +59,8 @@ ResourceConstructingOps ResourceConstructingOps::getPessimisticValueState(
                                           symbol_table);
       return ResourceConstructingOps(global_tensor);
     }
+  } else if (auto vh = dyn_cast<TF::VarHandleOp>(value.getDefiningOp())) {
+    return ResourceConstructingOps(vh);
   }
   return ResourceConstructingOps();
 }

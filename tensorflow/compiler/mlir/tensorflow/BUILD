@@ -978,6 +978,7 @@ cc_library(
         "transforms/freeze_global_tensors.cc",
         "transforms/freeze_saved_model_assets.cc",
         "transforms/lower_globals_to_ml_program.cc",
+        "transforms/lower_variable_ops_to_ml_program.cc",
         "transforms/optimize_global_tensors.cc",
         "transforms/remove_vars_in_session_initializer.cc",
     ],
