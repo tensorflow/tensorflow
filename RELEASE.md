@@ -60,6 +60,7 @@ This releases introduces several vulnerability fixes:
 *   Fixes an integer overflow in math ops ([CVE-2022-36015](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-36015))
 *   Fixes a `CHECK`-fail in `tensorflow::full_type::SubstituteFromAttrs` ([CVE-2022-36016](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-36016))
 *   Fixes an OOB read in `Gather_nd` op in TF Lite Micro ([CVE-2022-35938](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35938))
+
 # Release 2.8.2
 
 Add an upper bound for `protobuf` in `setup.py` since `protobuf` after version 3.20 is currently incompatible with TensorFlow. See https://github.com/tensorflow/tensorflow/issues/53234, https://github.com/protocolbuffers/protobuf/issues/9954 and https://github.com/tensorflow/tensorflow/issues/56077.
