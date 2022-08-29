@@ -21,6 +21,7 @@ py_library(
     srcs = ["dataset_ops.py"],
     srcs_version = "PY3",
     deps = [
+        ":from_tensor_slices_op",
         ":iterator_ops",
         ":load_ops",
         ":options",
@@ -56,6 +57,11 @@ py_library(
         "//tensorflow/python/trackable:resource",
         "//third_party/py/numpy",
     ],
+)
+
+py_library(
+    name = "from_tensor_slices_op",
+    srcs = ["from_tensor_slices_op.py"],
 )
 
 py_library(

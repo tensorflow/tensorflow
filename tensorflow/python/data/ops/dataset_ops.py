@@ -812,7 +812,10 @@ class DatasetV2(
     Returns:
       Dataset: A `Dataset`.
     """
-    return TensorSliceDataset(tensors, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # from_tensor_slices_op -> dataset_ops).
+    from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top
+    return from_tensor_slices_op.from_tensor_slices(tensors, name)
 
   class _GeneratorState:
     """Stores outstanding iterators created from a Python generator.
@@ -1378,7 +1381,12 @@ class DatasetV2(
       with ops.control_dependencies([assert_not_empty]):
         matching_files = array_ops.identity(matching_files)
 
-      dataset = TensorSliceDataset(matching_files, is_files=True, name=name)
+      # TODO(b/240947712): Remove lazy import after this method is factored out.
+      # Loaded lazily due to a circular dependency (dataset_ops ->
+      # from_tensor_slices_op -> dataset_ops).
+      from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top
+      dataset = from_tensor_slices_op.TensorSliceDataset(
+          matching_files, is_files=True, name=name)
       if issubclass(Dataset, DatasetV1):
         dataset = DatasetV1Adapter(dataset)
       if shuffle:
@@ -4703,39 +4711,6 @@ class TensorDataset(DatasetSource):
         output_shapes=structure.get_flat_tensor_shapes(self._structure),
         metadata=self._metadata.SerializeToString())
     super(TensorDataset, self).__init__(variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-
-class TensorSliceDataset(DatasetSource):
-  """A `Dataset` of slices from a dataset element."""
-
-  def __init__(self, element, is_files=False, name=None):
-    """See `Dataset.from_tensor_slices()` for details."""
-    element = structure.normalize_element(element)
-    batched_spec = structure.type_spec_from_value(element)
-    self._tensors = structure.to_batched_tensor_list(batched_spec, element)
-    if not self._tensors:
-      raise ValueError("Invalid `element`. `element` should not be empty.")
-    self._structure = nest.map_structure(
-        lambda component_spec: component_spec._unbatch(), batched_spec)  # pylint: disable=protected-access
-    self._name = name
-
-    batch_dim = tensor_shape.Dimension(
-        tensor_shape.dimension_value(self._tensors[0].get_shape()[0]))
-    for t in self._tensors[1:]:
-      batch_dim.assert_is_compatible_with(
-          tensor_shape.Dimension(
-              tensor_shape.dimension_value(t.get_shape()[0])))
-
-    variant_tensor = gen_dataset_ops.tensor_slice_dataset(
-        self._tensors,
-        output_shapes=structure.get_flat_tensor_shapes(self._structure),
-        is_files=is_files,
-        metadata=self._metadata.SerializeToString())
-    super(TensorSliceDataset, self).__init__(variant_tensor)
 
   @property
   def element_spec(self):
