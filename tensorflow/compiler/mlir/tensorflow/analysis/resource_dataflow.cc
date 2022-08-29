@@ -83,7 +83,7 @@ void ResourceDataflowAnalysis::visitOperation(Operation *op,
                                               ArrayRef<const StateT *> operands,
                                               ArrayRef<StateT *> results) {
   LLVM_DEBUG(llvm::dbgs() << "ResAn: Visiting operation: " << *op << "\n");
-  markAllPessimisticFixpoint(results);
+  setAllToEntryStates(results);
 }
 
 }  // namespace TF
