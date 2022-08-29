@@ -17,10 +17,16 @@ py_library(
 )
 
 py_library(
+    name = "counter_op",
+    srcs = ["counter_op.py"],
+)
+
+py_library(
     name = "dataset_ops",
     srcs = ["dataset_ops.py"],
     srcs_version = "PY3",
     deps = [
+        ":counter_op",
         ":from_tensor_slices_op",
         ":iterator_ops",
         ":load_ops",

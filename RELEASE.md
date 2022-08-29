@@ -90,6 +90,7 @@ This release contains contributions from many people at Google, as well as:
     *   Added a new field, `inject_prefetch`, to `tf.data.experimental.OptimizationOptions`. If it is set to `True`, tf.data will now automatically add a `prefetch` transformation to datasets that end in synchronous transformations. This enables data generation to be overlapped with  data consumption. This may cause a small increase in memory usage due to buffering. To enable this behavior, set `inject_prefetch=True` in `tf.data.experimental.OptimizationOptions`.
     *   Added a new value to `tf.data.Options.autotune.autotune_algorithm`: STAGE_BASED. If the autotune algorithm is set to STAGE_BASED, then it runs a new algorithm that can get the same performance with lower CPU/memory usage.
     *   Added [`tf.data.experimental.from_list`](https://www.tensorflow.org/api_docs/python/tf/data/experimental/from_list), a new API for creating `Dataset`s from lists of elements.
+    *   Graduated `tf.data.experimental.Counter` to [`tf.data.Dataset.counter`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#counter).
 
 *   `tf.distribute`:
 

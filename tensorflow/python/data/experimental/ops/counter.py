@@ -14,13 +14,15 @@
 # ==============================================================================
 """The Counter Dataset."""
 from tensorflow.python import tf2
+from tensorflow.python.data.ops import counter_op
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("data.experimental.Counter", v1=[])
+@deprecation.deprecated(None, "Use `tf.data.Dataset.counter(...)` instead.")
 def CounterV2(start=0, step=1, dtype=dtypes.int64):
   """Creates a `Dataset` that counts from `start` in steps of size `step`.
 
@@ -54,14 +56,11 @@ def CounterV2(start=0, step=1, dtype=dtypes.int64):
   Returns:
     A `Dataset` of scalar `dtype` elements.
   """
-  with ops.name_scope("counter"):
-    start = ops.convert_to_tensor(start, dtype=dtype, name="start")
-    step = ops.convert_to_tensor(step, dtype=dtype, name="step")
-    return dataset_ops.Dataset.from_tensors(0).repeat(None).scan(
-        start, lambda state, _: (state + step, state))
+  return counter_op.counter(start, step, dtype)
 
 
 @tf_export(v1=["data.experimental.Counter"])
+@deprecation.deprecated(None, "Use `tf.data.Dataset.counter(...)` instead.")
 def CounterV1(start=0, step=1, dtype=dtypes.int64):
   return dataset_ops.DatasetV1Adapter(CounterV2(start, step, dtype))
 
