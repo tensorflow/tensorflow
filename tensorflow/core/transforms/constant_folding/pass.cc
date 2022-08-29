@@ -62,20 +62,6 @@ CreateElementsAttrOfTypeValues(Type element_type, ArrayRef<int64_t> shape,
   return const_attr;
 }
 
-template <typename T>
-static std::enable_if_t<std::is_floating_point<T>::value, ElementsAttr>
-CreateElementsAttrOfTypeValues(Type element_type, ArrayRef<int64_t> shape,
-                               ArrayRef<T> values) {
-  auto tensor_shape = RankedTensorType::get(shape, element_type);
-  SmallVector<APFloat> elements;
-  if (element_type.getIntOrFloatBitWidth() == 32)
-    llvm::for_each(values, [&](float v) { elements.push_back(APFloat(v)); });
-  else
-    llvm::for_each(values, [&](double v) { elements.push_back(APFloat(v)); });
-  auto const_attr = DenseElementsAttr::get(tensor_shape, elements);
-  return const_attr;
-}
-
 static ElementsAttr CreateElementsAttrOfTypeValues(Type element_type,
                                                    ArrayRef<int64_t> shape,
                                                    ElementsAttr value_attr) {
@@ -1227,29 +1213,28 @@ class MaterializeConstantValuedNode
 
     // FillOp is handled in MaterializeFillNode pattern.
     if (dialect_->IsFill(op)) return failure();
-    if (!dialect_->IsZerosLike(op) && !dialect_->IsOnesLike(op))
-      return failure();
+    const bool is_zeros_like = dialect_->IsZerosLike(op);
+    if (!is_zeros_like && !dialect_->IsOnesLike(op)) return failure();
 
     // TODO(chiahungduan): If op->getOperand(0) has static shape, can we use
     // that to materialize?
     auto output_type = op->getResult(0).getType().cast<ShapedType>();
     if (!output_type.hasStaticShape()) return failure();
 
-    int value =
-        dialect_->IsZerosLike(op) ? 0 : (dialect_->IsOnesLike(op) ? 1 : -1);
-    if (value < 0) return failure();
-
-    if (!output_type.getElementType().isIntOrIndexOrFloat()) return failure();
+    int value = is_zeros_like ? 0 : 1;
+    Type output_element_type = output_type.getElementType();
+    if (!output_element_type.isIntOrIndexOrFloat()) return failure();
 
     ElementsAttr const_attr;
-    if (output_type.getElementType().isIntOrIndex()) {
-      const_attr = CreateElementsAttrOfTypeValues(output_type.getElementType(),
-                                                  output_type.getShape(),
-                                                  ArrayRef<int>(value));
+    if (output_element_type.isIntOrIndex()) {
+      const_attr = SplatElementsAttr::get(
+          output_type,
+          APInt(output_element_type.getIntOrFloatBitWidth(), value));
     } else {
-      const_attr = CreateElementsAttrOfTypeValues(output_type.getElementType(),
-                                                  output_type.getShape(),
-                                                  ArrayRef<double>(value));
+      const_attr = SplatElementsAttr::get(
+          output_type,
+          APFloat(output_element_type.cast<FloatType>().getFloatSemantics(),
+                  value));
     }
 
     FailureOr<TFOp> const_op =
