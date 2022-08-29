@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 
 namespace mlir {
@@ -705,20 +706,43 @@ void ReductionOp::print(OpAsmPrinter &p) {
 LogicalResult ReductionOp::verify() {
   ArrayRef<int64_t> dimensionsRef = dimensions();
 
-  auto inputType = input().getType().cast<ShapedType>();
-  auto initType = init().getType().cast<ShapedType>();
+  for (int64_t i = 1; i < getNumInputs(); ++i) {
+    if (failed(mlir::verifyCompatibleShape(inputs()[i].getType(),
+                                           inputs()[0].getType()))) {
+      return emitOpError() << "expects all inputs to have compatible shapes. "
+                              "Shape at input-index "
+                           << i
+                           << " is not compatible with shape at input-index 0.";
+    }
+  }
+  for (int64_t i = 1; i < getNumOutputs(); ++i) {
+    if (failed(mlir::verifyCompatibleShape(inits()[i].getType(),
+                                           inits()[0].getType()))) {
+      return emitOpError()
+             << "expects all outputs to have compatible shapes. "
+                "Shape at output-index "
+             << i << " is not compatible with shape at output-index 0.";
+    }
+  }
+  auto inputType = inputs()[0].getType().cast<ShapedType>();
+  auto initType = inits()[0].getType().cast<ShapedType>();
 
-  if (!llvm::all_of(dimensionsRef, [&](int64_t d) {
-        return d >= 0 && d < inputType.getRank();
-      })) {
-    return emitOpError() << "dimentions for reduction should be in the range "
-                            "[0, rank(input) - 1].";
+  DenseSet<int64_t> dimensionsToReduce;
+  for (int64_t dimension : dimensionsRef) {
+    if (dimension < 0 || dimension >= inputType.getRank()) {
+      return emitOpError()
+             << "dimensions for reduction should be in the range [0, "
+             << inputType.getRank() - 1 << "].";
+    }
+    if (!dimensionsToReduce.insert(dimension).second) {
+      return emitOpError() << "duplicate reduction dimension: " << dimension;
+    }
   }
 
   auto inputDims = inputType.getShape();
   auto initDims = initType.getShape();
 
-  // Input dimentions that will be left after the reduction.
+  // Input dimensions that will be left after the reduction.
   SmallVector<int64_t> reducedInputDims;
   for (const auto &en : llvm::enumerate(inputDims)) {
     if (!llvm::is_contained(dimensionsRef, en.index()))
@@ -726,7 +750,7 @@ LogicalResult ReductionOp::verify() {
   }
 
   if (reducedInputDims.size() != initType.getRank()) {
-    return emitOpError() << "number of dimentions after reduction "
+    return emitOpError() << "number of dimensions after reduction "
                          << reducedInputDims.size()
                          << " doesn't match the init rank "
                          << initType.getRank();
@@ -736,6 +760,43 @@ LogicalResult ReductionOp::verify() {
     return emitOpError() << "init dimensions [" << initDims
                          << "] doesn't match input dimensions after reduction ["
                          << reducedInputDims << "]";
+
+  Block *block = getBody();
+  if (static_cast<int64_t>(block->getArguments().size()) !=
+      getNumInputs() + getNumOutputs()) {
+    return emitOpError()
+           << "number of block arguments " << block->getArguments().size()
+           << " doesn't match the number of inputs plus the number of outputs "
+           << getNumInputs() + getNumOutputs();
+  }
+
+  // Check that the first block arguments match the element type of the inputs.
+  auto inputElementTypes =
+      llvm::to_vector<8>(llvm::map_range(inputs().getTypes(), [](Type type) {
+        return type.cast<ShapedType>().getElementType();
+      }));
+  auto blockArgumentInputTypes = llvm::to_vector<8>(
+      llvm::map_range(block->getArguments().take_front(getNumInputs()),
+                      [](BlockArgument arg) { return arg.getType(); }));
+  if (blockArgumentInputTypes != inputElementTypes) {
+    return emitOpError() << "input element types " << inputElementTypes
+                         << " do not match block argument types "
+                         << blockArgumentInputTypes;
+  }
+
+  // Check that the last block arguments match the element type of the outputs.
+  auto outputElementTypes =
+      llvm::to_vector<8>(llvm::map_range(inits().getTypes(), [](Type type) {
+        return type.cast<ShapedType>().getElementType();
+      }));
+  auto blockArgumentOutputTypes = llvm::to_vector<8>(
+      llvm::map_range(block->getArguments().take_back(getNumOutputs()),
+                      [](BlockArgument arg) { return arg.getType(); }));
+  if (blockArgumentOutputTypes != outputElementTypes) {
+    return emitOpError() << "output element types " << outputElementTypes
+                         << " do not match block argument types "
+                         << blockArgumentOutputTypes;
+  }
 
   return verifyDestinationStyleOp(getOperation(), getNumOutputs());
 }

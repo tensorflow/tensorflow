@@ -37,15 +37,14 @@ class THLO_Op<string mnemonic, list<Trait> traits> :
 
 
 def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator]>,
-    Arguments<(ins AnyType:$value)> {
+    Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Yield operation for thlo.map and thlo.reduce.";
-  let assemblyFormat = "attr-dict $value `:` type($value)";
+  let assemblyFormat = "attr-dict $values `:` type($values)";
   let hasVerifier = 0;
 }
 
 class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
-    NoSideEffect,
-    TypesMatchWith<"result and init types match", "init", "result", "$_self">] # traits> {
+    NoSideEffect] # traits> {
   let hasCustomAssemblyFormat = 1;
   code extraBaseClassDeclaration = [{
     unsigned getNumInputs() {
@@ -164,12 +163,12 @@ def THLO_TransposeOp : THLO_DstStyleOp<"transpose", []> {
 }
 
 def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
-    SingleBlockImplicitTerminator<"YieldOp">
-]> {
+      SameVariadicOperandSize, SingleBlockImplicitTerminator<"YieldOp">
+    ]> {
   let summary = "Destination-style twin for `mhlo.reduce`";
   let description = [{
-    Executes `combiner` on the `dimensions` of the `operand` and returns
-    the reduced result.
+    Executes `combiner` on the `dimensions` of `inputs` and returns the
+    reduced result.
 
     Example:
     ```
@@ -186,16 +185,21 @@ def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
 
   let arguments = (ins
     // Input arg
-    TensorOrMemref:$input,
+    Variadic<TensorOrMemref>:$inputs,
     // Output arg
-    TensorOrMemref:$init,
+    Variadic<TensorOrMemref>:$inits,
 
     DenseI64ArrayAttr:$dimensions
   );
-  let results = (outs TensorOrMemref:$result);
-  let regions = (region AnyRegion:$combiner);
+  let results = (outs Variadic<TensorOrMemref>);
+  let regions = (region SizedRegion<1>:$combiner);
 
-  let extraClassDeclaration = extraBaseClassDeclaration;
+  let extraClassDeclaration = [{
+    unsigned getNumInputs() {
+      return this->getOperation()->getNumOperands() - getNumOutputs();
+    };
+    unsigned getNumOutputs() { return inits().size(); };
+  }];
 }
 
 #endif // THLO_OPS

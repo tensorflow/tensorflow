@@ -76,3 +76,21 @@ func.func @reduction(%input: tensor<16x32x64xf32>,
   func.return %reduction : tensor<16x64xf32>
 }
 // CHECK-LABEL: func @reduction
+
+// -----
+
+func.func @variable_reduction(%input1: tensor<16x32x64xf32>,
+    %init1: tensor<16x64xf32>, %input2: tensor<16x32x64xi64>,
+    %init2: tensor<16x64xi64>)  -> (tensor<16x64xf32>, tensor<16x64xi64>) {
+  %reduction, %reduction2 = thlo.reduction
+      ins(%input1:tensor<16x32x64xf32>, %input2:tensor<16x32x64xi64>)
+      outs(%init1:tensor<16x64xf32>, %init2:tensor<16x64xi64>)
+      dimensions = [1]
+      (%in1: f32, %in2: i64, %out1: f32, %out2: i64) {
+        %0 = arith.addf %in1, %out1: f32
+        %1 = arith.addi %in2, %out2: i64
+        thlo.yield %0, %1: f32, i64
+      }
+  func.return %reduction, %reduction2 : tensor<16x64xf32>, tensor<16x64xi64>
+}
+// CHECK-LABEL: func @variable_reduction
