@@ -242,18 +242,18 @@ void emitMerge(ImplicitLocOpBuilder& b, Value lo, Value mid, Value hi,
       SmallVector<Value> vals0 = loadMemrefElements(b, readBufs, i0);
       SmallVector<Value> vals1 = loadMemrefElements(b, readBufs, i1);
 
-      //   writeBufs[iOut] = comparator(vals0, vals1))
-      //                       ? readBufs[i0++] : readBufs[i1++];
-      Value cmp = emitComparison(b, vals0, vals1, comparator);
+      //   writeBufs[iOut] = comparator(vals1, vals0)
+      //                       ? readBufs[i1++] : readBufs[i0++];
+      Value cmp = emitComparison(b, vals1, vals0, comparator);
       SmallVector<Value> pickedVals;
       for (auto [val0, val1] : llvm::zip(vals0, vals1)) {
-        pickedVals.push_back(b.create<SelectOp>(cmp, val0, val1));
+        pickedVals.push_back(b.create<SelectOp>(cmp, val1, val0));
       }
       storeMemrefElements(b, writeBufs, iOut, pickedVals);
 
       Value one = b.create<arith::ConstantIndexOp>(1);
-      Value nexti0 = b.create<SelectOp>(cmp, b.create<AddIOp>(i0, one), i0);
-      Value nexti1 = b.create<SelectOp>(cmp, i1, b.create<AddIOp>(i1, one));
+      Value nexti0 = b.create<SelectOp>(cmp, i0, b.create<AddIOp>(i0, one));
+      Value nexti1 = b.create<SelectOp>(cmp, b.create<AddIOp>(i1, one), i1);
       //   ++iOut;
       Value nextIOut = b.create<AddIOp>(iOut, one);
       b.create<scf::YieldOp>(ValueRange{nextIOut, nexti0, nexti1});
