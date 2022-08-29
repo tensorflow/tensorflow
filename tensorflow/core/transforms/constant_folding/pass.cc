@@ -2177,8 +2177,12 @@ class SimplifyArithmeticOp
     ShapedType x_type = (*x->result_type_begin()).cast<ShapedType>();
     ShapedType y_type = (*y->result_type_begin()).cast<ShapedType>();
 
-    const bool y_matches_output_shape = op_type == y_type;
-    const bool x_matches_output_shape = op_type == x_type;
+    const bool y_matches_output_shape = op_type.hasStaticShape() &&
+                                        y_type.hasStaticShape() &&
+                                        op_type == y_type;
+    const bool x_matches_output_shape = op_type.hasStaticShape() &&
+                                        x_type.hasStaticShape() &&
+                                        op_type == x_type;
 
     const bool x_is_zero = helper_.IsZeros(x);
     const bool x_is_one = x_is_zero ? false : helper_.IsOnes(x);
