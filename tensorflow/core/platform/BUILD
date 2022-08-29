@@ -624,8 +624,7 @@ cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],
     deps = [
-        ":platform",
-        "@com_googlesource_code_re2//:re2",
+        "//tensorflow/tsl/platform:regexp",
     ],
 )
 

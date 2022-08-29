@@ -36,6 +36,16 @@ cc_library(
 )
 
 cc_library(
+    name = "regexp",
+    hdrs = ["regexp.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+        "@com_googlesource_code_re2//:re2",
+    ],
+)
+
+cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
     compatible_with = get_compatible_with_portable(),
@@ -87,6 +97,7 @@ filegroup(
         "macros.h",
         "platform.h",
         "platform_strings_computed.h",
+        "regexp.h",
         "stringpiece.h",
         "threadpool_interface.h",
     ],
