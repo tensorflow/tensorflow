@@ -59,6 +59,10 @@ class FusionNodeIndexingEvaluation {
       HloInstruction* fusion_operand);
 
  private:
+  // We don't want to have too much code duplication, because it slows down the
+  // compilation time. There is a tradeoff between compilation time and runtime.
+  // This constant defines the maximum amount of times that we allow to emit the
+  // same op (indexed with different index values).
   static const int64_t kAllowedCodeDuplication;
 
   // Computes the 'indexing_users_' and 'index_usage_count_' maps based on the
