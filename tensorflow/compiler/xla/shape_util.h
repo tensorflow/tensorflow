@@ -729,8 +729,8 @@ class ShapeUtil {
   //
   // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
   // normalized shape of `b` or the 0-2-1 shape.
-  static std::optional<Vector3> FindTranspose021(const Shape& a,
-                                                 const Shape& b);
+  static std::optional<Vector3> FindTranspose021(const Shape& input_shape,
+                                                 const Shape& output_shape);
 
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.
