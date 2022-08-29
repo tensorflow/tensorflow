@@ -563,8 +563,8 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
 
   LogicalResult matchAndRewrite(LhloOpTy op,
                                 PatternRewriter& rewriter) const override {
-    const auto& lhs = op.getLhs();
-    const auto& rhs = op.getRhs();
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
     const auto& lhsType = lhs.getType().template cast<MemRefType>();
     const auto& rhsType = rhs.getType().template cast<MemRefType>();
     const auto& elementType = lhsType.getElementType();

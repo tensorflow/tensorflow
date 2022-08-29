@@ -528,14 +528,12 @@ Value materializeEqualShapesRankSpecializationCase(
       [&](OpBuilder &b, Location loc) {
         // Flatten non-scalar operands.
         Value flatShape = materializeFlatShape(b, loc, nonScalarShapes);
-        auto flatOperands =
-            llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
+        auto flatOperands = llvm::to_vector<8>(
+            llvm::map_range(op.operands(), [&](Value v) -> Value {
               if (isScalarTensorType(v.getType())) return v;
-              return b
-                  .create<mhlo::DynamicReshapeOp>(
-                      loc, deriveRankedTensorTypes(v.getType(), /*rank=*/1), v,
-                      flatShape)
-                  .result();
+              return b.create<mhlo::DynamicReshapeOp>(
+                  loc, deriveRankedTensorTypes(v.getType(), /*rank=*/1), v,
+                  flatShape);
             }));
 
         // Materialize ranked variants for the element-wise operations.
@@ -719,12 +717,11 @@ materializeRankSpecializationForSingleNonScalarShapeEquivalenceClass(
 
   // Restore the results' expected shape.
   Value shape = nonScalarShapes.front();
-  return llvm::to_vector<8>(llvm::map_range(unshapedResults, [&](Value v) {
-    return rewriter
-        .create<mhlo::DynamicReshapeOp>(
-            loc, deriveUnrankedTensorTypes(v.getType()), v, shape)
-        .result();
-  }));
+  return llvm::to_vector<8>(
+      llvm::map_range(unshapedResults, [&](Value v) -> Value {
+        return rewriter.create<mhlo::DynamicReshapeOp>(
+            loc, deriveUnrankedTensorTypes(v.getType()), v, shape);
+      }));
 }
 
 Value materializeRankSpecializationForTwoNonScalarShapeEquivalenceClasses(
