@@ -22,7 +22,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
 #else // TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/rocm/rocm_dnn.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_dnn.h"
 #include "rocm/rocm_config.h"
 #endif  // GOOGLE_CUDA
 
