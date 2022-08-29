@@ -3335,10 +3335,10 @@ static void EmitXTileLoop(
     const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
     const TilingScheme& tiling_scheme, bool check_x_tile_bounds,
     llvm::Value* start_offset_x, llvm::Value* y_loc,
-    IrEmitterUnnested::ValueVector3 tile_dimensions,
+    IrEmitterUnnested::ValueVector2 tile_dimensions,
     const IrArray::Index& source_idx, llvm::IRBuilder<>* b,
     const IrEmitterUnnested::EmitElementFunction* emit_elem_function) {
-  llvm::Type* index_ty = tile_dimensions[kDimX]->getType();
+  llvm::Type* index_ty = tile_dimensions[1]->getType();
   KernelSupportLibrary ksl(b, llvm_ir::UnrollMode::kDefaultUnroll);
   auto constant = [&](int64_t val) {
     return llvm::ConstantInt::get(index_ty, val);
@@ -3371,7 +3371,7 @@ static void EmitXTileLoop(
                                          x_loc, linear_index);
           };
           if (check_x_tile_bounds) {
-            ksl.If("x_in_tile", b->CreateICmpULT(x_loc, tile_dimensions[kDimX]),
+            ksl.If("x_in_tile", b->CreateICmpULT(x_loc, tile_dimensions[1]),
                    emit_element);
           } else {
             emit_element();
@@ -3382,9 +3382,9 @@ static void EmitXTileLoop(
 
 void IrEmitterUnnested::EmitTile(
     const TilingScheme& tiling_scheme, const IrArray::Index& tile_origin_index,
-    const ThreadIdInfo& thread_id_info, ValueVector3 tile_dimensions,
+    const ThreadIdInfo& thread_id_info, ValueVector2 tile_dimensions,
     const IrEmitterUnnested::EmitElementFunction& emit_elem_function) {
-  llvm::Type* index_ty = tile_dimensions[kDimY]->getType();
+  llvm::Type* index_ty = tile_dimensions[0]->getType();
   auto constant = [&](int64_t val) {
     return llvm::ConstantInt::get(index_ty, val);
   };
@@ -3400,7 +3400,7 @@ void IrEmitterUnnested::EmitTile(
       "y_in_tile",
       /*start=*/thread_id_info.thread_id_y,
       /*end=*/
-      tile_dimensions[kDimY],
+      tile_dimensions[0],
       /*step=*/num_threads_y, [&](llvm::Value* y_loc) {
         auto unroll_inner_tile_loop = [&](bool check_x_tile_bounds) {
           return EmitXTileLoop(thread_id_info, tiling_scheme,
@@ -3418,7 +3418,7 @@ void IrEmitterUnnested::EmitTile(
               "is_full_tile",
               b_.CreateICmpEQ(
                   constant(tiling_scheme.GetBlockTileSizeFor(kDimX)),
-                  tile_dimensions[kDimX]),
+                  tile_dimensions[1]),
               [&] { unroll_inner_tile_loop(/*check_x_tile_bounds=*/false); },
               [&] { unroll_inner_tile_loop(/*check_x_tile_bounds=*/true); });
         } else {
@@ -3993,13 +3993,13 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
 
   // Some warps in the block are completely outside of the bound of the
   // tensor, so they should not write any output at all.
-  llvm::Value* has_output = b_.CreateAnd(
-      b_.CreateICmpULT(
-          GetStartOffsetX(tiling_scheme, thread_id_info.thread_id_y, index_ty,
-                          &b_),
-          tiling_kernel_info.output_tile_bounds[kDimX]),
-      b_.CreateICmpULT(thread_id_info.thread_id_x,
-                       tiling_kernel_info.output_tile_bounds[kDimY]));
+  llvm::Value* has_output =
+      b_.CreateAnd(b_.CreateICmpULT(GetStartOffsetX(tiling_scheme,
+                                                    thread_id_info.thread_id_y,
+                                                    index_ty, &b_),
+                                    tiling_kernel_info.output_tile_bounds[1]),
+                   b_.CreateICmpULT(thread_id_info.thread_id_x,
+                                    tiling_kernel_info.output_tile_bounds[1]));
 
   ksl.If("reduction_write_output",
          b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
@@ -4103,14 +4103,19 @@ IrEmitterUnnested::EmitTilingKernel(
     return IrArray::Index(multidim, dims_in_blocks, index_ty);
   }();
 
-  ValueVector3 tile_dimensions;
-  for (int i = kDimY; i < kDimTot; ++i) {
-    int64_t tile_size_for_dim = tiling_scheme.GetBlockTileSizeFor(i);
+  ValueVector2 tile_dimensions;
+  for (int i = 0; i < 2; ++i) {
+    // Coordinate access is shifted by 1: 0 corresponds to DimY
+    // and 1 corresponds to DimX.
+    int tiling_coord = i + 1;
+
+    int64_t tile_size_for_dim = tiling_scheme.GetBlockTileSizeFor(tiling_coord);
     // Only last row or column may not have full size.
-    llvm::Value* is_last =
-        b_.CreateICmpEQ(block_coords[i], constant(dims_in_blocks[i] - 1));
+    llvm::Value* is_last = b_.CreateICmpEQ(
+        block_coords[tiling_coord], constant(dims_in_blocks[tiling_coord] - 1));
     int64_t partial_row =
-        dims_in_elems[i] - (dims_in_blocks[i] - 1) * tile_size_for_dim;
+        dims_in_elems[tiling_coord] -
+        (dims_in_blocks[tiling_coord] - 1) * tile_size_for_dim;
     tile_dimensions[i] =
         b_.CreateSelect(is_last, constant(partial_row),
                         constant(tile_size_for_dim), "tile_bound");
@@ -4213,7 +4218,7 @@ Status IrEmitterUnnested::EmitHlo021Tile(
 
   TileElementGenerator tile_generator =
       [&](const ThreadIdInfo& thread_id_info, const IrArray::Index& index,
-          ValueVector3 tile_dimensions) {
+          ValueVector2 tile_dimensions) {
         // If shared memory transpose is needed, wait for all threads to reach
         // this point, lest we copy a value from tile to output before the other
         // thread copies it from input to tile. This is `__syncthreads` in CUDA.
@@ -4223,9 +4228,8 @@ Status IrEmitterUnnested::EmitHlo021Tile(
               Permute(index.multidim(), {0, 2, 1}),
               Permute(index.dims(), {0, 2, 1}), index.GetType());
 
-          ValueVector3 transposed_tile_dimensions = {tile_dimensions[kDimZ],
-                                                     tile_dimensions[kDimX],
-                                                     tile_dimensions[kDimY]};
+          ValueVector2 transposed_tile_dimensions = {tile_dimensions[1],
+                                                     tile_dimensions[0]};
 
           // Copy input parameter values to shared memory buffers:
           // tile[thread_id_y, thread_id_x] = input[index]
@@ -4720,7 +4724,7 @@ Status IrEmitterUnnested::EmitIRForReduction(
       EmitTilingKernel(
           tiling_scheme, index_ty,
           [&](const ThreadIdInfo& thread_id_info, const IrArray::Index& index,
-              ValueVector3 tile_dimensions) {
+              ValueVector2 tile_dimensions) {
             EmitTile(codegen_state.GetTilingScheme(), index, thread_id_info,
                      tile_dimensions, emit_reduction_element);
           }));
