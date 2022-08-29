@@ -2463,7 +2463,7 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
 
     const bool left_child_is_const = dialect_->IsConstant(child_op);
 
-    // One of the child op has to be constant.
+    // One of the child ops has to be constant.
     if (!dialect_->IsConstant(const_op)) std::swap(child_op, const_op);
     if (!dialect_->IsConstant(const_op)) return failure();
     if (helper_.ShouldPreserveOp(child_op)) return failure();
@@ -2484,15 +2484,20 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
     const bool is_child_symmetric = is_child_add || is_child_mul;
 
     TypeAttr t_attr = op->getAttrOfType<TypeAttr>("T");
+    assert(t_attr == child_op->getAttrOfType<TypeAttr>("T"));
     if (!t_attr) return failure();
 
-    if (!(is_symmetric && is_child_symmetric) &&
-        t_attr.getValue().isIntOrIndex()) {
+    // Do not rewrite expressions of integer types with division because:
+    // - They use integer division.
+    // - There may be overflow. (a * b) / c != (a / c) * b if (a * b) overflows,
+    // even if divisions have no remainder.
+    if (t_attr.getValue().isIntOrIndex() && (is_div || is_child_div))
       return failure();
-    }
 
     Operation *left_leaf_op = child_op->getOperand(0).getDefiningOp();
     Operation *right_leaf_op = child_op->getOperand(1).getDefiningOp();
+    // TODO(tlongeri): Is this check really necessary? Why not allow block
+    // arguments?
     if (!left_leaf_op || !right_leaf_op) return failure();
 
     // Don't move nodes across devices.
@@ -2502,18 +2507,22 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
     }
 
     const bool left_leaf_is_const = dialect_->IsConstant(left_leaf_op);
+    if (left_leaf_is_const && dialect_->IsConstant(right_leaf_op))
+      return failure();
+    // X is never Const. Y may be Const.
+    Value x_value = child_op->getOperand(left_leaf_is_const ? 1 : 0);
+    Value y_value = child_op->getOperand(left_leaf_is_const ? 0 : 1);
     Operation *y_node = left_leaf_is_const ? left_leaf_op : right_leaf_op;
 
     if (!dialect_->IsConstant(y_node)) {
       // If we know the shapes of the nodes being swapped, make sure we don't
       // push down a larger node and create more work by broadcasting earlier
       // in the expressions tree.
-      auto c_shape = op->getOperand((left_child_is_const ? 0 : 1))
-                         .getType()
-                         .cast<ShapedType>();
-      auto x_shape = child_op->getOperand((left_leaf_is_const ? 0 : 1))
-                         .getType()
-                         .cast<ShapedType>();
+      // Dimensions of X must be smaller than or equal than those of C.
+      // This also avoids having to increase the size of the child op's result
+      // to match the broadcast with a bigger operand.
+      auto c_shape = const_op->getResult(0).getType().cast<ShapedType>();
+      auto x_shape = x_value.getType().cast<ShapedType>();
 
       if (c_shape.hasStaticShape() && x_shape.hasStaticShape() &&
           c_shape.getNumElements() > x_shape.getNumElements()) {
@@ -2528,23 +2537,6 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
       }
     }
 
-    // Child input
-    Operation *input_x = left_leaf_is_const
-                             ? child_op->getOperand(1).getDefiningOp()
-                             : child_op->getOperand(0).getDefiningOp();
-    Operation *input_y = left_leaf_is_const
-                             ? child_op->getOperand(0).getDefiningOp()
-                             : child_op->getOperand(1).getDefiningOp();
-    if (!input_x || !input_y) return failure();
-
-    Operation *input_c = const_op;
-    Operation *input_op = child_op;
-
-    if (op->getOperand(0).getDefiningOp() == input_c)
-      op->setOperand(0, input_x->getResult(0));
-    else
-      op->setOperand(1, input_x->getResult(0));
-
     if (is_symmetric && is_child_symmetric) {
       // Easy case (only commutative ops). We always write this as one of
       //   +
@@ -2553,12 +2545,12 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
       //    / \
       //   C   Y
       rewriter.startRootUpdate(op);
-      op->setOperand(0, input_x->getResult(0));
-      op->setOperand(1, input_op->getResult(0));
+      op->setOperand(0, x_value);
+      op->setOperand(1, child_op->getResult(0));
       rewriter.finalizeRootUpdate(op);
       rewriter.startRootUpdate(child_op);
-      child_op->setOperand(0, input_c->getResult(0));
-      child_op->setOperand(1, input_y->getResult(0));
+      child_op->setOperand(0, const_op->getResult(0));
+      child_op->setOperand(1, y_value);
       rewriter.finalizeRootUpdate(child_op);
     } else {
       // More complicated case: When there are non-commutative operations like
@@ -2593,8 +2585,8 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
       StringRef op_name =
           (neg_x || (neg_c && neg_y)) ? nonsymmetric_op : symmetric_op;
       OperationState state(op->getLoc(), op_name);
-      state.addOperands({input_op->getResult(0), input_x->getResult(0)});
-      if (!neg_x) std::swap(state.operands[0], state.operands[1]);
+      state.addOperands({x_value, child_op->getResult(0)});
+      if (neg_x) std::swap(state.operands[0], state.operands[1]);
       state.addOperands(TFOp(op).getControlOperands());
       state.attributes = op->getAttrDictionary();
       state.addTypes(op->getResultTypes());
@@ -2603,9 +2595,8 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
 
       StringRef child_name = neg_c != neg_y ? nonsymmetric_op : symmetric_op;
       OperationState new_child_state(child_op->getLoc(), child_name);
-      new_child_state.addOperands(
-          {input_y->getResult(0), input_c->getResult(0)});
-      if (!neg_c)
+      new_child_state.addOperands({const_op->getResult(0), y_value});
+      if (neg_c)
         std::swap(new_child_state.operands[0], new_child_state.operands[1]);
       new_child_state.addOperands(TFOp(child_op).getControlOperands());
       new_child_state.attributes = child_op->getAttrDictionary();
