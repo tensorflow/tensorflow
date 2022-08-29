@@ -343,5 +343,14 @@ bool hasTransformationAttr(Operation *op) {
   return marker && marker.cast<BoolAttr>().getValue();
 }
 
+constexpr llvm::StringLiteral kOpLabel = "op_label";
+
+bool hasMatchingLabel(Operation *op, StringRef label) {
+  auto opLabelAttr = op->getAttr(kOpLabel);
+  if (!opLabelAttr) return false;
+
+  return opLabelAttr.cast<StringAttr>().getValue() == label;
+}
+
 }  // namespace gml_st
 }  // namespace mlir

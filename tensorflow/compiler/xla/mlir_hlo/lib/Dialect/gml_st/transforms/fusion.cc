@@ -21,6 +21,9 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -120,7 +123,7 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
   }
 };
 
-struct FusionPattern : public OpRewritePattern<MaterializeOp> {
+struct DeprecatedFusionPattern : public OpRewritePattern<MaterializeOp> {
   using OpRewritePattern<MaterializeOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(MaterializeOp op,
@@ -155,8 +158,92 @@ class DeprecatedFusionPass
     patterns.insert<
         DimOpFissionPattern,
         DimOpReificationPattern,
-        FusionPattern>(ctx);
+        DeprecatedFusionPattern>(ctx);
     // clang-format on
+
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
+  }
+};
+
+FailureOr<TilingInterface> fuseIntoMaterializeOp(OpBuilder& b,
+                                                 MaterializeOp materializeOp) {
+  auto tileableOp = materializeOp.source().getDefiningOp<TilingInterface>();
+  if (!tileableOp) return failure();
+
+  SmallVector<Value> destinationOperands = tileableOp.getDestinationOperands(b);
+
+  // Restrict the subsets in which we can fuse to a gml_st.tile(gml_st.space).
+  auto set = materializeOp.set();
+  auto tile = set.getDefiningOp<TileOp>();
+  if (!tile) return failure();
+  if (!tile.superset().getDefiningOp<SpaceOp>()) return failure();
+
+  // Tile the producer.
+  OpBuilder::InsertionGuard guard(b);
+  b.setInsertionPoint(materializeOp);
+  FailureOr<Value> tiledProducer = tileableOp.generateResultTileValue(
+      b, /*resultNumber=*/0, destinationOperands, tile.getMixedOffsets(),
+      tile.getMixedSizes(), true);
+  if (failed(tiledProducer)) return failure();
+  return tiledProducer->getDefiningOp<TilingInterface>();
+}
+
+class FusionPattern : public OpRewritePattern<MaterializeOp> {
+ public:
+  FusionPattern(StringRef producer, StringRef consumer, MLIRContext* context,
+                mlir::PatternBenefit benefit = 1)
+      : OpRewritePattern<MaterializeOp>(context, benefit),
+        producer(producer),
+        consumer(consumer) {}
+
+  LogicalResult matchAndRewrite(MaterializeOp materializeOp,
+                                PatternRewriter& rewriter) const override {
+    Operation* producerOp = materializeOp.source().getDefiningOp();
+    if (!producerOp || !hasMatchingLabel(producerOp, producer))
+      return failure();
+
+    Operation* consumerOp = nullptr;
+    for (Operation* user : materializeOp.getResult().getUsers()) {
+      if (hasMatchingLabel(user, consumer)) {
+        consumerOp = user;
+        break;
+      }
+    }
+    if (!consumerOp) return failure();
+
+    auto fusedOpOr = fuseIntoMaterializeOp(rewriter, materializeOp);
+    if (failed(fusedOpOr)) return failure();
+
+    rewriter.replaceOp(materializeOp, fusedOpOr->getOperation()->getResult(0));
+
+    return success();
+  }
+
+ private:
+  StringRef producer;
+  StringRef consumer;
+};
+
+struct FusionPass : public FusionPassBase<FusionPass> {
+  FusionPass(StringRef producerLabel, StringRef consumerLabel) {
+    this->producer = producerLabel.str();
+    this->consumer = consumerLabel.str();
+  }
+
+  void getDependentDialects(DialectRegistry& registry) const final {
+    registry.insert<GmlStDialect>();
+    registerGmlStTilingInterfaceExternalModels(registry);
+  }
+
+  void runOnOperation() final {
+    MLIRContext* ctx = &getContext();
+
+    // Populate patterns.
+    RewritePatternSet patterns(ctx);
+    patterns.insert<FusionPattern>(producer, consumer, ctx);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
@@ -169,6 +256,11 @@ class DeprecatedFusionPass
 
 std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedFusionPass() {
   return std::make_unique<DeprecatedFusionPass>();
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
+    StringRef producer, StringRef consumer) {
+  return std::make_unique<FusionPass>(producer, consumer);
 }
 
 }  // namespace gml_st

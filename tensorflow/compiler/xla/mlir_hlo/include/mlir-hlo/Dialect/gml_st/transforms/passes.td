@@ -41,6 +41,17 @@ def TileToForPass : Pass<"gml-tile-to-for", "mlir::func::FuncOp"> {
   ];
 }
 
+def FusionPass : Pass<"gml-fusion", "mlir::func::FuncOp"> {
+  let summary = "Fuse producers in into `gml_st.materialize` operations";
+  let constructor = "::mlir::gml_st::createFusionPass()";
+  let options = [
+    Option<"producer", "producer", "std::string", /*default=*/"",
+           "Producer label.">,
+    Option<"consumer", "consumer", "std::string", /*default=*/"",
+           "Consumer label.">,
+  ];
+}
+
 def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
   let summary = "Compose set operations.";
   let constructor = "::mlir::gml_st::createComposeSetOpsPass()";

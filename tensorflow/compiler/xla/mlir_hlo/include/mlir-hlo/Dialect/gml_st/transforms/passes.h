@@ -39,6 +39,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createTileToForPass(
     StringRef tilingTarget = "", ArrayRef<int64_t> tileSizes = {});
 
+/// Pass to fuse producers into a tiled consumer.
+std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
+    StringRef producer = "", StringRef consumer = "");
+
 /// Pass to compose set operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createComposeSetOpsPass();
 

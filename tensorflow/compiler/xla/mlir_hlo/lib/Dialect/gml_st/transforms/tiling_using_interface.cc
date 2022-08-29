@@ -30,8 +30,6 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-constexpr llvm::StringLiteral kOpLabel = "op_label";
-
 /// Generate an empty loop nest that represents the tiled loop nest shell.
 /// - `loopRanges` specifies the lb, ub and step of the untiled iteration space.
 /// - `tileSizeVals` is the tile sizes to use. Zero represent untiled loops.
@@ -101,13 +99,7 @@ TileToGmlStLoops::TileToGmlStLoops(MLIRContext *context, StringRef tilingTarget,
 
 LogicalResult TileToGmlStLoops::matchAndRewrite(
     TilingInterface op, PatternRewriter &rewriter) const {
-  auto opLabelAttr = op->getAttr(kOpLabel);
-  if (!opLabelAttr) return failure();
-
-  auto opLabelStrAttr = opLabelAttr.cast<StringAttr>();
-  if (!opLabelStrAttr || opLabelStrAttr.getValue() != tilingTarget)
-    return failure();
-
+  if (!hasMatchingLabel(op, tilingTarget)) return failure();
   if (hasTransformationAttr(op)) return failure();
 
   auto tilingResult = returningMatchAndRewrite(op, rewriter);
