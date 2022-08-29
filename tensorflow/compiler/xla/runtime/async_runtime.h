@@ -25,6 +25,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool"
 #include "llvm/ADT/STLExtras.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace mlir {
 namespace runtime {
@@ -221,6 +222,17 @@ class HostContextAsyncTaskRunner : public AsyncTaskRunner {
 
  private:
   tfrt::HostContext* host_;
+};
+
+// Runs async tasks by enqueing them into the concurrent work queue.
+class ConcurrentWorkQueueAsyncTaskRunner : public AsyncTaskRunner {
+ public:
+  explicit ConcurrentWorkQueueAsyncTaskRunner(tfrt::ConcurrentWorkQueue* queue)
+      : queue_(queue) {}
+  void Schedule(Task task) override { queue_->AddTask(std::move(task)); }
+
+ private:
+  tfrt::ConcurrentWorkQueue* queue_;
 };
 
 // Runs async tasks by scheduling them into the Eigen thread pool.
