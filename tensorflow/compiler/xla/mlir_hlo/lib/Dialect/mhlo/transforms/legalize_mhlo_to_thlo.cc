@@ -146,30 +146,18 @@ struct DynamicBroadcastInDimOpPattern
     auto initTensor = rewriter.create<linalg::InitTensorOp>(
         loc, dynamicDims, staticShapeInfo, resultTy.getElementType());
 
-    // TODO(akuegel): Add a builder for getDenseI64ArrayAttr upstream.
-    auto broadcastDims = DenseI64ArrayAttr::get(
-        rewriter.getContext(),
-        llvm::to_vector(
-            llvm::map_range(op.broadcast_dimensions(), [](const auto& d) {
-              return static_cast<int64_t>(d.getLimitedValue());
-            })));
+    auto broadcastDims = rewriter.getDenseI64ArrayAttr(
+        llvm::to_vector(op.broadcast_dimensions().getValues<int64_t>()));
+
     DenseI64ArrayAttr knownExpandingDims;
     if (op.known_expanding_dimensions().has_value()) {
-      knownExpandingDims = DenseI64ArrayAttr::get(
-          rewriter.getContext(),
-          llvm::to_vector(llvm::map_range(
-              op.known_expanding_dimensionsAttr(), [](const auto& d) {
-                return static_cast<int64_t>(d.getLimitedValue());
-              })));
+      knownExpandingDims = rewriter.getDenseI64ArrayAttr(llvm::to_vector(
+          op.known_expanding_dimensionsAttr().getValues<int64_t>()));
     }
     DenseI64ArrayAttr knownNonexpandingDims;
     if (op.known_nonexpanding_dimensions().has_value()) {
-      knownNonexpandingDims = DenseI64ArrayAttr::get(
-          rewriter.getContext(),
-          llvm::to_vector(llvm::map_range(
-              op.known_nonexpanding_dimensionsAttr(), [](const auto& d) {
-                return static_cast<int64_t>(d.getLimitedValue());
-              })));
+      knownNonexpandingDims = rewriter.getDenseI64ArrayAttr(llvm::to_vector(
+          op.known_nonexpanding_dimensionsAttr().getValues<int64_t>()));
     }
 
     rewriter.replaceOpWithNewOp<thlo::DynamicBroadcastInDimOp>(
