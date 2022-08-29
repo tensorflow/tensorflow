@@ -42,7 +42,7 @@ constexpr char kHloProtoSuffix[] = ".hlo_proto.pb";
 
 // Extracts and deduplicates the HLO protos from all the XSpaces.
 // Stores the HLO protos as files in the same directory as the xspace files.
-StatusOr<bool> GetHloProtoFromMultiXSpaceAndSaveToFile(
+StatusOr<std::string> GetHloProtoFromMultiXSpaceAndSaveToFile(
     const SessionSnapshot& session_snapshot) {
   // Get all HLO protos from XSpaces and deduplicate.
   HloProtoMap hlo_proto_map;
@@ -62,7 +62,7 @@ StatusOr<bool> GetHloProtoFromMultiXSpaceAndSaveToFile(
     TF_RETURN_IF_ERROR(tensorflow::WriteBinaryProto(tensorflow::Env::Default(),
                                                     file_name, empty_hlo));
     // The profile does not have HLO proto.
-    return false;
+    return std::string("false");
   }
 
   // Save HLO protos to session run directory.
@@ -79,7 +79,7 @@ StatusOr<bool> GetHloProtoFromMultiXSpaceAndSaveToFile(
   }
 
   // The profile has HLO proto.
-  return true;
+  return std::string("true");
 }
 
 }  // namespace
@@ -96,7 +96,7 @@ StatusOr<xla::HloProto> GetHloProtoByModuleName(
   return hlo_proto;
 }
 
-StatusOr<bool> ConvertMultiXSpaceToHloProto(
+StatusOr<std::string> ConvertMultiXSpaceToHloProto(
     const SessionSnapshot& session_snapshot) {
   // Gets all the files in session run directory.
   // TODO(profiler): Move this glob to SessionSnapshot and build a map from file
@@ -111,17 +111,14 @@ StatusOr<bool> ConvertMultiXSpaceToHloProto(
     if (absl::EndsWith(path, kHloProtoSuffix)) {
       if (absl::EndsWith(path,
                          absl::StrCat(kNoModuleIdentifier, kHloProtoSuffix))) {
-        return false;
+        return std::string("false");
       } else {
-        return true;
+        return std::string("true");
       }
     }
   }
 
   // Generate HLO proto.
-  // TODO(jiesun): Maybe generate a tag file at profile collection time, so
-  // don't need to read XSpace files for checking whether HLO proto exists or
-  // not.
   return GetHloProtoFromMultiXSpaceAndSaveToFile(session_snapshot);
 }
 

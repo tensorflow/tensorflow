@@ -714,10 +714,10 @@ cc_library(
         ":op_stats_to_tf_stats",
         ":repository",
         ":tool_options",
+        ":xplane_to_hlo",
         ":xplane_to_memory_profile",
         ":xplane_to_op_stats",
         ":xplane_to_tf_data_stats",
-        ":xplane_to_tool_names",
         ":xplane_to_trace_events",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
@@ -957,18 +957,6 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:file_system_utils",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "xplane_to_tool_names",
-    srcs = ["xplane_to_tool_names.cc"],
-    hdrs = ["xplane_to_tool_names.h"],
-    deps = [
-        ":repository",
-        ":xplane_to_hlo",
-        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
