@@ -149,9 +149,6 @@ py_library(
     name = "resource",
     srcs = ["resource.py"],
     srcs_version = "PY3",
-    # TODO(b/238780047): Clean up the Grand Vision code and
-    # revert to only default_visibility here once automated
-    # tracking of resources is implemented.
     visibility = ["//tensorflow:internal"],
     deps = [
         ":base",
