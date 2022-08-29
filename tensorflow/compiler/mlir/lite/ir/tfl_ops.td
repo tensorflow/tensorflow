@@ -1598,6 +1598,8 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
   let results = (outs TFL_TensorOf<[F32, I8, UI8]>:$output);
 
+  let hasFolder = 1;
+
   let extraClassDeclaration = [{
     // DynamicRangeQuantizedOpInterface:
     std::vector<int> GetQuantizableOperandIndices() { return {1}; }
