@@ -291,25 +291,15 @@ build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 build:android --noenable_platform_specific_config
 build:ios --noenable_platform_specific_config
 
-# Suppress all C++ compiler warnings, otherwise build logs become 10s of MBs.
+# Suppress C++ compiler warnings, otherwise build logs become 10s of MBs.
 build:android --copt=-w
 build:ios --copt=-w
+build:linux --copt=-w
 build:linux --host_copt=-w
 build:macos --copt=-w
 build:windows --copt=/W0
 build:windows --host_copt=/W0
 
-# Suppress most C++ complier warnings to reduce log size but allow
-# for specific warnings to still be present.
-build:linux --copt="-Wno-all"
-build:linux --copt="-Wno-extra"
-build:linux --copt="-Wno-deprecated"
-build:linux --copt="-Wno-deprecated-declarations"
-build:linux --copt="-Wno-ignored-attributes"
-
-# Promote unused-result to an error on Linux.
-build:linux --copt="-Wunused-result"
-build:linux --copt="-Werror=unused-result"
 
 # On Windows, `__cplusplus` is wrongly defined without this switch
 # See https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/

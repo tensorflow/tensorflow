@@ -41,7 +41,7 @@ void GetRssStats(size_t* vsize, size_t* rss, size_t* shared, size_t* code) {
   *shared = 0;
   *code = 0;
   if (fp == nullptr) return;
-  (void)!fscanf(fp, "%zu %zu %zu %zu", vsize, rss, shared, code);
+  fscanf(fp, "%zu %zu %zu %zu", vsize, rss, shared, code);
   fclose(fp);
   *vsize = *vsize * getpagesize() >> 20;
   *rss = *rss * getpagesize() >> 20;

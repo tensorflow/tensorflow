@@ -43,7 +43,7 @@ namespace testing {
 // is corrupted. However, it can dump mangled symbols.
 inline void SafePrintStackTrace() {
   static const char begin_msg[] = "*** BEGIN MANGLED STACK TRACE ***\n";
-  (void)!write(STDERR_FILENO, begin_msg, strlen(begin_msg));
+  (void)write(STDERR_FILENO, begin_msg, strlen(begin_msg));
 
   int buffer_size = 128;
   void *trace[128];
@@ -54,7 +54,7 @@ inline void SafePrintStackTrace() {
   backtrace_symbols_fd(trace, buffer_size, STDERR_FILENO);
 
   static const char end_msg[] = "*** END MANGLED STACK TRACE ***\n\n";
-  (void)!write(STDERR_FILENO, end_msg, strlen(end_msg));
+  (void)write(STDERR_FILENO, end_msg, strlen(end_msg));
 }
 
 static void StacktraceHandler(int sig, siginfo_t *si, void *v) {
@@ -76,7 +76,7 @@ static void StacktraceHandler(int sig, siginfo_t *si, void *v) {
   char buf[128];
 
   snprintf(buf, sizeof(buf), "*** Received signal %d ***\n", sig);
-  (void)!write(STDERR_FILENO, buf, strlen(buf));
+  (void)write(STDERR_FILENO, buf, strlen(buf));
 
   // Print "a" stack trace, as safely as possible.
   SafePrintStackTrace();
@@ -86,7 +86,7 @@ static void StacktraceHandler(int sig, siginfo_t *si, void *v) {
   // will try to print more human readable things to the terminal.
   // But these have a higher probability to fail.
   std::string stacktrace = CurrentStackTrace();
-  (void)!write(STDERR_FILENO, stacktrace.c_str(), stacktrace.length());
+  (void)write(STDERR_FILENO, stacktrace.c_str(), stacktrace.length());
 
   // Abort the program.
   struct sigaction sa;
@@ -115,14 +115,14 @@ void InstallStacktraceHandler() {
                "Warning, can't install backtrace signal handler for signal %d, "
                "errno:%d \n",
                sig, errno);
-      (void)!write(STDERR_FILENO, buf, strlen(buf));
+      (void)write(STDERR_FILENO, buf, strlen(buf));
     } else if (osa.sa_handler != SIG_DFL) {
       char buf[128];
       snprintf(buf, sizeof(buf),
                "Warning, backtrace signal handler for signal %d overwrote "
                "previous handler.\n",
                sig);
-      (void)!write(STDERR_FILENO, buf, strlen(buf));
+      (void)write(STDERR_FILENO, buf, strlen(buf));
     }
   }
 }
