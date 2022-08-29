@@ -3778,6 +3778,19 @@ void IrEmitterUnnested::EmitPrintfWithThreadId(
   });
 }
 
+void IrEmitterUnnested::EmitPrintfForIndex(
+    absl::string_view fmt, const llvm_ir::IrArray::Index& index,
+    std::optional<int64_t> thread_id_filter,
+    std::optional<int64_t> block_id_filter) {
+  EmitPrintfWithThreadId(
+      absl::StrCat(fmt, " : ",
+                   absl::StrJoin(index.multidim(), ", ",
+                                 [&](std::string* out, llvm::Value* v) {
+                                   absl::StrAppend(out, "%d");
+                                 })),
+      index.multidim(), thread_id_filter, block_id_filter);
+}
+
 llvm::Value* IrEmitterUnnested::CastSharedToGlobal(llvm::Value* input,
                                                    llvm::Type* element_type,
                                                    llvm::Twine name) {

@@ -752,6 +752,12 @@ class IrEmitterUnnested : public IrEmitter {
       std::optional<int64_t> thread_id_filter = std::nullopt,
       std::optional<int64_t> block_id_filter = std::nullopt);
 
+  // Prints the given index.
+  void EmitPrintfForIndex(
+      absl::string_view fmt, const llvm_ir::IrArray::Index& index,
+      std::optional<int64_t> thread_id_filter = std::nullopt,
+      std::optional<int64_t> block_id_filter = std::nullopt);
+
   StatusOr<HloComputation*> GetOrCreateSubComputationFromRegion(
       mlir::Region* region, bool is_fusion);
 
