@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
-#include "tensorflow/compiler/xla/mlir/utils/to_string.h"
 
 namespace xla {
 namespace runtime {
@@ -105,7 +105,7 @@ static std::unique_ptr<Type> ConvertCanonicalType(
   }
 
   return InvalidArgumentError(
-      StrFormat("unsupported element type: %s", ToString(type)));
+      StrFormat("unsupported element type: %s", debugString(type)));
 }
 
 StatusOr<std::unique_ptr<Type>> TypeConverter::Convert(mlir::Type type) const {
@@ -114,8 +114,8 @@ StatusOr<std::unique_ptr<Type>> TypeConverter::Convert(mlir::Type type) const {
   for (const ConversionFn& conversion : conversions_)
     if (auto converted = conversion(type)) return converted;
 
-  return InvalidArgumentError(
-      StrFormat("can't convert type: %s to the run time type", ToString(type)));
+  return InvalidArgumentError(StrFormat(
+      "can't convert type: %s to the run time type", debugString(type)));
 }
 
 StatusOr<FunctionType> TypeConverter::Convert(mlir::FunctionType type) const {
@@ -130,7 +130,7 @@ StatusOr<FunctionType> TypeConverter::Convert(mlir::FunctionType type) const {
   auto error = [](std::string_view kind, unsigned i, mlir::Type type) {
     return InvalidArgumentError(
         StrFormat("can't convert %s #%i type %s to the run time type", kind, i,
-                  ToString(type)));
+                  debugString(type)));
   };
 
   for (unsigned i = 0; i < type.getNumInputs(); ++i) {

@@ -28,9 +28,9 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
-#include "tensorflow/compiler/xla/mlir/utils/to_string.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
@@ -107,7 +107,7 @@ static StatusOr<mlir::Type> SpecializeOperandType(
   }
 
   return InvalidArgumentError(
-      StrCat("Unsupported input type: ", ToString(type)));
+      StrCat("Unsupported input type: ", debugString(type)));
 }
 
 // Gets (copies) the values from `desc`, returning them in a DenseElementsAttr.
@@ -224,7 +224,7 @@ Status SpecializeFunction(mlir::func::FuncOp func, ArgumentsRef arguments,
     mlir::TensorType tensor = input.dyn_cast<mlir::TensorType>();
     if (!tensor || !SupportsValueSpecialization(tensor)) {
       return InvalidArgumentError(StrCat(
-          "non-sinkable operand was marked for sinking: ", ToString(input)));
+          "non-sinkable operand was marked for sinking: ", debugString(input)));
     }
 
     // Value specialized tensors must be passed as memref arguments.
@@ -239,7 +239,7 @@ Status SpecializeFunction(mlir::func::FuncOp func, ArgumentsRef arguments,
     mlir::DenseElementsAttr value = GetMemrefValues(builder, tensor, *memref);
     if (!value) {
       return InvalidArgumentError(
-          StrCat("cannot get value from argument type: ", ToString(input)));
+          StrCat("cannot get value from argument type: ", debugString(input)));
     }
 
     auto cst =
