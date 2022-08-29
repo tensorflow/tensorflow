@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -491,6 +492,35 @@ TEST_F(HloCostAnalysisTest, ReduceWindow) {
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 10 * 20);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(float) * 1);
   EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 2 * 4);
+}
+
+TEST_F(HloCostAnalysisTest, ReduceWindowSingleDimReduceBroadcast) {
+  absl::string_view hlo_text = R"(
+ HloModule fusion.50
+
+region_0.868 {
+  Arg_1.870 = f32[] parameter(1)
+  Arg_0.869 = f32[] parameter(0)
+  ROOT maximum.871 = f32[] maximum(Arg_0.869, Arg_1.870)
+}
+
+ENTRY fusion.50 {
+  constant.367 = f32[] constant(-inf)
+  param0 = f32[2,3,1024,1024]{2,3,1,0} parameter(0)
+  ROOT reduce-window.159 = f32[2,3,1024,1024]{2,3,1,0} reduce-window(param0, constant.367), window={size=1x1x1x2047 pad=0_0x0_0x0_0x1023_1023}, to_apply=region_0.868
+}
+)";
+  auto hlo_module = ParseAndReturnUnverifiedModule(hlo_text).ValueOrDie();
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+  EXPECT_EQ(analysis.flop_count(), (2 * 3 * 1024) + (1024 - 1));
+  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0),
+            sizeof(float) * 2 * 3 * 1024 * 1024);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(float) * 1);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root),
+            sizeof(float) * 2 * 3 * 1024 * 1024);
 }
 
 TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {

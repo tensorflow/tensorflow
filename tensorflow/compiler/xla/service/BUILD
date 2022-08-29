@@ -3913,6 +3913,7 @@ tf_cc_test(
         ":cpu_plugin",
         ":hlo",
         ":hlo_cost_analysis",
+        ":hlo_parser",
         ":local_service",
         ":service",
         "//tensorflow/compiler/xla:shape_util",
