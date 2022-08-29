@@ -152,10 +152,7 @@ py_library(
     # TODO(b/238780047): Clean up the Grand Vision code and
     # revert to only default_visibility here once automated
     # tracking of resources is implemented.
-    visibility = [
-        "//tensorflow:internal",
-        "//third_party/py/grand_vision/google:__subpackages__",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":base",
     ],
