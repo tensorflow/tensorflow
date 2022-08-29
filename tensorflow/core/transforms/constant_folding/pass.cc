@@ -1776,6 +1776,7 @@ class SimplifySqueezeOp : public FolderPatternBase<SimplifySqueezeOp> {
 
 // This implementation is mapped with ConstantFolding::SimplifyPack
 // in grappler/optimizers/constant_folding.cc
+// Rewrite a Pack op with a single non-control input into ExpandDims.
 class SimplifyPackOp : public FolderPatternBase<SimplifyPackOp> {
  public:
   explicit SimplifyPackOp(OpPropertyHelper &helper)
@@ -1784,6 +1785,16 @@ class SimplifyPackOp : public FolderPatternBase<SimplifyPackOp> {
                                 PatternRewriter &rewriter) const override {
     auto [non_control_operands, control_operands] = TFOp(op).splitOperands();
     if (non_control_operands.size() != 1) return failure();
+
+    // ExpandDims is not supported on DT_VARIANT (see ExpandDimsOp::Compute),
+    // and DT_VARIANT tensor protos are converted to opaque tensors. We skip
+    // such cases (even though not all opaque tensors are DT_VARIANT tensor
+    // protos, e.g. there is DT_RESOURCE).
+    // TODO(tlongeri): is there a reason ExpandDims does not support DT_VARIANT?
+    if (ShapedType values_type =
+            non_control_operands[0].getType().dyn_cast<ShapedType>();
+        !values_type || values_type.getElementType().isa<VariantType>())
+      return failure();
 
     // It's unsafe to add a control dependency on the feed node, because it
     // might have been never executed otherwiwise.
