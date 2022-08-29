@@ -21,6 +21,34 @@ cc_library(
 )
 
 cc_library(
+    name = "telemetry",
+    srcs = ["telemetry.cc"],
+    hdrs = ["telemetry.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":telemetry_settings",
+        ":telemetry_status",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+    ],
+)
+
+cc_test(
+    name = "telemetry_test",
+    srcs = ["telemetry_test.cc"],
+    deps = [
+        ":profiler",
+        ":telemetry",
+        ":telemetry_status",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "telemetry_status",
     hdrs = ["telemetry_status.h"],
     compatible_with = get_compatible_with_portable(),
