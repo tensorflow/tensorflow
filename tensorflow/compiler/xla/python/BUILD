@@ -789,6 +789,7 @@ pybind_extension(
            select({
                ":tpu_enabled": [
                    "//tensorflow/compiler/xla/pjrt:tpu_client",
+                   "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
                ],
                "//conditions:default": [],
            }),
