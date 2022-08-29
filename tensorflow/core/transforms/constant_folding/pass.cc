@@ -1883,7 +1883,9 @@ class MoveConstantsPastRefEnterOp
 };
 
 // This implementation is mapped with ConstantFolding::SimplifySwitch
-// in grappler/optimizers/constant_folding.cc
+// in grappler/optimizers/constant_folding.cc.
+// In addition to the Grappler functionality, we remove duplicate anchors from
+// the switch.
 class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
  public:
   explicit SimplifySwitchOp(OpPropertyHelper &helper)
@@ -1892,65 +1894,70 @@ class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
             {}, IntegerType::get(helper.getDialect()->getContext(), 1))) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    if (op->getOperand(0) != op->getOperand(1)) return failure();
+    // Currently, there is no infallible protection against reapplications of
+    // the pattern resulting in constant nodes with duplicate names (Grappler
+    // handled this by checking names globally).
+    // We could add a suffix to the node name on each application, but then we
+    // could not apply the pattern on fetch/preserved nodes.
+    // Removing duplicate anchors prevents the problem from manifesting in
+    // certain situations (namely, when the common subgraph elimination pass
+    // merges two switch ops on which the pattern had been already applied).
 
-    // If the optimization was already applied, the switch would have exactly
-    // one Identity node consuming each of its outputs, each without any
-    // non-control outputs.
-    // TODO(tlongeri): This does not hold anymore as other patterns may need to
-    // introduce an anchor. Fix this check, and handle both sides independently.
-    if (llvm::any_of(op->getResults().drop_back(), [&](Value res) {
-          return res.hasOneUse() &&
-                 IsControlAnchor(*res.getUsers().begin(), dialect_);
-        })) {
-      return failure();
+    bool modified = false;
+
+    auto remove_duplicate_anchors = [&](OpResult result) {
+      auto anchors = make_filter_range(result.getUsers(), [&](Operation *op) {
+        return IsControlAnchor(op, dialect_);
+      });
+
+      for (Operation *anchor : make_early_inc_range(anchors)) {
+        if (anchor == *anchors.begin()) continue;
+        rewriter.replaceOp(anchor, (*anchors.begin())->getResults());
+        modified = true;
+      }
+    };
+
+    auto simplify_result = [&](OpResult result, const bool const_value,
+                               const StringRef name_suffix) {
+      if (result.use_empty() ||
+          (result.hasOneUse() &&
+           IsControlAnchor(*result.getUsers().begin(), dialect_)))
+        return;
+
+      FailureOr<TFOp> failure_or_const_op = CreateConstantTensorOp(
+          rewriter, op->getLoc(), TFOp(op).name(), result.getType(), llvm::None,
+          DenseElementsAttr::get(zero_dim_i1_tensor_type_, const_value));
+      if (failed(failure_or_const_op)) return;
+      TFOp const_op = *failure_or_const_op;
+      const_op.setName(TFOp(op).name() + name_suffix);
+      if (StringAttr device_attr = TFOp(op).deviceAttr())
+        const_op.setRequestedDevice(device_attr);
+
+      // May create a new op - must be careful to not fail out after.
+      TFOp anchor = GetControlAnchorForSwitchResult(rewriter, result, dialect_);
+      const_op->insertOperands(0, anchor.controlRet());
+
+      // Note that we can't use replaceAllUsesWith here because we don't want to
+      // replace the user of control identity.
+      for (OpOperand &user : llvm::make_early_inc_range(result.getUses())) {
+        if (user.getOwner() == &(*anchor)) continue;
+
+        rewriter.startRootUpdate(user.getOwner());
+        user.set(const_op->getResult(0));
+        rewriter.finalizeRootUpdate(user.getOwner());
+      }
+      modified = true;
+    };
+
+    remove_duplicate_anchors(op->getResult(0));
+    remove_duplicate_anchors(op->getResult(1));
+
+    if (op->getOperand(0) == op->getOperand(1)) {
+      simplify_result(op->getResult(0), false, "/_const_false");
+      simplify_result(op->getResult(1), true, "/_const_true");
     }
 
-    TFOp true_control_identity =
-        GetControlAnchorForSwitchResult(rewriter, op->getResult(1), dialect_);
-    TFOp false_control_identity =
-        GetControlAnchorForSwitchResult(rewriter, op->getResult(0), dialect_);
-
-    FailureOr<TFOp> true_op = CreateConstantTensorOp(
-        rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[1],
-        true_control_identity.controlRet(),
-        DenseElementsAttr::get(zero_dim_i1_tensor_type_, true));
-    if (failed(true_op)) return failure();
-
-    (*true_op).setName(Twine(TFOp(op).name(), "/_const_true"));
-    if (!TFOp(op).device().empty())
-      (*true_op).setRequestedDevice(TFOp(op).device());
-
-    FailureOr<TFOp> false_op = CreateConstantTensorOp(
-        rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[0],
-        false_control_identity.controlRet(),
-        DenseElementsAttr::get(zero_dim_i1_tensor_type_, false));
-    if (failed(false_op)) return failure();
-
-    (*false_op).setName(Twine(TFOp(op).name(), "/_const_false"));
-    if (!TFOp(op).device().empty())
-      (*false_op).setRequestedDevice(TFOp(op).device().data());
-
-    // Note that we can't use replaceAllUsesWith here because we don't want to
-    // replace the user of control identity.
-    for (OpOperand &user :
-         llvm::make_early_inc_range(op->getResult(1).getUses())) {
-      if (user.getOwner() == &(*true_control_identity)) continue;
-
-      rewriter.startRootUpdate(user.getOwner());
-      user.set((*true_op)->getResult(0));
-      rewriter.finalizeRootUpdate(user.getOwner());
-    }
-    for (OpOperand &user :
-         llvm::make_early_inc_range(op->getResult(0).getUses())) {
-      if (user.getOwner() == &(*false_control_identity)) continue;
-
-      rewriter.startRootUpdate(user.getOwner());
-      user.set((*false_op)->getResult(0));
-      rewriter.finalizeRootUpdate(user.getOwner());
-    }
-
-    return success();
+    return success(modified);
   }
 
   RankedTensorType zero_dim_i1_tensor_type_;
