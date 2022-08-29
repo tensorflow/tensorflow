@@ -1985,14 +1985,12 @@ tf_cc_test(
         ":hlo",
         ":hlo_creation_utils",
         ":hlo_evaluator",
-        ":hlo_matchers",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
-        "@com_google_absl//absl/memory",
     ],
 )
 

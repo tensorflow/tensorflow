@@ -112,6 +112,13 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
     HloInstruction* operand, HloInstruction* update,
     HloInstruction* start_indices, const OpMetadata* metadata = nullptr);
 
+// a variant of dynamic-update-slice where `start_indices` is a vector of HLO
+// instructions
+StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
+    HloInstruction* operand, HloInstruction* update,
+    absl::Span<HloInstruction* const> start_indices,
+    const OpMetadata* metadata = nullptr);
+
 // Creates a broadcast HLO instruction and adds it to the computation containing
 // `operand`.
 HloInstruction* MakeBroadcastHlo(HloInstruction* operand,

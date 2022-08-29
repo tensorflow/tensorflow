@@ -234,6 +234,27 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
       metadata);
 }
 
+StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
+    HloInstruction* operand, HloInstruction* update,
+    absl::Span<HloInstruction* const> start_indices,
+    const OpMetadata* metadata) {
+  HloComputation* computation = operand->parent();
+  CHECK_EQ(computation, update->parent());
+  std::vector<Shape> scalar_start_indices_shapes;
+  scalar_start_indices_shapes.reserve(start_indices.size());
+  for (auto start_index : start_indices) {
+    scalar_start_indices_shapes.push_back(start_index->shape());
+  }
+  TF_ASSIGN_OR_RETURN(
+      Shape dynamic_update_slice_shape,
+      ShapeInference::InferDynamicUpdateSliceShape(
+          operand->shape(), update->shape(), scalar_start_indices_shapes));
+  return computation->AddInstruction(
+      HloInstruction::CreateDynamicUpdateSlice(dynamic_update_slice_shape,
+                                               operand, update, start_indices),
+      metadata);
+}
+
 HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
                                  absl::Span<const int64_t> broadcast_dimensions,
                                  absl::Span<const int64_t> result_shape_bounds,
