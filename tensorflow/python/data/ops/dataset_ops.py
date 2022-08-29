@@ -812,8 +812,10 @@ class DatasetV2(
     Returns:
       Dataset: A `Dataset`.
     """
-    # TODO(b/244176598): Use `from_tensor_slices_op.TensorSliceDataset`.
-    return TensorSliceDataset(tensors, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # from_tensor_slices_op -> dataset_ops).
+    from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top
+    return from_tensor_slices_op.from_tensor_slices(tensors, name)
 
   class _GeneratorState:
     """Stores outstanding iterators created from a Python generator.
@@ -1422,7 +1424,7 @@ class DatasetV2(
       # TODO(b/240947712): Remove lazy import after this method is factored out.
       # Loaded lazily due to a circular dependency (dataset_ops ->
       # from_tensor_slices_op -> dataset_ops).
-      from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top,redefined-outer-name
+      from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top
       dataset = from_tensor_slices_op.TensorSliceDataset(
           matching_files, is_files=True, name=name)
       if issubclass(Dataset, DatasetV1):
@@ -4753,15 +4755,6 @@ class TensorDataset(DatasetSource):
   @property
   def element_spec(self):
     return self._structure
-
-
-# TODO(b/244176598): Remove.
-# Loaded lazily due to a circular dependency (dataset_ops ->
-# from_tensor_slices_op -> dataset_ops).
-from_tensor_slices_op = lazy_loader.LazyLoader(
-    "from_tensor_slices_op", globals(),
-    "tensorflow.python.data.ops.from_tensor_slices_op")
-TensorSliceDataset = from_tensor_slices_op.TensorSliceDataset
 
 
 class SparseTensorSliceDataset(DatasetSource):
