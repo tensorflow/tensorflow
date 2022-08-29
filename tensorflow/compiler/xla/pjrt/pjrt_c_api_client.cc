@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -627,6 +628,7 @@ bool PjRtCApiExecutable::IsDeleted() {
 PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
     : client_(client),
       buffer_(buffer, ::pjrt::MakeBufferDeleter(client->pjrt_c_api())),
+      readiness_event_(nullptr, ::pjrt::MakeEventDeleter(client->pjrt_c_api())),
       wrapped_(buffer_->buffer.get()) {
   set_shape();
 }
@@ -753,6 +755,56 @@ bool PjRtCApiBuffer::IsOnCpu() const {
   const PJRT_Api* api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_IsOnCpu(&args), api);
   return args.is_on_cpu;
+}
+
+PJRT_Event* PjRtCApiBuffer::GetReadyEvent() {
+  if (readiness_event_ == nullptr) {
+    const PJRT_Api* api = pjrt_c_api();
+    PJRT_Buffer_ReadyEvent_Args args;
+    args.struct_size = PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.buffer = buffer_.get();
+    pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_ReadyEvent(&args), api);
+    readiness_event_.reset(args.event);
+  }
+  return readiness_event_.get();
+}
+
+void PjRtCApiBuffer::MakePromiseTrackEvent() {
+  CHECK(readiness_promise_ != nullptr);
+  const PJRT_Api* api = pjrt_c_api();
+  PJRT_Event_OnReady_Args args;
+  args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.event = GetReadyEvent();
+  args.user_arg = new std::function<void(PJRT_Error*)>(
+      [promise = readiness_promise_, api](PJRT_Error* error) -> void {
+        Status status = ::pjrt::PjrtErrorToStatus(error, api);
+        promise->Set(status);
+        ::pjrt::MakeErrorDeleter(api)(error);
+      });
+  args.callback = [](PJRT_Error* error, void* callback_ptr) {
+    auto callback =
+        static_cast<std::function<void(PJRT_Error*)>*>(callback_ptr);
+    CHECK(callback != nullptr);
+    (*callback)(error);
+    delete callback;
+  };
+
+  std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> error{
+      api->PJRT_Event_OnReady(&args), ::pjrt::MakeErrorDeleter(api)};
+  if (error != nullptr) {
+    readiness_promise_->Set(::pjrt::PjrtErrorToStatus(error.get(), api));
+  }
+}
+
+PjRtFuture<Status> PjRtCApiBuffer::GetReadyFuture() {
+  if (readiness_promise_ == nullptr) {
+    readiness_promise_ = std::make_shared<PjRtFuture<Status>::Promise>(
+        PjRtFuture<Status>::CreatePromise());
+    MakePromiseTrackEvent();
+  }
+  return PjRtFuture<Status>{*readiness_promise_};
 }
 
 // -------------------------------- API access ---------------------------------

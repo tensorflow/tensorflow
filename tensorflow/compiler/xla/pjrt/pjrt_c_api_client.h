@@ -376,13 +376,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
     LOG(ERROR) << "PJRT C API does not support CopyToRemoteDeviceScattered";
   }
 
-  PjRtFuture<Status> GetReadyFuture() override {
-#ifdef PJRT_C_API_BYPASS
-    return wrapped_->GetReadyFuture();
-#endif  // PJRT_C_API_BYPASS
-    return PjRtFuture<Status>(
-        Unimplemented("PJRT C API does not support GetReadyFuture"));
-  }
+  PjRtFuture<Status> GetReadyFuture() override;
 
   bool IsOnCpu() const override;
 
@@ -407,17 +401,31 @@ class PjRtCApiBuffer : public PjRtBuffer {
   const PJRT_Api* pjrt_c_api() const { return client_->pjrt_c_api(); }
 
  private:
+  // TODO(b/238999986): Refactor or Remove.
+  void set_shape();
+
+  // Gets the raw pointer to `readiness_event_`. If `readiness_event_` has not
+  // yet been initialized, this function does so before returning the pointer.
+  PJRT_Event* GetReadyEvent();
+
+  // `MakePromiseTrackEvent` sets `readiness_promise_` up to track
+  // `readiness_event_`. This is used to implement `GetReadyFuture()`.
+  // `readiness_promise_` should be created before calling this function.
+  void MakePromiseTrackEvent();
+
   PjRtCApiClient* client_;
   std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer_;
   std::optional<xla::Shape> shape_;
+  std::unique_ptr<PJRT_Event, ::pjrt::PJRT_EventDeleter> readiness_event_;
+  // This is a shared_ptr to keep the underlying future alive even if
+  // `readiness_promise` is destroyed before `readiness_event`, and the callback
+  // we set on `readiness_event` modifies `readiness_promise_`.
+  std::shared_ptr<PjRtFuture<Status>::Promise> readiness_promise_;
 
   // TODO(amangu): _wrapped is a non-C API pointer that was used to bypass the
   // C API calls until all the C API's got implemented. Remove it when it's
   // usage is reduced to zero.
   PjRtBuffer* wrapped_;
-
-  // TODO(b/238999986): Refactor or Remove.
-  void set_shape();
 };
 
 class PjRtCApiExecutable : public PjRtLoadedExecutable {
