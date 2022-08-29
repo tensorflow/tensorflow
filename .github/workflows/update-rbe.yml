@@ -58,6 +58,11 @@ jobs:
         map sigbuild-r2.10-python3.8 2.10-python3.8
         map sigbuild-r2.10-python3.9 2.10-python3.9
         map sigbuild-r2.10-python3.10 2.10-python3.10
+        map sigbuild-128 128-python3.9
+        map sigbuild-128-python3.7 128-python3.7
+        map sigbuild-128-python3.8 128-python3.8
+        map sigbuild-128-python3.9 128-python3.9
+        map sigbuild-128-python3.10 128-python3.10
         map sigbuild-r2.11 2.11-python3.9
         map sigbuild-r2.11-python3.7 2.11-python3.7
         map sigbuild-r2.11-python3.8 2.11-python3.8

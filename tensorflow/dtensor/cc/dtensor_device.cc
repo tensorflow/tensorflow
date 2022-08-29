@@ -42,6 +42,8 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -71,8 +73,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tpu_system_interface.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_topology.h"
 
 namespace tensorflow {
 namespace dtensor {

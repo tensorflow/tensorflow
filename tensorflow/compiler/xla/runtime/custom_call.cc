@@ -38,6 +38,10 @@ static void PrintArr(raw_ostream& os, std::string_view name,
   os << "]";
 }
 
+static raw_ostream& operator<<(raw_ostream& os, PrimitiveType type) {
+  return os << primitive_util::LowercasePrimitiveTypeName(type);
+}
+
 raw_ostream& operator<<(raw_ostream& os, const StridedMemrefView& view) {
   os << "StridedMemrefView: dtype: " << view.dtype;
   PrintArr(os, "sizes", view.sizes);
@@ -57,7 +61,7 @@ raw_ostream& operator<<(raw_ostream& os, const FlatMemrefView& view) {
 }
 
 void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
-  r.Register<Tagged<llvm::StringRef>>("__type_id_string");
+  r.Register<Tagged<std::string_view>>("__type_id_string");
 
   r.Register<Tagged<uint8_t>>("__type_id_uint8");
   r.Register<Tagged<uint32_t>>("__type_id_uint32");
@@ -89,7 +93,7 @@ void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
 }  // namespace runtime
 }  // namespace xla
 
-XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(llvm::StringRef);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(std::string_view);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::StridedMemrefView);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::MemrefView);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::FlatMemrefView);

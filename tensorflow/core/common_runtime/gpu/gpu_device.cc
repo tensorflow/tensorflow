@@ -62,11 +62,12 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -78,7 +79,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
 
 #if !defined(PLATFORM_GOOGLE)
 #if GOOGLE_CUDA

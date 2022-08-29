@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 
+#include <cstdint>
+
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
@@ -45,7 +47,7 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   constexpr int64_t kRedzoneSize = 1 << 23;  // 8MiB redzone on each side
   // Redzone pattern should not be equal to zero; otherwise modify_redzone will
   // break.
-  constexpr uint8 kRedzonePattern = 0x7e;
+  constexpr uint8_t kRedzonePattern = 0x7e;
 
   // Allocate 32MiB + 1 byte (to make things misaligned)
   constexpr int64_t kAllocSize = (1 << 25) + 1;
@@ -62,7 +64,7 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
                              /*memory_limit=*/(1LL << 32),
                              /*redzone_size=*/kRedzoneSize,
                              /*redzone_pattern=*/kRedzonePattern);
-  TF_ASSERT_OK_AND_ASSIGN(DeviceMemory<uint8> buf,
+  TF_ASSERT_OK_AND_ASSIGN(DeviceMemory<uint8_t> buf,
                           allocator.AllocateBytes(/*byte_size=*/kAllocSize));
   EXPECT_REDZONE_OK(allocator.CheckRedzones());
 
@@ -72,7 +74,7 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
 
   // Check that the redzones are in fact filled with kRedzonePattern.
   auto check_redzone = [&](DeviceMemoryBase redzone, absl::string_view name) {
-    std::vector<uint8> host_buf(kRedzoneSize);
+    std::vector<uint8_t> host_buf(kRedzoneSize);
     TF_ASSERT_OK(stream.ThenMemcpy(host_buf.data(), redzone, kRedzoneSize)
                      .BlockHostUntilDone());
     const int64_t kMaxMismatches = 16;

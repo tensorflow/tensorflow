@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// CUDA userspace driver library wrapper functionality.
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DRIVER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DRIVER_H_
 

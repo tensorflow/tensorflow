@@ -110,7 +110,7 @@ def _add_attributes_to_object_graph(trackable_objects, object_graph_proto,
   registered_savers = _add_attributes_to_object_graph_for_registered_savers(
       unmapped_registered_savers, object_graph_proto, node_ids, object_map)
   named_saveable_objects, feed_additions = (
-      _add_attributes_to_object_graph_for_saveable_objects(
+      add_attributes_to_object_graph_for_saveable_objects(
           checkpoint_factory_map, object_graph_proto, node_ids, object_map,
           call_with_mapped_captures, saveables_cache))
   return named_saveable_objects, feed_additions, registered_savers
@@ -131,7 +131,7 @@ def _add_attributes_to_object_graph_for_registered_savers(
   return registered_savers
 
 
-def _add_attributes_to_object_graph_for_saveable_objects(
+def add_attributes_to_object_graph_for_saveable_objects(
     checkpoint_factory_map, object_graph_proto, node_ids, object_map,
     call_with_mapped_captures, saveables_cache):
   """Create SaveableObjects and corresponding SerializedTensor protos."""
@@ -236,12 +236,13 @@ def _fill_object_graph_proto(graph_view,
   object_graph_proto = trackable_object_graph_pb2.TrackableObjectGraph()
   for checkpoint_id, trackable in enumerate(trackable_objects):
     assert node_ids[trackable] == checkpoint_id
-    object_proto = object_graph_proto.nodes.add()
-    object_proto.slot_variables.extend(slot_variables.get(trackable, ()))
+    object_proto = object_graph_proto.nodes.add(
+        slot_variables=slot_variables.get(trackable, ())
+    )
     for child in graph_view.list_children(trackable):
-      child_proto = object_proto.children.add()
-      child_proto.node_id = node_ids[child.ref]
-      child_proto.local_name = child.name
+      object_proto.children.add(
+          node_id=node_ids[child.ref],
+          local_name=child.name)
   return object_graph_proto
 
 

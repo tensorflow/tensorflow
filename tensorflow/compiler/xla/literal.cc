@@ -676,10 +676,6 @@ void MutableLiteralBase::SetDynamicSize(int64_t dim_index,
   Shape* subshape =
       ShapeUtil::GetMutableSubshape(mutable_shape_do_not_use(), shape_index);
   CHECK_GE(subshape->dimensions(dim_index), size);
-  if (subshape->dimensions(dim_index) == size) {
-    subshape->set_dynamic_dimension(dim_index, false);
-    return;
-  }
   subshape->set_dynamic_dimension(dim_index, true);
   CHECK_EQ(&piece(shape_index).subshape(), subshape);
 
@@ -885,7 +881,9 @@ Literal LiteralBase::ToBoundedDynamic(const Shape& bounded_shape) const {
           return;
         }
         for (int64_t i = 0; i < subshape.rank(); ++i) {
-          result.SetDynamicSize(i, subshape.dimensions(i));
+          if (bounded_shape.is_dynamic_dimension(i)) {
+            result.SetDynamicSize(i, subshape.dimensions(i));
+          }
         }
       });
   TF_CHECK_OK(result.CopyFrom(*this, {}, {}, /*only_dynamic_bound=*/true));
@@ -933,9 +931,14 @@ StatusOr<Literal> LiteralBase::Broadcast(
   const char* source_data = static_cast<const char*>(untyped_data());
   const int64_t primitive_size =
       ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
-  for (int64_t i = 0; i < dimensions.size(); ++i) {
-    int64_t dynamic_size = GetDynamicSize(i);
-    result.SetDynamicSize(dimensions[i], dynamic_size);
+  if (shape().is_dynamic()) {
+    for (int64_t i = 0; i < dimensions.size(); ++i) {
+      if (shape().is_dynamic_dimension(i)) {
+        // Set any dynamic sizes in the new literal.
+        int64_t dynamic_size = GetDynamicSize(i);
+        result.SetDynamicSize(dimensions[i], dynamic_size);
+      }
+    }
   }
 
   ShapeUtil::ForEachIndex(
@@ -961,6 +964,7 @@ StatusOr<Literal> LiteralBase::Reshape(
     return InvalidArgument("Reshape does not support tuples.");
   }
   if (shape().is_dynamic()) {
+    // TODO(b/243182930): We should consider supporting dynamic reshape.
     return Unimplemented("Dynamic reshape is not implemented.");
   }
   Literal output;
@@ -1016,8 +1020,14 @@ Literal LiteralBase::Transpose(absl::Span<const int64_t> permutation) const {
     layout->add_minor_to_major(inverse_permutation[index]);
   }
   Literal new_literal(permuted_shape);
-  for (int64_t i = 0; i < shape().rank(); i++) {
-    new_literal.SetDynamicSize(inverse_permutation[i], GetDynamicSize(i));
+  if (shape().is_dynamic()) {
+    for (int64_t i = 0; i < shape().rank(); i++) {
+      if (shape().is_dynamic_dimension(i)) {
+        // Set the dynamic size of any dynamic dimension in the transposed
+        // literal.
+        new_literal.SetDynamicSize(inverse_permutation[i], GetDynamicSize(i));
+      }
+    }
   }
   DCHECK_EQ(ShapeUtil::ByteSizeOf(new_literal.shape()),
             ShapeUtil::ByteSizeOf(shape()));

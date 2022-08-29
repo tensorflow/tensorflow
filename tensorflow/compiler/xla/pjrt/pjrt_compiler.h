@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 
 namespace xla {
 
@@ -50,6 +52,11 @@ class PjRtCompiler {
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
       const PjRtDeviceTopology& topology, PjRtClient* client) = 0;
+
+  // Variant of `Compile` that accepts an MLIR module.
+  virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, mlir::ModuleOp module,
+      const PjRtDeviceTopology& topology, PjRtClient* client) = 0;
 };
 
 // Registers a compiler to compile programs for 'platform_name'.
@@ -68,6 +75,11 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
 // compilation failure.
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
+    const PjRtDeviceTopology& topology, PjRtClient* client = nullptr);
+
+// Variant of `PjRtCompile` that accepts an MLIR module.
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
+    CompileOptions options, mlir::ModuleOp module,
     const PjRtDeviceTopology& topology, PjRtClient* client = nullptr);
 
 }  // namespace xla

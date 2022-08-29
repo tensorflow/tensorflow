@@ -18,6 +18,7 @@ limitations under the License.
 
 include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def TensorOrMemref : AnyTypeOf<[AnyMemRef, AnyRankedTensor]>;
@@ -34,9 +35,16 @@ class THLO_Op<string mnemonic, list<Trait> traits> :
   let hasVerifier = 1;
 }
 
+
+def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator]>,
+    Arguments<(ins Variadic<AnyType>:$values)> {
+  let summary = "Yield operation for thlo.map and thlo.reduce.";
+  let assemblyFormat = "attr-dict $values `:` type($values)";
+  let hasVerifier = 0;
+}
+
 class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
-    NoSideEffect,
-    TypesMatchWith<"result and init types match", "init", "result", "$_self">] # traits> {
+    NoSideEffect] # traits> {
   let hasCustomAssemblyFormat = 1;
   code extraBaseClassDeclaration = [{
     unsigned getNumInputs() {
@@ -152,6 +160,46 @@ def THLO_TransposeOp : THLO_DstStyleOp<"transpose", []> {
   let results = (outs TensorOrMemref:$result);
 
   let extraClassDeclaration = extraBaseClassDeclaration;
+}
+
+def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
+      SameVariadicOperandSize, SingleBlockImplicitTerminator<"YieldOp">
+    ]> {
+  let summary = "Destination-style twin for `mhlo.reduce`";
+  let description = [{
+    Executes `combiner` on the `dimensions` of `inputs` and returns the
+    reduced result.
+
+    Example:
+    ```
+      %reduction = thlo.reduction
+          ins(%input:tensor<16x32x64xf32>)
+          outs(%init:tensor<16x64xf32>)
+          dimensions = [1]
+          (%in: f32, %out: f32) {
+            %0 = arith.addf %in, %out: f32
+            thlo.yield %0: f32
+          }
+    ```
+  }];
+
+  let arguments = (ins
+    // Input arg
+    Variadic<TensorOrMemref>:$inputs,
+    // Output arg
+    Variadic<TensorOrMemref>:$inits,
+
+    DenseI64ArrayAttr:$dimensions
+  );
+  let results = (outs Variadic<TensorOrMemref>);
+  let regions = (region SizedRegion<1>:$combiner);
+
+  let extraClassDeclaration = [{
+    unsigned getNumInputs() {
+      return this->getOperation()->getNumOperands() - getNumOutputs();
+    };
+    unsigned getNumOutputs() { return inits().size(); };
+  }];
 }
 
 #endif // THLO_OPS

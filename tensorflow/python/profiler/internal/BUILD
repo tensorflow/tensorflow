@@ -119,6 +119,7 @@ tf_python_pybind_extension(
     deps = [
         ":profiler_pywrap_impl",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/profiler/convert:repository",
         "//tensorflow/core/profiler/convert:tool_options",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
         "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",

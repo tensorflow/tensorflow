@@ -291,7 +291,10 @@ java_proto_library(
 
 cc_library(
     name = "platform_base",
-    hdrs = ["//tensorflow/core/platform:base_hdrs"],
+    hdrs = [
+        "//tensorflow/core/platform:base_hdrs",
+        "//tensorflow/tsl/platform:base_hdrs",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
     tags = ["avoid_dep"],
@@ -319,6 +322,7 @@ cc_library(
         "//tensorflow/core/lib/core:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/lib/strings:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/platform:lib_proto_parsing_hdrs",
+        "//tensorflow/tsl/platform:lib_proto_parsing_hdrs",
     ],
     copts = tf_copts(),
     deps = tf_lib_proto_parsing_deps() + [
@@ -559,6 +563,7 @@ cc_library(
         "//tensorflow/core/framework:tensor_types.h",
         "//tensorflow/core/framework:type_traits.h",
         "//tensorflow/core/platform:framework_lite_hdrs",
+        "//tensorflow/tsl/platform:framework_lite_hdrs",
         "//tensorflow/tsl/platform/default:integral_types.h",
         "//tensorflow/tsl/platform/default:logging.h",
     ],
@@ -903,6 +908,7 @@ filegroup(
         "//tensorflow/core/util:mobile_srcs_no_runtime",
         "//tensorflow/core/util/ctc:mobile_srcs",
         "//tensorflow/core/profiler:mobile_srcs_no_runtime",
+        "//tensorflow/tsl/platform:mobile_srcs_no_runtime",
     ] + glob(
         [
             "client/**/*.cc",
@@ -1276,6 +1282,7 @@ filegroup(
         "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/lib/math:math_util.h",
+        "//tensorflow/tsl/platform:legacy_lib_internal_headers",
     ] + glob(
         [
             "lib/**/*.h",
@@ -1304,6 +1311,7 @@ filegroup(
         "//tensorflow/core/platform:legacy_platform_lib_hdrs",
         "//tensorflow/core/platform:lib_internal_public_hdrs",
         "//tensorflow/core/util:lib_internal_public_hdrs",
+        "//tensorflow/tsl/platform:lib_internal_public_hdrs",
     ],
     visibility = ["//visibility:private"],
 )
@@ -1547,6 +1555,7 @@ cc_library(
     name = "tflite_portable_logging",
     hdrs = [
         "//tensorflow/core/platform:tflite_portable_logging_hdrs",
+        "//tensorflow/tsl/platform:tflite_portable_logging_hdrs",
         "//tensorflow/tsl/platform/default:integral_types.h",
         "//tensorflow/tsl/platform/default:logging.h",
     ],

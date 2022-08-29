@@ -17,7 +17,5 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_STATUSOR_H_
 
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/stream_executor/lib/status.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_STATUSOR_H_

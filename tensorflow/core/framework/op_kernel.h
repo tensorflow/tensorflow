@@ -1323,6 +1323,15 @@ const Eigen::GpuDevice& OpKernelContext::eigen_device() const;
 //  REGISTER_KERNEL_BUILDER(
 //      Name("Reshape").Device(DEVICE_GPU).HostMemory("shape"), ReshapeOp);
 //
+//  // A kernel that works on any device. Kernels using DEVICE_DEFAULT
+//  // must aways run on host and all inputs and outputs must use `HostMemory`.
+//  // Kernels for data management, control-flow primitives or working with
+//  // tensor shapes for various devices (including `PluggableDevices`) are
+//  // typical uses.
+//  REGISTER_KERNEL_BUILDER(
+//     Name("TensorListLength").Device(DEVICE_DEFAULT).HostMemory("length"),
+//     TensorListLength);
+//
 // See kernel_def_builder for details.
 
 // Instantiate an OpKernel that has been registered.  Returns nullptr

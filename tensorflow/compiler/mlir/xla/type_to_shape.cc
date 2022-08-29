@@ -23,13 +23,10 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -81,23 +78,6 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
     }
   }
   return PrimitiveType::PRIMITIVE_TYPE_INVALID;
-}
-
-StatusOr<Shape> TypeToShape(
-    mlir::Type type, CustomShapeRepresentationFn shape_representation_fn) {
-  tensorflow::PartialTensorShape partial_tensor_shape =
-      tensorflow::ConvertTypeToTensorShape(type);
-
-  tensorflow::TensorShape fully_defined_tensor_shape;
-  if (!partial_tensor_shape.AsTensorShape(&fully_defined_tensor_shape)) {
-    return tensorflow::errors::InvalidArgument(
-        "XLA HLO only allows fully-defined shape");
-  }
-
-  tensorflow::DataType dtype;
-  TF_RETURN_IF_ERROR(tensorflow::ConvertToDataType(type, &dtype));
-
-  return shape_representation_fn(fully_defined_tensor_shape, dtype);
 }
 
 Shape TypeToShape(mlir::Type type) {

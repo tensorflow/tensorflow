@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
 
+#include <cstdint>
+
 #include "absl/cleanup/cleanup.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
@@ -259,7 +261,8 @@ Status TpuExecutor::WaitForOutfeedReady(int32_t outfeed_queue_index) {
 }
 
 void TpuExecutor::DequeueOutfeed(int32_t outfeed_queue_index,
-                                 absl::Span<uint8> bytes, StatusCallback done) {
+                                 absl::Span<uint8_t> bytes,
+                                 StatusCallback done) {
   StatusHelper status;
   tpu::ExecutorApiFn()->TpuExecutor_DequeueOutfeedFn(
       executor_, outfeed_queue_index, bytes.data(), bytes.size(),
@@ -268,7 +271,7 @@ void TpuExecutor::DequeueOutfeed(int32_t outfeed_queue_index,
 }
 
 Status TpuExecutor::EnqueueInfeed(int32_t infeed_queue_index,
-                                  absl::Span<const uint8> bytes) {
+                                  absl::Span<const uint8_t> bytes) {
   StatusHelper status;
   tpu::ExecutorApiFn()->TpuExecutor_EnqueueInfeedFn(
       executor_, infeed_queue_index, bytes.data(), bytes.size(),

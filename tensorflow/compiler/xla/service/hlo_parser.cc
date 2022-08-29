@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
+#include <cmath>
+#include <complex>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -27,7 +32,6 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -54,7 +58,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
 
@@ -488,6 +491,7 @@ class HloParserImpl : public HloParser {
                                absl::string_view attr_description);
   bool ParseDimLevelTypes(std::vector<DimLevelType>* dim_level_types);
   bool ParseTiles(std::vector<Tile>* tiles);
+  bool ParsePhysicalShape(Shape* physical_shape);
   bool ParseOpcode(HloOpcode* opcode,
                    std::optional<HloOpcode>* async_wrapped_opcode);
   bool ParseFftType(FftType* result);
@@ -5073,6 +5077,24 @@ bool HloParserImpl::ParseTiles(std::vector<Tile>* tiles) {
   return true;
 }
 
+// physical_shape
+//   ::= /*empty*/
+//   ::= 'P' '(' shape ')'
+bool HloParserImpl::ParsePhysicalShape(Shape* physical_shape) {
+  if (!ParseToken(TokKind::kLparen,
+                  StrCat("expects physical shape to start with ",
+                         TokKindToString(TokKind::kLparen)))) {
+    return false;
+  }
+  ParseShape(physical_shape);
+  if (!ParseToken(TokKind::kRparen,
+                  StrCat("expects physical shape to end with ",
+                         TokKindToString(TokKind::kRparen)))) {
+    return false;
+  }
+  return true;
+}
+
 // int_attribute
 //   ::= /*empty*/
 //   ::= attr_token '(' attr_value ')'
@@ -5100,7 +5122,10 @@ bool HloParserImpl::ParseLayoutIntAttribute(
 
 // layout
 //   ::= '{' int64_list
-//       (':' dim_level_types tiles element_size_in_bits memory_space)?
+//       (':' dim_level_types
+//            tiles element_size_in_bits
+//            memory_space
+//            physical_shape)?
 //       '}'
 // element_size_in_bits
 //   ::= /*empty*/
@@ -5114,6 +5139,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   std::vector<Tile> tiles;
   int64_t element_size_in_bits = 0;
   int64_t memory_space = 0;
+  std::optional<Shape> physical_shape;
 
   auto parse_and_add_item = [&]() {
     int64_t i;
@@ -5161,6 +5187,12 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
         lexer_.Lex();
         ParseLayoutIntAttribute(&memory_space, "memory space");
       }
+
+      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "P") {
+        lexer_.Lex();
+        physical_shape.emplace();
+        ParsePhysicalShape(&*physical_shape);
+      }
     }
   }
   if (!ParseToken(TokKind::kRbrace,
@@ -5174,7 +5206,8 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
     vec_tiles[i] = Tile(tiles[i]);
   }
   *layout = LayoutUtil::MakeLayout(minor_to_major, dim_level_types, vec_tiles,
-                                   element_size_in_bits, memory_space);
+                                   element_size_in_bits, memory_space,
+                                   std::move(physical_shape));
   return true;
 }
 
@@ -5255,6 +5288,13 @@ bool HloParserImpl::ParseShape(Shape* result) {
       return Error(lexer_.GetLoc(),
                    StrFormat("Layout has tiles, but is for a sparse array: %s",
                              layout.ToString()));
+    }
+    if (!LayoutUtil::IsSparse(layout) && layout.has_physical_shape()) {
+      return Error(
+          lexer_.GetLoc(),
+          StrFormat(
+              "Layout has physical shape, but is not for a sparse array: %s",
+              layout.ToString()));
     }
     *result->mutable_layout() = layout;
   }

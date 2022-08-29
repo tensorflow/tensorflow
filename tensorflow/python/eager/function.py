@@ -205,6 +205,7 @@ class _InterpolateFunctionError(object):
 _function_callbacks = set()
 
 
+# TODO(b/232961485): Remove this API in favour of the graph transformation API.
 def add_function_callback(function_callback):
   """Add a callback function for Function creation.
 

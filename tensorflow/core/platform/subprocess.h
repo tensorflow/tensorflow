@@ -63,9 +63,9 @@ std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv);
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
     defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
     defined(PLATFORM_GOOGLE_IOS)
-#include "tensorflow/tsl/platform/default/subprocess.h"
+#include "tensorflow/tsl/platform/default/subprocess.h"  // IWYU pragma: export
 #elif defined(PLATFORM_WINDOWS)
-#include "tensorflow/tsl/platform/windows/subprocess.h"
+#include "tensorflow/tsl/platform/windows/subprocess.h"  // IWYU pragma: export
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif

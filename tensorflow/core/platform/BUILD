@@ -26,7 +26,6 @@ load(
     "tf_logging_deps",
     "tf_platform_alias",
     "tf_platform_deps",
-    "tf_protobuf_compiler_deps",
     "tf_protobuf_deps",
     "tf_resource_deps",
     "tf_testing_deps",
@@ -160,6 +159,7 @@ cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
     compatible_with = get_compatible_with_portable(),
+    deps = ["//tensorflow/tsl/platform:byte_order"],
 )
 
 cc_library(
@@ -207,6 +207,7 @@ cc_library(
         ":byte_order",
         ":logging",
         ":platform_port",
+        "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base",
     ],
 )
@@ -225,7 +226,7 @@ cc_library(
     compatible_with = [],
     deps = [
         ":platform",
-        "//tensorflow/stream_executor/cuda:cuda_activation_header",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
     ],
 )
 
@@ -243,6 +244,7 @@ cc_library(
         ":macros",
         ":platform",
         ":platform_port",
+        "//tensorflow/tsl/platform:platform_port",
     ],
 )
 
@@ -325,7 +327,7 @@ cc_library(
     name = "gif",
     hdrs = ["gif.h"],
     deps = [
-        "@gif",
+        "//tensorflow/tsl/platform:gif",
     ],
 )
 
@@ -351,7 +353,7 @@ cc_library(
     name = "jpeg",
     hdrs = ["jpeg.h"],
     deps = [
-        "@libjpeg_turbo//:jpeg",
+        "//tensorflow/tsl/platform:jpeg",
     ],
 )
 
@@ -386,6 +388,9 @@ cc_library(
     name = "macros",
     hdrs = ["macros.h"],
     compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/tsl/platform:macros",
+    ],
 )
 
 filegroup(
@@ -415,7 +420,9 @@ cc_library(
 cc_library(
     name = "net",
     textual_hdrs = ["net.h"],
-    deps = tf_windows_aware_platform_deps("net"),
+    deps = [
+        "//tensorflow/tsl/platform:net",
+    ] + tf_windows_aware_platform_deps("net"),
 )
 
 cc_library(
@@ -478,6 +485,9 @@ cc_library(
     name = "platform",
     hdrs = ["platform.h"],
     compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/tsl/platform",
+    ],
 )
 
 cc_library(
@@ -491,7 +501,9 @@ cc_library(
         "numa.h",
         "snappy.h",
     ],
-    deps = tf_windows_aware_platform_deps("platform_port"),
+    deps = [
+        "//tensorflow/tsl/platform:platform_port",
+    ],
 )
 
 cc_library(
@@ -501,6 +513,9 @@ cc_library(
         "platform_strings_computed.h",
     ],
     hdrs = ["platform_strings.h"],
+    deps = [
+        "//tensorflow/tsl/platform:platform_strings",
+    ],
 )
 
 cc_library(
@@ -529,12 +544,6 @@ cc_library(
         ":platform",
         ":types",
     ] + tf_protobuf_deps(),
-)
-
-cc_library(
-    name = "protobuf_compiler",
-    hdrs = ["protobuf_compiler.h"],
-    deps = tf_protobuf_compiler_deps(),
 )
 
 cc_library(
@@ -594,7 +603,7 @@ tf_cc_test(
 cc_library(
     name = "intrusive_ptr",
     hdrs = ["intrusive_ptr.h"],
-    deps = [],
+    deps = ["//tensorflow/tsl/platform:intrusive_ptr"],
 )
 
 tf_cc_test(
@@ -632,7 +641,9 @@ cc_library(
     name = "resource_loader",
     testonly = 1,
     textual_hdrs = ["resource_loader.h"],
-    deps = tf_testing_deps("resource_loader"),
+    deps = [
+        "//tensorflow/tsl/platform:resource_loader",
+    ],
 )
 
 cc_library(
@@ -646,7 +657,7 @@ cc_library(
     hdrs = if_rocm_is_configured(["rocm.h"]),
     deps = if_rocm_is_configured([
         ":platform",
-        "//tensorflow/stream_executor/rocm:rocm_activation",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_activation",
     ]),
 )
 
@@ -689,7 +700,9 @@ filegroup(
 cc_library(
     name = "stacktrace_handler",
     textual_hdrs = ["stacktrace_handler.h"],
-    deps = tf_windows_aware_platform_deps("stacktrace_handler"),
+    deps = [
+        "//tensorflow/tsl/platform:stacktrace_handler",
+    ],
     alwayslink = 1,
 )
 
@@ -787,7 +800,7 @@ cc_library(
     hdrs = ["stringpiece.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:stringpiece",
     ],
 )
 
@@ -868,7 +881,7 @@ cc_library(
     deps = [
         ":mutex",
         ":types",
-        "//third_party/eigen3",
+        "//tensorflow/tsl/platform:threadpool_interface",
     ],
 )
 
@@ -1061,6 +1074,7 @@ cc_binary(
         ":threadpool_options",
         ":tstring",
         ":types",
+        "//tensorflow/tsl/platform:build_test",
     ] + if_not_android([":rocm_rocdl_path"]),
 )
 
@@ -1155,6 +1169,29 @@ cc_library(
     name = "tensor_float_32_hdr_lib",
     hdrs = [":tensor_float_32_hdr"],
     compatible_with = get_compatible_with_portable(),
+)
+
+# For a more maintainable build this target should not exist and the headers
+# should  be split into the existing cc_library targets, but this change was
+# automatically  done so that we can remove long standing issues and complexity
+# in the build system. It's up to the OWNERS of this package to get rid of it or
+# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
+# Here it is used to avoid header parsing errors in packages where the feature
+# parse_headers was enabled since loose headers were not being parsed. See
+# go/loose-lsc-one-target-approach for more details.
+cc_library(
+    name = "loose_headers",
+    tags = ["avoid_dep"],
+    textual_hdrs = [
+        "rocm.h",
+        "stream_executor.h",
+    ],
+    visibility = [
+        "//tensorflow/contrib/fused_conv:__pkg__",
+        "//tensorflow/contrib/image:__pkg__",
+        "//tensorflow/core/kernels:__pkg__",
+        "//tensorflow/core/kernels/image:__pkg__",
+    ],
 )
 
 filegroup(
@@ -1281,6 +1318,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:resource_loader",
     ],
 )
 
@@ -1589,6 +1627,7 @@ filegroup(
         "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
+        "//tensorflow/tsl/platform:base_hdrs",
         # copybara:uncomment(GoogleFileSystem) "//tensorflow/tsl/platform/google:env.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

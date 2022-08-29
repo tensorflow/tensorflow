@@ -16,7 +16,7 @@ load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pytype_library")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -525,6 +525,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
+    visibility = [":friends"],
     deps = [
         ":exceptions",
         "//tensorflow/core/platform:logging",
@@ -555,6 +556,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

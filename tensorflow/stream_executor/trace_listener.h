@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines the StreamExecutor trace listener, used for inserting
-// non-device-specific instrumentation into the StreamExecutor.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TRACE_LISTENER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TRACE_LISTENER_H_
 

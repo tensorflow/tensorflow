@@ -82,8 +82,8 @@ void convertToReductionOperator(Location loc, scf::ReduceOp reduceOp,
 Value getStaticOrDynamicDim(mlir::Location loc, Value shapedValue,
                             size_t dimIndex, int64_t dim, OpBuilder* b) {
   return dim == ShapedType::kDynamicSize
-             ? b->create<memref::DimOp>(loc, shapedValue, dimIndex).getResult()
-             : b->create<arith::ConstantIndexOp>(loc, dim);
+             ? (Value)b->create<memref::DimOp>(loc, shapedValue, dimIndex)
+             : (Value)b->create<arith::ConstantIndexOp>(loc, dim);
 }
 
 struct MappedIvs {

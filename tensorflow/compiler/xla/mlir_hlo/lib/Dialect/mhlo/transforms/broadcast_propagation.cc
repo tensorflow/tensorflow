@@ -101,7 +101,7 @@ bool allowsForElementwiseBroadcastPropagation(Operation *op) {
       op->hasTrait<mlir::OpTrait::Elementwise>() && op->getNumResults() == 1) {
     return true;
   }
-  if (op && op->hasTrait<mlir::mhlo::OpTrait::BroadcastingElementwise>() &&
+  if (op && op->hasTrait<hlo::OpTrait::BroadcastingElementwise>() &&
       op->getNumResults() == 1) {
     return true;
   }

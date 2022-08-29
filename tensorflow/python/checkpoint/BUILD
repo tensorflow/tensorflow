@@ -45,6 +45,7 @@ py_library(
         ":functional_saver",
         ":graph_view",
         ":restore",
+        ":save_util",
         ":save_util_v1",
         ":util",
         "//tensorflow/core:protos_all_py",
@@ -186,6 +187,26 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:converter",
+    ],
+)
+
+py_library(
+    name = "save_util",
+    srcs = ["save_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":save_util_v1",
+        ":saveable_compat",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/saved_model/registration",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:python_state",
+        "//tensorflow/python/trackable:trackable_utils",
+        "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/training/saving:saveable_object_util",
     ],
 )
 

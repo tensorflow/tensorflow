@@ -217,7 +217,7 @@ class CheckpointPosition(object):
       existing_op = self._checkpoint.restore_ops_by_name.get(
           saveable_name, None)
       if existing_op is not None:
-        return existing_op, {}
+        return [existing_op], {}
 
       saveables_cache = self._checkpoint.saveables_cache.setdefault(
           self.trackable, {})

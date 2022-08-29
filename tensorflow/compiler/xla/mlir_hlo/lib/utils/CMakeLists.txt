@@ -15,7 +15,6 @@
 #
 
 add_mlir_library(MLIRMhloUtils
-  broadcast_utils.cc
   codegen_utils.cc
   convert_op_folder.cc
   cycle_detector.cc

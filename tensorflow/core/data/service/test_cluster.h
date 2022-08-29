@@ -115,6 +115,9 @@ class DatasetClient {
   // Creates a dataset client. It will process datasets in `cluster`.
   explicit DatasetClient(const TestCluster& cluster);
 
+  // Registers the dataset and returns the dataset ID.
+  StatusOr<std::string> RegisterDataset(const DatasetDef& dataset);
+
   // Maps a worker address to the data it produces when calling `Read`.
   using WorkerResultMap = absl::flat_hash_map<std::string, std::vector<T>>;
 
@@ -131,8 +134,6 @@ class DatasetClient {
   StatusOr<std::vector<TaskInfo>> GetTasks(int64_t iteration_client_id);
 
  private:
-  // Registers the dataset and returns the dataset ID.
-  StatusOr<std::string> RegisterDataset(const DatasetDef& dataset);
   // Creates an iteration and returns the iteration client ID.
   StatusOr<int64_t> CreateIteration(
       const std::string& dataset_id,

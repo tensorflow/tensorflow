@@ -13,12 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The ROCM-specific DNN library support, implementing the general DnnSupport
-// interface.
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DNN_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DNN_H_
 
+<<<<<<< HEAD
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "rocm/include/miopen/miopen.h"
@@ -826,5 +824,8 @@ bool UseNhwcLayoutForRocm();
 
 }  // namespace gpu
 }  // namespace stream_executor
+=======
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_dnn.h"
+>>>>>>> google_upstream/master
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DNN_H_

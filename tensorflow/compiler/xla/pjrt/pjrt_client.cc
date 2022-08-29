@@ -24,17 +24,6 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
-  // TODO(b/240299401): Implement.
-  return Unimplemented("Unimplemented!");
-}
-
-StatusOr<CompileOptions> CompileOptionsFromProto(
-    const CompileOptionsProto& input) {
-  // TODO(b/240299401): Implement.
-  return Unimplemented("Unimplemented!");
-}
-
 PjRtBuffer::ExternalReference::~ExternalReference() = default;
 
 StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {

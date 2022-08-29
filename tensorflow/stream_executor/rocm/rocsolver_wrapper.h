@@ -13,13 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file wraps rocsolver API calls with dso loader so that we don't need to
-// have explicit linking to librocsolver. All TF hipsarse API usage should route
-// through this wrapper.
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCSOLVER_WRAPPER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCSOLVER_WRAPPER_H_
 
+<<<<<<< HEAD
 #include "rocm/rocm_config.h"
 #if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rocsolver/rocsolver.h"
@@ -116,5 +113,8 @@ FOREACH_ROCSOLVER_API(ROCSOLVER_API_WRAPPER)
 
 }  // namespace wrap
 }  // namespace tensorflow
+=======
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocsolver_wrapper.h"
+>>>>>>> google_upstream/master
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCSOLVER_WRAPPER_H_

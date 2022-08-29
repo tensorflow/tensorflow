@@ -4,7 +4,15 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [
-        "//tensorflow/compiler:__subpackages__",
+        "//learning/brain/experimental/dtensor:__subpackages__",
+        "//learning/brain/google/xla/kernels:__subpackages__",
+        "//learning/brain/tfrc/executor:__subpackages__",
+        "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
+        "//tensorflow/compiler/jit:__subpackages__",
+        "//tensorflow/compiler/mlir:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
+        "//tensorflow/compiler/xrt:__subpackages__",
+        "//tensorflow/core/profiler/backends/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
@@ -119,10 +127,10 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core/platform:casts",
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,
 )
@@ -137,6 +145,7 @@ cc_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:tflite_portable_logging",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -160,10 +169,10 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core/platform:casts",
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -201,11 +210,11 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core/platform:casts",
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -315,8 +324,8 @@ cc_library(
         ":tpu_topology_external",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

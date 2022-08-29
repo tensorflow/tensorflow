@@ -336,25 +336,28 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
                        tf_device::ReplicateOp replicate) {
   int64_t num_replicas = replicate.n();
   if (num_replicas == 1) return;
-  tf_device::LaunchOp execute_launch;
-  for (auto execute_launch_op :
-       replicate.GetBody().getOps<tf_device::LaunchOp>()) {
-    if (!execute_launch_op.WrapsSingleOp() ||
-        !llvm::isa<TF::TPUExecuteAndUpdateVariablesOp>(
-            execute_launch_op.GetBody().front()))
-      continue;
 
+  // Set execute_launch when there is exactly one
+  // TPUExecuteAndUpdateVariablesOp. More than one means there is model
+  // parallelism, which is not supported with TPUReshardVariables. None
+  // means there is no TPU computation.
+  tf_device::LaunchOp execute_launch;
+  TF::TPUExecuteAndUpdateVariablesOp execute;
+  replicate.walk([&](TF::TPUExecuteAndUpdateVariablesOp execute_op) {
+    execute_launch =
+        llvm::dyn_cast<tf_device::LaunchOp>(execute_op->getParentOp());
     if (execute_launch == nullptr) {
-      execute_launch = execute_launch_op;
-    } else {
-      // We only support one execute op inside replicate.
-      execute_launch = nullptr;
-      break;
+      // This pass requires execute_op to be wrapped in a launch.
+      return WalkResult::interrupt();
     }
-  }
-  if (!execute_launch) return;
-  auto execute = llvm::cast<TF::TPUExecuteAndUpdateVariablesOp>(
-      execute_launch.GetBody().front());
+    if (execute == nullptr) {
+      execute = execute_op;
+      return WalkResult::advance();
+    }
+    execute = nullptr;
+    return WalkResult::interrupt();
+  });
+  if (!execute) return;
   auto compile =
       SkipIdentity(execute.key(), /*allow_other_use=*/true).getDefiningOp();
   if (!compile) return;
@@ -485,11 +488,7 @@ void TPUVariableRuntimeReformattingPass::runOnOperation() {
       replicate = nullptr;
       return WalkResult::interrupt();
     });
-    // Model parallelism is not supported, and can be detected when a
-    // `tf_device.parallel_execute` op in the `tf_device.replicate` is present.
-    if (replicate &&
-        replicate.GetBody().getOps<tf_device::ParallelExecuteOp>().empty())
-      HandleReplicateOp(while_op, replicate);
+    if (replicate) HandleReplicateOp(while_op, replicate);
   });
 }
 

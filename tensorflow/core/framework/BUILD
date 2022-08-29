@@ -1398,6 +1398,21 @@ cc_library(
     ],
 )
 
+# For a more maintainable build this target should not exist and the headers
+# should  be split into the existing cc_library targets, but this change was
+# automatically  done so that we can remove long standing issues and complexity
+# in the build system. It's up to the OWNERS of this package to get rid of it or
+# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
+# Here it is used to avoid header parsing errors in packages where the feature
+# parse_headers was enabled since loose headers were not being parsed. See
+# go/loose-lsc-one-target-approach for more details.
+cc_library(
+    name = "loose_headers",
+    tags = ["avoid_dep"],
+    textual_hdrs = ["op_gen_lib.h"],
+    visibility = ["//tensorflow/c:__pkg__"],
+)
+
 # All framewrok protos are self-contained, i.e. they only import other
 # protos from the same package, so we can build the protos here and then
 # link them from core:protos_all without circular dependencies.

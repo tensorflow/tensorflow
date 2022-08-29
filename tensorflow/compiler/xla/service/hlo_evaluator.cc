@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -64,7 +65,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 
@@ -2455,8 +2455,15 @@ static StatusOr<std::reference_wrapper<const Literal>> ReshapedGatherIndices(
   std::vector<int64_t> new_shape(start_indices.shape().dimensions().begin(),
                                  start_indices.shape().dimensions().end());
   new_shape.push_back(1);
-  TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
-                      start_indices.Reshape(new_shape));
+  if (start_indices.shape().is_dynamic()) {
+    // TODO(b/243182930): If we add support for dynamic reshape, remove this
+    // check and the call to ToStatic().
+    TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
+                        start_indices.ToStatic().Reshape(new_shape));
+  } else {
+    TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
+                        start_indices.Reshape(new_shape));
+  }
   return std::cref(*reshaped_start_indices);
 }
 

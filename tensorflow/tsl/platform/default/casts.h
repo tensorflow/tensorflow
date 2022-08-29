@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_CASTS_H_
-#define TENSORFLOW_CORE_PLATFORM_DEFAULT_CASTS_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_CASTS_H_
+#define TENSORFLOW_TSL_PLATFORM_DEFAULT_CASTS_H_
 
 #include <assert.h>  // for use with down_cast<>
 
@@ -89,4 +89,4 @@ inline To down_cast(From& f) {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_CASTS_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_CASTS_H_

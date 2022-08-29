@@ -234,6 +234,15 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
             lhsTy.getRank() - 1 &&
         static_cast<int64_t>(rhsContractingDims.size()) ==
             rhsTy.getRank() - 1) {
+      // Retain the sparse encoding if any.
+      // TODO(peiming): A more general problem is how to infer the sparse
+      // encoding for dot operator?
+      auto enc = sparse_tensor::getSparseTensorEncoding(resultTy);
+      if (enc) {
+        // If there is a sparse encoding, it is a ranked tensor.
+        newDotOp.setType(RankedTensorType::get(newTy.getShape(),
+                                               newTy.getElementType(), enc));
+      }
       rewriter.replaceOp(op, newDotOp);
       return success();
     }

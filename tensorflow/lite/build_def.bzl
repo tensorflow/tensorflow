@@ -128,7 +128,8 @@ def tflite_symbol_opts():
         clean_dep("//tensorflow:debug"): [],
         clean_dep("//tensorflow/lite:tflite_keep_symbols"): [],
         "//conditions:default": [
-            "-s",  # Omit symbol table, for all non debug builds
+            # Omit symbol table, for all non debug builds
+            "-Wl,-s",
         ],
     })
 

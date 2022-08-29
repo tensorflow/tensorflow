@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
 

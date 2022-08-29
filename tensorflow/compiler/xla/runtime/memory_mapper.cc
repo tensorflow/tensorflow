@@ -20,6 +20,7 @@ limitations under the License.
 #include <unistd.h>
 
 #include <memory>
+#include <string_view>
 #include <system_error>  // NOLINT
 
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -39,7 +40,7 @@ namespace runtime {
 //===-----------------------------------------------------------------------===/
 
 std::unique_ptr<XlaRuntimeMemoryMapper> XlaRuntimeMemoryMapper::Create(
-    llvm::StringRef name) {
+    std::string_view name) {
   return nullptr;
 }
 
@@ -117,7 +118,7 @@ int ToPosixProtectionFlags(unsigned flags) {
 }  // namespace
 
 std::unique_ptr<XlaRuntimeMemoryMapper> XlaRuntimeMemoryMapper::Create(
-    llvm::StringRef name) {
+    std::string_view name) {
   std::unique_ptr<XlaRuntimeMemoryMapper> ret(new XlaRuntimeMemoryMapper(name));
   return ret;
 }

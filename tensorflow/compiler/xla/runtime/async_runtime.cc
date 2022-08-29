@@ -24,12 +24,11 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "llvm/Support/MathExtras.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
-#include "tfrt/support/alloc.h"  // from @tf_runtime
-#include "tfrt/support/ref_count.h"  // from @tf_runtime
 
 // -------------------------------------------------------------------------- //
 // Define AsyncToken and AsyncGroup in the mlir::runtime namespace to implement
@@ -39,14 +38,15 @@ limitations under the License.
 namespace mlir {
 namespace runtime {
 
-using tfrt::AlignedAlloc;
-using tfrt::AlignedFree;
 using tfrt::AsyncValueRef;
 using tfrt::Chain;
 using tfrt::GetReadyChain;
 using tfrt::MakeConstructedAsyncValueRef;
 
 using xla::runtime::AsyncRuntimeObject;
+
+using tensorflow::port::AlignedFree;
+using tensorflow::port::AlignedMalloc;
 
 class AsyncToken : public AsyncRuntimeObject {
  public:
@@ -86,7 +86,7 @@ class AsyncValue : public AsyncRuntimeObject {
 
     Storage(size_t size, size_t alignment)
         : is_inline(CanStoreInline(size, alignment)) {
-      if (!is_inline) allocated_buffer = AlignedAlloc(alignment, size);
+      if (!is_inline) allocated_buffer = AlignedMalloc(size, alignment);
     }
 
     ~Storage() {

@@ -58,10 +58,10 @@ class IndexedSlicesCompositeTensorGradient(
   """CompositeTensorGradient for IndexedSlices."""
 
   def get_gradient_components(self, value):
-    return value.values
+    return value
 
   def replace_gradient_components(self, value, component_grads):
-    return IndexedSlices(component_grads, value.indices, value.dense_shape)
+    return component_grads
 
 
 # TODO(mdan): Should IndexedSlices be a "tensor"?

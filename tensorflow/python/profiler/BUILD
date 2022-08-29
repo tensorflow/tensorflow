@@ -102,7 +102,6 @@ py_library(
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:errors",
         "//tensorflow/python/util:_pywrap_tfprof",
-        "@six_archive//:six",
     ],
 )
 
@@ -155,7 +154,6 @@ py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python/profiler/internal:flops_registry",
-        "@six_archive//:six",
     ],
 )
 

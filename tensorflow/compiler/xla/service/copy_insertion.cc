@@ -359,8 +359,14 @@ Status AddCopiesForInPlaceOperation(const HloAliasAnalysis& alias_analysis,
 // each aliased parameter to resolve interference of aliased input and output
 // buffer. We later rely on RemoveUnnecessaryCopies to drop the unnecessary
 // ones.
-Status AddCopiesForAliasedInputOutputs(HloModule* module) {
+Status AddCopiesForAliasedInputOutputs(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   HloComputation* entry = module->entry_computation();
+  if (!HloInstruction::IsThreadIncluded(entry->execution_thread(),
+                                        execution_threads)) {
+    return Status::OK();
+  }
   HloInstruction* root = entry->root_instruction();
 
   ShapeTree<bool> output_indices_to_copy(root->shape());
@@ -1843,7 +1849,8 @@ Status CopyInsertion::AddCopiesToResolveInterference(
     }
   }
 
-  TF_RETURN_IF_ERROR(AddCopiesForAliasedInputOutputs(module));
+  TF_RETURN_IF_ERROR(
+      AddCopiesForAliasedInputOutputs(module, execution_threads));
   return OkStatus();
 }
 

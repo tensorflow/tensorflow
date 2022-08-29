@@ -1625,7 +1625,7 @@ bool FindFusedBatchNorm(const RemapperContext& ctx, int node_index,
 }
 
 // NOTE(ezhulenev): See `BatchnormSpatialPersistentEnabled` documentation in the
-// `tensorflow/stream_executor/cuda/cuda_dnn.cc` for details.
+// `tensorflow/compiler/xla/stream_executor/cuda/cuda_dnn.cc` for details.
 bool BatchnormSpatialPersistentEnabled() {
 #if CUDNN_VERSION >= 7402
   static bool is_enabled = [] {

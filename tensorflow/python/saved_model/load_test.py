@@ -802,7 +802,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     def get_gradient(obj):
       with backprop.GradientTape() as t:
-        x = constant_op.constant(2.)
+        x = constant_op.constant(2., dtype=dtype)
         y = obj.g(x)
         self.assertAllClose(y, obj.weight * 2.)
         self.assertAllEqual(t.watched_variables(), [obj.weight])
@@ -852,7 +852,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float32)
 
   def test_restored_func_with_captured_var_backprop_float64(self, cycles):
-    self.skipTest("b/144573917")
     self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float64)
 
   def test_callable(self, cycles):

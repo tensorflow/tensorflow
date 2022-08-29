@@ -32,12 +32,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-// The amount of shared memory a CUDA kernel can use.
-//
-// Stay on the conservative side, this is smaller than full 64kB, but allows
-// some extra space for cache.
-int64_t kSharedMemoryBudgetInBytes = 40000;
-
 bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
   if (instr.opcode() == HloOpcode::kReduce &&

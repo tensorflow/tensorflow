@@ -862,10 +862,11 @@ class Worker(object):
     # `TF_COORDINATOR_SCHEDULE_START_DELAY` * i seconds, not exceeding
     # `TF_COORDINATOR_SCHEDULE_START_DELAY_MAX`.
     delay_secs = int(os.environ.get("TF_COORDINATOR_SCHEDULE_START_DELAY", "0"))
+    delay_secs *= self.worker_index
     delay_cap = int(
         os.environ.get("TF_COORDINATOR_SCHEDULE_START_DELAY_MAX", "0"))
     if delay_cap:
-      delay_secs = min(delay_secs * self.worker_index, delay_cap)
+      delay_secs = min(delay_secs, delay_cap)
     if delay_secs > 0:
       logging.info(" Worker %d sleeping for %d seconds before running function",
                    self.worker_index, delay_secs)

@@ -79,6 +79,7 @@ pybind_extension(
         ":conversion_utils",
         "//tensorflow/compiler/mlir/tfrt:runtime_fallback_executor",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/runtime_fallback/util:type_util",

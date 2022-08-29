@@ -20,51 +20,52 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 
 namespace xla {
 namespace runtime {
 
-using llvm::ArrayRef;
-using llvm::raw_ostream;
+using xla::primitive_util::LowercasePrimitiveTypeName;
 
 //===----------------------------------------------------------------------===//
 // Pretty printing for canonical types.
 //===----------------------------------------------------------------------===//
 
-static raw_ostream& operator<<(raw_ostream& os, const ArrayRef<int64_t>& arr) {
-  auto str = llvm::map_range(arr, [](int64_t i) { return std::to_string(i); });
-  return os << llvm::join(str, "x") << (arr.empty() ? "" : "x");
+using absl::StrCat;
+using absl::StrJoin;
+
+static std::string FormatSizes(absl::Span<const int64_t> arr) {
+  return arr.empty() ? "" : StrCat(StrJoin(arr, "x"), "x");
 }
 
-raw_ostream& AsyncTokenType::print(raw_ostream& os) const {
-  return os << "!async.token";
+std::string AsyncTokenType::ToString() const { return "!async.token"; }
+
+std::string AsyncValueType::ToString() const {
+  return StrCat("!async.value<", value_type().ToString(), ">");
 }
 
-raw_ostream& AsyncValueType::print(raw_ostream& os) const {
-  return os << "!async.value<" << value_type() << ">";
+std::string RankedTensorType::ToString() const {
+  return StrCat("tensor<", FormatSizes(sizes()),
+                LowercasePrimitiveTypeName(element_type()), ">");
 }
 
-raw_ostream& RankedTensorType::print(raw_ostream& os) const {
-  return os << "tensor<" << sizes() << element_type() << ">";
+std::string UnrankedTensorType::ToString() const {
+  return StrCat("tensor<*x", LowercasePrimitiveTypeName(element_type()), ">");
 }
 
-raw_ostream& UnrankedTensorType::print(raw_ostream& os) const {
-  return os << "tensor<*x" << element_type() << ">";
+std::string MemrefType::ToString() const {
+  return StrCat("memref<", FormatSizes(sizes()),
+                LowercasePrimitiveTypeName(element_type()), ">");
 }
 
-raw_ostream& MemrefType::print(raw_ostream& os) const {
-  return os << "memref<" << sizes() << element_type() << ">";
+std::string UnrankedMemrefType::ToString() const {
+  return StrCat("memref<*x", LowercasePrimitiveTypeName(element_type()), ">");
 }
 
-raw_ostream& UnrankedMemrefType::print(raw_ostream& os) const {
-  return os << "memref<*x" << element_type() << ">";
-}
-
-raw_ostream& KernelContextOperandType::print(raw_ostream& os) const {
-  return os << "!rt.kernel_context";
+std::string KernelContextOperandType::ToString() const {
+  return "!rt.kernel_context";
 }
 
 //===----------------------------------------------------------------------===//
@@ -75,17 +76,17 @@ using ArgumentAbi = Type::ArgumentAbi;
 using ResultAbi = Type::ResultAbi;
 
 // Async token returned as a pointer to the runtime async token.
-llvm::ErrorOr<ResultAbi> AsyncTokenType::AsResult() const {
+absl::StatusOr<ResultAbi> AsyncTokenType::AsResult() const {
   return ResultAbi{sizeof(void*)};
 }
 
 // Async value returned as a pointer to the runtime async token.
-llvm::ErrorOr<ResultAbi> AsyncValueType::AsResult() const {
+absl::StatusOr<ResultAbi> AsyncValueType::AsResult() const {
   return ResultAbi{sizeof(void*)};
 }
 
 // Memref passed as an unrolled strided memref type.
-llvm::ErrorOr<ArgumentAbi> MemrefType::AsArgument() const {
+absl::StatusOr<ArgumentAbi> MemrefType::AsArgument() const {
   return ArgumentAbi{3 + 2 * rank()};
 }
 
@@ -94,7 +95,7 @@ llvm::ErrorOr<ArgumentAbi> MemrefType::AsArgument() const {
 //
 // Memrefs are returned as StridedMemref<T, rank> type:
 //   basePtr, data, offset, sizes[rank], strides[rank]
-llvm::ErrorOr<ResultAbi> MemrefType::AsResult() const {
+absl::StatusOr<ResultAbi> MemrefType::AsResult() const {
   return ResultAbi{
       sizeof(void*) * 2 +           // pointers
       sizeof(int64_t) +             // offset
@@ -103,7 +104,7 @@ llvm::ErrorOr<ResultAbi> MemrefType::AsResult() const {
 }
 
 // Kernel context passed as a single opaque pointer.
-llvm::ErrorOr<ArgumentAbi> KernelContextOperandType::AsArgument() const {
+absl::StatusOr<ArgumentAbi> KernelContextOperandType::AsArgument() const {
   return ArgumentAbi{1};
 }
 

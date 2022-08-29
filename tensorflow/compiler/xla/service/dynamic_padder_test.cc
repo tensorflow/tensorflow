@@ -1615,7 +1615,7 @@ condition {
   stack_buffer = s32[<=4,2] get-tuple-element(stack), index=0
   stack_size = s32[] get-dimension-size(stack_buffer), dimensions={0}
   two = s32[] constant(2)
-  ROOT greater-than = pred[] compare(s32[] stack_size, s32[] two), direction=GE
+  ROOT greater-than = pred[] compare(s32[] stack_size, s32[] two), direction=GT
 }
 
 ENTRY entry {
@@ -1641,7 +1641,7 @@ ENTRY entry {
   //  [P, P],
   //  [P, P]]
   // Reducing them gives us [2, 2]
-  Literal expected = LiteralUtil::CreateR1<int32_t>({{1, 1}});
+  Literal expected = LiteralUtil::CreateR1<int32_t>({{2, 2}});
 
   EXPECT_EQ(result, expected);
 }

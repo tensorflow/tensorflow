@@ -400,8 +400,8 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   // Override the Add converter.
   bool start_conversion = false;
   bool should_fail = false;
-  auto op_converter = [&start_conversion,
-                       &should_fail](OpConverterParams* params) -> Status {
+  auto op_converter = [&start_conversion, &should_fail](
+                          const OpConverterParams* params) -> Status {
     if (should_fail) return errors::InvalidArgument("");
     if (!params->validation_only) start_conversion = true;
     return Status::OK();
@@ -575,7 +575,8 @@ class ConverterTest : public ::testing::Test {
 
 TEST_F(ConverterTest, ConvertNode) {
   ITensorProxyPtr output_tensors[2];
-  auto op_converter = [&output_tensors](OpConverterParams* params) -> Status {
+  auto op_converter =
+      [&output_tensors](const OpConverterParams* params) -> Status {
     nvinfer1::Dims dims = params->inputs[0].tensor()->getDimensions();
     for (int i = 0; i < 2; ++i) {
       dims.d[0] += 1;
@@ -652,7 +653,8 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
   // Register a custom converter which shuffles the input. We use it to build a
   // TRT network whose output will be later marked.
   std::vector<ITensorProxyPtr> output_tensors;
-  auto op_converter = [&output_tensors](OpConverterParams* params) -> Status {
+  auto op_converter =
+      [&output_tensors](const OpConverterParams* params) -> Status {
     nvinfer1::Permutation perm;
     perm.order[0] = 1;
     perm.order[1] = 0;
@@ -1739,7 +1741,7 @@ const std::string get_debug_string_for_vector(const std::vector<T>& vector,
                                               absl::string_view pComment,
                                               absl::string_view name,
                                               absl::string_view type = "") {
-  const std::string t1 = absl::StrCat(pComment, name, " Dims(nbDims=");
+  const std::string t1 = absl::StrCat(pComment, " '", name, "': Dims(nbDims=");
   const std::string t2 = absl::StrJoin(vector, ",");
   const std::string t3 = type != "" ? absl::StrCat(") of type ", type) : ")";
   std::stringstream stream;
@@ -1844,8 +1846,8 @@ class ParameterizedOpConverterTestBase
         partial_shape = dims;
       }
       if (VLOG_IS_ON(2)) {
-        VLOG(2) << get_debug_string_for_vector(
-            partial_shape, "Using partial_shape: for ", name);
+        VLOG(2) << get_debug_string_for_vector(partial_shape,
+                                               "Using partial_shape for", name);
       }
     }
     nvinfer1::DataType trt_type;
@@ -1853,8 +1855,8 @@ class ParameterizedOpConverterTestBase
     AddTestTensorWithTFDims(name, partial_shape, trt_type, add_input_status);
     if (!values.empty()) {
       if (VLOG_IS_ON(2)) {
-        VLOG(2) << get_debug_string_for_vector(
-            values, "Adding test tensor: for ", name, DataTypeString(tf_type));
+        VLOG(2) << get_debug_string_for_vector(values, "Adding test tensor for",
+                                               name, DataTypeString(tf_type));
       }
       InputOutputData data{name, AsTensor(values, dims, tf_type)};
       VLOG(2) << "Added tensor: " << data.name << " with dtype "
@@ -1986,16 +1988,16 @@ class OpConverter_UnaryTest : public ParameterizedOpConverterTestBase {
       }
 
       const DataType tf_type = get_tf_type();
-      const NodeDef& node_def = op_map[op_name].first(tf_type);
-      runExpectedToFailTest(node_def, input_name, input_values, op_name);
+      const NodeDef& node = op_map[op_name].first(tf_type);
+      runExpectedToFailTest(node, input_name, input_values, op_name);
 
       Status conv_status = Status::OK();
       if (trt_mode_ == TrtTestMode::kImplicitBatch &&
           (op_name == "Sign" || op_name == "Round" ||
            op_name == "LogicalNot")) {
-        conv_status =
-            errors::Unimplemented("Unary op: '", op_name,
-                                  "' is not supported in implicit batch mode");
+        const auto& err =
+            convert_not_supported_implicit(op_name, node.name(), "Unary");
+        conv_status = errors::Unimplemented(err);
       }
 
       Reset();
@@ -2008,7 +2010,7 @@ class OpConverter_UnaryTest : public ParameterizedOpConverterTestBase {
       std::transform(input_values.begin(), input_values.end(),
                      std::back_inserter(output), op_map[op_name].second);
 
-      TestOpConverter("my_unary", node_def, p.expected_output_dims, conv_status,
+      TestOpConverter(node.name(), node, p.expected_output_dims, conv_status,
                       Status::OK(),
                       ArrayFloatNear(output, max_abs_error, nan_sensitive),
                       {output_tf_type});
@@ -2027,7 +2029,7 @@ class OpConverter_UnaryTest : public ParameterizedOpConverterTestBase {
 
     // Input has 0 dimensions, should fail.
     Reset();
-    std::vector<int32> dims = {};
+    std::vector<int32> dims{};
     if (trt_mode_ == TrtTestMode::kImplicitBatch) {
       dims = {1};
     }
@@ -2085,9 +2087,9 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
           auto conv_status = Status::OK();
           if (tf_type == DT_BOOL || logical_op) {
             if (trt_mode_ == TrtTestMode::kImplicitBatch) {
-              conv_status = errors::Unimplemented(
-                  "Binary op: '", op_name,
-                  "' is not supported in implicit batch mode");
+              conv_status =
+                  errors::Unimplemented(convert_not_supported_implicit(
+                      op_name, node_def.name(), "Binary"));
             } else if (!logical_op &&
                        (!operand_1_is_tensor || !operand_2_is_tensor)) {
               conv_status = errors::InvalidArgument(
@@ -2636,10 +2638,9 @@ TEST_P(OpConverter_FP32_Test, ConvertFusedBatchNorm) {
           Status expected_status =
               (i != 0 && trt_mode_ == TrtTestMode::kImplicitBatch)
                   ? errors::InvalidArgument(
-                        StrCat("Batch size doesn't match for tensor ",
-                               node_input[i].name,
-                               ": Provided batch size does not match "
-                               "converter batch size: 3 vs 2"))
+                        batch_size_error(node_input[i].name,
+                                         "Provided batch size does not match "
+                                         "converter batch size: 3 vs 2"))
                   : Status::OK();
           std::vector<int> partial_input_shape;
           if (i == 0 && trt_mode_ == TrtTestMode::kDynamicShape &&
@@ -3085,10 +3086,10 @@ void TestMatMulHelper(
     NodeDef node_def = get_matmul(DT_INT32, false, false);
     test->AddTestTensor("input", {1, 2}, DT_INT32, {});
     test->AddTestWeights<int32>("weights", {2, 1}, {3, 5});
+    const std::vector<DataType> allowed_types{DT_FLOAT, DT_HALF};
     test->RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        StrCat("Data type int32 is not supported for ", node_def.op(),
-               ", must be one of [float, half]"));
+        convert_not_supported_dtype_msg(allowed_types, DT_INT32, node_def));
   }
 
   // FC conversion depends on whether the last dim of A is known or not. In
@@ -3395,13 +3396,12 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
 
   if (trt_mode_ == TrtTestMode::kImplicitBatch) {
     Reset();
-    NodeDef node_def = get_einsum_nodedef(tf_type_, "ab,cb->ac");
+    NodeDef node = get_einsum_nodedef(tf_type_, "ab,cb->ac");
     AddTestTensor("input_a", {2, 3});
     AddTestTensor("input_b", {2, 3});
-    TestOpConverter(
-        "my_einsum", node_def, {2, 2},
-        errors::Unimplemented("Einsum converter requires dynamic shape mode"),
-        Status::OK(), ElementsAreArray({13, 16, 40, 52}));
+    const auto& err = convert_not_supported_implicit(node.op(), node.name());
+    TestOpConverter(node.name(), node, {2, 2}, errors::Unimplemented(err),
+                    Status::OK(), ElementsAreArray({13, 16, 40, 52}));
     // No further tests.
     return;
   }
@@ -3612,8 +3612,9 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
             AddTestWeights("input_b", p.shape_b, p.values_b, tf_type_);
           }
         }
-        TestOpConverter("my_einsum", node_def, p.expected_shape, p.conv_status,
-                        Status::OK(), ElementsAreArray(p.expected_output));
+        TestOpConverter(node_def.name(), node_def, p.expected_shape,
+                        p.conv_status, Status::OK(),
+                        ElementsAreArray(p.expected_output));
       }
     }
   }
@@ -4014,6 +4015,18 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
                   ArrayFloatNear(expected_outputs, 0));
 }
 
+// A function that builds the next lexicographically greater configuration
+// for the current one. The configuration is described as a (0,1)-vector
+// config, where config[i] is 0 or 1 when the i-th parameter is passed as
+// a weight or tensor, respectively. The function returns TRUE if such
+// a configuration is built, or FALSE otherwise.
+bool nextTensorWeightConfiguration(std::vector<int>& config) {
+  for (int i = config.size(); i-- > 0;) {
+    if ((config[i] = 1 - config[i])) return true;
+  }
+  return false;
+}
+
 #if IS_TRT_VERSION_GE(8, 2, 0, 0)
 
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
@@ -4028,9 +4041,9 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
     // random data
     AddTestWeights("dims", {2}, {2, 2}, DT_INT32);
     AddTestWeights("value", {1}, {42.0}, tf_type_);
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "Conversion for Fill is not implemented in "
-                               "implicit batch mode");
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        convert_not_supported_implicit(node_def.op(), node_def.name()));
     return;
   }
 
@@ -4072,18 +4085,6 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
   auto get_casted_value = [this](const float value, const DataType dtype) {
     return dtype == DT_INT32 ? static_cast<int32>(value) : value;
-  };
-
-  // A function that builds the next lexicographically greater configuration
-  // for the current one. The configuration is described as a (0,1)-vector
-  // config, where config[i] is 0 or 1 when the i-th parameter is passed as
-  // a weight or tensor, respectively. The function returns TRUE if such
-  // a configuration is built, or FALSE otherwise.
-  auto nextTensorWeigtConfiguration = [this](std::vector<int>& config) {
-    for (int i = config.size(); i-- > 0;) {
-      if (config[i] = 1 - config[i]) return true;
-    }
-    return false;
   };
 
   auto set_parameters = [this](const std::array<const char*, 3>& name,
@@ -4134,17 +4135,16 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
   // ConverterRange is not implemented for Implicite batch mode.
   std::vector<int> config(3, 0);
   if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+    const auto& err = convert_not_supported_implicit(ndef.op(), ndef.name());
     do {
       set_parameters(param_name, param_value, param_type, config);
-      RunValidationAndConversion(ndef, error::UNIMPLEMENTED,
-                                 "Conversion for Range is not implemented in "
-                                 "implicit batch mode");
-    } while (nextTensorWeigtConfiguration(config));
+      RunValidationAndConversion(ndef, error::UNIMPLEMENTED, err);
+    } while (nextTensorWeightConfiguration(config));
 
     return;
   }
 
-  const std::string expect_msg = convert_range_expected_msg(ndef);
+  const auto& expect_msg = convert_range_expected_msg(ndef);
   bool all_weights = true;
   do {
     for (auto limit_type : param_types) {
@@ -4220,7 +4220,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
     // All other configs will be set so that at least one parameter
     // will be passed as a tensor
     all_weights = false;
-  } while (nextTensorWeigtConfiguration(config));
+  } while (nextTensorWeightConfiguration(config));
 
   nvinfer1::DataType trt_type;
   TF_ASSERT_OK(TfTypeToTrtType(DT_BOOL, &trt_type));
@@ -4244,7 +4244,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
         }
       }
     }
-  } while (nextTensorWeigtConfiguration(config));
+  } while (nextTensorWeightConfiguration(config));
 
   // The tests that pass all checks in ConvertRange::Validate().
   const Status status = Status::OK();
@@ -4299,7 +4299,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
       // will be passed as a tensor
       all_weights = false;
     }
-  } while (nextTensorWeigtConfiguration(config));
+  } while (nextTensorWeightConfiguration(config));
 }
 
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertLikeOps) {
@@ -4322,9 +4322,9 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertLikeOps) {
     if (trt_mode_ == TrtTestMode::kImplicitBatch) {
       std::vector<float> input_data(8, 42.0f);
       AddTestTensor("input", {8}, tf_type_, input_data);
-      RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                                 "Conversion for " + name + "Like is not " +
-                                     "implemented in implicit batch mode");
+      const auto& err = convert_not_supported_implicit(string(name) + "Like",
+                                                       node_def.name());
+      RunValidationAndConversion(node_def, error::UNIMPLEMENTED, err);
       continue;
     }
 
@@ -7052,32 +7052,28 @@ NodeDef GetDataFormatVecPermuteNodeDef(string dst_format, string src_format,
 }
 
 TEST_P(OpConverter_INT32_Test, ConvertDataFormatVecPermute) {
-  Status implicit_error = Status{
-      error::UNIMPLEMENTED, "Implicit batch mode not supported, at my_dfvp"};
-
+  const auto& error = convert_not_supported_implicit(
+      string("DataFormatVecPermute"), string("my_dfvp"));
+  const Status implicit_error = Status{error::UNIMPLEMENTED, error};
+  const auto conversion_status =
+      trt_mode_ == TrtTestMode::kImplicitBatch ? implicit_error : Status::OK();
   std::vector<DataFormatVecPermuteTestParams> test_params = {
       // 1D case with tensor.
-      DataFormatVecPermuteTestParams{
-          /*dst_format=*/"NCHW",
-          /*src_format=*/"NHWC",
-          /*x_shape=*/{4},
-          /*x=*/{1, 2, 3, 4},
-          /*x_is_tensor=*/true,
-          /*expected_output=*/{1, 4, 2, 3},
-          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
-              ? implicit_error
-              : Status::OK()},
+      DataFormatVecPermuteTestParams{/*dst_format=*/"NCHW",
+                                     /*src_format=*/"NHWC",
+                                     /*x_shape=*/{4},
+                                     /*x=*/{1, 2, 3, 4},
+                                     /*x_is_tensor=*/true,
+                                     /*expected_output=*/{1, 4, 2, 3},
+                                     /*conversion_status=*/conversion_status},
       // 1D case with weights.
-      DataFormatVecPermuteTestParams{
-          /*dst_format=*/"NCHW",
-          /*src_format=*/"NHWC",
-          /*x_shape=*/{4},
-          /*x=*/{1, 2, 3, 4},
-          /*x_is_tensor=*/false,
-          /*expected_output=*/{1, 4, 2, 3},
-          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
-              ? implicit_error
-              : Status::OK()},
+      DataFormatVecPermuteTestParams{/*dst_format=*/"NCHW",
+                                     /*src_format=*/"NHWC",
+                                     /*x_shape=*/{4},
+                                     /*x=*/{1, 2, 3, 4},
+                                     /*x_is_tensor=*/false,
+                                     /*expected_output=*/{1, 4, 2, 3},
+                                     /*conversion_status=*/conversion_status},
       // 2D case with tensor.
       DataFormatVecPermuteTestParams{
           /*dst_format=*/"NCHW",
@@ -7086,9 +7082,7 @@ TEST_P(OpConverter_INT32_Test, ConvertDataFormatVecPermute) {
           /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
           /*x_is_tensor=*/true,
           /*expected_output=*/{1, 2, 7, 8, 3, 4, 5, 6},
-          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
-              ? implicit_error
-              : Status::OK()},
+          /*conversion_status=*/conversion_status},
       // 2D case with weights.
       DataFormatVecPermuteTestParams{
           /*dst_format=*/"NCHW",
@@ -7097,9 +7091,7 @@ TEST_P(OpConverter_INT32_Test, ConvertDataFormatVecPermute) {
           /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
           /*x_is_tensor=*/false,
           /*expected_output=*/{1, 2, 7, 8, 3, 4, 5, 6},
-          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
-              ? implicit_error
-              : Status::OK()},
+          /*conversion_status=*/conversion_status},
       // Format of size 5.
       DataFormatVecPermuteTestParams{
           /*dst_format=*/"NCDHW",
@@ -7108,31 +7100,23 @@ TEST_P(OpConverter_INT32_Test, ConvertDataFormatVecPermute) {
           /*x=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
           /*x_is_tensor=*/true,
           /*expected_output=*/{1, 2, 9, 10, 3, 4, 5, 6, 7, 8},
-          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
-              ? implicit_error
-              : Status::OK()},
+          /*conversion_status=*/conversion_status},
       // Input of size 2: treat the elements as spatial dimensions.
-      DataFormatVecPermuteTestParams{
-          /*dst_format=*/"NCWH",
-          /*src_format=*/"NHWC",
-          /*x_shape=*/{2, 2},
-          /*x=*/{1, 2, 3, 4},
-          /*x_is_tensor=*/true,
-          /*expected_output=*/{3, 4, 1, 2},
-          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
-              ? implicit_error
-              : Status::OK()},
+      DataFormatVecPermuteTestParams{/*dst_format=*/"NCWH",
+                                     /*src_format=*/"NHWC",
+                                     /*x_shape=*/{2, 2},
+                                     /*x=*/{1, 2, 3, 4},
+                                     /*x_is_tensor=*/true,
+                                     /*expected_output=*/{3, 4, 1, 2},
+                                     /*conversion_status=*/conversion_status},
       // Input of size 3: treat the elements as spatial dimensions.
-      DataFormatVecPermuteTestParams{
-          /*dst_format=*/"NCHWD",
-          /*src_format=*/"NDHWC",
-          /*x_shape=*/{3},
-          /*x=*/{1, 2, 3},
-          /*x_is_tensor=*/true,
-          /*expected_output=*/{2, 3, 1},
-          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
-              ? implicit_error
-              : Status::OK()},
+      DataFormatVecPermuteTestParams{/*dst_format=*/"NCHWD",
+                                     /*src_format=*/"NDHWC",
+                                     /*x_shape=*/{3},
+                                     /*x=*/{1, 2, 3},
+                                     /*x_is_tensor=*/true,
+                                     /*expected_output=*/{2, 3, 1},
+                                     /*conversion_status=*/conversion_status},
       // Invalid rank, should fail.
       DataFormatVecPermuteTestParams{
           /*dst_format=*/"NCHW",
@@ -7327,9 +7311,9 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*runtime_status=*/Status::OK(),
           /*add_index_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
               ? Status{error::INVALID_ARGUMENT,
-                       "Batch size doesn't match for "
-                       "tensor indices: Provided batch size does not match "
-                       "converter batch size: 2 vs 6"}
+                       batch_size_error("indices",
+                                        "Provided batch size does not match "
+                                        "converter batch size: 2 vs 6")}
               : Status::OK()},
       // Vector indices, and output rank is rank(params).
       TestParams{
@@ -9270,6 +9254,442 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPad) {
                     p.status, ElementsAreArray(p.expected_output_values));
   }
 }
+
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
+  const int maxVal = 32;
+  const std::array<const char*, 3> par_name = {"cond", "then", "else"};
+  std::array<DataType, 3> par_type = {DT_BOOL, tf_type_, tf_type_};
+  std::vector<int> config(3, 0);
+  std::array<const std::vector<int>*, 3> par_dims;
+  std::vector<float> data_then(1, 0), data_else(1, maxVal),
+      expected_output(1, maxVal);
+  std::array<std::vector<float>*, 3> par_value = {nullptr, &data_then,
+                                                  &data_else};
+  std::vector<int> data_cond(1, 0);
+
+  auto set_parameters = [&](DataType cond_type = DT_BOOL) {
+    Reset();
+    if (config[0]) {
+      AddTestTensor(par_name[0], *par_dims[0], cond_type, data_cond);
+    } else {
+      AddTestWeights(par_name[0], {1}, data_cond, cond_type);
+    }
+    for (int i = 1; i < 3; i++) {
+      if (config[i]) {
+        AddTestTensor(par_name[i], *par_dims[i], par_type[i], *par_value[i]);
+      } else {
+        AddTestWeights(par_name[i], {1}, *par_value[i], par_type[i]);
+      }
+    }
+  };
+
+  auto set_dimension = [this](const nvinfer1::Dims* dims,
+                              std::vector<int>& dims_param,
+                              std::string* comment = nullptr) {
+    const auto nbDims = dims->nbDims;
+    if (comment) {
+      *comment = "batch_dim: " + std::to_string(nbDims + 1) + ", " +
+                 DebugString(*dims);
+    }
+
+    dims_param.resize(nbDims);
+    for (int i = 0; i < nbDims; i++) dims_param[i] = dims->d[i];
+  };
+
+  auto adjust_comments = [this](const nvinfer1::Dims* p_dims,
+                                std::string* p_comment) {
+    if (p_dims[0].nbDims == p_dims[1].nbDims) return;
+
+    const int idx = p_dims[0].nbDims < p_dims[1].nbDims ? 0 : 1;
+
+    nvinfer1::Dims dims;
+    dims.nbDims = p_dims[1 - idx].nbDims;
+    int i = 0;
+    for (; i < dims.nbDims - p_dims[idx].nbDims; i++) dims.d[i] = 1;
+
+    for (int j = i; i < dims.nbDims; i++) dims.d[i] = p_dims[idx].d[i - j];
+
+    *(p_comment + idx) =
+        "batch_dim: " + std::to_string(1) + ", " + DebugString(dims);
+    *(p_comment + 1 - idx) =
+        "batch_dim: " + std::to_string(p_dims[idx].nbDims + 1) + ", " +
+        DebugString(p_dims[1 - idx]);
+  };
+
+  auto assign_values = [this](
+                           const std::array<const std::vector<int>*, 3>& dims,
+                           std::array<std::vector<float>*, 3> par_value,
+                           std::vector<int>& data_cond,
+                           std::vector<int>* expect_dims_pntr = nullptr,
+                           bool use_indices = false,
+                           const std::vector<float>* expected_out = nullptr) {
+    size_t rank[3];
+    const auto dim_len = dims[0]->size();
+    std::vector<int> exp_dims;
+    if (!expect_dims_pntr) expect_dims_pntr = &exp_dims;
+
+    auto& expect_dims = *expect_dims_pntr;
+    expect_dims.resize(dim_len);
+    expect_dims.assign(dim_len, 0);
+    for (int i = 0; i < 3; i++) {
+      if (dims[i]) {
+        const auto& dim = *dims[i];
+        for (auto j = dim_len; j--;) {
+          if (expect_dims[j] < dim[j]) expect_dims[j] = dim[j];
+        }
+
+        rank[i] = std::accumulate(std::begin(dim), std::end(dim), 1,
+                                  std::multiplies<int>());
+      } else {
+        assert(i >= 2);
+        rank[i] = rank[i - 1];
+      }
+    }
+
+    // Create data for ConvertSelectV2 testing.
+    for (int k = 1; k <= 2; k++) {
+      auto& data = *par_value[k];
+      data.resize(rank[k]);
+      const int mult = k == 1 ? 1 : -1;
+      for (int i = 0; i < rank[k]; i++) {
+        if (use_indices) {
+          data[i] = mult * (i + 1);
+        } else {
+          data.at(i) =
+              k == 1 ? data[i >> 1] + i % 2 : maxVal - par_value[1]->at(i);
+        }
+      }
+    }
+
+    data_cond.resize(rank[0]);
+    data_cond[0] = 0;
+    for (int i = 0; i < rank[0]; i++) {
+      data_cond[i] = i % 2 ? 1 - data_cond[i >> 1] : data_cond[i >> 1];
+    }
+
+    auto& expected_output = *par_value[0];
+    const auto rank_out =
+        std::accumulate(std::begin(expect_dims), std::end(expect_dims), 1,
+                        std::multiplies<int>());
+
+    assert(rank_out == (expected_out ? expected_out->size() : rank[0]));
+    expected_output.resize(rank_out);
+    const auto& data_then = *par_value[1];
+    const auto& data_else = *par_value[2];
+    for (int i = 0; i < rank_out; i++) {
+      expected_output[i] = expected_out      ? (*expected_out)[i]
+                           : data_cond.at(i) ? data_then[i]
+                                             : data_else[i];
+    }
+  };
+
+  auto run_test = [&](const NodeDef& node, const std::vector<int>& exp_dims) {
+    for (int n = 0; n < 2; n++) {
+      set_parameters();
+      TestOpConverter("my_select", node, exp_dims, Status::OK(), Status::OK(),
+                      ElementsAreArray(expected_output));
+      if (!n) {
+        // Changing the condition and expected_output.
+        for (auto idx = data_cond.size(); idx--;)
+          data_cond[idx] = 1 - data_cond[idx];
+
+        // Compare of the shapes if the tensors "then" and "else".
+        if (*par_dims[1] != *par_dims[2]) {
+          // Shapes are different:
+          //     assigning +1's and -1's to the elements
+          //     of the tensors "then" and "else", respectively
+          for (int p = 1; p <= 2; p++) {
+            auto& values = *par_value[p];
+            const auto val = p == 1 ? 1 : -1;
+            for (auto idx = values.size(); idx--;) values[idx] = val;
+          }
+          //    and set the appropriate expected values.
+          for (auto idx = expected_output.size(); idx--;)
+            expected_output[idx] = expected_output[idx] > 0 ? -1 : 1;
+        } else {
+          // Shapes are the same:
+          //    just change the signs of the expected values.
+          for (auto idx = expected_output.size(); idx--;)
+            expected_output[idx] = -expected_output[idx];
+        }
+      }
+    }
+  };
+
+  std::array<DataType, 3> data_types = {DT_FLOAT, DT_HALF, DT_INT32};
+  Scope s = Scope::NewRootScope();
+  const auto op =
+      ops::SelectV2(s.WithOpName("my_select"),
+                    ops::Placeholder(s.WithOpName(par_name[0]), par_type[0]),
+                    ops::Placeholder(s.WithOpName(par_name[1]), par_type[1]),
+                    ops::Placeholder(s.WithOpName(par_name[2]), par_type[2]));
+  const auto& node = op.operation.node()->def();
+
+  std::vector<std::vector<int>> dims_params = {{8}, {8, 2, 4}, {32, 32, 3200}};
+
+  // All parameters passed as the weights OR 1-element tensors.
+  par_dims = {&dims_params[0], &dims_params[0], &dims_params[0]};
+  if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+    const auto& err = convert_not_supported_implicit(node.op(), node.name());
+    do {
+      set_parameters();
+      RunValidationAndConversion(node, error::UNIMPLEMENTED, err);
+    } while (nextTensorWeightConfiguration(config));
+    return;
+  }
+
+  // Parameter 'cond' cannot be only of type DT_BOOL.
+  do {
+    for (auto cond_type : {DT_INT32, DT_FLOAT, DT_HALF}) {
+      nvinfer1::DataType trt_type;
+      TF_ASSERT_OK(TfTypeToTrtType(cond_type, &trt_type));
+      const auto error_msg =
+          unexpected_type_error_msg(trt_type, nvinfer1::DataType::kBOOL, node);
+      set_parameters(cond_type);
+      RunValidationAndConversion(node, error::INVALID_ARGUMENT, error_msg);
+    }
+  } while (nextTensorWeightConfiguration(config));
+
+  std::string err_msg = bool_weight_error_msg(node);
+  const auto status = Status::OK();
+
+  std::vector<int> dims_const = {1};
+  par_dims = {&dims_const, &dims_const, &dims_const};
+  // Loop when condition is reversed and the expected_output
+  // should change from 'else' to 'then'.
+  for (int i = 0; i < 2; i++) {
+    do {
+      set_parameters();
+      if (config[0]) {
+        TestOpConverter("my_select", node, {1}, status, status,
+                        ElementsAreArray(expected_output));
+      } else {
+        RunValidationAndConversion(node, error::INVALID_ARGUMENT, err_msg);
+      }
+    } while (nextTensorWeightConfiguration(config));
+
+    // Changing the condition and expected_output.
+    data_cond[0] = 1 - data_cond[0];
+    expected_output[0] = (*par_value[1 + i])[0];
+  }
+
+  // All parameters passed as the tensors.
+  for (int i = 0; i < 3; i++) {
+    config[i] = 1;
+  }
+
+  par_value[0] = &expected_output;
+  if (trt_mode_ == TrtTestMode::kExplicitBatch) {
+    // Testing infeasible broadcast schemes.
+    std::string bc_comment[2];
+    std::vector<int> dims[4];
+    par_dims = {dims, dims + 1, dims + 1};
+    nvinfer1::Dims infeasible_dims[] = {{3, {4, 3, 2}}, {4, {4, 3, 2, 5}},
+                                        {3, {4, 1, 3}}, {3, {4, 3, 2}},
+                                        {3, {4, 3, 2}}, {5, {4, 3, 2, 5, 2}}};
+
+    auto iMax = sizeof(infeasible_dims) / sizeof(infeasible_dims[0]);
+    // Loop for all pairs of nvinfer1::Dims from infeasible_dims.
+    for (int i = 0; i < iMax; i += 2) {
+      // Loop for all permutations on 2 elements.
+      for (int k = 0; k < 2; k++) {
+        for (int j = 0; j < 2; j++) {
+          set_dimension(infeasible_dims + i + (j + k) % 2, dims[j],
+                        bc_comment + (j + k) % 2);
+        }
+
+        adjust_comments(infeasible_dims + i, bc_comment);
+        set_parameters();
+        RunValidationAndConversion(node, error::INVALID_ARGUMENT,
+                                   "Infeasible broadcast scheme (" +
+                                       bc_comment[k] + " vs " +
+                                       bc_comment[1 - k]);
+      }
+    }
+
+    // Tests for exactly two identical dims for any two out of 3 tensors.
+    nvinfer1::Dims feasible_dims_2[] = {
+        {3, {1, 3, 2}}, {3, {4, 3, 2}}, {3, {4, 1, 2}}, {3, {4, 3, 2}},
+        {3, {4, 3, 1}}, {3, {4, 3, 2}}, {3, {1, 1, 2}}, {3, {4, 3, 2}},
+        {3, {1, 3, 1}}, {3, {4, 3, 2}}, {3, {4, 1, 1}}, {3, {4, 3, 2}},
+        {3, {1, 1, 1}}, {3, {4, 3, 2}}, {3, {1, 3, 2}}, {3, {4, 1, 2}},
+    };
+
+    // Expected values will be definded directly.
+    std::vector<float> expected_val_2[] = {
+        // Expected values for all feasible ordered pairs of dims
+        // for dims('then') == dims('else'), dims('then') != dims('cond').
+        {-1,  2,  3,  -4,  5,  -6,  -7,  8,  9,  -10, 11, -12,
+         -13, 14, 15, -16, 17, -18, -19, 20, 21, -22, 23, -24},
+        {-1, 2, 3, -4, 5, -6, -1, 2, 3,  -4, -5, 6,
+         -1, 2, 3, -4, 5, -6, -1, 2, -3, 4,  5,  -6},
+        {-1, 2,   -3, 4,   -5, 6,   7,   -8, 9,   -10, 11,  -12,
+         13, -14, 15, -16, 17, -18, -19, 20, -21, 22,  -23, 24},
+        {-1, 2, 1, -2, 1, -2, -3, 4, 3,  -4, -3, 4,
+         -5, 6, 5, -6, 5, -6, -7, 8, -7, 8,  7,  -8},
+        {-1,  -2,  3,  4,  5,  6,  -7,  -8,  9,   10,  -11, -12,
+         -13, -14, 15, 16, 17, 18, -19, -20, -21, -22, 23,  24},
+        {-1, 1, 2, -2, 3, -3, -4,  4,  5,   -5, -6, 6,
+         -7, 7, 8, -8, 9, -9, -10, 10, -11, 11, 12, -12},
+        {-1,  2,  -3,  4,  -5,  6,  -7,  8,  -9,  10, -11, 12,
+         -13, 14, -15, 16, -17, 18, -19, 20, -21, 22, -23, 24},
+        {-1, 2, 1, -2, 1, -2, -1, 2, 1,  -2, -1, 2,
+         -1, 2, 1, -2, 1, -2, -1, 2, -1, 2,  1,  -2},
+        {-1,  -2,  3,  4,  5,  6,  -7,  -8,  9,  10, 11, 12,
+         -13, -14, 15, 16, 17, 18, -19, -20, 21, 22, 23, 24},
+        {-1, 1, 2, -2, 3, -3, -1, 1, 2,  -2, -3, 3,
+         -1, 1, 2, -2, 3, -3, -1, 1, -2, 2,  3,  -3},
+        {-1, -2, -3, -4, -5, -6, 7,   8,   9,   10,  11,  12,
+         13, 14, 15, 16, 17, 18, -19, -20, -21, -22, -23, -24},
+        {-1, 1, 1, -1, 1, -1, -2, 2, 2,  -2, -2, 2,
+         -3, 3, 3, -3, 3, -3, -4, 4, -4, 4,  4,  -4},
+        {-1,  -2,  -3,  -4,  -5,  -6,  -7,  -8,  -9,  -10, -11, -12,
+         -13, -14, -15, -16, -17, -18, -19, -20, -21, -22, -23, -24},
+        {-1, 1, 1, -1, 1, -1, -1, 1, 1,  -1, -1, 1,
+         -1, 1, 1, -1, 1, -1, -1, 1, -1, 1,  1,  -1},
+        {-1, 2, 1, -2, 1, -2, -3, 4, 3, -4, 3, -4,
+         -5, 6, 5, -6, 5, -6, -7, 8, 7, -8, 7, -8},
+        {-1, 2,  -3, 4,  -5, 6,  1,  -2, 3,  -4, 5,  -6,
+         1,  -2, 3,  -4, 5,  -6, -1, 2,  -3, 4,  -5, 6},
+        // Expected values for all feasible ordered pairs of dims
+        // for dims('cond') == dims('else'), dims('then') != dims('else').
+        {-1,  2, 3, -4,  5, -6,  -7,  2, 3,   -10, -11, 6,
+         -13, 2, 3, -16, 5, -18, -19, 2, -21, 4,   5,   -24},
+        {-1, 2,  3,  -4, 5,  -6, -1, 8,  9,  -4, 11, -6,
+         -1, 14, 15, -4, 17, -6, -1, 20, 21, -4, 23, -6},
+        {-1,  2, 1, -4,  1, -6,  -7,  4, 3,   -10, -11, 4,
+         -13, 6, 5, -16, 5, -18, -19, 8, -21, 8,   7,   -24},
+        {-1, 2,  -1, 4,  -1, 6,  7,  -4, 9,  -4, 11, -4,
+         13, -6, 15, -6, 17, -6, -7, 20, -7, 22, -7, 24},
+        {-1,  1, 2, -4,  3, -6,  -7,  4,  5,   -10, -11, 6,
+         -13, 7, 8, -16, 9, -18, -19, 10, -21, 11,  12,  -24},
+        {-1, -1, 3,  4,  5,  6,  -4,  -4,  9,   10,  -6, -6,
+         -7, -7, 15, 16, 17, 18, -10, -10, -11, -11, 23, 24},
+        {-1,  2, 1, -4,  1, -6,  -7,  2, 1,   -10, -11, 2,
+         -13, 2, 1, -16, 1, -18, -19, 2, -21, 2,   1,   -24},
+        {-1, 2,  -1, 4,  -1, 6,  -1, 8,  -1, 10, -1, 12,
+         -1, 14, -1, 16, -1, 18, -1, 20, -1, 22, -1, 24},
+        {-1,  1, 2, -4,  3, -6,  -7,  1, 2,   -10, -11, 3,
+         -13, 1, 2, -16, 3, -18, -19, 1, -21, 2,   3,   -24},
+        {-1, -1, 3,  4,  5,  6,  -1, -1, 9,  10, 11, 12,
+         -1, -1, 15, 16, 17, 18, -1, -1, 21, 22, 23, 24},
+        {-1,  1, 1, -4,  1, -6,  -7,  2, 2,   -10, -11, 2,
+         -13, 3, 3, -16, 3, -18, -19, 4, -21, 4,   4,   -24},
+        {-1, -1, -1, -1, -1, -1, 7,  8,  9,  10, 11, 12,
+         13, 14, 15, 16, 17, 18, -4, -4, -4, -4, -4, -4},
+        {-1,  1, 1, -4,  1, -6,  -7,  1, 1,   -10, -11, 1,
+         -13, 1, 1, -16, 1, -18, -19, 1, -21, 1,   1,   -24},
+        {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+        {-1, 2,  -1, 4,  -1, 6,  1,  -4, 3,  -4, 5,  -4,
+         1,  -6, 3,  -6, 5,  -6, -7, 2,  -7, 4,  -7, 6},
+        {-1, 2, 1, -4, 1, -6, -1, 4, 3, -4, 3, -6,
+         -1, 6, 5, -4, 5, -6, -1, 8, 7, -4, 7, -6}};
+
+    const auto exp_dims = dims + 3;
+    const int kMax2 = 2;  // number of permutations on 2 elements
+    iMax = sizeof(feasible_dims_2) / sizeof(feasible_dims_2[0]);
+    assert(kMax2 * iMax / 3 ==
+           sizeof(expected_val_2) / sizeof(expected_val_2[0]));
+    // Broadcast shapes defined for `cond` OR for `then` and `else`.
+    // Loop for all pairs of nvinfer1::Dims from feasible_dims_2.
+    for (int i = 0; i < iMax; i += 2) {
+      // Loop for all permutations on 2 elements.
+      for (int k = 0; k < kMax2; k++) {
+        // Constructing dims for tensors 'cond' and 'then'.
+        // NOTE: dims('else') will be the same as  dims('then').
+        for (int j = 0; j < 2; j++)
+          set_dimension(feasible_dims_2 + i + (j + k) % 2, dims[j]);
+
+        std::vector<float>* expect = expected_val_2 + i + k;
+        // Loop where the tensor shapes for 'cond' and 'then' are swapping.
+        for (int m = 0; m < 2; m++) {
+          assign_values(par_dims, par_value, data_cond, exp_dims, true, expect);
+          run_test(node, *exp_dims);
+
+          // Swapping dims for 'cond' and 'then' tensors.
+          const auto tmp = par_dims[0];
+          par_dims[0] = par_dims[1];
+          par_dims[1] = tmp;
+          expect += iMax;
+        }
+      }
+    }
+
+    // Tests for pairwise different dims('cond'), dims('then'), dims('else').
+    nvinfer1::Dims feasible_dims_3[] = {
+        {2, {3, 2}},    {2, {3, 1}},    {2, {1, 1}},    {3, {2, 2, 1}},
+        {3, {2, 1, 2}}, {3, {1, 2, 2}}, {3, {2, 1, 1}}, {3, {2, 1, 2}},
+        {3, {1, 2, 2}}, {3, {2, 1, 1}}, {3, {1, 1, 2}}, {3, {1, 2, 1}},
+    };
+
+    std::vector<float> expected_val_3[] = {
+        {-1, 1, 2, -1, 3, -1},        {-1, 1, 1, -2, 1, -3},
+        {-1, -1, 3, 4, 5, 6},         {-1, -2, 1, 1, 1, 1},
+        {-1, -1, -2, -2, -3, -3},     {-1, -2, -3, -4, -5, -6},
+        {-1, -2, 1, 2, 3, 4, -3, -4}, {-1, -2, 3, 4, 1, 2, -3, -4},
+        {-1, 1, -3, 2, 3, -2, 4, -4}, {-1, 2, -2, 4, 1, -3, 3, -4},
+        {-1, 1, 2, -2, -3, 3, 4, -4}, {-1, 2, 1, -2, -3, 4, 3, -4},
+        {-1, -2, -3, -4, 3, 4, 3, 4}, {-1, -2, -1, -2, 1, 2, 3, 4},
+        {-1, 1, -3, 1, 2, -2, 2, -4}, {-1, 2, -1, 4, 1, -2, 3, -2},
+        {-1, 1, 1, -2, -3, 2, 2, -4}, {-1, 2, 1, -1, -2, 4, 3, -2},
+        {-1, -1, -2, -2, 1, 2, 1, 2}, {-1, -2, -1, -2, 1, 1, 2, 2},
+        {-1, 1, -2, 1, -1, 2, -2, 2}, {-1, 1, -1, 2, -2, 1, -2, 2},
+        {-1, -2, 1, 1, -1, -2, 2, 2}, {-1, -1, 1, 2, -2, -2, 1, 2},
+    };
+
+    const int kMax3 = 6;  // number of permutations on 3 elements
+    const std::array<int, 3> perm[kMax3] = {{0, 1, 2}, {0, 2, 1}, {1, 0, 2},
+                                            {1, 2, 0}, {2, 0, 1}, {2, 1, 0}};
+    par_dims = {dims, dims + 1, dims + 2};
+    iMax = sizeof(feasible_dims_3) / sizeof(feasible_dims_3[0]);
+    assert(kMax3 * iMax / 3 ==
+           sizeof(expected_val_3) / sizeof(expected_val_3[0]));
+    // Loop for all triples of nvinfer1::Dims from feasible_dims_3.
+    for (int i = 0; i < iMax; i += 3) {
+      // Loop for all permutations on 3 elements.
+      for (int k = 0; k < kMax3; k++) {
+        // Constructing dims for tensors 'cond', 'then' and 'else`.
+        for (int j = 0; j < 3; j++)
+          set_dimension(feasible_dims_3 + i + perm[k][j], dims[j]);
+
+        const auto* expect = expected_val_3 + kMax3 * (i / 3) + k;
+        assign_values(par_dims, par_value, data_cond, exp_dims, true, expect);
+        run_test(node, *exp_dims);
+      }
+    }
+  }  // trt_mode_ == TrtTestMode::kExplicitBatch
+
+  // Tests for dims('cond') == dims('then') == dims('else').
+  for (auto dims : dims_params) {
+    par_dims = {&dims, &dims, &dims};
+    assign_values(par_dims, par_value, data_cond);
+
+    // Loop over all possible values of type_else (type_then = tf_type_).
+    for (const auto type_else : data_types) {
+      par_type[2] = type_else;
+      set_parameters();
+      if ((par_type[1] == DT_INT32 || par_type[2] == DT_INT32) &&
+          par_type[1] != par_type[2]) {
+        // ConvertSelectV2::Validation() should fail when exactly one of
+        // (type_then, type_else) is equal to nvinfer1::DataType::kINT32.
+        nvinfer1::DataType trt_type[2];
+        for (int i = 0; i < 2; i++) {
+          TF_ASSERT_OK(TfTypeToTrtType(par_type[i + 1], trt_type + i));
+        }
+
+        err_msg = then_else_dtypes_error_msg(trt_type[0], trt_type[1], node);
+        RunValidationAndConversion(node, error::INVALID_ARGUMENT, err_msg);
+      } else {
+        TestOpConverter("my_select", node, dims, status, status,
+                        ElementsAreArray(expected_output));
+      }
+    }
+  }
+}
+#endif
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

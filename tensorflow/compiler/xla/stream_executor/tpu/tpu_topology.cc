@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 
+#include <cstdint>
+
 #include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
@@ -34,15 +36,15 @@ TpuDimensionsExternal TpuCoreLocationExternal::host_coordinates() const {
   return {x, y, z};
 }
 
-int32 TpuCoreLocationExternal::index() const {
+int32_t TpuCoreLocationExternal::index() const {
   return tpu::ExecutorApiFn()->TpuCoreLocation_IndexFn(core_location_);
 }
 
-int32 TpuCoreLocationExternal::Id() const {
+int32_t TpuCoreLocationExternal::Id() const {
   return tpu::ExecutorApiFn()->TpuCoreLocation_IdFn(core_location_);
 }
 
-int32 TpuHostLocationExternal::Id() const {
+int32_t TpuHostLocationExternal::Id() const {
   return tpu::ExecutorApiFn()->TpuHostLocation_IdFn(host_location_);
 }
 
@@ -61,23 +63,23 @@ std::vector<TpuCoreLocationExternal> TpuHostLocationExternal::Cores(
   return result;
 }
 
-int32 TpuTopologyExternal::LogicalDevicesPerHost(
+int32_t TpuTopologyExternal::LogicalDevicesPerHost(
     TpuCoreTypeEnum core_type) const {
   return tpu::ExecutorApiFn()->TpuTopology_LogicalDevicesPerHostFn(topology_,
                                                                    core_type);
 }
 
-int32 TpuTopologyExternal::LogicalDevicesPerChip(
+int32_t TpuTopologyExternal::LogicalDevicesPerChip(
     TpuCoreTypeEnum core_type) const {
   return tpu::ExecutorApiFn()->TpuTopology_LogicalDevicesPerChipFn(topology_,
                                                                    core_type);
 }
 
-int32 TpuTopologyExternal::HostCount() const {
+int32_t TpuTopologyExternal::HostCount() const {
   return tpu::ExecutorApiFn()->TpuTopology_HostCountFn(topology_);
 }
 
-int32 TpuTopologyExternal::ChipsPerHost() const {
+int32_t TpuTopologyExternal::ChipsPerHost() const {
   return tpu::ExecutorApiFn()->TpuTopology_ChipsPerHostFn(topology_);
 }
 

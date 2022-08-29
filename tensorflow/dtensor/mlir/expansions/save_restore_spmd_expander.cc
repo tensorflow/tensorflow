@@ -85,7 +85,7 @@ mlir::Value GetAllCandidateCheckpointPrefixes(mlir::OpBuilder& builder,
               prefix.getType().dyn_cast<mlir::RankedTensorType>(), prefix,
               StringConst(builder, prefix.getLoc(),
                           llvm::SmallVector<llvm::StringRef>(
-                              {absl::StrCat("_device_", 0)})))
+                              {DeviceSuffix(0, mesh.num_devices())})))
           .z();
 
   for (int64_t device_id = 1; device_id < mesh.num_devices(); ++device_id) {
@@ -96,7 +96,7 @@ mlir::Value GetAllCandidateCheckpointPrefixes(mlir::OpBuilder& builder,
                 prefix.getType().dyn_cast<mlir::RankedTensorType>(), prefix,
                 StringConst(builder, prefix.getLoc(),
                             llvm::SmallVector<llvm::StringRef>(
-                                {absl::StrCat("_device_", device_id)})))
+                                {DeviceSuffix(device_id, mesh.num_devices())})))
             .z();
 
     new_prefix = builder
@@ -294,8 +294,8 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
       // Builds the per device saving spec, that takes care of tensor_name
       // uniqueness requirement. Each save op should use new_tensor_indices and
       // new_specs to map the corresponding saving tensor and its slice spec.
-      SaveOpSpecs specs =
-          BuildPerDeviceSave(per_device_specs, device_id, prefix);
+      SaveOpSpecs specs = BuildPerDeviceSave(per_device_specs, device_id,
+                                             prefix, mesh.num_devices());
       const std::vector<std::vector<int>>& new_tensor_indices =
           specs.tensor_indices;
       const std::vector<std::vector<std::string>>& new_specs =
@@ -490,12 +490,14 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
   mlir::Value checkpoint_prefixes = else_fn_block->getArgument(0);
 
   bool allow_missing_files = false;
+  bool dtensor_checkpoint_v2 = !merge_v2.allow_missing_files();
 
-  // If DTensorCheckpointV2 is enabled, then each string in
-  // `checkpoint_prefixes` tensor is missing a "device_id_" suffix that we
-  // generated from SaveV2 SPMD Expansion. So, generate all the possible
-  // suffixes and use that as the `checkpoint_prefixes` argument.
-  if (DTensorCheckpointV2Enabled()) {
+  // To differentiate DTensorCheckpoint V1 from V2, allow_missing_files,
+  // a boolean attribute, will be used. If allow_missing_files is set to True
+  // (the default value is False), this means this op was explicitly called by
+  // DTensor and thus it is V1. This special casing will be removed once
+  // full migration to V2 occurs.
+  if (dtensor_checkpoint_v2) {
     allow_missing_files = true;
     TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
     checkpoint_prefixes = GetAllCandidateCheckpointPrefixes(

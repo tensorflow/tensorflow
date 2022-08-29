@@ -25,14 +25,14 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
-#include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/compiler/xla/pjrt/nccl_id_store.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_ROCM
@@ -43,12 +43,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/stream_executor/tf_allocator_adapter.h"
 
 namespace xla {
 namespace {
@@ -381,13 +381,8 @@ Status BuildDistributedDevices(
   for (const auto& device : local_device_states) {
     TF_RET_CHECK(device.second == nullptr);
   }
-  std::vector<GlobalDeviceId> sorted_global_device_ids;
-  sorted_global_device_ids.reserve(gpu_device_ids.size());
-  for (const auto& e : gpu_device_ids) {
-    sorted_global_device_ids.push_back(e.second);
-  }
   gpu_executable_run_options->set_gpu_global_device_ids(
-      std::move(sorted_global_device_ids));
+      std::move(gpu_device_ids));
 #ifdef GOOGLE_CUDA
   auto nccl_id_store = std::make_shared<NcclIdStore>(
       node_id, distributed_client, device_to_node);

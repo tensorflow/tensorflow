@@ -58,17 +58,6 @@ PYBIND11_MODULE(_mlirHlo, m) {
       },
       py::arg("context"), py::arg("load") = true);
 
-  m.def(
-      "register_chlo_dialect",
-      [](MlirContext context, bool load) {
-        MlirDialectHandle chloDialect = mlirGetDialectHandle__chlo__();
-        mlirDialectHandleRegisterDialect(chloDialect, context);
-        if (load) {
-          mlirDialectHandleLoadDialect(chloDialect, context);
-        }
-      },
-      py::arg("context"), py::arg("load") = true);
-
   //
   // Passes.
   //

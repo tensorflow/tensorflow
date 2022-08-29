@@ -90,6 +90,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -129,7 +130,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};

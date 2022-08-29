@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 namespace {

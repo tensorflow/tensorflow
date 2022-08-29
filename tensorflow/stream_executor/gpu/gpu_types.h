@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// GPU (ROCm / CUDA) specific type handle resolution
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_TYPES_H_
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_TYPES_H_
 

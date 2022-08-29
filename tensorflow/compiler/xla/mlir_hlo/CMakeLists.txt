@@ -131,6 +131,14 @@ link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 
 #-------------------------------------------------------------------------------
+# StableHLO configuration
+#-------------------------------------------------------------------------------
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/stablehlo)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/stablehlo)
+set(LLVM_TABLEGEN_FLAGS -I ${MLIR_HLO_SOURCE_DIR}/stablehlo)
+
+#-------------------------------------------------------------------------------
 # Python configuration
 #-------------------------------------------------------------------------------
 
@@ -153,6 +161,7 @@ add_custom_target(check-mlir-hlo)
 
 add_subdirectory(include/mlir-hlo)
 add_subdirectory(lib)
+add_subdirectory(stablehlo)
 add_subdirectory(tools)
 add_subdirectory(tosa)
 add_subdirectory(tests)

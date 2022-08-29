@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_topology.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 
 namespace tensorflow {
 namespace tpu {

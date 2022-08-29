@@ -202,7 +202,7 @@ void LoopOp::build(OpBuilder &builder, OperationState &result,
 
   if (distributionTypes.has_value())
     result.addAttribute(getDistributionTypesAttrStrName(),
-                        distributionTypes.getValue());
+                        distributionTypes.value());
 
   // Add output types for `RankedTensorType` output arguments.
   for (Value output : outputs) {
@@ -265,7 +265,7 @@ void LoopOp::print(OpAsmPrinter &p) {
     p << " iterators" << iterator_types();
 
   if (distribution_types().has_value())
-    p << " distribution" << distribution_types().getValue();
+    p << " distribution" << distribution_types().value();
 
   p << ' ';
   p.printRegion(region(), /*printEntryBlockArgs=*/false);
@@ -1901,7 +1901,7 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
     OpAsmParser::UnresolvedOperand src;
     auto parseResult = parser.parseOptionalOperand(src, false);
 
-    if (!parseResult.hasValue()) return success();
+    if (!parseResult.has_value()) return success();
     srcs.push_back(src);
 
     if (parser.parseKeyword("into") ||

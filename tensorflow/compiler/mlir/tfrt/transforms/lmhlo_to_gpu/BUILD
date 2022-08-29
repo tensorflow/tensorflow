@@ -74,6 +74,7 @@ cc_library(
 #         "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
+#         "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
 #         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
 #         "@llvm-project//mlir:ArithmeticDialect",
 #         "@llvm-project//mlir:ControlFlowDialect",

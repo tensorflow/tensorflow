@@ -19,11 +19,11 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/tsl/platform/google/casts.h"
+#include "tensorflow/tsl/platform/google/casts.h"  // IWYU pragma: export
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
     defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
     defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
-#include "tensorflow/tsl/platform/default/casts.h"
+#include "tensorflow/tsl/platform/default/casts.h"  // IWYU pragma: export
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif

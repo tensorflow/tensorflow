@@ -91,10 +91,9 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   converter.AddConversion(FreeReturnedMemref);
 
   // Get an executable that might be specialized to the operands.
-  llvm::Expected<AsyncValuePtr<Executable>> executable =
+  absl::StatusOr<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands);
-  if (auto err = executable.takeError())
-    LOG(FATAL) << "Failed to specialize executable";
+  if (!executable.ok()) LOG(FATAL) << "Failed to specialize executable";
 
   // Wait for the compilation completion.
   host->Await({executable->CopyRef()});
@@ -127,7 +126,8 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
+  if (auto st = b.executable->InitializeCallFrame(operands, &call_frame);
+      !st.ok())
     LOG(FATAL) << "Failed to initialize call frame";
 
   // Execute async tasks in the HostContext work queue.
@@ -137,7 +137,7 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
 
   // Execute once.
   b.executable->Execute(call_frame, opts);
-  if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
+  if (auto st = b.executable->ReturnResults(b.converter, &call_frame); !st.ok())
     LOG(FATAL) << "Failed to return compiled kernel results";
 }
 
@@ -160,7 +160,8 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
+  if (auto st = b.executable->InitializeCallFrame(operands, &call_frame);
+      !st.ok())
     LOG(FATAL) << "Failed to initialize call frame";
 
   // Execute async tasks in the HostContext work queue.
@@ -171,7 +172,8 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
   for (auto _ : state) {
     call_frame.args[0] = nullptr;  // reset kernel context argument
     b.executable->Execute(call_frame, opts);
-    if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
+    if (auto st = b.executable->ReturnResults(b.converter, &call_frame);
+        !st.ok())
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 

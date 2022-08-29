@@ -692,11 +692,11 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.
   std::unique_ptr<Thunk> BuildConstantInitializerThunk(
-      absl::Span<const uint8_t> init_value, const BufferAllocation::Slice& dest,
-      const Shape& output_shape);
+      mlir::Operation* op, absl::Span<const uint8_t> init_value,
+      const BufferAllocation::Slice& dest, const Shape& output_shape);
 
   StatusOr<std::unique_ptr<Thunk>> TryBuildConstantInitializerThunk(
-      mlir::Value init_value, mlir::Value dest);
+      mlir::Operation* op, mlir::Value init_value, mlir::Value dest);
 
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(mlir::Operation* op,
                                                          mlir::Value init_value,

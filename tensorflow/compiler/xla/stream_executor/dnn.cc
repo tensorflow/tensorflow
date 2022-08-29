@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 
+#include <cstdint>
+
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -46,8 +48,8 @@ constexpr DataType ToDataType<float>::value;
 constexpr DataType ToDataType<double>::value;
 constexpr DataType ToDataType<Eigen::half>::value;
 constexpr DataType ToDataType<Eigen::bfloat16>::value;
-constexpr DataType ToDataType<int8>::value;
-constexpr DataType ToDataType<int32>::value;
+constexpr DataType ToDataType<int8_t>::value;
+constexpr DataType ToDataType<int32_t>::value;
 constexpr DataType ToDataType<std::complex<float>>::value;
 constexpr DataType ToDataType<std::complex<double>>::value;
 
@@ -563,7 +565,7 @@ std::string BatchDescriptor::ToShortString() const {
     case DataLayout::kBatchDepthYX32:
       return absl::StrCat(batch, depth, spatial, suffix, "(VECT_C)");
     default:
-      LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout());
+      LOG(FATAL) << "Unknown layout " << static_cast<int32_t>(layout());
       return "";  // Avoid return warning (unreachable)
   }
 }
@@ -672,7 +674,7 @@ std::string FilterDescriptor::ToShortString() const {
     case FilterLayout::kYXInputOutput:
       return absl::StrCat(spatial, id, od);
     default:
-      LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout());
+      LOG(FATAL) << "Unknown layout " << static_cast<int32_t>(layout());
       return "";  // Avoid return warning (unreachable)
   }
 }
@@ -879,7 +881,7 @@ port::Status DnnSupport::DoCtcLoss(
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const RnnStateTensorDescriptor& grads_desc, DeviceMemoryBase grads_data,
-    DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id) {
+    DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id) {
   return port::UnimplementedError("CtcLoss not implemented");
 }
 

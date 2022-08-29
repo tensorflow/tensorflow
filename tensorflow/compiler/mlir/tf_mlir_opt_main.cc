@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/Register.h"
 #include "tensorflow/core/platform/init_main.h"
 
 int main(int argc, char **argv) {
@@ -66,6 +67,7 @@ int main(int argc, char **argv) {
   mlir::registerAllDialects(registry);
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
+  mlir::stablehlo::registerAllDialects(registry);
   registry.insert<mlir::shape::ShapeDialect>();
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
   registry.insert<mlir::quant::QuantizationDialect>();

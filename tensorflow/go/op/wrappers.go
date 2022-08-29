@@ -54193,6 +54193,68 @@ func UniformQuantize(scope *Scope, input tf.Output, scales tf.Output, zero_point
 	return op.Output(0)
 }
 
+// UniformQuantizedClipByValueAttr is an optional argument to UniformQuantizedClipByValue.
+type UniformQuantizedClipByValueAttr func(optionalAttr)
+
+// UniformQuantizedClipByValueQuantizationAxis sets the optional quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization. Otherwise, it must be set within range [0, operand.dims()).
+// If not specified, defaults to -1
+func UniformQuantizedClipByValueQuantizationAxis(value int64) UniformQuantizedClipByValueAttr {
+	return func(m optionalAttr) {
+		m["quantization_axis"] = value
+	}
+}
+
+// Perform clip by value on the quantized Tensor `operand`.
+//
+// Given quantized `operand` which was quantized using `scales` and `zero_points`, performs clip by value using `min` and `max` values.
+// If quantization_axis is -1 (per-tensor quantized), the entire operand is clipped using scalar min, max.
+// Otherwise (per-channel quantized), the clipping is also done per-channel.
+//
+// Arguments:
+//
+//	operand: Must be a Tensor of T.
+//	min: The min value(s) to clip operand. Must be a Tensor of T.
+//
+// Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (operand.dim_size(quantization_axis),) (per-axis quantization).
+//
+//	max: The min value(s) to clip operand. Must be a Tensor of T.
+//
+// Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (operand.dim_size(quantization_axis),) (per-axis quantization).
+//
+//	scales: The float value(s) used as scale(s) when quantizing `operand`, `min` and `max`.
+//
+// Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (operand.dim_size(quantization_axis),) (per-axis quantization).
+//
+//	zero_points: The int32 value(s) used as zero_point(s) when quantizing `operand`, `min` and `max`.
+//
+// Same shape condition as scales.
+//
+//	quantization_min_val: The quantization min value that was used when operand was quantized.
+//	quantization_max_val: The quantization max value that was used when operand was quantized.
+//
+// Returns The output clipped Tensor of T, whose shape is same as operand.
+func UniformQuantizedClipByValue(scope *Scope, operand tf.Output, min tf.Output, max tf.Output, scales tf.Output, zero_points tf.Output, quantization_min_val int64, quantization_max_val int64, optional ...UniformQuantizedClipByValueAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"quantization_min_val": quantization_min_val, "quantization_max_val": quantization_max_val}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniformQuantizedClipByValue",
+		Input: []tf.Input{
+			operand, min, max, scales, zero_points,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // UniformQuantizedDotHybridAttr is an optional argument to UniformQuantizedDotHybrid.
 type UniformQuantizedDotHybridAttr func(optionalAttr)
 

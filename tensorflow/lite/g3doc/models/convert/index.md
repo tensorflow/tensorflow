@@ -19,7 +19,7 @@ depending on the content of your ML model. As the first step of that process,
 you should evaluate your model to determine if it can be directly converted.
 This evaluation determines if the content of the model is supported by the
 standard TensorFlow Lite runtime environments based on the TensorFlow operations
-it uses. If you model uses operations outside of the supported set, you have
+it uses. If your model uses operations outside of the supported set, you have
 the option to refactor your model or use advanced conversion techniques.
 
 The diagram below shows the high level steps in converting a model.

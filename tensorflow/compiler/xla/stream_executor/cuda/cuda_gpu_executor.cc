@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.h"
 
+#include <cstdint>
 #include <utility>
 
 #if defined(__APPLE__)
@@ -604,10 +605,10 @@ port::Status GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location,
                                             int value, uint64_t size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
-    // cudaMemset reinterprets "value" as a uint8.
-    uint8 byte_value = static_cast<uint8>(value);
-    uint32 pattern = (byte_value << 24) | (byte_value << 16) |
-                     (byte_value << 8) | byte_value;
+    // cudaMemset reinterprets "value" as a uint8_t.
+    uint8_t byte_value = static_cast<uint8_t>(value);
+    uint32_t pattern = (byte_value << 24) | (byte_value << 16) |
+                       (byte_value << 8) | byte_value;
     return GpuDriver::SynchronousMemsetUint32(
         context_, AsCudaDevicePtr(location), pattern, size / 4);
   }
@@ -646,7 +647,7 @@ port::Status GpuExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
 }
 
 port::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
-                                 uint8 pattern, uint64_t size) {
+                                 uint8_t pattern, uint64_t size) {
   VLOG(2) << "enqueueing memset8 operation onto stream " << stream
           << " at location " << location << " with size " << size
           << " and pattern " << std::hex << pattern;
@@ -656,7 +657,7 @@ port::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
 }
 
 port::Status GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
-                                   uint32 pattern, uint64_t size) {
+                                   uint32_t pattern, uint64_t size) {
   VLOG(2) << "enqueueing memset32 operation onto stream " << stream
           << " at location " << location << " with size " << size
           << " and pattern " << std::hex << pattern;

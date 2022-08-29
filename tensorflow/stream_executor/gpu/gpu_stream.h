@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Defines the GpuStream type - the CUDA-specific implementation of the generic
-// StreamExecutor Stream interface.
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 

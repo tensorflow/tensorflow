@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 
+#include <stdexcept>
 #include <string>
 
 #include "absl/container/inlined_vector.h"
@@ -128,7 +129,42 @@ struct CallSignature {
 };
 
 template <typename H>
-H AbslHashValue(H h, const CallSignature& s);
+H AbslHashValue(H h, const CallSignature& s) {
+  h = H::combine(std::move(h), s.dynamic_arg_treedefs,
+                 s.dynamic_arg_signatures);
+  for (const auto& name : s.dynamic_arg_names) {
+    h = H::combine(std::move(h), name.ptr());
+  }
+  h = H::combine(std::move(h), s.dynamic_arg_names.size());
+  for (const auto& static_arg : s.static_args) {
+    ssize_t hash;
+    try {
+      hash = pybind11::hash(static_arg);
+    } catch (const pybind11::error_already_set& e) {
+      if (!e.matches(PyExc_TypeError)) throw;
+      throw std::invalid_argument(absl::StrCat(
+          "Non-hashable static arguments are not supported. An error occurred "
+          "during a call to '",
+          s.function_name, "' while trying to hash an object of type ",
+          pybind11::cast<std::string>(
+              pybind11::str(pybind11::type::of(static_arg))),
+          ", ", pybind11::cast<std::string>(pybind11::str(static_arg)),
+          ". The error was:\n", e.what(), "\n"));
+    }
+    h = H::combine(std::move(h), hash);
+  }
+  h = H::combine(std::move(h), s.static_args.size());
+  for (const auto& name : s.static_arg_names) {
+    h = H::combine(std::move(h), name.ptr());
+  }
+  h = H::combine(std::move(h), s.static_arg_names.size());
+  h = H::combine(std::move(h), s.device, s.jax_enable_x64);
+
+  // We do not hash the extra_jit_context fields since calling Python hash
+  // functions is expensive (~300ns) and we don't expect a large number of
+  // different contexts.
+  return h;
+}
 
 // The resulting information of the parsing and conversion of the arguments.
 struct ParsedArgumentsAsBuffers {

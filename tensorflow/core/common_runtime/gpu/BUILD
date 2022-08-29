@@ -109,6 +109,28 @@ cc_library(
     ],
 )
 
+# For a more maintainable build this target should not exist and the headers
+# should  be split into the existing cc_library targets, but this change was
+# automatically  done so that we can remove long standing issues and complexity
+# in the build system. It's up to the OWNERS of this package to get rid of it or
+# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
+# Here it is used to avoid header parsing errors in packages where the feature
+# parse_headers was enabled since loose headers were not being parsed. See
+# go/loose-lsc-one-target-approach for more details.
+cc_library(
+    name = "loose_headers",
+    tags = ["avoid_dep"],
+    textual_hdrs = [
+        "gpu_event_mgr.h",
+        "gpu_managed_allocator.h",
+    ],
+    visibility = [
+        "//tensorflow/core/kernels:__pkg__",
+        "//tensorflow/core/kernels/image:__pkg__",
+        "//tensorflow/core/kernels/sparse:__pkg__",
+    ],
+)
+
 filegroup(
     name = "gpu_runtime_headers",
     srcs = [
@@ -146,7 +168,7 @@ tf_cuda_library(
     copts = tf_copts(),
     cuda_deps = [
         "@local_config_cuda//cuda:cudnn_header",
-        "//tensorflow/stream_executor/cuda:cuda_platform",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
         ":gpu_virtual_mem_allocator",
     ],
     deps = [
@@ -185,7 +207,7 @@ tf_cuda_library(
     ],
     hdrs = ["gpu_cudamallocasync_allocator.h"],
     cuda_deps = [
-        "//tensorflow/stream_executor/cuda:cuda_platform",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
     ],
     deps = [
         ":gpu_id_impl",
@@ -252,15 +274,15 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_id",
+        "//tensorflow/compiler/xla/stream_executor:platform",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/stream_executor:platform",
-        "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -462,6 +484,7 @@ tf_cuda_cc_test(
     deps = [
         ":gpu_id",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/xla/stream_executor:platform",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -474,7 +497,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/stream_executor:platform",
     ],
 )
 
@@ -487,11 +509,11 @@ tf_cc_test(
     deps = [
         ":gpu_init",
         ":gpu_virtual_mem_allocator",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/stream_executor/lib",
     ],
 )

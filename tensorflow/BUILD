@@ -944,6 +944,7 @@ package_group(
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
+        "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
         "//third_party/cloud_tpu/inference_converter/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
@@ -1215,12 +1216,16 @@ tf_cc_shared_library(
         ],
     }),
     per_os_targets = True,
+    roots = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:const_op",
+        "//tensorflow/cc:scope",
+    ],
     soversion = VERSION,
     static_deps = PACKAGE_STATIC_DEPS,
     visibility = ["//visibility:public"],
-    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = ":tensorflow_filtered_def_file",
-    # copybara:comment_end
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:env",
@@ -1231,9 +1236,6 @@ tf_cc_shared_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/cc:scope",
         "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",

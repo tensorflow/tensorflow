@@ -55,15 +55,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
 
 namespace xla {
 namespace gpu {

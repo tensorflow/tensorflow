@@ -19,13 +19,13 @@ limitations under the License.
 #include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
 
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
 
 namespace tensorflow {
 namespace {

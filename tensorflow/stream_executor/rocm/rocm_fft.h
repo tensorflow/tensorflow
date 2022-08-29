@@ -13,13 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// ROCM-specific support for FFT functionality -- this wraps the rocFFT library
-// capabilities, and is only included into ROCM implementation code -- it will
-// not introduce rocm headers into other code.
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_
 
+<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
 
 #include "rocm/rocm_config.h"
@@ -147,5 +144,8 @@ class ROCMFft : public fft::FftSupport {
 
 }  // namespace gpu
 }  // namespace stream_executor
+=======
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_fft.h"
+>>>>>>> google_upstream/master
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_

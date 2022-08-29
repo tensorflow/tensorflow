@@ -41,11 +41,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace se = ::stream_executor;
 

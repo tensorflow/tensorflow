@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 
+#include <cstdint>
+
 #include "absl/strings/str_cat.h"
 
 namespace stream_executor {
@@ -29,7 +31,7 @@ std::string TransposeString(Transpose t) {
     case Transpose::kConjugateTranspose:
       return "ConjugateTranspose";
     default:
-      LOG(FATAL) << "Unknown transpose " << static_cast<int32>(t);
+      LOG(FATAL) << "Unknown transpose " << static_cast<int32_t>(t);
   }
 }
 
@@ -40,7 +42,7 @@ std::string UpperLowerString(UpperLower ul) {
     case UpperLower::kLower:
       return "Lower";
     default:
-      LOG(FATAL) << "Unknown upperlower " << static_cast<int32>(ul);
+      LOG(FATAL) << "Unknown upperlower " << static_cast<int32_t>(ul);
   }
 }
 
@@ -51,7 +53,7 @@ std::string DiagonalString(Diagonal d) {
     case Diagonal::kNonUnit:
       return "NonUnit";
     default:
-      LOG(FATAL) << "Unknown diagonal " << static_cast<int32>(d);
+      LOG(FATAL) << "Unknown diagonal " << static_cast<int32_t>(d);
   }
 }
 
@@ -62,7 +64,7 @@ std::string SideString(Side s) {
     case Side::kRight:
       return "Right";
     default:
-      LOG(FATAL) << "Unknown side " << static_cast<int32>(s);
+      LOG(FATAL) << "Unknown side " << static_cast<int32_t>(s);
   }
 }
 
@@ -114,7 +116,7 @@ std::string DataTypeString(DataType ty) {
     case DataType::kComplexDouble:
       return "complex f64";
     default:
-      LOG(FATAL) << "Unknown DataType " << static_cast<int32>(ty);
+      LOG(FATAL) << "Unknown DataType " << static_cast<int32_t>(ty);
   }
 }
 

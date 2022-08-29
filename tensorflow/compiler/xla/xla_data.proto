@@ -173,6 +173,12 @@ message LayoutProto {
   // a backend-specific manner.
   int64 memory_space = 8;
 
+  // The physical, on-device shape used to represent the shape this layout
+  // belongs to. Only used for sparse arrays.
+  // The layout(s) contained within the physical shape should not also contain
+  // a physical shape.
+  ShapeProto physical_shape = 10;
+
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.
 

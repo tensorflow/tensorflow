@@ -18,8 +18,8 @@ limitations under the License.
 #include <sstream>
 
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/core/platform/status_matchers.h"
 
 namespace xla {
 namespace {
@@ -114,6 +114,17 @@ TEST_F(LayoutUtilTest, CopyLayoutCSRArray) {
   *dst.mutable_layout()->mutable_minor_to_major() = {0, 1};
   EXPECT_TRUE(LayoutUtil::IsCSCArray(dst));
   EXPECT_FALSE(LayoutUtil::IsCSRArray(dst));
+
+  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  *src.mutable_layout()->mutable_physical_shape() = ShapeUtil::MakeTupleShape({
+      ShapeUtil::MakeShapeWithLayout(U32, {2}, {0}, {}, {Tile({100})}),
+      ShapeUtil::MakeShapeWithLayout(U32, {4}, {0}, {}, {Tile({100})}),
+      ShapeUtil::MakeShapeWithLayout(F32, {4}, {0}, {}, {Tile({100})}),
+  });
+  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+  dst.clear_layout();
+  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
 
   // If source is cleared, then destination should be cleared.
   src.clear_layout();
@@ -443,6 +454,41 @@ TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
   status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
   EXPECT_TRUE(status.ok());
+}
+
+TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout(
+      {1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {Tile({10, 10})});
+  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
+              tensorflow::testing::StatusIs(
+                  tensorflow::error::INVALID_ARGUMENT,
+                  ::testing::HasSubstr(
+                      "layout has tiles, but the shape is a sparse array")));
+  shape.mutable_layout()->clear_tiles();
+  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
+              tensorflow::testing::IsOk());
+  *shape.mutable_layout()->mutable_physical_shape() =
+      ShapeUtil::MakeShape(F32, {6});
+  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
+              tensorflow::testing::IsOk());
+  *shape.mutable_layout()
+       ->mutable_physical_shape()
+       ->mutable_layout()
+       ->mutable_physical_shape() = ShapeUtil::MakeShape(S32, {10});
+  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
+              tensorflow::testing::StatusIs(
+                  tensorflow::error::INVALID_ARGUMENT,
+                  ::testing::HasSubstr("layout has a physical_shape, whose "
+                                       "layout also has a physical shape")));
+  shape.mutable_layout()->mutable_physical_shape()->clear_layout();
+  shape.mutable_layout()->clear_dim_level_types();
+  EXPECT_THAT(
+      LayoutUtil::ValidateLayoutInShape(shape),
+      tensorflow::testing::StatusIs(
+          tensorflow::error::INVALID_ARGUMENT,
+          ::testing::HasSubstr(
+              "layout has a physical_shape, but is not a sparse array")));
 }
 
 TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {

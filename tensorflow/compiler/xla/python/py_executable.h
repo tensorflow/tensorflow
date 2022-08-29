@@ -120,6 +120,13 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   ExecuteShardedOnLocalDevicesWithTokens(
       absl::Span<const std::vector<PyBuffer::object>> args);
 
+  StatusOr<std::vector<PyShardedBuffer>> ExecuteShardedOnLocalDevices(
+      absl::Span<PyShardedBuffer* const> args);
+
+  StatusOr<std::pair<std::vector<PyShardedBuffer>, PyShardedToken>>
+  ExecuteShardedOnLocalDevicesWithTokens(
+      absl::Span<PyShardedBuffer* const> args);
+
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
   Traceback* traceback() { return traceback_.get(); }
@@ -138,11 +145,6 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
  private:
   StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteInternal(
       absl::Span<PyBuffer::object const> args, PjRtDevice* device,
-      std::optional<std::vector<PjRtFuture<Status>>>& returned_futures);
-  StatusOr<
-      std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
-  ExecuteShardedOnLocalDevicesInternal(
-      absl::Span<const std::vector<PyBuffer::object>> args,
       std::optional<std::vector<PjRtFuture<Status>>>& returned_futures);
 
   friend class PyClient;

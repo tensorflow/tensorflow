@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/analysis/resource_dataflow.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -39,65 +40,7 @@ limitations under the License.
 namespace mlir {
 namespace tf_saved_model {
 
-// The value of our lattice represents the GlobalTensorOp matching the value.
-struct ResourceLatticeValue {
-  explicit ResourceLatticeValue(GlobalTensorOp op = nullptr) {
-    if (op) ops.insert(op);
-  }
-
-  static ResourceLatticeValue getPessimisticValueState(MLIRContext *context) {
-    return ResourceLatticeValue();
-  }
-  static ResourceLatticeValue getPessimisticValueState(Value value) {
-    if (auto barg = value.dyn_cast<BlockArgument>()) {
-      if (func::FuncOp func =
-              dyn_cast<func::FuncOp>(barg.getOwner()->getParentOp())) {
-        SymbolTable symbol_table(func->getParentOfType<ModuleOp>());
-        auto global_tensor = LookupBoundInputOfType<GlobalTensorOp>(
-            func, barg.getArgNumber(), symbol_table);
-        return ResourceLatticeValue(global_tensor);
-      }
-    }
-    return ResourceLatticeValue();
-  }
-
-  bool operator==(const ResourceLatticeValue &rhs) const {
-    return ops == rhs.ops;
-  }
-
-  static ResourceLatticeValue join(const ResourceLatticeValue &lhs,
-                                   const ResourceLatticeValue &rhs) {
-    // Take union of both sets of possible GlobalTensorOp values that can be
-    // referenced here.
-    ResourceLatticeValue ret;
-    ret.ops.insert(lhs.ops.begin(), lhs.ops.end());
-    ret.ops.insert(rhs.ops.begin(), rhs.ops.end());
-    return ret;
-  }
-
-  void print(raw_ostream &os) const {
-    llvm::interleaveComma(ops, os << "["), os << "]";
-  }
-
-  // The location which originated the int value.
-  // IR constructs (i.e., GlobalTensorOp) are not const-correct.
-  mutable DenseSet<GlobalTensorOp> ops;
-};
-
 namespace {
-class ResourceAnalysis : public dataflow::SparseDataFlowAnalysis<
-                             dataflow::Lattice<ResourceLatticeValue>> {
- public:
-  using StateT = dataflow::Lattice<ResourceLatticeValue>;
-  using dataflow::SparseDataFlowAnalysis<StateT>::SparseDataFlowAnalysis;
-  ~ResourceAnalysis() override = default;
-
-  void visitOperation(Operation *op, ArrayRef<const StateT *> operands,
-                      ArrayRef<StateT *> results) override {
-    LLVM_DEBUG(llvm::dbgs() << "ResAn: Visiting operation: " << *op << "\n");
-    markAllPessimisticFixpoint(results);
-  }
-};
 
 struct FreezeGlobalTensorsPass
     : public FreezeGlobalTensorsPassBase<FreezeGlobalTensorsPass> {
@@ -113,7 +56,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
 
   DataFlowSolver solver;
   solver.load<dataflow::DeadCodeAnalysis>();
-  solver.load<ResourceAnalysis>();
+  solver.load<TF::ResourceDataflowAnalysis>();
   if (failed(solver.initializeAndRun(module))) return signalPassFailure();
 
   DenseSet<GlobalTensorOp> remaining_global_tensor_ops;
@@ -145,13 +88,14 @@ void FreezeGlobalTensorsPass::runOnOperation() {
         continue;
 
       // Check that there is only a single global tensor associated with arg.
-      const ResourceAnalysis::StateT *latticeElement =
-          solver.lookupState<ResourceAnalysis::StateT>(val);
+      const TF::ResourceDataflowAnalysis::StateT *latticeElement =
+          solver.lookupState<TF::ResourceDataflowAnalysis::StateT>(val);
       if (!latticeElement || latticeElement->getValue().ops.size() != 1)
         continue;
 
       // Don't freeze mutable tensors.
-      if (latticeElement->getValue().ops.begin()->is_mutable()) {
+      Operation *op = *latticeElement->getValue().ops.begin();
+      if (llvm::cast<GlobalTensorOp>(op).is_mutable()) {
         freezeable[val] = false;
         continue;
       }
@@ -182,9 +126,10 @@ void FreezeGlobalTensorsPass::runOnOperation() {
     for (BlockArgument val : func.getArguments()) {
       if (!freezeable[val]) continue;
 
-      const ResourceAnalysis::StateT *latticeElement =
-          solver.lookupState<ResourceAnalysis::StateT>(val);
-      GlobalTensorOp global_tensor = *latticeElement->getValue().ops.begin();
+      const TF::ResourceDataflowAnalysis::StateT *latticeElement =
+          solver.lookupState<TF::ResourceDataflowAnalysis::StateT>(val);
+      Operation *op = *latticeElement->getValue().ops.begin();
+      GlobalTensorOp global_tensor = llvm::cast<GlobalTensorOp>(op);
 
       SmallVector<TF::ReadVariableOp, 4> read_variable_ops_to_erase;
       frozen_global_tensors.insert(global_tensor);

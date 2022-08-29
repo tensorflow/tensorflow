@@ -56,11 +56,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/gpu_passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/ChloOps.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
@@ -263,7 +263,6 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool embed_memref_prints,
       /*alignment=*/64,
       mlir::kernel_gen::transforms::populateExtraBufferizeDialects,
       mlir::kernel_gen::transforms::populateExtraBufferizePatterns));
-  // TODO(herhut): Enable once no-longer broken.
   pm.addNestedPass<FuncOp>(::mlir::bufferization::createBufferHoistingPass());
   pm.addNestedPass<FuncOp>(mlir::bufferization::createPromoteBuffersToStackPass(
       [](Value alloc) { return IsSmallAlloc(alloc); }));
@@ -272,9 +271,8 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool embed_memref_prints,
       ::mlir::bufferization::createBufferDeallocationPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  // Apply the mapping and go to GPU. We cannot do this earlier due to missing
-  // interfaces on the GPU dialect.
-  // TODO(b/174830459): Move up once implemented.
+  // Apply the mapping and go to GPU. We cannot do this earlier as the GPU
+  // dialect requires memrefs.
   pm.addNestedPass<FuncOp>(mlir::createParallelLoopToGpuPass());
 
   // Some basic cleanup.

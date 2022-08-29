@@ -25,6 +25,7 @@ cc_library(
         "jpeg_handle.cc",
         "jpeg_mem.cc",
         "//tensorflow/core/platform:jpeg_hdrs",
+        "//tensorflow/tsl/platform:jpeg_hdrs",
     ],
     hdrs = [
         "jpeg_handle.h",
@@ -50,12 +51,14 @@ cc_library(
         "jpeg_handle.cc",
         "jpeg_mem.cc",
         "//tensorflow/core/platform:jpeg_hdrs",
+        "//tensorflow/tsl/platform:jpeg_hdrs",
     ]),
     hdrs = [
         "jpeg_handle.h",
         "jpeg_mem.h",
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/platform:jpeg_internal_hdrs",
+        "//tensorflow/tsl/platform:jpeg_internal_hdrs",
         "//tensorflow/tsl/platform/default:integral_types.h",
         "//tensorflow/tsl/platform/default:logging.h",
     ],

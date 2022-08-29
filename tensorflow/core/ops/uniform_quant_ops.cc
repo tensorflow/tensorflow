@@ -139,4 +139,17 @@ REGISTER_OP("UniformQuantizedDotHybrid")
     .Attr("rhs_quantization_max_val: int")
     .SetShapeFn(DotHybridShape);
 
+REGISTER_OP("UniformQuantizedClipByValue")
+    .Input("operand: T")
+    .Input("min: T")
+    .Input("max: T")
+    .Input("scales: float")
+    .Input("zero_points: int32")
+    .Output("output: T")
+    .Attr("T: {qint32}")
+    .Attr("quantization_axis: int = -1")
+    .Attr("quantization_min_val: int")
+    .Attr("quantization_max_val: int")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 }  // namespace tensorflow

@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_RUNTIME_CUSTOM_CALL_REGISTRY_H_
 
 #include <memory>
+#include <string_view>
 
-#include "llvm/ADT/StringRef.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 
 namespace xla {
@@ -47,7 +47,7 @@ class CustomCallRegistry {
 
   void Register(std::unique_ptr<class CustomCall> custom_call);
 
-  class CustomCall* Find(llvm::StringRef callee) const;
+  class CustomCall* Find(std::string_view callee) const;
 
  private:
   class Impl;

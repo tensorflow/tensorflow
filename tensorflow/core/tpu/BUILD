@@ -13,11 +13,11 @@ package(
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
         "//tensorflow/compiler/xla:__subpackages__",
+        "//tensorflow/compiler/xla/stream_executor/tpu:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/profiler/backends/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
-        "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -189,11 +189,13 @@ cc_library(
         ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_tpu_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform/cloud:gcs_file_system",
-        "//tensorflow/stream_executor/tpu:tpu_executor",
-        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/core/tpu:pjrt_api",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -208,7 +210,7 @@ cc_library(
         ":libtftpu_header",
         ":tpu_executor_api",
         ":tpu_ops_c_api_hdrs",
-        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
 
@@ -218,7 +220,7 @@ cc_library(
     hdrs = ["tpu_executor_api.h"],
     deps = [
         ":libtftpu_header",
-        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
 
@@ -323,21 +325,21 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
+        "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_node_context",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_op_executable",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_executable_info_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_execute_op_options",
-        "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:stream",
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/tpu:c_api_conversions",
-        "//tensorflow/stream_executor/tpu:status_helper",
-        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
-        "//tensorflow/stream_executor/tpu:tpu_node_context",
-        "//tensorflow/stream_executor/tpu:tpu_op_executable",
-        "//tensorflow/stream_executor/tpu:tpu_platform_interface",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
     ],
@@ -357,15 +359,15 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_module_group",
         "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor/tpu:c_api_conversions",
-        "//tensorflow/stream_executor/tpu:c_api_decl",
-        "//tensorflow/stream_executor/tpu:proto_helper",
-        "//tensorflow/stream_executor/tpu:status_helper",
-        "//tensorflow/stream_executor/tpu:tpu_executable",
-        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
-        "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
-        "//tensorflow/stream_executor/tpu:tpu_platform_id",
+        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
+        "//tensorflow/compiler/xla/stream_executor/tpu:proto_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executable",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_id",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/types:span",
     ],
@@ -426,9 +428,9 @@ cc_library(
         ":tpu_initializer_helper",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/tpu:tpu_executor",
-        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
     alwayslink = True,
 )
@@ -453,4 +455,19 @@ cc_library(
         "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_configuration_rewrite_pass",
         "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_rewrite_helpers",
     ] + if_libtpu(["//tensorflow/compiler/jit"]),
+)
+
+# For a more maintainable build this target should not exist and the headers
+# should  be split into the existing cc_library targets, but this change was
+# automatically  done so that we can remove long standing issues and complexity
+# in the build system. It's up to the OWNERS of this package to get rid of it or
+# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
+# Here it is used to avoid header parsing errors in packages where the feature
+# parse_headers was enabled since loose headers were not being parsed. See
+# go/loose-lsc-one-target-approach for more details.
+cc_library(
+    name = "loose_headers",
+    tags = ["avoid_dep"],
+    textual_hdrs = ["tpu_global_init.h"],
+    visibility = ["//tensorflow_serving/model_servers:__pkg__"],
 )

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_MUTEX_H_
-#define TENSORFLOW_CORE_PLATFORM_DEFAULT_MUTEX_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_MUTEX_H_
+#define TENSORFLOW_TSL_PLATFORM_DEFAULT_MUTEX_H_
 
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/mutex.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/mutex.h
@@ -36,4 +36,4 @@ std::cv_status condition_variable::wait_for(
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_MUTEX_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_MUTEX_H_

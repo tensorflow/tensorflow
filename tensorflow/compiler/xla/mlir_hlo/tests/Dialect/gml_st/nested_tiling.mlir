@@ -1,7 +1,7 @@
-// RUN: mlir-hlo-opt %s --gml-tiling="tile-sizes=[16,8],[4,1]" --cse | \
+// RUN: mlir-hlo-opt %s --gml-deprecated-tiling="tile-sizes=[16,8],[4,1]" --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-PERFECT
 
-// RUN: mlir-hlo-opt %s --gml-tiling="tile-sizes=[17,9],[3,3]" --cse | \
+// RUN: mlir-hlo-opt %s --gml-deprecated-tiling="tile-sizes=[17,9],[3,3]" --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-IMPERFECT
 
 func.func @identity(%arg: tensor<64x32xf32>) -> tensor<64x32xf32> {

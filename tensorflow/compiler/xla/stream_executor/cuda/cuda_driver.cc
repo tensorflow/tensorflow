@@ -18,12 +18,14 @@ limitations under the License.
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <cstdint>
 #include <map>
 #include <set>
 #include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/base/const_init.h"
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/debugging/leak_check.h"
 #include "absl/memory/memory.h"
@@ -49,7 +51,7 @@ bool FLAGS_gpuexec_cuda_device_0_only = false;
 #define RETURN_IF_CUDA_RES_ERROR(expr, ...)                            \
   do {                                                                 \
     CUresult _res = (expr);                                            \
-    if (TF_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                      \
+    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                    \
       return port::InternalError(absl::StrCat(                         \
           __VA_ARGS__, ": ", ::stream_executor::gpu::ToString(_res))); \
     }                                                                  \
@@ -58,7 +60,7 @@ bool FLAGS_gpuexec_cuda_device_0_only = false;
 #define FAIL_IF_CUDA_RES_ERROR(expr, ...)                   \
   do {                                                      \
     CUresult _res = (expr);                                 \
-    if (TF_PREDICT_FALSE(_res != CUDA_SUCCESS)) {           \
+    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {         \
       LOG(FATAL) << absl::StrCat(__VA_ARGS__) << ": "       \
                  << ::stream_executor::gpu::ToString(_res); \
     }                                                       \
@@ -566,7 +568,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ port::Status GpuDriver::SynchronousMemsetUint8(
-    GpuContext* context, CUdeviceptr location, uint8 value, size_t size) {
+    GpuContext* context, CUdeviceptr location, uint8_t value, size_t size) {
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(cuMemsetD8(location, value, size),
                            "Failed to memset memory");
@@ -574,7 +576,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ port::Status GpuDriver::SynchronousMemsetUint32(
-    GpuContext* context, CUdeviceptr location, uint32 value,
+    GpuContext* context, CUdeviceptr location, uint32_t value,
     size_t uint32_count) {
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(cuMemsetD32(location, value, uint32_count),
@@ -583,8 +585,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ port::Status GpuDriver::AsynchronousMemsetUint8(
-    GpuContext* context, CUdeviceptr location, uint8 value, size_t uint32_count,
-    CUstream stream) {
+    GpuContext* context, CUdeviceptr location, uint8_t value,
+    size_t uint32_count, CUstream stream) {
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(
       cuMemsetD8Async(location, value, uint32_count, stream),
@@ -593,7 +595,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 /* static */ port::Status GpuDriver::AsynchronousMemsetUint32(
-    GpuContext* context, CUdeviceptr location, uint32 value,
+    GpuContext* context, CUdeviceptr location, uint32_t value,
     size_t uint32_count, CUstream stream) {
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(

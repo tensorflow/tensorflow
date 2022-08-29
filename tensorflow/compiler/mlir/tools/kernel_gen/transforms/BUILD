@@ -54,6 +54,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexDialect",
@@ -166,9 +167,9 @@ cc_library(
         "//tensorflow/core:lib",
     ] + if_cuda_is_configured([
         "//tensorflow/core/platform:cuda_libdevice_path",
-        "//tensorflow/stream_executor/gpu:asm_compiler",
+        "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
     ]) + if_rocm_is_configured([
-        "//tensorflow/stream_executor/gpu:asm_compiler",
+        "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
         "//tensorflow/core/platform:rocm_rocdl_path",
     ]),
 )

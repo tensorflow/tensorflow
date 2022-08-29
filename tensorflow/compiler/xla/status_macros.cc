@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include <algorithm>
+#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"

@@ -630,11 +630,11 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$args,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
     StrAttr:$call_target_name,
-    DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$has_side_effect,
     DefaultValuedStrAttr<StrAttr, "">:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
-    DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
+    DefaultValuedOptionalAttr<HLO_CustomCallApiVersionAttr,
                       "mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
                       $api_version,
     OptionalAttr<CustomCallTargetArgMappingAttr>:$target_arg_mapping
@@ -965,8 +965,8 @@ def LHLO_ScatterOp: LHLO_Op<"scatter", []> {
     Arg<LHLO_Buffer, "", [MemRead]>:$updates,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     ScatterDimensionNumbers:$scatter_dimension_numbers,
-    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
-    DefaultValuedAttr<BoolAttr, "false">:$unique_indices
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$indices_are_sorted,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$unique_indices
   );
 
   let regions = (region SizedRegion<1>:$update_computation);
@@ -1090,9 +1090,9 @@ class LHLO_CollectiveCommunicationOp<string name, list<Trait> traits = []> :
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
     I64ElementsAttr:$replica_groups,
-    DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$constrain_layout,
     OptionalAttr<ChannelHandle>:$channel_id,
-    DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids
   );
   let hasVerifier = 1;
   let extraClassDeclaration = [{
@@ -1209,7 +1209,7 @@ def LHLO_CholeskyOp: LHLO_Op<"cholesky", [SameOperandsElementType]> {
   let arguments = (ins
     Arg<LHLO_FpOrComplexBuffer, "", [MemRead]>:$a,
     Arg<LHLO_FpOrComplexBuffer, "", [MemWrite]>:$output,
-    DefaultValuedAttr<BoolAttr, "false">:$lower
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$lower
   );
 }
 
@@ -1338,8 +1338,8 @@ def LHLO_SortOp: LHLO_Op<"sort", [SameVariadicOperandSize, SameOperandsShape]> {
   let arguments = (ins
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
-    DefaultValuedAttr<I64Attr, "-1">:$dimension,
-    DefaultValuedAttr<BoolAttr, "false">:$is_stable
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$dimension,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stable
   );
 
   let regions = (region SizedRegion<1>:$comparator);

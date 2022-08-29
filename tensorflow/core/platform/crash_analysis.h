@@ -20,9 +20,9 @@ limitations under the License.
 
 // Include appropriate platform-dependent implementations
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/tsl/platform/google/crash_analysis.h"
+#include "tensorflow/tsl/platform/google/crash_analysis.h"  // IWYU pragma: export
 #else
-#include "tensorflow/tsl/platform/default/crash_analysis.h"
+#include "tensorflow/tsl/platform/default/crash_analysis.h"  // IWYU pragma: export
 #endif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CRASH_ANALYSIS_H_
