@@ -69,7 +69,7 @@ struct ConcatenateOpPattern : public OpRewritePattern<mhlo::ConcatenateOp> {
 
       // For all dimensions other than the concatenation dimension, we can copy
       // the size from any operand.
-      if (i != concatDim) {
+      if (i != static_cast<int64_t>(concatDim)) {
         dynamicInitSizes.push_back(
             rewriter.create<tensor::DimOp>(loc, anyOperand, i));
         continue;

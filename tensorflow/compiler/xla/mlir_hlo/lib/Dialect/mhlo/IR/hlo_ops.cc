@@ -6462,11 +6462,11 @@ struct Sign {
     return {};                                                       \
   }
 
-UNARY_FOLDER(NegOp, std::negate);
-UNARY_FOLDER(SignOp, Sign);
-UNARY_FOLDER_INT(NotOp, LogicalNot);
-UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven);
-UNARY_FOLDER_FLOAT(RoundOp, Round);
+UNARY_FOLDER(NegOp, std::negate)
+UNARY_FOLDER(SignOp, Sign)
+UNARY_FOLDER_INT(NotOp, LogicalNot)
+UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven)
+UNARY_FOLDER_FLOAT(RoundOp, Round)
 
 #undef UNARY_FOLDER
 #undef UNARY_FOLDER_INT
@@ -6652,11 +6652,11 @@ struct Xor {
 // Due to the other ops behaving differently in signed vs unsigned integers,
 // APInts need a special implementation. Currently, it replicates signed int
 // op behavior.
-BINARY_FOLDER(SubtractOp, std::minus);
-BINARY_FOLDER(DivOp, Divide);
-BINARY_FOLDER(RemOp, Remainder);
-BINARY_FOLDER(MaxOp, Max);
-BINARY_FOLDER(MinOp, Min);
+BINARY_FOLDER(SubtractOp, std::minus)
+BINARY_FOLDER(DivOp, Divide)
+BINARY_FOLDER(RemOp, Remainder)
+BINARY_FOLDER(MaxOp, Max)
+BINARY_FOLDER(MinOp, Min)
 
 bool isSplatZero(SplatElementsAttr attr) {
   if (!attr) return false;
