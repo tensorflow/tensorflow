@@ -3250,6 +3250,34 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(exchanged, op::Shape("s32[3,2,1,7,5]")));
 }
 
+TEST_F(SpmdPartitioningTest, TileToPartialReplicateHaloExchangeWithPadding) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[2,123]{1,0} parameter(0), sharding={devices=[8,1]0,1,2,3,4,5,6,7}
+  ROOT %reshape = f32[2,1,123]{2,1,0} reshape(%input),
+    sharding={devices=[2,1,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // Left halo size should be 3 with 3 collective-permute.
+  auto reshape =
+      AllOf(op::Reshape(op::AllReduce(op::Select(
+                _,
+                op::DynamicSlice(
+                    op::Concatenate(op::CollectivePermute(op::Parameter()),
+                                    op::CollectivePermute(op::Parameter()),
+                                    op::CollectivePermute(op::Parameter()),
+                                    op::Parameter()),
+                    _, _),
+                _))),
+            op::Shape("f32[1,1,123]"));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, reshape);
+}
+
 // Produces an invalid module after transformation.
 TEST_F(SpmdPartitioningTest, InceptionV3_4_way_ReduceWindowDilated) {
   absl::string_view hlo_string = R"(

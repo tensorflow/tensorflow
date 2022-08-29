@@ -364,12 +364,16 @@ std::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
     //
     // 1. Calculate left_halo size.
     // left-halo size is
-    //   (src_per_shard_size - dst_per_shard_size) * i / replicate_factor
+    //   (src_per_shard_size - dst_per_shard_size) * floor(i / replicate_factor)
     int64_t replicate_factor = src_sharding.tile_assignment().dim(dim) /
                                dst_sharding.tile_assignment().dim(dim);
+
     OffsetCalculation left_halo_size_function =
-        OffsetCalculation(MultiplyAddDivideOffsetCalculation(
-            src_per_shard_size - dst_per_shard_size, 0, replicate_factor));
+        OffsetCalculation(HloOpcode::kMultiply,
+                          OffsetCalculation(MultiplyAddDivideOffsetCalculation(
+                              0, src_per_shard_size - dst_per_shard_size, 1)),
+                          OffsetCalculation(MultiplyAddDivideOffsetCalculation(
+                              1, 0, replicate_factor)));
 
     // 2. Calculate right_halo size.
     // right-halo size is 0
