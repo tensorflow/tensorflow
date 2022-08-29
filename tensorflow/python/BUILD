@@ -3457,8 +3457,8 @@ filegroup(
         "//tensorflow/core/common_runtime/eager:context",  # tfe
         "//tensorflow/core/common_runtime/eager:tensor_handle",  # tfe
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
-        "//tensorflow/core/framework:attr_value_proto_cc_impl",  # tf_text
-        "//tensorflow/core/framework:op_def_proto_cc_impl",  # tf_text
+        "//tensorflow/core/framework:attr_value_proto_cc",  # tf_text
+        "//tensorflow/core/framework:op_def_proto_cc",  # tf_text
         "//tensorflow/core/function:runtime_client_cc",  # runtime_client_pybind
         "//tensorflow/core/grappler:devices",  # tf_cluster
         "//tensorflow/core/grappler:grappler_item",  # tf_item
