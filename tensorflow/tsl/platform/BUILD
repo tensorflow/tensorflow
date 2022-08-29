@@ -44,6 +44,7 @@ cc_library(
 filegroup(
     name = "lib_hdrs",
     srcs = [
+        "bfloat16.h",
         "init_main.h",
         "net.h",
         "stack_frame.h",
@@ -67,6 +68,7 @@ filegroup(
 filegroup(
     name = "framework_lite_hdrs",
     srcs = [
+        "bfloat16.h",
         "byte_order.h",
         "macros.h",
         "platform.h",
@@ -78,6 +80,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "bfloat16.h",
         "byte_order.h",
         "init_main.h",
         "intrusive_ptr.h",
@@ -122,6 +125,7 @@ exports_files(
         "net.h",
         "resource_loader.h",
         "stacktrace_handler.h",
+        "bfloat16.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -193,6 +197,7 @@ cc_library(
 filegroup(
     name = "tflite_portable_logging_hdrs",
     srcs = [
+        "bfloat16.h",
         "macros.h",
         "platform.h",
     ],
@@ -206,6 +211,7 @@ filegroup(
 filegroup(
     name = "jpeg_internal_hdrs",
     srcs = [
+        "bfloat16.h",
         "macros.h",
         "platform.h",
         "stringpiece.h",
@@ -220,6 +226,7 @@ filegroup(
 filegroup(
     name = "gif_internal_hdrs",
     srcs = [
+        "bfloat16.h",
         "macros.h",
         "platform.h",
     ],
@@ -321,6 +328,7 @@ cc_library(
 cc_library(
     name = "build_test",
     testonly = 1,
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/core/platform:__pkg__",
     ],
@@ -337,4 +345,23 @@ cc_library(
         ":stringpiece",
         ":threadpool_interface",
     ],
+)
+
+cc_library(
+    name = "bfloat16",
+    hdrs = ["bfloat16.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":byte_order",
+        "//third_party/eigen3",
+    ],
+)
+
+filegroup(
+    name = "lib_internal_private_hdrs",
+    srcs = [
+        "bfloat16.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//tensorflow/core:__pkg__"],
 )

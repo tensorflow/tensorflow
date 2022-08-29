@@ -141,8 +141,8 @@ cc_library(
     hdrs = ["bfloat16.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":byte_order",
-        "//third_party/eigen3",
+        "//tensorflow/core/platform:byte_order",
+        "//tensorflow/tsl/platform:bfloat16",
     ],
 )
 

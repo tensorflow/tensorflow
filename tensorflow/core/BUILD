@@ -1277,6 +1277,7 @@ filegroup(
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/lib/math:math_util.h",
         "//tensorflow/tsl/platform:legacy_lib_internal_headers",
+        "//tensorflow/tsl/platform:lib_internal_private_hdrs",
     ] + glob(
         [
             "lib/**/*.h",
