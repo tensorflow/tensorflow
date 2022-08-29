@@ -62,6 +62,7 @@ PjRtCApiClient::PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client)
   wrapped_ = c_client_->client.get();
 
   InitDevices();
+  LOG(INFO) << "PjRtCApiClient created.";
 }
 
 void PjRtCApiClient::InitDevices() {
