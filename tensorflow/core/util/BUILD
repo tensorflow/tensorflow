@@ -729,22 +729,13 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-<<<<<<< HEAD
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform:dso_loader",
-        "//tensorflow/stream_executor/rocm:rocblas_plugin",
-        "//tensorflow/stream_executor/rocm:rocblas_wrapper",
-        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
-        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
-	"//tensorflow/stream_executor/rocm:hipsolver_wrapper",
-=======
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
->>>>>>> google_upstream/master
+	"//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -766,14 +757,9 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/stream_executor/cuda:cusparse_lib",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
-<<<<<<< HEAD
-        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
-	"//tensorflow/stream_executor/rocm:hipsolver_wrapper",
-        "//tensorflow/stream_executor/rocm:hipsparse_wrapper",
-=======
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+	"//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:hipsparse_wrapper",
->>>>>>> google_upstream/master
     ]),
 )
 

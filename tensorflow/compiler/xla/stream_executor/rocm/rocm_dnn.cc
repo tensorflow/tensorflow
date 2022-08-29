@@ -27,27 +27,6 @@ limitations under the License.
 #include "rocm/include/miopen/miopen.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/util/env_var.h"
-<<<<<<< HEAD:tensorflow/stream_executor/rocm/rocm_dnn.cc
-#include "tensorflow/stream_executor/dnn.h"
-#include "tensorflow/stream_executor/gpu/gpu_activation.h"
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/stream_executor/gpu/gpu_timer.h"
-#include "tensorflow/stream_executor/lib/env.h"
-#include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/threadpool.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
-#include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/plugin_registry.h"
-#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
-#include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
-#include "tensorflow/stream_executor/scratch_allocator.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor_pimpl.h"
-#include "rocm/rocm_config.h"
-=======
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
@@ -66,8 +45,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "rocm/rocm_config.h"
 
->>>>>>> google_upstream/master:tensorflow/compiler/xla/stream_executor/rocm/rocm_dnn.cc
 namespace {
 
 // Converts (via narrowing) a type T value to a type U, and checks that the

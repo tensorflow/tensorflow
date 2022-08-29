@@ -41,17 +41,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
-<<<<<<< HEAD
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/stream_executor/gpu/gpu_types.h"
 #if GOOGLE_CUDA
 #define PLATFORM "CUDA"
 #else
 #define PLATFORM "ROCM"
 #endif
-=======
->>>>>>> google_upstream/master
 #endif
 
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
