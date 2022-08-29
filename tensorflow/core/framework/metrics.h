@@ -192,6 +192,9 @@ void RecordUnusedOutput(const string& op_name);
 // TODO(jtkeeling): Should we record building/optimizing tf.functions?
 void UpdateGraphBuildTime(const uint64 running_time_usecs);
 
+// Updates the metric stored for time spent optimizing graphs.
+void UpdateGraphOptimizationTime(const uint64 running_time_usecs);
+
 // Records the activity of the first phase of the mlir bridge using the
 // tf_metadata.tf_mlir_bridge_first_phase_count metric.
 // device_type: tpu, cpu, gpu, etc.

@@ -224,6 +224,11 @@ auto* build_graph_time_usecs = monitoring::Counter<0>::New(
     "spent optimizing the graph with Grappler, and time spent pruning the "
     "sub-graph.");
 
+auto* graph_optimization_time_usecs = monitoring::Counter<0>::New(
+    "/tensorflow/core/graph_optimization_time_usecs",
+    "The amount of time TensorFlow has spent optimizing graphs, in "
+    "microseconds. ");
+
 auto* xla_compilations = monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilations",
     "The number of XLA compilations used to collect "
@@ -480,6 +485,14 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs) {
         build_graph_time_usecs->GetCell();
     build_graph_calls_cell->IncrementBy(1);
     build_graph_time_usecs_cell->IncrementBy(running_time_usecs);
+  }
+}
+
+void UpdateGraphOptimizationTime(const uint64 running_time_usecs) {
+  if (running_time_usecs > 0) {
+    static auto* graph_optimization_time_usecs_cell =
+        graph_optimization_time_usecs->GetCell();
+    graph_optimization_time_usecs_cell->IncrementBy(running_time_usecs);
   }
 }
 
