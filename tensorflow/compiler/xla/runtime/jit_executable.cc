@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
