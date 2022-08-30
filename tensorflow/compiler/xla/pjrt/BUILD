@@ -454,7 +454,7 @@ cc_library(
     name = "pjrt_plugin_device_client",
     deps = [
         ":pjrt_plugin_device_client_headers",
-        "//tensorflow/compiler/plugin:plugin",
+        "//tensorflow/compiler/plugin",
     ],
 )
 
