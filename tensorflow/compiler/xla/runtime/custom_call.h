@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_CUSTOM_CALL_H_
-#define XLA_RUNTIME_CUSTOM_CALL_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_CUSTOM_CALL_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_CUSTOM_CALL_H_
 
 #include <any>
 #include <cstddef>
@@ -1164,4 +1164,4 @@ XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(llvm::ArrayRef<int64_t>);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(llvm::ArrayRef<float>);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(llvm::ArrayRef<double>);
 
-#endif  // XLA_RUNTIME_CUSTOM_CALL_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_CUSTOM_CALL_H_
