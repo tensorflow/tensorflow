@@ -65,6 +65,11 @@ std::vector<Tindices> ParseRowStartIndices(
 template <typename Tindices>
 bool ContainsEmptyRows(const std::vector<Tindices>& row_start_indices);
 
+// Validates the three component tensors of a sparse tensor have the proper
+// shapes.
+Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
+                            const Tensor& shape);
+
 }  // namespace sparse_utils
 }  // namespace tensorflow
 
