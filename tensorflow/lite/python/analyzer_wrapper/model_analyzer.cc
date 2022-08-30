@@ -115,7 +115,7 @@ const std::string tensor_str(const int tensor_idx, const int subgraph_idx,
     const SubGraph* subgraph = model->subgraphs()->Get(subgraph_idx);
     if (subgraph) {
       auto tensor = subgraph->tensors()->Get(tensor_idx);
-      if (tensor) {
+      if (tensor && tensor->type() == tflite::TensorType_INT32) {
         ss << get_tensor_data_str(tensor, model);
       }
     }
