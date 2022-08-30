@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines the operations used in the THLO dialect.
 
-#ifndef MLIR_HLO_DIALECT_THLO_IR_THLO_OPS_H
-#define MLIR_HLO_DIALECT_THLO_IR_THLO_OPS_H
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_THLO_IR_THLO_OPS_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_THLO_IR_THLO_OPS_H_
 
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -32,4 +32,4 @@ limitations under the License.
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h.inc"
 
-#endif  // MLIR_HLO_DIALECT_THLO_IR_GML_ST_OPS_H
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_THLO_IR_THLO_OPS_H_
