@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 
-namespace tensorflow::fingerprinting {
+namespace tensorflow::saved_model::fingerprinting {
 
 // Version of the code that produced the fingerprint.
 const int kFingerprintProducer = 0;
@@ -88,68 +88,6 @@ void CanonicalizeNodes(GraphDef* graph_def) {
       }
     }
   }
-}
-
-// Returns the hash of the checkpoint .index file, 0 if there is none.
-uint64 HashCheckpointIndexFile(absl::string_view model_dir) {
-  std::string meta_filename = MetaFilename(io::JoinPath(
-      model_dir, kSavedModelVariablesDirectory, kSavedModelVariablesFilename));
-  std::string data;
-  Status read_status = ReadFileToString(Env::Default(), meta_filename, &data);
-  if (read_status.ok()) {
-    return tensorflow::Fingerprint64(data);
-  } else {
-    LOG(WARNING) << read_status.error_message();
-    return 0;
-  }
-}
-
-}  // namespace
-
-uint64 ComputeHash(const GraphDef& graph_def) {
-  std::string graph_def_string;
-  SerializeToStringDeterministic(graph_def, &graph_def_string);
-  return tensorflow::Fingerprint64(graph_def_string);
-}
-
-FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
-                                    absl::string_view export_dir) {
-  // Create a copy of `metagraph` which will be used and mutated for fingerprint
-  // computation.
-  MetaGraphDef metagraph_copy = metagraph;
-  FingerprintDef fingerprint_def;
-  // Set fingerprint field #1.
-  fingerprint_def.set_graph_def_checksum(
-      ComputeHash(metagraph_copy.graph_def()));
-  // Set fingerprint field #2.
-  CanonicalizeGraphDef(*metagraph_copy.mutable_graph_def());
-  fingerprint_def.set_graph_def_program_hash(
-      ComputeHash(metagraph_copy.graph_def()));
-  // Set fingerprint field #3.
-  fingerprint_def.set_signature_def_hash(
-      RegularizeAndHashSignatureDefs(metagraph_copy.signature_def()));
-  // Set fingerprint field #4.
-  StatusOr<uint64> object_graph_hash =
-      RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def());
-  fingerprint_def.set_saved_object_graph_hash(
-      RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def()));
-  // Set fingerprint field #5.
-  fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));
-  // Set version of the fingerprint.
-  VersionDef* version = fingerprint_def.mutable_version();
-  version->set_producer(kFingerprintProducer);
-
-  return fingerprint_def;
-}
-
-// The GraphDef contains two main sections: a list of nodes and the
-// FunctionDefLibrary. Canonicalization treats these two sections separately.
-void CanonicalizeGraphDef(GraphDef& graph_def) {
-  CanonicalizeNodes(&graph_def);
-  // TODO(b/240173815): Complete canonicalization of the FunctionDefLibrary.
-  // For now, we just clear the FunctionDefLibrary.
-  graph_def.mutable_library()->Clear();
-  graph_def.mutable_versions()->Clear();
 }
 
 uint64 RegularizeAndHashSignatureDefs(
@@ -205,4 +143,67 @@ uint64 RegularizeAndHashSavedObjectGraph(
   // TODO(b/241294832): Complete canonicalization of `object_graph_def.nodes`.
   return result_hash;
 }
-}  // namespace tensorflow::fingerprinting
+
+// Returns the hash of the checkpoint .index file, 0 if there is none.
+uint64 HashCheckpointIndexFile(absl::string_view model_dir) {
+  std::string meta_filename = MetaFilename(io::JoinPath(
+      model_dir, kSavedModelVariablesDirectory, kSavedModelVariablesFilename));
+  std::string data;
+  Status read_status = ReadFileToString(Env::Default(), meta_filename, &data);
+  if (read_status.ok()) {
+    return tensorflow::Fingerprint64(data);
+  } else {
+    LOG(WARNING) << read_status.error_message();
+    return 0;
+  }
+}
+
+}  // namespace
+
+uint64 ComputeHash(const GraphDef& graph_def) {
+  std::string graph_def_string;
+  SerializeToStringDeterministic(graph_def, &graph_def_string);
+  return tensorflow::Fingerprint64(graph_def_string);
+}
+
+// The GraphDef contains two main sections: a list of nodes and the
+// FunctionDefLibrary. Canonicalization treats these two sections separately.
+void CanonicalizeGraphDef(GraphDef& graph_def) {
+  CanonicalizeNodes(&graph_def);
+  // TODO(b/240173815): Complete canonicalization of the FunctionDefLibrary.
+  // For now, we just clear the FunctionDefLibrary.
+  graph_def.mutable_library()->Clear();
+  graph_def.mutable_versions()->Clear();
+}
+
+FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
+                                    absl::string_view export_dir) {
+  // Create a copy of `metagraph` which will be used and mutated for fingerprint
+  // computation.
+  MetaGraphDef metagraph_copy = metagraph;
+  FingerprintDef fingerprint_def;
+  // Set fingerprint field #1.
+  fingerprint_def.set_graph_def_checksum(
+      ComputeHash(metagraph_copy.graph_def()));
+  // Set fingerprint field #2.
+  CanonicalizeGraphDef(*metagraph_copy.mutable_graph_def());
+  fingerprint_def.set_graph_def_program_hash(
+      ComputeHash(metagraph_copy.graph_def()));
+  // Set fingerprint field #3.
+  fingerprint_def.set_signature_def_hash(
+      RegularizeAndHashSignatureDefs(metagraph_copy.signature_def()));
+  // Set fingerprint field #4.
+  StatusOr<uint64> object_graph_hash =
+      RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def());
+  fingerprint_def.set_saved_object_graph_hash(
+      RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def()));
+  // Set fingerprint field #5.
+  fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));
+  // Set version of the fingerprint.
+  VersionDef* version = fingerprint_def.mutable_version();
+  version->set_producer(kFingerprintProducer);
+
+  return fingerprint_def;
+}
+
+}  // namespace tensorflow::saved_model::fingerprinting

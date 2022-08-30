@@ -427,7 +427,7 @@ tensorflow::metrics::TrainingTimeSaved
 tensorflow::metrics::CheckpointSize
 
 [//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
-tensorflow::fingerprinting::CreateFingerprintDef
+tensorflow::saved_model::fingerprinting::CreateFingerprintDef
 
 
 [//tensorflow/compiler/jit:flags] # tfe

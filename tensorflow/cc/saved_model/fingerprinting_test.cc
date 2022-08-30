@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 
-namespace tensorflow::fingerprinting {
+namespace tensorflow::saved_model::fingerprinting {
 
 namespace {
 
@@ -165,4 +165,4 @@ TEST(FingerprintingTest, TestHashCheckpointForModelWithNoVariables) {
 }
 
 }  // namespace
-}  // namespace tensorflow::fingerprinting
+}  // namespace tensorflow::saved_model::fingerprinting

@@ -24,27 +24,18 @@ limitations under the License.
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
-namespace tensorflow::fingerprinting {
+namespace tensorflow::saved_model::fingerprinting {
+// Canonicalizes the GraphDef in order to remove sources of non-determinism.
+void CanonicalizeGraphDef(GraphDef& graph_def);
 
 // Computes the Fingerprint64 hash of the GraphDef.
 uint64 ComputeHash(const GraphDef& graph_def);
-
-// Sorts and computes the Fingerprint64 hash of the SignatureDefs.
-uint64 RegularizeAndHashSignatureDefs(
-    const google::protobuf::Map<std::string, SignatureDef>& signature_def_map);
-
-// Canonicalizes and computes the Fingerprint64 hash of the SavedObjectGraph.
-uint64 RegularizeAndHashSavedObjectGraph(
-    const SavedObjectGraph& object_graph_def);
 
 // Creates a FingerprintDef proto from a MetaGraph and the checkpoint meta file
 // (.index) in `export_dir`.
 FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
                                     absl::string_view export_dir);
 
-// Canonicalizes the GraphDef in order to remove sources of non-determinism.
-void CanonicalizeGraphDef(GraphDef& graph_def);
-
-}  // namespace tensorflow::fingerprinting
+}  // namespace tensorflow::saved_model::fingerprinting
 
 #endif  // TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
