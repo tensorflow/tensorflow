@@ -13,31 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_HLO_H_
-#define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_HLO_H_
+#ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TOOL_NAMES_H_
+#define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TOOL_NAMES_H_
 
 #include <string>
 
-#include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Get HLO proto by module name.
-StatusOr<xla::HloProto> GetHloProtoByModuleName(
-    const SessionSnapshot& session_snapshot,
-    const absl::string_view module_name);
-
-// Converts multiple XSpaces to HLO protos.
-// Stores the HLO protos as files in the same directory as the xspace files.
-// Returns whether there are HLO protos in this profile.
-StatusOr<bool> ConvertMultiXSpaceToHloProto(
+// Gets the names of the available tools given a session snapshot.
+// Returns a comma separated list of tool names.
+StatusOr<std::string> GetAvailableToolNames(
     const SessionSnapshot& session_snapshot);
 
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_HLO_H_
+#endif  // TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TOOL_NAMES_H_
