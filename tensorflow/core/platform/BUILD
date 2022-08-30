@@ -382,6 +382,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["logging.h"],
     deps = [
+        "//tensorflow/core/platform:types",
         "//tensorflow/tsl/platform:logging",
     ],
 )

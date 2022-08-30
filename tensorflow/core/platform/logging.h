@@ -16,5 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_LOGGING_H_
 #define TENSORFLOW_CORE_PLATFORM_LOGGING_H_
 
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/tsl/platform/logging.h"
+
 #endif  // TENSORFLOW_CORE_PLATFORM_LOGGING_H_
