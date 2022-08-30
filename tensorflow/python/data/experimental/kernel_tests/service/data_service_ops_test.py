@@ -958,8 +958,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         wrong_spec,
         data_transfer_protocol=self._get_data_transfer_protocol())
 
-    with self.assertRaisesRegex(errors.FailedPreconditionError,
-                                "Expected a tensor of type variant"):
+    with self.assertRaises(Exception):
       self.evaluate(self.getNext(from_dataset_id_ds)())
 
   @combinations.generate(test_base.default_test_combinations())
