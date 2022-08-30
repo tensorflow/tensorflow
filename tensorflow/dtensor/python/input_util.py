@@ -480,21 +480,27 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     # Start with the batched the dataset.
     local_dataset = self._batched_dataset
 
-    # If a replica is split over multiple clients then each batch needs to be
-    # repeated before distribution as many times as there are clients
-    # corresponding to that replica.
     if self._batch_dim is not None:
-      local_dataset = self._repeat_batch(local_dataset,
-                                         self._num_clients_per_replica)
+      if self._num_clients_per_replica > 1:
+        # If a replica is split over multiple clients then each batch needs to
+        # be repeated before distribution as many times as there are clients
+        # corresponding to that replica.
+        local_dataset = self._repeat_batch(local_dataset,
+                                           self._num_clients_per_replica)
+        sharding_policy = data_service_ops.ShardingPolicy.DATA
+      else:
+        # Replicas are unique to each client, so FILE based sharding can be used
+        # which is more performant since each worker does not need to read the
+        # entire dataset.
+        sharding_policy = data_service_ops.ShardingPolicy.FILE
+    else:
+      # No batch dimension sharding specified so disable dataset sharding during
+      # the distribute step.
+      sharding_policy = data_service_ops.ShardingPolicy.OFF
 
     # Apply distribution here (if specified) so all remaining transformations
     # are executed locally.
     if self._tf_data_service_config is not None:
-      if self._batch_dim is None:
-        sharding_policy = data_service_ops.ShardingPolicy.OFF
-      else:
-        sharding_policy = data_service_ops.ShardingPolicy.FILE_OR_DATA
-
       local_dataset = local_dataset.apply(
           data_service_ops.distribute(
               processing_mode=sharding_policy,
