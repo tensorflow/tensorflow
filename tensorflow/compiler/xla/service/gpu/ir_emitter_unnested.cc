@@ -3999,7 +3999,7 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
                                                     index_ty, &b_),
                                     tiling_kernel_info.output_tile_bounds[1]),
                    b_.CreateICmpULT(thread_id_info.thread_id_x,
-                                    tiling_kernel_info.output_tile_bounds[1]));
+                                    tiling_kernel_info.output_tile_bounds[0]));
 
   ksl.If("reduction_write_output",
          b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
