@@ -84,7 +84,7 @@ void ReplaceBlockArgumentsWithImplicitOperands(
     }
 
     region.front().eraseArguments(
-        llvm::to_vector(llvm::seq<unsigned>(0, region.getNumArguments())));
+        llvm::BitVector(region.getNumArguments(), true));
   }
 }
 

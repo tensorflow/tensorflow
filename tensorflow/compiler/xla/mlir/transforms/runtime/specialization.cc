@@ -189,8 +189,8 @@ Status SpecializeFunction(mlir::func::FuncOp func, ArgumentsRef arguments,
   }
 
   // Erase all the original block arguments.
-  llvm::SmallVector<unsigned> erase_block_args(num_inputs);
-  std::iota(erase_block_args.begin(), erase_block_args.end(), 0);
+  llvm::BitVector erase_block_args(entry_block.getNumArguments());
+  erase_block_args.set(0, num_inputs);
   entry_block.eraseArguments(erase_block_args);
 
   // Add symbolic shapes as arguments attributes.
