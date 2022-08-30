@@ -62,6 +62,9 @@ struct KernelContext {
   // User-defined data for custom call handlers.
   CustomCall::UserData* custom_call_data = nullptr;
 
+  // User-defined custom call registry.
+  CustomCallRegistry* custom_call_registry = nullptr;
+
   // User-defined diagnostic engine for reporting diagnostics.
   DiagnosticEngine* diagnostic_engine = nullptr;
 };
@@ -322,9 +325,9 @@ void Executable::Execute(CallFrame& call_frame, const ExecuteOpts& opts) const {
 
   // Runtime kernel context can be used only by the entrypoint function and can
   // be safely allocated on the stack.
-  KernelContext kernel_context = {&results_memory_layout_, &call_frame,
-                                  opts.custom_call_data,
-                                  opts.diagnostic_engine};
+  KernelContext kernel_context = {
+      &results_memory_layout_, &call_frame, opts.custom_call_data,
+      opts.custom_call_registry, opts.diagnostic_engine};
 
   // Override the kernel context argument.
   KernelContext* kernel_context_ptr = &kernel_context;
@@ -481,15 +484,7 @@ void SetError(KernelContext* ctx, const char* error) {
 bool CustomCall(KernelContext* ctx, const char* target, void** args,
                 void** attrs) {
   assert(ctx && target && args && attrs && "all arguments must be not null");
-
-  // Default custom calls registry for the XLA executables.
-  static CustomCallRegistry* registry = []() {
-    auto* registry = new CustomCallRegistry();
-    RegisterStaticCustomCalls(registry);
-    return registry;
-  }();
-
-  auto* custom_call = registry->Find(target);
+  auto* custom_call = ctx->custom_call_registry->Find(target);
   assert(custom_call && "custom call not found");
   if (custom_call == nullptr) return false;
 

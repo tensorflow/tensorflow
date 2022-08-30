@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string_view>
 
+#include "llvm/ADT/StringMap.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 
 namespace xla {
@@ -30,54 +31,20 @@ namespace runtime {
 //
 // For low overhead custom calls prefer direct custom calls that linked with the
 // compiled executable and bypass by-name look up (see DirectCustomCallLibrary).
-//
-// TODO(ezhulenev): Consider removing this registry, because we'll likely not
-// need it for any of the practical purposes, and it's currently used only in
-// tests. We also likely don't need the generic custom call API.
 class CustomCallRegistry {
  public:
   // The type for custom call registration functions.
   using RegistrationFunction = void (*)(CustomCallRegistry*);
 
-  CustomCallRegistry();
-  ~CustomCallRegistry() = default;
-
-  CustomCallRegistry(const CustomCallRegistry&) = delete;
-  CustomCallRegistry& operator=(const CustomCallRegistry&) = delete;
+  CustomCallRegistry() = default;
 
   void Register(std::unique_ptr<class CustomCall> custom_call);
 
   class CustomCall* Find(std::string_view callee) const;
 
  private:
-  class Impl;
-  std::unique_ptr<Impl> impl_;
+  llvm::StringMap<std::unique_ptr<CustomCall>> custom_calls_;
 };
-
-// TODO(ezhulenev): Remove static registration mechanism, and pass custom call
-// registry explicitly to the JitExecutable. It should be passed around as a
-// part of XLA runtime execution context.
-
-// Use this macro to add a function that will register custom calls that are
-// statically linked in the binary. FUNC should be a function pointer with the
-// prototype given by the CustomCallRegistry::RegistrationFunction alias.
-#define XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION(FUNC) \
-  XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL(FUNC, __COUNTER__)
-#define XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL(FUNC, N) \
-  XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL_EXPAND(FUNC, N)
-#define XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION_IMPL_EXPAND(FUNC, N) \
-  static bool XLA_RUNTIME_static_custom_call_##N##_registered_ = []() {  \
-    ::xla::runtime::AddStaticCustomCallRegistration(FUNC);               \
-    return true;                                                         \
-  }()
-
-// Registers all statically linked custom calls in the given registry.
-void RegisterStaticCustomCalls(CustomCallRegistry* custom_call_registry);
-
-// Adds a custom call registration function to the registry. This should not be
-// used directly; use XLA_RUNTIME_STATIC_CUSTOM_CALL_REGISTRATION instead.
-void AddStaticCustomCallRegistration(
-    CustomCallRegistry::RegistrationFunction registration);
 
 }  // namespace runtime
 }  // namespace xla
