@@ -898,8 +898,8 @@ def ctc_loss_v3(labels,
   - Labels may be supplied as either a dense, zero-padded tensor with a
     vector of label sequence lengths OR as a SparseTensor.
   - On TPU: Only dense padded labels are supported.
-  - On CPU: Caller may use SparseTensor or dense padded labels but calling with
-    a SparseTensor will be significantly faster.
+  - On CPU and GPU: Caller may use SparseTensor or dense padded labels 
+    but calling with a SparseTensor will be significantly faster.
   - Default blank label is 0 rather num_classes - 1, unless overridden by
     blank_index.
 
