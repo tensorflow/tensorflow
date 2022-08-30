@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TRANSFORMS_DROP_UNREGISTERED_ATTRIBUTE_OUTPUT_SHAPES_H_
-#define TENSORFLOW_CORE_TRANSFORMS_DROP_UNREGISTERED_ATTRIBUTE_OUTPUT_SHAPES_H_
+#ifndef TENSORFLOW_CORE_TRANSFORMS_DROP_UNREGISTERED_ATTRIBUTE_PASS_H_
+#define TENSORFLOW_CORE_TRANSFORMS_DROP_UNREGISTERED_ATTRIBUTE_PASS_H_
 
 #include <memory>
 
@@ -28,4 +28,4 @@ std::unique_ptr<mlir::Pass> CreateDropOutputShapesAttrPass();
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_TRANSFORMS_DROP_UNREGISTERED_ATTRIBUTE_OUTPUT_SHAPES_H_
+#endif  // TENSORFLOW_CORE_TRANSFORMS_DROP_UNREGISTERED_ATTRIBUTE_PASS_H_

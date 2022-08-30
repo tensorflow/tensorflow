@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GOOGLE_EXAMPLES_CUSTOM_OPS_DOC_MULTIPLEX_2_MULTIPLEX_2_KERNEL_H_
-#define TENSORFLOW_GOOGLE_EXAMPLES_CUSTOM_OPS_DOC_MULTIPLEX_2_MULTIPLEX_2_KERNEL_H_
+#ifndef TENSORFLOW_EXAMPLES_CUSTOM_OPS_DOC_MULTIPLEX_2_MULTIPLEX_2_KERNEL_H_
+#define TENSORFLOW_EXAMPLES_CUSTOM_OPS_DOC_MULTIPLEX_2_MULTIPLEX_2_KERNEL_H_
 
 #define EIGEN_USE_THREADS
 
@@ -96,4 +96,4 @@ class MultiplexDenseOp : public OpKernel {
 }  // namespace custom_op_examples
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GOOGLE_EXAMPLES_CUSTOM_OPS_DOC_MULTIPLEX_2_MULTIPLEX_2_KERNEL_H_
+#endif  // TENSORFLOW_EXAMPLES_CUSTOM_OPS_DOC_MULTIPLEX_2_MULTIPLEX_2_KERNEL_H_
