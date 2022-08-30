@@ -801,6 +801,40 @@ LogicalResult ReductionOp::verify() {
   return verifyDestinationStyleOp(getOperation(), getNumOutputs());
 }
 
+//===----------------------------------------------------------------------===//
+// MapOp
+//===----------------------------------------------------------------------===//
+
+ParseResult MapOp::parse(OpAsmParser &parser, OperationState &result) {
+  if (parseDstStyleOp(parser, result)) return failure();
+
+  SmallVector<OpAsmParser::Argument> regionArgs;
+  if (parser.parseArgumentList(regionArgs, OpAsmParser::Delimiter::Paren,
+                               /*allowType=*/true, /*allowAttrs=*/true)) {
+    return failure();
+  }
+
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, regionArgs)) return failure();
+
+  return success();
+}
+
+void MapOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<MapOp>(cast<MapOp>(getOperation()), p);
+
+  p << "(";
+  llvm::interleaveComma(mapper().getArguments(), p,
+                        [&](auto arg) { p.printRegionArgument(arg); });
+  p << ") ";
+
+  p.printRegion(mapper(), /*printEntryBlockArgs=*/false);
+}
+
+LogicalResult MapOp::verify() {
+  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+}
+
 }  // namespace thlo
 }  // namespace mlir
 

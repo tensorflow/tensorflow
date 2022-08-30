@@ -202,4 +202,38 @@ def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
   }];
 }
 
+def THLO_MapOp : THLO_DstStyleOp<"map", [
+    SameOperandsAndResultShape,
+    SingleBlockImplicitTerminator<"YieldOp">
+]> {
+  let summary = "Destination-style twin for elementwise operations";
+  let description = [{
+    Models elementwise operations on tensors in terms of arithmetic operations 
+    on the corresponding elements.
+
+    Example:
+    ```
+      %add = thlo.map
+          ins(%lhs: tensor<64xf32>, %rhs: tensor<64xf32>)
+          outs(%init: tensor<64xf32>)
+          (%lhs_elem: f32, %rhs_elem: f32) {
+            %0 = arith.addf %lhs_elem, %rhs_elem: f32
+            thlo.yield %0: f32
+          }
+    ```
+  }];
+
+  let arguments = (ins
+    // Input args
+    Variadic<TensorOrMemref>:$inputs,
+
+    // Output arg
+    TensorOrMemref:$init
+  );
+  let results = (outs AnyTensor:$result);
+  let regions = (region AnyRegion:$mapper);
+
+  let extraClassDeclaration = extraBaseClassDeclaration;
+}
+
 #endif // THLO_OPS

@@ -64,7 +64,7 @@ func.func @transpose_unknown_dimentions(%input: tensor<16x?xf32>,
 // -----
 
 func.func @reduction(%input: tensor<16x32x64xf32>,
-                     %init: tensor<16x64xf32>)  -> tensor<16x64xf32> {
+                     %init: tensor<16x64xf32>) -> tensor<16x64xf32> {
   %reduction = thlo.reduction
       ins(%input:tensor<16x32x64xf32>)
       outs(%init:tensor<16x64xf32>)
@@ -94,3 +94,33 @@ func.func @variable_reduction(%input1: tensor<16x32x64xf32>,
   func.return %reduction, %reduction2 : tensor<16x64xf32>, tensor<16x64xi64>
 }
 // CHECK-LABEL: func @variable_reduction
+
+// -----
+
+func.func @map_binary(%lhs: tensor<64xf32>, %rhs: tensor<64xf32>,
+                      %init: tensor<64xf32>) -> tensor<64xf32> {
+   %add = thlo.map
+          ins(%lhs:tensor<64xf32>, %rhs:tensor<64xf32>)
+          outs(%init:tensor<64xf32>)
+          (%lhs_elem: f32, %rhs_elem: f32) {
+            %0 = arith.addf %lhs_elem, %rhs_elem: f32
+            thlo.yield %0: f32
+          }
+  func.return %add : tensor<64xf32>
+}
+// CHECK-LABEL: func @map_binary
+
+// -----
+
+func.func @map_unary(%input: tensor<64xf32>,
+                     %init: tensor<64xf32>) -> tensor<64xf32> {
+   %abs = thlo.map
+          ins(%input:tensor<64xf32>)
+          outs(%init:tensor<64xf32>)
+          (%input_elem: f32) {
+            %0 = math.absf %input_elem: f32
+            thlo.yield %0: f32
+          }
+  func.return %abs : tensor<64xf32>
+}
+// CHECK-LABEL: func @map_unary
