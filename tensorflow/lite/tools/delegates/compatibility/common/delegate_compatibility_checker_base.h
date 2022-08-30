@@ -27,6 +27,8 @@ limitations under the License.
 namespace tflite {
 namespace tools {
 
+// TODO(b/243489631): Remove online mode support.
+
 // Base class for the delegate compatibility checker (DCC). Extracts the logic
 // of iterating through the model, and lets each specific DCC to check if the
 // operation of a node is compatible with that delegate. TfLiteNode and
@@ -46,13 +48,11 @@ class DelegateCompatibilityCheckerBase {
       tflite::FlatBufferModel* model_buffer,
       tflite::proto::CompatibilityResult* result);
 
-  // Iterates over the subgraphs in the model, and for each node, checks if
-  // it is compatible with the delegate. To be able to get the TfLiteContext,
-  // a BuiltinOpResolver is used to create an Interpreter.
+  // This function is implemented differently by each specific DCC.
   // Stores the compatibility for each operator in the result structure.
-  absl::Status checkModelCompatibilityOnline(
+  virtual absl::Status checkModelCompatibilityOnline(
       tflite::FlatBufferModel* model_buffer,
-      tflite::proto::CompatibilityResult* result);
+      tflite::proto::CompatibilityResult* result) = 0;
 
   // This function gets the operation signature (OpSignature) from the
   // op_code, op, subgraph and model, and then call to checkOpSigCompatibility()
@@ -92,23 +92,6 @@ class DelegateCompatibilityCheckerBase {
   // used to perform the checks.
   virtual absl::Status checkOpSigCompatibility(
       const tflite::OpSignature& op_sig,
-      tflite::proto::OpCompatibilityResult* op_result) = 0;
-
-  // This function is implemented differently by each specific DCC because
-  // they contain the logic for checking if the operator in the node is
-  // compatible for that specific DCC.
-  // Params:
-  //   context: Used to get the tensors. TfLiteTensors can be obtained via
-  //         TfLiteContext, which are used to get tensor type and tensor data,
-  //         the same way as with OpSignature in Offline mode.
-  //   node: Used with context to get the desired tensor, e.g.:
-  //         context->tensors[node->inputs->data[0]]
-  //   registration: Used to get the builtin code and the operator version.
-  //   op_result: Used to store if the node is compatible with the delegate or
-  //              not and why (with a human readable message).
-  virtual absl::Status checkOpCompatibilityOnline(
-      TfLiteContext* context, const TfLiteNode* node,
-      const TfLiteRegistration* registration,
       tflite::proto::OpCompatibilityResult* op_result) = 0;
 };
 }  // namespace tools
