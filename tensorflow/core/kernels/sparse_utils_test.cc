@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <set>
 #include <utility>
 #include <vector>
 
@@ -387,6 +386,7 @@ TEST(ValidateSparseTensorTest, InvalidShapeRankFails) {
   constexpr int kNumNonZeros = 1000;
   constexpr int kNumDims = 3;
   constexpr bool kValidateIndices = false;
+
   // Shape tensor must be rank 1, so try rank 0, 2.
   const TensorShape kInvalidShapeShapes[] = {{}, {kNumDims, 2}};
   for (const TensorShape& invalid_shape : kInvalidShapeShapes) {
@@ -396,6 +396,7 @@ TEST(ValidateSparseTensorTest, InvalidShapeRankFails) {
     const Tensor shape = Tensor(DT_INT64, invalid_shape);
     EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
                                                kValidateIndices)),
+
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Sparse shape must be rank 1 .*")));
   }
@@ -406,6 +407,7 @@ TEST(ValidateSparseTensorTest, IncompatibleShapesFails) {
   constexpr int kNumDims = 3;
   constexpr bool kValidateIndices = false;
 
+
   const Tensor values = Tensor(DT_FLOAT, TensorShape({kNumNonZeros}));
   const Tensor shape = Tensor(DT_INT64, TensorShape({kNumDims}));
 
@@ -415,6 +417,7 @@ TEST(ValidateSparseTensorTest, IncompatibleShapesFails) {
         Tensor(DT_INT64, TensorShape({kNumNonZeros + 1, kNumDims}));
     EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
                                                kValidateIndices)),
+
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Number of elements in indices .* and "
                                       "values .* do not match")));
@@ -428,6 +431,7 @@ TEST(ValidateSparseTensorTest, IncompatibleShapesFails) {
     EXPECT_THAT(
         (ValidateSparseTensor<int64_t>(indices, values, shape,
                                        kValidateIndices)),
+
         StatusIs(error::INVALID_ARGUMENT,
                  MatchesRegex("Index rank .* and shape rank .* do not match")));
   }

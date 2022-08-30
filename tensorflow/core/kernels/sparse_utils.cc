@@ -144,12 +144,8 @@ bool ContainsEmptyRows(const std::vector<Tindices>& row_start_indices) {
   return false;
 }
 
-namespace {
-
-// Ensures indices, values, shape are all of the proper ranks and are
-// compatible.
-Status ValidateSparseTensorShape(const Tensor& indices, const Tensor& values,
-                                 const Tensor& shape) {
+Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
+                            const Tensor& shape) {
   // Indices must be a matrix, and values/shape must be a vector.
   if (!TensorShapeUtils::IsMatrix(indices.shape())) {
     return errors::InvalidArgument("Sparse indices must be rank 2 but is rank ",
