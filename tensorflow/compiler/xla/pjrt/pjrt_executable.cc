@@ -35,27 +35,9 @@ StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
                       executable_build_options.ToProto());
   output.set_compile_portable_executable(compile_portable_executable);
   output.set_profile_version(profile_version);
-  // TODO(b/240299401): Serialize "multi_slice_config".
-  return output;
-}
-
-StatusOr<CompileOptions> CompileOptionsFromProto(
-    const CompileOptionsProto& input) {
-  CompileOptions output;
-  if (!input.argument_layouts().empty()) {
-    output.argument_layouts = std::vector<Shape>();
-    output.argument_layouts->reserve(input.argument_layouts_size());
-    for (const auto& layout : input.argument_layouts()) {
-      output.argument_layouts->emplace_back(Shape(layout));
-    }
+  if (multi_slice_config != nullptr) {
+    output.set_serialized_multi_slice_config(multi_slice_config->Serialize());
   }
-  output.parameter_is_tupled_arguments = input.parameter_is_tupled_arguments();
-  TF_ASSIGN_OR_RETURN(
-      output.executable_build_options,
-      ExecutableBuildOptionsFromProto(input.executable_build_options()));
-  output.compile_portable_executable = input.compile_portable_executable();
-  output.profile_version = input.profile_version();
-  // TODO(b/240299401): Set "multi_slice_config".
   return output;
 }
 
