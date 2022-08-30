@@ -828,11 +828,15 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     default_device = flr->device();
   }
 
-  // Mark each node in the graph to be compiled by specified device.
+  // Mark and assign device for each node in the graph to be compiled by
+  // specified device.
   if (!options.xla_compile_device_type.empty()) {
     for (Node* node : graph->op_nodes()) {
       node->AddAttr("_xla_compile_device_type",
                     options.xla_compile_device_type);
+      if (default_device) {
+        node->set_assigned_device_name(default_device->name());
+      }
     }
   }
 
