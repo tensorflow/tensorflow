@@ -20,13 +20,7 @@ load(
     "tf_cc_test",
 )
 
-package_group(
-    name = "data_transfer_visibility",
-    packages = [
-        # Needed for mocking the data transfer client in unit tests.
-        "//learning/brain/google/data/service/client/...",
-    ],
-)
+package_group(name = "data_transfer_visibility")
 
 package(
     default_visibility = [
