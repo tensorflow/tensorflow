@@ -523,9 +523,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     // as TF and JAX default to FE_TONEAREST. Call llvm::Intrinsic::roundeven
     // instead once GPU emitter supports lowering LLVM.
     case HloOpcode::kRoundNearestEven:
-      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nearbyint,
-                                          {operand_value},
-                                          {operand_value->getType()}, b_);
+      return llvm_ir::EmitCallToIntrinsic(
+#if TENSORFLOW_USE_ROCM
+          llvm::Intrinsic::rint,
+#else
+          llvm::Intrinsic::nearbyint,
+#endif
+          {operand_value}, {operand_value->getType()}, b_);
     case HloOpcode::kSign: {
       auto type = operand_value->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
