@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_NORMALIZATION_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_NORMALIZATION_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_MEAN_STDDEV_NORMALIZATION_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_MEAN_STDDEV_NORMALIZATION_H_
 
 #include <map>
 #include <set>
@@ -125,4 +125,4 @@ LayerNormalization CreateLayerNormalization(
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_NORMALIZATION_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_MEAN_STDDEV_NORMALIZATION_H_

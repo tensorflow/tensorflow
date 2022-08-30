@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_MLIR_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
-#define TENSORFLOW_CORE_MLIR_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
+#ifndef TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
+#define TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
 
 #include <memory>
 #include <string>
@@ -35,4 +35,4 @@ std::unique_ptr<Pass> CreateGraphToFuncPass(
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_MLIR_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
+#endif  // TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
