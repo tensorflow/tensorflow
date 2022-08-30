@@ -19,6 +19,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -133,11 +135,13 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
 // unique, otherwise we emit an error).
 // Returns an error in case of invalid compilation or replication attribute(s).
 LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
-                                        std::string& device_type) {
+                                        std::string& device_type,
+                                        std::string& device) {
   bool has_replicated_compiled_op = false;
   bool has_non_replicated_compiled_op = false;
   // Use ordered set here to make error message below deterministic.
   std::set<llvm::StringRef> device_types;
+  std::unordered_map<std::string, std::string> devices;
   for (Operation& op : *block) {
     LogicalResult result = TF::HasValidCompilationAndReplicationAttributes(op);
     if (failed(result)) return result;
@@ -146,7 +150,9 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
     // (checked later).
     auto device_type_attr =
         op.getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
-    if (device_type_attr) device_types.insert(device_type_attr);
+    if (device_type_attr) {
+      device_types.insert(device_type_attr);
+    }
 
     if (op.hasAttr(TF::kReplicationInfoAttr)) {
       // For replicated case, borrow cluster structure from replication info.
@@ -165,6 +171,39 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
       auto it = clusters->try_emplace(kNoReplicationCluster);
       it.first->getSecond().insert(&op);
     }
+    if (!has_replicated_compiled_op) {
+      auto device_attr = op.getAttrOfType<StringAttr>(kDeviceAttr);
+      if (device_attr && !device_attr.getValue().empty()) {
+        std::string device_local_name =
+            tensorflow::DeviceNameUtils::LocalName(device_attr.str());
+        // It is possible that a device may be same Local Name but
+        // different fullname. Devices with same Local name are identical
+        // so they should only be added once in 'devices'.
+        // and we need the fullname which is longer since longer name has more
+        // information such as task, replica, job etc. An example fullname is
+        // "/job:foo_bar/replica:1/task:2/device:GPU:3"
+        if (devices.count(device_local_name)) {
+          if (devices[device_local_name].size() < device_attr.str().size()) {
+            // If for same local name, the smaller device fullname is not
+            // a substring of larger device fullname, then there is definitely
+            // some issue with device names.
+            if (device_attr.str().find(devices[device_local_name]) ==
+                std::string::npos) {
+              return block->getParentOp()->emitError()
+                     << "found two devices with same local name but "
+                        "conflicting fullname: "
+                     << device_attr.str() << " and "
+                     << devices[device_local_name];
+            }
+            devices[device_local_name] = device_attr.str();
+          }
+        } else {
+          devices.insert({device_local_name, device_attr.str()});
+        }
+        VLOG(3) << "device_attr: " << device_attr.str()
+                << ", device local name: " << device_local_name;
+      }
+    }
   }
   // Do some checks for unsupported cases.
   if (has_replicated_compiled_op && has_non_replicated_compiled_op) {
@@ -177,6 +216,17 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
            << "found different '" << TF::kCompileDeviceTypeAttr
            << "' attribute values (" << llvm::join(device_types, ",")
            << ") in same block which is not supported";
+  }
+  if (!has_replicated_compiled_op) {
+    if (devices.size() > 1) {
+      return block->getParentOp()->emitError()
+             << "found different '" << kDeviceAttr << "' attribute values for "
+             << "devices in same block which is not supported";
+    }
+    if (!devices.empty()) {
+      device = devices.begin()->second;
+      VLOG(3) << "device assigned : " << device;
+    }
   }
   if (!clusters->empty()) {
     // Note that for size < 1 we shouldn't have any cluster while for size > 1
@@ -535,13 +585,16 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
 }
 
 void SetNoReplicationClusterAttrs(tf_device::ClusterOp cluster,
-                                  llvm::StringRef device_type) {
+                                  llvm::StringRef device_type,
+                                  llvm::StringRef device) {
   OpBuilder builder(cluster);
   cluster->setAttr(TF::kReplicationInfoAttr,
                    builder.getStringAttr(kNoReplicationCluster));
   cluster->setAttr(TF::kCompileDeviceTypeAttr,
                    builder.getStringAttr(device_type));
-
+  if (!device.empty()) {
+    cluster->setAttr(kDeviceAttr, builder.getStringAttr(device));
+  }
   // TODO(b/229992058) Propagate `allow_soft_placement` (and other attributes?)
   // instead of hard-coding.
   cluster->setAttr("allow_soft_placement", builder.getBoolAttr(true));
@@ -594,7 +647,8 @@ LogicalResult FormClustersInBlock(
 
   ClusterMap clusters;
   std::string device_type;
-  result = CollectAndGroupClusterOps(block, &clusters, device_type);
+  std::string device;
+  result = CollectAndGroupClusterOps(block, &clusters, device_type, device);
   if (failed(result)) return result;
 
   for (const auto& cluster_metadata_and_ops : clusters) {
@@ -624,7 +678,7 @@ LogicalResult FormClustersInBlock(
         block, cluster_ops, results, cluster_successor_ops.getArrayRef());
 
     if (!has_replication) {
-      SetNoReplicationClusterAttrs(cluster, device_type);
+      SetNoReplicationClusterAttrs(cluster, device_type, device);
       continue;
     }
     // Determine `num_replicas`.

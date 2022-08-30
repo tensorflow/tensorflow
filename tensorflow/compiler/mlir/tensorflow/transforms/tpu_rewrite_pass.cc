@@ -64,6 +64,7 @@ namespace mlir {
 namespace TFTPU {
 
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
+constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
 constexpr char kUseXlaSpmdAttr[] = "use_spmd_for_xla_partitioning";
@@ -570,10 +571,17 @@ LogicalResult AddToParallelExecuteOp(
     // If computation is replicated, use aliased device. Otherwise there is only
     // one execution device per core and the device is assigned to the execute
     // op.
-    std::string device = replicated
-                             ? tensorflow::GetDeviceAliasForLogicalCore(core)
-                             : tpu_devices.front()[core].device;
-
+    std::string device;
+    if (replicated) {
+      device = tensorflow::GetDeviceAliasForLogicalCore(core);
+    } else {
+      auto device_attr = cluster_func->getAttrOfType<StringAttr>(kDeviceAttr);
+      if (device_attr && !device_attr.str().empty()) {
+        device = cluster_func->getAttrOfType<StringAttr>(kDeviceAttr).str();
+      } else {
+        device = tpu_devices.front()[core].device;
+      }
+    }
     auto block_launch_op =
         WrapOpInLaunch(builder, block.getParent()->getLoc(), execute, device);
 
@@ -587,12 +595,22 @@ LogicalResult AddToParallelExecuteOp(
 tf_device::LaunchOp AssignDevicesToReplicatedExecute(
     llvm::ArrayRef<llvm::SmallVector<tensorflow::TPUDeviceAndHost, 8>>
         tpu_devices,
-    Operation* execute_op, OpBuilder* builder) {
+    Operation* execute_op, tf_device::ClusterFuncOp cluster_func,
+    OpBuilder* builder) {
   const bool replicated = tpu_devices.size() != 1;
   // If computation is replicated, use aliased device. Otherwise there is only
   // one execution device and the device is assigned to the execute op.
-  std::string device = replicated ? tensorflow::GetDeviceAliasForLogicalCore(0)
-                                  : tpu_devices.front().front().device;
+  std::string device;
+  if (replicated) {
+    device = tensorflow::GetDeviceAliasForLogicalCore(0);
+  } else {
+    auto device_attr = cluster_func->getAttrOfType<StringAttr>(kDeviceAttr);
+    if (device_attr && !device_attr.str().empty()) {
+      device = cluster_func->getAttrOfType<StringAttr>(kDeviceAttr).str();
+    } else {
+      device = tpu_devices.front().front().device;
+    }
+  }
 
   return WrapOpInLaunch(builder, execute_op->getLoc(), execute_op, device);
 }
