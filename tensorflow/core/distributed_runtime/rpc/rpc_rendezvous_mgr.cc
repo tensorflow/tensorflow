@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 
+#include <algorithm>
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/request_id.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
@@ -27,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/notification.h"
@@ -39,7 +45,18 @@ namespace {
 class RpcRemoteRendezvous : public BaseRemoteRendezvous {
  public:
   RpcRemoteRendezvous(const WorkerEnv* env, int64_t step_id)
-      : BaseRemoteRendezvous(env, step_id) {}
+      : BaseRemoteRendezvous(env, step_id) {
+    DCHECK_GT(env->experimental_num_shards, 0);
+    // If the num_shards is too big, it is easier to have request id collision.
+    // Limit the num_shards to 128.
+    auto num_id_generator_shards = std::min(env->experimental_num_shards, 128);
+    request_id_generators_.resize(num_id_generator_shards);
+    for (int i = 0; i < request_id_generators_.size(); ++i) {
+      request_id_generators_[i] =
+          std::make_unique<ShardUniqueRequestIdGenerator>(
+              num_id_generator_shards, i);
+    }
+  }
 
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
@@ -50,6 +67,9 @@ class RpcRemoteRendezvous : public BaseRemoteRendezvous {
   ~RpcRemoteRendezvous() override {}
 
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRemoteRendezvous);
+
+  std::vector<std::unique_ptr<ShardUniqueRequestIdGenerator>>
+      request_id_generators_;
 };
 
 // Used only to retrieve tensors from remote processes.
@@ -59,7 +79,8 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
 
   void Init(WorkerInterface* wi, int64_t step_id, StringPiece key,
             AllocatorAttributes alloc_attrs, Device* dst_device,
-            const Rendezvous::Args& recv_args, Rendezvous::DoneCallback done) {
+            const Rendezvous::Args& recv_args, int64_t request_id,
+            Rendezvous::DoneCallback done) {
     wi_ = wi;
     alloc_attrs_ = alloc_attrs;
     dst_device_ = dst_device;
@@ -67,7 +88,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     done_ = std::move(done);
     req_.set_step_id(step_id);
     req_.set_rendezvous_key(key.data(), key.size());
-    req_.set_request_id(GetUniqueRequestId());
+    req_.set_request_id(request_id);
   }
 
   void Reset() {
@@ -267,8 +288,13 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     return;
   }
 
+  const uint64 key_hash =
+      Hash64(parsed.FullKey().data(), parsed.FullKey().size());
+  auto& request_id_generator =
+      request_id_generators_[key_hash % request_id_generators_.size()];
   call->Init(rwi, step_id_, parsed.FullKey(), recv_args.alloc_attrs, dst_device,
-             recv_args, std::move(done));
+             recv_args, request_id_generator->GetUniqueRequestId(),
+             std::move(done));
 
   // Record "call" in calls_ so that it can be aborted cleanly.
   RegisterCall(call, recv_args);

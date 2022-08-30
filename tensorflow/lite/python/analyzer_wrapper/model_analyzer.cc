@@ -46,18 +46,56 @@ const std::string get_tensor_data_str(const tflite::Tensor* tensor,
     }
     ss << "[";
     if (buffer->data()->size() != 0) {
-      if (tensor->type() == tflite::TensorType_INT32) {
-        auto data = reinterpret_cast<const int32_t*>(buffer->data()->data());
-        int data_cnt = buffer->data()->size() / sizeof(int32_t);
-        for (int i = 0; i < std::min(kMaxContentDumpCnt, data_cnt); ++i) {
-          ss << data[i];
-          if (i != data_cnt - 1) {
-            ss << ", ";
-          }
+      size_t type_size;
+      switch (tensor->type()) {
+        case tflite::TensorType_INT32:
+        case tflite::TensorType_UINT32:
+        case tflite::TensorType_FLOAT32:
+          type_size = 4;
+          break;
+        default:
+          type_size = 1;
+      }
+      int data_cnt = buffer->data()->size() / type_size;
+      for (int i = 0; i < std::min(kMaxContentDumpCnt, data_cnt); ++i) {
+        switch (tensor->type()) {
+          case tflite::TensorType_INT32: {
+            auto data =
+                reinterpret_cast<const int32_t*>(buffer->data()->data());
+            ss << data[i];
+          } break;
+          case tflite::TensorType_UINT32: {
+            auto data =
+                reinterpret_cast<const uint32_t*>(buffer->data()->data());
+            ss << data[i];
+          } break;
+          case tflite::TensorType_INT8: {
+            auto data = reinterpret_cast<const int8_t*>(buffer->data()->data());
+            ss << data[i];
+          } break;
+          case tflite::TensorType_UINT8: {
+            auto data =
+                reinterpret_cast<const uint8_t*>(buffer->data()->data());
+            ss << data[i];
+          } break;
+          case tflite::TensorType_FLOAT32: {
+            auto data = reinterpret_cast<const float*>(buffer->data()->data());
+            ss << data[i];
+          } break;
+          case tflite::TensorType_STRING: {
+            auto data = reinterpret_cast<const char*>(buffer->data()->data());
+            ss << data[i];
+          } break;
+          default:
+            ss << "??";
+            break;
         }
-        if (data_cnt > kMaxContentDumpCnt) {
-          ss << "...";
+        if (i != data_cnt - 1) {
+          ss << ", ";
         }
+      }
+      if (data_cnt > kMaxContentDumpCnt) {
+        ss << "...";
       }
     }
     ss << "]";
@@ -137,6 +175,7 @@ void dump_tensor_detail(std::stringstream& out_stream,
     auto* buffer = model->buffers()->Get(buffer_idx);
     if (buffer->data() && buffer->data()->size() != 0) {
       out_stream << " RO " << buffer->data()->size() << " bytes";
+      out_stream << ", buffer: " << buffer_idx;
       out_stream << ", data:" << get_tensor_data_str(tensor, model);
       stats->buffer_usage[subgraph_idx] += buffer->data()->size();
     }

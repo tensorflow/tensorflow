@@ -23,10 +23,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 namespace mhlo {
@@ -35,13 +35,6 @@ namespace {
 bool hasIntegralShapeType(Operation* op) {
   auto stp = op->getOperand(0).getType().dyn_cast<ShapedType>();
   return stp && stp.getElementType().isIntOrIndex();
-}
-
-Value getInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
-                          ArrayRef<Value> dynSizes) {
-  return b.create<bufferization::AllocTensorOp>(loc, type, dynSizes,
-                                                /*copy=*/Value(),
-                                                /*memory_space=*/IntegerAttr());
 }
 
 }  // namespace
@@ -56,6 +49,13 @@ SmallVector<StringRef, 3> getParallelAndReductionIterators(
 
 SmallVector<StringRef, 3> getNParallelLoopsAttrs(unsigned nParallelLoops) {
   return getParallelAndReductionIterators(nParallelLoops, 0);
+}
+
+Value getInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
+                          ArrayRef<Value> dynSizes) {
+  return b.create<bufferization::AllocTensorOp>(loc, type, dynSizes,
+                                                /*copy=*/Value(),
+                                                /*memory_space=*/IntegerAttr());
 }
 
 Value getInitTensor(OpBuilder& b, Location loc, ShapedType type,

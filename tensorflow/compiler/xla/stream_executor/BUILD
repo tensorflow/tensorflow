@@ -153,10 +153,7 @@ cc_library(
 cc_library(
     name = "data_type",
     hdrs = ["data_type.h"],
-    deps = [
-        ":dnn_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor/platform",
-    ],
+    deps = [":dnn_proto_cc"],
 )
 
 cc_library(

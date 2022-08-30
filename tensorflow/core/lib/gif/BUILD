@@ -53,6 +53,7 @@ cc_library(
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/lib/gtl:legacy_android_gif_internal_headers",
         "//tensorflow/core/platform:gif_internal_hdrs",
+        "//tensorflow/tsl/platform:gif_internal_hdrs",
         "//tensorflow/tsl/platform/default:integral_types.h",
         "//tensorflow/tsl/platform/default:logging.h",
     ],

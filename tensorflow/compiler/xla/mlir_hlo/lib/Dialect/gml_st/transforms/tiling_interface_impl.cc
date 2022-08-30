@@ -55,7 +55,7 @@ struct LinalgOpTilingInterface
   /// Return the destination operands.
   SmallVector<Value> getDestinationOperands(Operation *op,
                                             OpBuilder & /*b*/) const {
-    return cast<LinalgOp>(op).getOutputOperands();
+    return cast<linalg::DestinationStyleOpInterface>(op).getOutputOperands();
   }
 
   /// Return the loop iterator type.

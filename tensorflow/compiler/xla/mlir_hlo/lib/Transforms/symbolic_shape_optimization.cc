@@ -418,7 +418,7 @@ SymbolicProduct eliminateCommonFactors(SymbolicProduct &a, SymbolicProduct &b) {
   SymbolicProduct gcd;
 
   // Eliminate common concrete factors.
-  gcd.concrete = llvm::GreatestCommonDivisor64(a.concrete, b.concrete);
+  gcd.concrete = std::gcd(a.concrete, b.concrete);
   a.concrete /= gcd.concrete;
   b.concrete /= gcd.concrete;
 

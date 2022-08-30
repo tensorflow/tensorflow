@@ -13,15 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_EXECUTION_ENGINE_H_
-#define XLA_RUNTIME_EXECUTION_ENGINE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_EXECUTION_ENGINE_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_EXECUTION_ENGINE_H_
 
 #include <functional>
 #include <memory>
+#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "llvm/ADT/StringRef.h"
+#include "absl/status/statusor.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -108,9 +109,9 @@ class ExecutionEngine {
 
   // Creates a new execution engine by compiling the provided LLVM module to
   // a native function using LLVM ORC stack.
-  static llvm::Expected<std::unique_ptr<ExecutionEngine>> CreateFromModule(
+  static absl::StatusOr<std::unique_ptr<ExecutionEngine>> CreateFromModule(
       std::unique_ptr<llvm::LLVMContext> ctx,
-      std::unique_ptr<llvm::Module> module, llvm::StringRef entrypoint,
+      std::unique_ptr<llvm::Module> module, std::string_view entrypoint,
       JitOptions options);
 
   //------------------------------------------------------------------------- //
@@ -133,8 +134,8 @@ class ExecutionEngine {
 
   // Creates a new execution engine by loading AOT compiled XLA executable
   // object file.
-  static llvm::Expected<std::unique_ptr<ExecutionEngine>> CreateFromObjFile(
-      std::unique_ptr<llvm::MemoryBuffer>, llvm::StringRef entrypoint,
+  static absl::StatusOr<std::unique_ptr<ExecutionEngine>> CreateFromObjFile(
+      std::unique_ptr<llvm::MemoryBuffer>, std::string_view entrypoint,
       AotOptions options);
 
   //------------------------------------------------------------------------- //
@@ -166,4 +167,4 @@ class ExecutionEngine {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_EXECUTION_ENGINE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_EXECUTION_ENGINE_H_

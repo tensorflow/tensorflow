@@ -16,64 +16,48 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 
 #include <cstddef>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
-#include "llvm/ADT/ArrayRef.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
 namespace xla {
 namespace runtime {
 
+using absl::InvalidArgumentError;
+using absl::Status;
+using absl::StrCat;
+using absl::StrFormat;
+using absl::StrJoin;
+
 using llvm::dyn_cast;
 using llvm::isa;
 
-using llvm::ArrayRef;
-using llvm::Error;
-using llvm::MutableArrayRef;
-using llvm::Optional;
-using llvm::raw_ostream;
-
-static raw_ostream& operator<<(raw_ostream& os, PrimitiveType& type) {
-  return os << primitive_util::LowercasePrimitiveTypeName(type);
-}
-
-raw_ostream& OpaqueArg::print(raw_ostream& os) const {
-  return os << "OpaqueArg: ptr=" << ptr_;
-}
-
-raw_ostream& MemrefDesc::print(raw_ostream& os) const {
-  auto print_arr = [&](llvm::StringRef name, ArrayRef<int64_t> arr) {
-    os << " " << name << ": [";
-    if (!arr.empty()) {
-      os << arr[0];
-      for (int i = 1; i < arr.size(); ++i) os << ", " << arr[i];
-    }
-    os << "]";
-  };
-
-  os << "MemrefDesc: dtype: " << dtype() << " offset: " << offset();
-  print_arr("sizes", sizes());
-  print_arr("strides", strides());
-
-  return os;
-}
+using xla::primitive_util::LowercasePrimitiveTypeName;
 
 //===----------------------------------------------------------------------===//
 // OpaqueArg.
 //===----------------------------------------------------------------------===//
 
-Error OpaqueArg::Verify(const Type& type) const {
-  if (isa<AsyncTokenType>(type)) return Error::success();
-  return MakeStringError("unsupported opaque argument type: ", type);
+Status OpaqueArg::Verify(const Type& type) const {
+  if (isa<AsyncTokenType>(type)) return absl::OkStatus();
+  return InvalidArgumentError(
+      StrCat("unsupported opaque argument type: ", type.ToString()));
 }
 
-size_t OpaqueArg::Pack(MutableArrayRef<void*> args, size_t offset) const {
-  args[offset] = ptr_;
-  return ++offset;
+void OpaqueArg::Pack(absl::Span<void*> args) const { args[0] = ptr_; }
+
+std::string OpaqueArg::ToString() const {
+  return StrFormat("OpaqueArg: ptr=%p", ptr_);
 }
 
 //===----------------------------------------------------------------------===//
@@ -98,9 +82,9 @@ static bool AreCompatibleTypes(PrimitiveType type1, PrimitiveType type2) {
   return type1 == type2;
 }
 
-static Error VerifyMemrefArgument(PrimitiveType element_type,
-                                  Optional<absl::Span<const int64_t>> sizes,
-                                  const MemrefDesc& memref) {
+static Status VerifyMemrefArgument(
+    PrimitiveType element_type, std::optional<absl::Span<const int64_t>> sizes,
+    const MemrefDesc& memref) {
   // Format memref argument and expected type for user-friendly error messages.
   auto pretty_print = [&]() -> std::string {
     std::string err;
@@ -110,21 +94,21 @@ static Error VerifyMemrefArgument(PrimitiveType element_type,
       return d == MemrefType::kDynamicSize ? "?" : std::to_string(d);
     };
 
-    auto print_shaped = [&](Optional<absl::Span<const int64_t>> dims,
+    auto print_shaped = [&](std::optional<absl::Span<const int64_t>> dims,
                             PrimitiveType dtype) {
       if (!dims.has_value()) {
-        os << "[*x" << dtype << "]";
+        os << "[*x" << LowercasePrimitiveTypeName(dtype) << "]";
         return;
       }
 
       if (dims->empty()) {
-        os << "[" << dtype << "]";
+        os << "[" << LowercasePrimitiveTypeName(dtype) << "]";
         return;
       }
 
       os << "[" << dim((*dims)[0]);
       for (int i = 1; i < dims->size(); ++i) os << "x" << dim((*dims)[i]);
-      os << "x" << dtype << "]";
+      os << "x" << LowercasePrimitiveTypeName(dtype) << "]";
     };
 
     os << "got ";
@@ -137,22 +121,22 @@ static Error VerifyMemrefArgument(PrimitiveType element_type,
 
   // Check that memref data type is compatible with the expected element type.
   if (LLVM_UNLIKELY(!AreCompatibleTypes(element_type, memref.dtype()))) {
-    return MakeStringError(
-        "type is not compatible with the expected element type: ",
-        primitive_util::LowercasePrimitiveTypeName(memref.dtype()), " vs ",
-        primitive_util::LowercasePrimitiveTypeName(element_type), " (",
-        pretty_print(), ")");
+    return InvalidArgumentError(
+        StrCat("type is not compatible with the expected element type: ",
+               primitive_util::LowercasePrimitiveTypeName(memref.dtype()),
+               " vs ", primitive_util::LowercasePrimitiveTypeName(element_type),
+               " (", pretty_print(), ")"));
   }
 
   // Skip sizes verification if they are not available (unranked tensor or
   // memref type is compatible with run-time arguments of any shape).
-  if (!sizes.has_value()) return Error::success();
+  if (!sizes.has_value()) return absl::OkStatus();
 
   // Check that memref rank is the same as the expected rank.
   if (LLVM_UNLIKELY(memref.rank() != sizes->size()))
-    return MakeStringError(
-        "rank does not match expected input rank: ", memref.rank(), " vs ",
-        sizes->size(), " (", pretty_print(), ")");
+    return InvalidArgumentError(
+        StrCat("rank does not match expected input rank: ", memref.rank(),
+               " vs ", sizes->size(), " (", pretty_print(), ")"));
 
   // Check that all statically known dimensions matches the memref dimensions.
   for (const auto& pair : llvm::enumerate(llvm::zip(memref.sizes(), *sizes))) {
@@ -162,44 +146,39 @@ static Error VerifyMemrefArgument(PrimitiveType element_type,
     bool is_dynamic_dim = MemrefType::IsDynamic(expected_dim);
 
     if (LLVM_UNLIKELY(argument_dim != expected_dim && !is_dynamic_dim))
-      return MakeStringError(
-          "dimension #", pair.index(),
-          " does not match expected input dimension: ", argument_dim, " vs ",
-          expected_dim, " (", pretty_print(), ")");
+      return InvalidArgumentError(
+          StrCat("dimension #", pair.index(),
+                 " does not match expected input dimension: ", argument_dim,
+                 " vs ", expected_dim, " (", pretty_print(), ")"));
   }
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
-Error MemrefDesc::Verify(const Type& type) const {
+Status MemrefDesc::Verify(const Type& type) const {
   // Only ranked memrefs have a defined ABI and can be passed as an argument.
   if (auto* memref = dyn_cast<MemrefType>(&type))
     return VerifyMemrefArgument(memref->element_type(), memref->sizes(), *this);
-  return MakeStringError("unsupported memref type: ", type);
+  return InvalidArgumentError(
+      StrCat("unsupported memref type: ", type.ToString()));
 }
 
-size_t MemrefDesc::Pack(MutableArrayRef<void*> args, size_t offset) const {
-  // Write into the arguments data starting from the given offset.
-  void** storage = &args[offset];
-
+void MemrefDesc::Pack(absl::Span<void*> args) const {
   auto cast = [](const void* p) { return const_cast<void*>(p); };
 
   // Packs memref with a rank not known at compile time.
-  auto pack_memref = [&](int64_t rank) -> size_t {
-    storage[0] = cast(&data_);  // memref.basePtr
-    storage[1] = cast(&data_);  // memref.data
-    storage[2] = cast(&offset_);
+  auto pack_memref = [&](int64_t rank) {
+    args[0] = cast(&data_);  // memref.basePtr
+    args[1] = cast(&data_);  // memref.data
+    args[2] = cast(&offset_);
     for (int64_t d = 0; d < rank; ++d) {
-      storage[3 + d] = cast(&sizes_and_strides_[d]);
-      storage[3 + rank + d] = cast(&sizes_and_strides_[rank_ + d]);
+      args[3 + d] = cast(&sizes_and_strides_[d]);
+      args[3 + rank + d] = cast(&sizes_and_strides_[rank_ + d]);
     }
-
-    // Move offsets to the next argument position.
-    return offset + 3 + rank * 2;
   };
 
   // Packs memref with a rank known at compile time.
-  auto pack_ranked_memref = [&](auto rank_tag) -> size_t {
+  auto pack_ranked_memref = [&](auto rank_tag) {
     static constexpr int64_t rank = decltype(rank_tag)::value;
     return pack_memref(rank);
   };
@@ -223,68 +202,74 @@ size_t MemrefDesc::Pack(MutableArrayRef<void*> args, size_t offset) const {
   }
 }
 
+std::string MemrefDesc::ToString() const {
+  return StrFormat("MemrefDesc: dtype: %s offset: %i sizes: [%s] strides: [%s]",
+                   LowercasePrimitiveTypeName(dtype()), offset(),
+                   StrJoin(sizes(), ", "), StrJoin(strides(), ", "));
+}
+
 //===----------------------------------------------------------------------===//
 // Verify that argument type is compatible with the run-time memref argument.
 //===----------------------------------------------------------------------===//
 
-static Error VerifyMemrefArgument(const Type& type, const MemrefDesc& arg) {
+static Status VerifyMemrefArgument(const Type& type, const MemrefDesc& arg) {
   if (auto* memref = dyn_cast<MemrefType>(&type))
     return VerifyMemrefArgument(memref->element_type(), memref->sizes(), arg);
   if (auto* memref = dyn_cast<UnrankedMemrefType>(&type))
-    return VerifyMemrefArgument(memref->element_type(), llvm::None, arg);
+    return VerifyMemrefArgument(memref->element_type(), std::nullopt, arg);
 
   if (auto* tensor = dyn_cast<RankedTensorType>(&type))
     return VerifyMemrefArgument(tensor->element_type(), tensor->sizes(), arg);
   if (auto* tensor = dyn_cast<UnrankedTensorType>(&type))
-    return VerifyMemrefArgument(tensor->element_type(), llvm::None, arg);
+    return VerifyMemrefArgument(tensor->element_type(), std::nullopt, arg);
 
-  return MakeStringError("unsupported memref type: ", type);
+  return InvalidArgumentError(
+      StrCat("unsupported memref type: ", type.ToString()));
 }
 
-Error VerifyMemrefArgument(unsigned index, const Type& type,
-                           const MemrefDesc& arg) {
-  if (auto err = VerifyMemrefArgument(type, arg))
-    return MakeStringError("argument #", index, " ", err);
-  return Error::success();
+Status VerifyMemrefArgument(unsigned index, const Type& type,
+                            const MemrefDesc& arg) {
+  if (auto st = VerifyMemrefArgument(type, arg); !st.ok())
+    return InvalidArgumentError(StrCat("argument #", index, " ", st.message()));
+  return absl::OkStatus();
 }
 
 // -------------------------------------------------------------------------- //
 // BufferDesc.
 // -------------------------------------------------------------------------- //
 
-raw_ostream& BufferDesc::print(raw_ostream& os) const {
-  return os << "BufferDesc: data: " << data() << " size: " << size();
-}
-
-static Error VerifyBufferDesc(PrimitiveType element_type,
-                              Optional<absl::Span<const int64_t>> sizes,
-                              const BufferDesc& buffer) {
-  size_t n_elem = !sizes.hasValue() || sizes->empty() ? 1 : (*sizes)[0];
+static Status VerifyBufferDesc(PrimitiveType element_type,
+                               std::optional<absl::Span<const int64_t>> sizes,
+                               const BufferDesc& buffer) {
+  size_t n_elem = !sizes.has_value() || sizes->empty() ? 1 : (*sizes)[0];
   size_t expected_buffer_size =
       primitive_util::ByteWidth(element_type) * n_elem;
   if (LLVM_UNLIKELY(expected_buffer_size != buffer.size())) {
-    return MakeStringError(
+    return InvalidArgumentError(StrCat(
         "buffer size is not equal to that expected from the element type: got ",
-        buffer.size(), " vs expected ", expected_buffer_size, ".");
+        buffer.size(), " vs expected ", expected_buffer_size, "."));
   }
-  return Error::success();
+  return absl::OkStatus();
 }
 
-Error BufferDesc::Verify(const Type& type) const {
+Status BufferDesc::Verify(const Type& type) const {
   // BufferDesc doesn't have its own type signature; it works with MemrefType.
   if (auto* memref = dyn_cast<MemrefType>(&type))
     return VerifyBufferDesc(memref->element_type(), memref->sizes(), *this);
-  return MakeStringError("unsupported memref type: ", type);
+  return InvalidArgumentError(
+      StrCat("unsupported memref type: ", type.ToString()));
 }
 
-size_t BufferDesc::Pack(MutableArrayRef<void*> args, size_t offset) const {
+void BufferDesc::Pack(absl::Span<void*> args) const {
   auto cast = [](const void* ptr) { return const_cast<void*>(ptr); };
-  // Write into the arguments data starting from the given offset.
-  void** p = &args[offset];
-  p[0] = cast(&data_);
-  p[1] = cast(&data_);
-  p[2] = cast(&size_);
-  return offset + 3;
+
+  args[0] = cast(&data_);
+  args[1] = cast(&data_);
+  args[2] = cast(&size_);
+}
+
+std::string BufferDesc::ToString() const {
+  return StrFormat("BufferDesc: data: %p size: %i", data(), size());
 }
 
 }  // namespace runtime

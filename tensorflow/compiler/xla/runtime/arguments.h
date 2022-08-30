@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_ARGUMENTS_H_
-#define XLA_RUNTIME_ARGUMENTS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_ARGUMENTS_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_ARGUMENTS_H_
 
 #include <cstddef>
+#include <string>
 #include <type_traits>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
 namespace xla {
@@ -37,24 +38,21 @@ class Argument : public llvm::RTTIExtends<Type, llvm::RTTIRoot> {
   Argument() = default;
 
   // Verifies that the argument matches the expected type.
-  virtual llvm::Error Verify(const Type& type) const = 0;
+  virtual absl::Status Verify(const Type& type) const = 0;
 
-  // Packs argument into the `args` array starting at the given `offset`
-  // according to the expected executable ABI. Return offset incremented by
-  // the number of packed pointers, so that result will point to the offset for
-  // packing the next argument.
+  // Packs argument into the `args` view according to the expected executable
+  // ABI.
   //
-  // Arguments array is guaranteed to be properly sized to have space for all
+  // Arguments view is guaranteed to be properly sized to have space for all
   // arguments according to the arguments memory layout.
-  virtual size_t Pack(llvm::MutableArrayRef<void*> args,
-                      size_t offset) const = 0;
+  virtual void Pack(absl::Span<void*> args) const = 0;
 
-  virtual llvm::raw_ostream& print(llvm::raw_ostream& os) const = 0;
+  virtual std::string ToString() const = 0;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
                                      const Argument& arg) {
-  return arg.print(os);
+  return os << arg.ToString();
 }
 
 //===----------------------------------------------------------------------===//
@@ -140,7 +138,7 @@ class Arguments {
 };
 
 // A constant reference to an array of arguments, somewhat similar to the
-// `ArrayRef<Argument>`, however because `ArrayRef` of a virtual base is not
+// `absl::Span<const Argument>`, however because `Span` of a virtual base is not
 // possible, we have our own type that is constructible from the `Arguments`
 // and array reference or vector of any argument subtype.
 class ArgumentsRef {
@@ -207,9 +205,9 @@ class OpaqueArg final : public llvm::RTTIExtends<OpaqueArg, Argument> {
 
   void* ptr() const { return ptr_; }
 
-  llvm::Error Verify(const Type& type) const final;
-  size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  absl::Status Verify(const Type& type) const final;
+  void Pack(absl::Span<void*> args) const final;
+  std::string ToString() const final;
 
  private:
   void* ptr_;
@@ -224,7 +222,7 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
   static constexpr char ID = 0;  // NOLINT
 
   MemrefDesc(PrimitiveType dtype, void* data, int64_t offset,
-             llvm::ArrayRef<int64_t> sizes, llvm::ArrayRef<int64_t> strides)
+             absl::Span<const int64_t> sizes, absl::Span<const int64_t> strides)
       : rank_(sizes.size()), dtype_(dtype), data_(data), offset_(offset) {
     assert(sizes.size() == strides.size() && "invalid sizes and strides pair");
     sizes_and_strides_.reserve(2 * rank_);
@@ -237,8 +235,8 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
   //
   // Expected `InitializeSizesAndStrides` callback signature:
   //
-  //   void operator()(MutableArrayRef<int64_t> sizes,
-  //                   MutableArrayRef<int64_t> strides);
+  //   void operator()(absl::Span<int64_t> sizes,
+  //                   absl::Span<int64_t> strides);
   //
   // We pass the init callback as a template argument to be able to
   // inline it at the call site, because MemrefDesc construction is on a hot
@@ -264,16 +262,17 @@ class MemrefDesc final : public llvm::RTTIExtends<MemrefDesc, Argument> {
     return sizes_and_strides_[rank_ + index];
   }
 
-  llvm::ArrayRef<int64_t> sizes() const {
+  absl::Span<const int64_t> sizes() const {
     return {sizes_and_strides_.data(), rank_};
   }
-  llvm::ArrayRef<int64_t> strides() const {
+
+  absl::Span<const int64_t> strides() const {
     return {sizes_and_strides_.data() + rank_, rank_};
   }
 
-  llvm::Error Verify(const Type& type) const final;
-  size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  absl::Status Verify(const Type& type) const final;
+  void Pack(absl::Span<void*> args) const final;
+  std::string ToString() const final;
 
  private:
   unsigned rank_;
@@ -291,8 +290,8 @@ MemrefDesc::MemrefDesc(unsigned rank, PrimitiveType dtype, void* data,
                        int64_t offset, InitializeSizesAndStrides initialize)
     : rank_(rank), dtype_(dtype), data_(data), offset_(offset) {
   sizes_and_strides_.resize(2 * rank_);
-  llvm::MutableArrayRef<int64_t> ref = sizes_and_strides_;
-  initialize(ref.drop_back(rank_), ref.drop_front(rank_));
+  auto ref = absl::Span<int64_t>(sizes_and_strides_);
+  initialize(ref.subspan(0, rank_), ref.subspan(rank_));
 }
 
 //===----------------------------------------------------------------------===//
@@ -303,8 +302,8 @@ MemrefDesc::MemrefDesc(unsigned rank, PrimitiveType dtype, void* data,
 // argument: type is a tensor of a memref with compatible element type, and all
 // statically known dimensions match the run-time sizes. Returns user-friendly
 // error message in case of an error.
-llvm::Error VerifyMemrefArgument(unsigned index, const Type& type,
-                                 const MemrefDesc& arg);
+absl::Status VerifyMemrefArgument(unsigned index, const Type& type,
+                                  const MemrefDesc& arg);
 
 //===----------------------------------------------------------------------===//
 // BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
@@ -319,9 +318,9 @@ class BufferDesc final : public llvm::RTTIExtends<BufferDesc, Argument> {
   void* data() const { return data_; }
   size_t size() const { return size_; }
 
-  llvm::Error Verify(const Type& type) const final;
-  size_t Pack(llvm::MutableArrayRef<void*> args, size_t offset) const final;
-  llvm::raw_ostream& print(llvm::raw_ostream& os) const final;
+  absl::Status Verify(const Type& type) const final;
+  void Pack(absl::Span<void*> args) const final;
+  std::string ToString() const final;
 
  private:
   void* data_;
@@ -331,4 +330,4 @@ class BufferDesc final : public llvm::RTTIExtends<BufferDesc, Argument> {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_ARGUMENTS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_ARGUMENTS_H_

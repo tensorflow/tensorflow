@@ -1,7 +1,7 @@
-// RUN: mlir-hlo-opt %s --gml-tiling="tile-sizes=[256,512]" | \
+// RUN: mlir-hlo-opt %s --gml-deprecated-tiling="tile-sizes=[256,512]" | \
 // RUN: FileCheck %s --check-prefix=CHECK-TILE
 
-// RUN: mlir-hlo-opt %s --gml-tiling="tile-sizes=[1,1]" | \
+// RUN: mlir-hlo-opt %s --gml-deprecated-tiling="tile-sizes=[1,1]" | \
 // RUN: FileCheck %s --check-prefix=CHECK-POINT
 
 #id_map = affine_map<(d0, d1) -> (d0, d1)>

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_TYPE_ID_H_
-#define XLA_RUNTIME_TYPE_ID_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_TYPE_ID_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_TYPE_ID_H_
 
 #include <atomic>
 #include <cstdint>
@@ -62,7 +62,7 @@ class TypeIDNameRegistry {
 
   std::string_view FindTypeIDSymbolName(TypeID type_id);
 
-  void ForEach(std::function<void(llvm::StringRef, TypeID)> f) const {
+  void ForEach(std::function<void(std::string_view, TypeID)> f) const {
     for (auto& kv : type_id_name_map_) f(kv.second, kv.first);
   }
 
@@ -171,4 +171,4 @@ size_t DenseTypeIdResolver<IdSet, T>::get() {
   } /* namespace runtime */                                                   \
   } /* namespace xla */
 
-#endif  // XLA_RUNTIME_TYPE_ID_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_TYPE_ID_H_

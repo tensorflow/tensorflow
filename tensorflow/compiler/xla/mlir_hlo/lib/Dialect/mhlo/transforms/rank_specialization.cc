@@ -21,7 +21,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 
@@ -528,14 +528,12 @@ Value materializeEqualShapesRankSpecializationCase(
       [&](OpBuilder &b, Location loc) {
         // Flatten non-scalar operands.
         Value flatShape = materializeFlatShape(b, loc, nonScalarShapes);
-        auto flatOperands =
-            llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
+        auto flatOperands = llvm::to_vector<8>(
+            llvm::map_range(op.operands(), [&](Value v) -> Value {
               if (isScalarTensorType(v.getType())) return v;
-              return b
-                  .create<mhlo::DynamicReshapeOp>(
-                      loc, deriveRankedTensorTypes(v.getType(), /*rank=*/1), v,
-                      flatShape)
-                  .result();
+              return b.create<mhlo::DynamicReshapeOp>(
+                  loc, deriveRankedTensorTypes(v.getType(), /*rank=*/1), v,
+                  flatShape);
             }));
 
         // Materialize ranked variants for the element-wise operations.
@@ -719,12 +717,11 @@ materializeRankSpecializationForSingleNonScalarShapeEquivalenceClass(
 
   // Restore the results' expected shape.
   Value shape = nonScalarShapes.front();
-  return llvm::to_vector<8>(llvm::map_range(unshapedResults, [&](Value v) {
-    return rewriter
-        .create<mhlo::DynamicReshapeOp>(
-            loc, deriveUnrankedTensorTypes(v.getType()), v, shape)
-        .result();
-  }));
+  return llvm::to_vector<8>(
+      llvm::map_range(unshapedResults, [&](Value v) -> Value {
+        return rewriter.create<mhlo::DynamicReshapeOp>(
+            loc, deriveUnrankedTensorTypes(v.getType()), v, shape);
+      }));
 }
 
 Value materializeRankSpecializationForTwoNonScalarShapeEquivalenceClasses(

@@ -81,7 +81,6 @@ REQUIRED_PACKAGES = [
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
-    'keras_preprocessing >= 1.1.1',  # 1.1.0 needs tensorflow==1.7
     'libclang >= 13.0.0',
     'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
@@ -272,6 +271,7 @@ headers = (
     list(find_files('*.h', 'tensorflow/python')) +
     list(find_files('*.h', 'tensorflow/python/client')) +
     list(find_files('*.h', 'tensorflow/python/framework')) +
+    list(find_files('*.h', 'tensorflow/stream_executor')) +
     list(find_files('*.h', 'tensorflow/compiler/xla/stream_executor')) +
     list(find_files('*.h', 'tensorflow/tsl')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
@@ -279,7 +279,7 @@ headers = (
     list(find_files('*', 'third_party/eigen3')) +
     list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+    list(find_files('*', 'tensorflow/include/external/eigen_archive'))) 
 
 setup(
     name=project_name,

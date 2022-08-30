@@ -56,7 +56,7 @@ mlir::ElementsAttr convertElementsAttr(const mlir::ElementsAttr& elements,
           bool ignored;
           APSInt intVal(bitWidth, isNewTypeUnsigned);
           floatVal.convertToInteger(intVal, APFloat::rmTowardZero, &ignored);
-          return intVal;
+          return std::move(intVal);
         });
   }
 

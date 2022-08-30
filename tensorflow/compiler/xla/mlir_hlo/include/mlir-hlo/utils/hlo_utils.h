@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <string>
 
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 namespace hlo {
@@ -105,6 +107,36 @@ int64_t getArgumentIndex(func::FuncOp op, Value value);
 std::pair<size_t, size_t> computeMemory(const std::vector<Value>& allocs);
 
 }  // namespace hlo
+}  // namespace mlir
+
+namespace mlir {
+namespace chlo {
+
+template <typename T>
+static Value getConstantLike(OpBuilder& b, Location loc, T constant,
+                             Value val) {
+  Type ty = getElementTypeOrSelf(val.getType());
+  auto getAttr = [&]() -> Attribute {
+    if (ty.isa<IntegerType>()) return b.getIntegerAttr(ty, constant);
+    if (ty.isa<FloatType>()) return b.getFloatAttr(ty, constant);
+    if (auto complexTy = ty.dyn_cast<ComplexType>())
+      return complex::NumberAttr::get(complexTy, constant, 0);
+    llvm_unreachable("unhandled element type");
+  };
+  return b.create<ConstantLikeOp>(loc, getAttr(), val);
+}
+
+Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
+                      Value val);
+
+Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val);
+
+Value getConstantLikeInfValue(OpBuilder& b, Location loc, Value val,
+                              bool negative);
+
+Value getConstantLikeSmallestFiniteValue(OpBuilder& b, Location loc, Value val);
+
+}  // namespace chlo
 }  // namespace mlir
 
 #endif  // MLIR_HLO_UTILS_HLO_UTILS_H

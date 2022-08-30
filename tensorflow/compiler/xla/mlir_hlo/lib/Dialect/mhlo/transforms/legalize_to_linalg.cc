@@ -1441,7 +1441,10 @@ class DotOpConversion : public OpConversionPattern<mhlo::DotOp> {
         typeConverter->convertType(op.getType()).cast<ShapedType>();
     SmallVector<Value, 2> dynShape = getDotOpInitTensorDynSizes(
         rewriter, loc, adaptor.lhs(), adaptor.rhs(), op_type);
-    auto initTensor = getInitTensor(rewriter, loc, outputType, dynShape);
+    auto initTensor =
+        sparse_tensor::getSparseTensorEncoding(outputType) == nullptr
+            ? getInitTensor(rewriter, loc, outputType, dynShape)
+            : getInitSparseTensor(rewriter, loc, outputType, dynShape);
     Value zeroTensor = fillTensorWithZeros(rewriter, loc, initTensor);
     rewriter.replaceOpWithNewOp<LinalgOp>(
         op, TypeRange{outputType}, ValueRange{adaptor.lhs(), adaptor.rhs()},
@@ -1608,7 +1611,7 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
     int numOperands = static_cast<int>(adaptor.operands().size());
 
     if (llvm::any_of(adaptor.operands(), [](Value v) {
-          return !v.getType().cast<ShapedType>().getRank();
+          return !v.getType().isa<RankedTensorType>();
         })) {
       return rewriter.notifyMatchFailure(op, "expects known-rank args");
     }
@@ -3309,6 +3312,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::PowOp>,
       PointwiseToLinalgConverter<mhlo::RealOp>,
       PointwiseToLinalgConverter<mhlo::RemOp>,
+      PointwiseToLinalgConverter<mhlo::RoundNearestEvenOp>,
       PointwiseToLinalgConverter<mhlo::RoundOp>,
       PointwiseToLinalgConverter<mhlo::RsqrtOp>,
       PointwiseToLinalgConverter<mhlo::SelectOp>,

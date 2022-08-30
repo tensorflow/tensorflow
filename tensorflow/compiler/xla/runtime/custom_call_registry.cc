@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -33,13 +34,13 @@ struct CustomCallRegistry::Impl {
 CustomCallRegistry::CustomCallRegistry() : impl_(std::make_unique<Impl>()) {}
 
 void CustomCallRegistry::Register(std::unique_ptr<CustomCall> custom_call) {
-  llvm::StringRef key = custom_call->name();
+  std::string_view key = custom_call->name();
   auto inserted = impl_->custom_calls.insert({key, std::move(custom_call)});
   assert(inserted.second && "duplicate custom call registration");
   (void)inserted;
 }
 
-CustomCall* CustomCallRegistry::Find(llvm::StringRef callee) const {
+CustomCall* CustomCallRegistry::Find(std::string_view callee) const {
   auto it = impl_->custom_calls.find(callee);
   if (it == impl_->custom_calls.end()) return nullptr;
   return it->second.get();

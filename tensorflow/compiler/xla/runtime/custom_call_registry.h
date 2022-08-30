@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_CUSTOM_CALL_REGISTRY_H_
-#define XLA_RUNTIME_CUSTOM_CALL_REGISTRY_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_CUSTOM_CALL_REGISTRY_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_CUSTOM_CALL_REGISTRY_H_
 
 #include <memory>
+#include <string_view>
 
-#include "llvm/ADT/StringRef.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 
 namespace xla {
@@ -47,7 +47,7 @@ class CustomCallRegistry {
 
   void Register(std::unique_ptr<class CustomCall> custom_call);
 
-  class CustomCall* Find(llvm::StringRef callee) const;
+  class CustomCall* Find(std::string_view callee) const;
 
  private:
   class Impl;
@@ -82,4 +82,4 @@ void AddStaticCustomCallRegistration(
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_CUSTOM_CALL_REGISTRY_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_CUSTOM_CALL_REGISTRY_H_

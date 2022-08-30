@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_DIAGNOSTICS_H_
-#define XLA_RUNTIME_DIAGNOSTICS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_DIAGNOSTICS_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_DIAGNOSTICS_H_
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -160,7 +161,7 @@ class InFlightDiagnostic {
 
   // Diagnostic engine that will report this diagnostic once its ready.
   const DiagnosticEngine *engine_ = nullptr;
-  llvm::Optional<Diagnostic> diagnostic_;
+  std::optional<Diagnostic> diagnostic_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -212,4 +213,4 @@ class DiagnosticEngine {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_DIAGNOSTICS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_DIAGNOSTICS_H_

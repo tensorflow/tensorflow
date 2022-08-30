@@ -30,6 +30,7 @@ namespace tflite {
 // based on the event type and forward to corresponding `Report` function.
 // The implementation of the `Report` functions are responsible for dumping the
 // profiling events to the data sink.
+// The implementation of TelemetryProfiler is required to be thread safe.
 class TelemetryProfiler : public Profiler {
  public:
   // General Telemetry events.

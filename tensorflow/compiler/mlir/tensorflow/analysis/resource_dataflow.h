@@ -64,6 +64,13 @@ class ResourceDataflowAnalysis
 
   void visitOperation(Operation *op, ArrayRef<const StateT *> operands,
                       ArrayRef<StateT *> results) override;
+
+  void setToEntryState(StateT *lattice) override {
+    propagateIfChanged(
+        lattice,
+        lattice->join(ResourceConstructingOps::getPessimisticValueState(
+            lattice->getPoint())));
+  }
 };
 
 }  // namespace TF

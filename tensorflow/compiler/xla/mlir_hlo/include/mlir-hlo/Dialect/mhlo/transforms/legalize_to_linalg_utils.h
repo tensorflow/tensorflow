@@ -55,6 +55,10 @@ SmallVector<StringRef, 3> getParallelAndReductionIterators(unsigned nLoops,
 /// Returns an ArrayAttr that contains `nParallelLoops` "parallel" attributes.
 SmallVector<StringRef, 3> getNParallelLoopsAttrs(unsigned nParallelLoops);
 
+/// Generates an init sparse tensor.
+Value getInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
+                          ArrayRef<Value> dynSizes);
+
 /// Generates an initTensor op in the linalg dialect.
 Value getInitTensor(OpBuilder& b, Location loc, ShapedType type,
                     ArrayRef<Value> dynSizes);
@@ -140,8 +144,10 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     }
 
     auto loc = op.getLoc();
-    // TODO(jreiffers): Enable this optimization outside of linalg ops. This
-    // currently breaks KernelGen.
+    // Within a linalg op, we can immediately de-tensorsize if the computation
+    // is scalar. We do not do this on the top-level, as that would break the
+    // nice invariant that all programs are exclusively on tensors, which is
+    // currently relied on for fusion in some pipelines.
     if (nloops == 0 && isInBodyOfLinalgOps(op)) {
       // No need to create a linalg.generic if all inputs are scalars.
       SmallVector<Value> inputs;

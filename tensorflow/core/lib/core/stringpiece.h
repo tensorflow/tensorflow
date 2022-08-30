@@ -26,6 +26,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
 #define TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
 
-#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/stringpiece.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_

@@ -6462,11 +6462,11 @@ struct Sign {
     return {};                                                       \
   }
 
-UNARY_FOLDER(NegOp, std::negate);
-UNARY_FOLDER(SignOp, Sign);
-UNARY_FOLDER_INT(NotOp, LogicalNot);
-UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven);
-UNARY_FOLDER_FLOAT(RoundOp, Round);
+UNARY_FOLDER(NegOp, std::negate)
+UNARY_FOLDER(SignOp, Sign)
+UNARY_FOLDER_INT(NotOp, LogicalNot)
+UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven)
+UNARY_FOLDER_FLOAT(RoundOp, Round)
 
 #undef UNARY_FOLDER
 #undef UNARY_FOLDER_INT
@@ -6652,11 +6652,11 @@ struct Xor {
 // Due to the other ops behaving differently in signed vs unsigned integers,
 // APInts need a special implementation. Currently, it replicates signed int
 // op behavior.
-BINARY_FOLDER(SubtractOp, std::minus);
-BINARY_FOLDER(DivOp, Divide);
-BINARY_FOLDER(RemOp, Remainder);
-BINARY_FOLDER(MaxOp, Max);
-BINARY_FOLDER(MinOp, Min);
+BINARY_FOLDER(SubtractOp, std::minus)
+BINARY_FOLDER(DivOp, Divide)
+BINARY_FOLDER(RemOp, Remainder)
+BINARY_FOLDER(MaxOp, Max)
+BINARY_FOLDER(MinOp, Min)
 
 bool isSplatZero(SplatElementsAttr attr) {
   if (!attr) return false;
@@ -7199,11 +7199,11 @@ static LogicalResult sortDropEmptyUseArgs(SortOp op,
   if (erasedArgs.empty()) return failure();
 
   SmallVector<Value> newOperands;
-  SmallVector<unsigned> erasedBlockArgs;
+  BitVector erasedBlockArgs(op.getNumOperands() * 2);
   for (const auto& en : llvm::enumerate(op.operands())) {
     if (erasedArgs.contains(en.index())) {
-      erasedBlockArgs.push_back(en.index() * 2);
-      erasedBlockArgs.push_back(en.index() * 2 + 1);
+      erasedBlockArgs.set(en.index() * 2);
+      erasedBlockArgs.set(en.index() * 2 + 1);
     } else {
       newOperands.push_back(en.value());
     }
@@ -8438,6 +8438,7 @@ static LogicalResult whileCanonicalization(WhileOp whileOp,
 
   SmallVector<Value> newOperands, resultsToReplace;
   SmallVector<unsigned> invariantArgIdxs;
+  BitVector invariantArgIdxBitVector(cond->getNumArguments());
   for (const auto& enumeratedOperands : llvm::enumerate(llvm::zip(
            whileOp.getOperands(), cond->getArguments(), body->getArguments(),
            bodyReturnOp->getOperands(), whileOp->getResults()))) {
@@ -8452,6 +8453,7 @@ static LogicalResult whileCanonicalization(WhileOp whileOp,
                       bodyBlockArg == bodyReturnOperand);
     if (forwarded) {
       invariantArgIdxs.push_back(enumeratedOperands.index());
+      invariantArgIdxBitVector.set(enumeratedOperands.index());
       condBlockArg.replaceAllUsesWith(whileOperand);
       bodyBlockArg.replaceAllUsesWith(whileOperand);
       whileResult.replaceAllUsesWith(whileOperand);
@@ -8460,8 +8462,8 @@ static LogicalResult whileCanonicalization(WhileOp whileOp,
     newOperands.push_back(whileOperand);
     resultsToReplace.push_back(whileResult);
   }
-  cond->eraseArguments(invariantArgIdxs);
-  body->eraseArguments(invariantArgIdxs);
+  cond->eraseArguments(invariantArgIdxBitVector);
+  body->eraseArguments(invariantArgIdxBitVector);
   for (int idx : llvm::reverse(invariantArgIdxs))
     bodyReturnOp->eraseOperand(idx);
 

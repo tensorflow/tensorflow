@@ -248,6 +248,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -524,6 +525,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo_pass",
         "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
+        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -732,6 +734,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_wrapper_impl",  # TODO(skyewm): remove
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
         "//tensorflow/core/tpu:pjrt_api",
+        "//tensorflow/core/tpu:tpu_initializer_helper",
     ],
 )
 

@@ -434,6 +434,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
+        "@llvm-project//mlir:IR",
     ],
 )
 

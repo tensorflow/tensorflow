@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_EXECUTABLE_H_
-#define XLA_RUNTIME_EXECUTABLE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_EXECUTABLE_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_EXECUTABLE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
-#include "llvm/ADT/Optional.h"
+#include "absl/status/statusor.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
@@ -72,14 +74,15 @@ class Executable {
   // This function leaves the kernel context argument (the first argument of an
   // entry function) uninitialized. It will be initialized in the `Execute`
   // function right before the actual execution.
-  llvm::Error InitializeCallFrame(ArgumentsRef arguments, CallFrame* call_frame,
-                                  bool verify_arguments = true) const;
+  absl::Status InitializeCallFrame(ArgumentsRef arguments,
+                                   CallFrame* call_frame,
+                                   bool verify_arguments = true) const;
 
   // Converts returned values owned by the call frame using provided result
   // converter. If compiled function execution finished with an error (error
   // flag is `true` in the call frame) returns error for all results.
-  llvm::Error ReturnResults(const ResultConverter& results,
-                            CallFrame* call_frame) const;
+  absl::Status ReturnResults(const ResultConverter& results,
+                             CallFrame* call_frame) const;
 
   // Executes compiled function with given arguments.
   //
@@ -91,9 +94,9 @@ class Executable {
   //
   // Returns compiled function results via the user-provided results converter.
   // If execution completed in the error state, returns error for all results.
-  llvm::Error Execute(ArgumentsRef arguments, const ResultConverter& results,
-                      const ExecuteOpts& opts,
-                      bool verify_arguments = true) const;
+  absl::Status Execute(ArgumentsRef arguments, const ResultConverter& results,
+                       const ExecuteOpts& opts,
+                       bool verify_arguments = true) const;
 
   // Executes compiled function using user provided call frame.
   //
@@ -103,9 +106,9 @@ class Executable {
 
   bool IsAsync() const { return results_memory_layout_.has_async_results; }
 
-  llvm::StringRef name() const { return name_; }
+  std::string_view name() const { return name_; }
 
-  llvm::Optional<size_t> specialization() const { return specialization_; }
+  std::optional<size_t> specialization() const { return specialization_; }
 
   // Returns the number of results in the runtime signature.
   unsigned num_results() const;
@@ -154,13 +157,14 @@ class Executable {
     // The error message which is available only if `is_error` is true. The
     // assumption is that the error message string is owned by the compiled
     // binary and the call frame can safely keep a non-owning pointer.
-    llvm::StringRef error;
+    std::string_view error;
   };
 
   // Requirements for passing arguments to the compiled function.
   struct ArgumentsMemoryLayout {
-    // Currently we always pass arguments as an array of pointers.
-    size_t num_args_ptrs = 0;
+    size_t num_args_ptrs = 0;            // total number of required pointers
+    llvm::SmallVector<size_t> num_ptrs;  // num_ptrs for each argument
+    llvm::SmallVector<size_t> offsets;   // offsets into the args array
   };
 
   // Requirements for the contiguous block of memory to store compiled function
@@ -192,23 +196,23 @@ class Executable {
   // Loads executable from an object file. It is the caller responsibility to
   // guarantee that signatures do match the compiled function in the object
   // file, otherwise it will surely lead to crash.
-  static llvm::Expected<Executable> LoadFromObjFile(
-      llvm::StringRef name, std::unique_ptr<llvm::MemoryBuffer> obj_file,
-      llvm::StringRef entrypoint, FunctionType signature,
+  static absl::StatusOr<Executable> LoadFromObjFile(
+      std::string_view name, std::unique_ptr<llvm::MemoryBuffer> obj_file,
+      std::string_view entrypoint, FunctionType signature,
       FunctionType runtime_signature,
       ExecutionEngine::SymbolsBinding symbols_binding = {},
-      llvm::StringRef memory_region_name = "");
+      std::string_view memory_region_name = "");
 
   // Verifies that all operands types in the entrypoint function signature are
   // supported at run time . Returns a pre-computed layout for the function
   // arguments. If some arguments are not supported returns an error.
-  static llvm::Expected<ArgumentsMemoryLayout> GetArgumentsMemoryLayout(
+  static absl::StatusOr<ArgumentsMemoryLayout> GetArgumentsMemoryLayout(
       const FunctionType& signature);
 
   // Verifies that all results types in the entrypoint function signature are
   // supported at run time . Returns a pre-computed layout for the function
   // results. If some results are not supported returns an error.
-  static llvm::Expected<ResultsMemoryLayout> GetResultsMemoryLayout(
+  static absl::StatusOr<ResultsMemoryLayout> GetResultsMemoryLayout(
       const FunctionType& signature);
 
   // TODO(ezhulenev): The following three functions should be decoupled from
@@ -229,15 +233,15 @@ class Executable {
  private:
   friend class JitCompiler;  // see `mlir/transforms/runtime/compiler.h`
 
-  Executable(llvm::StringRef name,
+  Executable(std::string_view name,
              std::unique_ptr<XlaRuntimeMemoryMapper> memory_mapper,
              std::unique_ptr<ExecutionEngine> engine, FunctionType signature,
              FunctionType runtime_signature,
              ArgumentsMemoryLayout arguments_memory_layout,
              ResultsMemoryLayout results_memory_layout,
-             llvm::Optional<size_t> specialization,
+             std::optional<size_t> specialization,
              std::chrono::milliseconds time_to_compile)
-      : name_(name.str()),
+      : name_(name),
         memory_mapper_(std::move(memory_mapper)),
         engine_(std::move(engine)),
         fptr_(engine_->entrypoint()),
@@ -290,7 +294,7 @@ class Executable {
 
   // Specialization id if this executable is a specialization, or an empty
   // optional if this executable is a default one.
-  llvm::Optional<size_t> specialization_;
+  std::optional<size_t> specialization_;
 
   // The time it took to compile this binary.
   std::chrono::milliseconds time_to_compile_;
@@ -301,11 +305,11 @@ class Executable {
 //
 // The profiler's UI might interpret slashes as callchain separators,
 // whereas we want the region name to be shown in full.
-inline std::string EscapeMemRegionName(llvm::StringRef memory_region_name) {
+inline std::string EscapeMemRegionName(std::string_view memory_region_name) {
   return llvm::join(llvm::split(memory_region_name, '/'), "__");
 }
 
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_EXECUTABLE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_EXECUTABLE_H_

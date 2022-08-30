@@ -62,20 +62,6 @@ CreateElementsAttrOfTypeValues(Type element_type, ArrayRef<int64_t> shape,
   return const_attr;
 }
 
-template <typename T>
-static std::enable_if_t<std::is_floating_point<T>::value, ElementsAttr>
-CreateElementsAttrOfTypeValues(Type element_type, ArrayRef<int64_t> shape,
-                               ArrayRef<T> values) {
-  auto tensor_shape = RankedTensorType::get(shape, element_type);
-  SmallVector<APFloat> elements;
-  if (element_type.getIntOrFloatBitWidth() == 32)
-    llvm::for_each(values, [&](float v) { elements.push_back(APFloat(v)); });
-  else
-    llvm::for_each(values, [&](double v) { elements.push_back(APFloat(v)); });
-  auto const_attr = DenseElementsAttr::get(tensor_shape, elements);
-  return const_attr;
-}
-
 static ElementsAttr CreateElementsAttrOfTypeValues(Type element_type,
                                                    ArrayRef<int64_t> shape,
                                                    ElementsAttr value_attr) {
@@ -1227,29 +1213,28 @@ class MaterializeConstantValuedNode
 
     // FillOp is handled in MaterializeFillNode pattern.
     if (dialect_->IsFill(op)) return failure();
-    if (!dialect_->IsZerosLike(op) && !dialect_->IsOnesLike(op))
-      return failure();
+    const bool is_zeros_like = dialect_->IsZerosLike(op);
+    if (!is_zeros_like && !dialect_->IsOnesLike(op)) return failure();
 
     // TODO(chiahungduan): If op->getOperand(0) has static shape, can we use
     // that to materialize?
     auto output_type = op->getResult(0).getType().cast<ShapedType>();
     if (!output_type.hasStaticShape()) return failure();
 
-    int value =
-        dialect_->IsZerosLike(op) ? 0 : (dialect_->IsOnesLike(op) ? 1 : -1);
-    if (value < 0) return failure();
-
-    if (!output_type.getElementType().isIntOrIndexOrFloat()) return failure();
+    int value = is_zeros_like ? 0 : 1;
+    Type output_element_type = output_type.getElementType();
+    if (!output_element_type.isIntOrIndexOrFloat()) return failure();
 
     ElementsAttr const_attr;
-    if (output_type.getElementType().isIntOrIndex()) {
-      const_attr = CreateElementsAttrOfTypeValues(output_type.getElementType(),
-                                                  output_type.getShape(),
-                                                  ArrayRef<int>(value));
+    if (output_element_type.isIntOrIndex()) {
+      const_attr = SplatElementsAttr::get(
+          output_type,
+          APInt(output_element_type.getIntOrFloatBitWidth(), value));
     } else {
-      const_attr = CreateElementsAttrOfTypeValues(output_type.getElementType(),
-                                                  output_type.getShape(),
-                                                  ArrayRef<double>(value));
+      const_attr = SplatElementsAttr::get(
+          output_type,
+          APFloat(output_element_type.cast<FloatType>().getFloatSemantics(),
+                  value));
     }
 
     FailureOr<TFOp> const_op =
@@ -1791,6 +1776,7 @@ class SimplifySqueezeOp : public FolderPatternBase<SimplifySqueezeOp> {
 
 // This implementation is mapped with ConstantFolding::SimplifyPack
 // in grappler/optimizers/constant_folding.cc
+// Rewrite a Pack op with a single non-control input into ExpandDims.
 class SimplifyPackOp : public FolderPatternBase<SimplifyPackOp> {
  public:
   explicit SimplifyPackOp(OpPropertyHelper &helper)
@@ -1799,6 +1785,16 @@ class SimplifyPackOp : public FolderPatternBase<SimplifyPackOp> {
                                 PatternRewriter &rewriter) const override {
     auto [non_control_operands, control_operands] = TFOp(op).splitOperands();
     if (non_control_operands.size() != 1) return failure();
+
+    // ExpandDims is not supported on DT_VARIANT (see ExpandDimsOp::Compute),
+    // and DT_VARIANT tensor protos are converted to opaque tensors. We skip
+    // such cases (even though not all opaque tensors are DT_VARIANT tensor
+    // protos, e.g. there is DT_RESOURCE).
+    // TODO(tlongeri): is there a reason ExpandDims does not support DT_VARIANT?
+    if (ShapedType values_type =
+            non_control_operands[0].getType().dyn_cast<ShapedType>();
+        !values_type || values_type.getElementType().isa<VariantType>())
+      return failure();
 
     // It's unsafe to add a control dependency on the feed node, because it
     // might have been never executed otherwiwise.
@@ -1887,7 +1883,9 @@ class MoveConstantsPastRefEnterOp
 };
 
 // This implementation is mapped with ConstantFolding::SimplifySwitch
-// in grappler/optimizers/constant_folding.cc
+// in grappler/optimizers/constant_folding.cc.
+// In addition to the Grappler functionality, we remove duplicate anchors from
+// the switch.
 class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
  public:
   explicit SimplifySwitchOp(OpPropertyHelper &helper)
@@ -1896,65 +1894,70 @@ class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
             {}, IntegerType::get(helper.getDialect()->getContext(), 1))) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    if (op->getOperand(0) != op->getOperand(1)) return failure();
+    // Currently, there is no infallible protection against reapplications of
+    // the pattern resulting in constant nodes with duplicate names (Grappler
+    // handled this by checking names globally).
+    // We could add a suffix to the node name on each application, but then we
+    // could not apply the pattern on fetch/preserved nodes.
+    // Removing duplicate anchors prevents the problem from manifesting in
+    // certain situations (namely, when the common subgraph elimination pass
+    // merges two switch ops on which the pattern had been already applied).
 
-    // If the optimization was already applied, the switch would have exactly
-    // one Identity node consuming each of its outputs, each without any
-    // non-control outputs.
-    // TODO(tlongeri): This does not hold anymore as other patterns may need to
-    // introduce an anchor. Fix this check, and handle both sides independently.
-    if (llvm::any_of(op->getResults().drop_back(), [&](Value res) {
-          return res.hasOneUse() &&
-                 IsControlAnchor(*res.getUsers().begin(), dialect_);
-        })) {
-      return failure();
+    bool modified = false;
+
+    auto remove_duplicate_anchors = [&](OpResult result) {
+      auto anchors = make_filter_range(result.getUsers(), [&](Operation *op) {
+        return IsControlAnchor(op, dialect_);
+      });
+
+      for (Operation *anchor : make_early_inc_range(anchors)) {
+        if (anchor == *anchors.begin()) continue;
+        rewriter.replaceOp(anchor, (*anchors.begin())->getResults());
+        modified = true;
+      }
+    };
+
+    auto simplify_result = [&](OpResult result, const bool const_value,
+                               const StringRef name_suffix) {
+      if (result.use_empty() ||
+          (result.hasOneUse() &&
+           IsControlAnchor(*result.getUsers().begin(), dialect_)))
+        return;
+
+      FailureOr<TFOp> failure_or_const_op = CreateConstantTensorOp(
+          rewriter, op->getLoc(), TFOp(op).name(), result.getType(), llvm::None,
+          DenseElementsAttr::get(zero_dim_i1_tensor_type_, const_value));
+      if (failed(failure_or_const_op)) return;
+      TFOp const_op = *failure_or_const_op;
+      const_op.setName(TFOp(op).name() + name_suffix);
+      if (StringAttr device_attr = TFOp(op).deviceAttr())
+        const_op.setRequestedDevice(device_attr);
+
+      // May create a new op - must be careful to not fail out after.
+      TFOp anchor = GetControlAnchorForSwitchResult(rewriter, result, dialect_);
+      const_op->insertOperands(0, anchor.controlRet());
+
+      // Note that we can't use replaceAllUsesWith here because we don't want to
+      // replace the user of control identity.
+      for (OpOperand &user : llvm::make_early_inc_range(result.getUses())) {
+        if (user.getOwner() == &(*anchor)) continue;
+
+        rewriter.startRootUpdate(user.getOwner());
+        user.set(const_op->getResult(0));
+        rewriter.finalizeRootUpdate(user.getOwner());
+      }
+      modified = true;
+    };
+
+    remove_duplicate_anchors(op->getResult(0));
+    remove_duplicate_anchors(op->getResult(1));
+
+    if (op->getOperand(0) == op->getOperand(1)) {
+      simplify_result(op->getResult(0), false, "/_const_false");
+      simplify_result(op->getResult(1), true, "/_const_true");
     }
 
-    TFOp true_control_identity =
-        GetControlAnchorForSwitchResult(rewriter, op->getResult(1), dialect_);
-    TFOp false_control_identity =
-        GetControlAnchorForSwitchResult(rewriter, op->getResult(0), dialect_);
-
-    FailureOr<TFOp> true_op = CreateConstantTensorOp(
-        rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[1],
-        true_control_identity.controlRet(),
-        DenseElementsAttr::get(zero_dim_i1_tensor_type_, true));
-    if (failed(true_op)) return failure();
-
-    (*true_op).setName(Twine(TFOp(op).name(), "/_const_true"));
-    if (!TFOp(op).device().empty())
-      (*true_op).setRequestedDevice(TFOp(op).device());
-
-    FailureOr<TFOp> false_op = CreateConstantTensorOp(
-        rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[0],
-        false_control_identity.controlRet(),
-        DenseElementsAttr::get(zero_dim_i1_tensor_type_, false));
-    if (failed(false_op)) return failure();
-
-    (*false_op).setName(Twine(TFOp(op).name(), "/_const_false"));
-    if (!TFOp(op).device().empty())
-      (*false_op).setRequestedDevice(TFOp(op).device().data());
-
-    // Note that we can't use replaceAllUsesWith here because we don't want to
-    // replace the user of control identity.
-    for (OpOperand &user :
-         llvm::make_early_inc_range(op->getResult(1).getUses())) {
-      if (user.getOwner() == &(*true_control_identity)) continue;
-
-      rewriter.startRootUpdate(user.getOwner());
-      user.set((*true_op)->getResult(0));
-      rewriter.finalizeRootUpdate(user.getOwner());
-    }
-    for (OpOperand &user :
-         llvm::make_early_inc_range(op->getResult(0).getUses())) {
-      if (user.getOwner() == &(*false_control_identity)) continue;
-
-      rewriter.startRootUpdate(user.getOwner());
-      user.set((*false_op)->getResult(0));
-      rewriter.finalizeRootUpdate(user.getOwner());
-    }
-
-    return success();
+    return success(modified);
   }
 
   RankedTensorType zero_dim_i1_tensor_type_;
@@ -2181,8 +2184,12 @@ class SimplifyArithmeticOp
     ShapedType x_type = (*x->result_type_begin()).cast<ShapedType>();
     ShapedType y_type = (*y->result_type_begin()).cast<ShapedType>();
 
-    const bool y_matches_output_shape = op_type == y_type;
-    const bool x_matches_output_shape = op_type == x_type;
+    const bool y_matches_output_shape = op_type.hasStaticShape() &&
+                                        y_type.hasStaticShape() &&
+                                        op_type == y_type;
+    const bool x_matches_output_shape = op_type.hasStaticShape() &&
+                                        x_type.hasStaticShape() &&
+                                        op_type == x_type;
 
     const bool x_is_zero = helper_.IsZeros(x);
     const bool x_is_one = x_is_zero ? false : helper_.IsOnes(x);
@@ -2463,7 +2470,7 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
 
     const bool left_child_is_const = dialect_->IsConstant(child_op);
 
-    // One of the child op has to be constant.
+    // One of the child ops has to be constant.
     if (!dialect_->IsConstant(const_op)) std::swap(child_op, const_op);
     if (!dialect_->IsConstant(const_op)) return failure();
     if (helper_.ShouldPreserveOp(child_op)) return failure();
@@ -2484,15 +2491,20 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
     const bool is_child_symmetric = is_child_add || is_child_mul;
 
     TypeAttr t_attr = op->getAttrOfType<TypeAttr>("T");
+    assert(t_attr == child_op->getAttrOfType<TypeAttr>("T"));
     if (!t_attr) return failure();
 
-    if (!(is_symmetric && is_child_symmetric) &&
-        t_attr.getValue().isIntOrIndex()) {
+    // Do not rewrite expressions of integer types with division because:
+    // - They use integer division.
+    // - There may be overflow. (a * b) / c != (a / c) * b if (a * b) overflows,
+    // even if divisions have no remainder.
+    if (t_attr.getValue().isIntOrIndex() && (is_div || is_child_div))
       return failure();
-    }
 
     Operation *left_leaf_op = child_op->getOperand(0).getDefiningOp();
     Operation *right_leaf_op = child_op->getOperand(1).getDefiningOp();
+    // TODO(tlongeri): Is this check really necessary? Why not allow block
+    // arguments?
     if (!left_leaf_op || !right_leaf_op) return failure();
 
     // Don't move nodes across devices.
@@ -2502,18 +2514,22 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
     }
 
     const bool left_leaf_is_const = dialect_->IsConstant(left_leaf_op);
+    if (left_leaf_is_const && dialect_->IsConstant(right_leaf_op))
+      return failure();
+    // X is never Const. Y may be Const.
+    Value x_value = child_op->getOperand(left_leaf_is_const ? 1 : 0);
+    Value y_value = child_op->getOperand(left_leaf_is_const ? 0 : 1);
     Operation *y_node = left_leaf_is_const ? left_leaf_op : right_leaf_op;
 
     if (!dialect_->IsConstant(y_node)) {
       // If we know the shapes of the nodes being swapped, make sure we don't
       // push down a larger node and create more work by broadcasting earlier
       // in the expressions tree.
-      auto c_shape = op->getOperand((left_child_is_const ? 0 : 1))
-                         .getType()
-                         .cast<ShapedType>();
-      auto x_shape = child_op->getOperand((left_leaf_is_const ? 0 : 1))
-                         .getType()
-                         .cast<ShapedType>();
+      // Dimensions of X must be smaller than or equal than those of C.
+      // This also avoids having to increase the size of the child op's result
+      // to match the broadcast with a bigger operand.
+      auto c_shape = const_op->getResult(0).getType().cast<ShapedType>();
+      auto x_shape = x_value.getType().cast<ShapedType>();
 
       if (c_shape.hasStaticShape() && x_shape.hasStaticShape() &&
           c_shape.getNumElements() > x_shape.getNumElements()) {
@@ -2528,23 +2544,6 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
       }
     }
 
-    // Child input
-    Operation *input_x = left_leaf_is_const
-                             ? child_op->getOperand(1).getDefiningOp()
-                             : child_op->getOperand(0).getDefiningOp();
-    Operation *input_y = left_leaf_is_const
-                             ? child_op->getOperand(0).getDefiningOp()
-                             : child_op->getOperand(1).getDefiningOp();
-    if (!input_x || !input_y) return failure();
-
-    Operation *input_c = const_op;
-    Operation *input_op = child_op;
-
-    if (op->getOperand(0).getDefiningOp() == input_c)
-      op->setOperand(0, input_x->getResult(0));
-    else
-      op->setOperand(1, input_x->getResult(0));
-
     if (is_symmetric && is_child_symmetric) {
       // Easy case (only commutative ops). We always write this as one of
       //   +
@@ -2553,12 +2552,12 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
       //    / \
       //   C   Y
       rewriter.startRootUpdate(op);
-      op->setOperand(0, input_x->getResult(0));
-      op->setOperand(1, input_op->getResult(0));
+      op->setOperand(0, x_value);
+      op->setOperand(1, child_op->getResult(0));
       rewriter.finalizeRootUpdate(op);
       rewriter.startRootUpdate(child_op);
-      child_op->setOperand(0, input_c->getResult(0));
-      child_op->setOperand(1, input_y->getResult(0));
+      child_op->setOperand(0, const_op->getResult(0));
+      child_op->setOperand(1, y_value);
       rewriter.finalizeRootUpdate(child_op);
     } else {
       // More complicated case: When there are non-commutative operations like
@@ -2593,8 +2592,8 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
       StringRef op_name =
           (neg_x || (neg_c && neg_y)) ? nonsymmetric_op : symmetric_op;
       OperationState state(op->getLoc(), op_name);
-      state.addOperands({input_op->getResult(0), input_x->getResult(0)});
-      if (!neg_x) std::swap(state.operands[0], state.operands[1]);
+      state.addOperands({x_value, child_op->getResult(0)});
+      if (neg_x) std::swap(state.operands[0], state.operands[1]);
       state.addOperands(TFOp(op).getControlOperands());
       state.attributes = op->getAttrDictionary();
       state.addTypes(op->getResultTypes());
@@ -2603,9 +2602,8 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
 
       StringRef child_name = neg_c != neg_y ? nonsymmetric_op : symmetric_op;
       OperationState new_child_state(child_op->getLoc(), child_name);
-      new_child_state.addOperands(
-          {input_y->getResult(0), input_c->getResult(0)});
-      if (!neg_c)
+      new_child_state.addOperands({const_op->getResult(0), y_value});
+      if (neg_c)
         std::swap(new_child_state.operands[0], new_child_state.operands[1]);
       new_child_state.addOperands(TFOp(child_op).getControlOperands());
       new_child_state.attributes = child_op->getAttrDictionary();

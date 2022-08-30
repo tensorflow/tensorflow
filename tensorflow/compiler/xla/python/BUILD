@@ -556,6 +556,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -783,6 +784,7 @@ pybind_extension(
                "//tensorflow/compiler/xla/pjrt/distributed:client",
                "//tensorflow/compiler/xla/pjrt/distributed:service",
                "//tensorflow/core:lib",
+               "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
                # Do NOT remove this dependency. The XLA Python extension must not
                # depend on any part of TensorFlow at runtime, **including**
                # libtensorflow_framework.so. The XLA module is deployed self-contained

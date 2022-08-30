@@ -17,8 +17,8 @@ limitations under the License.
 // structures, such as std::map and hash_map. Some functions will also work with
 // sets, such as ContainsKey().
 
-#ifndef TENSORFLOW_LIB_GTL_MAP_UTIL_H_
-#define TENSORFLOW_LIB_GTL_MAP_UTIL_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_MAP_UTIL_H_
+#define TENSORFLOW_CORE_LIB_GTL_MAP_UTIL_H_
 
 #include <stddef.h>
 
@@ -212,4 +212,4 @@ typename Collection::value_type::second_type EraseKeyReturnValuePtr(
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_MAP_UTIL_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_MAP_UTIL_H_

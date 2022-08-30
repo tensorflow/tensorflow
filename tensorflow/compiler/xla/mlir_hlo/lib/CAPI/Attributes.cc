@@ -359,7 +359,7 @@ MlirAttribute mlirMhloComparisonDirectionAttrGet(MlirContext ctx,
   if (!compareDirection)
     llvm_unreachable("Invalid comparison-direction specified.");
   return wrap(mlir::mhlo::ComparisonDirectionAttr::get(
-      unwrap(ctx), compareDirection.getValue()));
+      unwrap(ctx), compareDirection.value()));
 }
 
 bool mlirMhloAttributeIsAComparisonDirectionAttr(MlirAttribute attr) {
@@ -381,7 +381,7 @@ MlirAttribute mlirMhloComparisonTypeAttrGet(MlirContext ctx,
       mlir::mhlo::symbolizeComparisonType(unwrap(type));
   if (!compareType) llvm_unreachable("Invalid comparison-type specified.");
   return wrap(
-      mlir::mhlo::ComparisonTypeAttr::get(unwrap(ctx), compareType.getValue()));
+      mlir::mhlo::ComparisonTypeAttr::get(unwrap(ctx), compareType.value()));
 }
 
 bool mlirMhloAttributeIsAComparisonTypeAttr(MlirAttribute attr) {
@@ -401,8 +401,7 @@ MlirAttribute mlirMhloDomainKindAttrGet(MlirContext ctx, MlirStringRef kind) {
   llvm::Optional<mlir::mhlo::DomainKind> domainKind =
       mlir::mhlo::symbolizeDomainKind(unwrap(kind));
   if (!domainKind) llvm_unreachable("Invalid domain kind specified.");
-  return wrap(
-      mlir::mhlo::DomainKindAttr::get(unwrap(ctx), domainKind.getValue()));
+  return wrap(mlir::mhlo::DomainKindAttr::get(unwrap(ctx), domainKind.value()));
 }
 
 bool mlirMhloAttributeIsADomainKindAttr(MlirAttribute attr) {
@@ -423,7 +422,7 @@ MlirAttribute mlirMhloPrecisionAttrGet(MlirContext ctx, MlirStringRef type) {
       mlir::mhlo::symbolizePrecision(unwrap(type));
   if (!precisionType) llvm_unreachable("Invalid precision-type specified.");
   return wrap(
-      mlir::mhlo::PrecisionAttr::get(unwrap(ctx), precisionType.getValue()));
+      mlir::mhlo::PrecisionAttr::get(unwrap(ctx), precisionType.value()));
 }
 
 bool mlirMhloAttributeIsAPrecisionAttr(MlirAttribute attr) {
@@ -443,7 +442,7 @@ MlirAttribute mlirMhloFftTypeAttrGet(MlirContext ctx, MlirStringRef type) {
   llvm::Optional<mlir::mhlo::FftType> fftType =
       mlir::mhlo::symbolizeFftType(unwrap(type));
   if (!fftType) llvm_unreachable("Invalid fft-type specified.");
-  return wrap(mlir::mhlo::FftTypeAttr::get(unwrap(ctx), fftType.getValue()));
+  return wrap(mlir::mhlo::FftTypeAttr::get(unwrap(ctx), fftType.value()));
 }
 
 bool mlirMhloAttributeIsAFftTypeAttr(MlirAttribute attr) {
@@ -464,8 +463,8 @@ MlirAttribute mlirMhloDequantizeModeAttrGet(MlirContext ctx,
   llvm::Optional<mlir::mhlo::DequantizeMode> dequantizeMode =
       mlir::mhlo::symbolizeDequantizeMode(unwrap(mode));
   if (!dequantizeMode) llvm_unreachable("Invalid dequantize-mode specified.");
-  return wrap(mlir::mhlo::DequantizeModeAttr::get(unwrap(ctx),
-                                                  dequantizeMode.getValue()));
+  return wrap(
+      mlir::mhlo::DequantizeModeAttr::get(unwrap(ctx), dequantizeMode.value()));
 }
 
 bool mlirMhloAttributeIsADequantizeModeAttr(MlirAttribute attr) {
@@ -486,7 +485,7 @@ MlirAttribute mlirMhloTransposeAttrGet(MlirContext ctx, MlirStringRef type) {
       mlir::mhlo::symbolizeTranspose(unwrap(type));
   if (!transposeType) llvm_unreachable("Invalid transpose-type specified.");
   return wrap(
-      mlir::mhlo::TransposeAttr::get(unwrap(ctx), transposeType.getValue()));
+      mlir::mhlo::TransposeAttr::get(unwrap(ctx), transposeType.value()));
 }
 
 bool mlirMhloAttributeIsATransposeAttr(MlirAttribute attr) {
@@ -506,8 +505,7 @@ MlirAttribute mlirMhloFusionKindAttrGet(MlirContext ctx, MlirStringRef kind) {
   llvm::Optional<mlir::mhlo::FusionKind> fusionKind =
       mlir::mhlo::symbolizeFusionKind(unwrap(kind));
   if (!fusionKind) llvm_unreachable("Invalid fusion-kind specified.");
-  return wrap(
-      mlir::mhlo::FusionKindAttr::get(unwrap(ctx), fusionKind.getValue()));
+  return wrap(mlir::mhlo::FusionKindAttr::get(unwrap(ctx), fusionKind.value()));
 }
 
 bool mlirMhloAttributeIsAFusionKindAttr(MlirAttribute attr) {
@@ -529,7 +527,7 @@ MlirAttribute mlirMhloRngDistributionAttrGet(MlirContext ctx,
       mlir::mhlo::symbolizeRngDistribution(unwrap(distribution));
   if (!rngDistribution) llvm_unreachable("Invalid rng-distribution specified.");
   return wrap(mlir::mhlo::RngDistributionAttr::get(unwrap(ctx),
-                                                   rngDistribution.getValue()));
+                                                   rngDistribution.value()));
 }
 
 bool mlirMhloAttributeIsARngDistributionAttr(MlirAttribute attr) {
@@ -552,7 +550,7 @@ MlirAttribute mlirMhloRngAlgorithmAttrGet(MlirContext ctx,
       mlir::mhlo::symbolizeRngAlgorithm(unwrap(algorithm));
   if (!rngAlgorithm) llvm_unreachable("Invalid rng-algorithm specified.");
   return wrap(
-      mlir::mhlo::RngAlgorithmAttr::get(unwrap(ctx), rngAlgorithm.getValue()));
+      mlir::mhlo::RngAlgorithmAttr::get(unwrap(ctx), rngAlgorithm.value()));
 }
 
 bool mlirMhloAttributeIsARngAlgorithmAttr(MlirAttribute attr) {

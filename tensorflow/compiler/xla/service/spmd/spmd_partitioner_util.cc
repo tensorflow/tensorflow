@@ -364,12 +364,16 @@ std::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
     //
     // 1. Calculate left_halo size.
     // left-halo size is
-    //   (src_per_shard_size - dst_per_shard_size) * i / replicate_factor
+    //   (src_per_shard_size - dst_per_shard_size) * floor(i / replicate_factor)
     int64_t replicate_factor = src_sharding.tile_assignment().dim(dim) /
                                dst_sharding.tile_assignment().dim(dim);
+
     OffsetCalculation left_halo_size_function =
-        OffsetCalculation(MultiplyAddDivideOffsetCalculation(
-            src_per_shard_size - dst_per_shard_size, 0, replicate_factor));
+        OffsetCalculation(HloOpcode::kMultiply,
+                          OffsetCalculation(MultiplyAddDivideOffsetCalculation(
+                              0, src_per_shard_size - dst_per_shard_size, 1)),
+                          OffsetCalculation(MultiplyAddDivideOffsetCalculation(
+                              1, 0, replicate_factor)));
 
     // 2. Calculate right_halo size.
     // right-halo size is 0
@@ -1702,10 +1706,10 @@ HloSharding CreateMatchingShardingOnDims(
   }
 }
 
-std::optional<GatherParallelDimSharding>
-GatherOperandsShardedAcrossParallelDims(
+std::optional<GatherScatterParallelDimSharding>
+GatherScatterOperandsShardedAcrossParallelDims(
     const HloInstruction& operand, const HloInstruction& indices,
-    const hlo_sharding_util::GatherParallelDims& parallel_dims) {
+    const hlo_sharding_util::GatherScatterParallelDims& parallel_dims) {
   auto& indices_parallel_dims = parallel_dims.indices_parallel_dims;
   auto& operand_parallel_dims = parallel_dims.operand_parallel_dims;
   if (indices_parallel_dims.size() != operand_parallel_dims.size()) {
@@ -1725,14 +1729,14 @@ GatherOperandsShardedAcrossParallelDims(
     }
   }
   if (new_index_shard.IsReplicated()) {
-    return GatherParallelDimSharding{
+    return GatherScatterParallelDimSharding{
         CreateMatchingShardingOnDims(indices.shape(), new_operand_shard,
                                      indices_parallel_dims_ordered_as_operand,
                                      operand_parallel_dims),
         new_operand_shard};
   }
   if (new_operand_shard.IsReplicated()) {
-    return GatherParallelDimSharding{
+    return GatherScatterParallelDimSharding{
         new_index_shard,
         CreateMatchingShardingOnDims(operand.shape(), new_index_shard,
                                      operand_parallel_dims,
@@ -1805,7 +1809,7 @@ GatherOperandsShardedAcrossParallelDims(
                               : HloSharding::Tile(operand_shard_tiles),
                           operand_parallel_dims, new_index_shard,
                           indices_parallel_dims_ordered_as_operand);
-  return GatherParallelDimSharding{new_index_shard, new_operand_shard};
+  return GatherScatterParallelDimSharding{new_index_shard, new_operand_shard};
 }
 
 int64_t FindRotateRightPattern(const HloInstruction* concat,

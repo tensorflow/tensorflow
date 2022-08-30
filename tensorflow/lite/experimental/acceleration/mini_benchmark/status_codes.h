@@ -90,6 +90,7 @@ enum MinibenchmarkStatus {
   kMinibenchmarkValidationSubgraphHasTooFewInputs = 1011,
   kMinibenchmarkValidationSubgraphHasTooFewOutputs = 1011,
   kMinibenchmarkValidationSubgraphInputsDontMatchOutputs = 1012,
+  kMinibenchmarkValidationInputMissing = 1013,
 
   // Validator runner status codes.
   kMinibenchmarkChildProcessAlreadyRunning = 1501,

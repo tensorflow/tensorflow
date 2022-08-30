@@ -109,11 +109,11 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
       mlir::bufferization::BufferizeTypeConverter());
 
   // Instantiate new JitExecutable from the MLIR source.
-  llvm::Expected<JitExecutable> jit_executable =
+  absl::StatusOr<JitExecutable> jit_executable =
       JitExecutable::Instantiate(mlir_module, entrypoint, opts);
-  if (auto err = jit_executable.takeError())
-    throw std::runtime_error(
-        StrCat("Failed to instantiate JitExecutable: ", err));
+  if (!jit_executable.ok())
+    throw std::runtime_error(StrCat("Failed to instantiate JitExecutable: ",
+                                    jit_executable.status().message()));
 
   Handle hdl = jit_executables_.size();
   jit_executables_.insert({hdl, std::move(*jit_executable)});
@@ -211,11 +211,11 @@ std::vector<py::array> TfJitRtExecutor::Execute(
     memrefs.emplace_back(ConvertPyArrayMemrefDesc(arguments[i]));
 
   // Get an executable that might be specialized to the operands.
-  llvm::Expected<AsyncValuePtr<Executable>> executable =
+  absl::StatusOr<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(memrefs);
-  if (auto err = executable.takeError())
+  if (!executable.ok())
     throw std::runtime_error(
-        StrCat("Failed to get Executable: ", std::move(err)));
+        StrCat("Failed to get Executable: ", executable.status().message()));
 
   // Wait for the compilation completion.
   host_context_.Await({executable->CopyRef()});
@@ -239,8 +239,8 @@ std::vector<py::array> TfJitRtExecutor::Execute(
   PyBindingConversionContext results_ctx;
   PyBindingResultConverter converter(results, results_ctx);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
-  if (auto err = (*executable)->Execute(memrefs, converter, opts))
-    throw std::runtime_error(StrCat("Unsupported argument: ", err));
+  if (auto st = (*executable)->Execute(memrefs, converter, opts); !st.ok())
+    throw std::runtime_error(StrCat("Unsupported argument: ", st.message()));
 
   // Pull Python arrays out of async values.
   std::vector<py::array> ret_values;

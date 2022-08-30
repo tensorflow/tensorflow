@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_CUDA_H_
 #define TENSORFLOW_PLATFORM_CUDA_H_
 
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/platform.h"  // IWYU pragma: keep
 
 #endif  // TENSORFLOW_PLATFORM_CUDA_H_

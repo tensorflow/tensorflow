@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_TOSA_TRANSFORMS_PASSES_DETAIL_H_
-#define MLIR_HLO_TOSA_TRANSFORMS_PASSES_DETAIL_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_HLO_TOSA_LIB_TRANSFORMS_PASSES_DETAIL_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_HLO_TOSA_LIB_TRANSFORMS_PASSES_DETAIL_H_
 
 #define GEN_PASS_CLASSES
 #include "mhlo_tosa/Transforms/passes.h.inc"
 
-#endif  // MLIR_HLO_TOSA_TRANSFORMS_PASSES_DETAIL_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_HLO_TOSA_LIB_TRANSFORMS_PASSES_DETAIL_H_

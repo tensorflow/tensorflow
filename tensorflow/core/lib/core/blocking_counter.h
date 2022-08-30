@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_CORE_BLOCKING_COUNTER_H_
 #define TENSORFLOW_LIB_CORE_BLOCKING_COUNTER_H_
 
-#include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/core/platform/blocking_counter.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LIB_CORE_BLOCKING_COUNTER_H_

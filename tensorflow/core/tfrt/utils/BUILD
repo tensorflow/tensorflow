@@ -197,7 +197,6 @@ cc_library(
     srcs = ["tfrt_graph_execution_state.cc"],
     hdrs = ["tfrt_graph_execution_state.h"],
     deps = [
-        ":graph_partition",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:compilation_passes",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",

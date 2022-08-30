@@ -25,10 +25,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "StructuredTensor"
-    mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
-  }
-  member {
     name: "dlpack"
     mtype: "<type \'module\'>"
   }

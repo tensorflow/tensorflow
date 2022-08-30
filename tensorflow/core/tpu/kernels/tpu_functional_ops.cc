@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 
 #define EIGEN_USE_THREADS
@@ -1374,7 +1376,6 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
     OpKernelContext* ctx, const core::RefCountPtr<Var>& var, NodeDef* ndef,
     int device_ordinal, bool fast_mem) {
   const string device = strings::StrCat(kTPUDeviceNamePrefix, device_ordinal);
-  Status status;
   std::unique_ptr<Graph> init_graph(new Graph(OpRegistry::Global()));
   TF_ASSIGN_OR_RETURN(Node * init_handle, init_graph->AddNode(*ndef));
   init_handle->set_assigned_device_name(device);
@@ -1429,16 +1430,17 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
   std::vector<Tensor> dummy_args;
   std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
   Notification done;
+  Status status;
   profiler::TraceMe trace_me("TPUPartitionedCallOp-InitializeVarOnTPU");
   library_runtime_->Run(opts, fhandle, dummy_args, dummy_rets,
-                        [dummy_rets, &done, ctx](const Status& status) {
-                          if (!status.ok()) {
-                            ctx->SetStatus(status);
-                          }
+                        [dummy_rets, &done, &status](const Status& s) {
+                          status = s;
                           delete dummy_rets;
                           done.Notify();
                         });
   done.WaitForNotification();
+  TF_RETURN_IF_ERROR(status);
+
   // We don't actually want the variable initialization functions
   // in the function library definition and the function library
   // runtime, because flib_def_ is used for the graph rewrite passes.
@@ -1459,14 +1461,10 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
   int num_cores = ndefs.size();
   string cpu_device = "/device:CPU:0";
 
-  Status status;
-  std::vector<std::string> devices;
   std::vector<Node*> init_handles;
   for (int i = 0; i < num_cores; i++) {
     TF_ASSIGN_OR_RETURN(Node * init_handle, init_graph->AddNode(ndefs[i]));
-    string device = tpu_devices[i];
-    init_handle->set_assigned_device_name(device);
-    devices.push_back(device);
+    init_handle->set_assigned_device_name(tpu_devices[i]);
     init_handles.push_back(init_handle);
   }
 
@@ -1527,11 +1525,11 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     NodeDef assign_node_def;
     assign_node_def.set_name(absl::StrCat("Assign_", i));
     assign_node_def.set_op("AssignVariableOp");
-    assign_node_def.set_device(devices[i]);
+    assign_node_def.set_device(tpu_devices[i]);
     AddNodeAttr("dtype", var->tensor()->dtype(), &assign_node_def);
     TF_ASSIGN_OR_RETURN(Node * init_assign,
                         init_graph->AddNode(assign_node_def));
-    init_assign->set_assigned_device_name(devices[i]);
+    init_assign->set_assigned_device_name(tpu_devices[i]);
 
     init_graph->AddEdge(init_handles[i], 0, init_assign, 0);
     if (split_dim >= 0) {
@@ -1593,7 +1591,9 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
   opts.rendezvous = &rendez;
 
   BlockingCounter bcount(functions.size());
-  for (const DeviceAndFHandle& entry : functions) {
+  std::vector<Status> statuses(functions.size());
+  for (int i = 0; i < functions.size(); i++) {
+    const DeviceAndFHandle& entry = functions[i];
     const string& target_device = entry.device;
     FHandle handle = entry.handle;
 
@@ -1605,15 +1605,19 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     profiler::TraceMe trace_me(
         "TPUPartitionedCallOp-InitializeShardedVarOnTPU");
     library_runtime_->Run(opts, handle, dummy_args, dummy_rets,
-                          [dummy_rets, &bcount, ctx](const Status& status) {
-                            if (!status.ok()) {
-                              ctx->SetStatus(status);
-                            }
+                          [dummy_rets, i, &bcount, &statuses](const Status& s) {
+                            statuses[i] = s;
                             delete dummy_rets;
                             bcount.DecrementCount();
                           });
   }
   bcount.Wait();
+
+  StatusGroup status_group;
+  for (const auto& status : statuses) {
+    status_group.Update(status);
+  }
+  TF_RETURN_IF_ERROR(status_group.as_summary_status());
 
   for (int i = 0; i < functions.size(); i++) {
     TF_RETURN_IF_ERROR(flib_def_->RemoveFunction(function_names[i]));
@@ -1812,11 +1816,14 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
     xla_sharding.set_type(xla::OpSharding::REPLICATED);
     is_var_sharded = false;
   }
-  VLOG(3) << "Replace and partition variable " << variable->name()
-          << " with xla_sharding: " << xla_sharding.DebugString();
 
   core::RefCountPtr<Var> var;
   TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
+
+  VLOG(3) << "Replace and partition variable " << variable->name()
+          << " is_var_sharded: " << is_var_sharded
+          << " shape: " << var->tensor()->shape().DebugString()
+          << " with xla_sharding: " << xla_sharding.DebugString();
 
   int split_dim = -1;
   int split_size = 0;

@@ -26,4 +26,21 @@ TEST(GetUniqueRequestId, Basic) {
   }
 }
 
+TEST(GetShardedUniqueRequestId, Basic) {
+  ShardUniqueRequestIdGenerator generator_0(3, 0);
+  ShardUniqueRequestIdGenerator generator_1(4, 3);
+  ShardUniqueRequestIdGenerator generator_2(6, 5);
+  for (int i = 0; i < 1000000; ++i) {
+    auto id = generator_0.GetUniqueRequestId();
+    EXPECT_NE(id, 0);
+    EXPECT_EQ(id & 0x0000000000000003, 0);
+    id = generator_1.GetUniqueRequestId();
+    EXPECT_NE(id, 0);
+    EXPECT_EQ(id & 0x0000000000000003, 3);
+    id = generator_2.GetUniqueRequestId();
+    EXPECT_NE(id, 0);
+    EXPECT_EQ(id & 0x0000000000000007, 5);
+  }
+}
+
 }  // namespace tensorflow

@@ -896,6 +896,10 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
                        mlir::MLIRContext& mlir_context) {
   LoadMLIRDialects(mlir_context);
   mlir::PassManager pm(&mlir_context);
+  if (VLOG_IS_ON(5)) {
+    mlir_context.disableMultithreading();
+    pm.enableIRPrinting();
+  }
   // Resolve all shape constraints (e.g. broadcast constraints that can be
   // proved statically and changed to const witness) early to allow more
   // efficient broadcast operations moving.
@@ -940,6 +944,15 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
       mlir::createLinalgElementwiseOpFusionPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::createConvertTensorToLinalgPass());
+
+  // mhlo ops on unit tensors generate trivial linalg.generics, which
+  // one-shot-bufferize generates unnecessary allocs for. The detensorize pass
+  // replaces these linalg.generics with scalar ops.
+  auto detensorize = mlir::createLinalgDetensorizePass();
+  if (detensorize->initializeOptions("aggressive-mode=true").failed()) {
+    return tensorflow::errors::Internal("Failed to set up detensorize pass.");
+  }
+  pm.addNestedPass<mlir::func::FuncOp>(std::move(detensorize));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createLinalgInitTensorToAllocTensorPass());
 

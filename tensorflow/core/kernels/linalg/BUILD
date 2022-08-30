@@ -190,7 +190,7 @@ tf_kernel_library(
     name = "matrix_inverse_op",
     prefix = "matrix_inverse_op",
     visibility = [":friends"],
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + [":loose_headers"],
 )
 
 tf_kernel_library(
@@ -315,6 +315,21 @@ cc_library(
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
+)
+
+# For a more maintainable build this target should not exist and the headers
+# should  be split into the existing cc_library targets, but this change was
+# automatically  done so that we can remove long standing issues and complexity
+# in the build system. It's up to the OWNERS of this package to get rid of it or
+# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
+# Here it is used to avoid header parsing errors in packages where the feature
+# parse_headers was enabled since loose headers were not being parsed. See
+# go/loose-lsc-one-target-approach for more details.
+cc_library(
+    name = "loose_headers",
+    tags = ["avoid_dep"],
+    textual_hdrs = ["eye_functor.h"],
+    visibility = [":__pkg__"],
 )
 
 tf_cuda_cc_test(

@@ -389,12 +389,17 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
 
   LogicalResult status = success();
   // Collect all used TPUReplicatedInput ops.
-  llvm::SmallVector<Operation*, 8> replicated_input_ops;
+  llvm::SmallVector<TF::TPUReplicatedInputOp, 8> replicated_input_ops;
+  llvm::SmallSet<TF::TPUReplicatedInputOp, 8> seen_ops;
   mlir::visitUsedValuesDefinedAbove(
       cluster.body(), cluster.body(), [&](mlir::OpOperand* operand) {
         Operation* def = operand->get().getDefiningOp();
-        if (llvm::isa_and_nonnull<TF::TPUReplicatedInputOp>(def))
-          replicated_input_ops.push_back(def);
+        if (auto ri = llvm::dyn_cast_or_null<TF::TPUReplicatedInputOp>(def)) {
+          if (!seen_ops.contains(ri)) {
+            seen_ops.insert(ri);
+            replicated_input_ops.push_back(ri);
+          }
+        }
         // When model parallelism is used in conjunction with data parallelism
         // for resource inputs, we need to collect the per replica resource
         // inputs from input to `tf.TPUPartitionedInput` ops.
@@ -404,9 +409,13 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
                      << "requires " << num_cores_per_replica
                      << " operands but found " << pi->getNumOperands();
           for (auto operand : pi.inputs()) {
-            if (llvm::isa_and_nonnull<TF::TPUReplicatedInputOp>(
-                    operand.getDefiningOp()))
-              replicated_input_ops.push_back(operand.getDefiningOp());
+            if (auto ri = llvm::dyn_cast_or_null<TF::TPUReplicatedInputOp>(
+                    operand.getDefiningOp())) {
+              if (!seen_ops.contains(ri)) {
+                seen_ops.insert(ri);
+                replicated_input_ops.push_back(ri);
+              }
+            }
           }
         }
       });
@@ -421,11 +430,11 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   // creating the replicate op.
   llvm::SmallVector<std::pair<ValueRange, Type>, 8> replicated_inputs;
   llvm::SmallVector<Value, 8> packed_inputs;
-  llvm::SmallVector<Operation*, 8> replicated_ops;
-  llvm::SmallVector<Operation*, 8> packed_ops;
+  llvm::SmallVector<TF::TPUReplicatedInputOp, 8> replicated_ops;
+  llvm::SmallVector<TF::TPUReplicatedInputOp, 8> packed_ops;
   for (auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
     auto input = pos_and_input.value();
-    bool is_packed = llvm::cast<TF::TPUReplicatedInputOp>(input).is_packed();
+    bool is_packed = input.is_packed();
     const int num_operands = input->getNumOperands();
     int num_inputs = is_packed ? 1 : num_replicas;
     if (num_operands != num_inputs)
@@ -443,15 +452,14 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   // Create `ordered_tpu_replicate_inputs` which constains the final ordered
   // replicate inputs. All packed arguments are moved to the end of the arg
   // list.
-  llvm::SmallVector<Operation*, 8> ordered_tpu_replicate_inputs =
+  llvm::SmallVector<TF::TPUReplicatedInputOp, 8> ordered_tpu_replicate_inputs =
       replicated_ops;
   ordered_tpu_replicate_inputs.append(packed_ops.begin(), packed_ops.end());
 
   // Assign `mirrored_variable_indices` based on the ordered replicated inputs.
   for (const auto& pos_and_input :
        llvm::enumerate(ordered_tpu_replicate_inputs)) {
-    auto tpu_replicated_input =
-        llvm::cast<TF::TPUReplicatedInputOp>(pos_and_input.value());
+    auto tpu_replicated_input = pos_and_input.value();
     if (tpu_replicated_input.is_mirrored_variable()) {
       mirrored_variable_indices.push_back(pos_and_input.index());
     }
@@ -500,7 +508,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   for (auto input_and_block_arg :
        llvm::zip(ordered_tpu_replicate_inputs,
                  replicate_op.GetBody().getArguments())) {
-    Operation* input = std::get<0>(input_and_block_arg);
+    TF::TPUReplicatedInputOp input = std::get<0>(input_and_block_arg);
     Value block_arg = std::get<1>(input_and_block_arg);
     mlir::replaceAllUsesInRegionWith(input->getResult(0), block_arg,
                                      cluster.body());

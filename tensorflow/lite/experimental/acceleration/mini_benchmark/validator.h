@@ -50,9 +50,10 @@ class Validator {
 
   // Results from validation.
   struct Results {
-    // Are the results correct (metrics below threshold).
+    // Are the results correct (metrics below threshold). When validation
+    // is not embedded, this field is set to false.
     bool ok = false;
-    // What are the metrics results, for telemetry.
+    // What are the accuracy metrics results, for telemetry.
     std::map<std::string, std::vector<float>> metrics;
     // How long did loading the delegate and creating the interpreter take. -1
     // if failed.
@@ -97,7 +98,11 @@ class Validator {
 
   // Check if the golden output exists. If not, run Model on CPU and add golden
   // output to model_. Also fills results_out with the golden output.
-  MinibenchmarkStatus CheckGoldenOutput(Results* results_out);
+  MinibenchmarkStatus CheckGoldenOutputEmbeddedValidation(Results* results_out);
+
+  // Check if the golden output exists. If not, run Model on CPU and fills
+  // results_out with the golden output.
+  MinibenchmarkStatus CheckGoldenOutputCustomValidation(Results* results_out);
 
   std::unique_ptr<ModelLoader> model_loader_;
   const ComputeSettings* compute_settings_;
@@ -113,6 +118,8 @@ class Validator {
   ::tflite::delegates::TfLiteDelegatePtr delegate_ =
       delegates::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
   std::unique_ptr<tflite::delegates::DelegatePluginInterface> delegate_plugin_;
+  int validation_entrypoint_index_ = -1;
+  // Only set when validation is embedded.
   Subgraph* validation_entrypoint_ = nullptr;
   Subgraph* main_model_ = nullptr;
 };

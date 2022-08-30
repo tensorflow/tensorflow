@@ -59,6 +59,8 @@ ResourceConstructingOps ResourceConstructingOps::getPessimisticValueState(
                                           symbol_table);
       return ResourceConstructingOps(global_tensor);
     }
+  } else if (auto vh = dyn_cast<TF::VarHandleOp>(value.getDefiningOp())) {
+    return ResourceConstructingOps(vh);
   }
   return ResourceConstructingOps();
 }
@@ -81,7 +83,7 @@ void ResourceDataflowAnalysis::visitOperation(Operation *op,
                                               ArrayRef<const StateT *> operands,
                                               ArrayRef<StateT *> results) {
   LLVM_DEBUG(llvm::dbgs() << "ResAn: Visiting operation: " << *op << "\n");
-  markAllPessimisticFixpoint(results);
+  setAllToEntryStates(results);
 }
 
 }  // namespace TF

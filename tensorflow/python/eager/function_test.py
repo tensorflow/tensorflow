@@ -2477,27 +2477,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'does not match'):
       defined(rt5)
 
-  def testInputSignatureWithVariableArgs(self):
-
-    def f(v):
-      v.assign_add(1)
-
-    signature = [
-        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
-    ]
-    defined = function.defun(f, input_signature=signature)
-
-    v1 = variables.Variable(0)
-    v2 = variables.Variable(0)
-
-    defined(v1)
-    self.assertEqual(v1.numpy(), 1)
-    self.assertEqual(v2.numpy(), 0)
-
-    defined(v=v2)
-    self.assertEqual(v1.numpy(), 1)
-    self.assertEqual(v2.numpy(), 1)
-
   def testInputSignatureWithKeywordOnlyArgs(self):
 
     def f(a, b, c=3, *, d=4):
@@ -2551,6 +2530,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, "keyword-only arguments must have default values.*'b'"):
       function.defun(test_func_lambda, input_signature=signature)
+
+  def testVariableSpecWithInputSignature(self):
+
+    def f(v):
+      v.assign_add(1)
+
+    signature = [
+        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
+    ]
+    with self.assertRaisesRegex(TypeError,
+                                "input_signature doesn't support VariableSpec"):
+      def_function.function(f, input_signature=signature)
 
   def testTensorKeywordArguments(self):
 

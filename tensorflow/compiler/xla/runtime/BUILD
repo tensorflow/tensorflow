@@ -21,6 +21,11 @@ cc_library(
         ":types",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:type_converter",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -43,9 +48,7 @@ cc_library(
     hdrs = ["async_runtime.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@llvm-project//llvm:Support",
@@ -72,6 +75,8 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":errors",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -156,6 +161,9 @@ cc_library(
         ":types",
         "//tensorflow/compiler/xla/mlir/utils/runtime:async_runtime_api",
         "//tensorflow/compiler/xla/mlir/utils/runtime:c_runner_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
     ],
@@ -168,6 +176,9 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":errors",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:ARMAsmParser",
         "@llvm-project//llvm:ARMCodeGen",
         "@llvm-project//llvm:Core",
@@ -191,6 +202,10 @@ cc_library(
         ":errors",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:jit_compiler",
         "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
     ],
@@ -245,7 +260,6 @@ cc_library(
     deps = [
         ":logical_result",
         ":types",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -265,6 +279,8 @@ cc_library(
         ":constraints",
         ":logical_result",
         ":types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -289,9 +305,11 @@ cc_library(
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
 )

@@ -168,6 +168,23 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.float32, actual.dtype)
     self.assertAllEqual([2, 2], actual.shape.as_list())
 
+  def testNumpyArrayInterface(self):
+
+    class ArrayAsArrayInterface:
+      """Simple class that wraps an np.array as an __array_interface__."""
+
+      def __init__(self, array):
+        self.array = array
+
+      @property
+      def __array_interface__(self):
+        return self.array.__array_interface__
+
+    expected = np.array([[1.0, 2.0], [3.0, 4.0]], np.float32)
+    array_interface = ArrayAsArrayInterface(expected)
+    actual = _create_tensor(array_interface)
+    self.assertAllEqual(expected, actual)
+
   def testFloatDowncast(self):
     # Unless explicitly specified, float64->float32
     t = _create_tensor(3.0)

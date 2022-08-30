@@ -1238,5 +1238,32 @@ ENTRY main {
   EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
 }
 
+TEST_F(MultiOutputFusionTest, DoNotFuseRoot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+no_op {
+  arg_empty_tuple = () parameter(0)
+  ROOT tuple = () tuple()
+}
+
+fused_computation {
+  param_0 = f32[] parameter(0)
+  ROOT convert = s32[] convert(param_0)
+}
+
+ENTRY main {
+  param_0 = f32[] parameter(0)
+  fusion = s32[] fusion(param_0), kind=kLoop, calls=fused_computation
+  tuple = () tuple()
+  conditional = () conditional(fusion, tuple, tuple), branch_computations={no_op, no_op}
+  constant = f32[] constant(1)
+  ROOT root = f32[] add(param_0, constant)
+}
+  )")
+                    .ValueOrDie();
+  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+}
+
 }  // namespace gpu
 }  // namespace xla

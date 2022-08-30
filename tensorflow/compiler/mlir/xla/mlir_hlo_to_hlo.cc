@@ -1221,8 +1221,17 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   llvm::SmallVector<xla::XlaOp> operands;
   if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
 
-  xla::XlaOp operand = Tuple(ctx.builder, operands);
+  const auto sharding = ctx.builder->sharding();
+  xla::XlaOp operand;
 
+  if (sharding.has_value() &&
+      sharding->tuple_shardings_size() != operands.size()) {
+    xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder,
+                                                     xla::OpSharding());
+    operand = Tuple(ctx.builder, operands);
+  } else {
+    operand = Tuple(ctx.builder, operands);
+  }
   std::vector<xla::Shape> subshapes;
   for (auto operand : op.operands())
     subshapes.push_back(xla::TypeToShape(operand.getType()));

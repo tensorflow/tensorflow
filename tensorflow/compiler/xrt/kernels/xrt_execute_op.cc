@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -325,11 +326,11 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
         &executable->executable()->module_config().static_device_assignment());
   }
   xla::gpu::GpuExecutableRunOptions gpu_options;
-  std::vector<xla::GlobalDeviceId> gpu_global_ids;
+  std::map<int, xla::GlobalDeviceId> gpu_global_ids;
   if (config.local_replica_mapping_size() > 0) {
-    gpu_global_ids.reserve(config.local_replica_mapping_size());
+    int i = 0;
     for (auto& gid : config.local_replica_mapping()) {
-      gpu_global_ids.emplace_back(xla::GlobalDeviceId(gid));
+      gpu_global_ids[i++] = xla::GlobalDeviceId(gid);
     }
     gpu_options.set_gpu_global_device_ids(gpu_global_ids);
   }

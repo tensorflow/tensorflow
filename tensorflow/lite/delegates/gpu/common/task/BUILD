@@ -74,7 +74,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:compiler_options",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_tensor",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
         "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
         "@com_google_absl//absl/strings",
@@ -153,19 +152,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:tensor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "texture2d_desc",
-    srcs = ["texture2d_desc.cc"],
-    hdrs = ["texture2d_desc.h"],
-    deps = [
-        ":gpu_object_desc",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:types",
         "@com_google_absl//absl/strings",
     ],
 )

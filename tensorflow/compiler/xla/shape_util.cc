@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <numeric>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -26,15 +27,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/hash/hash.h"
-#include "absl/strings/ascii.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/overflow_util.h"
@@ -43,8 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
@@ -1689,39 +1679,37 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
                                                   dimensions);
 }
 
+static std::vector<int64_t> MajorToMinorLayout(const Shape& s) {
+  absl::Span<const int64_t> minor_to_major = LayoutUtil::MinorToMajor(s);
+  return std::vector<int64_t>{minor_to_major.rbegin(), minor_to_major.rend()};
+}
+
 /* static */ std::optional<Vector3> ShapeUtil::FindTranspose021(
-    const Shape& a, const Shape& b) {
-  if (!ShapeUtil::CompatibleIgnoringElementType(a, b)) {
+    const Shape& input_shape, const Shape& output_shape) {
+  if (!ShapeUtil::CompatibleIgnoringElementType(input_shape, output_shape)) {
     return std::nullopt;
   }
 
-  std::vector<int64_t> permutation(a.dimensions().size());
-  absl::Span<const int64_t> minor_to_major_a = LayoutUtil::MinorToMajor(a);
-  std::vector<int64_t> major_to_minor_a(minor_to_major_a.rbegin(),
-                                        minor_to_major_a.rend());
-  absl::Span<const int64_t> minor_to_major_b = LayoutUtil::MinorToMajor(b);
-  std::vector<int64_t> major_to_minor_b(minor_to_major_b.rbegin(),
-                                        minor_to_major_b.rend());
-  for (size_t i = 0; i < permutation.size(); ++i) {
-    permutation[i] = PositionInContainer(major_to_minor_b, major_to_minor_a[i]);
+  std::vector<int64_t> major_to_minor_input = MajorToMinorLayout(input_shape);
+  std::vector<int64_t> major_to_minor_output = MajorToMinorLayout(output_shape);
+  std::vector<int64_t> output_to_input = ComposePermutations(
+      InversePermutation(major_to_minor_output), major_to_minor_input);
+
+  std::vector<size_t> segments = ConsecutiveSegments(output_to_input);
+  if (segments.size() > 3) {
+    return std::nullopt;
   }
 
-  std::vector<size_t> segments = ConsecutiveSegments(permutation);
-  if ((3 == segments.size() && 0 == permutation[0]) || 2 == segments.size()) {
-    Shape descending_layout_shape =
-        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(a);
-    Shape normalized_shape = MergeDimensions(segments, descending_layout_shape);
-    absl::Span<const int64_t> normalized_dims = normalized_shape.dimensions();
-    Vector3 dims_021;
-    if (2 == segments.size()) {
-      // The logical component-0 is of size one.
-      dims_021 = {1, normalized_dims[1], normalized_dims[0]};
-    } else {
-      dims_021 = {normalized_dims[0], normalized_dims[2], normalized_dims[1]};
-    }
-    return dims_021;
+  Shape normalized_input_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+          input_shape);
+  Shape normalized_shape = MergeDimensions(segments, normalized_input_shape);
+  absl::Span<const int64_t> normalized_dims = normalized_shape.dimensions();
+  if (segments.size() == 2) {
+    return Vector3{1, normalized_dims[1], normalized_dims[0]};
+  } else if (segments.size() == 3 && output_to_input[0] == 0) {
+    return Vector3{normalized_dims[0], normalized_dims[2], normalized_dims[1]};
   }
-
   return std::nullopt;
 }
 

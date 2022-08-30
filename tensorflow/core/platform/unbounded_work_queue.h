@@ -22,11 +22,11 @@ limitations under the License.
 // whose size automatically increases with demand.
 
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/tsl/platform/google/unbounded_work_queue.h"
+#include "tensorflow/tsl/platform/google/unbounded_work_queue.h"  // IWYU pragma: export
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
     defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
     defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
-#include "tensorflow/tsl/platform/default/unbounded_work_queue.h"
+#include "tensorflow/tsl/platform/default/unbounded_work_queue.h"  // IWYU pragma: export
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif

@@ -29,6 +29,7 @@ limitations under the License.
 #include <thread>  // NOLINT: code only used on Android, where std::thread is allowed
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
@@ -42,38 +43,22 @@ namespace tflite {
 namespace acceleration {
 
 constexpr int kMaxAttempts = 2;
-constexpr int64_t ValidatorRunner::kDefaultEventTimeoutUs;
 
-ValidatorRunner::ValidatorRunner(const std::string& model_path,
-                                 const std::string& storage_path,
-                                 const std::string& data_directory_path,
-                                 const NnApiSLDriverImplFL5* nnapi_sl,
-                                 const std::string validation_function_name,
-                                 ErrorReporter* error_reporter)
-    : fd_or_model_path_(model_path),
-      storage_path_(storage_path),
-      data_directory_path_(data_directory_path),
-      storage_(storage_path_, error_reporter),
-      validation_function_name_(validation_function_name),
-      error_reporter_(error_reporter),
-      nnapi_sl_(nnapi_sl) {}
-
-ValidatorRunner::ValidatorRunner(int model_fd, size_t model_offset,
-                                 size_t model_size,
-                                 const std::string& storage_path,
-                                 const std::string& data_directory_path,
-                                 const NnApiSLDriverImplFL5* nnapi_sl,
-                                 const std::string validation_function_name,
-                                 ErrorReporter* error_reporter)
-    : storage_path_(storage_path),
-      data_directory_path_(data_directory_path),
-      storage_(storage_path_, error_reporter),
-      validation_function_name_(validation_function_name),
-      error_reporter_(error_reporter),
-      nnapi_sl_(nnapi_sl) {
-  std::stringstream ss;
-  ss << "fd:" << model_fd << ":" << model_offset << ":" << model_size;
-  fd_or_model_path_ = ss.str();
+ValidatorRunner::ValidatorRunner(const Options& options)
+    : storage_path_(options.storage_path),
+      data_directory_path_(options.data_directory_path),
+      storage_(options.storage_path, options.error_reporter),
+      validation_entrypoint_name_(options.validation_entrypoint_name),
+      error_reporter_(options.error_reporter),
+      nnapi_sl_(options.nnapi_sl) {
+  if (!options.model_path.empty()) {
+    fd_or_model_path_ = options.model_path;
+  } else if (options.model_fd >= 0) {
+    std::stringstream ss;
+    fd_or_model_path_ =
+        absl::StrCat("fd:", options.model_fd, ":", options.model_offset, ":",
+                     options.model_size);
+  }
 }
 
 MinibenchmarkStatus ValidatorRunner::Init() {
@@ -97,14 +82,14 @@ MinibenchmarkStatus ValidatorRunner::Init() {
 #ifndef _WIN32
   int (*validation_entrypoint)(int, char**) =
       reinterpret_cast<int (*)(int, char**)>(
-          dlsym(RTLD_DEFAULT, validation_function_name_.c_str()));
+          dlsym(RTLD_DEFAULT, validation_entrypoint_name_.c_str()));
   if (!validation_entrypoint) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Could not load symbol '%s': '%s'",
-                         validation_function_name_.c_str(), dlerror());
+                         validation_entrypoint_name_.c_str(), dlerror());
     return kMinibenchmarkValidationEntrypointSymbolNotFound;
   }
   ProcessRunner check_runner(data_directory_path_,
-                             validation_function_name_.c_str(),
+                             validation_entrypoint_name_.c_str(),
                              validation_entrypoint);
   MinibenchmarkStatus status = check_runner.Init();
   if (status != kMinibenchmarkSuccess) {
@@ -204,8 +189,8 @@ int ValidatorRunner::TriggerMissingValidation(
                                storage_path = storage_path_,
                                data_directory_path = data_directory_path_,
                                to_be_run,
-                               validation_function_name =
-                                   validation_function_name_,
+                               validation_entrypoint_name =
+                                   validation_entrypoint_name_,
                                nnapi_sl_path = nnapi_sl_path_]() {
     FileLock lock(storage_path + ".parent_lock");
     if (!lock.TryLock()) {
@@ -218,13 +203,13 @@ int ValidatorRunner::TriggerMissingValidation(
           ->UnPackTo(&tflite_settings);
       int (*validation_entrypoint)(int, char**) = nullptr;
       TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Loading validation entry point '%s'",
-                      validation_function_name.c_str());
+                      validation_entrypoint_name.c_str());
 #ifndef _WIN32
       validation_entrypoint = reinterpret_cast<int (*)(int, char**)>(
-          dlsym(RTLD_DEFAULT, validation_function_name.c_str()));
+          dlsym(RTLD_DEFAULT, validation_entrypoint_name.c_str()));
 #endif  // !_WIN32
       ProcessRunner runner(data_directory_path,
-                           validation_function_name.c_str(),
+                           validation_entrypoint_name.c_str(),
                            validation_entrypoint);
       int exitcode = 0;
       int signal = 0;

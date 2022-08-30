@@ -17,8 +17,8 @@ limitations under the License.
 #error This file must only be included when building with Cuda
 #endif
 
-#ifndef TENSORFLOW_CORE_KERNELS_SPARSE_TO_DENSE_GPU_H_
-#define TENSORFLOW_CORE_KERNELS_SPARSE_TO_DENSE_GPU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SPARSE_TO_DENSE_OP_GPU_H_
+#define TENSORFLOW_CORE_KERNELS_SPARSE_TO_DENSE_OP_GPU_H_
 
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -37,4 +37,4 @@ struct LaunchSparseToDense {
 }  // namespace functor
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CORE_KERNELS_SPARSE_TO_DENSE_GPU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SPARSE_TO_DENSE_OP_GPU_H_

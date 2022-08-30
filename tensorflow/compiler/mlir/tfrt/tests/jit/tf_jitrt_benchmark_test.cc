@@ -106,10 +106,12 @@ static void BM_InstantiateExecutable(::testing::benchmark::State& state) {
       mlir::bufferization::BufferizeTypeConverter());
 
   for (auto _ : state) {
-    llvm::Expected<JitExecutable> jit_executable =
+    absl::StatusOr<JitExecutable> jit_executable =
         JitExecutable::Instantiate(mlir_module, entrypoint, opts, "benchmark");
-    if (auto err = jit_executable.takeError())
-      LOG(FATAL) << "Failed to compile the kernel: " << tfrt::StrCat(err);
+    if (!jit_executable.ok()) {
+      LOG(FATAL) << "Failed to compile the kernel: "
+                 << jit_executable.status().message();
+    }
   }
 }
 

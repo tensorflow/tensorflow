@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -24,10 +25,12 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/tiling_using_interface.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arithmetic/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -119,13 +122,13 @@ Value createNestedPloopTilingRecursively(
                                          steps, nestedTileSizes.front());
         Value innerResult = b.create<MaterializeOp>(loc, source, subset);
 
-        // Recur if needed.
-        if (nestedTileSizes.size() >= 2) {
+        // Recur if there are more tile sizes, and it's not a point yet.
+        nestedTileSizes = nestedTileSizes.drop_front();
+        if (!nestedTileSizes.empty() && subset.getType().isa<TileType>()) {
           auto materializedInitSubset =
               b.create<MaterializeOp>(loc, init, subset);
           innerResult = createNestedPloopTilingRecursively(
-              b, loc, materializedInitSubset, innerResult,
-              nestedTileSizes.drop_front());
+              b, loc, materializedInitSubset, innerResult, nestedTileSizes);
         }
 
         b.create<SetYieldOp>(loc, ValueRange{innerResult}, ValueRange{init},
@@ -247,17 +250,20 @@ llvm::Optional<SmallVector<SmallVector<int64_t>>> parseNestedTileSizes(
   return parseNestedTileSizes(istream);
 }
 
-struct TilingPass : public TilingPassBase<TilingPass> {
-  TilingPass() : TilingPassBase<TilingPass>() {
+struct DeprecatedTilingPass
+    : public DeprecatedTilingPassBase<DeprecatedTilingPass> {
+  DeprecatedTilingPass() : DeprecatedTilingPassBase<DeprecatedTilingPass>() {
     tileSizesOpt.setCallback(
         [&](const std::string &str) { tileSizes = parseNestedTileSizes(str); });
   }
-  explicit TilingPass(const std::string &tileSizesStr)
-      : TilingPassBase<TilingPass>() {
+  explicit DeprecatedTilingPass(const std::string &tileSizesStr)
+      : DeprecatedTilingPassBase<DeprecatedTilingPass>() {
     tileSizes = parseNestedTileSizes(tileSizesStr);
   }
-  explicit TilingPass(const SmallVector<SmallVector<int64_t>> &tileSizes)
-      : TilingPassBase<TilingPass>(), tileSizes(tileSizes) {}
+  explicit DeprecatedTilingPass(
+      const SmallVector<SmallVector<int64_t>> &tileSizes)
+      : DeprecatedTilingPassBase<DeprecatedTilingPass>(),
+        tileSizes(tileSizes) {}
 
   void getDependentDialects(DialectRegistry &registry) const final {
     registry
@@ -292,6 +298,163 @@ struct TilingPass : public TilingPassBase<TilingPass> {
   llvm::Optional<SmallVector<SmallVector<int64_t>>> tileSizes;
 };
 
+/// Options to use to control tiling.
+struct TilingOptions {
+  using TileSizeComputationFunction =
+      std::function<SmallVector<Value>(OpBuilder &, Operation *)>;
+
+  /// Function to materialize the tile sizes for a given operation. This allows
+  /// to infer tile sizes statically, e.g. based on an operation's rank, and
+  /// also dynamically based, e.g. based on a tensor's shape at runtime.
+  TileSizeComputationFunction tileSizeMaterializationFunction = nullptr;
+};
+
+struct TilingResult {
+  TilingInterface tiledOp;
+  gml_st::ForOp loop;
+};
+
+/// Generate an empty loop nest that represents the tiled loop nest shell.
+/// - `loopRanges` specifies the lb, ub and step of the untiled iteration space.
+/// - `tileSizeVals` is the tile sizes to use. Zero represent untiled loops.
+/// - In `offsets` and `sizes` return the multi-dimensional offset and size of
+/// the tile processed within the inner most loop.
+gml_st::ForOp generateTileLoopNest(OpBuilder &builder, Location loc,
+                                   ArrayRef<Range> loopRanges,
+                                   ArrayRef<Value> tileSizeVals,
+                                   ArrayRef<Value> dstOperands,
+                                   SmallVector<OpFoldResult> &offsets,
+                                   SmallVector<OpFoldResult> &sizes) {
+  assert(!loopRanges.empty() && "expected at least one loop range");
+  assert(loopRanges.size() == tileSizeVals.size() &&
+         "expected as many tile sizes as loop ranges");
+  OpBuilder::InsertionGuard guard(builder);
+
+  // The tile size to use (to avoid out of bounds access) is  minimum of
+  // `tileSize` and `ub - iv`, where `iv` is the induction variable
+  // of the tiled loop.
+  AffineExpr s0, s1, d0;
+  bindDims(builder.getContext(), d0);
+  bindSymbols(builder.getContext(), s0, s1);
+  AffineMap minMap = AffineMap::get(1, 2, {s0, s1 - d0}, builder.getContext());
+
+  SmallVector<Value> lbs, ubs, steps;
+  SmallVector<unsigned> nonemptyRangeIndices;
+  for (auto &loopRange : llvm::enumerate(loopRanges)) {
+    Value offset =
+        getValueOrCreateConstantIndexOp(builder, loc, loopRange.value().offset);
+    Value size =
+        getValueOrCreateConstantIndexOp(builder, loc, loopRange.value().size);
+    // No loops if tile size is zero. Set offset and size to the loop
+    // offset and size.
+    offsets.push_back(offset);
+    sizes.push_back(size);
+    if (matchPattern(tileSizeVals[loopRange.index()], m_Zero())) continue;
+    lbs.push_back(offset);
+    ubs.push_back(size);
+    steps.push_back(tileSizeVals[loopRange.index()]);
+    nonemptyRangeIndices.push_back(loopRange.index());
+  }
+
+  auto loop = builder.create<gml_st::ForOp>(
+      loc, TypeRange(ValueRange{dstOperands}), lbs, ubs, steps, dstOperands,
+      [&](OpBuilder &nestedBuilder, Location bodyLoc, ValueRange ivs,
+          ValueRange /*inits*/) {
+        for (const auto &en : llvm::enumerate(ivs)) {
+          Value iv = en.value();
+          size_t index = en.index();
+          Value boundedTileSize = nestedBuilder.create<AffineMinOp>(
+              bodyLoc, minMap, ValueRange{iv, steps[index], ubs[index]});
+          sizes[nonemptyRangeIndices[index]] = boundedTileSize;
+          offsets[nonemptyRangeIndices[index]] = iv;
+        }
+      });
+  return loop;
+}
+
+/// Pattern to tile an op that implements the `TilingInterface` using
+/// `gml_st.for` for iterating over the tiles.
+struct TileToGmlStLoopsPattern
+    : public OpInterfaceRewritePattern<TilingInterface> {
+  TileToGmlStLoopsPattern(MLIRContext *context, StringRef tilingTarget,
+                          TilingOptions options, PatternBenefit benefit = 1)
+      : OpInterfaceRewritePattern<TilingInterface>(context, benefit),
+        tilingTarget(tilingTarget),
+        options(std::move(options)) {}
+
+  LogicalResult matchAndRewrite(TilingInterface op,
+                                PatternRewriter &rewriter) const override {
+    if (!hasMatchingLabel(op, tilingTarget)) return failure();
+    if (hasTransformationAttr(op)) return failure();
+
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPointAfter(op);
+
+    if (!options.tileSizeMaterializationFunction) {
+      return rewriter.notifyMatchFailure(
+          op, "missing tile size computation function");
+    }
+
+    // 1. Get the range of the loops that are represented by the operation.
+    SmallVector<Range> iterationDomain = op.getIterationDomain(rewriter);
+    size_t numLoops = iterationDomain.size();
+    if (numLoops == 0) {
+      return rewriter.notifyMatchFailure(op, "missing iteration domain");
+    }
+
+    // 2. Materialize the tile sizes. Enforce the convention that "tiling by
+    // zero" skips tiling a particular dimension. This convention is
+    // significantly simpler to handle instead of adjusting affine maps to
+    // account for missing dimensions.
+    SmallVector<Value> tileSizeVector =
+        options.tileSizeMaterializationFunction(rewriter, op);
+    if (tileSizeVector.size() < iterationDomain.size()) {
+      auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
+      tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
+    }
+
+    // 3. Materialize an empty loop nest that iterates over the tiles.
+    auto dstOperands = op.getDestinationOperands(rewriter);
+    SmallVector<OpFoldResult> offsets, sizes;
+    TilingResult tilingResult;
+    tilingResult.loop =
+        generateTileLoopNest(rewriter, op.getLoc(), iterationDomain,
+                             tileSizeVector, dstOperands, offsets, sizes);
+    Block *loopBody = tilingResult.loop.getBody();
+    Operation *terminator = loopBody->getTerminator();
+    rewriter.setInsertionPoint(terminator);
+
+    // 4. Insert the tiled implementation within the loop.
+    tilingResult.tiledOp =
+        op.getTiledImplementation(rewriter, dstOperands, offsets, sizes, true);
+
+    // 5. Add `gml_st.set_yield` terminator.
+    SmallVector<Value> dstSubsets;
+    for (Value dst : tilingResult.tiledOp.getDestinationOperands(rewriter)) {
+      dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().set());
+    }
+    rewriter.replaceOpWithNewOp<SetYieldOp>(terminator,
+                                            tilingResult.tiledOp->getResults(),
+                                            dstOperands, dstSubsets);
+
+    // 6. Replace the uses of `outputs` with the output block arguments.
+    for (auto [dst, regionArg] :
+         llvm::zip(dstOperands, tilingResult.loop.getRegionOutputArgs())) {
+      dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
+        return operand.getOwner()->getBlock() == loopBody;
+      });
+    }
+    rewriter.replaceOp(op, tilingResult.loop.getResults());
+
+    setTransformationAttr(rewriter, tilingResult.tiledOp);
+    return success();
+  }
+
+ private:
+  StringRef tilingTarget;
+  TilingOptions options;
+};
+
 struct TileToForPass : public TileToForPassBase<TileToForPass> {
   TileToForPass() = default;
   TileToForPass(StringRef label, llvm::ArrayRef<int64_t> sizes) {
@@ -308,9 +471,9 @@ struct TileToForPass : public TileToForPassBase<TileToForPass> {
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
 
-    GmlStTilingOptions opts;
+    TilingOptions opts;
     SmallVector<int64_t> ts(tileSizes.begin(), tileSizes.end());
-    opts.tileSizeComputationFunction = [ts](OpBuilder &b, Operation *op) {
+    opts.tileSizeMaterializationFunction = [ts](OpBuilder &b, Operation *op) {
       OpBuilder::InsertionGuard guard(b);
       b.setInsertionPointToStart(
           &op->getParentOfType<func::FuncOp>().getBody().front());
@@ -321,7 +484,7 @@ struct TileToForPass : public TileToForPassBase<TileToForPass> {
     };
 
     RewritePatternSet patterns(ctx);
-    patterns.add<TileToGmlStLoops>(ctx, tilingTarget, opts);
+    patterns.add<TileToGmlStLoopsPattern>(ctx, tilingTarget, opts);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
@@ -334,18 +497,18 @@ struct TileToForPass : public TileToForPassBase<TileToForPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass() {
-  return std::make_unique<TilingPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass() {
+  return std::make_unique<DeprecatedTilingPass>();
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
     const SmallVector<SmallVector<int64_t>> &tileSizes) {
-  return std::make_unique<TilingPass>(tileSizes);
+  return std::make_unique<DeprecatedTilingPass>(tileSizes);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
     const std::string &tileSizes) {
-  return std::make_unique<TilingPass>(tileSizes);
+  return std::make_unique<DeprecatedTilingPass>(tileSizes);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTileToForPass(

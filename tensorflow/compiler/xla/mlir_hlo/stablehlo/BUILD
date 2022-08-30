@@ -1,5 +1,5 @@
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "filegroup", "get_compatible_with_cloud")
 
@@ -8,18 +8,23 @@ package(
     licenses = ["notice"],
 )
 
+exports_files([
+    "stablehlo/integrations/python/ChloModule.cpp",
+    "stablehlo/integrations/python/StablehloModule.cpp",
+])
+
 filegroup(
     name = "stablehlo_ops_td_filegroup",
-    srcs = glob(["dialect/*.td"]),
+    srcs = glob(["stablehlo/dialect/*.td"]),
 )
 
 cc_library(
     name = "base",
     srcs = [
-        "dialect/Base.cpp",
+        "stablehlo/dialect/Base.cpp",
     ],
     hdrs = [
-        "dialect/Base.h",
+        "stablehlo/dialect/Base.h",
     ],
     compatible_with = get_compatible_with_cloud(),
     includes = ["."],
@@ -40,22 +45,22 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-attr-interface-decls"],
-            "dialect/BaseAttrInterfaces.h.inc",
+            "stablehlo/dialect/BaseAttrInterfaces.h.inc",
         ),
         (
             ["-gen-attr-interface-defs"],
-            "dialect/BaseAttrInterfaces.cpp.inc",
+            "stablehlo/dialect/BaseAttrInterfaces.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "dialect/Base.td",
-    deps = [":stablehlo_td_files"],
+    td_file = "stablehlo/dialect/Base.td",
+    deps = [":stablehlo_ops_td_files"],
 )
 
 td_library(
     name = "base_td_files",
     srcs = [
-        "dialect/Base.td",
+        "stablehlo/dialect/Base.td",
     ],
     compatible_with = get_compatible_with_cloud(),
     includes = ["."],
@@ -69,10 +74,10 @@ td_library(
 cc_library(
     name = "broadcast_utils",
     srcs = [
-        "dialect/BroadcastUtils.cpp",
+        "stablehlo/dialect/BroadcastUtils.cpp",
     ],
     hdrs = [
-        "dialect/BroadcastUtils.h",
+        "stablehlo/dialect/BroadcastUtils.h",
     ],
     compatible_with = get_compatible_with_cloud(),
     includes = ["."],
@@ -89,18 +94,60 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-attrdef-decls"],
-            "dialect/ChloAttrs.h.inc",
+            "stablehlo/dialect/ChloAttrs.h.inc",
         ),
         (
             ["-gen-attrdef-defs"],
-            "dialect/ChloAttrs.cpp.inc",
+            "stablehlo/dialect/ChloAttrs.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "dialect/ChloOps.td",
+    td_file = "stablehlo/dialect/ChloOps.td",
     deps = [
-        ":chlo_td_files",
+        ":chlo_ops_td_files",
     ],
+)
+
+CHLO_CAPI_SOURCES = [
+    "stablehlo/integrations/c/ChloAttributes.cpp",
+    "stablehlo/integrations/c/ChloDialect.cpp",
+]
+
+CHLO_CAPI_HEADERS = [
+    "stablehlo/integrations/c/ChloAttributes.h",
+    "stablehlo/integrations/c/ChloDialect.h",
+]
+
+cc_library(
+    name = "chlo_capi",
+    srcs = CHLO_CAPI_SOURCES,
+    hdrs = CHLO_CAPI_HEADERS,
+    deps = [
+        ":chlo_ops",
+        "@llvm-project//mlir:CAPIIR",
+    ],
+)
+
+# Header-only target, used when using the C API from a separate shared library.
+cc_library(
+    name = "chlo_capi_headers",
+    hdrs = CHLO_CAPI_HEADERS,
+    includes = ["."],
+    deps = [
+        "@llvm-project//mlir:CAPIIRHeaders",
+    ],
+)
+
+# Alwayslink target, used when exporting the C API from a shared library.
+cc_library(
+    name = "chlo_capi_objects",
+    srcs = CHLO_CAPI_SOURCES,
+    hdrs = CHLO_CAPI_HEADERS,
+    deps = [
+        ":chlo_ops",
+        "@llvm-project//mlir:CAPIIRObjects",
+    ],
+    alwayslink = True,
 )
 
 gentbl_cc_library(
@@ -109,17 +156,17 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-enum-decls"],
-            "dialect/ChloEnums.h.inc",
+            "stablehlo/dialect/ChloEnums.h.inc",
         ),
         (
             ["-gen-enum-defs"],
-            "dialect/ChloEnums.cpp.inc",
+            "stablehlo/dialect/ChloEnums.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "dialect/ChloOps.td",
+    td_file = "stablehlo/dialect/ChloOps.td",
     deps = [
-        ":chlo_td_files",
+        ":chlo_ops_td_files",
     ],
 )
 
@@ -129,25 +176,65 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-op-decls"],
-            "dialect/ChloOps.h.inc",
+            "stablehlo/dialect/ChloOps.h.inc",
         ),
         (
             ["-gen-op-defs"],
-            "dialect/ChloOps.cpp.inc",
+            "stablehlo/dialect/ChloOps.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "dialect/ChloOps.td",
+    td_file = "stablehlo/dialect/ChloOps.td",
     deps = [
-        ":chlo_td_files",
+        ":chlo_ops_td_files",
+    ],
+)
+
+filegroup(
+    name = "chlo_ops_py_files",
+    srcs = [
+        "stablehlo/integrations/python/mlir/dialects/chlo.py",
+        ":chlo_ops_py_gen",
+    ],
+)
+
+gentbl_filegroup(
+    name = "chlo_ops_py_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            [
+                "-gen-python-op-bindings",
+                "-bind-dialect=chlo",
+            ],
+            "stablehlo/integrations/python/mlir/dialects/_chlo_ops_gen.py",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "stablehlo/integrations/python/mlir/dialects/ChloOps.td",
+    deps = [
+        ":chlo_ops_py_td_files",
     ],
 )
 
 td_library(
-    name = "chlo_td_files",
+    name = "chlo_ops_py_td_files",
     srcs = [
-        "dialect/ChloEnums.td",
-        "dialect/ChloOps.td",
+        "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    includes = ["include"],
+    deps = [
+        ":chlo_ops_td_files",
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+td_library(
+    name = "chlo_ops_td_files",
+    srcs = [
+        "stablehlo/dialect/ChloEnums.td",
+        "stablehlo/dialect/ChloOps.td",
     ],
     compatible_with = get_compatible_with_cloud(),
     includes = ["."],
@@ -162,10 +249,10 @@ td_library(
 cc_library(
     name = "chlo_ops",
     srcs = [
-        "dialect/ChloOps.cpp",
+        "stablehlo/dialect/ChloOps.cpp",
     ],
     hdrs = [
-        "dialect/ChloOps.h",
+        "stablehlo/dialect/ChloOps.h",
     ],
     compatible_with = get_compatible_with_cloud(),
     includes = ["."],
@@ -188,10 +275,10 @@ cc_library(
 cc_library(
     name = "register",
     srcs = [
-        "dialect/Register.cpp",
+        "stablehlo/dialect/Register.cpp",
     ],
     hdrs = [
-        "dialect/Register.h",
+        "stablehlo/dialect/Register.h",
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
@@ -207,18 +294,62 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-attrdef-decls"],
-            "dialect/StablehloAttrs.h.inc",
+            "stablehlo/dialect/StablehloAttrs.h.inc",
         ),
         (
             ["-gen-attrdef-defs"],
-            "dialect/StablehloAttrs.cpp.inc",
+            "stablehlo/dialect/StablehloAttrs.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "dialect/StablehloOps.td",
+    td_file = "stablehlo/dialect/StablehloOps.td",
     deps = [
-        ":stablehlo_td_files",
+        ":stablehlo_ops_td_files",
     ],
+)
+
+STABLEHLO_CAPI_SOURCES = [
+    "stablehlo/integrations/c/StablehloAttributes.cpp",
+    "stablehlo/integrations/c/StablehloDialect.cpp",
+    "stablehlo/integrations/c/StablehloTypes.cpp",
+]
+
+STABLEHLO_CAPI_HEADERS = [
+    "stablehlo/integrations/c/StablehloAttributes.h",
+    "stablehlo/integrations/c/StablehloDialect.h",
+    "stablehlo/integrations/c/StablehloTypes.h",
+]
+
+cc_library(
+    name = "stablehlo_capi",
+    srcs = STABLEHLO_CAPI_SOURCES,
+    hdrs = STABLEHLO_CAPI_HEADERS,
+    deps = [
+        ":stablehlo_ops",
+        "@llvm-project//mlir:CAPIIR",
+    ],
+)
+
+# Header-only target, used when using the C API from a separate shared library.
+cc_library(
+    name = "stablehlo_capi_headers",
+    hdrs = STABLEHLO_CAPI_HEADERS,
+    includes = ["."],
+    deps = [
+        "@llvm-project//mlir:CAPIIRHeaders",
+    ],
+)
+
+# Alwayslink target, used when exporting the C API from a shared library.
+cc_library(
+    name = "stablehlo_capi_objects",
+    srcs = STABLEHLO_CAPI_SOURCES,
+    hdrs = STABLEHLO_CAPI_HEADERS,
+    deps = [
+        ":stablehlo_ops",
+        "@llvm-project//mlir:CAPIIRObjects",
+    ],
+    alwayslink = True,
 )
 
 gentbl_cc_library(
@@ -227,17 +358,17 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-enum-decls"],
-            "dialect/StablehloEnums.h.inc",
+            "stablehlo/dialect/StablehloEnums.h.inc",
         ),
         (
             ["-gen-enum-defs"],
-            "dialect/StablehloEnums.cpp.inc",
+            "stablehlo/dialect/StablehloEnums.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "dialect/StablehloOps.td",
+    td_file = "stablehlo/dialect/StablehloOps.td",
     deps = [
-        ":stablehlo_td_files",
+        ":stablehlo_ops_td_files",
     ],
 )
 
@@ -247,27 +378,67 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-op-decls"],
-            "dialect/StablehloOps.h.inc",
+            "stablehlo/dialect/StablehloOps.h.inc",
         ),
         (
             ["-gen-op-defs"],
-            "dialect/StablehloOps.cpp.inc",
+            "stablehlo/dialect/StablehloOps.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "dialect/StablehloOps.td",
+    td_file = "stablehlo/dialect/StablehloOps.td",
     deps = [
-        ":stablehlo_td_files",
+        ":stablehlo_ops_td_files",
+    ],
+)
+
+filegroup(
+    name = "stablehlo_ops_py_files",
+    srcs = [
+        "stablehlo/integrations/python/mlir/dialects/stablehlo.py",
+        ":stablehlo_ops_py_gen",
+    ],
+)
+
+gentbl_filegroup(
+    name = "stablehlo_ops_py_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            [
+                "-gen-python-op-bindings",
+                "-bind-dialect=stablehlo",
+            ],
+            "stablehlo/integrations/python/mlir/dialects/_stablehlo_ops_gen.py",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "stablehlo/integrations/python/mlir/dialects/StablehloOps.td",
+    deps = [
+        ":stablehlo_ops_py_td_files",
     ],
 )
 
 td_library(
-    name = "stablehlo_td_files",
+    name = "stablehlo_ops_py_td_files",
     srcs = [
-        "dialect/Base.td",
-        "dialect/StablehloAttrs.td",
-        "dialect/StablehloEnums.td",
-        "dialect/StablehloOps.td",
+        "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    includes = ["."],
+    deps = [
+        ":stablehlo_ops_td_files",
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+td_library(
+    name = "stablehlo_ops_td_files",
+    srcs = [
+        "stablehlo/dialect/Base.td",
+        "stablehlo/dialect/StablehloAttrs.td",
+        "stablehlo/dialect/StablehloEnums.td",
+        "stablehlo/dialect/StablehloOps.td",
     ],
     compatible_with = get_compatible_with_cloud(),
     includes = ["."],
@@ -282,10 +453,10 @@ td_library(
 cc_library(
     name = "stablehlo_ops",
     srcs = [
-        "dialect/StablehloOps.cpp",
+        "stablehlo/dialect/StablehloOps.cpp",
     ],
     hdrs = [
-        "dialect/StablehloOps.h",
+        "stablehlo/dialect/StablehloOps.h",
     ],
     compatible_with = get_compatible_with_cloud(),
     includes = ["."],
@@ -310,7 +481,9 @@ cc_library(
 
 cc_binary(
     name = "stablehlo-opt",
-    srcs = ["tools/StablehloOptMain.cpp"],
+    srcs = [
+        "stablehlo/tools/StablehloOptMain.cpp",
+    ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":register",
@@ -330,7 +503,7 @@ filegroup(
     name = "test_data",
     testonly = True,
     data = [
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:stablehlo-opt",
+        ":stablehlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
 )
@@ -344,11 +517,11 @@ gentbl_cc_library(
                 "-gen-pass-decls",
                 "-name=HloTest",
             ],
-            "tests/TestUtils.h.inc",
+            "stablehlo/tests/TestUtils.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "tests/TestUtils.td",
+    td_file = "stablehlo/tests/TestUtils.td",
     deps = [
         ":test_utils_td_files",
     ],
@@ -357,7 +530,7 @@ gentbl_cc_library(
 td_library(
     name = "test_utils_td_files",
     srcs = [
-        "tests/TestUtils.td",
+        "stablehlo/tests/TestUtils.td",
     ],
     compatible_with = get_compatible_with_cloud(),
     includes = ["."],
@@ -369,10 +542,10 @@ td_library(
 cc_library(
     name = "test_utils",
     srcs = [
-        "tests/TestUtils.cpp",
+        "stablehlo/tests/TestUtils.cpp",
     ],
     hdrs = [
-        "tests/TestUtils.h",
+        "stablehlo/tests/TestUtils.h",
     ],
     compatible_with = get_compatible_with_cloud(),
     includes = ["."],

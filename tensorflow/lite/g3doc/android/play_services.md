@@ -1,5 +1,8 @@
 # TensorFlow Lite in Google Play services (BETA)
 
+Beta: The functionality described in this page is in beta release. The
+functionality and APIs described here may change in future releases.
+
 TensorFlow Lite is available in the Google Play services API as a public beta on
 all Android devices running the current version of Play services. This API lets
 you run machine learning (ML) models without statically bundling TensorFlow Lite
@@ -19,9 +22,6 @@ provides a more general-purpose interface for building and running ML models.
 
 This page provides a brief overview on how to use the new TensorFlow Lite in
 Google Play services APIs in your Android app.
-
-Beta: The functionality described in this page is in beta release. The
-functionality and APIs described here may change in future releases.
 
 For more information about Google Play services, see the
 [Google Play services](https://developers.google.com/android/guides/overview)
@@ -50,9 +50,9 @@ the [Migrating from stand-alone TensorFlow Lite](#migrating) section.
 
 You can review and test an example implementation of TensorFlow Lite in Google
 Play services in the
-[example app](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android_play_services).
-This example app uses the Task Library within Play services to create an image
-classification app.
+[example app](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android_play_services).
+This example app uses the Task Library within Play services to create an object
+detection app.
 
 ### Using the Task Library APIs
 

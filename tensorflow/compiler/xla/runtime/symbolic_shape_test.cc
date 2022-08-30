@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
@@ -36,7 +38,7 @@ using SymbolicShape = SymbolicShapesResolver::SymbolicShape;
 // Create a function type with empty results from the operands shapes.
 static FunctionType GetFunctionType(
     llvm::SmallVector<PrimitiveType> dtypes,
-    llvm::SmallVector<llvm::Optional<SymbolicShape>> shapes) {
+    llvm::SmallVector<std::optional<SymbolicShape>> shapes) {
   std::vector<std::unique_ptr<Type>> operands;
   operands.reserve(shapes.size());
 
@@ -82,7 +84,7 @@ TEST(SymbolicShapeResolverTest, UnrankedInputs) {
   // Operands: tensor<*xf32>, tensor<?xi32>, tensor<?x4xi1>
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED};
 
-  auto type = GetFunctionType(dtypes, {llvm::None,
+  auto type = GetFunctionType(dtypes, {std::nullopt,
                                        {{MemrefType::kDynamicSize}},
                                        {{MemrefType::kDynamicSize, 4}}});
 
@@ -282,7 +284,7 @@ TEST(SymbolicShapeResolverTest, ShapeConstrainedInput) {
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32};
 
   auto type =
-      GetFunctionType(dtypes, {llvm::None, {{MemrefType::kDynamicSize, 4}}});
+      GetFunctionType(dtypes, {std::nullopt, {{MemrefType::kDynamicSize, 4}}});
 
   auto constraints = {ArgumentConstraint::kShape, ArgumentConstraint::kShape};
 
@@ -379,8 +381,8 @@ TEST(SymbolicShapeResolverTest, IncompatibleInput) {
     auto symbolic = resolver.Resolve(operands);
     auto hash = resolver.ResolveHash(operands);
 
-    EXPECT_TRUE(symbolic.getError());
-    EXPECT_TRUE(hash.getError());
+    EXPECT_FALSE(symbolic.ok());
+    EXPECT_FALSE(hash.ok());
   }
 
   {  // Operand with mismatched static shape.
@@ -388,8 +390,8 @@ TEST(SymbolicShapeResolverTest, IncompatibleInput) {
     auto symbolic = resolver.Resolve(operands);
     auto hash = resolver.ResolveHash(operands);
 
-    EXPECT_TRUE(symbolic.getError());
-    EXPECT_TRUE(hash.getError());
+    EXPECT_FALSE(symbolic.ok());
+    EXPECT_FALSE(hash.ok());
   }
 }
 
@@ -419,7 +421,7 @@ TEST(SymbolicShapeResolverTest, OpaqueAndShapedInputs) {
     auto symbolic = resolver.Resolve(arguments);
     auto hash = resolver.ResolveHash(arguments);
 
-    ASSERT_TRUE(symbolic);
+    ASSERT_TRUE(symbolic.ok());
     EXPECT_EQ(symbolic->size(), 3);
     EXPECT_EQ(*symbolic, SymbolicShapes({{}, {-2, 4}, {-3, 4}}));
 
@@ -436,7 +438,7 @@ TEST(SymbolicShapeResolverTest, OpaqueAndShapedInputs) {
     auto symbolic = resolver.Resolve(arguments);
     auto hash = resolver.ResolveHash(arguments);
 
-    ASSERT_TRUE(symbolic);
+    ASSERT_TRUE(symbolic.ok());
     EXPECT_EQ(symbolic->size(), 3);
     EXPECT_EQ(*symbolic, SymbolicShapes({{}, {-2, 4}, {-2, 4}}));
 
@@ -450,15 +452,15 @@ TEST(SymbolicShapeResolverTest, OpaqueAndShapedInputs) {
 // -------------------------------------------------------------------------- //
 
 struct Resolve {
-  static llvm::ErrorOr<llvm::SmallVector<SymbolicShape>> Run(
+  static absl::StatusOr<llvm::SmallVector<SymbolicShape>> Run(
       SymbolicShapesResolver& resolver, ArrayRef<MemrefDesc> operands) {
     return resolver.Resolve(operands);
   }
 };
 
 struct ResolveHash {
-  static llvm::ErrorOr<llvm::hash_code> Run(SymbolicShapesResolver& resolver,
-                                            ArrayRef<MemrefDesc> operands) {
+  static absl::StatusOr<llvm::hash_code> Run(SymbolicShapesResolver& resolver,
+                                             ArrayRef<MemrefDesc> operands) {
     return resolver.ResolveHash(operands);
   }
 };

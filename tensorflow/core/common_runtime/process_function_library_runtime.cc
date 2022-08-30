@@ -887,6 +887,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
 
+  const uint64 optimization_start_time_usecs = Env::Default()->NowMicros();
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
   SessionOptions session_options;
@@ -1000,6 +1001,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
           optimized_subgraph->ToGraphDefDebug());
     }
   }
+  const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
+  metrics::UpdateGraphOptimizationTime(optimization_end_time_usecs -
+                                       optimization_start_time_usecs);
 
   if (options.graph_collector != nullptr) {
     for (const auto& pair : subgraphs) {

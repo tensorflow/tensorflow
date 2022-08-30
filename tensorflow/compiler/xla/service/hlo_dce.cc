@@ -138,8 +138,9 @@ StatusOr<bool> HloDCE::RecursivelyRemoveDeadComputations(
   if (HloComputation* entry_computation = module->entry_computation()) {
     ++live_computation_call_count[entry_computation];
   }
-  for (auto* computation :
-       module->MakeComputationPostOrder(execution_threads)) {
+  // Account for all threads' caller when counting a sub computation's live call
+  // count.
+  for (auto* computation : module->MakeComputationPostOrder()) {
     for (auto* instruction : computation->instructions()) {
       for (auto* subcomp : instruction->called_computations()) {
         ++live_computation_call_count[subcomp];

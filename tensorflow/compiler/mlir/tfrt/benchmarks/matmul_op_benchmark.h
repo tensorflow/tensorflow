@@ -95,10 +95,9 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   opts.async_task_runner = &async_task_runner;
 
   // Get an executable that might be specialized to the operands.
-  llvm::Expected<AsyncValuePtr<Executable>> executable =
+  absl::StatusOr<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands);
-  if (auto err = executable.takeError())
-    LOG(FATAL) << "Failed to specialize executable";
+  if (!executable.ok()) LOG(FATAL) << "Failed to specialize executable";
 
   // Wait for the compilation completion.
   host->Await({executable->CopyRef()});
@@ -109,12 +108,14 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = (*executable)->InitializeCallFrame(operands, &call_frame))
+  if (auto st = (*executable)->InitializeCallFrame(operands, &call_frame);
+      !st.ok())
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
     (*executable)->Execute(call_frame, opts);
-    if (auto err = (*executable)->ReturnResults(converter, &call_frame))
+    if (auto st = (*executable)->ReturnResults(converter, &call_frame);
+        !st.ok())
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 

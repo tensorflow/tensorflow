@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 
+#include <cstdlib>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/base/call_once.h"
@@ -795,8 +798,8 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
 void ResetThreadLocalFuel() {
   absl::call_once(flags_init, &AllocateFlags);
 
-  thread_fuel.reset(
-      new absl::node_hash_map<std::string, std::atomic<int64_t>>());
+  thread_fuel = std::make_unique<
+      absl::node_hash_map<std::string, std::atomic<int64_t>>>();
   CHECK(initial_fuel != nullptr);
   for (const auto& kv : *initial_fuel) {
     thread_fuel->emplace(kv.first, kv.second);

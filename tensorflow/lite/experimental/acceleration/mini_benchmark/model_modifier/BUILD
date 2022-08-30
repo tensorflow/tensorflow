@@ -82,3 +82,30 @@ cc_binary(
         "@flatbuffers",
     ],
 )
+
+cc_library(
+    name = "custom_validation_embedder",
+    srcs = ["custom_validation_embedder.cc"],
+    hdrs = ["custom_validation_embedder.h"],
+    deps = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_test(
+    name = "custom_validation_embedder_test",
+    srcs = ["custom_validation_embedder_test.cc"],
+    deps = [
+        ":custom_validation_embedder",
+        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_model",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:mini_benchmark_test_helper",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:model_loader",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
