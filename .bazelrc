@@ -271,6 +271,8 @@ build:rocm --define=using_rocm_hipcc=true
 build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
 build:rocm --repo_env TF_NEED_ROCM=1
 build:rocm --experimental_link_static_libraries_once=false  # b/230048163
+# Disable unused-result on rocm builds.
+build:rocm --copt="-Wno-error=unused-result"
 
 # Options extracted from configure script
 build:numa --define=with_numa_support=true
@@ -307,9 +309,9 @@ build:linux --copt="-Wno-deprecated"
 build:linux --copt="-Wno-deprecated-declarations"
 build:linux --copt="-Wno-ignored-attributes"
 
-# Add unused-result as a warning on Linux.
-# It will be promoted to an error in a future build.
+# Add unused-result as an error on Linux.
 build:linux --copt="-Wunused-result"
+build:linux --copt="-Werror=unused-result"
 
 # On Windows, `__cplusplus` is wrongly defined without this switch
 # See https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
