@@ -173,12 +173,7 @@ def _variable_handle_from_shape_and_dtype(shape,
     _set_handle_shapes_and_types(handle, full_handle_data, graph_mode)
     return handle
   else:
-    handle_data = cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData()
-    handle_data.is_set = True
-    handle_data.shape_and_type.append(
-        cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
-            shape=shape.as_proto(), dtype=dtype.as_datatype_enum))
-
+    handle_data = handle_data_util.create_handle_data(shape, dtype)
     if initial_value is not None and initial_value.dtype == dtypes.variant:
       extra_handle_data = get_eager_safe_handle_data(initial_value)
       if extra_handle_data is not None and extra_handle_data.is_set:
