@@ -408,7 +408,9 @@ def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
 }
+
 def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType],
     TensorOf<[HLO_SInt, HLO_Float, HLO_Complex]>> {

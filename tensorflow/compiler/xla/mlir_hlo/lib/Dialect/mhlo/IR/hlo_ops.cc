@@ -22,6 +22,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <numeric>
@@ -6290,7 +6291,8 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
   if (!val) return {};
 
   auto type = getElementTypeOrSelf(getType());
-  if (!type.isF32() && !type.isF64()) return {};
+  if (!type.isF16() && !type.isBF16() && !type.isF32() && !type.isF64())
+    return {};
 
   auto shapedType = getType().cast<ShapedType>();
   if (!shapedType.hasStaticShape()) return {};
@@ -6298,17 +6300,58 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
   // Prevent folding if the result is too large.
   if (val.getNumElements() > kFoldOpEltLimit) return {};
 
-  int bitWidth = type.getIntOrFloatBitWidth();
   llvm::SmallVector<APFloat, 4> values;
   values.reserve(val.getNumElements());
   for (auto it : val.getValues<APFloat>()) {
-    double value = bitWidth == 32 ? it.convertToFloat() : it.convertToDouble();
-    if (value < 0) return {};
-    value = std::sqrt(value);
-    if (bitWidth == 32)
-      values.emplace_back(static_cast<float>(value));
-    else
-      values.emplace_back(value);
+    if (it.isNegative()) return {};
+
+    const llvm::fltSemantics& oldSemantics = it.getSemantics();
+
+    bool unusedLoseInfo;
+    it.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
+               &unusedLoseInfo);
+
+    APFloat result(std::sqrt(it.convertToDouble()));
+    result.convert(oldSemantics, APFloat::rmNearestTiesToEven, &unusedLoseInfo);
+
+    values.push_back(result);
+  }
+  return DenseFPElementsAttr::get(shapedType, values);
+}
+
+//===----------------------------------------------------------------------===//
+// RsqrtOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult RsqrtOp::fold(ArrayRef<Attribute> operands) {
+  auto val = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  if (!val) return {};
+
+  auto type = getElementTypeOrSelf(getType());
+  if (!type.isF16() && !type.isBF16() && !type.isF32() && !type.isF64())
+    return {};
+
+  auto shapedType = getType().cast<ShapedType>();
+  if (!shapedType.hasStaticShape()) return {};
+
+  // Prevent folding if the result is too large.
+  if (val.getNumElements() > kFoldOpEltLimit) return {};
+
+  llvm::SmallVector<APFloat, 4> values;
+  values.reserve(val.getNumElements());
+  for (auto it : val.getValues<APFloat>()) {
+    if (it.isNegative()) return {};
+
+    const llvm::fltSemantics& oldSemantics = it.getSemantics();
+
+    bool unusedLoseInfo;
+    it.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
+               &unusedLoseInfo);
+
+    APFloat result(1.0 / std::sqrt(it.convertToDouble()));
+    result.convert(oldSemantics, APFloat::rmNearestTiesToEven, &unusedLoseInfo);
+
+    values.push_back(result);
   }
   return DenseFPElementsAttr::get(shapedType, values);
 }
