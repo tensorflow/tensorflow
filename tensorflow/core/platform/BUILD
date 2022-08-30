@@ -910,6 +910,8 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/core/platform:cord",
+        "//tensorflow/core/platform:stringpiece",
         "//tensorflow/tsl/platform:tstring",
     ],
 )
