@@ -82,6 +82,7 @@ Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
                             const Tensor& shape,
                             IndexValidation index_validation);
 
+
 }  // namespace sparse_utils
 }  // namespace tensorflow
 

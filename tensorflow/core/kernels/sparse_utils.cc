@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse_utils.h"
 
 #include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace sparse_utils {
@@ -146,6 +150,7 @@ namespace {
 // compatible.
 Status ValidateSparseTensorShape(const Tensor& indices, const Tensor& values,
                                  const Tensor& shape) {
+
   // Indices must be a matrix, and values/shape must be a vector.
   if (!TensorShapeUtils::IsMatrix(indices.shape())) {
     return errors::InvalidArgument("Sparse indices must be rank 2 but is rank ",
@@ -205,6 +210,7 @@ Status ValidateSparseTensorIndicesUnordered(const Tensor& indices,
       const Tindices idx = indices_mat(i, dim);
       if (TF_PREDICT_FALSE(idx < 0 || idx >= shape_vec(dim))) {
         string index_str = CreateIndexString(indices_mat, i);
+
         return errors::InvalidArgument("Sparse index tuple ", index_str,
                                        " is out of bounds");
       }
@@ -281,6 +287,7 @@ Status ValidateSparseTensorIndicesOrdered(const Tensor& indices,
   return Status::OK();
 }
 
+
 }  // namespace
 
 template <typename Tindices>
@@ -295,6 +302,7 @@ Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
       return ValidateSparseTensorIndicesUnordered<Tindices>(indices, shape);
     case IndexValidation::kNone: {
     }
+
   }
   return Status::OK();
 }
@@ -315,6 +323,7 @@ Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
   template Status ValidateSparseTensor<TypeIndex>(                          \
       const Tensor& indices, const Tensor& values, const Tensor& shape,     \
       IndexValidation index_validation)
+
 
 REGISTER_SPARSE_UTIL_FUNCTIONS(int32);
 REGISTER_SPARSE_UTIL_FUNCTIONS(int64);

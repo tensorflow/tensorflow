@@ -21,25 +21,23 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 
+namespace tensorflow {
+namespace sparse_utils {
 namespace {
 
-using ::int64_t;
-using tensorflow::DataType;
-using tensorflow::int32;
-using tensorflow::Tensor;
-using tensorflow::TTypes;
-using tensorflow::uint16;
-using tensorflow::uint32;
-using tensorflow::uint64;
-using tensorflow::sparse_utils::ContainsEmptyRows;
-using tensorflow::sparse_utils::FindNextDenseRowStartIndex;
-using tensorflow::sparse_utils::GetStartIndicesOfEachDenseRow;
-using tensorflow::sparse_utils::ParseRowStartIndices;
+using ::tensorflow::testing::StatusIs;
+using ::testing::MatchesRegex;
 
 TEST(SparseUtilsTest, GetStartIndicesOfEachDenseRow) {
   {
@@ -366,6 +364,7 @@ TEST_P(ValidateSparseTensorTest, InvalidIndicesRankFails) {
   const TensorShape kInvalidIndicesShapes[] = {
       {}, {kNumNonZeros}, {kNumNonZeros, kNumDims, 4}};
   const IndexValidation index_validation = GetParam();
+
   for (const TensorShape& invalid_shape : kInvalidIndicesShapes) {
     const Tensor indices = Tensor(DT_INT64, invalid_shape);
     const Tensor values = Tensor(DT_FLOAT, TensorShape({kNumNonZeros}));
@@ -383,6 +382,7 @@ TEST_P(ValidateSparseTensorTest, InvalidValuesRankFails) {
   // Values tensor must be rank 1, so try rank 0, 2.
   const TensorShape kInvalidValuesShapes[] = {{}, {kNumNonZeros, 2}};
   const IndexValidation index_validation = GetParam();
+
   for (const TensorShape& invalid_shape : kInvalidValuesShapes) {
     const Tensor indices =
         Tensor(DT_INT64, TensorShape({kNumNonZeros, kNumDims}));
@@ -399,6 +399,7 @@ TEST_P(ValidateSparseTensorTest, InvalidShapeRankFails) {
   constexpr int kNumNonZeros = 1000;
   constexpr int kNumDims = 3;
   const IndexValidation index_validation = GetParam();
+
   // Shape tensor must be rank 1, so try rank 0, 2.
   const TensorShape kInvalidShapeShapes[] = {{}, {kNumDims, 2}};
   for (const TensorShape& invalid_shape : kInvalidShapeShapes) {
@@ -408,6 +409,7 @@ TEST_P(ValidateSparseTensorTest, InvalidShapeRankFails) {
     const Tensor shape = Tensor(DT_INT64, invalid_shape);
     EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
                                                index_validation)),
+
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Sparse shape must be rank 1 .*")));
   }
@@ -418,6 +420,7 @@ TEST_P(ValidateSparseTensorTest, IncompatibleShapesFails) {
   constexpr int kNumDims = 3;
   const IndexValidation index_validation = GetParam();
 
+
   const Tensor values = Tensor(DT_FLOAT, TensorShape({kNumNonZeros}));
   const Tensor shape = Tensor(DT_INT64, TensorShape({kNumDims}));
 
@@ -427,6 +430,7 @@ TEST_P(ValidateSparseTensorTest, IncompatibleShapesFails) {
         Tensor(DT_INT64, TensorShape({kNumNonZeros + 1, kNumDims}));
     EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
                                                index_validation)),
+
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Number of elements in indices .* and "
                                       "values .* do not match")));
@@ -440,6 +444,7 @@ TEST_P(ValidateSparseTensorTest, IncompatibleShapesFails) {
     EXPECT_THAT(
         (ValidateSparseTensor<int64_t>(indices, values, shape,
                                        index_validation)),
+
         StatusIs(error::INVALID_ARGUMENT,
                  MatchesRegex("Index rank .* and shape rank .* do not match")));
   }
@@ -457,6 +462,7 @@ TEST_P(ValidateSparseTensorTest, IndexOutOfBoundsFails) {
     Tensor indices, values, shape;
     GenerateRandomSparseTensor(kNumNonZeros, test_shape, ordered, indices,
                                values, shape);
+
     // Access tensor values.
     auto indices_mat = indices.matrix<int64_t>();
     for (int test = 0; test < kNumTests; ++test) {
@@ -527,6 +533,7 @@ TEST_P(ValidateSparseTensorTest, IndexOutOfOrderFailsForOrderedValidation) {
       for (int dim = 0; dim < ndims; ++dim) {
         std::swap(indices_mat(row1, dim), indices_mat(row2, dim));
       }
+
     }
   }
 }
@@ -547,4 +554,7 @@ INSTANTIATE_TEST_SUITE_P(
       }
     });
 
+
 }  // namespace
+}  // namespace sparse_utils
+}  // namespace tensorflow
