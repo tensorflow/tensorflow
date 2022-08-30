@@ -19,6 +19,8 @@ limitations under the License.
 #include <array>
 #include <functional>
 #include <string>
+#include <tuple>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
@@ -676,9 +678,14 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<int64_t const> dimensions_major_to_minor,
       absl::string_view buffer_name = "");
 
+  struct KernelArgument {
+    int order;
+    mlir::Value value;
+    BufferSlice slice;
+  };
   StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkImpl(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
-      absl::Span<const BufferSlice> slices,
+      std::vector<KernelArgument> value_slice_tuples,
       std::vector<llvm_ir::IrArray>* ir_arrays,
       const LaunchDimensions& launch_dimensions);
 
@@ -696,7 +703,8 @@ class IrEmitterUnnested : public IrEmitter {
   // initializes its memory to the appropriate initial value.
   std::unique_ptr<Thunk> BuildConstantInitializerThunk(
       mlir::Operation* op, absl::Span<const uint8_t> init_value,
-      const BufferAllocation::Slice& dest, const Shape& output_shape);
+      mlir::Value dest, const BufferAllocation::Slice& dest_slice,
+      const Shape& output_shape);
 
   StatusOr<std::unique_ptr<Thunk>> TryBuildConstantInitializerThunk(
       mlir::Operation* op, mlir::Value init_value, mlir::Value dest);

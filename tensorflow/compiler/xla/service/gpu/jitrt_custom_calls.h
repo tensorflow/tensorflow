@@ -122,6 +122,12 @@ XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(
     xla::runtime::CustomCall, const xla::ServiceExecutableRunOptions);
 XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
                                            const xla::DebugOptions);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                           const std::string);  // ptx
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(
+    xla::runtime::CustomCall, const std::vector<uint8_t>);  // cubin
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(
+    xla::runtime::CustomCall, se::DeviceMemoryBase);  // temp buffer
 
 namespace xla {
 namespace gpu {

@@ -49,6 +49,11 @@ class WhileThunk : public Thunk {
                     se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  SequentialThunk* condition_thunk_sequence() {
+    return condition_thunk_sequence_.get();
+  }
+  SequentialThunk* body_thunk_sequence() { return body_thunk_sequence_.get(); }
+
  private:
   const BufferAllocation::Slice condition_result_buffer_index_;
   std::unique_ptr<SequentialThunk> condition_thunk_sequence_;

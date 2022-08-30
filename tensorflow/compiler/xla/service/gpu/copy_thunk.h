@@ -34,7 +34,8 @@ class DeviceToDeviceCopyThunk : public Thunk {
   DeviceToDeviceCopyThunk(ThunkInfo thunk_info,
                           const BufferAllocation::Slice& source_buffer,
                           const BufferAllocation::Slice& destination_buffer,
-                          uint64_t mem_size);
+                          uint64_t mem_size, mlir::Value source_value,
+                          mlir::Value destination_value);
 
   DeviceToDeviceCopyThunk(const DeviceToDeviceCopyThunk&) = delete;
   DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
@@ -46,11 +47,15 @@ class DeviceToDeviceCopyThunk : public Thunk {
     return destination_buffer_;
   }
   uint64_t size_bytes() const { return mem_size_; }
+  mlir::Value source_value() const { return source_value_; }
+  mlir::Value destination_value() const { return destination_value_; }
 
  private:
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
   const uint64_t mem_size_;
+  mlir::Value source_value_;
+  mlir::Value destination_value_;
 };
 
 }  // namespace gpu

@@ -1251,9 +1251,11 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
   if (operand_buffer != a_buffer) {
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
         GetThunkInfo(op),
-        /*source_address=*/operand_buffer,
+        /*source_buffer=*/operand_buffer,
         /*destination_buffer=*/a_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape),
+        /*source_value=*/cholesky_op.getInput(),
+        /*destination_value=*/cholesky_op.getOutput()));
   }
 
   CholeskyOptions options;
@@ -1454,9 +1456,11 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
   if (b_slice != result_slice) {
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
         Thunk::ThunkInfo(op),
-        /*source_address=*/b_slice,
+        /*source_buffer=*/b_slice,
         /*destination_buffer=*/result_slice,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape)));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape),
+        /*source_value=*/operands[1],
+        /*destination_value=*/operands[2]));
   }
 
   int64_t m = b_shape.dimensions(b_shape.rank() - 2);
@@ -1582,29 +1586,32 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
 
   // Create BufferSlice array from launch_func arguments, using the
   // attribute depicting which arguments are written by the kernel.
-  std::vector<BufferSlice> slices;
+  std::vector<KernelArgument> kernel_arguments;
   unsigned num_kernel_operands = launch_func.getNumKernelOperands();
-  slices.reserve(num_kernel_operands);
+  kernel_arguments.reserve(num_kernel_operands);
+  int i = 0;
   mlir::ArrayRef<mlir::Attribute> written_operands =
       mlir::getWrittenOperandsAttribute(launch_func).getValue();
   for (const auto& [operand, written] :
        llvm::zip_first(launch_func.operands(),
                        written_operands.take_back(num_kernel_operands))) {
-    BufferSlice slice;
+    auto& kernel_argument = kernel_arguments.emplace_back();
+    kernel_argument.order = i++;
+    kernel_argument.value = operand;
+    auto& slice = kernel_argument.slice;
     TF_ASSIGN_OR_RETURN(slice.buffer_slice,
                         GetAllocationSlice(operand, &slice.constant_name));
     slice.shape = GetShape(operand);
     slice.written = written.cast<mlir::BoolAttr>().getValue();
-    slices.push_back(std::move(slice));
   }
 
   // Add kernel prototype to module_, kernel thunk to thunk_sequence_.
   std::string kernel_name = GetIrNameFromLoc(launch_func.getLoc());
   std::vector<llvm_ir::IrArray> ir_arrays;
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Thunk> kernel_thunk,
-      BuildKernelThunkImpl(kernel_name, GetThunkInfo(op), slices, &ir_arrays,
-                           launch_dimensions));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> kernel_thunk,
+                      BuildKernelThunkImpl(kernel_name, GetThunkInfo(op),
+                                           std::move(kernel_arguments),
+                                           &ir_arrays, launch_dimensions));
   thunk_sequence_.emplace_back(std::move(kernel_thunk));
 
   // Move function body into kernel prototype.
@@ -1848,10 +1855,11 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
       if (operand_buffer != destination_buffer) {
         AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
             GetThunkInfo(op),
-            /*source_address=*/operand_buffer,
+            /*source_buffer=*/operand_buffer,
             /*destination_buffer=*/destination_buffer,
-            /*mem_size=*/
-            ByteSizeOf(operand_shape)));
+            /*mem_size=*/ByteSizeOf(operand_shape),
+            /*source_value=*/operands[0],
+            /*destination_value=*/outputs[0]));
       }
       return OkStatus();
     }
@@ -2162,8 +2170,10 @@ Status IrEmitterUnnested::EmitWhile(mlir::Operation* op) {
                    .isInteger(/*width=*/1))
       << "While condition computation must return bool";
 
-  //  Build ForThunk for conformant while loops, otherwise build WhileThunk.
-  if (while_op.getTripCount()) {
+  // Build ForThunk for conformant while loops, otherwise build WhileThunk.
+  // XLA runtime always lowers lmhlo.while to scf.while, not 'for'.
+  if (while_op.getTripCount() &&
+      !IsJitRtExecutableEnabled(hlo_module_config_)) {
     TF_ASSIGN_OR_RETURN(auto thunk, BuildForThunk(while_op, GetThunkInfo(op),
                                                   *while_op.getTripCount()));
     AddThunkToThunkSequence(std::move(thunk));
@@ -2223,10 +2233,11 @@ Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
   if (operand_buffer != output_buffer) {
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
         Thunk::ThunkInfo(op),
-        /*source_address=*/operand_buffer,
+        /*source_buffer=*/operand_buffer,
         /*destination_buffer=*/output_buffer,
-        /*mem_size=*/
-        ShapeUtil::ByteSizeOf(GetShape(scatter_op.getOutput()))));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(GetShape(scatter_op.getOutput())),
+        /*source_value=*/scatter_op.getOperand(),
+        /*destination_value=*/scatter_op.getOutput()));
   }
 
   const Shape& data_shape = GetShape(scatter_op.getUpdates());
@@ -2584,9 +2595,11 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
       VLOG(2) << op_name << " requires initial D2D copy for operand " << i;
       thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo(op),
-          /*source_address=*/source_address,
+          /*source_buffer=*/source_address,
           /*destination_buffer=*/destination_buffer,
-          /*mem_size=*/ShapeUtil::ByteSizeOf(GetShape(operands[i]))));
+          /*mem_size=*/ShapeUtil::ByteSizeOf(GetShape(operands[i])),
+          /*source_value=*/sort_op.getOperands()[i],
+          /*destination_value=*/sort_op.getOutput()[i]));
     }
   }
 
@@ -2776,9 +2789,11 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
     // For a degenerate collective permute, just generate a copy thunk.
     AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
         GetThunkInfo(op),
-        /*source_address=*/source_slice,
+        /*source_buffer=*/source_slice,
         /*destination_buffer=*/result_slice,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape),
+        /*source_value=*/collective_permute_op.getOperand(),
+        /*destination_value=*/collective_permute_op.getOutput()));
   } else {
     const NcclCollectivePermuteThunk::Buffer buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(shape),
@@ -2836,7 +2851,9 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     buffers.push_back(NcclCollectiveThunk::Buffer{
         /*element_count=*/ShapeUtil::ElementsIn(shape),
         /*source_buffer=*/source_slice,
-        /*destination_buffer=*/dest_slice});
+        /*destination_buffer=*/dest_slice,
+        /*source_value=*/operand,
+        /*destination_value=*/result});
   }
 
   if (should_use_nccl_thunk) {
@@ -2881,9 +2898,11 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     const Shape shape = GetShape(op.getOperands()[i]);
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
         buffers.size() == 1 ? GetThunkInfo(op) : Thunk::ThunkInfo(op),
-        /*source_address=*/buffers[i].source_buffer,
+        /*source_buffer=*/buffers[i].source_buffer,
         /*destination_buffer=*/buffers[i].destination_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape),
+        /*source_value=*/buffers[i].source_value,
+        /*destination_value=*/buffers[i].destination_value));
   }
   if (thunks.size() == 1) {
     AddThunkToThunkSequence(std::move(thunks[0]));
@@ -2958,17 +2977,71 @@ Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
     absl::string_view name, Thunk::ThunkInfo thunk_info,
-    absl::Span<const BufferSlice> slices,
+    std::vector<KernelArgument> kernel_arguments,
     std::vector<llvm_ir::IrArray>* ir_arrays,
     const LaunchDimensions& launch_dimensions) {
+  // Temporarily reorder the values/slices to match the way we supply buffer
+  // allocation arguments to the GPU kernels (see below).
+  absl::c_sort(kernel_arguments,
+               [](const KernelArgument& a, const KernelArgument& b) {
+                 return a.slice.buffer_slice.allocation()->index() <
+                        b.slice.buffer_slice.allocation()->index();
+               });
+
   // Figure out which buffer allocations need to be passed as arguments to our
   // kernel.  This is simply all of the allocations referenced in slices,
   // plus the XLA temp buffer (if we have it).  We always include the temp
   // buffer because even if the kernel itself doesn't use it, a nested
   // subcomputation within the kernel (e.g. a kMap's computation) might.
+  // For XLA runtime, do the same for mlir::Value(s).
   absl::flat_hash_set<const BufferAllocation*> buffers_needed;
-  for (const auto& slice : slices) {
-    buffers_needed.insert(slice.buffer_slice.allocation());
+  std::vector<mlir::Value> values_needed;
+  for (const auto& kernel_argument : kernel_arguments) {
+    const BufferSlice& slice = kernel_argument.slice;
+
+    if (slice.buffer_slice.allocation()->is_constant()) continue;
+
+    auto result = buffers_needed.insert(slice.buffer_slice.allocation());
+    if (!result.second) continue;
+
+    auto already_seen = [&](mlir::Value buffer_alloc_arg) {
+      bool seen = false;
+      for (mlir::Value seen_value : values_needed) {
+        if (buffer_alloc_arg == seen_value) {
+          seen = true;
+          break;
+        }
+      }
+      return seen;
+    };
+
+    mlir::Value argument = kernel_argument.value;
+    auto defining_op = argument.getDefiningOp();
+    if (defining_op == nullptr) {
+      if (!already_seen(argument)) values_needed.push_back(argument);
+      continue;
+    }
+
+    if (auto view_op = llvm::dyn_cast<mlir::memref::ViewOp>(defining_op)) {
+      argument = view_op.getOperand(0);
+      if (!already_seen(argument)) values_needed.push_back(argument);
+      continue;
+    }
+
+    if (auto cast_op =
+            llvm::dyn_cast<mlir::memref::ReinterpretCastOp>(defining_op)) {
+      argument = cast_op.getOperand(0);
+      if (auto view_op =
+              llvm::dyn_cast<mlir::memref::ViewOp>(argument.getDefiningOp())) {
+        argument = view_op.getOperand(0);
+      }
+      if (!already_seen(argument)) values_needed.push_back(argument);
+      continue;
+    }
+
+    return Unimplemented(
+        "Defining op for argument to GPU kernel not handled: %s",
+        defining_op->getName().getStringRef().str());
   }
   std::optional<const BufferAllocation*> temp_buffer;
   for (const BufferAllocation& alloc : ir_emitter_context_->allocations()) {
@@ -2985,25 +3058,21 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
 
   // We'll pass a pointer to each of the elements of `buffers` to our kernel, in
   // this order.
-  std::vector<const BufferAllocation*> non_constant_buffers;
-  absl::c_copy_if(buffers_needed, std::back_inserter(non_constant_buffers),
-                  [](const BufferAllocation* allocation) {
-                    return !allocation->is_constant();
-                  });
-
-  absl::c_sort(non_constant_buffers,
+  std::vector<const BufferAllocation*> buffers_ordered;
+  absl::c_copy(buffers_needed, std::back_inserter(buffers_ordered));
+  absl::c_sort(buffers_ordered,
                [](const BufferAllocation* a, const BufferAllocation* b) {
                  return a->index() < b->index();
                });
 
-  llvm::Function* kernel = BuildKernelPrototype(name, non_constant_buffers);
+  llvm::Function* kernel = BuildKernelPrototype(name, buffers_ordered);
 
   // Build a map from a BufferAllocation to the corresponding argument in our
   // kernel.
   absl::flat_hash_map<const BufferAllocation*, llvm::Value*> kernel_args;
   {
     auto arg_it = kernel->arg_begin();
-    auto buffers_it = non_constant_buffers.begin();
+    auto buffers_it = buffers_ordered.begin();
     for (; arg_it != kernel->arg_end(); ++arg_it, ++buffers_it) {
       kernel_args[*buffers_it] = arg_it;
 
@@ -3028,8 +3097,15 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
     }
   }
 
+  // Recover the original ordering of values/slices.
+  absl::c_sort(kernel_arguments,
+               [](const KernelArgument& a, const KernelArgument& b) {
+                 return a.order < b.order;
+               });
+
   absl::flat_hash_set<BufferAllocation::Slice> buffers_written;
-  for (const auto& slice : slices) {
+  for (const auto& kernel_argument : kernel_arguments) {
+    const auto& slice = kernel_argument.slice;
     if (slice.written) {
       buffers_written.insert(slice.buffer_slice);
     }
@@ -3039,7 +3115,8 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
 
   // For each buffer our kernel might want to touch, bind it to a value derived
   // from our kernel args.
-  for (const BufferSlice& slice : slices) {
+  for (const auto& kernel_argument : kernel_arguments) {
+    const auto& slice = kernel_argument.slice;
     const BufferAllocation::Slice& buffer_slice = slice.buffer_slice;
 
     llvm::Value* loc;
@@ -3067,9 +3144,9 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
   AnnotateThunkLaunchDimensions(launch_dimensions,
                                 std::string(kernel->getName()), module_);
 
-  return {std::make_unique<KernelThunk>(thunk_info, non_constant_buffers,
-                                        std::string(kernel->getName()),
-                                        launch_dimensions)};
+  return {std::make_unique<KernelThunk>(
+      thunk_info, buffers_ordered, std::string(kernel->getName()),
+      launch_dimensions, std::move(values_needed))};
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
@@ -3078,19 +3155,22 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
     const LaunchDimensions& launch_dimensions) {
   TF_RET_CHECK(!mlir::isa<mlir::lmhlo::FusionOp>(op));
 
-  std::vector<BufferSlice> slices;
-  slices.reserve(operands.size());
+  std::vector<KernelArgument> kernel_arguments;
+  kernel_arguments.reserve(operands.size());
+  int i = 0;
   for (mlir::Value operand : operands) {
-    slices.emplace_back();
-    auto& slice = slices.back();
+    auto& kernel_argument = kernel_arguments.emplace_back();
+    kernel_argument.order = i++;
+    kernel_argument.value = operand;
+    auto& slice = kernel_argument.slice;
     TF_ASSIGN_OR_RETURN(slice.buffer_slice,
                         GetAllocationSlice(operand, &slice.constant_name));
     slice.written = WritesMlirBuffer(op, operand);
     slice.shape = GetShape(operand);
   }
   std::string name = GetIrNameFromLoc(op->getLoc());
-  return BuildKernelThunkImpl(name, thunk_info, slices, ir_arrays,
-                              launch_dimensions);
+  return BuildKernelThunkImpl(name, thunk_info, std::move(kernel_arguments),
+                              ir_arrays, launch_dimensions);
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
@@ -3101,38 +3181,44 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
     auto operands = GetHloOperands(op);
     auto outputs = GetHloOutputs(op);
 
-    std::vector<BufferSlice> slices;
-    slices.reserve(operands.size() + outputs.size());
+    std::vector<KernelArgument> kernel_arguments;
+    kernel_arguments.reserve(operands.size() + outputs.size());
+    int i = 0;
     for (mlir::Value operand : operands) {
-      slices.emplace_back();
-      BufferSlice& slice = slices.back();
+      auto& kernel_argument = kernel_arguments.emplace_back();
+      kernel_argument.order = i++;
+      kernel_argument.value = operand;
+      BufferSlice& slice = kernel_argument.slice;
       TF_ASSIGN_OR_RETURN(slice.buffer_slice,
                           GetAllocationSlice(operand, &slice.constant_name));
       slice.written = false;
       slice.shape = GetShape(operand);
     }
     for (mlir::Value output : outputs) {
-      slices.emplace_back();
-      BufferSlice& slice = slices.back();
+      auto& kernel_argument = kernel_arguments.emplace_back();
+      kernel_argument.order = i++;
+      kernel_argument.value = output;
+      BufferSlice& slice = kernel_argument.slice;
       TF_ASSIGN_OR_RETURN(slice.buffer_slice,
                           GetAllocationSlice(output, &slice.constant_name));
       slice.written = true;
       slice.shape = GetShape(output);
     }
     std::string name = GetIrNameFromLoc(op->getLoc());
-    return BuildKernelThunkImpl(name, thunk_info, slices, ir_arrays,
-                                launch_dimensions);
+    return BuildKernelThunkImpl(name, thunk_info, std::move(kernel_arguments),
+                                ir_arrays, launch_dimensions);
   }
   return BuildKernelThunk(op, op->getOperands(), thunk_info, ir_arrays,
                           launch_dimensions);
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
-    mlir::Operation* op, absl::Span<const uint8_t> init_value,
-    const BufferAllocation::Slice& dest, const Shape& output_shape) {
+    mlir::Operation* op, absl::Span<const uint8_t> init_value, mlir::Value dest,
+    const BufferAllocation::Slice& dest_slice, const Shape& output_shape) {
   int64_t num_bytes = init_value.size();
   if (absl::c_all_of(init_value, [](uint8_t byte) { return byte == 0; })) {
-    return std::make_unique<MemzeroThunk>(Thunk::ThunkInfo(op), dest);
+    return std::make_unique<MemzeroThunk>(Thunk::ThunkInfo(op), dest_slice,
+                                          dest);
   }
 
   // If the literal is 8 or 16 bits wide, we can emit a 32-bit memset by
@@ -3149,7 +3235,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
     }
     uint32_t pattern32 = uint32_t{pattern16} | (uint32_t{pattern16} << 16);
     return std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(op),
-                                                   pattern32, dest);
+                                                   pattern32, dest_slice, dest);
   }
 
   // If the literal is an even multiple of 32 bits wide, we can emit a 32-bit
@@ -3160,7 +3246,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
     uint32_t word;
     memcpy(&word, init_value.data(), sizeof(word));
     return std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(op), word,
-                                                   dest);
+                                                   dest_slice, dest);
   }
 
   return nullptr;
@@ -3197,8 +3283,8 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Operation* op,
     TF_ASSIGN_OR_RETURN(auto dest_slice, GetAllocationSlice(dest));
 
     const Shape dest_shape = GetShape(dest);
-    auto thunk = BuildConstantInitializerThunk(op, literal_bytes, dest_slice,
-                                               dest_shape);
+    auto thunk = BuildConstantInitializerThunk(op, literal_bytes, dest,
+                                               dest_slice, dest_shape);
     if (thunk) {
       return {std::move(thunk)};
     }

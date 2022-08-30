@@ -20,8 +20,10 @@
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -69,6 +71,12 @@ XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(
     xla::runtime::CustomCall, const xla::ServiceExecutableRunOptions);
 XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
                                           const xla::DebugOptions);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          const std::string);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          const std::vector<uint8_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          se::DeviceMemoryBase);
 
 namespace xla {
 namespace gpu {
@@ -405,23 +413,25 @@ namespace {
 struct LaunchFunc {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   Error operator()(const ServiceExecutableRunOptions* run_options,
+                   const std::string* ptx, const std::vector<uint8_t>* cubin,
+                   se::DeviceMemoryBase* temp_buffer,
                    JitRtKernelsCache* kernels_cache, int32_t grid_size_x,
                    int32_t grid_size_y, int32_t grid_size_z,
                    int32_t block_size_x, int32_t block_size_y,
                    int32_t block_size_z, CustomCall::RemainingArgs args,
-                   StringRef ptx, StringRef name) const;
+                   StringRef name) const;
 
   static LaunchFunc Handler() { return LaunchFunc(); }
 };
 }  // namespace
 
-Error LaunchFunc::operator()(const ServiceExecutableRunOptions* run_options,
-                             JitRtKernelsCache* kernels_cache,
-                             int32_t grid_size_x, int32_t grid_size_y,
-                             int32_t grid_size_z, int32_t block_size_x,
-                             int32_t block_size_y, int32_t block_size_z,
-                             CustomCall::RemainingArgs args, StringRef ptx,
-                             StringRef name) const {
+Error LaunchFunc::operator()(
+    const ServiceExecutableRunOptions* run_options, const std::string* ptx,
+    const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
+    JitRtKernelsCache* kernels_cache, int32_t grid_size_x, int32_t grid_size_y,
+    int32_t grid_size_z, int32_t block_size_x, int32_t block_size_y,
+    int32_t block_size_z, CustomCall::RemainingArgs args,
+    StringRef name) const {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
@@ -429,21 +439,23 @@ Error LaunchFunc::operator()(const ServiceExecutableRunOptions* run_options,
       {grid_size_x, grid_size_y, grid_size_z},
       {block_size_x, block_size_y, block_size_z});
 
-  se::KernelBase* kernel = kernels_cache->Get(executor, ptx.data(), name);
+  se::KernelBase* kernel = kernels_cache->Get(executor, ptx->data(), name);
+  const int args_size_including_temp_buffer = args.size() + 1;
 
   // If kernel does not exists create it from the ptx.
   if (kernel == nullptr) {
-    auto created = CreateKernel(absl::string_view(name.data(), name.size()),
-                                args.size(), ptx.data(), {}, executor);
+    auto created =
+        CreateKernel(absl::string_view(name.data(), name.size()),
+                     args_size_including_temp_buffer, *ptx, *cubin, executor);
     if (!created.ok()) return AsError(created);
 
     kernel =
-        kernels_cache->Set(executor, ptx.data(), name, std::move(*created));
+        kernels_cache->Set(executor, ptx->data(), name, std::move(*created));
   }
 
   VLOG(3) << "Launching " << kernel->name();
   absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
-  buffer_args.reserve(args.size());
+  buffer_args.reserve(args_size_including_temp_buffer);
 
   // Add MemRef arguments as buffer arguments.
   for (unsigned i = 0; i < args.size(); ++i) {
@@ -462,8 +474,9 @@ Error LaunchFunc::operator()(const ServiceExecutableRunOptions* run_options,
       continue;
     }
 
-    return MakeStringError("Unsupported argumeent type");
+    return MakeStringError("Unsupported argument type");
   }
+  buffer_args.push_back(*temp_buffer);
 
   // Execute device kernel on a main stream.
   auto executed =
@@ -476,6 +489,9 @@ Error LaunchFunc::operator()(const ServiceExecutableRunOptions* run_options,
 static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.func.launch")
                              .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const std::string*>()
+                             .UserData<const std::vector<uint8_t>*>()
+                             .UserData<se::DeviceMemoryBase*>()
                              .UserData<JitRtKernelsCache*>()
                              .Arg<int32_t>()   // grid_size_x
                              .Arg<int32_t>()   // grid_size_y
@@ -484,7 +500,6 @@ static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .Arg<int32_t>()   // block_size_y
                              .Arg<int32_t>()   // block_size_x
                              .RemainingArgs()  // args
-                             .Attr<std::string_view>("ptx")
                              .Attr<std::string_view>("kernel")
                              .To<RuntimeChecks()>(LaunchFunc::Handler())
                              .release();

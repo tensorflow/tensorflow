@@ -367,17 +367,8 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
     auto inserted = sym_table.insert(custom_call);
     rewriter.notifyOperationInserted(custom_call);
 
-    // Get the compiled gpu function.
-    auto* kernel = SymbolTable::lookupNearestSymbolFrom(op, op.kernel());
-    assert(kernel && "kernel not found");
-
-    // Get the compiled GPU binary from the device kernel module.
-    auto gpu_module = kernel->getParentOfType<mlir::gpu::GPUModuleOp>();
-    auto gpu_binary = gpu_module->getAttrOfType<mlir::StringAttr>("binary");
-
     // Create a function launch call operation.
     auto call = b.create<CallOp>(inserted, TypeRange(), args);
-    call->setAttr(b.getStringAttr("ptx"), gpu_binary);
     call->setAttr(b.getStringAttr("kernel"), op.getKernelName());
 
     // Erase the original gpu launch operation.
@@ -1661,28 +1652,11 @@ std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloGpuToJitRtPass() {
 }
 
 void populateLmhloToJitRtPasses(mlir::OpPassManager& pm,
-                                GpuBinaryOptions options) {
-  // Run CSE to remove identical `memref.view` operations that read from the
-  // same argument at the same offset.
-  pm.addPass(createCSEPass());
-
-  // Convert large global memrefs corresponding to XLA constants with arguments,
-  // so that compiled device kernels do not capture them.
-  //
-  // TODO(ezhulenev): Threshold should be consistent with the device kernel
-  // code generation. If constant will be embedded into the device module, we
-  // should not inline it too early. Currently it's hardcoded to `1` element.
-  pm.addPass(createConvertLmhloConstantToArgPass(/*min_num_elements=*/2));
-  pm.addPass(createSymbolDCEPass());  // Clean up unused global constants.
-
-  // Sink constants into MHLO regions before trying to export to XLA for
-  // compiling GPU binaries.
-  pm.addPass(mhlo::createSinkConstantsToControlFlowPass());
-
+                                xla::gpu::ThunkSequence* thunk_sequence) {
   // Small global constants will be embedded into the device modules.
-  pm.addPass(createConvertLmhloToGpuBinaryPass(options));
+  pm.addPass(createConvertLmhloToGpuBinaryPass(thunk_sequence));
 
-  // Convert remaining small global memrefs corresponding to constant arguments.
+  // Convert global memrefs corresponding to constant arguments.
   pm.addPass(createConvertLmhloConstantToArgPass());
   pm.addPass(createSymbolDCEPass());  // Clean up unused global constants.
 

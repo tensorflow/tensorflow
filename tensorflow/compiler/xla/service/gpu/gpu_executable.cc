@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -573,8 +574,12 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
 static Status ExecuteJitRt(const std::string& module_name,
                            GpuExecutable::JitRtExecutable* jitrt_executable,
                            const ServiceExecutableRunOptions* run_options,
+                           const std::string& asm_text,
+                           const std::vector<uint8_t>& binary,
                            const BufferAllocations& buffer_allocations,
-                           size_t num_allocations, bool block_host_until_done) {
+                           size_t num_allocations,
+                           std::optional<const BufferAllocation*> temp_buffer,
+                           bool block_host_until_done) {
   uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
@@ -645,11 +650,19 @@ static Status ExecuteJitRt(const std::string& module_name,
   JitRtAsyncCollectiveSupport async_collectives(
       async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
 
+  // Always pass in the temp buffer, even if it is null, to accommodate the
+  // 0-sized buffer corner case.
+  se::DeviceMemoryBase dm_buffer;
+  if (temp_buffer.has_value()) {
+    dm_buffer =
+        buffer_allocations.GetDeviceAddress(temp_buffer.value()->index());
+  }
+
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data;
   user_data.insert_all(
-      run_options, &jitrt_executable->debug_options(),
-      &jitrt_executable->kernels_cache(),
+      run_options, &jitrt_executable->debug_options(), &asm_text, &binary,
+      &dm_buffer, &jitrt_executable->kernels_cache(),
       &jitrt_executable->gemm_configs_cache(), &jitrt_executable->collectives(),
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
   opts.custom_call_data = &user_data;
@@ -859,9 +872,20 @@ Status GpuExecutable::ExecuteThunksOrJitRt(
 
 #if XLA_ENABLE_XLIR
   if (jitrt_executable_) {
-    return ExecuteJitRt(module_name_, jitrt_executable_, run_options,
-                        buffer_allocations, allocations_.size(),
-                        block_host_until_done);
+    // Match IrEmitter's temp buffer allocation for kernel launches. See
+    // IrEmitterUnnested::BuildKernelThunkImpl().
+    std::optional<const BufferAllocation*> temp_buffer;
+    for (const BufferAllocation& alloc : allocations_) {
+      if (alloc.IsPreallocatedTempBuffer()) {
+        if (!temp_buffer.has_value()) {
+          // Retrieve the first seen temp buffer.
+          temp_buffer = &alloc;
+        }
+      }
+    }
+    return ExecuteJitRt(module_name_, jitrt_executable_, run_options, text_,
+                        binary_, buffer_allocations, allocations_.size(),
+                        temp_buffer, block_host_until_done);
   }
 #endif  // XLA_ENABLE_XLIR
 
@@ -1005,13 +1029,16 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
 }
 
 GpuExecutable::GpuExecutable(
-    std::shared_ptr<HloModule> hlo_module, GpuVersion gpu_version,
+    std::shared_ptr<HloModule> hlo_module, std::string asm_text,
+    std::vector<uint8_t> binary, GpuVersion gpu_version,
     xla::EntryFunctionAttributes entry_func_attrs,
     absl::string_view module_name, Shape xla_output_shape,
     std::vector<BufferAllocation> allocations,
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
     JitRtExecutable* jitrt_executable)
     : Executable(std::move(hlo_module)),
+      text_(std::move(asm_text)),
+      binary_(std::move(binary)),
       gpu_version_(gpu_version),
       entry_func_attrs_(entry_func_attrs),
       module_name_(module_name),
@@ -1027,6 +1054,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
     absl::string_view mlir_module,
     xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
+    absl::string_view asm_text, absl::string_view binary,
     GpuVersion gpu_version, se::StreamExecutor* executor) {
 #if XLA_ENABLE_XLIR
   // Load MLIR module behind the compiled object file to recover XLA allocations
@@ -1105,8 +1133,11 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
 
   // Construct GpuExecutable for the loaded JitRt executable.
   std::string name = hlo_module->name();
+  std::string asm_text_string = std::string(asm_text);
+  std::vector<uint8_t> binary_vector(binary.begin(), binary.end());
   return std::unique_ptr<Executable>(
-      new GpuExecutable(std::move(hlo_module), gpu_version, entry_func_attrs,
+      new GpuExecutable(std::move(hlo_module), std::move(asm_text_string),
+                        std::move(binary_vector), gpu_version, entry_func_attrs,
                         name, result_xla_shape, std::move(allocations),
                         std::move(output_info), jitrt_executable));
 

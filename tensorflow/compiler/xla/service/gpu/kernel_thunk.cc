@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -36,11 +38,13 @@ namespace gpu {
 KernelThunk::KernelThunk(ThunkInfo thunk_info,
                          absl::Span<const BufferAllocation* const> args,
                          const std::string& kernel_name,
-                         const LaunchDimensions& launch_dimensions)
+                         const LaunchDimensions& launch_dimensions,
+                         std::vector<mlir::Value> values)
     : Thunk(Kind::kKernel, thunk_info),
       args_(args.begin(), args.end()),
       kernel_name_(kernel_name),
-      launch_dimensions_(launch_dimensions) {}
+      launch_dimensions_(launch_dimensions),
+      values_(std::move(values)) {}
 
 std::string KernelThunk::ToStringExtra(int indent) const {
   return absl::StrFormat(", kernel = %s, launch dimensions = %s", kernel_name_,

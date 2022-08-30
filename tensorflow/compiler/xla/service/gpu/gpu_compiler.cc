@@ -304,7 +304,8 @@ StatusOr<std::unique_ptr<Executable>> JitRtAotCompilationResult::LoadExecutable(
   return GpuExecutable::LoadFromObjFile(
       std::move(hlo_module), jitrt_executable_.obj_file(),
       jitrt_executable_.mlir_module(), jitrt_executable_.entry_func_attrs(),
-      GetDebugOptionsFromFlags(), gpu_compiler->GetGpuVersion(executor),
+      GetDebugOptionsFromFlags(), jitrt_executable_.gpu_asm_text(),
+      jitrt_executable_.gpu_binary(), gpu_compiler->GetGpuVersion(executor),
       executor);
 }
 
@@ -878,7 +879,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 static StatusOr<OwnedJitRtProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module,
-    se::StreamExecutor* stream_exec) {
+    std::unique_ptr<ThunkSequence> thunk_sequence) {
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
   mlir::OpBuilder builder(mlir_module.getContext());
   mlir::IntegerAttr replica_count_attr =
@@ -890,22 +891,10 @@ static StatusOr<OwnedJitRtProgram> LowerToJitRt(
   func->setAttr("replica_count", replica_count_attr);
   func->setAttr("num_partitions", num_partitions_attr);
 
-  tensorflow::GpuBinaryOptions options;
-  if (stream_exec == nullptr) {
-    options = tensorflow::GpuBinaryOptions::DefaultGpuBinaryOptions();
-  } else {
-    options.platform_name = stream_exec->platform()->Name();
-    options.gpu_device_info = xla::gpu::GetGpuDeviceInfo(stream_exec);
-    options.cuda_compute_capability =
-        stream_exec->GetDeviceDescription().cuda_compute_capability();
-    options.rocm_compute_capability =
-        stream_exec->GetDeviceDescription().rocm_compute_capability();
-  }
-
   // Lower LMHLO operations to the JitRt compatible custom calls.
   TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToJitRt(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},
-      buffer_sizes, options));
+      buffer_sizes, thunk_sequence.get()));
   // Serialize module to pass it to GpuExecutable for compilation.
   std::string serialized_module;
   llvm::raw_string_ostream os(serialized_module);
@@ -1073,9 +1062,10 @@ static Status CompileModuleToLlvmIrImpl(
     llvm::transform(
         results->allocations, std::back_inserter(buffer_sizes),
         [](const BufferAllocation& allocation) { return allocation.size(); });
-    TF_ASSIGN_OR_RETURN(results->executable,
-                        LowerToJitRt(*mlir_module, entry_function.getName(),
-                                     buffer_sizes, hlo_module, stream_exec));
+    TF_ASSIGN_OR_RETURN(
+        results->executable,
+        LowerToJitRt(*mlir_module, entry_function.getName(), buffer_sizes,
+                     hlo_module, ir_emitter->ConsumeThunkSequence()));
     return OkStatus();
   }
 #endif  // XLA_ENABLE_XLIR
@@ -1457,6 +1447,18 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         stream_exec->GetDeviceDescription().cuda_compute_capability(),
         stream_exec->GetDeviceDescription().rocm_compute_capability(),
         GetCanShareBuffer(), pointer_size_, &compile_module_results));
+
+    if (user_pre_optimization_hook_) {
+      user_pre_optimization_hook_(*compile_module_results.llvm_module);
+    }
+
+    using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
+    TF_ASSIGN_OR_RETURN(
+        BackendCompileResult backend_result,
+        CompileToTargetBinary(
+            module->config(), std::move(compile_module_results.llvm_module),
+            stream_exec, {options.device_allocator()}, module.get()));
+
     auto& compiled_executable = compile_module_results.executable;
 
     if (!std::holds_alternative<OwnedJitRtProgram>(compiled_executable)) {
@@ -1501,7 +1503,8 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      obj_file->getBuffer().size());
     results.emplace_back(std::make_unique<xla::gpu::JitRtAotCompilationResult>(
         module->ToProto(), data, program->module,
-        compile_module_results.entry_func_attrs));
+        compile_module_results.entry_func_attrs, backend_result.first,
+        backend_result.second));
   }
   return std::move(results);
 #else

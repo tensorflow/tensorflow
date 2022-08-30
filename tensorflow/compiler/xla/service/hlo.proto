@@ -769,4 +769,10 @@ message JitRtExecutableProto {
 
   // Serialized MLIR module corresponding to compiled object file.
   string mlir_module = 4;
+
+  // PTX for the compiled GPU kernels.
+  string gpu_asm_text = 5;
+
+  // Corresponding CUBIN for the above PTX.
+  bytes gpu_binary = 6;
 }

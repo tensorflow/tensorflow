@@ -102,6 +102,8 @@ class NcclCollectiveThunk : public Thunk {
     int64_t element_count;
     BufferAllocation::Slice source_buffer;
     BufferAllocation::Slice destination_buffer;
+    mlir::Value source_value;
+    mlir::Value destination_value;
   };
 
   // Returns whether NCCL operations appear possible to perform; e.g. if we
