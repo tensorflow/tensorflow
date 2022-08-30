@@ -50,6 +50,7 @@ cc_library(
     compatible_with = if_google(["//buildenv/target:libtpu"]),
     visibility = [":friends"],
     deps = [
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",

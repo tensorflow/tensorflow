@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_COMMON_ASYNC_VALUE_TENSOR_H_
 #define TENSORFLOW_CORE_TFRT_COMMON_ASYNC_VALUE_TENSOR_H_
 
+#include <memory>
+
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
 
@@ -23,8 +26,11 @@ class AsyncValue;
 }  // namespace tfrt
 namespace tensorflow {
 
-// The implementation of a Tensor for an AsyncValue. We used it to integrate TF
-// with TFRT.
+// The implementation of a Tensor for an AsyncValue and PjRtBuffer. We used it
+// to integrate TF with TFRT.
+// TODO(b/243983834) After the migration of using PjRt for data transfer is
+// completed, GetAsyncRef and SetAsyncRef will be removed and this class will be
+// renamed to PjRtBufferTensor.
 class AsyncValueTensor {
  public:
   // Downcast from a Tensor to an AsyncValueTensor. Return nullptr if the
@@ -35,6 +41,10 @@ class AsyncValueTensor {
 
   void SetAsyncRef(tfrt::RCReference<tfrt::AsyncValue> av_ref);
 
+  xla::PjRtBuffer* GetBuffer();
+
+  void SetBuffer(std::shared_ptr<xla::PjRtBuffer> buffer);
+
   // Convert from a raw pointer to an AsyncValueTensor, removing the pointer
   // tag.
   static AsyncValueTensor* FromOpaquePointer(void* ptr);
@@ -44,6 +54,7 @@ class AsyncValueTensor {
 
  private:
   tfrt::RCReference<tfrt::AsyncValue> av_ref_;
+  std::shared_ptr<xla::PjRtBuffer> buffer_;
 };
 
 class AsyncValueAllocator : public Allocator {
