@@ -738,6 +738,7 @@ cuda_py_test(
     name = "batch_ops_test",
     size = "small",
     srcs = ["ops/batch_ops_test.py"],
+    main = "ops/batch_ops_test.py",
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
@@ -1006,6 +1007,7 @@ py_library(
 cuda_py_test(
     name = "array_grad_test",
     srcs = ["ops/array_grad_test.py"],
+    main = "ops/array_grad_test.py",
     python_version = "PY3",
     deps = [
         ":array_ops",
@@ -1222,6 +1224,7 @@ cuda_py_test(
     name = "collective_ops_gpu_test",
     size = "small",
     srcs = ["ops/collective_ops_gpu_test.py"],
+    main = "ops/collective_ops_gpu_test.py",
     python_version = "PY3",
     tags = [
         "guitar",
@@ -1240,6 +1243,7 @@ cuda_py_test(
     name = "compiled_collective_ops_gpu_test",
     size = "small",
     srcs = ["ops/compiled_collective_ops_gpu_test.py"],
+    main = "ops/compiled_collective_ops_gpu_test.py",
     python_version = "PY3",
     tags = [
         "guitar",
@@ -2315,6 +2319,7 @@ py_library(
 tf_py_test(
     name = "sparse_ops_test",
     srcs = ["ops/sparse_ops_test.py"],
+    main = "ops/sparse_ops_test.py",
     python_version = "PY3",
     deps = [
         ":array_grad",
@@ -2345,6 +2350,7 @@ py_library(
 tf_py_test(
     name = "sort_ops_test",
     srcs = ["ops/sort_ops_test.py"],
+    main = "ops/sort_ops_test.py",
     python_version = "PY3",
     deps = [
         ":array_ops",
@@ -2443,6 +2449,7 @@ py_library(
 cuda_py_test(
     name = "rnn_grad_test",
     srcs = ["ops/rnn_grad_test.py"],
+    main = "ops/rnn_grad_test.py",
     python_version = "PY3",
     deps = [
         ":array_ops",
@@ -2717,6 +2724,7 @@ cuda_py_test(
     name = "bitwise_ops_test",
     size = "small",
     srcs = ["ops/bitwise_ops_test.py"],
+    main = "ops/bitwise_ops_test.py",
     python_version = "PY3",
     tags = ["no_windows"],
     deps = [
@@ -2731,6 +2739,7 @@ cuda_py_test(
     name = "control_flow_ops_test",
     size = "medium",  # Contains artificial waits.
     srcs = ["ops/control_flow_ops_test.py"],
+    main = "ops/control_flow_ops_test.py",
     python_version = "PY3",
     shard_count = 2,
     tags = [
@@ -2780,6 +2789,7 @@ py_test(
 cuda_py_test(
     name = "embedding_ops_test",
     srcs = ["ops/embedding_ops_test.py"],
+    main = "ops/embedding_ops_test.py",
     python_version = "PY3",
     tags = ["no_windows_gpu"],
     deps = [
@@ -2797,6 +2807,7 @@ cuda_py_test(
     name = "gradient_checker_v2_test",
     size = "medium",
     srcs = ["ops/gradient_checker_v2_test.py"],
+    main = "ops/gradient_checker_v2_test.py",
     python_version = "PY3",
     deps = [
         ":array_ops",
@@ -2814,6 +2825,7 @@ cuda_py_test(
     name = "gradients_test",
     size = "medium",
     srcs = ["ops/gradients_test.py"],
+    main = "ops/gradients_test.py",
     python_version = "PY3",
     deps = [
         ":array_grad",
@@ -2851,6 +2863,7 @@ cuda_py_test(
     name = "histogram_ops_test",
     size = "small",
     srcs = ["ops/histogram_ops_test.py"],
+    main = "ops/histogram_ops_test.py",
     python_version = "PY3",
     deps = [
         ":array_ops",
@@ -2867,6 +2880,7 @@ cuda_py_test(
     name = "image_grad_d9m_test",
     size = "large",
     srcs = ["ops/image_grad_d9m_test.py"],
+    main = "ops/image_grad_d9m_test.py",
     python_version = "PY3",
     shard_count = 5,
     deps = [
@@ -2878,6 +2892,7 @@ cuda_py_test(
     name = "image_grad_test",
     size = "large",
     srcs = ["ops/image_grad_test.py"],
+    main = "ops/image_grad_test.py",
     python_version = "PY3",
     shard_count = 5,
     deps = [
@@ -2904,6 +2919,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/image_ops_test.py"],
     data = ["//tensorflow/core:image_testdata"],
+    main = "ops/image_ops_test.py",
     python_version = "PY3",
     shard_count = 16,
     tags = [
@@ -2935,6 +2951,7 @@ cuda_py_test(
     name = "init_ops_test",
     size = "small",
     srcs = ["ops/init_ops_test.py"],
+    main = "ops/init_ops_test.py",
     python_version = "PY3",
     deps = [
         ":client_testlib",
@@ -2950,6 +2967,7 @@ cuda_py_test(
     name = "init_ops_v2_test",
     size = "medium",
     srcs = ["ops/init_ops_v2_test.py"],
+    main = "ops/init_ops_v2_test.py",
     python_version = "PY3",
     deps = [
         ":array_ops",
@@ -2966,6 +2984,7 @@ cuda_py_test(
     name = "math_grad_test",
     size = "small",
     srcs = ["ops/math_grad_test.py"],
+    main = "ops/math_grad_test.py",
     python_version = "PY3",
     tags = ["no_windows_gpu"],
     xla_tags = [
@@ -2986,6 +3005,7 @@ cuda_py_test(
     name = "math_ops_test",
     size = "medium",
     srcs = ["ops/math_ops_test.py"],
+    main = "ops/math_ops_test.py",
     python_version = "PY3",
     tags = [
         "no_windows_gpu",
@@ -3008,6 +3028,7 @@ cuda_py_test(
     name = "math_ops_linspace_test",
     size = "medium",
     srcs = ["ops/math_ops_linspace_test.py"],
+    main = "ops/math_ops_linspace_test.py",
     python_version = "PY3",
     tags = [
         "no_windows_gpu",
@@ -3025,6 +3046,7 @@ cuda_py_test(
     name = "nn_batchnorm_test",
     size = "medium",
     srcs = ["ops/nn_batchnorm_test.py"],
+    main = "ops/nn_batchnorm_test.py",
     python_version = "PY3",
     shard_count = 4,
     tags = ["no_windows"],
@@ -3045,6 +3067,7 @@ cuda_py_test(
     name = "nn_fused_batchnorm_d9m_test",
     size = "medium",
     srcs = ["ops/nn_fused_batchnorm_d9m_test.py"],
+    main = "ops/nn_fused_batchnorm_d9m_test.py",
     python_version = "PY3",
     shard_count = 4,
     tags = [
@@ -3068,6 +3091,7 @@ cuda_py_test(
     name = "nn_fused_batchnorm_test",
     size = "large",
     srcs = ["ops/nn_fused_batchnorm_test.py"],
+    main = "ops/nn_fused_batchnorm_test.py",
     python_version = "PY3",
     shard_count = 24,
     tags = ["no_rocm"],
@@ -3086,6 +3110,7 @@ cuda_py_test(
     name = "nn_test",
     size = "medium",
     srcs = ["ops/nn_test.py"],
+    main = "ops/nn_test.py",
     python_version = "PY3",
     tags = ["no_windows"],
     xla_tags = [
@@ -3124,6 +3149,7 @@ cuda_py_test(
     name = "nn_xent_test",
     size = "medium",
     srcs = ["ops/nn_xent_test.py"],
+    main = "ops/nn_xent_test.py",
     python_version = "PY3",
     deps = [
         ":client_testlib",
@@ -3155,6 +3181,7 @@ cuda_py_test(
     kernels = [
         "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
     ],
+    main = "ops/sobol_ops_test.py",
     tags = [
         "no_oss",  # TODO(b/149565560)
         "no_windows_gpu",
@@ -3172,6 +3199,7 @@ cuda_py_test(
     name = "special_math_ops_test",
     size = "medium",
     srcs = ["ops/special_math_ops_test.py"],
+    main = "ops/special_math_ops_test.py",
     python_version = "PY3",
     shard_count = 10,
     tags = [
@@ -3896,6 +3924,7 @@ cuda_py_test(
     name = "nn_grad_test",
     size = "medium",
     srcs = ["ops/nn_grad_test.py"],
+    main = "ops/nn_grad_test.py",
     python_version = "PY3",
     deps = [
         ":client_testlib",
@@ -3934,6 +3963,7 @@ cuda_py_test(
     name = "nccl_ops_test",
     size = "small",
     srcs = ["ops/nccl_ops_test.py"],
+    main = "ops/nccl_ops_test.py",
     python_version = "PY3",
     # Disabled on jenkins until errors finding nvmlShutdown are found.
     tags = [
@@ -3956,6 +3986,7 @@ cuda_py_test(
     name = "factory_ops_test",
     size = "small",
     srcs = ["ops/factory_ops_test.py"],
+    main = "ops/factory_ops_test.py",
     deps = [
         ":sparse_ops",
         "//tensorflow/python:platform_test",
@@ -4218,6 +4249,7 @@ py_library(
 cuda_py_test(
     name = "raw_ops_test",
     srcs = ["ops/raw_ops_test.py"],
+    main = "ops/raw_ops_test.py",
     python_version = "PY3",
     deps = [
         ":client_testlib",
