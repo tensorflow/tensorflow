@@ -23,7 +23,6 @@ load(
     "tf_google_mobile_srcs_no_runtime",
     "tf_google_mobile_srcs_only_runtime",
     "tf_kernel_tests_linkstatic",
-    "tf_logging_deps",
     "tf_platform_alias",
     "tf_platform_deps",
     "tf_protobuf_deps",
@@ -381,7 +380,9 @@ cc_library(
     name = "logging",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["logging.h"],
-    deps = tf_logging_deps(),
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+    ],
 )
 
 cc_library(

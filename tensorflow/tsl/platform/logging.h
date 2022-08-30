@@ -13,8 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_LOGGING_H_
-#define TENSORFLOW_CORE_PLATFORM_LOGGING_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_LOGGING_H_
+#define TENSORFLOW_TSL_PLATFORM_LOGGING_H_
 
-#include "tensorflow/tsl/platform/logging.h"
-#endif  // TENSORFLOW_CORE_PLATFORM_LOGGING_H_
+#include "tensorflow/tsl/platform/platform.h"
+
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
+    defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
+    defined(__EMSCRIPTEN__) || defined(PLATFORM_CHROMIUMOS)
+#include "tensorflow/tsl/platform/google/logging.h"  // IWYU pragma: export
+#else
+#include "tensorflow/tsl/platform/default/logging.h"  // IWYU pragma: export
+#endif
+
+#endif  // TENSORFLOW_TSL_PLATFORM_LOGGING_H_

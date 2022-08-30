@@ -352,6 +352,7 @@ cc_library(
         # TODO(rmlarsen): Remove bfloat16.h once dependency in third_party/swift is updated.
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_headers",
+        "//tensorflow/tsl/lib/core:legacy_lib_core_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_headers",
         "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
         "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
@@ -945,6 +946,7 @@ filegroup(
 
         # Sources for which we already have granular targets.
         "//tensorflow/core/lib/core:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/lib/core:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/gtl:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/hash:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/histogram:mobile_srcs_only_runtime",
@@ -1268,6 +1270,7 @@ filegroup(
         "//tensorflow/core/platform:legacy_lib_internal_headers",
         "//tensorflow/core/platform:lib_internal_private_hdrs",
         "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
+        "//tensorflow/tsl/lib/core:legacy_lib_core_all_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
         "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
         "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
@@ -1916,6 +1919,7 @@ tf_cc_tests(
         "//tensorflow/core/lib/random:legacy_lib_random_tests",
         "//tensorflow/core/lib/strings:legacy_low_level_library_tests",
         "//tensorflow/core/lib/wav:wav_io_test.cc",
+        "//tensorflow/tsl/lib/core:legacy_lib_core_all_tests",
     ],
     deps = [
         ":lib",

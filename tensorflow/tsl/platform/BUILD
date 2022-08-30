@@ -8,6 +8,7 @@
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_logging_deps",
     "tf_protobuf_compiler_deps",
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
@@ -137,6 +138,7 @@ exports_files(
         "resource_loader.h",
         "stacktrace_handler.h",
         "bfloat16.h",
+        "logging.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -366,6 +368,16 @@ cc_library(
         ":byte_order",
         "//third_party/eigen3",
     ],
+)
+
+cc_library(
+    name = "logging",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["logging.h"],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = tf_logging_deps(),
 )
 
 filegroup(

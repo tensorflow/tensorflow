@@ -30,11 +30,9 @@ cc_library(
 
 cc_library(
     name = "bitmap",
-    srcs = ["bitmap.cc"],
     hdrs = ["bitmap.h"],
     deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/core:bitmap",
     ],
     alwayslink = 1,
 )
@@ -205,7 +203,6 @@ filegroup(
     name = "legacy_lib_core_all_tests",
     srcs = [
         "arena_test.cc",
-        "bitmap_test.cc",
         "blocking_counter_test.cc",
         "coding_test.cc",
         "notification_test.cc",
