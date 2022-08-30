@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_RANDOM_H_
 #define TENSORFLOW_CORE_PLATFORM_RANDOM_H_
 
+#include <random>
+
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -28,6 +31,17 @@ uint64 New64();
 // Return a 64-bit random value. Uses
 // std::mersenne_twister_engine::default_seed as seed value.
 uint64 New64DefaultSeed();
+
+class RandomGenerator {
+ public:
+  enum SeedType { kDefault, kUrandom };
+  explicit RandomGenerator(SeedType seed_type);
+  uint64 New64();
+
+ private:
+  mutex mu_;
+  std::mt19937_64 rng_ TF_GUARDED_BY(mu_);
+};
 
 }  // namespace random
 }  // namespace tensorflow
