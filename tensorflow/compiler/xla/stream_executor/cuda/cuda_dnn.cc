@@ -3897,6 +3897,145 @@ GetCudnnFusedOperationGraph(
       new cudnn_frontend::OperationGraph(std::move(op_graph)));
 }
 
+port::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
+GetCudnnFusedMatmulGraph(dnn::DataType input_type, dnn::DataType bias_type,
+                         dnn::DataType output_type, bool trans_a, bool trans_b,
+                         uint64_t m_u, uint64_t n_u, uint64_t k_u, int64_t lda,
+                         int64_t ldb, int64_t ldc,
+                         const dnn::ActivationMode activation_mode,
+                         CudnnHandle& cudnn) {
+  dnn::DataType accumulator_type = GetConvAccumulatorType(input_type);
+  dnn::DataType activation_type = GetConvActivationType(input_type);
+  cudnnDataType_t cudnn_activation_type = ToCudnnDataType(activation_type);
+
+  // CUDNN fused operation supports the pattern in the form of
+  // Conv + BiasAdd + Act. Therefore, we need to build a graph of the
+  // four ops with their input/output tensor edges:
+  // Conv   : input: tensor_a, tensor_b;      output: tensor_matmul (virtual)
+  // BiasAdd: input: tensor_matmul, tensor_z; output: tensor_bias   (virtual)
+  // Act    : input: tensor_bias;             output: tensor_c
+  int64_t m = static_cast<int64_t>(m_u);
+  int64_t n = static_cast<int64_t>(n_u);
+  int64_t k = static_cast<int64_t>(k_u);
+  int vector_size = 1, vector_dim = -1;
+  std::vector<int64_t> a_dims = {1, m, k};
+  int64_t stride1 = trans_a ? 1 : lda;
+  int64_t stride2 = trans_a ? lda : 1;
+  std::vector<int64_t> a_strides = {m * k, stride1, stride2};
+  TF_ASSIGN_OR_RETURN(auto tensor_a,
+                      CreateCudnnTensor(a_dims, a_strides, 'a', input_type,
+                                        vector_size, vector_dim));
+
+  std::vector<int64_t> b_dims = {1, k, n};
+  stride1 = trans_b ? 1 : ldb;
+  stride2 = trans_b ? ldb : 1;
+  std::vector<int64_t> b_strides = {k * n, stride1, stride2};
+  TF_ASSIGN_OR_RETURN(auto tensor_b,
+                      CreateCudnnTensor(b_dims, b_strides, 'b', input_type,
+                                        vector_size, vector_dim));
+
+  std::vector<int64_t> c_dims = {1, m, n};
+  std::vector<int64_t> c_strides = {m * n, ldc, 1};
+  TF_ASSIGN_OR_RETURN(auto tensor_c,
+                      CreateCudnnTensor(c_dims, c_strides, 'c', output_type,
+                                        vector_size, vector_dim));
+
+  std::vector<int64_t> z_dims = {1, 1, n};
+  std::vector<int64_t> z_strides = {n, n, 1};
+  TF_ASSIGN_OR_RETURN(auto tensor_z,
+                      CreateCudnnTensor(z_dims, z_strides, 'z', bias_type,
+                                        vector_size, vector_dim));
+
+  TF_ASSIGN_OR_RETURN(
+      auto tensor_matmul,
+      CreateCudnnTensor(c_dims, c_strides, 'M', accumulator_type, vector_size,
+                        vector_dim, /*is_virtual=*/true));
+
+  TF_ASSIGN_OR_RETURN(
+      auto tensor_bias,
+      CreateCudnnTensor(c_dims, c_strides, 'B', activation_type, vector_size,
+                        vector_dim, /*is_virtual=*/true));
+
+  cudnnDataType_t cudnn_matmul_type = ToCudnnDataType(accumulator_type);
+  auto matmul_desc = cudnn_frontend::MatMulDescBuilder()
+                         .setMathPrecision(cudnn_matmul_type)
+                         .build();
+  RETURN_MSG_IF_CUDNN_ERROR(matmul_desc);
+  auto matmul_op = cudnn_frontend::OperationBuilder(
+                       CUDNN_BACKEND_OPERATION_MATMUL_DESCRIPTOR)
+                       .setmatmulDesc(matmul_desc)
+                       .setaMatDesc(tensor_a)
+                       .setbMatDesc(tensor_b)
+                       .setcMatDesc(tensor_matmul)
+                       .build();
+  RETURN_MSG_IF_CUDNN_ERROR(matmul_op);
+
+  auto bias_add_desc = cudnn_frontend::PointWiseDescBuilder()
+                           .setMode(CUDNN_POINTWISE_ADD)
+                           .setMathPrecision(cudnn_activation_type)
+                           .build();
+  RETURN_MSG_IF_CUDNN_ERROR(bias_add_desc);
+  auto bias_add_op = cudnn_frontend::OperationBuilder(
+                         CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
+                         .setxDesc(tensor_matmul)
+                         .setbDesc(tensor_z)
+                         .setyDesc(tensor_bias)
+                         .setpwDesc(bias_add_desc)
+                         .build();
+  RETURN_MSG_IF_CUDNN_ERROR(bias_add_op);
+
+  absl::InlinedVector<cudnn_frontend::Operation const*, 3> ops = {&matmul_op,
+                                                                  &bias_add_op};
+
+  std::optional<cudnn_frontend::PointWiseDesc_v8> act_desc;
+  std::optional<cudnn_frontend::Operation_v8> act_op;
+  switch (activation_mode) {
+    case dnn::ActivationMode::kGeluExact:
+      act_desc.emplace(cudnn_frontend::PointWiseDescBuilder()
+                           .setMode(CUDNN_POINTWISE_GELU_FWD)
+                           .setMathPrecision(cudnn_activation_type)
+                           .build());
+      RETURN_MSG_IF_CUDNN_ERROR(*act_desc);
+      act_op.emplace(cudnn_frontend::OperationBuilder(
+                         CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
+                         .setxDesc(tensor_bias)
+                         .setyDesc(tensor_c)
+                         .setpwDesc(*act_desc)
+                         .build());
+      RETURN_MSG_IF_CUDNN_ERROR(*act_op);
+      ops.push_back(&*act_op);
+      break;
+    default:
+      return port::InternalError(
+          absl::StrCat("Unimplemented activation mode ",
+                       dnn::ActivationModeString(activation_mode)));
+  }
+
+  auto op_graph = cudnn_frontend::OperationGraphBuilder()
+                      .setHandle(cudnn.handle())
+                      .setOperationGraph(ops.size(), ops.data())
+                      .build();
+  RETURN_MSG_IF_CUDNN_ERROR(op_graph);
+
+  VLOG(4) << "\nTensor_a: " << tensor_a.describe()
+          << "\nTensor_b: " << tensor_b.describe()
+          << "\nTensor_c: " << tensor_c.describe()
+          << "\nTensor_z: " << tensor_z.describe()
+          << "\nTensor_matmul: " << tensor_matmul.describe()
+          << "\nTensor_bias: " << tensor_bias.describe()
+          << "\nMatmul: " << matmul_desc.describe()
+          << "\nBiasAdd: " << bias_add_desc.describe()  //
+          << "\nActivation: "
+          << (act_desc.has_value() ? act_desc->describe() : "(unsupported)")
+          << "\nMatmulOp: " << matmul_op.describe()
+          << "\nBiasAddOp: " << bias_add_op.describe()  //
+          << "\nActOp: "
+          << (act_op.has_value() ? act_op->describe() : "(unsupported)")
+          << "\nOpGraph: " << op_graph.describe();
+
+  return std::make_unique<cudnn_frontend::OperationGraph>(std::move(op_graph));
+}
+
 }  // namespace
 
 static port::StatusOr<cudnn_frontend::ExecutionPlan> RebuildExecutionPlan(
@@ -4637,13 +4776,24 @@ port::Status CreateOpRunners(
     cudnn_frontend::filter(heuristics_configs, filtered_configs,
                            generic_filter_fn);
   } else {
+#if CUDNN_VERSION < 8300
     auto fallback = cudnn_frontend::EngineFallbackListBuilder()
                         .setOperationGraph(*op_graph)
                         .setOperation(GetCudnnConvolutionType(kind))
                         .build();
     RETURN_MSG_IF_CUDNN_ERROR(fallback);
-
     auto& fallback_configs = fallback.getFallbackList();
+#else
+    auto fallback = cudnn_frontend::EngineHeuristicsBuilder()
+                        .setOperationGraph(*op_graph)
+                        .setHeurMode(CUDNN_HEUR_MODE_FALLBACK)
+                        .build();
+    RETURN_MSG_IF_CUDNN_ERROR(fallback);
+    int64_t engine_count = fallback.getEngineConfigCount();
+    RETURN_MSG_IF_CUDNN_ERROR(fallback);
+    auto& fallback_configs = fallback.getEngineConfig(engine_count);
+    RETURN_MSG_IF_CUDNN_ERROR(fallback);
+#endif
     VLOG(4) << "\nFallback engine configs size: " << fallback_configs.size();
 
     cudnn_frontend::filter(fallback_configs, filtered_configs,
@@ -5271,6 +5421,45 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
   return port::UnimplementedError(
       "Cudnn execution plans are only supported with Cudnn >= 8.1.");
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+}
+
+port::Status CudnnSupport::GetFusedMatmulRunners(
+    bool use_cudnn_frontend, dnn::DataType input_type, dnn::DataType bias_type,
+    dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
+    uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
+    dnn::ActivationMode activation_mode, bool use_fallback,
+    std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
+        out_exec_plans) {
+#if CUDNN_VERSION >= 8400 && TF_ENABLE_CUDNN_FRONTEND
+  if (!use_cudnn_frontend) {
+    return port::UnimplementedError(
+        "Cudnn execution plans for matmul are only supported with cudnn "
+        "frontend APIs.");
+  }
+
+  auto cudnn = cudnn_->GetHandle(parent_, stream);
+  auto op_graph_status = GetCudnnFusedMatmulGraph(
+      input_type, bias_type, output_type, trans_a, trans_b, m, n, k, lda, ldb,
+      ldc, activation_mode, cudnn);
+  if (!op_graph_status.status().ok()) {
+    return port::Status(port::error::INTERNAL,
+                        absl::StrCat("Cudnn graph failed to build: ",
+                                     op_graph_status.status().ToString()));
+  }
+  auto op_graph = std::move(op_graph_status).value();
+
+  // The "need_side_input" will not actually affect the matmul execution. It was
+  // proposed to work around a convolution issue with five inputs (see
+  // SideInputNeeded()). Here, we set it true to make sure none of the inputs
+  // get dropped in case the number of inputs get increased in the future.
+  return CreateOpRunners<dnn::FusedMatmulSignature>(
+      stream, cudnn, parent_, cudnn_.get(), std::move(op_graph),
+      dnn::ConvolutionKind::INVALID, input_type, {'a', 'b', 'z', 'c'},
+      use_fallback, out_exec_plans, /*need_side_input=*/true);
+#else
+  return port::UnimplementedError(
+      "Cudnn execution plans for matmul are only supported with Cudnn >= 8.4.");
+#endif  // CUDNN_VERSION >= 8400 && TF_ENABLE_CUDNN_FRONTEND
 }
 
 bool CudnnSupport::GetConvolveAlgorithms(
