@@ -21,6 +21,7 @@ package_group(
         "//tensorflow/compiler/xla:friends",
     ],
     packages = [
+        "//third_party/australis/...",
         "//third_party/py/jax/...",
     ],
 )
