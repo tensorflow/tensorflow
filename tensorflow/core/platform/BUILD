@@ -132,6 +132,7 @@ cc_library(
     deps = [
         ":errors",
         ":status",
+        ":stringpiece",
     ],
 )
 
@@ -398,8 +399,7 @@ filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = tf_platform_deps("xla_cpu_runtime_srcs") + [
         "cord.h",
-        "ctstring.h",
-        "ctstring_internal.h",
+        ":ctstring",
         "dynamic_annotations.h",
         "env_time.h",
         "macros.h",
@@ -903,14 +903,13 @@ cc_library(
 cc_library(
     name = "tstring",
     hdrs = [
-        "ctstring.h",
+        "ctstring.h",  #TODO(ddunleavy) make this cleaner later. only depend on tstring.h
         "ctstring_internal.h",
         "tstring.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":cord",
-        ":stringpiece",
+        "//tensorflow/tsl/platform:tstring",
     ],
 )
 
@@ -919,7 +918,9 @@ filegroup(
     srcs = [
         "ctstring.h",
         "ctstring_internal.h",
+        "//tensorflow/tsl/platform:ctstring",
     ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -1560,8 +1561,6 @@ filegroup(
     srcs = [
         "byte_order.h",
         "cord.h",
-        "ctstring.h",
-        "ctstring_internal.h",
         "env_time.h",
         "logging.h",
         "macros.h",
@@ -1571,6 +1570,7 @@ filegroup(
         "threadpool_options.h",
         "tstring.h",
         "types.h",
+        ":ctstring",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/core:__pkg__"],
@@ -1636,8 +1636,6 @@ filegroup(
 filegroup(
     name = "lib_proto_parsing_hdrs",
     srcs = [
-        "ctstring.h",
-        "ctstring_internal.h",
         "init_main.h",
         "logging.h",
         "macros.h",
@@ -1646,6 +1644,7 @@ filegroup(
         "stringpiece.h",
         "tstring.h",
         "types.h",
+        ":ctstring",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -1675,8 +1674,6 @@ filegroup(
         "bfloat16.h",
         "byte_order.h",
         "cpu_info.h",
-        "ctstring.h",
-        "ctstring_internal.h",
         "dynamic_annotations.h",
         "macros.h",
         "mutex.h",
@@ -1686,6 +1683,7 @@ filegroup(
         "thread_annotations.h",
         "tstring.h",
         "types.h",
+        ":ctstring",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -1744,13 +1742,12 @@ filegroup(
     name = "tflite_portable_logging_hdrs",
     srcs = [
         "bfloat16.h",
-        "ctstring.h",
-        "ctstring_internal.h",
         "logging.h",
         "macros.h",
         "platform.h",
         "tstring.h",
         "types.h",
+        ":ctstring",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
@@ -1763,8 +1760,6 @@ filegroup(
     name = "jpeg_internal_hdrs",
     srcs = [
         "bfloat16.h",
-        "ctstring.h",
-        "ctstring_internal.h",
         "dynamic_annotations.h",
         "logging.h",
         "macros.h",
@@ -1773,6 +1768,7 @@ filegroup(
         "stringpiece.h",
         "tstring.h",
         "types.h",
+        ":ctstring",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -1784,8 +1780,6 @@ filegroup(
     name = "gif_internal_hdrs",
     srcs = [
         "bfloat16.h",
-        "ctstring.h",
-        "ctstring_internal.h",
         "dynamic_annotations.h",
         "logging.h",
         "macros.h",
@@ -1793,6 +1787,7 @@ filegroup(
         "platform.h",
         "tstring.h",
         "types.h",
+        ":ctstring",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -1816,8 +1811,7 @@ filegroup(
         "cord.h",
         "cpu_info.cc",
         "cpu_info.h",
-        "ctstring.h",
-        "ctstring_internal.h",
+        ":ctstring",
         "demangle.h",
         "denormal.cc",
         "denormal.h",

@@ -9,6 +9,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_logging_deps",
+    "tf_platform_deps",
     "tf_protobuf_compiler_deps",
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
@@ -49,6 +50,29 @@ cc_library(
 cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "tstring",
+    hdrs = [
+        "ctstring.h",
+        "ctstring_internal.h",
+        "tstring.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":cord",
+        ":stringpiece",
+    ],
+)
+
+filegroup(
+    name = "ctstring",
+    srcs = [
+        "ctstring.h",
+        "ctstring_internal.h",
+    ],
     compatible_with = get_compatible_with_portable(),
 )
 
@@ -324,6 +348,16 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "cord",
+    hdrs = ["cord.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+        "@com_google_absl//absl/strings:cord",
+    ] + tf_platform_deps("cord"),
 )
 
 cc_library(

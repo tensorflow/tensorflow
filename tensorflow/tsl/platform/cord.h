@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_TSTRING_H_
-#define TENSORFLOW_CORE_PLATFORM_TSTRING_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_CORD_H_
+#define TENSORFLOW_TSL_PLATFORM_CORD_H_
 
-#include "tensorflow/tsl/platform/tstring.h"
+#include "tensorflow/tsl/platform/platform.h"
 
-namespace tensorflow {
+// Include appropriate platform-dependent implementations
+#if defined(PLATFORM_GOOGLE)
+#include "tensorflow/tsl/platform/google/cord.h"  // IWYU pragma: export
+#else
+#include "tensorflow/tsl/platform/default/cord.h"  // IWYU pragma: export
+#endif
 
-using tstring = tsl::tstring;
-}
-
-#endif  // TENSORFLOW_CORE_PLATFORM_TSTRING_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_CORD_H_
