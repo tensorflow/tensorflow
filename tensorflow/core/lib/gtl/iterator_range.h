@@ -22,8 +22,8 @@ limitations under the License.
 //
 // Converted from chandlerc@'s code to Google style by joshl@.
 
-#ifndef TENSORFLOW_LIB_GTL_ITERATOR_RANGE_H_
-#define TENSORFLOW_LIB_GTL_ITERATOR_RANGE_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_ITERATOR_RANGE_H_
+#define TENSORFLOW_CORE_LIB_GTL_ITERATOR_RANGE_H_
 
 #include <utility>
 
@@ -65,4 +65,4 @@ iterator_range<T> make_range(T x, T y) {
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_ITERATOR_RANGE_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_ITERATOR_RANGE_H_

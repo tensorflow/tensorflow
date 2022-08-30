@@ -149,8 +149,8 @@ limitations under the License.
 //  void GetGlobalDoc(int64 global) { ...
 //  GetGlobalDoc(local.value());                  <-- Compiles fine.
 
-#ifndef TENSORFLOW_LIB_GTL_INT_TYPE_H_
-#define TENSORFLOW_LIB_GTL_INT_TYPE_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_INT_TYPE_H_
+#define TENSORFLOW_CORE_LIB_GTL_INT_TYPE_H_
 
 #include <stddef.h>
 #include <functional>
@@ -361,4 +361,4 @@ INT_TYPE_COMPARISON_OP(>=);  // NOLINT
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_INT_TYPE_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_INT_TYPE_H_

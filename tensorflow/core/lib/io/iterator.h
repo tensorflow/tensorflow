@@ -23,8 +23,8 @@ limitations under the License.
 // non-const method, all threads accessing the same Iterator must use
 // external synchronization.
 
-#ifndef TENSORFLOW_LIB_IO_ITERATOR_H_
-#define TENSORFLOW_LIB_IO_ITERATOR_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_ITERATOR_H_
+#define TENSORFLOW_CORE_LIB_IO_ITERATOR_H_
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -101,4 +101,4 @@ extern Iterator* NewErrorIterator(const Status& status);
 }  // namespace table
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_ITERATOR_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_ITERATOR_H_
