@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
@@ -1735,22 +1736,70 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
   return OkStatus();
 }
 
-// Returns whether any of the rooots of the fusion are unnested reductions.
-static bool HasAnyUnnestedReductionRoot(mlir::lmhlo::FusionOp fusion) {
-  return absl::c_any_of(fusion.getFusionRoots(), [&](mlir::Operation* op) {
-    return IsReductionFromOrToContiguousDimensions(op);
-  });
+namespace {
+
+// Recursive helper for GetFusionRoots below.
+static void GetFusionRootsRec(HloInstruction* root,
+                              std::vector<HloInstruction*>& out) {
+  if (root->opcode() == HloOpcode::kGetTupleElement) {
+    return GetFusionRootsRec(root->mutable_operand(0), out);
+  } else if (root->opcode() == HloOpcode::kTuple) {
+    for (int i = 0; i < root->operand_count(); i++) {
+      GetFusionRootsRec(root->mutable_operand(i), out);
+    }
+  } else {
+    if (!out.empty() && out.back() == root) {
+      return;
+    }
+    CHECK(!absl::c_linear_search(out, root))
+        << "Fusion root contains instruction " << root->ToString()
+        << " multiple times";
+    out.push_back(root);
+  }
 }
+
+// Returns instructions which are roots of the fusion, following the operands of
+// GTE instructions in the root tuple. Groups multiple subsequent instruction
+// with the same root. CHECKs that the fusion never outputs the same instruction
+// twice, as well as that there are no explicitly created tuples or nested gtes
+// in fusion output.
+//
+// For input: (tuple (gte R1) (gte R1) O2)
+// Expected output: [R1, O2]
+//
+// For input: (tuple R1 R2 O2)
+// Expected output: [R1, R2, O2]
+//
+// For input: (tuple (gte R1) (gte R1) R2 O3)
+// Expected output: [R1, R2, O3]
+//
+// For input: R1
+// Expected output: [R1]
+std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation) {
+  std::vector<HloInstruction*> out;
+  GetFusionRootsRec(computation->root_instruction(), out);
+  return out;
+}
+
+// Returns whether any of the rooots of the fusion are unnested reductions.
+bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
+  return absl::c_any_of(
+      GetFusionRoots(computation), [&](const HloInstruction* instr) {
+        return IsReductionFromOrToContiguousDimensions(*instr);
+      });
+}
+
+}  // end namespace
 
 Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
   TF_ASSIGN_OR_RETURN(
-      const HloComputation* fused_computation,
+      HloComputation * fused_computation,
       GetOrCreateSubComputationFromRegion(&fusion_op.getRegion(),
                                           /*is_fusion=*/true));
 
-  if (HasAnyUnnestedReductionRoot(fusion_op)) {
-    return EmitUnnestedReduction(fusion_op);
+  if (HasAnyUnnestedReductionRoot(fused_computation)) {
+    return EmitUnnestedReduction(fusion_op, fused_computation);
   }
 
   auto fusion_results = fusion_op.getFusionResults();
@@ -4364,6 +4413,7 @@ int64_t NumInputsWithMoreElementsThan(mlir::lmhlo::FusionOp fusion,
 // the benefit as well as the overhead of unrolling in order to decide whether
 // unrolling is beneficial for the given kInput fusion.
 bool IsUnrollingColumnReductionBeneficial(mlir::lmhlo::FusionOp fusion,
+                                          HloComputation* fused_computation,
                                           const Shape& input_shape,
                                           int64_t num_kept_minor) {
   if (num_kept_minor % (WarpSize() * 2) != 0) {
@@ -4378,22 +4428,24 @@ bool IsUnrollingColumnReductionBeneficial(mlir::lmhlo::FusionOp fusion,
   int64_t cannot_be_vectorized = 0;
   llvm::SmallVector<mlir::Operation*> fusion_roots = fusion.getFusionRoots();
   absl::flat_hash_set<mlir::Operation*> use_chain_endings;
+  auto hlo_roots = GetFusionRoots(fused_computation);
+
   if (fusion_roots.size() == 1) {
-    if (IsReductionFromOrToContiguousDimensions(fusion_roots[0])) {
+    if (IsReductionFromOrToContiguousDimensions(*hlo_roots[0])) {
       use_chain_endings.insert(fusion_roots[0]);
       // Atomic.add of the reduction result can't be vectorized.
       cannot_be_vectorized++;
     }
   } else {
-    for (mlir::Operation* op : fusion_roots) {
-      if (IsReductionFromOrToContiguousDimensions(op)) {
+    for (int i = 0; i < fusion_roots.size(); i++) {
+      if (IsReductionFromOrToContiguousDimensions(*hlo_roots[i])) {
         // Atomic.add of the reduction result can't be vectorized.
         cannot_be_vectorized++;
       } else {
         // Write of the non-reduction result can be vectorized.
         can_be_vectorized++;
       }
-      use_chain_endings.insert(op);
+      use_chain_endings.insert(fusion_roots[i]);
     }
   }
   // Fusion inputs that have the same dimension as the reduce input and
@@ -4503,11 +4555,13 @@ llvm::GlobalVariable* IrEmitterUnnested::AllocateShared(
 // Whether the reduction can be vectorized.
 static bool CanVectorizeReduction(
     se::CudaComputeCapability cc, mlir::lmhlo::FusionOp fusion,
+    HloComputation* fused_computation,
     const ReductionDimensions& reduction_dimensions, int num_threads_x,
     std::array<int64_t, 3> reduction_tiling, const Shape& input_shape) {
   if (!reduction_dimensions.is_row_reduction) {
     return IsUnrollingColumnReductionBeneficial(
-        fusion, input_shape, reduction_dimensions.dimensions[kDimX]);
+        fusion, fused_computation, input_shape,
+        reduction_dimensions.dimensions[kDimX]);
   }
 
   if (reduction_dimensions.dimensions[kDimX] % 2 != 0 ||
@@ -4540,10 +4594,11 @@ static bool CanVectorizeReduction(
 }
 
 StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
-    mlir::lmhlo::FusionOp fusion, mlir::mhlo::ReduceOp first_reduce) {
-  Shape input_shape = GetShape(first_reduce->getOperand(0));
+    mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation,
+    HloInstruction* first_reduce) {
+  Shape input_shape = first_reduce->operand(0)->shape();
   ReductionDimensions reduction_dimensions =
-      GetReductionKindAndContiguousComponents(first_reduce);
+      GetReductionKindAndContiguousComponents(*first_reduce);
   VLOG(10) << "is_row_reduction " << reduction_dimensions.is_row_reduction
            << " " << reduction_dimensions.dimensions[0] << " "
            << reduction_dimensions.dimensions[1] << " "
@@ -4585,8 +4640,8 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
       reduction_dimensions.is_row_reduction ? kStridedIndexingX
                                             : kLinearIndexingX;
   bool vectorize =
-      CanVectorizeReduction(cc, fusion, reduction_dimensions, num_threads_x,
-                            reduction_tiling, input_shape);
+      CanVectorizeReduction(cc, fusion, fused_computation, reduction_dimensions,
+                            num_threads_x, reduction_tiling, input_shape);
   int vector_size = vectorize ? 2 : 1;
   int num_partial_results =
       !reduction_dimensions.is_row_reduction && vectorize ? 2 : 1;
@@ -4760,50 +4815,6 @@ bool IsBroadcastedConstantOrScalar(const HloInstruction& instr) {
            ShapeUtil::IsScalar(instr.operand(0)->shape())));
 }
 
-// Recursive helper for GetFusionRoots below.
-static void GetFusionRootsRec(HloInstruction* root,
-                              std::vector<HloInstruction*>& out) {
-  if (root->opcode() == HloOpcode::kGetTupleElement) {
-    return GetFusionRootsRec(root->mutable_operand(0), out);
-  } else if (root->opcode() == HloOpcode::kTuple) {
-    for (int i = 0; i < root->operand_count(); i++) {
-      GetFusionRootsRec(root->mutable_operand(i), out);
-    }
-  } else {
-    if (!out.empty() && out.back() == root) {
-      return;
-    }
-    CHECK(!absl::c_linear_search(out, root))
-        << "Fusion root contains instruction " << root->ToString()
-        << " multiple times";
-    out.push_back(root);
-  }
-}
-
-// Returns instructions which are roots of the fusion, following the operands of
-// GTE instructions in the root tuple. Groups multiple subsequent instruction
-// with the same root. CHECKs that the fusion never outputs the same instruction
-// twice, as well as that there are no explicitly created tuples or nested gtes
-// in fusion output.
-//
-// For input: (tuple (gte R1) (gte R1) O2)
-// Expected output: [R1, O2]
-//
-// For input: (tuple R1 R2 O2)
-// Expected output: [R1, R2, O2]
-//
-// For input: (tuple (gte R1) (gte R1) R2 O3)
-// Expected output: [R1, R2, O3]
-//
-// For input: R1
-// Expected output: [R1]
-static std::vector<HloInstruction*> GetFusionRoots(
-    HloComputation* computation) {
-  std::vector<HloInstruction*> out;
-  GetFusionRootsRec(computation->root_instruction(), out);
-  return out;
-}
-
 // Divides `num_reduces` reduces into groups. Different groups will be executed
 // in parallel. Generally speaking, we'd like to run the reduce instructions
 // in parallel without incurring too much recomputation overhead. The current
@@ -4877,12 +4888,9 @@ std::vector<std::vector<HloInstruction*>> GroupDisjointReductions(
 
 }  // namespace
 
-Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
+Status IrEmitterUnnested::EmitUnnestedReduction(
+    mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation) {
   llvm::SmallVector<mlir::Operation*> fusion_roots = fusion.getFusionRoots();
-
-  TF_ASSIGN_OR_RETURN(HloComputation * fused_computation,
-                      GetOrCreateSubComputationFromRegion(&fusion.getRegion(),
-                                                          /*is_fusion=*/true));
 
   // Group disjoint reductions in groups, to be executed in parallel.
   std::vector<std::vector<HloInstruction*>> instr_index_groups =
@@ -4891,13 +4899,20 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
   VLOG(2) << StrCat("Generate in ", instr_index_groups.size(), " groups for ",
                     MlirToString(fusion));
 
-  mlir::mhlo::ReduceOp first_reduce = mlir::cast<mlir::mhlo::ReduceOp>(
-      *absl::c_find_if(fusion_roots, [](mlir::Operation* op) {
-        return IsReductionFromOrToContiguousDimensions(op);
-      }));
-  TF_ASSIGN_OR_RETURN(ReductionCodegenInfo reduction_info,
-                      ComputeReductionCodegenInfo(fusion, first_reduce));
-  const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
+  // hlo_roots has same ordering as fusion_roots.
+  auto hlo_roots = GetFusionRoots(fused_computation);
+  HloInstruction* first_reduce =
+      *absl::c_find_if(hlo_roots, [](HloInstruction* instr) {
+        return IsReductionFromOrToContiguousDimensions(*instr);
+      });
+
+  // We always use the first reduce as representative to construct
+  // ReductionCodegenInfo, since all the reductions are required to have the
+  // same shape and layout as verified by `IsFusedReductionOutputConsistent()`.
+  TF_ASSIGN_OR_RETURN(
+      ReductionCodegenInfo reduction_codegen_info,
+      ComputeReductionCodegenInfo(fusion, fused_computation, first_reduce));
+  const TilingScheme& tiling_scheme = reduction_codegen_info.GetTilingScheme();
 
   // block_y_count is set to instr_index_groups.size(), so that each reduction
   // group can be run in parallel by a different BlockIdy.
@@ -4942,12 +4957,6 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
     ir_arrays_idx += get_num_results;
   }
 
-  // We always use the first reduce as representative to construct
-  // ReductionCodegenInfo, since all the reductions are required to have the
-  // same shape and layout as verified by `IsFusedReductionOutputConsistent()`.
-  TF_ASSIGN_OR_RETURN(ReductionCodegenInfo reduction_codegen_info,
-                      ComputeReductionCodegenInfo(fusion, first_reduce));
-
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
 
   // Use raw block_id_y to select the i-th parallel reduction to run. Using
@@ -4964,15 +4973,14 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
         b_.CreateICmpEQ(raw_block_id_y, b_.getInt32(i)), [&] {
           return EmitIRForReduction(
               fusion, instr_index_groups[i], fused_emitter, result_ir_arrays,
-              reduction_codegen_info, GetShape(first_reduce->getOperand(0)));
+              reduction_codegen_info, first_reduce->operand(0)->shape());
         }));
   }
 
   ThunkSequence thunks;
   if (!reduction_codegen_info.IsRaceFree()) {
     for (int i = 0; i < fusion_roots.size(); ++i) {
-      mlir::Operation* output_instruction = fusion_roots[i];
-      if (IsReductionFromOrToContiguousDimensions(output_instruction)) {
+      if (IsReductionFromOrToContiguousDimensions(*hlo_roots[i])) {
         TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> initializer_thunk,
                             BuildFusedInitializerThunk(fusion, i));
         thunks.push_back(std::move(initializer_thunk));

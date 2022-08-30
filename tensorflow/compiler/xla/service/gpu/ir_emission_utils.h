@@ -69,9 +69,6 @@ extern const char* const kCusolverCholeskyCallTarget;
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
-// MLIR variant.
-bool IsReductionFromOrToContiguousDimensions(mlir::Operation* op);
-
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all
 // ROOT slices have no strides.
@@ -98,8 +95,6 @@ struct ReductionDimensions {
 // dimensions to reduce or the dimensions to keep are consecutive.
 ReductionDimensions GetReductionKindAndContiguousComponents(
     const HloInstruction& reduce);
-ReductionDimensions GetReductionKindAndContiguousComponents(
-    mlir::Operation* reduce);
 
 // Get tiling per thread for the given reduction in dimensions [D, H, W].
 std::array<int64_t, 3> GetReductionTiling(

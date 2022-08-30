@@ -437,7 +437,8 @@ class IrEmitterUnnested : public IrEmitter {
   // complicating the index calculation in the code generation of the reduce
   // instructions. In other words, a block_id_y is assigned to a group and so
   // different groups can be run in parallel.
-  Status EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion);
+  Status EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion,
+                               HloComputation* fused_computation);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
   // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
@@ -445,7 +446,8 @@ class IrEmitterUnnested : public IrEmitter {
   // unnested_hlo is the fusion instruction while first_reduce is the first
   // reduce op.
   StatusOr<ReductionCodegenInfo> ComputeReductionCodegenInfo(
-      mlir::lmhlo::FusionOp fusion, mlir::mhlo::ReduceOp first_reduce);
+      mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation,
+      HloInstruction* first_reduce);
 
   // Generates code for input-fusible slices.
   //
