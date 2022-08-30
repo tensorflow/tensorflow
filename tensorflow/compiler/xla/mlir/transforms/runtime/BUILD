@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
@@ -66,6 +67,22 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+tf_cc_test(
+    name = "calling_convention_test",
+    srcs = ["calling_convention_test.cc"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":calling_convention",
+        "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Transforms",
     ],
 )
