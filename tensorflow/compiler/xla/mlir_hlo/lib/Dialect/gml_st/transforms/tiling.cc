@@ -299,15 +299,17 @@ struct DeprecatedTilingPass
 };
 
 /// Options to use to control tiling.
-struct GmlStTilingOptions {
+struct TilingOptions {
   using TileSizeComputationFunction =
       std::function<SmallVector<Value>(OpBuilder &, Operation *)>;
 
-  /// Computation function that returns the tile sizes for each operation.
-  TileSizeComputationFunction tileSizeComputationFunction = nullptr;
+  /// Function to materialize the tile sizes for a given operation. This allows
+  /// to infer tile sizes statically, e.g. based on an operation's rank, and
+  /// also dynamically based, e.g. based on a tensor's shape at runtime.
+  TileSizeComputationFunction tileSizeMaterializationFunction = nullptr;
 };
 
-struct GmlStTilingResult {
+struct TilingResult {
   TilingInterface tiledOp;
   gml_st::ForOp loop;
 };
@@ -372,19 +374,23 @@ gml_st::ForOp generateTileLoopNest(OpBuilder &builder, Location loc,
 
 /// Pattern to tile an op that implements the `TilingInterface` using
 /// `gml_st.for` for iterating over the tiles.
-struct TileToGmlStLoops : public OpInterfaceRewritePattern<TilingInterface> {
-  TileToGmlStLoops(MLIRContext *context, StringRef tilingTarget,
-                   GmlStTilingOptions options, PatternBenefit benefit = 1)
+struct TileToGmlStLoopsPattern
+    : public OpInterfaceRewritePattern<TilingInterface> {
+  TileToGmlStLoopsPattern(MLIRContext *context, StringRef tilingTarget,
+                          TilingOptions options, PatternBenefit benefit = 1)
       : OpInterfaceRewritePattern<TilingInterface>(context, benefit),
         tilingTarget(tilingTarget),
         options(std::move(options)) {}
 
-  FailureOr<GmlStTilingResult> returningMatchAndRewrite(
-      TilingInterface op, PatternRewriter &rewriter) const {
+  LogicalResult matchAndRewrite(TilingInterface op,
+                                PatternRewriter &rewriter) const override {
+    if (!hasMatchingLabel(op, tilingTarget)) return failure();
+    if (hasTransformationAttr(op)) return failure();
+
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPointAfter(op);
 
-    if (!options.tileSizeComputationFunction) {
+    if (!options.tileSizeMaterializationFunction) {
       return rewriter.notifyMatchFailure(
           op, "missing tile size computation function");
     }
@@ -392,15 +398,16 @@ struct TileToGmlStLoops : public OpInterfaceRewritePattern<TilingInterface> {
     // 1. Get the range of the loops that are represented by the operation.
     SmallVector<Range> iterationDomain = op.getIterationDomain(rewriter);
     size_t numLoops = iterationDomain.size();
-    if (numLoops == 0)
+    if (numLoops == 0) {
       return rewriter.notifyMatchFailure(op, "missing iteration domain");
+    }
 
     // 2. Materialize the tile sizes. Enforce the convention that "tiling by
     // zero" skips tiling a particular dimension. This convention is
     // significantly simpler to handle instead of adjusting affine maps to
     // account for missing dimensions.
     SmallVector<Value> tileSizeVector =
-        options.tileSizeComputationFunction(rewriter, op);
+        options.tileSizeMaterializationFunction(rewriter, op);
     if (tileSizeVector.size() < iterationDomain.size()) {
       auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
       tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
@@ -409,7 +416,7 @@ struct TileToGmlStLoops : public OpInterfaceRewritePattern<TilingInterface> {
     // 3. Materialize an empty loop nest that iterates over the tiles.
     auto dstOperands = op.getDestinationOperands(rewriter);
     SmallVector<OpFoldResult> offsets, sizes;
-    GmlStTilingResult tilingResult;
+    TilingResult tilingResult;
     tilingResult.loop =
         generateTileLoopNest(rewriter, op.getLoc(), iterationDomain,
                              tileSizeVector, dstOperands, offsets, sizes);
@@ -423,8 +430,9 @@ struct TileToGmlStLoops : public OpInterfaceRewritePattern<TilingInterface> {
 
     // 5. Add `gml_st.set_yield` terminator.
     SmallVector<Value> dstSubsets;
-    for (Value dst : tilingResult.tiledOp.getDestinationOperands(rewriter))
+    for (Value dst : tilingResult.tiledOp.getDestinationOperands(rewriter)) {
       dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().set());
+    }
     rewriter.replaceOpWithNewOp<SetYieldOp>(terminator,
                                             tilingResult.tiledOp->getResults(),
                                             dstOperands, dstSubsets);
@@ -437,24 +445,14 @@ struct TileToGmlStLoops : public OpInterfaceRewritePattern<TilingInterface> {
       });
     }
     rewriter.replaceOp(op, tilingResult.loop.getResults());
-    return tilingResult;
-  }
 
-  LogicalResult matchAndRewrite(TilingInterface op,
-                                PatternRewriter &rewriter) const override {
-    if (!hasMatchingLabel(op, tilingTarget)) return failure();
-    if (hasTransformationAttr(op)) return failure();
-
-    auto tilingResult = returningMatchAndRewrite(op, rewriter);
-    if (failed(tilingResult)) return failure();
-
-    setTransformationAttr(rewriter, tilingResult->tiledOp);
+    setTransformationAttr(rewriter, tilingResult.tiledOp);
     return success();
   }
 
  private:
   StringRef tilingTarget;
-  GmlStTilingOptions options;
+  TilingOptions options;
 };
 
 struct TileToForPass : public TileToForPassBase<TileToForPass> {
@@ -473,9 +471,9 @@ struct TileToForPass : public TileToForPassBase<TileToForPass> {
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
 
-    GmlStTilingOptions opts;
+    TilingOptions opts;
     SmallVector<int64_t> ts(tileSizes.begin(), tileSizes.end());
-    opts.tileSizeComputationFunction = [ts](OpBuilder &b, Operation *op) {
+    opts.tileSizeMaterializationFunction = [ts](OpBuilder &b, Operation *op) {
       OpBuilder::InsertionGuard guard(b);
       b.setInsertionPointToStart(
           &op->getParentOfType<func::FuncOp>().getBody().front());
@@ -486,7 +484,7 @@ struct TileToForPass : public TileToForPassBase<TileToForPass> {
     };
 
     RewritePatternSet patterns(ctx);
-    patterns.add<TileToGmlStLoops>(ctx, tilingTarget, opts);
+    patterns.add<TileToGmlStLoopsPattern>(ctx, tilingTarget, opts);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
