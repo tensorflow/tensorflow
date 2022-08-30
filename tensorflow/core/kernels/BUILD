@@ -435,6 +435,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base:core_headers",
     ],
 )
@@ -4289,6 +4290,7 @@ tf_kernel_library(
     deps = [
         ":fill_functor",
         ":gpu_prim_hdrs",
+        ":sparse_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -4803,6 +4805,7 @@ cc_library(
 SPARSE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
+    ":sparse_utils",
 ]
 
 tf_kernel_library(
@@ -6240,6 +6243,7 @@ filegroup(
         "sparse_reorder_op.h",
         "sparse_slice_op.h",
         "sparse_tensor_dense_matmul_op.h",
+        "sparse_utils.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",
         "string_to_hash_bucket_fast_op.h",
@@ -6497,6 +6501,7 @@ filegroup(
         "random_op_cpu.h",
         "random_ops_util.h",
         "random_poisson_op.cc",
+        "sparse_utils.cc",
         "random_shuffle_op.cc",
         "reduce_join_op.cc",
         "reduction_ops_all.cc",

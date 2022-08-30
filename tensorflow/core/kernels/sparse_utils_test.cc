@@ -15,27 +15,29 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_utils.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <set>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 
+namespace tensorflow {
+namespace sparse_utils {
 namespace {
 
-using ::int64_t;
-using tensorflow::DataType;
-using tensorflow::int32;
-using tensorflow::Tensor;
-using tensorflow::TTypes;
-using tensorflow::uint16;
-using tensorflow::uint32;
-using tensorflow::uint64;
-using tensorflow::sparse_utils::ContainsEmptyRows;
-using tensorflow::sparse_utils::FindNextDenseRowStartIndex;
-using tensorflow::sparse_utils::GetStartIndicesOfEachDenseRow;
-using tensorflow::sparse_utils::ParseRowStartIndices;
+using ::tensorflow::testing::StatusIs;
+using ::testing::MatchesRegex;
 
 TEST(SparseUtilsTest, GetStartIndicesOfEachDenseRow) {
   {
@@ -375,6 +377,7 @@ TEST(ValidateSparseTensorTest, InvalidValuesRankFails) {
     const Tensor shape = Tensor(DT_INT64, TensorShape({kNumDims}));
     EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
                                                kValidateIndices)),
+
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Sparse values must be rank 1 .*")));
   }
@@ -439,6 +442,7 @@ TEST(ValidateSparseTensorTest, IndexOutOfBoundsFails) {
   for (const TensorShape& tshape : kTensorShapes) {
     Tensor indices, values, shape;
     GenerateRandomSparseTensor(kNumNonZeros, tshape, indices, values, shape);
+
     // Access tensor values.
     auto indices_mat = indices.matrix<int64_t>();
     for (int test = 0; test < kNumTests; ++test) {
@@ -468,3 +472,5 @@ TEST(ValidateSparseTensorTest, IndexOutOfBoundsFails) {
 }
 
 }  // namespace
+}  // namespace sparse_utils
+}  // namespace tensorflow
