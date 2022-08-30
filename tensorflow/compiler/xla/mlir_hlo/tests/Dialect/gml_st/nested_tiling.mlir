@@ -1,77 +1,52 @@
-// RUN: mlir-hlo-opt %s --gml-deprecated-tiling="tile-sizes=[16,8],[4,1]" --cse | \
-// RUN: FileCheck %s --check-prefix=CHECK-PERFECT
+// RUN: mlir-hlo-opt %s --split-input-file \
+// RUN:     --gml-tile-to-for="tile-sizes=256,512 tiling-target=generic-2d" \
+// RUN:     --gml-tile-to-for="tile-sizes=4,1 tiling-target=generic-2d" | \
+// RUN: FileCheck %s
 
-// RUN: mlir-hlo-opt %s --gml-deprecated-tiling="tile-sizes=[17,9],[3,3]" --cse | \
-// RUN: FileCheck %s --check-prefix=CHECK-IMPERFECT
+#id2d = affine_map<(d0, d1) -> (d0, d1)>
 
-func.func @identity(%arg: tensor<64x32xf32>) -> tensor<64x32xf32> {
-  return %arg :  tensor<64x32xf32>
+// CHECK-LABEL: @add
+// CHECK-SAME:  %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>
+func.func @add(%lhs : tensor<?x?xf32>, %rhs : tensor<?x?xf32>)
+    -> tensor<?x?xf32> {
+  // CHECK:      %[[C4:.*]] = arith.constant 4
+  // CHECK:      %[[C1:.*]] = arith.constant 1
+  // CHECK:      %[[C0:.*]] = arith.constant 0
+  // CHECK:      %[[C256:.*]] = arith.constant 256
+  // CHECK:      %[[C512:.*]] = arith.constant 512
+  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [%{{.*}}, %{{.*}}]
+  // CHECK:      %[[UB0:.*]] = tensor.dim %[[LHS]], %[[C0]]
+  // CHECK:      %[[UB1:.*]] = tensor.dim %[[LHS]], %[[C1]]
+  // CHECK:      %[[FOR:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
+  // CHECK-SAME:     to (%[[UB0]], %[[UB1]])
+  // CHECK-SAME:     step (%[[C256]], %[[C512]])
+  // CHECK-SAME:     outs (%[[ACC:.*]] = %[[INIT]]: tensor<?x?xf32>)
+  // CHECK:        %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]]
+  // CHECK:        %[[ACC_SUB:.*]] = gml_st.materialize %[[ACC]]
+  // CHECK:        %[[UB0_:.*]] = tensor.dim %[[LHS_SUB]], %[[C0]]
+  // CHECK:        %[[UB1_:.*]] = tensor.dim %[[LHS_SUB]], %[[C1]]
+  // CHECK:        %[[FOR_:.*]] = gml_st.for (%[[K:.*]], %[[L:.*]]) = (%[[C0]], %[[C0]])
+  // CHECK-SAME:       to (%[[UB0_]], %[[UB1_]])
+  // CHECK-SAME:       step (%[[C4]], %[[C1]])
+  // CHECK-SAME:       outs (%[[ACC_:.*]] = %[[ACC_SUB]]: tensor<?x?xf32>)
+  // CHECK:          %[[GENERIC:.*]] = linalg.generic
+  // CHECK:          gml_st.set_yield %[[GENERIC]] into %[[ACC_]]
+  // CHECK:        gml_st.set_yield %[[FOR_]] into %[[ACC]]
+  // CHECK:      return %[[FOR]]
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %d0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
+  %d1 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
+  %init = linalg.init_tensor [%d0, %d1] : tensor<?x?xf32>
+  %add = linalg.generic {
+      indexing_maps = [#id2d, #id2d, #id2d],
+      iterator_types = ["parallel", "parallel"],
+      op_label = "generic-2d" }
+      ins(%lhs, %rhs : tensor<?x?xf32>, tensor<?x?xf32>)
+      outs(%init : tensor<?x?xf32>) {
+  ^bb0(%lhs_scalar: f32, %rhs_scalar: f32, %_: f32):
+    %add_scalar = arith.addf %lhs_scalar, %rhs_scalar : f32
+    linalg.yield %add_scalar : f32
+  } -> tensor<?x?xf32>
+  func.return %add : tensor<?x?xf32>
 }
-
-// CHECK-PERFECT-LABEL: @identity
-// CHECK-PERFECT-SAME:  %[[ARG:.*]]: tensor<64x32xf32>
-// CHECK-PERFECT:       %[[INIT:.*]] = linalg.init_tensor [64, 32]
-// CHECK-PERFECT:       %[[SPACE:.*]] = gml_st.space [64, 32]
-// CHECK-PERFECT:       %[[C0:.*]] = arith.constant 0
-// CHECK-PERFECT:       %[[C64:.*]] = arith.constant 64
-// CHECK-PERFECT:       %[[C32:.*]] = arith.constant 32
-// CHECK-PERFECT:       %[[C16:.*]] = arith.constant 16
-// CHECK-PERFECT:       %[[C8:.*]] = arith.constant 8
-// CHECK-PERFECT:       %[[RES:.*]] = gml_st.parallel
-// CHECK-PERFECT-SAME:      (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
-// CHECK-PERFECT-SAME:      to (%[[C64]], %[[C32]])
-// CHECK-PERFECT-SAME:      step (%[[C16]], %[[C8]])
-// CHECK-PERFECT:         %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[I]], %[[J]]] [16, 8] [1, 1]
-// CHECK-PERFECT:         %[[MED_ARG:.*]] = gml_st.materialize %[[ARG]][%[[TILE]]]
-// CHECK-PERFECT:         %[[MED_INIT:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
-// CHECK-PERFECT:         %[[INNER_SPACE:.*]] = gml_st.space [16, 8]
-// CHECK-PERFECT:         %[[C4:.*]] = arith.constant 4
-// CHECK-PERFECT:         %[[C1:.*]] = arith.constant 1
-// CHECK-PERFECT:         %[[INNER_RES:.*]] = gml_st.parallel
-// CHECK-PERFECT-SAME:        (%[[ARG3:.*]], %[[ARG4:.*]]) = (%[[C0]], %[[C0]])
-// CHECK-PERFECT-SAME:        to (%[[C16]], %[[C8]])
-// CHECK-PERFECT-SAME:        step (%[[C4]], %[[C1]])
-// CHECK-PERFECT:           %[[INNER_TILE:.*]] = gml_st.tile %[[INNER_SPACE]] [%[[ARG3]], %[[ARG4]]] [4, 1] [1, 1]
-// CHECK-PERFECT:           %[[INNER_MED_ARG:.*]] = gml_st.materialize %[[MED_ARG]][%[[INNER_TILE]]]
-// CHECK-PERFECT:           gml_st.set_yield %[[INNER_MED_ARG]] into %[[MED_INIT]][%[[INNER_TILE]]]
-// CHECK-PERFECT:         gml_st.set_yield %[[INNER_RES]] into %[[INIT]][%[[TILE]]]
-// CHECK-PERFECT:       return %[[RES]]
-
-// CHECK-IMPERFECT-LABEL: func.func @identity
-// CHECK-IMPERFECT-SAME:  %[[ARG:.*]]: tensor<64x32xf32>
-// CHECK-IMPERFECT:       %[[INIT:.*]] = linalg.init_tensor [64, 32]
-// CHECK-IMPERFECT:       %[[SPACE:.*]] = gml_st.space [64, 32]
-// CHECK-IMPERFECT:       %[[C0:.*]] = arith.constant 0
-// CHECK-IMPERFECT:       %[[C64:.*]] = arith.constant 64
-// CHECK-IMPERFECT:       %[[C32:.*]] = arith.constant 32
-// CHECK-IMPERFECT:       %[[C17:.*]] = arith.constant 17
-// CHECK-IMPERFECT:       %[[C9:.*]] = arith.constant 9
-// CHECK-IMPERFECT:       %[[RES:.*]] = gml_st.parallel
-// CHECK-IMPERFECT-SAME:      (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
-// CHECK-IMPERFECT-SAME:      to (%[[C64]], %[[C32]])
-// CHECK-IMPERFECT-SAME:      step (%[[C17]], %[[C9]])
-// CHECK-IMPERFECT:         %[[SUBI:.*]] = arith.subi %[[C64]], %[[I]]
-// CHECK-IMPERFECT:         %[[SELECT:.*]] = arith.minsi %[[C17]], %[[SUBI]]
-// CHECK-IMPERFECT:         %[[SUBI_0:.*]] = arith.subi %[[C32]], %[[J]]
-// CHECK-IMPERFECT:         %[[SELECT_0:.*]] = arith.minsi %[[C9]], %[[SUBI_0]]
-// CHECK-IMPERFECT:         %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[I]], %[[J]]] [%[[SELECT]], %[[SELECT_0]]] [1, 1]
-// CHECK-IMPERFECT:         %[[MED_ARG:.*]] = gml_st.materialize %[[ARG]][%[[TILE]]]
-// CHECK-IMPERFECT:         %[[MED_INIT:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
-// CHECK-IMPERFECT:         %[[DIM:.*]] = tensor.dim %[[MED_ARG]], %[[C0]]
-// CHECK-IMPERFECT:         %[[C1:.*]] = arith.constant 1
-// CHECK-IMPERFECT:         %[[DIM_0:.*]] = tensor.dim %[[MED_ARG]], %[[C1]]
-// CHECK-IMPERFECT:         %[[INNER_SPACE:.*]] = gml_st.space [%[[DIM]], %[[DIM_0]]]
-// CHECK-IMPERFECT:         %[[C3:.*]] = arith.constant 3
-// CHECK-IMPERFECT:         %[[INNER_RES:.*]] = gml_st.parallel
-// CHECK-IMPERFECT-SAME:        (%[[ARG3:.*]], %[[ARG4:.*]]) = (%[[C0]], %[[C0]])
-// CHECK-IMPERFECT-SAME:        to (%[[DIM]], %[[DIM_0]])
-// CHECK-IMPERFECT-SAME:        step (%[[C3]], %[[C3]])
-// CHECK-IMPERFECT:           %[[SUBI_1:.*]] = arith.subi %[[DIM]], %[[ARG3]]
-// CHECK-IMPERFECT:           %[[SELECT_1:.*]] = arith.minsi %[[C3]], %[[SUBI_1]]
-// CHECK-IMPERFECT:           %[[SUBI_2:.*]] = arith.subi %[[DIM_0]], %[[ARG4]]
-// CHECK-IMPERFECT:           %[[SELECT_2:.*]] = arith.minsi %[[C3]], %[[SUBI_2]]
-// CHECK-IMPERFECT:           %[[INNER_TILE:.*]] = gml_st.tile %[[INNER_SPACE]] [%[[ARG3]], %[[ARG4]]] [%[[SELECT_1]], %[[SELECT_2]]] [1, 1]
-// CHECK-IMPERFECT:           %[[INNER_MED_ARG:.*]] = gml_st.materialize %[[MED_ARG]][%[[INNER_TILE]]]
-// CHECK-IMPERFECT:           gml_st.set_yield %[[INNER_MED_ARG]] into %[[MED_INIT]][%[[INNER_TILE]]]
-// CHECK-IMPERFECT:         gml_st.set_yield %[[INNER_RES]] into %[[INIT]][%[[TILE]]]
-// CHECK-IMPERFECT:       return %[[RES]]
