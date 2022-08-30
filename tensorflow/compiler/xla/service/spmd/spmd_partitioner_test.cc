@@ -3401,6 +3401,41 @@ ENTRY entry {
                     op::Shape("f32[2]")));
 }
 
+TEST_F(SpmdPartitioningTest, DeviceMaximalTupleReduce) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+%minmax_func {
+  %lhs_value = f32[] parameter(0)
+  %rhs_value = f32[] parameter(2)
+  %compare.2 = pred[] compare(%lhs_value, %rhs_value), direction=GT
+  %select.4 = f32[] select(%compare.2, %lhs_value, %rhs_value)
+  %lhs_index = s32[] parameter(1)
+  %rhs_index = s32[] parameter(3)
+  %select.5 = s32[] select(%compare.2, %lhs_index, %rhs_index)
+  ROOT %tuple.2 = (f32[], s32[]) tuple(%select.4, %select.5)
+}
+
+ENTRY %main {
+  %param0 = f32[28,10] parameter(0), sharding={maximal device=0}
+  %param1 = s32[28,10] parameter(1), sharding={maximal device=0}
+  %init0 = f32[] parameter(2), sharding={maximal device=0}
+  %init1 = s32[] parameter(3), sharding={maximal device=0}
+  ROOT %reduce = (f32[28], s32[28]) reduce(%param0, %param1, %init0, %init1),
+    dimensions={1}, to_apply=%minmax_func,
+    sharding={{maximal device=0}, {maximal device=0}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Reduce(op::Parameter(0), op::Parameter(1),
+                                     op::Parameter(2), op::Parameter(3)),
+                          op::Shape("(f32[28], s32[28])")));
+}
+
 TEST_F(SpmdPartitioningTest, TiledToTiledTupleReduce) {
   absl::string_view hlo_string = R"(
 HloModule module

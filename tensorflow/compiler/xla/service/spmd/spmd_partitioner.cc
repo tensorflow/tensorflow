@@ -3468,15 +3468,35 @@ Status SpmdPartitioningVisitor::HandleParameter(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
-  if (hlo->sharding().HasUniqueDevice()) {
-    return DefaultAction(hlo);
-  }
   int64_t input_count = 1;
-  auto per_input_sharding = hlo->sharding();
   if (hlo->shape().IsTuple()) {
     input_count = hlo->shape().tuple_shapes_size();
     CHECK_GT(input_count, 0);
-    per_input_sharding = hlo->sharding().GetSubSharding(hlo->shape(), {0});
+  }
+  if (hlo->sharding().HasUniqueDevice()) {
+    std::vector<HloInstruction*> new_operands(input_count * 2, nullptr);
+    for (auto i = 0; i != input_count; ++i) {
+      // Handle variadic reduce sharding.
+      HloSharding subsharding =
+          hlo->sharding().IsTuple()
+              ? hlo->sharding().GetSubSharding(hlo->shape(), {i})
+              : hlo->sharding();
+      CHECK(!subsharding.IsTuple() && subsharding.HasUniqueDevice());
+      // Partition reduce operands and init values.
+      new_operands[i] =
+          GetPartitionedHlo(hlo->operand(i)).Reshard(subsharding).hlo();
+      new_operands[input_count + i] =
+          GetPartitionedHlo(hlo->operand(input_count + i))
+              .Reshard(subsharding)
+              .hlo();
+    }
+    auto clone = b_.AddInstruction(
+        hlo->CloneWithNewOperands(hlo->shape(), new_operands));
+    clone->set_sharding(hlo->sharding());
+    SetPartitionedHlo(
+        hlo, PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
+                 .Reshard(hlo->sharding()));
+    return OkStatus();
   }
 
   std::vector<PartitionedHlo> inputs;
