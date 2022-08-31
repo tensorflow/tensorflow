@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBTF_RUNTIME_H_
-#define TENSORFLOW_CC_EXPERIMENTAL_LIBTF_RUNTIME_H_
+#ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBTF_RUNTIME_RUNTIME_H_
+#define TENSORFLOW_CC_EXPERIMENTAL_LIBTF_RUNTIME_RUNTIME_H_
 
 #include <sys/types.h>
 
@@ -104,4 +104,4 @@ tensorflow::StatusOr<Tensor> Runtime::CreateHostTensor(
 }  // namespace libtf
 }  // namespace tf
 
-#endif  // TENSORFLOW_CC_EXPERIMENTAL_LIBTF_RUNTIME_H_
+#endif  // TENSORFLOW_CC_EXPERIMENTAL_LIBTF_RUNTIME_RUNTIME_H_

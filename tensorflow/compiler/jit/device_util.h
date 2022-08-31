@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_JIT_DEVICE_INFO_CACHE_H_
-#define TENSORFLOW_COMPILER_JIT_DEVICE_INFO_CACHE_H_
+#ifndef TENSORFLOW_COMPILER_JIT_DEVICE_UTIL_H_
+#define TENSORFLOW_COMPILER_JIT_DEVICE_UTIL_H_
 
 #include <functional>
 #include <memory>
@@ -210,4 +210,4 @@ StatusOr<std::optional<jit::DeviceId>> MaybePickDeviceForXla(
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu);
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_JIT_DEVICE_INFO_CACHE_H_
+#endif  // TENSORFLOW_COMPILER_JIT_DEVICE_UTIL_H_
