@@ -395,21 +395,24 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   size_t fused_instr_output_size =
       GetOutputSizeOfFusible(*fused_fusion_instrs[0]);
   for (size_t i = 0; i < fused_instr_output_size; ++i) {
-    std::vector<HloInstruction*> reshapes(fused_fusion_instrs.size());
+    std::vector<HloInstruction*> instr_outputs(fused_fusion_instrs.size());
     for (size_t j = 0; j < fused_fusion_instrs.size(); ++j) {
       const HloInstruction* old_output =
           GetOutputsOfFusible(*fused_fusion_instrs[j])[i];
       HloInstruction* new_output = clone_map[old_output];
-      TF_ASSIGN_OR_RETURN(
-          reshapes[j],
-          MakeReshapeHlo(ShapeUtil::MakeShapeWithLayout(
-                             new_output->shape().element_type(),
-                             {ShapeUtil::ElementsIn(new_output->shape())},
-                             /*minor_to_major=*/std::vector<int64_t>(1, 0)),
-                         new_output));
+      if (new_output->shape().dimensions_size() == 1) {
+        instr_outputs[j] = new_output;
+      } else {
+        Shape new_shape = ShapeUtil::MakeShapeWithLayout(
+            new_output->shape().element_type(),
+            {ShapeUtil::ElementsIn(new_output->shape())},
+            /*minor_to_major=*/std::vector<int64_t>(1, 0));
+        TF_ASSIGN_OR_RETURN(instr_outputs[j],
+                            MakeReshapeHlo(new_shape, new_output));
+      }
     }
     TF_ASSIGN_OR_RETURN(HloInstruction * concated_output,
-                        MakeConcatHlo(reshapes, 0));
+                        MakeConcatHlo(instr_outputs, 0));
     concated_outputs.push_back(concated_output);
   }
 
@@ -464,7 +467,7 @@ Status HorizontalLoopFusionImpl::Fuse(
   // computation creates no performance cost.
   size_t total_output_id = 0;
   for (size_t i = 0; i < fused_fusion_instrs.size(); ++i) {
-    std::vector<HloInstruction*> bitcasts;
+    std::vector<HloInstruction*> bitcasts_or_gte;
     HloInstruction* fused_instr = fused_fusion_instrs[i];
     size_t num_outputs = GetOutputSizeOfFusible(*fused_instr);
     for (size_t j = 0; j < num_outputs; ++j) {
@@ -472,17 +475,29 @@ Status HorizontalLoopFusionImpl::Fuse(
       TF_ASSIGN_OR_RETURN(
           HloInstruction * gep,
           MakeGetTupleElementHlo(hori_fusion_instr, total_output_id++));
-      bitcasts.push_back(computation_->AddInstruction(
-          HloInstruction::CreateBitcast(output->shape(), gep)));
+      // This pass runs late, so useless bitcast won't be cleaned up.
+      if (output->shape().dimensions_size() == 1) {
+        bitcasts_or_gte.push_back(gep);
+      } else {
+        bitcasts_or_gte.push_back(computation_->AddInstruction(
+            HloInstruction::CreateBitcast(output->shape(), gep)));
+      }
     }
     HloInstruction* bitcast_or_tuple =
-        (bitcasts.size() == 1) ? bitcasts.at(0)
-                               : computation_->AddInstruction(
-                                     HloInstruction::CreateTuple(bitcasts));
+        (bitcasts_or_gte.size() == 1)
+            ? bitcasts_or_gte.at(0)
+            : computation_->AddInstruction(
+                  HloInstruction::CreateTuple(bitcasts_or_gte));
+    HloComputation* old_computation =
+        fused_instr->fused_instructions_computation();
+    HloModule* module = old_computation->parent();
     TF_RETURN_IF_ERROR(
         computation_->ReplaceInstruction(fused_instr, bitcast_or_tuple));
+    TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(old_computation));
   }
 
+  VLOG(1) << "Fused " << fused_fusion_instrs.size()
+          << " instructions into: " << hori_fusion_instr->ToString();
   return OkStatus();
 }
 
