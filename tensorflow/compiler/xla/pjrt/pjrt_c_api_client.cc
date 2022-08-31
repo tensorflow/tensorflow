@@ -418,15 +418,15 @@ absl::string_view PjRtCApiDevice::ToString() const {
 
 PjRtCApiExecutable::PjRtCApiExecutable(
     PjRtCApiClient* client, std::unique_ptr<PjRtLoadedExecutable> wrapped)
-    : client_(client),
-      executable_(
-          new PJRT_Executable{std::move(wrapped), client->pjrt_c_client()}) {
-  InitDevices();
+    : PjRtCApiExecutable(client, new PJRT_Executable{std::move(wrapped),
+                                                     client->pjrt_c_client()}) {
 }
 
 PjRtCApiExecutable::PjRtCApiExecutable(PjRtCApiClient* client,
                                        PJRT_Executable* executable)
-    : client_(client), executable_(executable) {
+    : client_(client),
+      executable_(executable,
+                  ::pjrt::MakeExecutableDeleter(client->pjrt_c_api())) {
   InitDevices();
 }
 
@@ -434,7 +434,7 @@ void PjRtCApiExecutable::InitDevices() {
   PJRT_Executable_AddressableDevices_Args args;
   args.struct_size = PJRT_Executable_AddressableDevices_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_;
+  args.executable = executable_.get();
   args.addressable_devices = nullptr;
   args.num_addressable_devices = 0;
 
@@ -450,15 +450,6 @@ void PjRtCApiExecutable::InitDevices() {
     PjRtCApiDevice* c_api_device = client_->GetCppDevice(device);
     addressable_devices_.push_back(c_api_device);
   }
-}
-
-PjRtCApiExecutable::~PjRtCApiExecutable() {
-  PJRT_Executable_Destroy_Args args;
-  args.struct_size = PJRT_Executable_Destroy_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.executable = executable_;
-  const PJRT_Api* api = pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(api->PJRT_Executable_Destroy(&args), api);
 }
 
 static std::vector<std::vector<PJRT_Buffer*>> Convert2DCppBuffersToCBuffers(
@@ -499,7 +490,7 @@ PjRtCApiExecutable::Execute(
   PJRT_Executable_Execute_Args args;
   args.struct_size = PJRT_Executable_Execute_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_;
+  args.executable = executable_.get();
   PJRT_ExecuteOptions c_options;
   args.options = &c_options;
   args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
@@ -523,7 +514,7 @@ PjRtCApiExecutable::Execute(
   PJRT_Executable_NumOutputs_Args numoutputs_args;
   numoutputs_args.struct_size = PJRT_Executable_NumOutputs_Args_STRUCT_SIZE;
   numoutputs_args.priv = nullptr;
-  numoutputs_args.executable = executable_;
+  numoutputs_args.executable = executable_.get();
   RETURN_STATUS_IF_ERROR(
       pjrt_c_api()->PJRT_Executable_NumOutputs(&numoutputs_args), pjrt_c_api());
   size_t outer_size = args.num_devices;
@@ -596,7 +587,7 @@ PjRtLoadedExecutable* PjRtCApiExecutable::wrapped() const {
 absl::string_view PjRtCApiExecutable::name() const {
   const PJRT_Api* c_api = pjrt_c_api();
   PJRT_Executable_Name_Args args;
-  args.executable = executable_;
+  args.executable = executable_.get();
   args.struct_size = PJRT_Executable_Name_Args_STRUCT_SIZE;
   args.priv = nullptr;
   pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_Name(&args), c_api);
@@ -610,7 +601,7 @@ void PjRtCApiExecutable::Delete() {
   PJRT_Executable_Delete_Args args;
   args.struct_size = PJRT_Executable_Delete_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_;
+  args.executable = executable_.get();
   const PJRT_Api* c_api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_Delete(&args), c_api);
 }
@@ -619,7 +610,7 @@ bool PjRtCApiExecutable::IsDeleted() {
   PJRT_Executable_IsDeleted_Args args;
   args.struct_size = PJRT_Executable_IsDeleted_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_;
+  args.executable = executable_.get();
 
   const PJRT_Api* c_api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_IsDeleted(&args), c_api);

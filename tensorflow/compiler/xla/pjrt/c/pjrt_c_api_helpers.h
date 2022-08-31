@@ -42,6 +42,13 @@ using PJRT_BufferDeleter = std::function<void(PJRT_Buffer*)>;
 // The lifetime of the Api pointed to must be longer than the buffer.
 PJRT_BufferDeleter MakeBufferDeleter(const PJRT_Api* api);
 
+using PJRT_ExecutableDeleter = std::function<void(PJRT_Executable*)>;
+
+// Creates a custom deleter for smart pointers.
+// Pass in pointer `api` to the PJRT C API.
+// The lifetime of the Api pointed to must be longer than the executable.
+PJRT_ExecutableDeleter MakeExecutableDeleter(const PJRT_Api* api);
+
 // Fatal error logging if status is not success. This terminates the process
 // and frees the PJRT_Error passed in.
 void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api);

@@ -426,9 +426,8 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
  public:
   PjRtCApiExecutable(PjRtCApiClient* client,
                      std::unique_ptr<PjRtLoadedExecutable> wrapped);
-  PjRtCApiExecutable(PjRtCApiClient* client, PJRT_Executable* executable);
 
-  ~PjRtCApiExecutable() override;
+  PjRtCApiExecutable(PjRtCApiClient* client, PJRT_Executable* executable);
 
   PjRtClient* client() const override { return client_; }
   absl::string_view name() const override;
@@ -503,7 +502,7 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
 
  private:
   PjRtCApiClient* client_;
-  PJRT_Executable* executable_;
+  std::unique_ptr<PJRT_Executable, pjrt::PJRT_ExecutableDeleter> executable_;
   std::vector<PjRtDevice*> addressable_devices_;
 
   void InitDevices();
