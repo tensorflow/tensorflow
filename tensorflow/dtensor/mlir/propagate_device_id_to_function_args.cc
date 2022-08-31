@@ -115,7 +115,7 @@ mlir::LogicalResult PrependDeviceIdToCallsites(mlir::OpBuilder* builder,
         "must have device id as 0th argument.");
 
   auto new_operands = llvm::to_vector<4>(op->getOperands());
-  new_operands.insert(new_operands.begin(), device_id_or_status.ValueOrDie());
+  new_operands.insert(new_operands.begin(), device_id_or_status.value());
 
   builder->setInsertionPoint(op);
   mlir::Operation* new_call = nullptr;
@@ -162,7 +162,7 @@ struct DTensorPropagateDeviceIdToFunctionArgs
           "have device id as 0th function argument.");
       return signalPassFailure();
     }
-    auto device_id_from_main_function = device_id_or_status.ValueOrDie();
+    auto device_id_from_main_function = device_id_or_status.value();
     // First iterate through all functions to rewrite and update the signatures
     // first.
     const auto functions_to_update = FindFunctionsToRewrite(module);

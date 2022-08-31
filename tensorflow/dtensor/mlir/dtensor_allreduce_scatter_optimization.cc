@@ -55,7 +55,7 @@ mlir::DenseIntElementsAttr GetScatterGroupAssignment(
 
   auto partitions =
       GetAllReducePartitionsFromReducedDims(original_layout, scattered_dims)
-          .ValueOrDie();
+          .value();
   const int32 num_partitions = partitions.size();
 
   // Construct a flattened list of scatter partitions.

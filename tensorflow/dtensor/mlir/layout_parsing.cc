@@ -268,7 +268,7 @@ StatusOr<absl::optional<Layout>> ExtractLayoutFromFunctionReturnAttr(
                       layout_string)
             .str());
 
-  layout.emplace(result_layout_or_status.ValueOrDie());
+  layout.emplace(result_layout_or_status.value());
   return layout;
 }
 
