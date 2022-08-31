@@ -62,7 +62,7 @@ class CompositeTensorGradient(object, metaclass=abc.ABCMeta):
       value: A `CompositeTensor` value.
 
     Returns:
-      A nested structure of `Tensor` or `CompositeTensor`.
+      A nested structure of `Tensor` or `IndexedSlices`.
     """
     raise NotImplementedError(
         f"{type(self).__name__}.get_gradient_components()")
@@ -71,13 +71,10 @@ class CompositeTensorGradient(object, metaclass=abc.ABCMeta):
   def replace_gradient_components(self, value, component_grads):
     """Replaces the gradient components in `value` with `component_grads`.
 
-    This method may not call TensorFlow ops, since any new ops added to the
-    graph would not be propertly tracked by the gradient mechanisms.
-
     Args:
       value: A value with its gradient components compatible with
         `component_grads`.
-      component_grads: A nested structure of `Tensor` or `CompositeTensor` or
+      component_grads: A nested structure of `Tensor` or `IndexedSlices` or
         `None` (for unconnected gradients).
 
     Returns:
@@ -122,8 +119,10 @@ def _get_tensors_for_gradient(x):
         f"Type {type(x).__name__} is not supported as a gradient source or "
         "gradient target.")
   composite_gradient = x.__composite_gradient__
-  return nest.map_structure(_get_tensors_for_gradient,
-                            composite_gradient.get_gradient_components(x))
+  gradient_components = composite_gradient.get_gradient_components(x)
+  if gradient_components is x:
+    return x
+  return nest.map_structure(_get_tensors_for_gradient, gradient_components)
 
 
 def _replace_tensors_for_gradient(x, grad):
@@ -146,9 +145,12 @@ def _replace_tensors_for_gradient(x, grad):
 
   composite_gradient = x.__composite_gradient__
   x_components = composite_gradient.get_gradient_components(x)
-  grad_components = nest.map_structure_up_to(x_components,
-                                             _replace_tensors_for_gradient,
-                                             x_components, grad)
+  if x_components is x:
+    grad_components = grad
+  else:
+    grad_components = nest.map_structure_up_to(x_components,
+                                               _replace_tensors_for_gradient,
+                                               x_components, grad)
   if grad_components is None:
     return None
   return composite_gradient.replace_gradient_components(x, grad_components)

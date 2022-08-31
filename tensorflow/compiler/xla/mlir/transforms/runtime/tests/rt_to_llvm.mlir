@@ -62,7 +62,7 @@ func.func @dedup_error_message(%arg0: !rt.kernel_context) {
 
 // -----
 
-// CHECK: global internal constant @__rt_num_attrs(1 : i64) : i64
+// CHECK: global internal constant @__rt_num_attrs(1 : i64) {{.*}}: i64
 
 // CHECK: global internal constant @__rt_attr_value()
 // CHECK-SAME: !llvm.array<3 x i64> {
@@ -97,7 +97,7 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 
 // -----
 
-// CHECK: global internal constant @__rt_num_attrs(1 : i64) : i64
+// CHECK: global internal constant @__rt_num_attrs(1 : i64) {{.*}}: i64
 
 // CHECK: global internal constant @__rt_attr_value()
 // CHECK-SAME: : !llvm.array<3 x i64> {
@@ -131,7 +131,7 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 
 // -----
 
-// CHECK: global internal constant @__rt_num_attrs(1 : i64) : i64
+// CHECK: global internal constant @__rt_num_attrs(1 : i64)
 
 // CHECK: global internal constant @__rt_attr_value()
 // CHECK-SAME: !llvm.struct<(i64, ptr<i8>)> {
@@ -154,7 +154,7 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 // -----
 
 // CHECK: global internal constant @__rt_custom_call_callee("target\00")
-// CHECK: global internal constant @__rt_num_attrs(0 : i64) : i64
+// CHECK: global internal constant @__rt_num_attrs(0 : i64)
 
 // CHECK: global internal constant @__rt_custom_call_attrs()
 // CHECK: {
@@ -162,7 +162,7 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 // CHECK:   llvm.mlir.addressof @__rt_num_attrs : !llvm.ptr<i64>
 // CHECK: }
 
-// CHECK: global internal constant @__rt_num_args(0 : i64) : i64
+// CHECK: global internal constant @__rt_num_args(0 : i64)
 
 // CHECK: func @custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
@@ -190,8 +190,8 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 
 // -----
 
-// CHECK: global internal constant @__rt_num_attrs(1 : i64) : i64
-// CHECK: global internal constant @__rt_attr_value(1.230000e+02 : f32) : f32
+// CHECK: global internal constant @__rt_num_attrs(1 : i64)
+// CHECK: global internal constant @__rt_attr_value(1.230000e+02 : f32)
 // CHECK: global internal constant @__rt_str("attr_name\00")
 
 // CHECK: global internal constant @__rt_attr_name()
@@ -218,10 +218,10 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 
 // -----
 
-// CHECK: global internal constant @__rt_num_attrs(1 : i64) : i64
+// CHECK: global internal constant @__rt_num_attrs(1 : i64)
 
 // CHECK:   llvm.mlir.global internal constant @__rt_attr_value
-// CHECK-SAME: (dense<[1, 2, 3]> : tensor<3xi32>) : !llvm.array<3 x i32>
+// CHECK-SAME: (dense<[1, 2, 3]> : tensor<3xi32>)
 
 // CHECK:   llvm.mlir.global internal constant @__rt_attr_value_0()
 // CHECK-SAME: : !llvm.struct
@@ -254,10 +254,10 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 
 // -----
 
-// CHECK: global internal constant @__rt_num_attrs(1 : i64) : i64
+// CHECK: global internal constant @__rt_num_attrs(1 : i64)
 
 // CHECK:   llvm.mlir.global internal constant @__rt_attr_value
-// CHECK-SAME: (dense<[1, 2]> : tensor<2xi32>) : !llvm.array<2 x i32>
+// CHECK-SAME: (dense<[1, 2]> : tensor<2xi32>)
 
 // CHECK:   llvm.mlir.global internal constant @__rt_attr_value_0()
 // CHECK-SAME: : !llvm.struct
@@ -292,7 +292,7 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 
 // -----
 
-// CHECK: global internal constant @__rt_num_attrs(1 : i64) : i64
+// CHECK: global internal constant @__rt_num_attrs(1 : i64)
 // CHECK: global internal constant @[[STR:.*]]("attr_value\00")
 
 // CHECK: global internal constant @__rt_attr_value()
@@ -381,7 +381,7 @@ func.func @custom_call(%arg0: !rt.kernel_context, %arg1: f16) {
 
 // -----
 
-// CHECK: internal constant @__rt_custom_call_attrs() : !llvm.array<4 x ptr<i8>>
+// CHECK: internal constant @__rt_custom_call_attrs() {{.*}}: !llvm.array<4 x ptr<i8>>
 // CHECK-NOT: internal constant @__rt_custom_call_attrs
 
 // CHECK: func @dedup_custom_call_attrs(

@@ -191,15 +191,13 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
 }
 
 void DataServiceWorkerImpl::Stop() {
-  std::vector<std::shared_ptr<Task>> tasks;
+  absl::flat_hash_map<int64_t, std::shared_ptr<Task>> tasks;
   {
     mutex_lock l(mu_);
     cancelled_ = true;
-    for (const auto& entry : tasks_) {
-      tasks.push_back(entry.second);
-    }
+    tasks.swap(tasks_);
   }
-  for (auto& task : tasks) {
+  for (const auto& [task_id, task] : tasks) {
     StopTask(*task);
   }
   // At this point there are no outstanding requests in this RPC handler.

@@ -47,7 +47,7 @@ using gpusparseSpMMAlg_t = cusparseSpMMAlg_t;
 #elif TENSORFLOW_USE_ROCM
 
 #include "rocm/rocm_config.h"
-#include "tensorflow/stream_executor/rocm/hipsparse_wrapper.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/hipsparse_wrapper.h"
 
 using gpusparseStatus_t = hipsparseStatus_t;
 using gpusparseOperation_t = hipsparseOperation_t;

@@ -408,6 +408,7 @@ class BlasSupport {
       const DeviceMemoryBase &b, DataType type_b, int ldb, const void *beta,
       DeviceMemoryBase *c, DataType type_c, int ldc,
       ComputationType computation_type, AlgorithmType algorithm,
+      blas::ComputePrecision precision,
       ProfileResult *output_profile_result) = 0;
 
   virtual port::Status DoBlasGemmStridedBatchedWithAlgorithm(
@@ -417,7 +418,8 @@ class BlasSupport {
       const DeviceMemoryBase &b, DataType type_b, int ldb, int64_t stride_b,
       const void *beta, DeviceMemoryBase *c, DataType type_c, int ldc,
       int64_t stride_c, int batch_count, ComputationType computation_type,
-      AlgorithmType algorithm, ProfileResult *output_profile_result) = 0;
+      AlgorithmType algorithm, blas::ComputePrecision precision,
+      ProfileResult *output_profile_result) = 0;
 
   // Computes a batch of matrix-matrix product with general matrices.
   // This is a batched version of DoBlasGemm.
@@ -471,7 +473,8 @@ class BlasSupport {
       uint64_t m, uint64_t n, uint64 k, DataType dtype, const void *alpha,
       const DeviceMemoryBase &a, int lda, int64_t stride_a,
       const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,
-      DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count) = 0;
+      DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count,
+      blas::ComputePrecision precision) = 0;
 
   // Solves a triangular matrix equation.
   //
@@ -689,6 +692,7 @@ class BlasSupport {
       const DeviceMemoryBase &b, blas::DataType type_b, int ldb,               \
       const void *beta, DeviceMemoryBase *c, blas::DataType type_c, int ldc,   \
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,   \
+      blas::ComputePrecision precision,                                        \
       blas::ProfileResult *output_profile_result) override;                    \
   bool DoBlasGemmBatched(                                                      \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
@@ -732,7 +736,8 @@ class BlasSupport {
       uint64_t m, uint64 n, uint64 k, blas::DataType dtype, const void *alpha, \
       const DeviceMemoryBase &a, int lda, int64_t stride_a,                    \
       const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,  \
-      DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count);        \
+      DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count,         \
+      blas::ComputePrecision precision) override;                              \
   port::Status DoBlasGemmStridedBatchedWithAlgorithm(                          \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
       uint64_t m, uint64 n, uint64 k, const void *alpha,                       \
@@ -741,6 +746,7 @@ class BlasSupport {
       int ldb, int64_t stride_b, const void *beta, DeviceMemoryBase *c,        \
       blas::DataType type_c, int ldc, int64_t stride_c, int batch_count,       \
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,   \
+      blas::ComputePrecision precision,                                        \
       blas::ProfileResult *output_profile_result) override;                    \
   bool DoBlasTrsm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
                   blas::Transpose transa, blas::Diagonal diag, uint64_t m,     \

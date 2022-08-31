@@ -24,11 +24,11 @@ limitations under the License.
 
 // Include appropriate platform-dependent implementations
 #if defined(PLATFORM_GOOGLE) || defined(GOOGLE_INTEGRAL_TYPES)
-#include "tensorflow/tsl/platform/google/integral_types.h"
+#include "tensorflow/tsl/platform/google/integral_types.h"  // IWYU pragma: export
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
     defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
     defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
-#include "tensorflow/tsl/platform/default/integral_types.h"
+#include "tensorflow/tsl/platform/default/integral_types.h"  // IWYU pragma: export
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif

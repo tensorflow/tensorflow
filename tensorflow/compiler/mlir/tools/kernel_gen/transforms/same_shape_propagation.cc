@@ -199,7 +199,7 @@ class ShapeEqualityKnowledge {
   void build(func::FuncOp function) {
     function.walk([&](Operation *op) {
       if (auto reshape = dyn_cast<memref::ReshapeOp>(op)) {
-        registerAssociation(ShapeValue{reshape.getShape()},
+        registerAssociation(ShapeValue{(Value)reshape.getShape()},
                             reshape.getResult());
         return;
       }

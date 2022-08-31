@@ -615,9 +615,10 @@ class DatasetV2(
       raise RuntimeError("`tf.data.Dataset.as_numpy_iterator()` is only "
                          "supported in eager mode.")
     for component_spec in nest.flatten(self.element_spec):
-      if not isinstance(component_spec,
-                        (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec,
-                         structure.NoneTensorSpec)):
+      if not isinstance(
+          component_spec,
+          (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec,
+           sparse_tensor_lib.SparseTensorSpec, structure.NoneTensorSpec)):
         raise TypeError(
             f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
             f"datasets that produce values of type {component_spec.value_type}")
@@ -811,7 +812,10 @@ class DatasetV2(
     Returns:
       Dataset: A `Dataset`.
     """
-    return TensorSliceDataset(tensors, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # from_tensor_slices_op -> dataset_ops).
+    from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top
+    return from_tensor_slices_op.from_tensor_slices(tensors, name)
 
   class _GeneratorState:
     """Stores outstanding iterators created from a Python generator.
@@ -1284,6 +1288,46 @@ class DatasetV2(
     """
     return ConcatenateDataset(self, dataset, name=name)
 
+  @staticmethod
+  def counter(start=0, step=1, dtype=dtypes.int64, name=None):
+    """Creates a `Dataset` that counts from `start` in steps of size `step`.
+
+    Unlike `tf.data.Dataset.range`, which stops at some ending number,
+    `tf.data.Dataset.counter` produces elements indefinitely.
+
+    >>> dataset = tf.data.experimental.Counter().take(5)
+    >>> list(dataset.as_numpy_iterator())
+    [0, 1, 2, 3, 4]
+    >>> dataset.element_spec
+    TensorSpec(shape=(), dtype=tf.int64, name=None)
+    >>> dataset = tf.data.experimental.Counter(dtype=tf.int32)
+    >>> dataset.element_spec
+    TensorSpec(shape=(), dtype=tf.int32, name=None)
+    >>> dataset = tf.data.experimental.Counter(start=2).take(5)
+    >>> list(dataset.as_numpy_iterator())
+    [2, 3, 4, 5, 6]
+    >>> dataset = tf.data.experimental.Counter(start=2, step=5).take(5)
+    >>> list(dataset.as_numpy_iterator())
+    [2, 7, 12, 17, 22]
+    >>> dataset = tf.data.experimental.Counter(start=10, step=-1).take(5)
+    >>> list(dataset.as_numpy_iterator())
+    [10, 9, 8, 7, 6]
+
+    Args:
+      start: (Optional.) The starting value for the counter. Defaults to 0.
+      step: (Optional.) The step size for the counter. Defaults to 1.
+      dtype: (Optional.) The data type for counter elements. Defaults to
+        `tf.int64`.
+      name: (Optional.) A name for the tf.data operation.
+
+    Returns:
+      A `Dataset` of scalar `dtype` elements.
+    """
+    # Loaded lazily due to a circular dependency (dataset_ops -> counter_op
+    # -> dataset_ops).
+    from tensorflow.python.data.ops import counter_op  # pylint: disable=g-import-not-at-top
+    return counter_op.counter(start, step, dtype, name=name)
+
   def prefetch(self, buffer_size, name=None):
     """Creates a `Dataset` that prefetches elements from this dataset.
 
@@ -1377,7 +1421,12 @@ class DatasetV2(
       with ops.control_dependencies([assert_not_empty]):
         matching_files = array_ops.identity(matching_files)
 
-      dataset = TensorSliceDataset(matching_files, is_files=True, name=name)
+      # TODO(b/240947712): Remove lazy import after this method is factored out.
+      # Loaded lazily due to a circular dependency (dataset_ops ->
+      # from_tensor_slices_op -> dataset_ops).
+      from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top
+      dataset = from_tensor_slices_op.TensorSliceDataset(
+          matching_files, is_files=True, name=name)
       if issubclass(Dataset, DatasetV1):
         dataset = DatasetV1Adapter(dataset)
       if shuffle:
@@ -4702,39 +4751,6 @@ class TensorDataset(DatasetSource):
         output_shapes=structure.get_flat_tensor_shapes(self._structure),
         metadata=self._metadata.SerializeToString())
     super(TensorDataset, self).__init__(variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-
-class TensorSliceDataset(DatasetSource):
-  """A `Dataset` of slices from a dataset element."""
-
-  def __init__(self, element, is_files=False, name=None):
-    """See `Dataset.from_tensor_slices()` for details."""
-    element = structure.normalize_element(element)
-    batched_spec = structure.type_spec_from_value(element)
-    self._tensors = structure.to_batched_tensor_list(batched_spec, element)
-    if not self._tensors:
-      raise ValueError("Invalid `element`. `element` should not be empty.")
-    self._structure = nest.map_structure(
-        lambda component_spec: component_spec._unbatch(), batched_spec)  # pylint: disable=protected-access
-    self._name = name
-
-    batch_dim = tensor_shape.Dimension(
-        tensor_shape.dimension_value(self._tensors[0].get_shape()[0]))
-    for t in self._tensors[1:]:
-      batch_dim.assert_is_compatible_with(
-          tensor_shape.Dimension(
-              tensor_shape.dimension_value(t.get_shape()[0])))
-
-    variant_tensor = gen_dataset_ops.tensor_slice_dataset(
-        self._tensors,
-        output_shapes=structure.get_flat_tensor_shapes(self._structure),
-        is_files=is_files,
-        metadata=self._metadata.SerializeToString())
-    super(TensorSliceDataset, self).__init__(variant_tensor)
 
   @property
   def element_spec(self):

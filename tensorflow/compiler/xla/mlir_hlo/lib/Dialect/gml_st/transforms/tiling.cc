@@ -24,11 +24,15 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling_using_interface.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace gml_st {
@@ -50,7 +54,7 @@ Value createTile(OpBuilder &b, Location loc, Value superset, ValueRange ivs,
   SmallVector<int64_t> staticSizes;
   SmallVector<Value> dynamicSizes;
   staticSizes.reserve(rank);
-  for (int64_t i = 0; i < rank; ++i) {
+  for (auto i : llvm::seq<int64_t>(0, rank)) {
     // If the dimension is perfectly tiled, use the statically known tile size.
     if (tileSizes[i] == 1 || (supersetShape[i] != ShapedType::kDynamicSize &&
                               supersetShape[i] % tileSizes[i] == 0)) {
@@ -115,13 +119,13 @@ Value createNestedPloopTilingRecursively(
                                          steps, nestedTileSizes.front());
         Value innerResult = b.create<MaterializeOp>(loc, source, subset);
 
-        // Recur if needed.
-        if (nestedTileSizes.size() >= 2) {
+        // Recur if there are more tile sizes, and it's not a point yet.
+        nestedTileSizes = nestedTileSizes.drop_front();
+        if (!nestedTileSizes.empty() && subset.getType().isa<TileType>()) {
           auto materializedInitSubset =
               b.create<MaterializeOp>(loc, init, subset);
           innerResult = createNestedPloopTilingRecursively(
-              b, loc, materializedInitSubset, innerResult,
-              nestedTileSizes.drop_front());
+              b, loc, materializedInitSubset, innerResult, nestedTileSizes);
         }
 
         b.create<SetYieldOp>(loc, ValueRange{innerResult}, ValueRange{init},
@@ -165,8 +169,9 @@ LogicalResult tileUniqueFunctionResult(
 
   // All nested tiles must be of the same rank as the source value.
   int64_t rank = sourceTy.getRank();
-  if (llvm::any_of(nestedTileSizes,
-                   [&](auto it) { return it.size() != rank; })) {
+  if (llvm::any_of(nestedTileSizes, [&](auto it) {
+        return static_cast<int64_t>(it.size()) != rank;
+      })) {
     return failure();
   }
 
@@ -242,17 +247,20 @@ llvm::Optional<SmallVector<SmallVector<int64_t>>> parseNestedTileSizes(
   return parseNestedTileSizes(istream);
 }
 
-struct TilingPass : public TilingPassBase<TilingPass> {
-  TilingPass() : TilingPassBase<TilingPass>() {
+struct DeprecatedTilingPass
+    : public DeprecatedTilingPassBase<DeprecatedTilingPass> {
+  DeprecatedTilingPass() : DeprecatedTilingPassBase<DeprecatedTilingPass>() {
     tileSizesOpt.setCallback(
         [&](const std::string &str) { tileSizes = parseNestedTileSizes(str); });
   }
-  explicit TilingPass(const std::string &tileSizesStr)
-      : TilingPassBase<TilingPass>() {
+  explicit DeprecatedTilingPass(const std::string &tileSizesStr)
+      : DeprecatedTilingPassBase<DeprecatedTilingPass>() {
     tileSizes = parseNestedTileSizes(tileSizesStr);
   }
-  explicit TilingPass(const SmallVector<SmallVector<int64_t>> &tileSizes)
-      : TilingPassBase<TilingPass>(), tileSizes(tileSizes) {}
+  explicit DeprecatedTilingPass(
+      const SmallVector<SmallVector<int64_t>> &tileSizes)
+      : DeprecatedTilingPassBase<DeprecatedTilingPass>(),
+        tileSizes(tileSizes) {}
 
   void getDependentDialects(DialectRegistry &registry) const final {
     registry
@@ -287,20 +295,65 @@ struct TilingPass : public TilingPassBase<TilingPass> {
   llvm::Optional<SmallVector<SmallVector<int64_t>>> tileSizes;
 };
 
+struct TileToForPass : public TileToForPassBase<TileToForPass> {
+  TileToForPass() = default;
+  TileToForPass(StringRef label, llvm::ArrayRef<int64_t> sizes) {
+    tilingTarget = label.str();
+    tileSizes = sizes;
+  }
+
+  void getDependentDialects(DialectRegistry &registry) const final {
+    registry.insert<GmlStDialect>();
+    registerGmlStTilingInterfaceExternalModels(registry);
+  }
+
+  void runOnOperation() override {
+    func::FuncOp f = getOperation();
+    MLIRContext *ctx = &getContext();
+
+    GmlStTilingOptions opts;
+    SmallVector<int64_t> ts(tileSizes.begin(), tileSizes.end());
+    opts.tileSizeComputationFunction = [ts](OpBuilder &b, Operation *op) {
+      OpBuilder::InsertionGuard guard(b);
+      b.setInsertionPointToStart(
+          &op->getParentOfType<func::FuncOp>().getBody().front());
+      return llvm::to_vector<4>(llvm::map_range(ts, [&](int64_t s) {
+        Value v = b.create<arith::ConstantIndexOp>(op->getLoc(), s);
+        return v;
+      }));
+    };
+
+    RewritePatternSet patterns(ctx);
+    patterns.add<TileToGmlStLoops>(ctx, tilingTarget, opts);
+
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+      return signalPassFailure();
+    }
+
+    // Clean up by removing temporary attributes.
+    f.walk([](Operation *op) { removeTransformationAttr(op); });
+  }
+};
+
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass() {
-  return std::make_unique<TilingPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass() {
+  return std::make_unique<DeprecatedTilingPass>();
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
     const SmallVector<SmallVector<int64_t>> &tileSizes) {
-  return std::make_unique<TilingPass>(tileSizes);
+  return std::make_unique<DeprecatedTilingPass>(tileSizes);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
     const std::string &tileSizes) {
-  return std::make_unique<TilingPass>(tileSizes);
+  return std::make_unique<DeprecatedTilingPass>(tileSizes);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> createTileToForPass(
+    StringRef tilingTarget, ArrayRef<int64_t> tileSizes) {
+  return std::make_unique<TileToForPass>(tilingTarget, tileSizes);
 }
 
 }  // namespace gml_st

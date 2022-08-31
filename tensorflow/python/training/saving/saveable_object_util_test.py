@@ -17,12 +17,10 @@
 import os
 
 from tensorflow.python.checkpoint import checkpoint
-from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gen_resource_variable_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import base
 from tensorflow.python.trackable import resource
@@ -40,11 +38,17 @@ class _VarSaveable(saveable_object.SaveableObject):
     return self.op.assign(restored_tensors[0])
 
 
+def _create_converted_trackable(obj):
+  saveable_factories = saveable_object_util.saveable_objects_from_trackable(obj)
+  saveables = [factory(name) for name, factory in saveable_factories.items()]
+  return saveable_object_util.SaveableCompatibilityConverter(obj, saveables)
+
+
 class SaveableCompatibilityConverterTest(test.TestCase):
 
   def test_convert_no_saveable(self):
     t = base.Trackable()
-    converter = saveable_object_util.SaveableCompatibilityConverter(t)
+    converter = _create_converted_trackable(t)
     self.assertEmpty(converter._serialize_to_tensors())
     converter._restore_from_tensors({})
 
@@ -62,7 +66,7 @@ class SaveableCompatibilityConverterTest(test.TestCase):
         return {"a": lambda name: _VarSaveable(self.a, "", name)}
 
     t = MyTrackable()
-    converter = saveable_object_util.SaveableCompatibilityConverter(t)
+    converter = _create_converted_trackable(t)
 
     serialized_tensors = converter._serialize_to_tensors()
     self.assertLen(serialized_tensors, 1)
@@ -89,7 +93,7 @@ class SaveableCompatibilityConverterTest(test.TestCase):
         return {"a": lambda name: _VarSaveable(self.a, "", name + "-value")}
 
     t = MyTrackable()
-    converter = saveable_object_util.SaveableCompatibilityConverter(t)
+    converter = _create_converted_trackable(t)
 
     serialized_tensors = converter._serialize_to_tensors()
 
@@ -102,65 +106,6 @@ class SaveableCompatibilityConverterTest(test.TestCase):
     self.assertEqual(15, self.evaluate(t.a))
     converter._restore_from_tensors({"a-value": 456.})
     self.assertEqual(456, self.evaluate(t.a))
-
-  def test_convert_multiple_saveables(self):
-
-    class MyTrackable(base.Trackable):
-
-      def __init__(self):
-        self.a = variables.Variable(15.0)
-        self.b = variables.Variable(20.0)
-
-      def _gather_saveables_for_checkpoint(self):
-        return {
-            "a": lambda name: _VarSaveable(self.a, "", name + "-1"),
-            "b": lambda name: _VarSaveable(self.b, "", name + "-2")}
-
-    t = MyTrackable()
-    converter = saveable_object_util.SaveableCompatibilityConverter(t)
-
-    serialized_tensors = converter._serialize_to_tensors()
-    self.assertLen(serialized_tensors, 2)
-    self.assertEqual(15, self.evaluate(serialized_tensors["a-1"]))
-    self.assertEqual(20, self.evaluate(serialized_tensors["b-2"]))
-
-    with self.assertRaisesRegex(ValueError, "Could not restore object"):
-      converter._restore_from_tensors({"a": 1., "b": 2.})
-    with self.assertRaisesRegex(ValueError, "Could not restore object"):
-      converter._restore_from_tensors({"b-2": 2.})
-
-    converter._restore_from_tensors({"a-1": -123., "b-2": -456.})
-    self.assertEqual(-123, self.evaluate(t.a))
-    self.assertEqual(-456, self.evaluate(t.b))
-
-  def test_convert_variables(self):
-    # The method `_gather_saveables_for_checkpoint` allowed the users to pass
-    # Variables instead of Saveables.
-
-    class MyTrackable(base.Trackable):
-
-      def __init__(self):
-        self.a = variables.Variable(25.)
-        self.b = resource_variable_ops.UninitializedVariable(
-            dtype=dtypes.float32)
-
-      def _gather_saveables_for_checkpoint(self):
-        return {"a": self.a, "b": self.b}
-
-    t = MyTrackable()
-    converter = saveable_object_util.SaveableCompatibilityConverter(t)
-    serialized_tensors = converter._serialize_to_tensors()
-
-    self.assertLen(serialized_tensors, 2)
-    self.assertEqual(25, self.evaluate(serialized_tensors["a"].tensor))
-    self.assertIsNone(serialized_tensors["b"].tensor)
-
-    with self.assertRaisesRegex(ValueError, "Could not restore object"):
-      converter._restore_from_tensors({"a": 5.})
-
-    converter._restore_from_tensors({"a": 5., "b": 6.})
-    self.assertEqual(5, self.evaluate(t.a))
-    self.assertEqual(6, self.evaluate(t.b))
 
 
 class _MultiSpecSaveable(saveable_object.SaveableObject):
@@ -176,51 +121,6 @@ class _MultiSpecSaveable(saveable_object.SaveableObject):
     del restored_shapes  # Unused.
     self.obj.a.assign(restored_tensors[0])
     self.obj.b.assign(restored_tensors[1])
-
-
-class MultipleSpecConverterTest(test.TestCase):
-
-  def test_multiple_specs_single_saveable(self):
-
-    class MyTrackable(base.Trackable):
-
-      def __init__(self):
-        self.a = variables.Variable(35.0)
-        self.b = variables.Variable(40.0)
-
-      def _gather_saveables_for_checkpoint(self):
-        return {"foo": lambda name: _MultiSpecSaveable(self, name)}
-
-    t = MyTrackable()
-    converter = saveable_object_util.SaveableCompatibilityConverter(t)
-    serialized_tensors = converter._serialize_to_tensors()
-
-    self.assertLen(serialized_tensors, 2)
-    self.assertEqual(35, self.evaluate(serialized_tensors["foo-a"]))
-    self.assertEqual(40, self.evaluate(serialized_tensors["foo-b"]))
-    converter._restore_from_tensors({"foo-a": 5., "foo-b": 6.})
-    self.assertEqual(5, self.evaluate(t.a))
-    self.assertEqual(6, self.evaluate(t.b))
-
-    # Make sure that the legacy saveable name has been applied.
-    self.assertEqual("foo", saveable_compat.get_saveable_name(converter))
-
-  def test_multiple_specs_multiple_saveables(self):
-    # This is an edge case not handled by the converter. Should raise an error.
-
-    class MyTrackable(base.Trackable):
-
-      def __init__(self):
-        self.a = variables.Variable(45.0)
-        self.b = variables.Variable(50.0)
-
-      def _gather_saveables_for_checkpoint(self):
-        return {"foo": lambda name: _MultiSpecSaveable(self, name),
-                "bar": lambda name: _MultiSpecSaveable(self, name)}
-
-    t = MyTrackable()
-    with self.assertRaises(saveable_compat.CheckpointConversionError):
-      saveable_object_util.SaveableCompatibilityConverter(t)
 
 
 class State(resource.TrackableResource):
@@ -311,8 +211,7 @@ class SaveableCompatibilityEndToEndTest(test.TestCase):
     # saved above.
     to_convert = SaveableState(0.0)
 
-    converted_saveable_state = (
-        saveable_object_util.SaveableCompatibilityConverter(to_convert))
+    converted_saveable_state = _create_converted_trackable(to_convert)
 
     checkpoint.Checkpoint(a=converted_saveable_state).read(
         ckpt_path).assert_existing_objects_matched().expect_partial()

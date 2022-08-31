@@ -129,8 +129,6 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ASBSQueue::Schedule", kASBSQueueSchedule},
       // TFRT related.
       {"TfrtModelRun", kTfrtModelRun},
-      // JAX related.
-      {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <system_error>  // NOLINT
 
 #include "tensorflow/core/platform/platform.h"
@@ -40,7 +41,7 @@ namespace runtime {
 class XlaRuntimeMemoryMapper final
     : public llvm::SectionMemoryManager::MemoryMapper {
  public:
-  static std::unique_ptr<XlaRuntimeMemoryMapper> Create(llvm::StringRef name);
+  static std::unique_ptr<XlaRuntimeMemoryMapper> Create(std::string_view name);
 
   llvm::sys::MemoryBlock allocateMappedMemory(
       llvm::SectionMemoryManager::AllocationPurpose purpose, size_t len,
@@ -53,7 +54,7 @@ class XlaRuntimeMemoryMapper final
   std::error_code releaseMappedMemory(llvm::sys::MemoryBlock& block) final;
 
  private:
-  explicit XlaRuntimeMemoryMapper(llvm::StringRef name) : name_(name.str()) {}
+  explicit XlaRuntimeMemoryMapper(std::string_view name) : name_(name) {}
 
   std::string name_;
 };

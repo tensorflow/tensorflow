@@ -212,6 +212,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
     ],
 )

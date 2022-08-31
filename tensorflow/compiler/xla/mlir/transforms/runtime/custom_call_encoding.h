@@ -19,12 +19,12 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -126,12 +126,12 @@ struct CustomCallAttrEncoding {
 
   virtual ~CustomCallAttrEncoding() = default;
 
-  virtual mlir::LogicalResult Match(llvm::StringRef name,
+  virtual mlir::LogicalResult Match(std::string_view name,
                                     mlir::Attribute attr) const = 0;
 
   virtual mlir::FailureOr<Encoded> Encode(Globals &g,
                                           mlir::ImplicitLocOpBuilder &b,
-                                          llvm::StringRef name,
+                                          std::string_view name,
                                           mlir::Attribute attr) const = 0;
 };
 
@@ -143,7 +143,7 @@ class CustomCallAttrEncodingSet {
   // Finds matching attribute encoding and tries to encode the attribute.
   // Returns failure if didn't match attribute to any of the encodings.
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  llvm::StringRef name,
+                                  std::string_view name,
                                   mlir::Attribute attr) const;
 
   template <typename... Ts, typename = std::enable_if_t<sizeof...(Ts) != 0>>
@@ -180,12 +180,12 @@ mlir::Value PackTypeId(Globals &g, mlir::ImplicitLocOpBuilder &b,
 //
 // Returns `!llvm.ptr<EncodedArray<char>>`.
 mlir::Value PackString(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                       llvm::StringRef strref, llvm::StringRef symbol_base);
+                       std::string_view strref, std::string_view symbol_base);
 
 // Packs scalar attribute as a global constant. Returns `!llvm.ptr<AttrType>`.
 mlir::Value PackScalarAttribute(Globals &g, mlir::ImplicitLocOpBuilder &b,
                                 mlir::Attribute value,
-                                mlir::StringRef symbol_base);
+                                std::string_view symbol_base);
 
 //===----------------------------------------------------------------------===//
 // A helper class to create global constants in the module.
@@ -213,20 +213,20 @@ class Globals {
 
   // Creates a global null-terminated string constant.
   mlir::LLVM::GlobalOp GetOrCreate(mlir::ImplicitLocOpBuilder &b,
-                                   llvm::StringRef strref,
-                                   llvm::StringRef symbol_base);
+                                   std::string_view strref,
+                                   std::string_view symbol_base);
 
   // Creates a global constant value from the attribute. Attribute type must be
   // a valid type compatible with LLVM globals.
   mlir::LLVM::GlobalOp GetOrCreate(mlir::ImplicitLocOpBuilder &b,
                                    mlir::TypedAttr attr,
-                                   llvm::StringRef symbol_base);
+                                   std::string_view symbol_base);
 
   // Creates a global constant value of the given type from the attribute, using
   // optional user-provided global constant initialization.
   mlir::LLVM::GlobalOp GetOrCreate(
       mlir::ImplicitLocOpBuilder &b, mlir::Attribute attr, mlir::Type type,
-      llvm::StringRef symbol_base, GlobalInitializer initialize = {},
+      std::string_view symbol_base, GlobalInitializer initialize = {},
       mlir::LLVM::Linkage linkage = mlir::LLVM::Linkage::Internal);
 
   // Creates a global constant value of the given type from the attribute, using
@@ -234,7 +234,7 @@ class Globals {
   // user-provided initialization failed to initialize the global value.
   mlir::FailureOr<mlir::LLVM::GlobalOp> TryGetOrCreate(
       mlir::ImplicitLocOpBuilder &b, mlir::Attribute attr, mlir::Type type,
-      llvm::StringRef symbol_base, FailureOrGlobalInitializer initialize = {},
+      std::string_view symbol_base, FailureOrGlobalInitializer initialize = {},
       mlir::LLVM::Linkage linkage = mlir::LLVM::Linkage::Internal);
 
   // Returns the address of the global value.
@@ -286,43 +286,49 @@ class Globals {
 //
 mlir::FailureOr<mlir::Value> EncodeAttributes(
     Globals &g, mlir::ImplicitLocOpBuilder &b,
-    const CustomCallAttrEncodingSet &encoding, llvm::StringRef symbol_base,
+    const CustomCallAttrEncodingSet &encoding, std::string_view symbol_base,
     llvm::ArrayRef<mlir::NamedAttribute> attrs);
 
 struct StringAttrEncoding : public CustomCallAttrEncoding {
-  mlir::LogicalResult Match(llvm::StringRef, mlir::Attribute) const final;
+  mlir::LogicalResult Match(std::string_view, mlir::Attribute) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::StringRef, mlir::Attribute) const final;
+                                  std::string_view,
+                                  mlir::Attribute) const final;
 };
 
 struct ScalarAttrEncoding : public CustomCallAttrEncoding {
-  mlir::LogicalResult Match(llvm::StringRef, mlir::Attribute) const final;
+  mlir::LogicalResult Match(std::string_view, mlir::Attribute) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::StringRef, mlir::Attribute) const final;
+                                  std::string_view,
+                                  mlir::Attribute) const final;
 };
 
 struct DenseElementsAttrEncoding : public CustomCallAttrEncoding {
-  mlir::LogicalResult Match(llvm::StringRef, mlir::Attribute) const final;
+  mlir::LogicalResult Match(std::string_view, mlir::Attribute) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::StringRef, mlir::Attribute) const final;
+                                  std::string_view,
+                                  mlir::Attribute) const final;
 };
 
 struct ArrayAttrEncoding : public CustomCallAttrEncoding {
-  mlir::LogicalResult Match(llvm::StringRef, mlir::Attribute) const final;
+  mlir::LogicalResult Match(std::string_view, mlir::Attribute) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::StringRef, mlir::Attribute) const final;
+                                  std::string_view,
+                                  mlir::Attribute) const final;
 };
 
 struct DenseArrayAttrEncoding : public CustomCallAttrEncoding {
-  mlir::LogicalResult Match(llvm::StringRef, mlir::Attribute) const final;
+  mlir::LogicalResult Match(std::string_view, mlir::Attribute) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::StringRef, mlir::Attribute) const final;
+                                  std::string_view,
+                                  mlir::Attribute) const final;
 };
 
 struct EmptyArrayAttrEncoding : public CustomCallAttrEncoding {
-  mlir::LogicalResult Match(llvm::StringRef, mlir::Attribute) const final;
+  mlir::LogicalResult Match(std::string_view, mlir::Attribute) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::StringRef, mlir::Attribute) const final;
+                                  std::string_view,
+                                  mlir::Attribute) const final;
 };
 
 // Custom call attribute encoding that encodes enums using their underlying
@@ -346,12 +352,13 @@ struct EnumAttrEncoding : public CustomCallAttrEncoding {
 
   explicit EnumAttrEncoding(Converter convert) : convert(std::move(convert)) {}
 
-  mlir::LogicalResult Match(llvm::StringRef, mlir::Attribute attr) const final {
+  mlir::LogicalResult Match(std::string_view,
+                            mlir::Attribute attr) const final {
     return mlir::success(attr.isa<AttrType>());
   }
 
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::StringRef name,
+                                  std::string_view name,
                                   mlir::Attribute attr) const final {
     // Convert enum underlying integral value to an attribute.
     EnumType compile_time_enum = attr.cast<AttrType>().getValue();
@@ -427,12 +434,13 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
                         AttrDef attrdef)
       : encoding(encoding), attrdef(std::move(attrdef)) {}
 
-  mlir::LogicalResult Match(llvm::StringRef, mlir::Attribute attr) const final {
+  mlir::LogicalResult Match(std::string_view,
+                            mlir::Attribute attr) const final {
     return mlir::success(attr.isa<AttrType>());
   }
 
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::StringRef name,
+                                  std::string_view name,
                                   mlir::Attribute attr) const final {
     // Extract aggregate attributes from the user-defined attributes.
     llvm::SmallVector<mlir::NamedAttribute> attrs;

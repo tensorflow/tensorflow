@@ -22,10 +22,10 @@ limitations under the License.
 // Runtime dialect definition.
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h.inc"
 
-#define GET_OP_CLASSES
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h.inc"
-
 #define GET_TYPEDEF_CLASSES
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_types.h.inc"
+
+#define GET_OP_CLASSES
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h.inc"
 
 #endif  // XLA_MLIR_RUNTIME_RT_OPS_H_

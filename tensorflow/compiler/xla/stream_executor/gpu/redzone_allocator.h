@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_REDZONE_ALLOCATOR_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_REDZONE_ALLOCATOR_H_
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
@@ -41,12 +42,12 @@ class RedzoneAllocator : public ScratchAllocator {
  public:
   static constexpr int64_t kDefaultRedzoneSize =
       1LL << 23;  // 8MiB per side, 16MiB total.
-  static constexpr uint8 kDefaultRedzonePattern = -1;
+  static constexpr uint8_t kDefaultRedzonePattern = -1;  // NOLINT
   RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
                    GpuAsmOpts gpu_compilation_opts_,
                    int64_t memory_limit = (1LL << 32),  // 4GB
                    int64_t redzone_size = kDefaultRedzoneSize,
-                   uint8 redzone_pattern = kDefaultRedzonePattern);
+                   uint8_t redzone_pattern = kDefaultRedzonePattern);
 
   // Redzones don't count towards the memory limit.
   int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
@@ -112,7 +113,7 @@ class RedzoneAllocator : public ScratchAllocator {
   // returned to users will be misaligned.
   const int64_t redzone_size_;
 
-  const uint8 redzone_pattern_;
+  const uint8_t redzone_pattern_;
   DeviceMemoryAllocator* memory_allocator_;
   GpuAsmOpts gpu_compilation_opts_;
 

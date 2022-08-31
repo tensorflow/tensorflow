@@ -31,6 +31,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// The amount of shared memory a CUDA kernel can use.
+//
+// Stay on the conservative side, this is smaller than full 64kB, but allows
+// some extra space for cache.
+inline constexpr int64_t kSharedMemoryBudgetInBytes = 48 * 1024;
+
 // Matrix multiplication before the rewrite.
 //
 // This function should never return "true" on instructions after

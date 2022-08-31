@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include "pybind11/pybind11.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
@@ -140,31 +142,26 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
       "xspace_to_tools_data",
       [](const py::list& xspace_path_list, const py::str& py_tool_name,
          const py::dict options = py::dict()) {
-        std::vector<tensorflow::profiler::XSpace> xspaces;
-        xspaces.reserve(xspace_path_list.size());
-        std::vector<std::string> filenames;
-        filenames.reserve(xspace_path_list.size());
+        std::vector<std::string> xspace_paths;
+        xspace_paths.reserve(xspace_path_list.size());
         for (py::handle obj : xspace_path_list) {
-          std::string filename = std::string(py::cast<py::str>(obj));
-
-          tensorflow::profiler::XSpace xspace;
-          tensorflow::Status status;
-
-          status = tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                               filename, &xspace);
-
-          if (!status.ok()) {
-            return py::make_tuple(py::bytes(""), py::bool_(false));
-          }
-
-          xspaces.push_back(xspace);
-          filenames.push_back(filename);
+          std::string xspace_path = std::string(py::cast<py::str>(obj));
+          xspace_paths.push_back(xspace_path);
         }
+        auto status_or_session_snapshot =
+            tensorflow::profiler::SessionSnapshot::Create(
+                std::move(xspace_paths),
+                /*xspaces=*/std::nullopt);
+        if (!status_or_session_snapshot.ok()) {
+          LOG(ERROR) << status_or_session_snapshot.status().error_message();
+          return py::make_tuple(py::bytes(""), py::bool_(false));
+        }
+
         std::string tool_name = std::string(py_tool_name);
         ToolOptions tool_options = ToolOptionsFromPythonDict(options);
         auto status_or_tool_data =
             tensorflow::profiler::ConvertMultiXSpacesToToolData(
-                xspaces, filenames, tool_name, tool_options);
+                status_or_session_snapshot.value(), tool_name, tool_options);
         if (!status_or_tool_data.ok()) {
           LOG(ERROR) << status_or_tool_data.status().error_message();
           return py::make_tuple(py::bytes(""), py::bool_(false));
@@ -179,32 +176,39 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
   m.def("xspace_to_tools_data_from_byte_string",
         [](const py::list& xspace_string_list, const py::list& filenames_list,
            const py::str& py_tool_name) {
-          std::vector<tensorflow::profiler::XSpace> xspaces;
+          std::vector<std::unique_ptr<tensorflow::profiler::XSpace>> xspaces;
           xspaces.reserve(xspace_string_list.size());
-          std::vector<std::string> filenames;
-          filenames.reserve(filenames_list.size());
+          std::vector<std::string> xspace_paths;
+          xspace_paths.reserve(filenames_list.size());
 
           // XSpace string inputs
           for (py::handle obj : xspace_string_list) {
             std::string xspace_string = std::string(py::cast<py::bytes>(obj));
-
-            tensorflow::profiler::XSpace xspace;
-
-            if (!xspace.ParseFromString(xspace_string)) {
+            auto xspace = std::make_unique<tensorflow::profiler::XSpace>();
+            if (!xspace->ParseFromString(xspace_string)) {
               return py::make_tuple(py::bytes(""), py::bool_(false));
             }
-
-            xspaces.push_back(xspace);
+            xspaces.push_back(std::move(xspace));
           }
 
-          // Filenames
+          // XSpace paths.
           for (py::handle obj : filenames_list) {
-            filenames.push_back(std::string(py::cast<py::str>(obj)));
+            xspace_paths.push_back(std::string(py::cast<py::str>(obj)));
           }
+
+          auto status_or_session_snapshot =
+              tensorflow::profiler::SessionSnapshot::Create(
+                  std::move(xspace_paths), std::move(xspaces));
+          if (!status_or_session_snapshot.ok()) {
+            LOG(ERROR) << status_or_session_snapshot.status().error_message();
+            return py::make_tuple(py::bytes(""), py::bool_(false));
+          }
+
           std::string tool_name = std::string(py_tool_name);
           auto status_or_tool_data =
               tensorflow::profiler::ConvertMultiXSpacesToToolData(
-                  xspaces, filenames, tool_name, {});
+                  status_or_session_snapshot.value(), tool_name,
+                  /*options=*/{});
           if (!status_or_tool_data.ok()) {
             LOG(ERROR) << status_or_tool_data.status().error_message();
             return py::make_tuple(py::bytes(""), py::bool_(false));

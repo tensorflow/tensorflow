@@ -20,6 +20,8 @@ limitations under the License.
 #include <stdint.h>
 #include <string.h>
 
+#include <cstdint>
+
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
@@ -151,7 +153,7 @@ port::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
 }
 
 port::Status HostExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
-                                    uint32 pattern, uint64_t size) {
+                                    uint32_t pattern, uint64_t size) {
   void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.

@@ -21,11 +21,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/roctracer_wrapper.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/rocm/roctracer_wrapper.h"
 
 namespace tensorflow {
 namespace profiler {

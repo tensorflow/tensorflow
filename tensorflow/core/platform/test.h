@@ -40,11 +40,11 @@ limitations under the License.
 // better error messages, more maintainable tests and more test coverage.
 #if !defined(PLATFORM_GOOGLE) && !defined(PLATFORM_GOOGLE_ANDROID) && \
     !defined(PLATFORM_CHROMIUMOS)
-#include <gmock/gmock-generated-matchers.h>
-#include <gmock/gmock-matchers.h>
-#include <gmock/gmock-more-matchers.h>
+#include <gmock/gmock-generated-matchers.h>  // IWYU pragma: export
+#include <gmock/gmock-matchers.h>            // IWYU pragma: export
+#include <gmock/gmock-more-matchers.h>       // IWYU pragma: export
 #endif
-#include <gmock/gmock.h>
+#include <gmock/gmock.h>  // IWYU pragma: export
 
 #define DISABLED_ON_GPU_ROCM(X) X
 #if TENSORFLOW_USE_ROCM

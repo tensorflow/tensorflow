@@ -530,3 +530,34 @@ func.func @stateful_control_flow_has_outgoing_control(%arg : tensor<i1>) {
   }
   func.return
 }
+
+// Test case where an island is not a direct parent of a user (`tf.OpC` consumes
+// a value produced by the first island but its direct parent is
+// `tf_device.launch`). See related bug b/242920486.
+func.func @island_not_direct_parent_of_user() -> () {
+  tf_executor.graph {
+    %island1:2 = tf_executor.island {
+      // CHECK: %[[VAL_0:.*]], %[[VAL_1:.*]] = tf_executor.island wraps "tf.OpA"() : () -> tensor<i64>
+      %0 = "tf.OpA"() : () -> (tensor<i64>)
+      // CHECK: %[[VAL_2:.*]] = tf_executor.island(%[[VAL_1]]) wraps "tf.OpB"() : () -> ()
+      "tf.OpB"() : () -> ()
+      tf_executor.yield %0 : tensor<i64>
+    }
+    // CHECK: "tf_device.launch"()
+    // CHECK:   "tf.OpC"(%[[VAL_0]]) : (tensor<i64>) -> ()
+    // CHECK:   "tf.OpD"() : () -> ()
+    // CHECK:   tf_device.return
+    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+    %island2 = tf_executor.island {
+      "tf_device.launch"() ({
+        "tf.OpC"(%island1#0) : (tensor<i64>) -> ()
+        "tf.OpD"() : () -> ()
+        tf_device.return
+      }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+      tf_executor.yield
+    }
+    // CHECK: tf_executor.fetch
+    tf_executor.fetch
+  }
+  func.return
+}

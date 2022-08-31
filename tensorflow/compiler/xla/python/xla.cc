@@ -382,9 +382,20 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("execute_with_token", &PyExecutable::ExecuteWithToken,
            py::arg("arguments"), py::arg("device") = std::nullopt)
       .def("execute_sharded_on_local_devices",
-           &PyExecutable::ExecuteShardedOnLocalDevices, py::arg("arguments"))
+           py::overload_cast<absl::Span<PyShardedBuffer* const>>(
+               &PyExecutable::ExecuteShardedOnLocalDevices),
+           py::arg("arguments"))
+      .def("execute_sharded_on_local_devices",
+           py::overload_cast<absl::Span<const std::vector<PyBuffer::object>>>(
+               &PyExecutable::ExecuteShardedOnLocalDevices),
+           py::arg("arguments"))
       .def("execute_sharded_on_local_devices_with_tokens",
-           &PyExecutable::ExecuteShardedOnLocalDevicesWithTokens,
+           py::overload_cast<absl::Span<PyShardedBuffer* const>>(
+               &PyExecutable::ExecuteShardedOnLocalDevicesWithTokens),
+           py::arg("arguments"))
+      .def("execute_sharded_on_local_devices_with_tokens",
+           py::overload_cast<absl::Span<const std::vector<PyBuffer::object>>>(
+               &PyExecutable::ExecuteShardedOnLocalDevicesWithTokens),
            py::arg("arguments"))
       .def("hlo_modules", &PyExecutable::HloModules)
       .def("keep_alive", &PyExecutable::KeepAlive)

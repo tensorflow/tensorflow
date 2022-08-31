@@ -508,7 +508,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   CHECK_GT(index.size(), 0);
   std::vector<llvm::Value*> gep_indices(
       1, llvm::ConstantInt::get(index[0]->getType(), 0));
-  for (int64_t i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
+  for (int64_t i = 0; i < shape_.rank(); ++i) {
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }

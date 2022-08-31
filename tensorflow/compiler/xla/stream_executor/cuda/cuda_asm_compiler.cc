@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <vector>
+
+#include "absl/base/attributes.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
@@ -23,7 +27,7 @@ namespace stream_executor {
 #define RETURN_IF_CUDA_ERROR(expr)                                            \
   do {                                                                        \
     CUresult _status = expr;                                                  \
-    if (!SE_PREDICT_TRUE(_status == CUDA_SUCCESS)) {                          \
+    if (!ABSL_PREDICT_TRUE(_status == CUDA_SUCCESS)) {                        \
       const char* error_string;                                               \
       cuGetErrorString(_status, &error_string);                               \
       std::ostringstream oss;                                                 \
@@ -33,7 +37,7 @@ namespace stream_executor {
     }                                                                         \
   } while (false)
 
-port::StatusOr<std::vector<uint8>> LinkGpuAsm(
+port::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images) {
   if (CUDA_VERSION >= 11030) {
     int driver_cuda_version;
@@ -62,8 +66,8 @@ port::StatusOr<std::vector<uint8>> LinkGpuAsm(
   void* cubin_out;
   size_t cubin_size;
   RETURN_IF_CUDA_ERROR(cuLinkComplete(link_state, &cubin_out, &cubin_size));
-  std::vector<uint8> cubin(static_cast<uint8*>(cubin_out),
-                           static_cast<uint8*>(cubin_out) + cubin_size);
+  std::vector<uint8_t> cubin(static_cast<uint8_t*>(cubin_out),
+                             static_cast<uint8_t*>(cubin_out) + cubin_size);
   RETURN_IF_CUDA_ERROR(cuLinkDestroy(link_state));
   return std::move(cubin);
 }

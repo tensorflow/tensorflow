@@ -25,7 +25,6 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool"
 #include "llvm/ADT/STLExtras.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
-#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace mlir {
 namespace runtime {

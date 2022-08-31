@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_TOPOLOGY_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_TOPOLOGY_H_
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
@@ -37,8 +38,8 @@ class TpuCoreLocationExternal {
       : core_location_(core_location) {}
   TpuDimensionsExternal chip_coordinates() const;
   TpuDimensionsExternal host_coordinates() const;
-  int32 index() const;
-  int32 Id() const;
+  int32_t index() const;
+  int32_t Id() const;
 
   SE_TpuTopology_Core* impl() const { return core_location_; }
 
@@ -50,7 +51,7 @@ class TpuHostLocationExternal {
  public:
   explicit TpuHostLocationExternal(SE_TpuTopology_Host* host_location)
       : host_location_(host_location) {}
-  int32 Id() const;
+  int32_t Id() const;
   std::vector<TpuCoreLocationExternal> Cores(TpuCoreTypeEnum core_type) const;
 
   SE_TpuTopology_Host* impl() const { return host_location_; }
@@ -69,10 +70,10 @@ class TpuTopologyExternal {
  public:
   explicit TpuTopologyExternal(SE_TpuTopology* topology)
       : topology_(topology) {}
-  int32 LogicalDevicesPerHost(TpuCoreTypeEnum core_type) const;
-  int32 LogicalDevicesPerChip(TpuCoreTypeEnum core_type) const;
-  int32 HostCount() const;
-  int32 ChipsPerHost() const;
+  int32_t LogicalDevicesPerHost(TpuCoreTypeEnum core_type) const;
+  int32_t LogicalDevicesPerChip(TpuCoreTypeEnum core_type) const;
+  int32_t HostCount() const;
+  int32_t ChipsPerHost() const;
   TpuTopologyChipBoundsExternal chip_bounds() const;
   bool HasChip(int x, int y, int z) const;
   TpuCoreLocationExternal CoreForId(TpuCoreTypeEnum core_type, int id) const;

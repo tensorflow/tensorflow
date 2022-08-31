@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_MLIR_UTILS_RUNTIME_C_RUNNER_UTILS_H_
 #define XLA_MLIR_UTILS_RUNTIME_C_RUNNER_UTILS_H_
 
+#include <string_view>
+
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
@@ -27,7 +29,7 @@ inline llvm::orc::SymbolMap CRunnerUtilsSymbolMap(
     llvm::orc::MangleAndInterner mangle) {
   llvm::orc::SymbolMap symbol_map;
 
-  auto bind = [&](llvm::StringRef name, auto symbol_ptr) {
+  auto bind = [&](std::string_view name, auto symbol_ptr) {
     symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
         llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
   };

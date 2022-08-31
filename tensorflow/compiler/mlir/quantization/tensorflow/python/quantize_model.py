@@ -555,10 +555,7 @@ def _run_static_range_qat(
                                                 ','.join(tags),
                                                 quant_opts.SerializeToString()))
 
-  graph_def = graph_pb2.GraphDef()
-  graph_def.ParseFromString(graph_def_serialized)
-
-  return graph_def
+  return graph_pb2.GraphDef.FromString(graph_def_serialized)
 
 
 def _run_static_range_ptq(
@@ -599,8 +596,7 @@ def _run_static_range_ptq(
       quantize_model_wrapper.quantize_ptq_model_pre_calibration(
           saved_model_path, ','.join(signature_def_keys), ','.join(tags)))
 
-  graph_def = graph_pb2.GraphDef()
-  graph_def.ParseFromString(graph_def_serialized)
+  graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
 
   float_model_dir = tempfile.mkdtemp()
   v1_builder = builder.SavedModelBuilder(float_model_dir)
@@ -668,8 +664,7 @@ def _run_static_range_ptq(
           calibrated_model_dir, ','.join(signature_def_keys), ','.join(tags),
           quant_opts.SerializeToString()))
 
-  graph_def = graph_pb2.GraphDef()
-  graph_def.ParseFromString(graph_def_serialized)
+  graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
 
   return graph_def, signature_def_map
 
@@ -716,7 +711,7 @@ def _static_range_quantize(
     quantization_options: quant_opts_pb2.QuantizationOptions,
     representative_dataset: Optional[
         repr_dataset.RepresentativeDatasetOrMapping] = None
-) ->...:
+) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel via static range quantization.
 
   If the model is not trained with Quantization-Aware Training (QAT) technique,
@@ -779,7 +774,8 @@ def _static_range_quantize(
 def _dynamic_range_quantize(
     saved_model_path: str, signature_keys: Sequence[str], tags: Collection[str],
     output_directory: str,
-    quantization_options: quant_opts_pb2.QuantizationOptions) ->...:
+    quantization_options: quant_opts_pb2.QuantizationOptions
+) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel via post-training dynamic range quantization.
 
   Args:
@@ -799,6 +795,10 @@ def _dynamic_range_quantize(
   Raises:
     ValueError: when the model is QAT model.
   """
+  if _is_qat_saved_model(saved_model_path):
+    raise ValueError(
+        'The models trained with quantization-aware training (QAT) is not '
+        'supported for dynamic range quantization.')
 
   # Check default quantization option values for Post-training dynamic range
   # quantization case
@@ -809,24 +809,15 @@ def _dynamic_range_quantize(
         'min_num_elements_for_weights is unset so is set to the default value'
         '(1024).')
 
-  is_qat_saved_model = _is_qat_saved_model(saved_model_path)
-  signature_def_map = _get_signatures_from_saved_model(saved_model_path,
-                                                       signature_keys, tags)
-
-  # Checks if the model is from QAT.
-  if is_qat_saved_model:
-    raise ValueError(
-        'The models trained with quantization-aware training (QAT) is not '
-        'supported.')
-
   # Apply post-training dynamic range quantization to the model.
   graph_def_serialized = (
       quantize_model_wrapper.quantize_ptq_dynamic_range(
           saved_model_path, ','.join(signature_keys), ','.join(tags),
           quantization_options.SerializeToString()))
 
-  graph_def = graph_pb2.GraphDef()
-  graph_def.ParseFromString(graph_def_serialized)
+  graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
+  signature_def_map = _get_signatures_from_saved_model(saved_model_path,
+                                                       signature_keys, tags)
 
   _save_model_v1(
       graph_def,
@@ -872,7 +863,7 @@ def quantize(
         repr_dataset.RepresentativeDatasetOrMapping] = None,
     *,
     overwrite_output_directory: bool = False,
-) ->...:
+) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel.
 
   Args:

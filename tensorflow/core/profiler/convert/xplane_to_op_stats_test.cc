@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
-#include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/status.h"
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -39,8 +41,6 @@ namespace {
 
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
-
-static constexpr char kXPlanePb[] = "xplane.pb";
 
 TEST(ConvertXPlaneToOpStats, GpuPerfEnv) {
   XSpace space;
@@ -230,23 +230,31 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
   static constexpr char kHost1[] = "host1";
   static constexpr char kHost2[] = "host2";
 
-  XSpace xspace1;
-  XSpace xspace2;
+  auto xspace1 = std::make_unique<XSpace>();
+  auto xspace2 = std::make_unique<XSpace>();
 
-  BuildXSpaceForTest(xspace1, kHost1);
-  BuildXSpaceForTest(xspace2, kHost2);
+  BuildXSpaceForTest(*xspace1, kHost1);
+  BuildXSpaceForTest(*xspace2, kHost2);
 
-  std::vector<XSpace> xspaces;
-  xspaces.push_back(xspace1);
-  xspaces.push_back(xspace2);
+  std::vector<std::string> xspace_paths;
+  xspace_paths.push_back("xspace_path1");
+  xspace_paths.push_back("xspace_path2");
+
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  xspaces.push_back(std::move(xspace1));
+  xspaces.push_back(std::move(xspace2));
+
+  auto session_snapshot_or =
+      SessionSnapshot::Create(std::move(xspace_paths), std::move(xspaces));
+  TF_CHECK_OK(session_snapshot_or.status());
 
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
 
-  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                   &combined_op_stats))
+  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
+                                                   options, &combined_op_stats))
       << "Failed to convert multi XSpace to OpStats";
 
   // Result OpStats has 2 Host Ops, "IDLE" and "aaa:bbb".
@@ -278,7 +286,7 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
 TEST(ConvertXPlaneToOpStats, RunEnvironmentExtractedFromTpuPlane) {
   XSpace xspace;
   for (int i : {0, 1, 2, 3}) {
-    GetOrCreateTpuXPlane(&xspace, i, "TPU V4");
+    GetOrCreateTpuXPlane(&xspace, i, "TPU V4", 0, 0);
   }
 
   OpStats op_stats = ConvertXSpaceToOpStats(xspace, OpStatsOptions());
@@ -300,8 +308,9 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
   constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
 
-  XPlaneBuilder device_plane(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4"));
+  XPlaneBuilder device_plane(GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, "TPU V4", kDevCapPeakTeraflopsPerSecond,
+      kDevCapPeakHbmBwGigabytesPerSecond));
   /*device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kDevVendor)),
                         kDeviceVendorNvidia); // "Google, Inc.");*/
@@ -318,12 +327,6 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   device_plane.AddStatValue(
       *device_plane.GetOrCreateStatMetadata("compute_cap_minor"),
       kComputeCapMinor);
-  device_plane.AddStatValue(
-      *device_plane.GetOrCreateStatMetadata("peak_teraflops_per_second"),
-      kDevCapPeakTeraflopsPerSecond);
-  device_plane.AddStatValue(
-      *device_plane.GetOrCreateStatMetadata("peak_hbm_bw_gigabytes_per_second"),
-      kDevCapPeakHbmBwGigabytesPerSecond);
 
   GroupTfEvents(&space);
   OpStatsOptions options;
@@ -338,9 +341,9 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
 TEST(ConvertXPlaneToOpStats, TpuRunEnvironment) {
   XSpace space;
   XPlaneBuilder device_plane1(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4"));
+      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4", 0, 0));
   XPlaneBuilder device_plane2(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/1, "TPU V4"));
+      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/1, "TPU V4", 0, 0));
 
   GroupTfEvents(&space);
   OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
@@ -377,17 +380,10 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  XPlaneBuilder device_plane_builder(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4"));
+  XPlaneBuilder device_plane_builder(GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, "TPU V4", kDevCapPeakTeraflopsPerSecond,
+      kDevCapPeakHbmBwGigabytesPerSecond));
   device_plane_builder.ReserveLines(1);
-  device_plane_builder.AddStatValue(
-      *device_plane_builder.GetOrCreateStatMetadata(
-          "peak_teraflops_per_second"),
-      kDevCapPeakTeraflopsPerSecond);
-  device_plane_builder.AddStatValue(
-      *device_plane_builder.GetOrCreateStatMetadata(
-          "peak_hbm_bw_gigabytes_per_second"),
-      kDevCapPeakHbmBwGigabytesPerSecond);
   device_plane_builder.AddStatValue(
       *device_plane_builder.GetOrCreateStatMetadata("core_count"), kCoreCount);
 
@@ -414,15 +410,9 @@ TEST(ConvertXPlaneToOpStats, TpuDeviceTraceToStepDb) {
   XSpace space;
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
   constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
-  XPlaneBuilder xplane_builder(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4"));
-
-  xplane_builder.AddStatValue(
-      *xplane_builder.GetOrCreateStatMetadata("peak_teraflops_per_second"),
-      kDevCapPeakTeraflopsPerSecond);
-  xplane_builder.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
-                                  "peak_hbm_bw_gigabytes_per_second"),
-                              kDevCapPeakHbmBwGigabytesPerSecond);
+  XPlaneBuilder xplane_builder(GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, "TPU V4", kDevCapPeakTeraflopsPerSecond,
+      kDevCapPeakHbmBwGigabytesPerSecond));
 
   XEventMetadata* event_metadata = xplane_builder.GetOrCreateEventMetadata(1);
   event_metadata->set_name("op_name");
@@ -437,9 +427,9 @@ TEST(ConvertXPlaneToOpStats, TpuDeviceTraceToStepDb) {
   stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
                          GetStatTypeStr(StatType::kSelfDurationPs)),
                      10);
-  stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
-                         GetStatTypeStr(StatType::kTfOpName)),
-                     "tf_op_name");
+  stats.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
+      "tf_op_name");
   stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
                          GetStatTypeStr(StatType::kHloCategory)),
                      "category");

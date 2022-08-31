@@ -20,9 +20,9 @@ limitations under the License.
 
 // Include appropriate platform-dependent implementations
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/tsl/platform/google/cord.h"
+#include "tensorflow/tsl/platform/google/cord.h"  // IWYU pragma: export
 #else
-#include "tensorflow/tsl/platform/default/cord.h"
+#include "tensorflow/tsl/platform/default/cord.h"  // IWYU pragma: export
 #endif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CORD_H_

@@ -34,11 +34,11 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/rocblas.h"
-#include "tensorflow/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
 #if TF_ROCM_VERSION >= 40500
-#include "tensorflow/stream_executor/rocm/hipsolver_wrapper.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/hipsolver_wrapper.h"
 #endif
-#include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocsolver_wrapper.h"
 #endif
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"

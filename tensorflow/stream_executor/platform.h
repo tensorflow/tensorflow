@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Defines types and declares functions for identifying and extracting
-// information about the types of platforms and supporting libraries for which
-// StreamExecutor implementations exist.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_PLATFORM_H_
 #define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_H_
 

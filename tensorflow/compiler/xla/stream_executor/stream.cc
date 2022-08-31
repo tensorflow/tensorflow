@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -124,7 +125,7 @@ std::string ToVlogString(const Eigen::half &h) {
 
 std::string ToVlogString(int i) { return absl::StrCat(i); }
 
-std::string ToVlogString(uint32 i) { return absl::StrCat(i); }
+std::string ToVlogString(uint32_t i) { return absl::StrCat(i); }
 
 std::string ToVlogString(uint64_t i) { return absl::StrCat(i); }
 
@@ -361,7 +362,7 @@ Stream &Stream::ThenBatchNormalizationBackward(
     dnn::ActivationMode activation_mode, DeviceMemory<float> *x_backprop,
     DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
     DeviceMemory<float> *side_input_backprop,
-    DeviceMemory<uint8> *reserve_space_data,
+    DeviceMemory<uint8_t> *reserve_space_data,
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(y_backprop), PARAM(x), PARAM(scale), PARAM(x_desc),
             PARAM(scale_offset_desc), PARAM(epsilon), PARAM(x_backprop),
@@ -416,7 +417,7 @@ Stream &Stream::ThenBatchNormalizationBackward(
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *x_backprop,
     DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
     DeviceMemory<Eigen::half> *side_input_backprop,
-    DeviceMemory<uint8> *reserve_space_data,
+    DeviceMemory<uint8_t> *reserve_space_data,
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(y_backprop), PARAM(x), PARAM(scale), PARAM(x_desc),
             PARAM(scale_offset_desc), PARAM(epsilon), PARAM(x_backprop),
@@ -458,7 +459,7 @@ Stream &Stream::ThenConvolveQuantized(
     const dnn::BatchDescriptor &input_descriptor,
     const DeviceMemory<float> &input_data,
     const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<int8> &filter_coefficients,
+    const DeviceMemory<int8_t> &filter_coefficients,
     const DeviceMemory<float> &coefficient_scales,
     const dnn::ConvolutionDescriptor &convolution_descriptor,
     const dnn::BatchDescriptor &output_descriptor,
@@ -551,7 +552,7 @@ Stream &Stream::ThenMatMul(const DeviceMemory<float> &input_data,
 }
 
 Stream &Stream::ThenMatMulQuantized(
-    const DeviceMemory<float> &input_data, const DeviceMemory<int8> &weights,
+    const DeviceMemory<float> &input_data, const DeviceMemory<int8_t> &weights,
     const DeviceMemory<float> &weight_scales,
     const dnn::BatchDescriptor &input_dimensions,
     const dnn::BatchDescriptor &output_dimensions,
@@ -2019,7 +2020,7 @@ Stream &Stream::ThenMemZero(DeviceMemoryBase *location, uint64_t size) {
   return *this;
 }
 
-Stream &Stream::ThenMemset32(DeviceMemoryBase *location, uint32 pattern,
+Stream &Stream::ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
                              uint64_t size) {
   VLOG_CALL(PARAM(location), PARAM(pattern), PARAM(size));
 
@@ -2157,7 +2158,7 @@ Stream &Stream::ThenRnnBackward(
     DeviceMemory<Eigen::half> *input_h_backprop_data,
     DeviceMemory<Eigen::half> *input_c_backprop_data,
     DeviceMemory<Eigen::half> *params_backprop_data,
-    DeviceMemory<uint8> *reserve_space_data,
+    DeviceMemory<uint8_t> *reserve_space_data,
     ScratchAllocator *workspace_allocator,
     dnn::ProfileResult *output_profile_result) {
   // TODO(zhengxq): add VLOG PARAM calls.
@@ -2202,7 +2203,7 @@ Stream &Stream::ThenRnnBackward(
     DeviceMemory<float> *input_h_backprop_data,
     DeviceMemory<float> *input_c_backprop_data,
     DeviceMemory<float> *params_backprop_data,
-    DeviceMemory<uint8> *reserve_space_data,
+    DeviceMemory<uint8_t> *reserve_space_data,
     ScratchAllocator *workspace_allocator,
     dnn::ProfileResult *output_profile_result) {
   // TODO(zhengxq): add VLOG PARAM calls.
@@ -2248,7 +2249,7 @@ Stream &Stream::ThenRnnBackward(
     DeviceMemory<double> *input_h_backprop_data,
     DeviceMemory<double> *input_c_backprop_data,
     DeviceMemory<double> *params_backprop_data,
-    DeviceMemory<uint8> *reserve_space_data,
+    DeviceMemory<uint8_t> *reserve_space_data,
     ScratchAllocator *workspace_allocator,
     dnn::ProfileResult *output_profile_result) {
   // TODO(zhengxq): add VLOG PARAM calls.
@@ -2281,7 +2282,7 @@ Stream &Stream::ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
                             DeviceMemory<float> *grads_data,
                             ScratchAllocator *workspace_allocator) {
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8> scratch_memory;
+    DeviceMemory<uint8_t> scratch_memory;
     int ctc_loss_algo_id;
     auto status =
         dnn->PrepareForCtcLoss(this, probs_desc, probs_data, grads_desc,

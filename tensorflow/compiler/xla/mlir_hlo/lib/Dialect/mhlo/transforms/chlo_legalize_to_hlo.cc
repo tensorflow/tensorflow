@@ -24,11 +24,9 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_chlo_to_hlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -42,6 +40,8 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "stablehlo/dialect/BroadcastUtils.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 namespace chlo {

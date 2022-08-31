@@ -16,12 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_NET_H_
 #define TENSORFLOW_CORE_PLATFORM_NET_H_
 
-namespace tensorflow {
-namespace internal {
-
-int PickUnusedPortOrDie();
-
-}  // namespace internal
-}  // namespace tensorflow
+#include "tensorflow/tsl/platform/net.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_NET_H_

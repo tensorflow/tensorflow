@@ -145,16 +145,26 @@ Status ReadVariableHelper(const OpConverterParams* params,
 
 class ConvertVariableV2 : public OpConverterBase<ConvertVariableV2> {
  public:
-  ConvertVariableV2(OpConverterParams* params)
+  ConvertVariableV2(const OpConverterParams* params)
       : OpConverterBase<ConvertVariableV2>(params) {}
 
   static constexpr std::array<InputArgSpec, 0> InputSpec() { return {}; }
 
-  static constexpr std::array<DataType, 2> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF};
-  }
-
   static constexpr const char* NodeDefDataTypeAttributeName() {
+    /*
+    node {
+      name: "..."
+      op: "VariableV2"
+      ...
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      ...
+    }
+    */
     return "dtype";
   }
 
@@ -247,15 +257,11 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(MakeConverterFunction<ConvertVariableV2>(),
 
 class ConvertReadVariableOp : public OpConverterBase<ConvertReadVariableOp> {
  public:
-  ConvertReadVariableOp(OpConverterParams* params)
+  ConvertReadVariableOp(const OpConverterParams* params)
       : OpConverterBase<ConvertReadVariableOp>(params) {}
 
   static constexpr std::array<InputArgSpec, 1> InputSpec() {
     return {InputArgSpec::Create("resource", TrtInputArg::kResource)};
-  }
-
-  static constexpr std::array<DataType, 2> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF};
   }
 
   static constexpr const char* NodeDefDataTypeAttributeName() {

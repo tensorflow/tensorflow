@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Declares the HostExecutor class, which is a CPU-only implementation of
-// the StreamExecutor interface. For now, this is used for testing and to
-// examine the performance of host-based StreamExecutor code.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_GPU_EXECUTOR_H_
 #define TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_GPU_EXECUTOR_H_
 

@@ -1,18 +1,4 @@
-// Copyright 2022 The TensorFlow Runtime Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// RUN: tf-quant-opt %s -quant-add-main-function -allow-unregistered-dialect -mlir-disable-threading | FileCheck %s
+// RUN: tf-quant-opt %s -quant-add-main-function -allow-unregistered-dialect -mlir-disable-threading -split-input-file | FileCheck %s
 
 // CHECK-LABEL: module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantics, tfl.description = "MLIR Converted.", tfl.schema_version = 3 : i32}  {
 module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantics, tfl.description = "MLIR Converted.", tfl.schema_version = 3 : i32}  {
@@ -50,4 +36,53 @@ module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantic
 // CHECK:   %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg2, %arg3) {config = "", config_proto = "", executor_type = "", f = @mul2} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
 // CHECK:   return %[[PARTITIONEDCALL_0]], %[[PARTITIONEDCALL_1]] : tensor<1xf32>, tensor<1xf32>
 // CHECK: }
+}
+
+// -----
+
+// Test a case where there is an exported function not labeled tf.entry_function.
+// CHECK-LABEL: module attributes {tf.versions = {producer = 1132 : i32}, tf_saved_model.semantics, tfl.description = "MLIR Converted.", tfl.schema_version = 3 : i32} {
+module attributes {tf.versions = {producer = 1132 : i32}, tf_saved_model.semantics, tfl.description = "MLIR Converted.", tfl.schema_version = 3 : i32} {
+  "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
+  "tf_saved_model.asset"() {filename = "assets/mydata.txt", sym_name = "__tf_saved_model_asset0_mydata.txt"} : () -> ()
+// Session initializer ops and asset ops untouched.
+// CHECK: "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
+// CHECK: "tf_saved_model.asset"() {filename = "assets/mydata.txt", sym_name = "__tf_saved_model_asset0_mydata.txt"} : () -> ()
+
+  func.func @NoOp(%arg0: tensor<!tf_type.string> {tf_saved_model.bound_input = @__tf_saved_model_asset0_mydata.txt}) attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"]} {
+    %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
+    "tf.InitializeTableFromTextFileV2"(%0, %arg0) {delimiter = "\09", device = "", key_index = -2 : i64, offset = 0 : i64, value_index = -1 : i64, vocab_size = 437 : i64} : (tensor<!tf_type.resource>, tensor<!tf_type.string>) -> ()
+    func.return
+  }
+// Initializer function untouched.
+// CHECK: func.func @NoOp(%[[ARG0:.*]]: tensor<!tf_type.string> {tf_saved_model.bound_input = @__tf_saved_model_asset0_mydata.txt})
+// CHECK-SAME: {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"]}
+// CHECK: %[[HASH_TABLE0:.*]] = "tf.HashTableV2"()
+// CHECK: "tf.InitializeTableFromTextFileV2"(%[[HASH_TABLE0]], %[[ARG0]])
+// CHECK: return
+
+  func.func @add(%arg0: tensor<1xf32> {tf_saved_model.index_path = ["x"]}, %arg1: tensor<1xf32> {tf_saved_model.index_path = ["y"]}) -> (tensor<1xf32> {tf_saved_model.index_path = ["out_0"]}) attributes {tf.entry_function = {inputs = "add_x:0,add_y:0", outputs = "add:0"}, tf_saved_model.exported_names = ["add"]} {
+    %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+    func.return %0 : tensor<1xf32>
+  }
+// The previously exported function should now be private.
+// CHECK: func.func private @add
+// CHECK-NOT: tf_saved_model.exported_names
+// Other attributes should be left untouched.
+// CHECK-SAME: attributes {tf.entry_function = {inputs = "add_x:0,add_y:0", outputs = "add:0"}}
+
+// Test the newly created "main" function.
+// CHECK: func.func @main(%[[ARG0:.*]]: tensor<1xf32> {tf_saved_model.index_path = ["add_x:0"]}, %[[ARG1:.*]]: tensor<1xf32> {tf_saved_model.index_path = ["add_y:0"]})
+// CHECK-SAME: -> (tensor<1xf32> {tf_saved_model.index_path = ["add:0"]})
+// Check attributes of the main function.
+// CHECK-SAME: tf.entry_function = {inputs = "add_x:0,add_y:0", outputs = "add:0"}
+// CHECK-SAME: tf_saved_model.exported_names = ["main"]
+
+// Check that the function call to @add exists and not to @NoOp.
+// CHECK: %[[CALL0:.*]] = "tf.PartitionedCall"(%[[ARG0]], %[[ARG1]]) {
+// CHECK-NOT: f = @NoOp
+// CHECK-SAME: f = @add
+// CHECK-SAME: }
+// CHECK-SAME: : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+// CHECK: return %[[CALL0]] : tensor<1xf32>
 }

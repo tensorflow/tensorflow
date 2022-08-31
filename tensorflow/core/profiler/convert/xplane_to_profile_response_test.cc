@@ -94,7 +94,9 @@ TEST(ConvertXPlaneToProfileResponse, ExtractTpuMxuUtilizationFromXSpace) {
   constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
 
   XSpace xspace;
-  XPlaneBuilder devicePlane(GetOrCreateTpuXPlane(&xspace, 0, "TPU V4"));
+  XPlaneBuilder devicePlane(
+      GetOrCreateTpuXPlane(&xspace, 0, "TPU V4", kDevCapPeakTeraflopsPerSecond,
+                           kDevCapPeakHbmBwGigabytesPerSecond));
   auto xplane = FindOrAddMutablePlaneWithName(&xspace, kHostThreadsPlaneName);
   XPlaneBuilder xplaneBuilder(xplane);
   xplaneBuilder.ReserveLines(1);
@@ -102,12 +104,6 @@ TEST(ConvertXPlaneToProfileResponse, ExtractTpuMxuUtilizationFromXSpace) {
       *xplaneBuilder.GetOrCreateStatMetadata(
           GetStatTypeStr(StatType::kMatrixUnitUtilizationPercent)),
       20.0);
-  devicePlane.AddStatValue(*devicePlane.GetOrCreateStatMetadata(GetStatTypeStr(
-                               StatType::kDevCapPeakTeraflopsPerSecond)),
-                           kDevCapPeakTeraflopsPerSecond);
-  devicePlane.AddStatValue(*devicePlane.GetOrCreateStatMetadata(GetStatTypeStr(
-                               StatType::kDevCapPeakHbmBwGigabytesPerSecond)),
-                           kDevCapPeakHbmBwGigabytesPerSecond);
   devicePlane.AddStatValue(*devicePlane.GetOrCreateStatMetadata(
                                GetStatTypeStr(StatType::kDevCapCoreCount)),
                            80);

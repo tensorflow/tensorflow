@@ -50,9 +50,9 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/core/kernels/matmul_util.h"
-#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
-#include "tensorflow/stream_executor/host_or_device_scalar.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -624,13 +624,14 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                            adj_x || trans_x ? m : k, c_ptrs[0], n,
                            se::blas::kDefaultComputePrecision));
       } else if (use_strided_batched) {
-        OP_REQUIRES_OK(context, stream->ThenBlasGemmStridedBatched(
-                                    blas_transpose_b, blas_transpose_a, n, m, k,
-                                    static_cast<Coefficient>(1.0), *b_ptrs[0],
-                                    adj_y || trans_y ? k : n, b_stride,
-                                    *a_ptrs[0], adj_x || trans_x ? m : k,
-                                    a_stride, static_cast<Coefficient>(0.0),
-                                    c_ptrs[0], n, c_stride, batch_size));
+        OP_REQUIRES_OK(
+            context, stream->ThenBlasGemmStridedBatched(
+                         blas_transpose_b, blas_transpose_a, n, m, k,
+                         static_cast<Coefficient>(1.0), *b_ptrs[0],
+                         adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
+                         adj_x || trans_x ? m : k, a_stride,
+                         static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
+                         batch_size, se::blas::kDefaultComputePrecision));
       } else {
         BlasScratchAllocator scratch_allocator(context);
         bool blas_launch_status =

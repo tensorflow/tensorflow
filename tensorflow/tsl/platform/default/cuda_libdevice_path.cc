@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 
 #include <stdlib.h>
+
 #include <vector>
+
+#include "tensorflow/core/platform/platform.h"
 
 #if !defined(PLATFORM_GOOGLE)
 #include "third_party/gpus/cuda/cuda_config.h"

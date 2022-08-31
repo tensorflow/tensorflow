@@ -496,7 +496,7 @@ def _create_dummy_repository(repository_ctx):
     repository_ctx.file("rocm/hip/include/hip/hip_runtime.h", "")
 
     # Set up rocm_config.h, which is used by
-    # tensorflow/stream_executor/dso_loader.cc.
+    # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
     _tpl(
         repository_ctx,
         "rocm:rocm_config.h",
@@ -757,7 +757,7 @@ def _create_local_rocm_repository(repository_ctx):
     )
 
     # Set up rocm_config.h, which is used by
-    # tensorflow/stream_executor/dso_loader.cc.
+    # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
     repository_ctx.template(
         "rocm/rocm/rocm_config.h",
         tpl_paths["rocm:rocm_config.h"],

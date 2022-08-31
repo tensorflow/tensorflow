@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_WIDE_CHAR_H_
-#define TENSORFLOW_CORE_PLATFORM_WINDOWS_WIDE_CHAR_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_WINDOWS_WIDE_CHAR_H_
+#define TENSORFLOW_TSL_PLATFORM_WINDOWS_WIDE_CHAR_H_
 
 #include <string>
 
@@ -26,4 +26,4 @@ std::string WideCharToUtf8(const std::wstring& wstr);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_WINDOWS_WIDE_CHAR_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_WINDOWS_WIDE_CHAR_H_

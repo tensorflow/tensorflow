@@ -25,6 +25,9 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -33,10 +36,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_embedding_configuration_proto_rewrite.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
-
 
 using tensorflow::tpu::TPUEmbeddingConfiguration;
 using tensorflow::tpu::TpuEmbeddingShapeUtil;

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DEVICE_MEMORY_ALLOCATOR_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DEVICE_MEMORY_ALLOCATOR_H_
 
+#include <cstdint>
 #include <map>
 #include <vector>
 
@@ -151,7 +152,7 @@ class ScopedDeviceMemory {
 };
 
 // Type alias for compatibility with the previous managed memory implementation.
-using OwningDeviceMemory = ScopedDeviceMemory<uint8>;
+using OwningDeviceMemory = ScopedDeviceMemory<uint8_t>;
 
 // Memory allocator interface for the device.
 //

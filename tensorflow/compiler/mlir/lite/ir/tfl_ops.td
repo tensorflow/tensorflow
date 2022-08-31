@@ -602,7 +602,7 @@ retained with length 1.
     TFL_BoolTensor:$input,
     TFL_I32Tensor:$reduction_indices,
 
-    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
@@ -629,7 +629,7 @@ retained with length 1.
     TFL_BoolTensor:$input,
     TFL_I32Tensor:$reduction_indices,
 
-    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
@@ -968,8 +968,8 @@ def TFL_CumsumOp: TFL_Op<"cumsum", [
   let arguments = (
     ins TFL_TensorOf<[F32, I32, I64]>:$input,
     TFL_I32Tensor:$axis,
-    DefaultValuedAttr<BoolAttr, "false">:$exclusive,
-    DefaultValuedAttr<BoolAttr, "false">:$reverse
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$exclusive,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$reverse
   );
 
   let results = (outs TFL_TensorOf<[F32, I32, I64]>:$output);
@@ -1094,8 +1094,8 @@ in the batch dimensions and broadcasting.
   let arguments = (ins
     TFL_TensorOf<[F32, QI8, QI16, I8]>:$x,
     TFL_TensorOf<[F32, QI8, QI16, I8]>:$y,
-    DefaultValuedAttr<BoolAttr, "false">:$adj_x,
-    DefaultValuedAttr<BoolAttr, "false">:$adj_y,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y,
     // Used in post-training dynamic range quantization. If the value is true,
     // input activations are asymmetrically quantized.
     OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
@@ -1134,7 +1134,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
     TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
     TFL_TensorOf<[I32, I64]>:$indices,
     I32Attr:$axis,
-    DefaultValuedAttr<I32Attr, "0">:$batch_dims
+    DefaultValuedOptionalAttr<I32Attr, "0">:$batch_dims
   );
 
   let builders =
@@ -1721,7 +1721,7 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 
   let arguments = (ins
     AnyTensor:$input,
-    ConfinedAttr<DefaultValuedAttr<I64ArrayAttr, "{}">, [TFL_ArrayMaxCount<8>]>:$squeeze_dims
+    ConfinedAttr<DefaultValuedOptionalAttr<I64ArrayAttr, "{}">, [TFL_ArrayMaxCount<8>]>:$squeeze_dims
   );
 
   let results = (outs
@@ -3648,7 +3648,7 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
     TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8, QI16]>:$input,
     TFL_I32Tensor:$size,
     BoolAttr:$align_corners,
-    DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$half_pixel_centers
   );
 
   let results = (outs
@@ -3676,7 +3676,7 @@ def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
     TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8, QI16]>:$input,
     TFL_I32Tensor:$size,
     BoolAttr:$align_corners,
-    DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$half_pixel_centers
   );
 
   let results = (outs
@@ -3890,7 +3890,7 @@ def TFL_GeluOp: TFL_Op<"gelu", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, QI8, QUI8]>:$input,
-    DefaultValuedAttr<BoolAttr, "false">:$approximate
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$approximate
   );
 
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
@@ -4142,11 +4142,11 @@ def TFL_BasicLSTMOp : TFL_Op<"basic_lstm", [NoSideEffect,
 
     // Attributes
     DefaultValuedStrAttr<TFL_AFAttr, "TANH">:$fused_activation_function,
-    ConfinedAttr<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
-    ConfinedAttr<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the BASIC kernel only, constrain it.
     ConfinedAttr<
-      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "mlir::TFL::LSTMKernelType::BASIC">,
+      DefaultValuedOptionalAttr<TFL_LSTMKernelTypeAttr, "mlir::TFL::LSTMKernelType::BASIC">,
       [TFL_LSTMKernelTypeEqualsTo<"mlir::TFL::LSTMKernelType::BASIC">]>:$kernel_type
   );
 
@@ -4248,11 +4248,11 @@ Ba et al. 'Layer Normalization'
 
     // Attributes
     TFL_AFAttr:$fused_activation_function,
-    ConfinedAttr<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
-    ConfinedAttr<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the FULL kernel only, constrain it.
     ConfinedAttr<
-      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "mlir::TFL::LSTMKernelType::FULL">,
+      DefaultValuedOptionalAttr<TFL_LSTMKernelTypeAttr, "mlir::TFL::LSTMKernelType::FULL">,
       [TFL_LSTMKernelTypeEqualsTo<"mlir::TFL::LSTMKernelType::FULL">]>:$kernel_type,
     // Used in post-training dynamic range quantization. If the value is true,
     // input activations are asymmetrically quantized.
@@ -4385,8 +4385,8 @@ def TFL_UnidirectionalSequenceLSTMOp :
 
     // Attributes
     TFL_AFAttr:$fused_activation_function,
-    ConfinedAttr<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
-    ConfinedAttr<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$time_major,
     // Used in post-training dynamic range quantization. If the value is true,
     // input activations are asymmetrically quantized.
@@ -4593,8 +4593,8 @@ def TFL_BidirectionalSequenceLSTMOp :
 
     // Attributes
     TFL_AFAttr:$fused_activation_function,
-    ConfinedAttr<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
-    ConfinedAttr<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    ConfinedAttr<DefaultValuedOptionalAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$merge_outputs,
     BoolAttr:$time_major,
     // Used in post-training dynamic range quantization. If the value is true,
@@ -4737,8 +4737,8 @@ def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
     TFL_TensorOf<[F32]>:$ref,
 
     // Attributes
-    DefaultValuedAttr<F32Attr, "0.1">:$tolerance,
-    DefaultValuedAttr<BoolAttr, "false">:$log_if_failed
+    DefaultValuedOptionalAttr<F32Attr, "0.1">:$tolerance,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$log_if_failed
   );
 
   let results = (outs TFL_FpTensor:$output);
@@ -5058,7 +5058,7 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
-    DefaultValuedAttr<BoolAttr, "false">:$is_stateless
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stateless
   );
   let results = (outs Variadic<AnyTensor>:$output);
 
@@ -5560,8 +5560,8 @@ lower bound 0 is included in the range, while the upper bound 1 is excluded.
 
   let arguments = (ins
     TFL_I32Tensor:$shape,
-    DefaultValuedAttr<I64Attr, "0">:$seed,
-    DefaultValuedAttr<I64Attr, "0">:$seed2
+    DefaultValuedOptionalAttr<I64Attr, "0">:$seed,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$seed2
   );
 
    let results = (outs
@@ -5579,8 +5579,8 @@ The generated values will have mean 0 and standard deviation 1.
 
   let arguments = (ins
     TFL_I32Tensor:$shape,
-    DefaultValuedAttr<I64Attr, "0">:$seed,
-    DefaultValuedAttr<I64Attr, "0">:$seed2
+    DefaultValuedOptionalAttr<I64Attr, "0">:$seed,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$seed2
   );
 
   let results = (outs
@@ -5600,8 +5600,8 @@ or unnormalized log-probabilities provided for all classes.
   let arguments = (ins
     TFL_FpTensor:$logits,
     TFL_I32Tensor:$num_samples,
-    DefaultValuedAttr<I64Attr, "0">:$seed,
-    DefaultValuedAttr<I64Attr, "0">:$seed2
+    DefaultValuedOptionalAttr<I64Attr, "0">:$seed,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$seed2
   );
 
   let results = (outs

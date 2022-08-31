@@ -4,7 +4,7 @@
 load("//tensorflow:tensorflow.bzl", "check_deps", "tf_cc_test", "tf_copts", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
-    "//tensorflow/stream_executor:build_defs.bzl",
+    "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
     "tf_additional_cuda_driver_deps",
     "tf_additional_cuda_platform_deps",
@@ -631,8 +631,10 @@ cc_library(
     name = "cuda_asm_compiler",
     srcs = if_cuda_is_configured(["cuda_asm_compiler.cc"]),
     deps = if_cuda_is_configured([
+        "@com_google_absl//absl/base:core_headers",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
+        "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_diagnostics_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
     ]),
 )

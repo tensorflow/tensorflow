@@ -177,7 +177,7 @@ SE_DeviceOptions* TpuExecutor_NewDeviceOptions(unsigned flags);
 void TpuExecutor_FreeDeviceOptions(SE_DeviceOptions* options);
 
 bool TpuExecutor_HostCallback(SE_StreamExecutor* executor, SE_Stream* stream,
-                              SE_StatusCallbackFn callback_fn, void* ctx);
+                              SE_StatusCallback callback_fn, void* ctx);
 
 XLA_TransferManager* TpuTransferManager_New();
 void TpuTransferManager_Free(XLA_TransferManager* manager);

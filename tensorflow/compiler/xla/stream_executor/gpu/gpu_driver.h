@@ -20,6 +20,8 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
+
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
@@ -311,14 +313,14 @@ class GpuDriver {
   // Performs a synchronous memset of the device memory segment via cuMemsetD8.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g6e582bf866e9e2fb014297bfaf354d7b
   static port::Status SynchronousMemsetUint8(GpuContext* context,
-                                             GpuDevicePtr location, uint8 value,
-                                             size_t size);
+                                             GpuDevicePtr location,
+                                             uint8_t value, size_t size);
 
   // Performs a synchronous memset of the device memory segment via cuMemsetD32.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g983e8d8759acd1b64326317481fbf132
   static port::Status SynchronousMemsetUint32(GpuContext* context,
                                               GpuDevicePtr location,
-                                              uint32 value,
+                                              uint32_t value,
                                               size_t uint32_count);
 
   // Performs an asynchronous memset of the device memory segment via
@@ -326,7 +328,8 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gaef08a7ccd61112f94e82f2b30d43627
   static port::Status AsynchronousMemsetUint8(GpuContext* context,
                                               GpuDevicePtr location,
-                                              uint8 value, size_t uint32_count,
+                                              uint8_t value,
+                                              size_t uint32_count,
                                               GpuStreamHandle stream);
 
   // Performs an asynchronous memset of the device memory segment via
@@ -334,7 +337,7 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g58229da5d30f1c0cdf667b320ec2c0f5
   static port::Status AsynchronousMemsetUint32(GpuContext* context,
                                                GpuDevicePtr location,
-                                               uint32 value,
+                                               uint32_t value,
                                                size_t uint32_count,
                                                GpuStreamHandle stream);
 

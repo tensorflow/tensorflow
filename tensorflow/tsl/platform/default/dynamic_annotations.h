@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_DYNAMIC_ANNOTATIONS_H_
-#define TENSORFLOW_CORE_PLATFORM_DEFAULT_DYNAMIC_ANNOTATIONS_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_DYNAMIC_ANNOTATIONS_H_
+#define TENSORFLOW_TSL_PLATFORM_DEFAULT_DYNAMIC_ANNOTATIONS_H_
 
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/mem.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/mem.h
@@ -31,4 +31,4 @@ limitations under the License.
 
 #define TF_ATTRIBUTE_NO_SANITIZE_MEMORY
 
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_DYNAMIC_ANNOTATIONS_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_DYNAMIC_ANNOTATIONS_H_

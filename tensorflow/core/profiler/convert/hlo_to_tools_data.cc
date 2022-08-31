@@ -17,19 +17,17 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/hlo_proto_to_graph_view.h"
 #include "tensorflow/core/profiler/convert/hlo_proto_to_memory_visualization_utils.h"
+#include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
 
@@ -59,7 +57,7 @@ StatusOr<std::string> ConvertHloProtoToMemoryViewer(
       result_or.value(), &json_output, options);
   if (!encoded_status.ok()) {
     const auto& error_message = encoded_status.message();
-    return errors::InvalidArgument(
+    return errors::Internal(
         "Failed to convert memory viewer result to JSON format: ",
         absl::string_view(error_message.data(), error_message.length()));
   }
@@ -84,12 +82,8 @@ StatusOr<std::string> ConvertHloProtoToGraphViewer(
 }  // namespace
 
 StatusOr<std::string> ConvertHloProtoToToolData(
-    const std::vector<std::string>& xspace_paths,
-    const absl::string_view tool_name, const ToolOptions& options) {
-  if (xspace_paths.empty()) {
-    return std::string();
-  }
-
+    const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
+    const ToolOptions& options) {
   // <options> must provide a hlo_module_name field to identify the HLO module.
   std::optional<std::string> hlo_module_name =
       GetParam<std::string>(options, "hlo_module_name");
@@ -99,12 +93,9 @@ StatusOr<std::string> ConvertHloProtoToToolData(
   }
 
   // Load HLO module from file.
-  absl::string_view base_dir = tensorflow::io::Dirname(xspace_paths[0]);
-  std::string hlo_proto_file_name =
-      GetHloProtoFileName(base_dir, *hlo_module_name);
-  xla::HloProto hlo_proto;
-  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(
-      tensorflow::Env::Default(), hlo_proto_file_name, &hlo_proto));
+  TF_ASSIGN_OR_RETURN(
+      xla::HloProto hlo_proto,
+      GetHloProtoByModuleName(session_snapshot, *hlo_module_name));
 
   // Convert from HLO proto to tools data.
   if (tool_name == "memory_viewer") {

@@ -361,13 +361,18 @@ void BreakUpIslands::BreakUpIsland(
   for (Value out : island_op.outputs()) {
     for (auto& use : out.getUses()) {
       Operation* owner = use.getOwner();
-      if (auto other_island_op =
-              llvm::dyn_cast<tf_executor::IslandOp>(owner->getParentOp())) {
-        (*new_control_inputs)[other_island_op].push_back(sink_island_control);
-      } else if (owner->getDialect() == island_op->getDialect() &&
-                 !llvm::isa<tf_executor::GraphOp, tf_executor::YieldOp,
-                            tf_executor::NextIterationSourceOp>(owner)) {
+      if (owner->getDialect() == island_op->getDialect() &&
+          !llvm::isa<tf_executor::GraphOp, tf_executor::YieldOp,
+                     tf_executor::NextIterationSourceOp>(owner)) {
         (*new_control_inputs)[owner].push_back(sink_island_control);
+        // Note that we cannot assume that the island containing `owner` is a
+        // direct parent:
+        // For example, ops with regions usually don't expose values used in a
+        // region to the op's interface which means that the usage of a value
+        // can be 2 or more levels below an island (see b/242920486).
+      } else if (auto other_island_op =
+                     owner->getParentOfType<tf_executor::IslandOp>()) {
+        (*new_control_inputs)[other_island_op].push_back(sink_island_control);
       } else {
         owner->emitOpError("adding control dependency not supported");
         return signalPassFailure();

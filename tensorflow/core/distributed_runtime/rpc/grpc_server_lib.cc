@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 
+#include <algorithm>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -207,6 +208,14 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   }
   worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
   master_env_.local_devices = worker_env_.device_mgr->ListDevices();
+
+  int num_tasks = 0;
+  for (auto& job : server_def_.cluster().job()) {
+    num_tasks += job.tasks_size();
+  }
+  master_env_.experimental_num_shards = std::max(1, num_tasks);
+  worker_env_.experimental_num_shards = master_env_.experimental_num_shards;
+
   worker_env_.rendezvous_mgr = opts.rendezvous_mgr_func == nullptr
                                    ? new RpcRendezvousMgr(&worker_env_)
                                    : opts.rendezvous_mgr_func(&worker_env_);

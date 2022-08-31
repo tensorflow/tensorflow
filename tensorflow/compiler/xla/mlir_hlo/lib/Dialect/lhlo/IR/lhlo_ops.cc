@@ -79,7 +79,7 @@ Attribute LmhloDialect::parseAttribute(DialectAsmParser& parser,
   StringRef attrTag;
   Attribute attr;
   auto parseResult = generatedAttributeParser(parser, &attrTag, type, attr);
-  if (parseResult.hasValue()) return attr;
+  if (parseResult.has_value()) return attr;
   parser.emitError(parser.getNameLoc(), "unknown mhlo attribute");
   return Attribute();
 }

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_LITERAL_H_
 
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
@@ -27,6 +28,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -771,7 +773,7 @@ class LiteralBase {
 // Abstract base class representing a mutable literal in XLA.
 class MutableLiteralBase : public LiteralBase {
  public:
-  virtual ~MutableLiteralBase() = 0;
+  ~MutableLiteralBase() override = 0;
 
   // Returns a Span view of the array for this literal for the
   // given NativeT (e.g., float). CHECKs if the subshape of the literal at the
@@ -1057,7 +1059,7 @@ class Literal : public MutableLiteralBase {
   // Create a literal of the given shape. The literal is allocated sufficient
   // memory to hold the shape. Memory is uninitialized.
   explicit Literal(const Shape& shape);
-  virtual ~Literal();
+  ~Literal() override;
 
   // Literals are moveable, but not copyable. To copy a literal use
   // Literal::Clone or Literal::CloneToUnique. This prevents inadvertent copies
@@ -1079,7 +1081,10 @@ class Literal : public MutableLiteralBase {
   // deallocated, and the respective buffers are replaced with those in
   // src_literal. Upon return, src_literal is set to a nil shape (empty tuple).
   virtual Status MoveFrom(Literal&& src_literal,
-                          const ShapeIndex& dest_shape_index = {});
+                          const ShapeIndex& dest_shape_index);
+  Status MoveFrom(Literal&& src_literal) {
+    return MoveFrom(std::move(src_literal), /*dest_shape_index=*/{});
+  }
 
   // Returns a vector containing the tuple elements of this Literal as separate
   // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
@@ -1117,7 +1122,7 @@ class Literal : public MutableLiteralBase {
 // others. The shape is not owned by this class and not mutable.
 class MutableBorrowingLiteral : public MutableLiteralBase {
  public:
-  virtual ~MutableBorrowingLiteral();
+  ~MutableBorrowingLiteral() override;
 
   MutableBorrowingLiteral() : MutableLiteralBase() {}
 
@@ -1125,6 +1130,7 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   MutableBorrowingLiteral& operator=(const MutableBorrowingLiteral& literal);
 
   // Implicit conversion constructors.
+  // NOLINTNEXTLINE(google-explicit-constructor)
   MutableBorrowingLiteral(MutableLiteralBase* literal);
   MutableBorrowingLiteral(MutableBorrowingLiteral literal,
                           const ShapeIndex& view_root);
@@ -1151,6 +1157,7 @@ class LiteralSlice : public LiteralBase {
   LiteralSlice() : LiteralBase() {}
 
   // Implicit conversion constructors.
+  // NOLINTNEXTLINE(google-explicit-constructor)
   LiteralSlice(const LiteralBase& literal);
   LiteralSlice(const LiteralBase& literal, const ShapeIndex& view_root);
 
@@ -1311,7 +1318,11 @@ template <typename NativeT>
 inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
-  CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
+  if (shape().is_static()) {
+    CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
+  } else {
+    CHECK_EQ(GetDynamicSize(0), values.size());
+  }
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
   auto data_span = data<NativeT>();
@@ -1326,10 +1337,17 @@ void MutableLiteralBase::PopulateR2(
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
 
-  const int64_t dim0_size = values.size();
-  const int64_t dim1_size = values.begin()->size();
-  CHECK_EQ(dim0_size, shape().dimensions(0));
-  CHECK_EQ(dim1_size, shape().dimensions(1));
+  const int64_t values_dim0_size = values.size();
+  const int64_t values_dim1_size = values.begin()->size();
+  const int64_t literal_dim0_size = shape().is_dynamic_dimension(0)
+                                        ? GetDynamicSize(0)
+                                        : shape().dimensions(0);
+  const int64_t literal_dim1_size = shape().is_dynamic_dimension(1)
+                                        ? GetDynamicSize(1)
+                                        : shape().dimensions(1);
+
+  CHECK_EQ(values_dim0_size, literal_dim0_size);
+  CHECK_EQ(values_dim1_size, literal_dim1_size);
 
   int64_t dim0 = 0;
   for (auto inner_list : values) {
@@ -1338,7 +1356,7 @@ void MutableLiteralBase::PopulateR2(
       Set({dim0, dim1}, value);
       ++dim1;
     }
-    CHECK_EQ(dim1_size, dim1);
+    CHECK_EQ(values_dim1_size, dim1);
     ++dim0;
   }
 }
@@ -1350,7 +1368,10 @@ void MutableLiteralBase::PopulateFromArray(const Array<NativeT>& values) {
            primitive_util::NativeToPrimitiveType<NativeT>());
   CHECK_EQ(shape().rank(), values.num_dimensions());
   for (int dim = 0; dim < values.num_dimensions(); ++dim) {
-    CHECK_EQ(values.dim(dim), shape().dimensions(dim));
+    int64_t shape_size = shape().is_dynamic_dimension(dim)
+                             ? GetDynamicSize(dim)
+                             : shape().dimensions(dim);
+    CHECK_EQ(values.dim(dim), shape_size);
   }
   values.Each([this](absl::Span<const int64_t> indices, NativeT value) {
     this->Set(indices, value);

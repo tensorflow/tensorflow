@@ -65,7 +65,7 @@ func.func @dynamicBroadcastCompare(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>)
   // CHECK: shape.assuming_yield %[[RESULT]]
   // CHECK-NEXT: }
   // CHECK: return %[[FINAL_RESULT]] : tensor<?x?xi1>
-  %0 = chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xi1>
+  %0 = chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xi1>
   func.return %0 : tensor<?x?xi1>
 }
 
@@ -204,7 +204,7 @@ func.func @atan2WithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> 
 // CHECK-LABEL: @compareWithoutBroadcast
 func.func @compareWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xi1> {
   // CHECK: mhlo.compare EQ, %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
-  %0 = chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+  %0 = chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
   func.return %0 : tensor<4xi1>
 }
 

@@ -25,12 +25,20 @@ class DummyInstruction : public HloInstruction {
  public:
   DummyInstruction()
       : HloInstruction(HloOpcode::kConstant, ShapeUtil::MakeShape(F32, {})) {}
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kConstant;
+  }
 };
 
 class AnotherDummyInstruction : public HloInstruction {
  public:
   AnotherDummyInstruction()
       : HloInstruction(HloOpcode::kParameter, ShapeUtil::MakeShape(F32, {})) {}
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kParameter;
+  }
 };
 
 TEST(HloCastingUtilsTest, CastSucceeds) {

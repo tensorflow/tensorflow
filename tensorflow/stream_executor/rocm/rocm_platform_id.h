@@ -16,19 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_PLATFORM_ID_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_PLATFORM_ID_H_
 
-#include "tensorflow/stream_executor/platform.h"
-
-namespace stream_executor {
-namespace rocm {
-
-// Opaque and unique identifier for the ROCm platform.
-// This is needed so that plugins can refer to/identify this platform without
-// instantiating a ROCmPlatform object.
-// This is broken out here to avoid a circular dependency between ROCmPlatform
-// and ROCmExecutor.
-extern const Platform::Id kROCmPlatformId;
-
-}  // namespace rocm
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_PLATFORM_ID_H_

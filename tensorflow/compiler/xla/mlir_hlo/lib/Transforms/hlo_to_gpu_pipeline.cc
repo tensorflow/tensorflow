@@ -16,6 +16,7 @@ limitations under the License.
 /// This files contains a pipeline which converts HLO operations to GPU kernels
 /// written in a combination of LLVM and NVVM dialects.
 
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir-hlo/Transforms/passes.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
+#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/Transforms/Passes.h"
@@ -43,20 +45,40 @@ using ::mlir::gpu::GPUModuleOp;
 void mlir::createHloToGpuPipeline(OpPassManager &pm,
                                   ArrayRef<int64_t> tileSizes,
                                   ArrayRef<int64_t> unrollFactors) {
+  pm.addNestedPass<FuncOp>(hlo::createUnbufferizePass());
+
   // HLO -> Loops
   pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
-  pm.addNestedPass<FuncOp>(createLinalgElementwiseOpFusionPass());
+  SmallVector<SmallVector<int64_t>> tilingSizes = {
+      SmallVector<int64_t>(tileSizes.begin(), tileSizes.end()),
+      SmallVector<int64_t>(unrollFactors.begin(), unrollFactors.end()),
+      // Force the innermost ploop to be a point to avoid temp alloc()s.
+      // TODO(csigg): vectorize instead.
+      SmallVector<int64_t>(tileSizes.size(), 1)};
+
+  pm.addNestedPass<FuncOp>(gml_st::createDeprecatedTilingPass(tilingSizes));
+  pm.addNestedPass<FuncOp>(gml_st::createDeprecatedFusionPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  pm.addNestedPass<FuncOp>(gml_st::createComposeSetOpsPass());
+
+  // Bufferization-related passes.
   pm.addNestedPass<FuncOp>(createLinalgInitTensorToAllocTensorPass());
-  pm.addPass(createComputeOpAndFuncBufferizePass());
-  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
-  pm.addNestedPass<FuncOp>(createConvertLinalgToParallelLoopsPass());
+  pm.addPass(hlo::createOneShotBufferizePass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
   pm.addNestedPass<FuncOp>(bufferization::createBufferDeallocationPass());
+
+  // Convert Linalg + GmlSt to SCF loops.
+  pm.addNestedPass<FuncOp>(createConvertLinalgToLoopsPass());
+  pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass());
+  pm.addNestedPass<FuncOp>(gml_st::createGmlStToScfPass());
+
   // Loops -> GPU
-  pm.addNestedPass<FuncOp>(createCollapseParallelLoopsTo1DPass());
-  pm.addNestedPass<FuncOp>(createTileLoopsPass(tileSizes, unrollFactors));
   pm.addNestedPass<FuncOp>(createGpuMapParallelLoopsPass());
   pm.addNestedPass<FuncOp>(createLoopInvariantCodeMotionPass());
   pm.addNestedPass<FuncOp>(createParallelLoopToGpuPass());
+  pm.addNestedPass<FuncOp>(arith::createArithmeticExpandOpsPass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addPass(createGpuLauchSinkIndexComputationsPass());
   constexpr llvm::StringRef kGpuDataLayoutSpec =
@@ -76,4 +98,5 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   // Some instructions crash ptxas down the line if they have debug info
   // attached.
   pm.addNestedPass<GPUModuleOp>(createStripDebugInfoPass());
+  pm.addNestedPass<FuncOp>(hlo::createAllocToArgPass());
 }

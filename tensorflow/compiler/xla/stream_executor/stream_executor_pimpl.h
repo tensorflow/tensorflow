@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 
 #include <atomic>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/memory/memory.h"
@@ -224,39 +226,39 @@ class StreamExecutor {
   // is used to register memory allocated outside the StreamExecutor;
   // HostMemoryAllocate implicitly registers its allocations and
   // HostMemoryDeallocate implicitly deregisters on deallocation.
-  bool HostMemoryRegister(void* location, uint64_t size) SE_MUST_USE_RESULT;
+  bool HostMemoryRegister(void* location, uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Unregisters a region of host memory registered with HostMemoryRegister.
   // This should be done before deallocating the region with delete[]/free/etc.
-  bool HostMemoryUnregister(void* location) SE_MUST_USE_RESULT;
+  bool HostMemoryUnregister(void* location) ABSL_MUST_USE_RESULT;
 
   // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
-  bool SynchronizeAllActivity() SE_MUST_USE_RESULT;
+  bool SynchronizeAllActivity() ABSL_MUST_USE_RESULT;
 
   // Blocks the caller while "size" bytes are zeroed out (in POD fashion) at the
   // given location in device memory.
   port::Status SynchronousMemZero(DeviceMemoryBase* location,
-                                  uint64_t size) SE_MUST_USE_RESULT;
+                                  uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Blocks the caller while "size" bytes are initialized to "value" (in POD
   // fashion) at the given location in device memory.
   port::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                 uint64_t size) SE_MUST_USE_RESULT;
+                                 uint64_t size) ABSL_MUST_USE_RESULT;
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the host source to the device destination.
   ABSL_DEPRECATED(
       "Prefer SynchronousMemcpyH2D, to avoid error-prone API usage.")
   bool SynchronousMemcpy(DeviceMemoryBase* device_dst, const void* host_src,
-                         uint64_t size) SE_MUST_USE_RESULT;
+                         uint64_t size) ABSL_MUST_USE_RESULT;
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the device source to the host destination.
   ABSL_DEPRECATED(
       "Prefer SynchronousMemcpyD2H, to avoid error-prone API usage.")
   bool SynchronousMemcpy(void* host_dst, const DeviceMemoryBase& device_src,
-                         uint64_t size) SE_MUST_USE_RESULT;
+                         uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Same as SynchronousMemcpy(DeviceMemoryBase*, ...) above.
   port::Status SynchronousMemcpyH2D(const void* host_src, int64_t size,
@@ -293,20 +295,20 @@ class StreamExecutor {
   // device source to the device destination.
   bool SynchronousMemcpy(DeviceMemoryBase* device_dst,
                          const DeviceMemoryBase& device_src,
-                         uint64_t size) SE_MUST_USE_RESULT;
+                         uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Enqueues an operation onto stream to zero out size bytes at the given
   // device memory location. Neither stream nor location may be null. Returns
   // whether the operation was successfully enqueued onto the stream.
   port::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                       uint64_t size) SE_MUST_USE_RESULT;
+                       uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Enqueues an operation onto stream to set 32-bit patterns starting at
   // location, for byte count given by size. size must be 32-bit quantified
   // (i.e. evently divisible by 4). Returns whether the operation was
   // successfully enqueued onto the stream.
   port::Status Memset32(Stream* stream, DeviceMemoryBase* location,
-                        uint32 pattern, uint64_t size);
+                        uint32_t pattern, uint64_t size);
 
   // Enables peer access from this StreamExecutor to memory
   // allocated by other, such that launched device code, memcpies, etc may
@@ -460,7 +462,7 @@ class StreamExecutor {
   template <typename... Args>
   port::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
       absl::string_view kernel_name, absl::string_view ptx,
-      absl::Span<const uint8> cubin_data);
+      absl::Span<const uint8_t> cubin_data);
 
   // Warning: use Stream::ThenLaunch instead, this method is not for general
   // consumption. However, this is the only way to launch a kernel for which
@@ -810,7 +812,7 @@ template <typename... Args>
 inline port::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
 StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
                                   absl::string_view ptx,
-                                  absl::Span<const uint8> cubin_data) {
+                                  absl::Span<const uint8_t> cubin_data) {
   auto kernel_base = std::make_unique<TypedKernel<Args...>>(this);
   MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);

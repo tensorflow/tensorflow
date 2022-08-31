@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/core/common_runtime/device_propagation.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -77,7 +78,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
 

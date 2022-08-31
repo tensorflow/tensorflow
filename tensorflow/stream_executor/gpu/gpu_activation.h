@@ -13,13 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file contains APIs that assume a StreamExecutor is backed by CUDA.
-// It reaches into the CUDA implementation to activate an underlying CUDA
-// context.
-//
-// Having this file separate from gpu/gpu_executor.h means that dependent
-// code does not also have to depend on cuda.h.
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_ACTIVATION_H_
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_ACTIVATION_H_
 

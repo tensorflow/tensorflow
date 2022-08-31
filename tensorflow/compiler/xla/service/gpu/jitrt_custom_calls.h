@@ -23,10 +23,10 @@
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/runtime/type_id.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tfrt/support/type_id.h"  // from @tf_runtime
 
 namespace xla {
 namespace gpu {
@@ -110,18 +110,18 @@ XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
 
 // Declare explicit dense type ids for all types passed to the custom calls
 // as a user data to generate template specializations for fast id lookup.
-TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                    xla::gpu::JitRtKernelsCache);
-TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                    xla::gpu::JitRtGemmConfigCache);
-TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                    xla::gpu::JitRtCollectiveSupport);
-TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                    xla::gpu::JitRtAsyncCollectiveSupport);
-TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                    const xla::ServiceExecutableRunOptions);
-TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                    const xla::DebugOptions);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                           xla::gpu::JitRtKernelsCache);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                           xla::gpu::JitRtGemmConfigCache);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                           xla::gpu::JitRtCollectiveSupport);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(
+    xla::runtime::CustomCall, xla::gpu::JitRtAsyncCollectiveSupport);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(
+    xla::runtime::CustomCall, const xla::ServiceExecutableRunOptions);
+XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                           const xla::DebugOptions);
 
 namespace xla {
 namespace gpu {

@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {

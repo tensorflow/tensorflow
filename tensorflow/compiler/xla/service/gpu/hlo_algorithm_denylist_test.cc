@@ -18,11 +18,11 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {

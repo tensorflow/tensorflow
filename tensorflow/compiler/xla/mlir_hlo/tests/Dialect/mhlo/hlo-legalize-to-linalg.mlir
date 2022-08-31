@@ -584,6 +584,16 @@ func.func @is_finte(%input: tensor<2x2xf32>) -> tensor<2x2xi1> {
 
 // -----
 
+// CHECK-LABEL: func @round_nearest_even
+func.func @round_nearest_even(%val: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: %[[ROUND:.+]] = math.roundeven %arg1
+  // CHECK: linalg.yield %[[ROUND]]
+  %0 = "mhlo.round_nearest_even"(%val) : (tensor<2x2xf32>) -> (tensor<2x2xf32>)
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @round
 func.func @round(%val: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: %[[ROUND:.+]] = math.round %arg1
@@ -2403,6 +2413,19 @@ func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi3
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32):
 // CHECK-NEXT:   %[[RESULT:.*]] = arith.addi %[[RHS_IN]], %[[LHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+// CHECK-LABEL: @reduce_add_unranked
+func.func @reduce_add_unranked(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> tensor<*xi32> {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
+    %1 = mhlo.add %arg3, %arg4 : tensor<i32>
+    "mhlo.return"(%1) : (tensor<i32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>, someattr} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+  func.return %0 : tensor<*xi32>
+}
+// CHECK: mhlo.reduce
 
 // -----
 

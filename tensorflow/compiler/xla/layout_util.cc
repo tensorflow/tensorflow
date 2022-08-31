@@ -20,19 +20,16 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <optional>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -57,7 +54,7 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
     absl::Span<const Tile> tiles, int64_t element_size_in_bits,
-    int64_t memory_space) {
+    int64_t memory_space, std::optional<Shape> physical_shape) {
   Layout layout;
   for (int64_t dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
@@ -78,6 +75,9 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   }
   layout.set_element_size_in_bits(element_size_in_bits);
   layout.set_memory_space(memory_space);
+  if (physical_shape != std::nullopt) {
+    *layout.mutable_physical_shape() = *std::move(physical_shape);
+  }
   return layout;
 }
 
@@ -256,13 +256,33 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
                         }),
           shape.ShortDebugString());
     }
-    if (LayoutUtil::IsSparse(layout)) {
-      if (layout.tiles_size() > 0) {
-        return InvalidArgument(
-            "layout has tiles, but the shape is a sparse array: %s",
-            shape.ShortDebugString());
-      }
+  }
+
+  if (LayoutUtil::IsSparse(layout)) {
+    if (layout.tiles_size() > 0) {
+      return InvalidArgument(
+          "layout has tiles, but the shape is a sparse array: %s",
+          shape.ShortDebugString());
     }
+    if (layout.has_physical_shape()) {
+      TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+          layout.physical_shape(),
+          [&](const Shape& subshape, const ShapeIndex& index) {
+            if (subshape.has_layout() &&
+                subshape.layout().has_physical_shape()) {
+              return InvalidArgument(
+                  "layout has a physical_shape, whose layout also has a "
+                  "physical shape: %s",
+                  shape.ShortDebugString());
+            }
+            return OkStatus();
+          }));
+      TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(layout.physical_shape()));
+    }
+  } else if (layout.has_physical_shape()) {
+    return InvalidArgument(
+        "layout has a physical_shape, but is not a sparse array: %s",
+        shape.ShortDebugString());
   }
 
   return OkStatus();

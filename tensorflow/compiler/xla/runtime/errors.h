@@ -38,8 +38,6 @@ void ToStreamHelper(StreamT& os, T&& v, Args&&... args) {
   ToStreamHelper(os, std::forward<Args>(args)...);
 }
 
-}  // namespace internal
-
 template <typename... Args>
 std::string StrCat(Args&&... args) {
   std::string str;
@@ -49,10 +47,12 @@ std::string StrCat(Args&&... args) {
   return str;
 }
 
+}  // namespace internal
+
 template <typename... Args>
 llvm::Error MakeStringError(Args&&... args) {
   return llvm::createStringError(llvm::inconvertibleErrorCode(),
-                                 StrCat(std::forward<Args>(args)...));
+                                 internal::StrCat(std::forward<Args>(args)...));
 }
 
 }  // namespace runtime

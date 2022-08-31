@@ -57,7 +57,7 @@ struct SpecializationListener {
 // - for value-specialized operands sinks small constants into the function body
 //
 // Returns error if arguments are not compatible with the function signature.
-llvm::Error SpecializeFunction(
+absl::Status SpecializeFunction(
     mlir::func::FuncOp func, ArgumentsRef arguments,
     llvm::ArrayRef<SymbolicShapesResolver::SymbolicShape> symbolic_shapes,
     llvm::ArrayRef<ArgumentConstraint> constraints,

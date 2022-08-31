@@ -19,12 +19,15 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
-#include <system_error>  // NOLINT TODO(ezhulenev): Migrate to absl::Status.
 
+#include "absl/status/status.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
+#include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
 namespace xla {
@@ -41,7 +44,8 @@ using SymbolicShape = SymbolicShapesResolver::SymbolicShape;
 using StaticShape = SymbolicShapesResolver::StaticShape;
 
 SymbolicShapesResolver::SymbolicShapesResolver(
-    const FunctionType& signature, ArrayRef<ArgumentConstraint> constraints)
+    const FunctionType& signature,
+    absl::Span<const ArgumentConstraint> constraints)
     : constraints_(constraints.begin(), constraints.end()) {
   for (unsigned i = 0; i < signature.num_operands(); ++i) {
     auto* type = signature.operand(i);
@@ -52,7 +56,7 @@ SymbolicShapesResolver::SymbolicShapesResolver(
       continue;
     }
 
-    auto emplace_sizes = [&](ArrayRef<int64_t> sizes) {
+    auto emplace_sizes = [&](absl::Span<const int64_t> sizes) {
       arguments_sizes_.emplace_back(llvm::to_vector(sizes));
 
       // Keep track of all statically known dimension sizes.
@@ -135,7 +139,7 @@ bool SymbolicShapesResolver::seen_static_size(size_t dim) const {
 }
 
 template <typename SymbolicShapes>
-LLVM_ATTRIBUTE_ALWAYS_INLINE static std::error_code ResolveImpl(
+LLVM_ATTRIBUTE_ALWAYS_INLINE static LogicalResult ResolveImpl(
     const SymbolicShapesResolver& resolver, ArgumentsRef arguments,
     ArrayRef<size_t> iteration_order, SymbolicShapes& symbolic_shapes) {
   // The number of arguments must match the function signature.
@@ -155,12 +159,12 @@ LLVM_ATTRIBUTE_ALWAYS_INLINE static std::error_code ResolveImpl(
     // At this point it's guaranteed that the argument at `i` is a shaped one,
     // because non-shaped argument are not in the `iteration_order`.
     const MemrefDesc* shaped = cast<MemrefDesc>(&arguments[i]);
-    ArrayRef<int64_t> runtime_sizes = shaped->sizes();
+    absl::Span<const int64_t> runtime_sizes = shaped->sizes();
 
     // Check that statically known rank matches the runtime rank.
     if (LLVM_UNLIKELY(has_static_sizes && resolver.argument_sizes(i).size() !=
                                               runtime_sizes.size()))
-      return llvm::errc::invalid_argument;
+      return failure();
 
     // For shape constrained argument use runtime shape.
     if (resolver.constraint(i) == ArgumentConstraint::kShape) {
@@ -194,8 +198,7 @@ LLVM_ATTRIBUTE_ALWAYS_INLINE static std::error_code ResolveImpl(
       // Skip statically known dimensions.
       if (symbolic_dim >= 0) {
         // Check that statically known dimension agrees with runtime dimension.
-        if (LLVM_UNLIKELY(symbolic_dim != runtime_dim))
-          return llvm::errc::invalid_argument;
+        if (LLVM_UNLIKELY(symbolic_dim != runtime_dim)) return failure();
         continue;
       }
 
@@ -215,18 +218,18 @@ LLVM_ATTRIBUTE_ALWAYS_INLINE static std::error_code ResolveImpl(
     }
   }
 
-  return {};
+  return success();
 }
 
-llvm::ErrorOr<llvm::SmallVector<SymbolicShape>> SymbolicShapesResolver::Resolve(
-    ArgumentsRef arguments) const {
+absl::StatusOr<llvm::SmallVector<SymbolicShape>>
+SymbolicShapesResolver::Resolve(ArgumentsRef arguments) const {
   // Prepare storage for resolving symbolic shapes.
   llvm::SmallVector<SymbolicShape> symbolic_shapes;
   symbolic_shapes.resize(arguments.size());
 
-  if (LLVM_UNLIKELY(
-          ResolveImpl(*this, arguments, iteration_order_, symbolic_shapes)))
-    return llvm::errc::invalid_argument;
+  if (LLVM_UNLIKELY(failed(
+          ResolveImpl(*this, arguments, iteration_order_, symbolic_shapes))))
+    return absl::InternalError("failed to resolve symbolic shape");
 
   return symbolic_shapes;
 }
@@ -266,20 +269,20 @@ struct SymbolicShapesFingerprint {
 };
 }  // namespace
 
-llvm::ErrorOr<llvm::hash_code> SymbolicShapesResolver::ResolveHash(
+absl::StatusOr<llvm::hash_code> SymbolicShapesResolver::ResolveHash(
     ArgumentsRef arguments) const {
   // Accumulate symbolic shapes into the shapes fingerprint.
   SymbolicShapesFingerprint fingerprint;
 
-  if (LLVM_UNLIKELY(
-          ResolveImpl(*this, arguments, hash_iteration_order_, fingerprint)))
-    return llvm::errc::invalid_argument;
+  if (LLVM_UNLIKELY(failed(
+          ResolveImpl(*this, arguments, hash_iteration_order_, fingerprint))))
+    return absl::InternalError("failed to resolve symbolic shape hash");
 
   return llvm::hash_combine_range(fingerprint.values.begin(),
                                   fingerprint.values.end());
 }
 
-/*static*/ llvm::SmallVector<int64_t> SymbolicShapesResolver::Normalize(
+/*static*/ StaticShape SymbolicShapesResolver::Normalize(
     const SymbolicShape& shape) {
   auto normalize = llvm::map_range(shape, [](int64_t dim) {
     return std::max(dim, MemrefType::kDynamicSize);
@@ -293,7 +296,7 @@ static llvm::hash_code SymbolicShapeHash(const SymbolicShape& shape) {
 }
 
 /*static*/ llvm::hash_code SymbolicShapesResolver::Hash(
-    ArrayRef<SymbolicShape> symbolic_shapes) {
+    absl::Span<const SymbolicShape> symbolic_shapes) {
   if (LLVM_UNLIKELY(symbolic_shapes.empty())) return llvm::hash_code(0);
 
   llvm::hash_code hash = SymbolicShapeHash(symbolic_shapes[0]);

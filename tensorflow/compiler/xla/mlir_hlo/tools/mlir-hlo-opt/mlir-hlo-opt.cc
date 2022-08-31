@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "stablehlo/dialect/Register.h"
 
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
@@ -38,6 +39,7 @@ int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
+  mlir::stablehlo::registerAllDialects(registry);
   registry.insert<mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
                   mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect>();
 

@@ -365,8 +365,6 @@ class TPUStrategyModelParallelismTest(
           atol=5e-3)
 
   def test_spmd_with_summary(self):
-    if test_util.is_mlir_bridge_enabled():
-      self.skipTest("TODO(b/232580663): fix MLIR bridge")
     original_device_placement = config.get_soft_device_placement()
     config.set_soft_device_placement(True)
 

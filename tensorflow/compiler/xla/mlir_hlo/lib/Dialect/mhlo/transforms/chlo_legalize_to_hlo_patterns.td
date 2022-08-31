@@ -22,7 +22,7 @@ limitations under the License.
 include "mlir/Dialect/Shape/IR/ShapeOps.td"
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
-include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
+include "stablehlo/dialect/ChloOps.td"
 
 class HLO_ComparisonDirectionValue<string enumStr> :
   ConstantAttr<HLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
@@ -349,3 +349,6 @@ def : Pat<(CHLO_IsNegInfOp NonComplexElementType:$input),
     HLO_ComparisonDirectionValue<"EQ">,
     (HLO_DEFAULT_COMPARISON_TYPE)
   )>;
+
+def : Pat<(CHLO_ConstantOp $v),
+          (HLO_ConstantOp $v)>;

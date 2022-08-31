@@ -66,7 +66,8 @@ message DebugOptions {
   // Enable flush-to-zero semantics in the GPU backend.
   bool xla_gpu_ftz = 62;
 
-  // Disable multi-streaming in the GPU backend.
+  // Has no effect. Multi-streaming used to be supported in the GPU backend but
+  // no longer is, so multi-streaming is always effectively disabled.
   bool xla_gpu_disable_multi_streaming = 63;
 
   // Debugging feature: if enabled, the GPU backend will assign HLO operators to
@@ -112,8 +113,8 @@ message DebugOptions {
   // Generate calls to MKL-DNN in the CPU backend.
   bool xla_cpu_use_mkl_dnn = 97;
 
-  // Enable JitRt in the CPU backend.
-  bool xla_cpu_use_jitrt = 177;
+  // Enable XLA Runtime in the CPU backend.
+  bool xla_cpu_use_xla_runtime = 177;
 
   // Maximum kernel unroll factor for the GPU backend.
   int32 xla_gpu_max_kernel_unroll_factor = 98;

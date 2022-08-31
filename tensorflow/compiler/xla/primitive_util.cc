@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 
 #include <limits>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -235,7 +235,7 @@ GetPrimitiveTypeStringMap() {
 
 StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
   const auto& map = GetPrimitiveTypeStringMap();
-  auto found = map.find(std::string(name));
+  auto found = map.find(name);
   if (found == map.end()) {
     return InvalidArgument("Invalid element type string: \"%s\".", name);
   }
@@ -244,7 +244,7 @@ StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
 
 bool IsPrimitiveTypeName(absl::string_view name) {
   const auto& map = GetPrimitiveTypeStringMap();
-  auto found = map.find(std::string(name));
+  auto found = map.find(name);
   return found != map.end();
 }
 

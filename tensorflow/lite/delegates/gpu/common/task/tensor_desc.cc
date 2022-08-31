@@ -648,7 +648,20 @@ absl::Status TensorDescriptor::PerformReadPerChannelSelector(
         "  " + args[0] + " = (" + ToCLDataType(dst_type, 1) +
         "[4]){src_TMP.x, src_TMP.y, src_TMP.z, src_TMP.w}[sub_ch_coord_TMP];\n";
   } else {
-    c += "  " + args[0] + " = " + src_value + "[sub_ch_coord_TMP];\n";
+    if (gpu_info.IsAdreno() && gpu_info.IsApiVulkan()) {
+      DataType dst_type = data_type_;
+      RETURN_IF_ERROR(
+          MaybeGetDataTypeFromTemplateArgs(template_args, &dst_type));
+      c += "  " + GetTypeDeclaration(gpu_info, dst_type, 4) +
+           " src_TMP = " + src_value + ";\n";
+      c += "  " + args[0] + " = " +
+           ToGlslShaderDataType(dst_type, 1, /*add_precision*/ false,
+                                gpu_info.vulkan_info.SupportsExplicitFp16()) +
+           "[4](src_TMP.x, src_TMP.y, src_TMP.z, "
+           "src_TMP.w)[sub_ch_coord_TMP];\n";
+    } else {
+      c += "  " + args[0] + " = " + src_value + "[sub_ch_coord_TMP];\n";
+    }
   }
 
   c += "  }";

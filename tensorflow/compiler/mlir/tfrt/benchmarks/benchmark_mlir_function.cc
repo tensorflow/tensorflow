@@ -114,10 +114,11 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   }
 
   // Get an executable that might be specialized to the operands.
-  llvm::Expected<AsyncValuePtr<Executable>> executable =
+  absl::StatusOr<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands);
-  if (auto err = executable.takeError())
-    LOG(FATAL) << "Failed to specialize executable: " << tfrt::StrCat(err);
+  if (!executable.ok())
+    LOG(FATAL) << "Failed to specialize executable: "
+               << executable.status().message();
 
   // Wait for the compilation completion.
   host->Await({executable->CopyRef()});
@@ -138,7 +139,8 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = (*executable)->InitializeCallFrame(operands, &call_frame))
+  if (auto st = (*executable)->InitializeCallFrame(operands, &call_frame);
+      !st.ok())
     LOG(FATAL) << "Failed to initialize call frame";
 
   // Execute async tasks in the HostContext work queue.
@@ -150,7 +152,8 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   auto execute = [&]() {
     call_frame.args[0] = nullptr;  // reset kernel context argument
     (*executable)->Execute(call_frame, opts);
-    if (auto err = (*executable)->ReturnResults(converter, &call_frame))
+    if (auto st = (*executable)->ReturnResults(converter, &call_frame);
+        !st.ok())
       LOG(FATAL) << "Failed to return compiled kernel results";
   };
 

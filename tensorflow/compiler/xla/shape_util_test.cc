@@ -813,20 +813,38 @@ TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
   EXPECT_EQ(a, ShapeUtil::MakeShapeWithLayout(F32, {5, 9}, {0, 1}));
 }
 
-TEST(ShapeUtilTest, FindTranspose021NoTranspose) {
+TEST(Transpose021Test, NoTranspose) {
   Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {128, 64}, {1, 0});
   Shape transposed = ShapeUtil::MakeShapeWithLayout(F32, {64, 128}, {0, 1});
   EXPECT_EQ(std::nullopt, ShapeUtil::FindTranspose021(shape, transposed));
 }
 
-TEST(ShapeUtilTest, FindTranspose021) {
+TEST(Transpose021Test, Simple) {
   Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {128, 64}, {1, 0});
   Shape transposed = ShapeUtil::MakeShapeWithLayout(F32, {128, 64}, {0, 1});
   EXPECT_EQ(std::make_optional(Vector3{1, 64, 128}),
             ShapeUtil::FindTranspose021(shape, transposed));
 }
 
-TEST(ShapeUtilTest, FindTranspose021Batched) {
+TEST(Transpose021Test, Simple2) {
+  Shape input_shape =
+      ShapeUtil::MakeShapeWithLayout(F32, {8, 32768, 16}, {2, 1, 0});
+  Shape output_shape =
+      ShapeUtil::MakeShapeWithLayout(F32, {8, 32768, 16}, {1, 2, 0});
+  EXPECT_EQ(std::make_optional(Vector3{8, 16, 32768}),
+            ShapeUtil::FindTranspose021(input_shape, output_shape));
+}
+
+TEST(Transpose021Test, LargeView) {
+  Shape input_shape =
+      ShapeUtil::MakeShapeWithLayout(F32, {8, 32, 32, 32, 16}, {4, 3, 2, 1, 0});
+  Shape output_shape =
+      ShapeUtil::MakeShapeWithLayout(F32, {8, 32, 32, 32, 16}, {3, 2, 1, 4, 0});
+  EXPECT_EQ(std::make_optional(Vector3{8, 16, 32768}),
+            ShapeUtil::FindTranspose021(input_shape, output_shape));
+}
+
+TEST(Transpose021Test, Batched) {
   Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {32, 3, 64}, {2, 1, 0});
   Shape transposed =
       ShapeUtil::MakeShapeWithLayout(F32, {32, 3, 64}, {1, 0, 2});
@@ -834,7 +852,7 @@ TEST(ShapeUtilTest, FindTranspose021Batched) {
             ShapeUtil::FindTranspose021(shape, transposed));
 }
 
-TEST(ShapeUtilTest, FindTranspose021Large) {
+TEST(Transpose021Test, Large) {
   Shape shape =
       ShapeUtil::MakeShapeWithLayout(F32, {8, 31, 31, 65}, {3, 2, 1, 0});
   Shape transposed =

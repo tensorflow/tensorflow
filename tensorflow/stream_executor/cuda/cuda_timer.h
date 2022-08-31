@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Defines the GpuTimer type - the CUDA-specific implementation of the generic
-// StreamExecutor Timer interface.
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_TIMER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_TIMER_H_
 

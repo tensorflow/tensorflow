@@ -1968,6 +1968,13 @@ bool HloInstruction::HasSideEffect() const {
       std::move(user_side_metadata));
 }
 
+/* static */ bool HloInstruction::IsThreadIncluded(
+    absl::string_view execution_thread,
+    const absl::flat_hash_set<absl::string_view>& execution_threads_set) {
+  return execution_threads_set.empty() ||
+         execution_threads_set.contains(execution_thread);
+}
+
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {

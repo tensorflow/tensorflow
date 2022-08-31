@@ -906,7 +906,7 @@ TEST_F(MultiOutputFusionTest, SharedMemoryBudget) {
                     .ValueOrDie();
   ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
 
-  EXPECT_EQ(3, CountMultiOutputFusions(module.get()));
+  EXPECT_EQ(2, CountMultiOutputFusions(module.get()));
 }
 
 TEST_F(MultiOutputFusionTest, DoNotGroupTooManyReductions) {
@@ -1232,6 +1232,33 @@ ENTRY main {
   param_10 = pred[] parameter(10)
   fusion.2 = f32[2,20,256]{2,0,1} fusion(param_0.0, param_1.0, param_2.0, param_3.0, fusion.1, param_5.0, param_10, param_7.0, param_8.0, param_9.0), kind=kLoop, calls=fused_computation.2
   ROOT root = (f32[2,20,256]{2,0,1}, f32[2,20,256]{2,0,1}) tuple(fusion.1, fusion.2)
+}
+  )")
+                    .ValueOrDie();
+  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+}
+
+TEST_F(MultiOutputFusionTest, DoNotFuseRoot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+no_op {
+  arg_empty_tuple = () parameter(0)
+  ROOT tuple = () tuple()
+}
+
+fused_computation {
+  param_0 = f32[] parameter(0)
+  ROOT convert = s32[] convert(param_0)
+}
+
+ENTRY main {
+  param_0 = f32[] parameter(0)
+  fusion = s32[] fusion(param_0), kind=kLoop, calls=fused_computation
+  tuple = () tuple()
+  conditional = () conditional(fusion, tuple, tuple), branch_computations={no_op, no_op}
+  constant = f32[] constant(1)
+  ROOT root = f32[] add(param_0, constant)
 }
   )")
                     .ValueOrDie();

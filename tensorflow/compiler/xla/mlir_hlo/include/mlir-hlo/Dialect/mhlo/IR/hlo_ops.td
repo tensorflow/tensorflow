@@ -15,16 +15,16 @@ limitations under the License.
 
 // This is the operation definition file for MHLO ops.
 
-#ifndef HLO_OPS
-#define HLO_OPS
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS
 
 include "mlir/Dialect/Shape/IR/ShapeBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
-include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.td"
 
 class HLO_Op<string mnemonic, list<Trait> traits> :
     Op<HLO_Dialect, mnemonic, traits> {
@@ -139,16 +139,16 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
-      return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
-                                                  operands.front(),
-                                                  &reifiedReturnShapes);
+      return ::mlir::hlo::deriveShapeFromOperand(&builder, getOperation(),
+                                                operands.front(),
+                                                &reifiedReturnShapes);
     }
     // Relax the strict default implementation with one that allows
     // for MHLO-specific differences.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
-      for (auto it : llvm::zip(l, r))
-        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
+      for (auto [lt, rt] : llvm::zip(l, r))
+        if (!mlir::hlo::isCompatibleForHloTypeInference(lt, rt))
           return false;
       return true;
     }
@@ -482,17 +482,17 @@ class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
-      return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
-                                                  operands.front(),
-                                                  &reifiedReturnShapes);
+      return ::mlir::hlo::deriveShapeFromOperand(&builder, getOperation(),
+                                                 operands.front(),
+                                                 &reifiedReturnShapes);
     }
     // Relax the strict default implementation with one that allows
     // for MHLO-specific differences.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
-      for (auto it : llvm::zip(l, r))
-        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
-         return false;
+      for (auto [lt, rt] : llvm::zip(l, r))
+        if (!mlir::hlo::isCompatibleForHloTypeInference(lt, rt))
+          return false;
       return true;
     }
   }];
@@ -789,7 +789,7 @@ def HLO_SendOp : HLO_Op<"send", []> {
     Variadic<HLO_Tensor>:$operands,
     HLO_Token:$token,
     ChannelHandle:$channel_handle,
-    DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer
   );
 
   let results = (outs HLO_Token);
@@ -814,7 +814,7 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
   let arguments = (ins
     HLO_Token:$token,
     ChannelHandle:$channel_handle,
-    DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer
   );
 
   let results = (outs Variadic<HLO_TensorOrToken>);
@@ -1563,7 +1563,7 @@ def HLO_CholeskyOp : HLO_Op<"cholesky",
   }];
   let arguments = (ins
     HLO_FpOrComplexTensor:$a,
-    DefaultValuedAttr<BoolAttr, "false">:$lower
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$lower
   );
 
   let results = (outs HLO_FpOrComplexTensor);
@@ -1602,8 +1602,8 @@ def HLO_ClampOp : HLO_ShapedInterfaceOp<"clamp", [NoSideEffect,
     // Method from InferTypeOpInterface interface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
-      for (auto it : llvm::zip(l, r))
-        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
+      for (auto [lt, rt] : llvm::zip(l, r))
+        if (!mlir::hlo::isCompatibleForHloTypeInference(lt, rt))
           return false;
       return true;
     }
@@ -1782,15 +1782,15 @@ def HLO_CustomCallOp: HLO_Op<"custom_call",
   let arguments = (ins
     Variadic<HLO_TensorOrTokenOrTuple>:$operands,
     StrAttr:$call_target_name,
-    DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
-    DefaultValuedStrAttr<StrAttr, "">:$backend_config,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$has_side_effect,
+    DefaultValuedOptionalStrAttr<StrAttr, "">:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
-    DefaultValuedAttr<
+    DefaultValuedOptionalAttr<
         HLO_CustomCallApiVersionAttr,
         "::mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
         $api_version,
-    DefaultValuedAttr<HLO_FlatSymbolRefArrayAttr, "{}">:$called_computations,
+    DefaultValuedOptionalAttr<HLO_FlatSymbolRefArrayAttr, "{}">:$called_computations,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$operand_layouts,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$result_layouts
   );
@@ -1919,7 +1919,7 @@ def HLO_GatherOp: HLO_Op<"gather", [InferTensorTypeWithReify, NoSideEffect]> {
     HLO_IntTensor:$start_indices,
     GatherDimensionNumbers:$dimension_numbers,
     I64ElementsAttr:$slice_sizes,
-    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$indices_are_sorted
   );
 
   let results = (outs HLO_Tensor);
@@ -2051,8 +2051,8 @@ def HLO_ScatterOp: HLO_Op<"scatter", [SameVariadicOperandSize, RecursiveSideEffe
     TensorOf<[AnyInteger, Index]>:$scatter_indices,
     Variadic<HLO_Tensor>:$updates,
     ScatterDimensionNumbers:$scatter_dimension_numbers,
-    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
-    DefaultValuedAttr<BoolAttr, "false">:$unique_indices
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$indices_are_sorted,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$unique_indices
   );
 
   let regions = (region SizedRegion<1>:$update_computation);
@@ -2146,8 +2146,8 @@ def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect,
     // Method from InferTypeOpInterface interface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
-      for (auto it : llvm::zip(l, r))
-        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
+      for (auto [lt, rt] : llvm::zip(l, r))
+        if (!mlir::hlo::isCompatibleForHloTypeInference(lt, rt))
           return false;
       return true;
     }
@@ -2169,8 +2169,8 @@ def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects,
   }];
   let arguments = (ins
     Variadic<HLO_Tensor>:$operands,
-    DefaultValuedAttr<I64Attr, "-1">:$dimension,
-    DefaultValuedAttr<BoolAttr, "false">:$is_stable
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$dimension,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stable
   );
 
   let results = (outs Variadic<HLO_Tensor>);
@@ -2633,7 +2633,7 @@ def HLO_FusionOp : HLO_Op<"fusion", []> {
   );
 
   let results = (outs
-    Variadic<HLO_TensorOrTuple>:$results
+    Variadic<AnyTypeOf<[HLO_Tensor, HLO_Tuple]>>:$results
   );
 
   // FusionOp has special conversion logic to HLO.
@@ -2734,7 +2734,7 @@ def HLO_DynamicPadOp: HLO_ShapedInterfaceOp<"dynamic_pad",
     Example:
 
     ```mlir
-    %0 = mhlo.dynamic_pad %arg0, %arg1, %arg2, %arg3, %arg4 
+    %0 = mhlo.dynamic_pad %arg0, %arg1, %arg2, %arg3, %arg4
            : (tensor<?x?xf32>, tensor<f32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<?x?xf32>
     ```
   }];
@@ -2770,7 +2770,7 @@ def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather",
     HLO_IntTensor:$start_indices,
     HLO_IntTensor:$slice_sizes,
     GatherDimensionNumbers:$dimension_numbers,
-    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$indices_are_sorted
   );
   let results = (outs HLO_Tensor);
 
@@ -2849,4 +2849,4 @@ def HLO_CstrReshapableOp :
   let hasCustomHLOConverter = 1;
 }
 
-#endif // HLO_OPS
+#endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS

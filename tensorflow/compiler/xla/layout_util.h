@@ -18,15 +18,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_LAYOUT_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_LAYOUT_UTIL_H_
 
+#include <optional>
 #include <string>
+#include <vector>
 
-#include "absl/hash/hash.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -39,7 +38,8 @@ class LayoutUtil {
                            absl::Span<const DimLevelType> dim_level_types = {},
                            absl::Span<const Tile> tiles = {},
                            int64_t element_size_in_bits = 0,
-                           int64_t memory_space = 0);
+                           int64_t memory_space = 0,
+                           std::optional<Shape> physical_shape = std::nullopt);
 
   // Similar to MakeLayout, but take indices in reverse order.
   static Layout MakeLayoutFromMajorToMinor(

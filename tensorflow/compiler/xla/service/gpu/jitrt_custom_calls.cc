@@ -19,10 +19,13 @@
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <optional>
+#include <string_view>
 #include <utility>
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
@@ -45,29 +48,27 @@
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tfrt_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/core/platform/human_readable_json.h"
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/stream_executor/gpu/gpu_types.h"
-#include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                   xla::gpu::JitRtKernelsCache);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                   xla::gpu::JitRtGemmConfigCache);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                   xla::gpu::JitRtCollectiveSupport);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                   xla::gpu::JitRtAsyncCollectiveSupport);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                   const xla::ServiceExecutableRunOptions);
-TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                   const xla::DebugOptions);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          xla::gpu::JitRtKernelsCache);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          xla::gpu::JitRtGemmConfigCache);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          xla::gpu::JitRtCollectiveSupport);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(
+    xla::runtime::CustomCall, xla::gpu::JitRtAsyncCollectiveSupport);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(
+    xla::runtime::CustomCall, const xla::ServiceExecutableRunOptions);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          const xla::DebugOptions);
 
 namespace xla {
 namespace gpu {
@@ -76,7 +77,6 @@ using Eigen::half;
 
 using llvm::ArrayRef;
 using llvm::Error;
-using llvm::Optional;
 
 using mlir::failure;
 using mlir::FailureOr;
@@ -234,7 +234,7 @@ se::KernelBase* JitRtKernelsCache::Set(se::StreamExecutor* executor,
 
 template <typename MemrefArg>
 static se::DeviceMemoryBase GetDeviceAddress(MemrefArg& memref) {
-  uint64_t size = tfrt::GetHostSize(memref.dtype);
+  uint64_t size = primitive_util::ByteWidth(memref.dtype);
   for (auto dim : memref.sizes) size *= dim;
   return se::DeviceMemoryBase(memref.data, size);
 }
@@ -305,8 +305,6 @@ LogicalResult JitRtAsyncCollectiveSupport::PushEvent(int32_t uid,
 // -------------------------------------------------------------------------- //
 
 static Shape ToShape(const runtime::StridedMemrefView& memref) {
-  PrimitiveType type = TfrtToPrimitiveType(memref.dtype);
-
   // Recover `minor_to_major` dimensions permutation from strides.
   auto indexed_strides_range =
       llvm::map_range(llvm::enumerate(memref.strides), [](auto pair) {
@@ -320,7 +318,8 @@ static Shape ToShape(const runtime::StridedMemrefView& memref) {
   minor_to_major.reserve(indexed_strides.size());
   for (auto& pair : indexed_strides) minor_to_major.push_back(pair.second);
 
-  return ShapeUtil::MakeShapeWithLayout(type, memref.sizes, minor_to_major);
+  return ShapeUtil::MakeShapeWithLayout(memref.dtype, memref.sizes,
+                                        minor_to_major);
 }
 
 static StatusOr<GemmConfig> GetGemmConfig(const runtime::StridedMemrefView& lhs,
@@ -384,8 +383,8 @@ FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
     int element_count = 1;
     for (int size : source->sizes) element_count *= size;
     device_buffers.emplace_back(DeviceBufferPair{
-        TfrtToPrimitiveType(source->dtype), element_count,
-        GetDeviceAddress(*source), GetDeviceAddress(*destination)});
+        source->dtype, element_count, GetDeviceAddress(*source),
+        GetDeviceAddress(*destination)});
   }
   return device_buffers;
 }
@@ -485,8 +484,8 @@ static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .Arg<int32_t>()   // block_size_y
                              .Arg<int32_t>()   // block_size_x
                              .RemainingArgs()  // args
-                             .Attr<StringRef>("ptx")
-                             .Attr<StringRef>("kernel")
+                             .Attr<std::string_view>("ptx")
+                             .Attr<std::string_view>("kernel")
                              .To<RuntimeChecks()>(LaunchFunc::Handler())
                              .release();
 
@@ -576,9 +575,9 @@ struct CublasLtMatmul {
                    const DebugOptions* debug_options,
                    runtime::StridedMemrefView a, runtime::StridedMemrefView b,
                    runtime::StridedMemrefView c, runtime::StridedMemrefView d,
-                   Optional<runtime::StridedMemrefView> bias, int64_t algorithm,
-                   double alpha_real, double alpha_imag, double beta,
-                   DotDimensionNumbers dot_dims,
+                   std::optional<runtime::StridedMemrefView> bias,
+                   int64_t algorithm, double alpha_real, double alpha_imag,
+                   double beta, DotDimensionNumbers dot_dims,
                    se::cuda::BlasLt::Epilogue epilogue,
                    ArrayRef<int32_t> precision, int64_t uid) const;
 
@@ -590,8 +589,9 @@ Error CublasLtMatmul::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, runtime::StridedMemrefView a,
     runtime::StridedMemrefView b, runtime::StridedMemrefView c,
-    runtime::StridedMemrefView d, Optional<runtime::StridedMemrefView> bias,
-    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
+    runtime::StridedMemrefView d,
+    std::optional<runtime::StridedMemrefView> bias, int64_t algorithm,
+    double alpha_real, double alpha_imag, double beta,
     DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
     ArrayRef<int32_t> precision, int64_t uid) const {
   VLOG(3) << "Running CublasLtMatmul";
@@ -651,7 +651,7 @@ static bool CublasLtMatmul(runtime::KernelContext* ctx, void** args,
                                .Arg<runtime::StridedMemrefView>()  // b
                                .Arg<runtime::StridedMemrefView>()  // c
                                .Arg<runtime::StridedMemrefView>()  // d
-                               .Value(CustomCall::None)            // bias
+                               .Value(std::nullopt)                // bias
                            )
           .To<RuntimeChecks()>(CublasLtMatmul::Handler())
           .release();
@@ -717,8 +717,8 @@ static GpuConvDescriptor GetConvDescriptor(
     // Attributes
     ConvDimensionNumbers dims, Window w, ConvBackendConfig b, ConvAttrs attrs,
     // Conv-specific arguments and attributes
-    Optional<FusedConvAttrs> fused = llvm::None,
-    Optional<SideInputAttrs> side_input = llvm::None) {
+    std::optional<FusedConvAttrs> fused = std::nullopt,
+    std::optional<SideInputAttrs> side_input = std::nullopt) {
   // Build a convolution descriptor from the attributes.
   GpuConvDescriptor descriptor;
   descriptor.kind = kind;
@@ -805,8 +805,8 @@ struct Conv {
       const ServiceExecutableRunOptions* run_options,
       const DebugOptions* debug_options, runtime::StridedMemrefView operand0,
       runtime::StridedMemrefView operand1,
-      Optional<runtime::FlatMemrefView> bias,
-      Optional<runtime::StridedMemrefView> side_input,
+      std::optional<runtime::FlatMemrefView> bias,
+      std::optional<runtime::StridedMemrefView> side_input,
       runtime::StridedMemrefView output, runtime::FlatMemrefView scratch,
       ConvDimensionNumbers conv_dims,
       // Window config
@@ -818,13 +818,13 @@ struct Conv {
       // Remaining attributes
       int64_t feature_group_count, double result_scale,
       // Optional attributes for fused convolutions.
-      Optional<se::dnn::ActivationMode> activation_mode = llvm::None,
-      Optional<double> side_input_scale = llvm::None) const {
+      std::optional<se::dnn::ActivationMode> activation_mode = std::nullopt,
+      std::optional<double> side_input_scale = std::nullopt) const {
     // Build config for optional attributes.
-    Optional<FusedConvAttrs> fused_attrs = llvm::None;
+    std::optional<FusedConvAttrs> fused_attrs = std::nullopt;
     if (activation_mode.has_value()) fused_attrs = {*activation_mode};
 
-    Optional<SideInputAttrs> side_input_attrs = llvm::None;
+    std::optional<SideInputAttrs> side_input_attrs = std::nullopt;
     if (side_input_scale.has_value()) side_input_attrs = {*side_input_scale};
 
     // Prepare a descriptor for the XLA convolution.
@@ -898,8 +898,8 @@ static bool ConvFn(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .UserData<const DebugOptions*>()
                              .Arg<runtime::StridedMemrefView>()  // operand0
                              .Arg<runtime::StridedMemrefView>()  // operand1
-                             .Value(CustomCall::None)            // bias
-                             .Value(CustomCall::None)            // side_input
+                             .Value(std::nullopt)                // bias
+                             .Value(std::nullopt)                // side_input
                              .Arg<runtime::StridedMemrefView>()  // output
                              .Arg<runtime::FlatMemrefView>()     // scratch
                          )
@@ -919,7 +919,7 @@ static bool ConvFusedFn(runtime::KernelContext* ctx, void** args,
                              .Arg<runtime::StridedMemrefView>()  // operand0
                              .Arg<runtime::StridedMemrefView>()  // operand1
                              .Arg<runtime::FlatMemrefView>()     // bias
-                             .Value(CustomCall::None)            // side_input
+                             .Value(std::nullopt)                // side_input
                              .Arg<runtime::StridedMemrefView>()  // output
                              .Arg<runtime::FlatMemrefView>()     // scratch
                          )
@@ -1013,7 +1013,7 @@ static bool Infeed(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.infeed")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<StringRef>("config")
+                             .Attr<std::string_view>("config")
                              .To<RuntimeChecks()>(Infeed::Handler())
                              .release();
 
@@ -1090,7 +1090,7 @@ static bool Outfeed(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler = CustomCall::Bind("xla.gpu.outfeed")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<StringRef>("config")
+                             .Attr<std::string_view>("config")
                              .To<RuntimeChecks()>(Outfeed::Handler())
                              .release();
 
@@ -1252,8 +1252,7 @@ Error Fft::operator()(const ServiceExecutableRunOptions* run_options,
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
-  if (input.dtype == tfrt::DType::F64 ||
-      input.dtype == tfrt::DType::Complex128) {
+  if (input.dtype == PrimitiveType::F64 || input.dtype == PrimitiveType::C128) {
     // Adjust FFT type to reflect double precision.
     switch (fft_type) {
       case se::fft::Type::kC2CForward:
@@ -1332,9 +1331,8 @@ Error Cholesky::operator()(const ServiceExecutableRunOptions* run_options,
 
   CholeskyParams params{n,        batch_size,       uplo,
                         a_buffer, workspace_buffer, info_buffer};
-  auto executed =
-      RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
-                  TfrtToPrimitiveType(operand.dtype), &params, stream);
+  auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
+                              operand.dtype, &params, stream);
   if (!executed.ok()) return AsError(executed);
 
   return Error::success();
@@ -1440,7 +1438,7 @@ Error TriangularSolve::operator()(
       b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
       [](int64_t a, int64_t b) { return a * b; });
 
-  PrimitiveType elem_type = TfrtToPrimitiveType(b.dtype);
+  PrimitiveType elem_type = b.dtype;
   int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_type);
   int64_t a_batch_stride = left_side ? m * m * elem_size : n * n * elem_size;
   int64_t b_batch_stride = m * n * elem_size;
@@ -1532,7 +1530,7 @@ Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
     }
     if (auto strided = args.get<runtime::StridedMemrefView>(i);
         succeeded(strided)) {
-      int64_t size_in_bytes = GetHostSize(strided->dtype);
+      int64_t size_in_bytes = primitive_util::ByteWidth(strided->dtype);
       for (int64_t size : strided->sizes) size_in_bytes *= size;
       buffers.push_back(size_in_bytes == 0 ? nullptr : strided->data);
       continue;
@@ -1578,9 +1576,9 @@ static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
                              .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<StringRef>("call_target_name")
+                             .Attr<std::string_view>("call_target_name")
                              .Attr<int32_t>("api_version")
-                             .Attr<StringRef>("backend_config")
+                             .Attr<std::string_view>("backend_config")
                              .To<RuntimeChecks()>(XlaCustomCall::Handler())
                              .release();
 

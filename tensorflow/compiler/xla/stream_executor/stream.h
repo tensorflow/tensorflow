@@ -22,6 +22,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_STREAM_H_
 
 #include <complex>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <type_traits>
@@ -272,7 +273,7 @@ class Stream {
       dnn::ActivationMode activation_mode, DeviceMemory<float> *x_backprop,
       DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
       DeviceMemory<float> *side_input_backprop,
-      DeviceMemory<uint8> *reserve_space_data,
+      DeviceMemory<uint8_t> *reserve_space_data,
       ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationForward(
@@ -301,7 +302,7 @@ class Stream {
       DeviceMemory<Eigen::half> *x_backprop,
       DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
       DeviceMemory<Eigen::half> *side_input_backprop,
-      DeviceMemory<uint8> *reserve_space_data,
+      DeviceMemory<uint8_t> *reserve_space_data,
       ScratchAllocator *workspace_allocator);
 
   Stream &ThenConvolve(const dnn::BatchDescriptor &input_descriptor,
@@ -316,7 +317,7 @@ class Stream {
       const dnn::BatchDescriptor &input_descriptor,
       const DeviceMemory<float> &input_data,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_coefficients,
+      const DeviceMemory<int8_t> &filter_coefficients,
       const DeviceMemory<float> &coefficient_scales,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
@@ -344,7 +345,7 @@ class Stream {
       ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result) {
-    DeviceMemory<uint8> scratch_memory;
+    DeviceMemory<uint8_t> scratch_memory;
     dnn::AlgorithmDesc algorithm_desc;
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       TF_RETURN_IF_ERROR(dnn->PrepareForConvolution(
@@ -446,7 +447,7 @@ class Stream {
                      DeviceMemory<float> *output_data);
 
   Stream &ThenMatMulQuantized(const DeviceMemory<float> &input_data,
-                              const DeviceMemory<int8> &weights,
+                              const DeviceMemory<int8_t> &weights,
                               const DeviceMemory<float> &weight_scales,
                               const dnn::BatchDescriptor &input_dimensions,
                               const dnn::BatchDescriptor &output_dimensions,
@@ -873,7 +874,8 @@ class Stream {
     OutputType beta{0};
     return ThenBlasGemmWithAlgorithm(transa, transb, m, n, k, alpha, a, lda, b,
                                      ldb, beta, c, ldc, computation_type,
-                                     algorithm, output_profile_result);
+                                     algorithm, blas::kDefaultComputePrecision,
+                                     output_profile_result);
   }
 
   template <typename InputType, typename OutputType, typename ConstantType>
@@ -883,6 +885,7 @@ class Stream {
       const DeviceMemory<InputType> &b, int ldb, ConstantType beta,
       DeviceMemory<OutputType> *c, int ldc,
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
+      blas::ComputePrecision precision,
       blas::ProfileResult *output_profile_result) {
     TF_RETURN_IF_ERROR(
         CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
@@ -906,7 +909,7 @@ class Stream {
         blas::ToDataType<InputType>::value, lda, b,
         blas::ToDataType<InputType>::value, ldb, beta_ptr, c,
         blas::ToDataType<OutputType>::value, ldc, computation_type, algorithm,
-        output_profile_result);
+        precision, output_profile_result);
     if (output_profile_result) {
       // The error is recorded in the profile.
       return ::tensorflow::OkStatus();
@@ -921,7 +924,7 @@ class Stream {
       int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
       int64_t stride_b, ConstantType beta, DeviceMemory<OutputType> *c, int ldc,
       int64_t stride_c, int batch_count, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm,
+      blas::AlgorithmType algorithm, blas::ComputePrecision precision,
       blas::ProfileResult *output_profile_result) {
     TF_RETURN_IF_ERROR(
         CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
@@ -943,7 +946,7 @@ class Stream {
         blas::ToDataType<InputType>::value, lda, stride_a, b,
         blas::ToDataType<InputType>::value, ldb, stride_b, beta_ptr, c,
         blas::ToDataType<OutputType>::value, ldc, stride_c, batch_count,
-        computation_type, algorithm, output_profile_result);
+        computation_type, algorithm, precision, output_profile_result);
     if (output_profile_result) {
       // The error is recorded in the profile.
       return ::tensorflow::OkStatus();
@@ -1035,7 +1038,7 @@ class Stream {
       uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
       int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
       int64_t stride_b, ConstantType beta, DeviceMemory<InputType> *c, int ldc,
-      int64_t stride_c, int batch_count) {
+      int64_t stride_c, int batch_count, blas::ComputePrecision precision) {
     static_assert(
         detail::is_any_of<InputType, float, Eigen::half, Eigen::bfloat16,
                           double, std::complex<float>, std::complex<double>>(),
@@ -1061,7 +1064,7 @@ class Stream {
     return blas->DoBlasGemmStridedBatched(
         this, transa, transb, m, n, k, blas::ToDataType<InputType>::value,
         alpha_ptr, a, lda, stride_a, b, ldb, stride_b, beta_ptr, c, ldc,
-        stride_c, batch_count);
+        stride_c, batch_count, precision);
   }
 
   // See BlasSupport::DoBlasTrsm.
@@ -1218,7 +1221,7 @@ class Stream {
   // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location of
   // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
-  Stream &ThenMemset32(DeviceMemoryBase *location, uint32 pattern,
+  Stream &ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
                        uint64_t size);
 
   // Enqueue a forward operation of the RNN model onto the stream.
@@ -1306,7 +1309,7 @@ class Stream {
       DeviceMemory<Eigen::half> *input_h_backprop_data,
       DeviceMemory<Eigen::half> *input_c_backprop_data,
       DeviceMemory<Eigen::half> *params_backprop_data,
-      DeviceMemory<uint8> *reserve_space_data,
+      DeviceMemory<uint8_t> *reserve_space_data,
       ScratchAllocator *workspace_allocator,
       dnn::ProfileResult *output_profile_result);
 
@@ -1332,7 +1335,7 @@ class Stream {
                           DeviceMemory<float> *input_h_backprop_data,
                           DeviceMemory<float> *input_c_backprop_data,
                           DeviceMemory<float> *params_backprop_data,
-                          DeviceMemory<uint8> *reserve_space_data,
+                          DeviceMemory<uint8_t> *reserve_space_data,
                           ScratchAllocator *workspace_allocator,
                           dnn::ProfileResult *output_profile_result);
 
@@ -1358,7 +1361,7 @@ class Stream {
                           DeviceMemory<double> *input_h_backprop_data,
                           DeviceMemory<double> *input_c_backprop_data,
                           DeviceMemory<double> *params_backprop_data,
-                          DeviceMemory<uint8> *reserve_space_data,
+                          DeviceMemory<uint8_t> *reserve_space_data,
                           ScratchAllocator *workspace_allocator,
                           dnn::ProfileResult *output_profile_result);
 
@@ -1741,19 +1744,19 @@ inline internal::TemporaryMemoryManager *Stream::temporary_memory_manager() {
 }
 
 template <>
-struct Quantization<uint8> {
+struct Quantization<uint8_t> {
   static constexpr dnn::QuantizedActivationMode kModeId =
       dnn::QuantizedActivationMode::k8Bit;
 };
 
 template <>
-struct Quantization<uint16> {
+struct Quantization<uint16_t> {
   static constexpr dnn::QuantizedActivationMode kModeId =
       dnn::QuantizedActivationMode::k16Bit;
 };
 
 template <>
-struct Quantization<int32> {
+struct Quantization<int32_t> {
   static constexpr dnn::QuantizedActivationMode kModeId =
       dnn::QuantizedActivationMode::k32Bit;
 };

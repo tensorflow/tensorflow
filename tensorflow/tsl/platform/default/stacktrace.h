@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_STACKTRACE_H_
-#define TENSORFLOW_CORE_PLATFORM_DEFAULT_STACKTRACE_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_STACKTRACE_H_
+#define TENSORFLOW_TSL_PLATFORM_DEFAULT_STACKTRACE_H_
 
 // clang-format off
 #include "tensorflow/core/platform/platform.h"
@@ -98,4 +98,4 @@ class SavedStackTrace {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_STACKTRACE_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_STACKTRACE_H_

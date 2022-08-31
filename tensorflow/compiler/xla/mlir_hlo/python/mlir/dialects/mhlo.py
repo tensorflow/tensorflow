@@ -18,6 +18,3 @@
 # pylint: disable=wildcard-import,relative-beyond-top-level,g-import-not-at-top
 from ._mhlo_ops_gen import *
 from .._mlir_libs._mlirHlo import *
-# pylint: disable=undefined-variable
-del register_chlo_dialect
-# pylint: enable=undefined-variable

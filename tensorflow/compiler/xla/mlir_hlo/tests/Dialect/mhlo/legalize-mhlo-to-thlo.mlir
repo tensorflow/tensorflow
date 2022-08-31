@@ -13,7 +13,7 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>, %shape : tensor<3xin
   // CHECK-NEXT: %[[BCAST:.*]] = thlo.dynamic_broadcast_in_dim
   // CHECK-SAME: ins(%[[ARG]] : tensor<?x?xf32>)
   // CHECK-SAME: outs(%[[INIT]] : tensor<?x?x?xf32>)
-  // CHECK-SAME: {broadcast_dimensions = array<i64: 0, 2>}
+  // CHECK-SAME: broadcast_dimensions = [0, 2]
   // CHECK:     return %[[BCAST]]
   %0 = "mhlo.dynamic_broadcast_in_dim"(%arg, %shape)
       { broadcast_dimensions = dense<[0, 2]> : tensor<2xi64> }
@@ -50,7 +50,8 @@ func.func @dynamic_broadcast_in_dim_with_known_expanding(%arg : tensor<?x?x?xf32
   // CHECK-NEXT: %[[BCAST:.*]] = thlo.dynamic_broadcast_in_dim
   // CHECK-SAME: ins(%[[ARG]] : tensor<?x?x?xf32>)
   // CHECK-SAME: outs(%[[INIT]] : tensor<?x?x?x?xf32>)
-  // CHECK-SAME: {broadcast_dimensions = array<i64: 0, 2, 3>, known_expanding_dimensions = array<i64: 0>, known_nonexpanding_dimensions = array<i64: 2>}
+  // CHECK-SAME: broadcast_dimensions = [0, 2, 3]
+  // CHECK-SAME: {known_expanding_dimensions = array<i64: 0>, known_nonexpanding_dimensions = array<i64: 2>}
   // CHECK:     return %[[BCAST]]
   %0 = "mhlo.dynamic_broadcast_in_dim"(%arg, %shape) {
       broadcast_dimensions = dense<[0, 2, 3]> : tensor<3xi64>,

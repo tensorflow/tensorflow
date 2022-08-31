@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/casts.h"
@@ -51,7 +54,6 @@ limitations under the License.
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/stream_executor/platform.h"
 
 #if XLA_ENABLE_XLIR
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
@@ -134,9 +136,9 @@ class GpuExecutable::JitRtExecutable {
     // Instantiate new JitExecutable from the MLIR source.
     auto jit_executable = runtime::JitExecutable::Instantiate(
         program->module, program->entry_point, opts);
-    if (auto err = jit_executable.takeError())
+    if (!jit_executable.ok())
       return InternalError("Failed to compile JitRt program: %s",
-                           tfrt::StrCat(err));
+                           jit_executable.status().message());
 
     // Pass ownership to the GpuExecutable.
     return new JitRtExecutable(
@@ -219,8 +221,8 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
   auto executable = std::move(params.executable);
   std::unique_ptr<GpuExecutable> result(new GpuExecutable(std::move(params)));
 
-  if (std::holds_alternative<OwnedThunkSchedule>(executable)) {
-    result->thunks_ = std::move(std::get<OwnedThunkSchedule>(executable));
+  if (std::holds_alternative<OwnedThunkSequence>(executable)) {
+    result->thunks_ = std::move(std::get<OwnedThunkSequence>(executable));
     return result;
   }
 
@@ -325,7 +327,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
                            uint64_t start_micros, se::Stream* stream_to_sync);
 
 Status ExecuteThunks(const std::string& module_name,
-                     const ThunkSchedule& thunk_schedule,
+                     const ThunkSequence& thunk_sequence,
                      const ServiceExecutableRunOptions* run_options,
                      const BufferAllocations& buffer_allocations,
                      bool block_host_until_done) {
@@ -335,59 +337,26 @@ Status ExecuteThunks(const std::string& module_name,
   StatusOr<StreamPool::Ptr> async_comms_stream =
       run_options->BorrowStream(executor->device_ordinal());
 
-  // Stream 0 indicates `main_stream` and substreams start from stream 1.
-  std::vector<StreamPool::Ptr> sub_streams;
-  sub_streams.reserve(thunk_schedule.StreamCount() - 1);
-  while (sub_streams.size() + 1 < thunk_schedule.StreamCount()) {
-    sub_streams.emplace_back();
-    TF_ASSIGN_OR_RETURN(sub_streams.back(),
-                        run_options->BorrowStream(executor->device_ordinal()));
-    // Require substreams to wait for the main stream, otherwise substreams may
-    // execute before the program is scheduled to start on the main stream.
-    sub_streams.back()->ThenWaitFor(main_stream);
-  }
-
   uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
 
-  absl::flat_hash_map<const Thunk*, std::unique_ptr<se::Event>>
-      thunk_to_finish_event;
-  for (const std::unique_ptr<Thunk>& thunk : thunk_schedule.TotalOrder()) {
+  for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
-
-    int32_t stream_no = thunk_schedule.StreamNumberForThunk(thunk.get());
-    se::Stream* stream =
-        (stream_no == 0 ? main_stream : sub_streams[stream_no - 1].get());
-
-    for (const Thunk* dependency : thunk_schedule.DependsOn(thunk.get())) {
-      stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
-    }
-
-    VLOG(2) << "Executing the thunk for " << thunk->profile_annotation()
-            << " on stream " << stream_no;
-
+    VLOG(2) << "Executing the thunk for " << thunk->profile_annotation();
     TF_RET_CHECK(async_comms_stream.ok() || !NeedsAsyncCommsStream(*thunk))
         << "`run_options` must have a stream borrower for async thunks.";
 
     Thunk::ExecuteParams thunk_params{
-        *run_options, buffer_allocations, stream,
+        *run_options, buffer_allocations, main_stream,
         async_comms_stream.ok() ? async_comms_stream->get() : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
-    if (thunk_schedule.Depended(thunk.get())) {
-      auto finish_event = std::make_unique<se::Event>(main_stream->parent());
-      finish_event->Init();
-      stream->ThenRecordEvent(finish_event.get());
-      thunk_to_finish_event[thunk.get()] = std::move(finish_event);
-    }
   }
-
-  main_stream->ThenWaitFor(&sub_streams);
   return MaybeSyncAndProfile(run_options, start_micros,
                              block_host_until_done ? main_stream : nullptr);
 }
@@ -709,10 +678,10 @@ static Status ExecuteJitRt(const std::string& module_name,
   runtime::Executable& executable = jitrt_executable->executable();
   executable.Execute(call_frame, opts);
 
-  if (auto err = executable.ReturnResults(converter, &call_frame)) {
+  if (auto st = executable.ReturnResults(converter, &call_frame); !st.ok()) {
     return InternalError(
         "Failed to execute JitRt executable: %s.",
-        tfrt::StrCat(err,
+        tfrt::StrCat(st.message(),
                      diagnostic.empty() ? "" : tfrt::StrCat(": ", diagnostic)));
   }
 
@@ -891,7 +860,7 @@ Status GpuExecutable::ExecuteThunksOrJitRt(
 
   if (thunks_) {
     se::StreamExecutor* executor = run_options->stream()->parent();
-    for (const std::unique_ptr<Thunk>& thunk : thunks_->TotalOrder()) {
+    for (const std::unique_ptr<Thunk>& thunk : *thunks_) {
       TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     }
     return ExecuteThunks(module_name_, *thunks_, run_options,
@@ -1111,14 +1080,15 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   auto buffer = llvm::MemoryBuffer::getMemBuffer(data, hlo_module->name());
 
   // Create a JitRt function signature (all arguments passed as 1d memrefs).
-  llvm::SmallVector<std::unique_ptr<runtime::Type>> args;
-  llvm::SmallVector<std::unique_ptr<runtime::Type>> rt_args;
+  std::vector<std::unique_ptr<runtime::Type>> args;
+  std::vector<std::unique_ptr<runtime::Type>> rt_args;
   rt_args.push_back(std::make_unique<runtime::KernelContextOperandType>());
 
   for (int64_t size : buffer_sizes) {
-    auto i8 = tfrt::DType::I8;
-    args.push_back(std::make_unique<runtime::MemrefType>(size, i8));
-    rt_args.push_back(std::make_unique<runtime::MemrefType>(size, i8));
+    auto s8 = PrimitiveType::S8;
+    std::array<int64_t, 1> dims = {size};
+    args.push_back(std::make_unique<runtime::MemrefType>(dims, s8));
+    rt_args.push_back(std::make_unique<runtime::MemrefType>(dims, s8));
   }
 
   runtime::FunctionType signature(std::move(args), /*results=*/{});
@@ -1133,9 +1103,9 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
       hlo_module->name(), std::move(buffer),
       hlo_module->entry_computation()->name(), std::move(signature),
       std::move(rt_signature), symbol_map);
-  if (auto err = executable.takeError())
+  if (!executable.ok())
     return InternalError("Failed to load JitRt executable: %s",
-                         tfrt::StrCat(err));
+                         executable.status().message());
 
   // Move runtime::Executable ownership to the JitRtExecutable.
   TF_ASSIGN_OR_RETURN(

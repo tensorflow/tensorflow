@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -73,13 +72,10 @@ class FusionRewritePattern : public OpRewritePattern<lmhlo::FusionOp> {
 
   // Annotates gpu.launch_func with attribute specifying written operands.
   //
-  //   gpu.launch_func ..., %memref, ...
-  //   %tensor = bufferize.to_tensor %memref
-  //   memref.tensor_store %tensor, %argN
+  // func.func @fusion(%arg0, %arg1 {lmhlo.written}) {
+  //   gpu.launch_func args(%arg0, %arg1, %arg0)
   //
-  // is replaced with:
-  //
-  //   gpu.launch_func ..., %argN, ... { written_operands = [..., unit, ...] }
+  // will add a `lmhlo.written = [false, true, false]` attribute.
   //
   // The 'written_operands' attribute is used later to retrieve which
   // gpu.launch_func arguments are written vs. just read.
@@ -96,8 +92,7 @@ class FusionRewritePattern : public OpRewritePattern<lmhlo::FusionOp> {
 }  // namespace
 
 // Name of the 'gpu.launch_func' attribute which specifies the written operands.
-static constexpr llvm::StringLiteral kWrittenOperandsAttrName =
-    "written_operands";
+static constexpr llvm::StringLiteral kWrittenOperandsAttrName = "lmhlo.written";
 
 void GpuFusionRewritePass::getDependentDialects(
     DialectRegistry& registry) const {
@@ -223,21 +218,31 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   rewriter.cloneRegionBefore(fusionOp.getRegion(), funcOp.getRegion(),
                              funcOp.end(), mapping);
   rewriter.mergeBlocks(&funcOp.back(), &funcOp.front());
+  // Convert statically shaped types to their 1D equivalent.
   funcOp->walk([&](Operation* op) {
     for (auto result : op->getResults())
       result.setType(converter.convertType(result.getType()));
   });
+  // Add attribute to written function arguments.
+  for (const BlockArgument& arg : funcOp.getArguments()) {
+    if (llvm::any_of(arg.getUsers(), [](Operation* op) {
+          return isa<memref::TensorStoreOp>(op);
+        })) {
+      funcOp.setArgAttr(arg.getArgNumber(), kWrittenOperandsAttrName,
+                        rewriter.getUnitAttr());
+    }
+  }
 
   // Create and run the HLO to GPU pass pipeline.
   auto resultType =
       fusionOp.getFusionResults().front().getType().cast<TensorType>();
   int64_t unrollFactor = getElementsPerThread(resultType);
-  int64_t tileSize = getThreadsPerBlock(resultType, unrollFactor);
+  int64_t tileSize =
+      getThreadsPerBlock(resultType, unrollFactor) * unrollFactor;
   // Note: passManager.enableIRPrinting() doesn't do anything on dynamic pass
   // pipelines. Printing needs to be enabled on the parent pass manager.
   PassManager passManager(getContext());
-  createHloToGpuPipeline(passManager, {tileSize},
-                         {&unrollFactor, unrollFactor > 1});
+  createHloToGpuPipeline(passManager, {tileSize}, {unrollFactor});
   if (failed(parentPass.runPipeline(passManager, moduleOp)))
     return rewriter.notifyMatchFailure(fusionOp, "failed to run pipeline");
 
@@ -257,12 +262,6 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   funcOp->walk([&](gpu::LaunchFuncOp op) { op->setLoc(loc); });
   annotateLaunchFunc(funcOp, rewriter);
 
-  // Remove dead allocations that were only used by store_op erased above.
-  RewritePatternSet patterns(getContext());
-  memref::AllocOp::getCanonicalizationPatterns(patterns, getContext());
-  if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns))))
-    return rewriter.notifyMatchFailure(fusionOp, "failed to canonicalize");
-
   // Replace fusion op with host function region.
   rewriter.splitBlock(&funcOp.front(),
                       funcOp.front().getTerminator()->getIterator());
@@ -276,7 +275,9 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
 
 bool FusionRewritePattern::isRewritable(lmhlo::FusionOp fusionOp) const {
   if (fusionOp.getFusionResults().size() != 1)
-    return false;  // Only rewrite fusions with a single result.
+    return false;  // Only rewrite fusion with a single result.
+  if (isa<bufferization::ToTensorOp>(fusionOp.getFusionRoots().front()))
+    return false;  // Don't rewrite empty (memcpy) fusion.
   auto callback = [this](Operation* op) {
     if (rewritableTarget.isLegal(op)) return WalkResult::advance();
     return WalkResult::interrupt();
@@ -286,24 +287,17 @@ bool FusionRewritePattern::isRewritable(lmhlo::FusionOp fusionOp) const {
 
 void FusionRewritePattern::annotateLaunchFunc(func::FuncOp funcOp,
                                               PatternRewriter& rewriter) {
-  llvm::SmallDenseMap<Operation*, SmallVector<bool>> writtenOperands;
-  funcOp.walk([&](memref::TensorStoreOp storeOp) {
-    auto toTensor =
-        storeOp.getTensor().getDefiningOp<bufferization::ToTensorOp>();
-    assert(toTensor && "not defined by bufferization.to_tensor");
-    for (auto& use : toTensor.getMemref().getUses()) {
-      Operation* user = use.getOwner();
-      if (isa<gpu::LaunchFuncOp>(user)) {
-        writtenOperands.try_emplace(user, user->getNumOperands())
-            .first->second[use.getOperandNumber()] = true;
-        use.set(storeOp.getMemref());
-      }
-    }
-    rewriter.eraseOp(storeOp);
-    rewriter.eraseOp(toTensor);
+  funcOp.walk([&](gpu::LaunchFuncOp op) {
+    auto writtenOperands = llvm::to_vector(
+        llvm::map_range(op.operands(), [&](Value operand) -> bool {
+          auto arg = operand.dyn_cast<BlockArgument>();
+          if (!arg) return false;
+          return funcOp.getArgAttr(arg.getArgNumber(),
+                                   kWrittenOperandsAttrName) != nullptr;
+        }));
+    op->setAttr(kWrittenOperandsAttrName,
+                rewriter.getBoolArrayAttr(writtenOperands));
   });
-  for (const auto& [op, vec] : writtenOperands)
-    op->setAttr(kWrittenOperandsAttrName, rewriter.getBoolArrayAttr(vec));
 }
 
 // Returns whether 'type' is can be lowered by the FusionRewritePattern.

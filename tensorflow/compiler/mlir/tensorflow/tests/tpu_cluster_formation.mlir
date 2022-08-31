@@ -805,3 +805,20 @@ func.func @two_clusters(%arg0: tensor<*xi32>, %arg1: tensor<?xi64>) -> (tensor<?
 
   func.return %2, %4 : tensor<?xi32>, tensor<?xi64>
 }
+
+// -----
+
+// Check that there is one replicate argument for each TPUReplicatedInput
+// even when there are multiple uses of the TPUReplicatedInput.
+
+// CHECK-LABEL: func @one_arg_per_TRI
+func.func @one_arg_per_TRI(%arg0: tensor<i32>, %arg1: tensor<i32>) -> () {
+  // CHECK: tf_device.replicate
+  // CHECK-SAME: [%arg0, %arg1] as
+  // CHECK-NOT: [%arg0, %arg1] as
+  %ri = "tf.TPUReplicatedInput"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %0 = "tf.opA"(%ri) {_xla_compile_device_type = "TPU", _replication_info = "replicate", is_stateless = true} : (tensor<i32>) -> tensor<i32>
+  %1 = "tf.opB"(%ri) {_xla_compile_device_type = "TPU", _replication_info = "replicate", is_stateless = true} : (tensor<i32>) -> tensor<i32>
+  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  func.return
+}
