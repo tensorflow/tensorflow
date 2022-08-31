@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
@@ -299,20 +300,6 @@ struct DeprecatedTilingPass
   llvm::Optional<SmallVector<SmallVector<int64_t>>> tileSizes;
 };
 
-/// Options to use to control tiling.
-struct TilingOptions {
-  using TileSizeComputationFunction =
-      std::function<SmallVector<Value>(OpBuilder &, Operation *)>;
-
-  /// Function to materialize the tile sizes for a given operation. This allows
-  /// to infer tile sizes statically, e.g. based on an operation's rank, and
-  /// also dynamically based, e.g. based on a tensor's shape at runtime.
-  TileSizeComputationFunction tileSizeComputationFunction = nullptr;
-
-  /// If `true`, generate a `gml_st.parallel` loop nest.
-  bool distribute = true;
-};
-
 struct TilingResult {
   TilingInterface tiledOp;
   Operation *loop;
@@ -396,18 +383,18 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
 /// Pattern to tile an op that implements the `TilingInterface` using
 /// `gml_st.for` for iterating over the tiles.
 struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
-  TilingPattern(MLIRContext *context, StringRef tilingTarget,
+  TilingPattern(MLIRContext *context, OpFilterFn filterFn,
                 TilingOptions options, PatternBenefit benefit = 1)
       : OpInterfaceRewritePattern<TilingInterface>(context, benefit),
-        tilingTarget(tilingTarget),
+        filterFn(filterFn),
         options(std::move(options)) {}
 
   LogicalResult matchAndRewrite(TilingInterface op,
                                 PatternRewriter &rewriter) const override {
-    if (!hasMatchingLabel(op, tilingTarget) || hasTransformationAttr(op))
+    if (!filterFn || failed(filterFn(op)) || hasTransformationAttr(op))
       return failure();
 
-    if (!options.tileSizeComputationFunction) {
+    if (!options.tileSizeComputationFn) {
       return rewriter.notifyMatchFailure(
           op, "missing tile size computation function");
     }
@@ -430,7 +417,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     // significantly simpler to handle instead of adjusting affine maps to
     // account for missing dimensions.
     SmallVector<Value> tileSizeVector =
-        options.tileSizeComputationFunction(rewriter, op);
+        options.tileSizeComputationFn(rewriter, op);
     if (tileSizeVector.size() < iterationDomain.size()) {
       auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
       tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
@@ -475,7 +462,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
   }
 
  private:
-  StringRef tilingTarget;
+  OpFilterFn filterFn;
   TilingOptions options;
 };
 
@@ -500,7 +487,7 @@ struct TilingPass : public TilingPassBase<TilingPass> {
     TilingOptions opts;
     opts.distribute = distribute;
     SmallVector<int64_t> ts(tileSizes.begin(), tileSizes.end());
-    opts.tileSizeComputationFunction = [ts](OpBuilder &b, Operation *op) {
+    opts.tileSizeComputationFn = [ts](OpBuilder &b, Operation *op) {
       OpBuilder::InsertionGuard guard(b);
       b.setInsertionPointToStart(
           &op->getParentOfType<func::FuncOp>().getBody().front());
@@ -510,12 +497,13 @@ struct TilingPass : public TilingPassBase<TilingPass> {
       }));
     };
 
+    auto filterFn = [&](Operation *op) {
+      return success(hasMatchingLabel(op, tilingTarget));
+    };
     RewritePatternSet patterns(ctx);
-    patterns.add<TilingPattern>(ctx, tilingTarget, opts);
-
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+    populateTilingPatterns(ctx, filterFn, opts, &patterns);
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-    }
 
     // Clean up by removing temporary attributes.
     f.walk([](Operation *op) { removeTransformationAttr(op); });
@@ -536,6 +524,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
     const std::string &tileSizes) {
   return std::make_unique<DeprecatedTilingPass>(tileSizes);
+}
+
+void populateTilingPatterns(MLIRContext *context, OpFilterFn filterFn,
+                            const TilingOptions &opts,
+                            RewritePatternSet *patterns) {
+  patterns->add<TilingPattern>(context, filterFn, opts);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(

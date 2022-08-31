@@ -2756,6 +2756,7 @@ cc_library(
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
+        "include/mlir-hlo/Dialect/gml_st/transforms/rewriters.h",
     ],
     includes = ["include"],
     deps = [
@@ -2787,6 +2788,7 @@ cc_library(
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
+        "include/mlir-hlo/Dialect/gml_st/transforms/rewriters.h",
     ],
     includes = ["include"],
     deps = [
