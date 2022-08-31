@@ -306,7 +306,7 @@ struct TilingOptions {
   /// Function to materialize the tile sizes for a given operation. This allows
   /// to infer tile sizes statically, e.g. based on an operation's rank, and
   /// also dynamically based, e.g. based on a tensor's shape at runtime.
-  TileSizeComputationFunction tileSizeMaterializationFunction = nullptr;
+  TileSizeComputationFunction tileSizeComputationFunction = nullptr;
 };
 
 struct TilingResult {
@@ -387,7 +387,7 @@ struct TileToGmlStLoopsPattern
     if (!hasMatchingLabel(op, tilingTarget) || hasTransformationAttr(op))
       return failure();
 
-    if (!options.tileSizeMaterializationFunction) {
+    if (!options.tileSizeComputationFunction) {
       return rewriter.notifyMatchFailure(
           op, "missing tile size computation function");
     }
@@ -404,7 +404,7 @@ struct TileToGmlStLoopsPattern
     // significantly simpler to handle instead of adjusting affine maps to
     // account for missing dimensions.
     SmallVector<Value> tileSizeVector =
-        options.tileSizeMaterializationFunction(rewriter, op);
+        options.tileSizeComputationFunction(rewriter, op);
     if (tileSizeVector.size() < iterationDomain.size()) {
       auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
       tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
@@ -470,7 +470,7 @@ struct TileToForPass : public TileToForPassBase<TileToForPass> {
 
     TilingOptions opts;
     SmallVector<int64_t> ts(tileSizes.begin(), tileSizes.end());
-    opts.tileSizeMaterializationFunction = [ts](OpBuilder &b, Operation *op) {
+    opts.tileSizeComputationFunction = [ts](OpBuilder &b, Operation *op) {
       OpBuilder::InsertionGuard guard(b);
       b.setInsertionPointToStart(
           &op->getParentOfType<func::FuncOp>().getBody().front());
