@@ -1732,15 +1732,15 @@ StatusOr<Literal> LiteralBase::BitcastConvert(const Shape& dest_shape) const {
     // Swap byte ordering as per the input data type.
     size_t input_elem_size = ShapeUtil::ByteSizeOfPrimitiveType(
                               shape().element_type());
-    tensorflow::ByteSwapArray(
+    TF_RETURN_IF_ERROR(tensorflow::ByteSwapArray(
         const_cast<char*>(out.root_piece().buffer()), input_elem_size, 
-        out.root_piece().size_bytes()/input_elem_size);
+        out.root_piece().size_bytes()/input_elem_size));
     // Swap byte ordering as per the output data type.
     size_t output_elem_size = ShapeUtil::ByteSizeOfPrimitiveType(
                                 dest_shape.element_type());
-    tensorflow::ByteSwapArray(
+    TF_RETURN_IF_ERROR(tensorflow::ByteSwapArray(
         const_cast<char*>(out.root_piece().buffer()), output_elem_size, 
-        out.root_piece().size_bytes()/output_elem_size);
+        out.root_piece().size_bytes()/output_elem_size));
   }
 
   return out;

@@ -42,17 +42,16 @@ alias(
 cc_library(
     name = "tensor_bundle",
     srcs = [
-        "byte_swap.cc",
         "tensor_bundle.cc",
     ],
     hdrs = [
-        "byte_swap.h",
         "tensor_bundle.h",
     ],
     copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     deps = [
         ":naming",
+        ":byteswap",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -76,6 +75,13 @@ cc_library(
     srcs = ["naming.cc"],
     hdrs = ["naming.h"],
     deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
+    name = "byteswap",
+    srcs = ["byte_swap.cc"],
+    hdrs = ["byte_swap.h"],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_cc_test(
