@@ -216,6 +216,7 @@ cc_library(
     name = "casts",
     hdrs = ["casts.h"],
     deps = [
+        "//tensorflow/tsl/platform:casts",
         ":platform",
     ] + tf_platform_deps("casts"),
 )

@@ -80,6 +80,7 @@ filegroup(
     name = "lib_hdrs",
     srcs = [
         "bfloat16.h",
+        "casts.h",
         "init_main.h",
         "net.h",
         "stack_frame.h",
@@ -117,6 +118,7 @@ filegroup(
     srcs = [
         "bfloat16.h",
         "byte_order.h",
+        "casts.h",
         "init_main.h",
         "intrusive_ptr.h",
         "macros.h",
@@ -432,4 +434,13 @@ filegroup(
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/core:__pkg__"],
+)
+
+cc_library(
+    name = "casts",
+    hdrs = ["casts.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+    ] + tf_platform_deps("casts"),
 )
