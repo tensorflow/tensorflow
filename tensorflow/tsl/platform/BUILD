@@ -373,6 +373,17 @@ cc_library(
 )
 
 cc_library(
+    name = "types",
+    hdrs = ["types.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+        ":bfloat16",
+        ":tstring",
+    ] + tf_platform_deps("types"),
+)
+
+cc_library(
     name = "build_test",
     testonly = 1,
     compatible_with = get_compatible_with_portable(),

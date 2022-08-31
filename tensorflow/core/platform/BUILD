@@ -931,10 +931,11 @@ cc_library(
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":platform",
         ":bfloat16",
+        ":platform",
         ":tstring",
-    ] + tf_platform_deps("types"),
+        "//tensorflow/tsl/platform:types",
+    ],
 )
 
 cc_library(
