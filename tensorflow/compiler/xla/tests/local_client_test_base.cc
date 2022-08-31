@@ -100,7 +100,7 @@ int64_t TestAllocator::deallocation_count(int device_ordinal) const {
 
   if (allocator_ == nullptr) {
     allocator_ = new TestAllocator(
-        platform == nullptr ? PlatformUtil::GetDefaultPlatform().ValueOrDie()
+        platform == nullptr ? PlatformUtil::GetDefaultPlatform().value()
                             : platform);
   }
   return allocator_;
@@ -120,15 +120,14 @@ struct LocalClientTestBase::EigenThreadPoolWrapper {
 };
 
 LocalClientTestBase::LocalClientTestBase(se::Platform* platform)
-    : local_client_(
-          ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie()),
+    : local_client_(ClientLibrary::GetOrCreateLocalClient(platform).value()),
       thread_pool_wrapper_(new EigenThreadPoolWrapper()) {
   // Take the first executor, since it's the default one.
   stream_executor_ = PlatformUtil::GetStreamExecutors(local_client_->platform())
-                         .ValueOrDie()
+                         .value()
                          .front();
   transfer_manager_ =
-      TransferManager::GetForPlatform(local_client_->platform()).ValueOrDie();
+      TransferManager::GetForPlatform(local_client_->platform()).value();
 }
 
 LocalClientTestBase::~LocalClientTestBase() {}
@@ -202,7 +201,7 @@ StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
   if (!stream) {
     stream = local_client_->mutable_backend()
                  ->BorrowStream(device_ordinal)
-                 .ValueOrDie()
+                 .value()
                  .get();
   }
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());

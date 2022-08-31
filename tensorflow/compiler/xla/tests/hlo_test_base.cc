@@ -100,13 +100,13 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
 /*static*/ se::Platform* HloTestBase::GetReferencePlatform() {
   auto result = PlatformUtil::GetPlatform(kInterpreter);
   TF_CHECK_OK(result.status()) << "could not get interpreter platform";
-  return result.ValueOrDie();
+  return result.value();
 }
 
 /*static*/ se::Platform* HloTestBase::GetTestPlatform() {
   auto result = PlatformUtil::GetDefaultPlatform();
   TF_CHECK_OK(result.status()) << "could not get test platform";
-  return result.ValueOrDie();
+  return result.value();
 }
 
 std::unique_ptr<HloModule> HloTestBase::CreateNewUnverifiedModule(
@@ -167,7 +167,7 @@ StatusOr<bool> HloTestBase::RunHloPass(HloPassInterface* hlo_pass,
   if (status_or.status().ok()) {
     const std::string module_str_after_run =
         module->ToProto().ShortDebugString();
-    const bool passChangedHlo = status_or.ValueOrDie();
+    const bool passChangedHlo = status_or.value();
     if (passChangedHlo) {
       // Check that the proto actually changed.
       EXPECT_NE(module_str_after_run, module_str_before_run);
@@ -237,12 +237,12 @@ Literal HloTestBase::ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
   return test_runner_
       .Execute(std::move(module), arguments,
                /*run_hlo_passes=*/false)
-      .ValueOrDie();
+      .value();
 }
 
 Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
                                         absl::Span<Literal* const> arguments) {
-  return test_runner_.Execute(std::move(module), arguments).ValueOrDie();
+  return test_runner_.Execute(std::move(module), arguments).value();
 }
 
 StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
@@ -341,7 +341,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   if (!result.ok()) {
     return ::testing::AssertionFailure() << result.status();
   }
-  return result.ValueOrDie();
+  return result.value();
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
@@ -355,7 +355,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   if (!result.ok()) {
     return ::testing::AssertionFailure() << result.status();
   }
-  return result.ValueOrDie();
+  return result.value();
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
@@ -443,7 +443,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
   if (!result.ok()) {
     return ::testing::AssertionFailure() << result.status();
   }
-  return result.ValueOrDie();
+  return result.value();
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
@@ -524,7 +524,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
            << module_or_status.status().ToString();
   }
 
-  std::unique_ptr<HloModule> module = std::move(module_or_status.ValueOrDie());
+  std::unique_ptr<HloModule> module = std::move(module_or_status.value());
   const auto fake_arguments = MakeFakeArguments(module.get()).value();
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
@@ -573,7 +573,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
            << module_or_status.status().ToString();
   }
 
-  std::unique_ptr<HloModule> module = std::move(module_or_status.ValueOrDie());
+  std::unique_ptr<HloModule> module = std::move(module_or_status.value());
   const auto fake_arguments = MakeFakeArguments(module.get()).value();
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
@@ -620,8 +620,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
              << "Error while parsing HLO text format: "
              << module_or_status.status().ToString();
     }
-    std::unique_ptr<HloModule> module =
-        std::move(module_or_status.ValueOrDie());
+    std::unique_ptr<HloModule> module = std::move(module_or_status.value());
 
     fake_arguments[i] = MakeFakeArguments(module.get()).value();
 
@@ -653,7 +652,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
       return ::testing::AssertionFailure()
              << executable.status().error_message();
     }
-    executables[i] = std::move(executable.ValueOrDie());
+    executables[i] = std::move(executable.value());
   }
 
   std::optional<Literal> canonical_output;
@@ -669,10 +668,10 @@ HloTestBase::RunAndCompareTwoModulesInternal(
       if (!canonical_output.has_value()) {
         canonical_output = std::move(output).value();
       } else {
-        if (*canonical_output != output.ValueOrDie()) {
+        if (*canonical_output != output.value()) {
           return ::testing::AssertionFailure()
                  << "Successive runs have returned different results: "
-                 << *canonical_output << " vs. " << output.ValueOrDie();
+                 << *canonical_output << " vs. " << output.value();
         }
       }
     }

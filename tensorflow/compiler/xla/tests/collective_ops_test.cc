@@ -91,7 +91,7 @@ class CollectiveOpsTest : public HloTestBase {
           absl::StrFormat("{%s}", absl::StrJoin(replica_group_strs, ", "))},
          {"OP", op},
          {"DATATYPE", datatype}});
-    return ParseAndReturnVerifiedModule(parameterized_hlo, config).ValueOrDie();
+    return ParseAndReturnVerifiedModule(parameterized_hlo, config).value();
   }
 
   template <typename LiteralType>
@@ -271,7 +271,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
 
   auto config = GetModuleConfigForTest();
   config.set_replica_count(2);
-  auto module = ParseAndReturnVerifiedModule(hlo_module, config).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_module, config).value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
                           ExecuteReplicated(std::move(module), {},
                                             /*num_replicas=*/2,
@@ -312,7 +312,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceOr_Pred) {
 
   auto config = GetModuleConfigForTest();
   config.set_replica_count(2);
-  auto module = ParseAndReturnVerifiedModule(hlo_module, config).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_module, config).value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
                           ExecuteReplicated(std::move(module), {},
                                             /*num_replicas=*/2,
@@ -372,7 +372,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
           .CreateExecutable(MakeCrsModule(input_literal.shape(),
                                           /*replica_groups=*/{}, config),
                             /*run_hlo_passes=*/true)
-          .ValueOrDie();
+          .value();
   std::vector<int64_t> devices = {0, 1};
   auto device_assn = MakeDeviceAssn(devices);
 

@@ -49,7 +49,7 @@ TEST_F(HloMetadataTest, MetadataPropagation) {
   Shape argument_layout = ShapeUtil::MakeShape(F32, {});
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,
-      local_client_->Compile(builder.Build().ValueOrDie(),
+      local_client_->Compile(builder.Build().value(),
                              {&argument_layout, &argument_layout},
                              ExecutableBuildOptions()));
 
@@ -73,7 +73,7 @@ TEST_F(HloMetadataTest, MetadataClearing) {
   Shape argument_layout = ShapeUtil::MakeShape(F32, {});
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,
-      local_client_->Compile(builder.Build().ValueOrDie(),
+      local_client_->Compile(builder.Build().value(),
                              {&argument_layout, &argument_layout},
                              ExecutableBuildOptions()));
 

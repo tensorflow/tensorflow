@@ -1248,11 +1248,10 @@ XLA_TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileInfeedCondition)) {
 void BM_WhileLoop(::testing::benchmark::State& state) {
   // Benchmark a simple kernel to measure while loop overheads.
 
-  se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
-  auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
+  se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
+  auto executors = PlatformUtil::GetStreamExecutors(platform).value();
   se::StreamExecutorMemoryAllocator allocator(platform, executors);
-  LocalClient* client =
-      ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie();
+  LocalClient* client = ClientLibrary::GetOrCreateLocalClient(platform).value();
 
   const int64_t seq_len = 100;
   Shape loop_state_shape = ShapeUtil::MakeTupleShape(

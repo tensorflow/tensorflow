@@ -946,7 +946,7 @@ XLA_TEST_F(ReduceTest, ReduceIdentity) {
   Shape operand_shape = ShapeUtil::MakeShape(F32, {1});
   Reduce(Parameter(&builder, 0, operand_shape, "operand"),
          Parameter(&builder, 1, single_float, "init"),
-         computation_status.ValueOrDie(), {0});
+         computation_status.value(), {0});
 
   float operand[] = {42.0f};
   float init = 58.5f;
