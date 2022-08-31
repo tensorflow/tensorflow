@@ -4938,6 +4938,26 @@ def TFL_Atan2Op: TFL_Op<"atan2", [
   );
 }
 
+def TFL_SignOp: TFL_Op<"sign", [
+  NoSideEffect,
+  SameOperandsAndResultShape,
+  SameOperandsAndResultElementType
+  ]> {
+  
+  let summary = "Sign operation";
+  let description = [{
+    Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, F64]>:$x
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, F64]>:$output
+  );
+}
+
 def TFL_YieldOp : Op<TFL_Dialect, "yield",
   [NoSideEffect,
    Terminator,
