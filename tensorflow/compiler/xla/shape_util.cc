@@ -1745,7 +1745,9 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
 
 /*static*/ int64_t ShapeUtil::ArraySize(const Shape& shape) {
   CHECK(LayoutUtil::IsDenseArray(shape));
-  CHECK(!shape.layout().tiles().empty());
+  if (shape.layout().tiles().empty()) {
+    return ByteSizeOfElements(shape);
+  }
 
   auto tile_dimensions = shape.layout().tiles(0).dimensions();
   auto shape_dimensions = shape.dimensions();
