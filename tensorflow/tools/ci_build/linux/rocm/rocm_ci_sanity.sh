@@ -296,7 +296,7 @@ do_bazel_deps_query() {
 
   # We've set the flag noimplicit_deps as a workaround for
   # https://github.com/bazelbuild/bazel/issues/10544
-  bazel query ${BAZEL_FLAGS} --noimplicit_deps -- "deps($BUILD_TARGET)" > /dev/null
+  bazel query ${BAZEL_FLAGS} --noimplicit_deps -- "deps($BUILD_TARGET except tensorflow/compiler/mlir/tfrt/...:*  except tensorflow/stream_executor/cuda/...:* except //tensorflow/stream_executor/...:*  except tensorflow/lite/...:* except tensorflow/core/tfrt/...:* except tensorflow/core/runtime_fallback/...:* )" > /dev/null
 
   cmd_status \
     "This is due to invalid BUILD files."
@@ -416,7 +416,7 @@ _run_configure() {
 }
 
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_bazel_nobuild" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test")
+SANITY_STEPS=("do_bazel_nobuild" "do_bazel_deps_query" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test")
 SANITY_STEPS_DESC=("bazel nobuild" "bazel query" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases")
 
 INCREMENTAL_FLAG=""
