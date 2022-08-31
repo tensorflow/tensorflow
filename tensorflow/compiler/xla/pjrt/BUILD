@@ -685,6 +685,7 @@ cc_library(
     }),
     deps = [
         ":pjrt_client",
+        ":pjrt_future",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",

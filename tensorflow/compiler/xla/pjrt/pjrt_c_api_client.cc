@@ -27,7 +27,9 @@ limitations under the License.
 // TODO(skyewm): remove when everything goes through C API
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/tpu/pjrt_api.h"
@@ -685,6 +687,71 @@ void PjRtCApiBuffer::set_shape() {
       delete[] args.layout.tiles.heap;
     }
   }
+}
+
+PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
+  PJRT_Buffer_ToHostBuffer_Args args;
+  args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.src = buffer_.get();
+
+  const xla::Shape& shape = literal->shape();
+
+  if (!shape.IsArray()) {
+    return PjRtFuture<Status>(
+        Unimplemented("PjRtCApiBuffer::ToLiteral: Shapes other than array are"
+                      "not supported."));
+  }
+
+  args.dst_size = ShapeUtil::ByteSizeOfElements(shape);
+  args.dst = literal->untyped_data();
+
+  std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> error{
+      pjrt_c_api()->PJRT_Buffer_ToHostBuffer(&args),
+      ::pjrt::MakeErrorDeleter(pjrt_c_api())};
+
+  if (error != nullptr) {
+    xla::Status s = ::pjrt::PjrtErrorToStatus(error.get(), pjrt_c_api());
+    return PjRtFuture<Status>(s);
+  }
+
+  PJRT_Event_OnReady_Args event_onready_args;
+  event_onready_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
+  event_onready_args.priv = nullptr;
+  event_onready_args.event = args.event;
+
+  PjRtFuture<Status>::Promise promise = PjRtFuture<Status>::CreatePromise();
+
+  event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
+      [promise, api = client_->pjrt_c_api(),
+       pjrt_event = args.event](PJRT_Error* error) mutable {
+        if (error) {
+          xla::Status s = ::pjrt::PjrtErrorToStatus(error, api);
+          promise.Set(s);
+          ::pjrt::MakeErrorDeleter(api)(error);
+        } else {
+          promise.Set(Status::OK());
+        }
+        ::pjrt::MakeEventDeleter(api)(pjrt_event);
+      });
+
+  event_onready_args.callback = [](PJRT_Error* error, void* args) {
+    std::function<void(PJRT_Error*)>* set_future =
+        reinterpret_cast<std::function<void(PJRT_Error*)>*>(args);
+    (*set_future)(error);
+    delete set_future;
+  };
+
+  error.reset(pjrt_c_api()->PJRT_Event_OnReady(&event_onready_args));
+
+  if (error != nullptr) {
+    xla::Status s = ::pjrt::PjrtErrorToStatus(error.get(), pjrt_c_api());
+    return PjRtFuture<Status>(s);
+  }
+
+  PjRtFuture<Status> future = PjRtFuture<Status>(std::move(promise));
+
+  return future;
 }
 
 StatusOr<size_t> PjRtCApiBuffer::GetOnDeviceSizeInBytes() const {

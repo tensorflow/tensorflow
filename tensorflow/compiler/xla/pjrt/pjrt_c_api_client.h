@@ -328,13 +328,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
         "PJRT C API does not support AcquireExternalReference");
   }
 
-  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override {
-#ifdef PJRT_C_API_BYPASS
-    return wrapped_->ToLiteral(literal);
-#endif  // PJRT_C_API_BYPASS
-    return PjRtFuture<Status>(
-        Unimplemented("PJRT C API does not support ToLiteral"));
-  }
+  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 

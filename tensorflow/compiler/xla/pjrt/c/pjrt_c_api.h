@@ -653,6 +653,29 @@ typedef PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
 typedef struct {
   size_t struct_size;
   void* priv;
+  PJRT_Buffer* src;
+
+  // `dst` can be nullptr to query required size which will be set into
+  // `dst_size`.
+  void* dst;  // in/out
+  // Size of `dst` in bytes. If `dst` is nullptr, then `dst_size` is set to the
+  // size needed. Otherwise, `dst_size` must be greater than or equal to the
+  // needed size.
+  size_t dst_size;  // in/out
+
+  // Event that signals when the copy has completed.
+  PJRT_Event* event;  // out
+} PJRT_Buffer_ToHostBuffer_Args;
+const size_t PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_ToHostBuffer_Args, event);
+
+// Asynchronously copies the buffer's value into a preallocated host buffer.
+typedef PJRT_Error* PJRT_Buffer_ToHostBuffer(
+    PJRT_Buffer_ToHostBuffer_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
   PJRT_Buffer* buffer;
   size_t on_device_size_in_bytes;  // out
 } PJRT_Buffer_OnDeviceSizeInBytes_Args;
@@ -805,6 +828,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToDevice);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ToHostBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
 } PJRT_Api;

@@ -15,15 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 // TODO(b/238999986): Remove this.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
@@ -535,6 +541,41 @@ PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args) {
       args->buffer->buffer->CopyToDevice(args->dst_device->device));
   args->dst_buffer =
       new PJRT_Buffer{std::move(dst_buffer), args->buffer->client};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_ToHostBuffer_Args",
+      PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE, args->struct_size));
+
+  const xla::Shape& host_shape = xla::ShapeUtil::DeviceShapeToHostShape(
+      args->src->buffer->on_device_shape());
+
+  size_t host_buffer_size = xla::ShapeUtil::ByteSizeOfElements(host_shape);
+
+  if (args->dst == nullptr) {
+    args->dst_size = host_buffer_size;
+    return nullptr;
+  }
+
+  if (args->dst_size < host_buffer_size) {
+    return new PJRT_Error{
+        xla::InvalidArgument("`dst_size` must be >= %zu, got %zu.",
+                             host_buffer_size, args->dst_size)};
+  }
+
+  auto literal = std::make_unique<xla::MutableBorrowingLiteral>(
+      static_cast<char*>(args->dst), host_shape);
+  xla::PjRtFuture<xla::Status> future =
+      args->src->buffer->ToLiteral(literal.get());
+
+  args->event = new PJRT_Event{std::move(future)};
+  args->event->future.OnReady(
+      [literal{std::move(literal)}](xla::Status status) {
+        /* To keep literal alive */
+      });
+
   return nullptr;
 }
 
