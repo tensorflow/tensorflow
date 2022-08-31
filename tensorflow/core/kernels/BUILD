@@ -3629,9 +3629,18 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
         ":matmul_util",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
+        "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
+        "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
     ]) + if_cuda_or_rocm([
+        ":conv_ops_gpu_hdrs",
         ":gpu_utils",
+        ":conv_ops",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
+        "//tensorflow/core/util/autotune_maps:conv_parameters",
+        "//tensorflow/core/util/proto:proto_utils",
     ]),
 )
 

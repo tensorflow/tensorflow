@@ -257,9 +257,6 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
       case FusedComputationType::kUndefined:
         OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));
         break;
-      case FusedComputationType::kBiasAddWithGeluApproximate:
-        OP_REQUIRES_OK(context, errors::Internal("Fusion type is unsupported"));
-        break;
       case FusedComputationType::kBiasAdd:
         conv2d(WithBiasAdd<T>(bias_add_args), context, input, filter, output);
         break;
@@ -303,6 +300,9 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
         conv2d(WithFusedBatchNormAndElu<T>(fusion_args.epsilon,
                                            fused_batch_norm_args),
                context, input, filter, output);
+        break;
+      default:
+        OP_REQUIRES_OK(context, errors::Internal("Fusion type is unsupported"));
         break;
     }
   }
