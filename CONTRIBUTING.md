@@ -12,6 +12,7 @@ Before sending your pull requests, make sure you do the following:
     [guidelines](#general-guidelines-and-philosophy-for-contribution).
 -   Changes are consistent with the [Coding Style](#c-coding-style).
 -   Run the [unit tests](#running-unit-tests).
+-   Read the [TensorFlow PR Life Cycle](TensorFlow_PR_Life_Cycle.md) document.
 
 ## How to become a contributor and submit your own code
 
