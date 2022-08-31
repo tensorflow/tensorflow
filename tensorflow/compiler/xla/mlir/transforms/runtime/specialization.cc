@@ -189,9 +189,7 @@ Status SpecializeFunction(mlir::func::FuncOp func, ArgumentsRef arguments,
   }
 
   // Erase all the original block arguments.
-  llvm::BitVector erase_block_args(entry_block.getNumArguments());
-  erase_block_args.set(0, num_inputs);
-  entry_block.eraseArguments(erase_block_args);
+  entry_block.eraseArguments(0, num_inputs);
 
   // Add symbolic shapes as arguments attributes.
   for (unsigned i = 0; i < num_inputs; ++i) {

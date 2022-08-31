@@ -83,8 +83,7 @@ void ReplaceBlockArgumentsWithImplicitOperands(
       arg.replaceAllUsesWith(implicit_operands[implicit_operand_index++]);
     }
 
-    region.front().eraseArguments(
-        llvm::BitVector(region.getNumArguments(), true));
+    region.front().eraseArguments(0, region.getNumArguments());
   }
 }
 

@@ -556,9 +556,7 @@ Value UpdateControlFlowBlockArgWithToken(OpBuilder& builder, Block& block,
   ReplaceWithTupleResult(builder, old_args, new_args, /*flatten_tuple=*/true);
   auto new_arg = new_args[new_args.size() - 1];
 
-  llvm::BitVector erase_indices(block.getNumArguments());
-  erase_indices.set(0, old_args_size);
-  block.eraseArguments(erase_indices);
+  block.eraseArguments(0, old_args_size);
 
   return new_arg;
 }
@@ -658,8 +656,7 @@ void ReplaceBlockArgumentsWithImplicitOperands(mlir::Operation* op,
 
   auto& region = op->getRegion(region_idx);
   region.getArgument(0).replaceAllUsesWith(implicit_operand);
-  region.front().eraseArguments(
-      llvm::BitVector(region.getNumArguments(), true));
+  region.front().eraseArguments(0, region.getNumArguments());
 }
 
 // Rewrites an `mhlo.if` op or its region. If `region_idx` is not set, the op
