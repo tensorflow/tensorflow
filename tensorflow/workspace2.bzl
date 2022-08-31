@@ -611,7 +611,10 @@ def _tf_repositories():
         sha256 = "3c6893d38d054d4e378267166858698899e9d87258e8ff1419d020c395384535",
         strip_prefix = "curl-7.84.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.84.0.tar.gz"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.84.0.tar.gz",
+            "https://curl.haxx.se/download/curl-7.84.0.tar.gz",
+        ],
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
