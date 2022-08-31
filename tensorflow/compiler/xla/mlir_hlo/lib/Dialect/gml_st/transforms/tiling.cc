@@ -384,11 +384,8 @@ struct TileToGmlStLoopsPattern
 
   LogicalResult matchAndRewrite(TilingInterface op,
                                 PatternRewriter &rewriter) const override {
-    if (!hasMatchingLabel(op, tilingTarget)) return failure();
-    if (hasTransformationAttr(op)) return failure();
-
-    OpBuilder::InsertionGuard guard(rewriter);
-    rewriter.setInsertionPointAfter(op);
+    if (!hasMatchingLabel(op, tilingTarget) || hasTransformationAttr(op))
+      return failure();
 
     if (!options.tileSizeMaterializationFunction) {
       return rewriter.notifyMatchFailure(
