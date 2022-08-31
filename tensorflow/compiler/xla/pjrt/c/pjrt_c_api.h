@@ -351,6 +351,27 @@ const size_t PJRT_Client_Compile_Args_STRUCT_SIZE =
 // Compiles an MLIR module with given `options`.
 typedef PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  int num_replicas;
+  int num_partitions;
+  // Must be greater than or equal to `num_replicas * num_partitions`
+  size_t default_assignment_size;
+  // Points to an array of size `default_assignment_size`.
+  // This API writes `num_replicas * num_partitions` ints within that buffer.
+  // The caller retains ownership of this memory.
+  int* default_assignment;  // pointer to array in; values written as out
+} PJRT_Client_DefaultDeviceAssignment_Args;
+
+const size_t PJRT_Client_DefaultDeviceAssignment_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_DefaultDeviceAssignment_Args,
+                     default_assignment);
+
+typedef PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
+    PJRT_Client_DefaultDeviceAssignment_Args* args);
+
 // --------------------------------- Devices -----------------------------------
 
 typedef struct {
@@ -640,7 +661,7 @@ typedef struct {
   Int64List dimensions;         // out
   BoolList dynamic_dimensions;  // out
   bool has_layout;
-  XLA_Layout layout;            // out
+  XLA_Layout layout;  // out
 } PJRT_Buffer_OnDeviceTrimmedShape_Args;
 const size_t PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE =
     PJRT_STRUCT_SIZE(PJRT_Buffer_OnDeviceTrimmedShape_Args, layout);
@@ -803,6 +824,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableDevices);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupDevice);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Compile);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_DefaultDeviceAssignment);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);

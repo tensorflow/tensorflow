@@ -158,6 +158,38 @@ absl::string_view PjRtCApiClient::platform_version() const {
   return platform_version;
 }
 
+static DeviceAssignment CalculateDefaultAssignment(
+    int num_replicas, int num_partitions,
+    absl::Span<const int> device_assignment) {
+  DeviceAssignment cpp_device_assignment(num_replicas, num_partitions);
+  const int* iterator = device_assignment.begin();
+  for (int replica = 0; replica < num_replicas; ++replica) {
+    for (int partition = 0; partition < num_partitions; ++partition) {
+      cpp_device_assignment(replica, partition) = *(iterator++);
+    }
+  }
+  return cpp_device_assignment;
+}
+
+StatusOr<DeviceAssignment> PjRtCApiClient::GetDefaultDeviceAssignment(
+    int num_replicas, int num_partitions) const {
+  PJRT_Client_DefaultDeviceAssignment_Args args;
+  args.struct_size = PJRT_Client_DefaultDeviceAssignment_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = c_client_.get();
+  args.num_replicas = num_replicas;
+  args.num_partitions = num_partitions;
+  std::vector<int> assignment_buffer(num_replicas * num_partitions);
+  args.default_assignment_size = assignment_buffer.size();
+  args.default_assignment = assignment_buffer.data();
+  RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_DefaultDeviceAssignment(&args),
+                         c_api_);
+  absl::Span<const int> param{args.default_assignment,
+                              args.default_assignment_size};
+  return CalculateDefaultAssignment(args.num_replicas, args.num_partitions,
+                                    param);
+}
+
 StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
     const PjRtLoadedExecutable& executable) const {
   return {std::nullopt};

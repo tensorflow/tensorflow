@@ -143,13 +143,7 @@ class PjRtCApiClient : public PjRtClient {
   }
 
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_partitions) const override {
-#ifdef PJRT_C_API_BYPASS
-    return wrapped_->GetDefaultDeviceAssignment(num_replicas, num_partitions);
-#endif  // PJRT_C_API_BYPASS
-    return Unimplemented(
-        "PJRT C API does not support GetDefaultDeviceAssignment");
-  }
+      int num_replicas, int num_partitions) const override;
 
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override {
 #ifdef PJRT_C_API_BYPASS
@@ -284,6 +278,8 @@ class PjRtCApiClient : public PjRtClient {
   }
 
  private:
+  void InitDevices();
+
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
 
@@ -298,8 +294,6 @@ class PjRtCApiClient : public PjRtClient {
   // wrapped_ and related functionality should be removed.
   PjRtClient* wrapped_;
   absl::flat_hash_map<PjRtDevice*, PjRtCApiDevice*> wrapped_device_map_;
-
-  void InitDevices();
 };
 
 class PjRtCApiBuffer : public PjRtBuffer {

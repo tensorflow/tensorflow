@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+
 // TODO(b/238999986): Remove this.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 
@@ -253,6 +254,43 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
   args->executable = new PJRT_Executable{std::move(executable), args->client};
   PopulatePjrtExecutableAddressableDevices(args->executable);
   args->executable->populated = true;
+  return nullptr;
+}
+
+static void PopulateDeviceAssignment(int* const device_assignment_buffer,
+                                     int num_replicas, int num_partitions,
+                                     xla::DeviceAssignment device_assignment) {
+  int* iterator = device_assignment_buffer;
+  for (int replica = 0; replica < num_replicas; ++replica) {
+    for (int partition = 0; partition < num_partitions; ++partition) {
+      *(iterator++) = device_assignment(replica, partition);
+    }
+  }
+}
+
+PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
+    PJRT_Client_DefaultDeviceAssignment_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_DefaultAssignment_Args",
+      PJRT_Client_DefaultDeviceAssignment_Args_STRUCT_SIZE, args->struct_size));
+
+  const int replicas = args->num_replicas;
+  const int partitions = args->num_partitions;
+  const size_t buffer_size = args->default_assignment_size;
+  if (buffer_size < replicas * partitions) {
+    xla::Status status = tensorflow::errors::FailedPrecondition(
+        absl::StrCat(__func__, ": `default_assignment_size` ", buffer_size,
+                     " < `num_replicas * num_partitions`, ", replicas, " * ",
+                     partitions, " = ", replicas * partitions));
+    return new PJRT_Error{status};
+  }
+
+  PJRT_ASSIGN_OR_RETURN(
+      xla::DeviceAssignment device_assignment,
+      args->client->client->GetDefaultDeviceAssignment(replicas, partitions));
+
+  PopulateDeviceAssignment(args->default_assignment, replicas, partitions,
+                           std::move(device_assignment));
   return nullptr;
 }
 
