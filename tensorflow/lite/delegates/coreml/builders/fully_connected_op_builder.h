@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_BUILDERS_FULLY_CONNECTED_OP_BUILDER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_BUILDERS_FULLY_CONNECTED_OP_BUILDER_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_COREML_BUILDERS_FULLY_CONNECTED_OP_BUILDER_H_
+#define TENSORFLOW_LITE_DELEGATES_COREML_BUILDERS_FULLY_CONNECTED_OP_BUILDER_H_
 
 #include <string>
 
@@ -55,4 +55,4 @@ class FullyConnectedOpBuilder : public OpBuilder {
 }  // namespace delegates
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_BUILDERS_FULLY_CONNECTED_OP_BUILDER_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_COREML_BUILDERS_FULLY_CONNECTED_OP_BUILDER_H_
