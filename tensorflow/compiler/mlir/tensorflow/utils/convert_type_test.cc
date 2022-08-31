@@ -39,7 +39,7 @@ std::string ConvertToMlirString(const std::vector<int64_t>& dims,
   auto status_or = ConvertToMlirTensorType(shape, dtype, &b);
   std::string buf;
   llvm::raw_string_ostream os(buf);
-  status_or.ValueOrDie().print(os);
+  status_or.value().print(os);
   return os.str();
 }
 

@@ -107,7 +107,7 @@ void GraphOptPass::runOnOperation() {
         << module_or_status.status().error_message();
     return signalPassFailure();
   }
-  auto module_out = std::move(module_or_status).ValueOrDie();
+  auto module_out = std::move(module_or_status).value();
 
   // We cannot replace the module in a ModulePass. So we simply copy the
   // operation list from module_out to module_in.

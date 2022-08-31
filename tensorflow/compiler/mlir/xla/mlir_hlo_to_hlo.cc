@@ -192,7 +192,7 @@ static xla::FftType Convert_fft_type(mlir::mhlo::FftType fft_type) {
 
 static std::vector<std::pair<int64_t, int64_t>> Convert_padding(
     llvm::Optional<mlir::DenseIntElementsAttr> padding) {
-  return xla::ConvertNx2Attribute(padding).ValueOrDie();
+  return xla::ConvertNx2Attribute(padding).value();
 }
 
 static std::optional<bool> Convert_use_global_device_ids(
@@ -203,12 +203,12 @@ static std::optional<bool> Convert_use_global_device_ids(
 
 static std::vector<std::pair<int64_t, int64_t>> Convert_source_target_pairs(
     llvm::Optional<mlir::DenseIntElementsAttr> source_target_pairs) {
-  return xla::ConvertNx2Attribute(source_target_pairs).ValueOrDie();
+  return xla::ConvertNx2Attribute(source_target_pairs).value();
 }
 
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
     mlir::DenseIntElementsAttr groups) {
-  return xla::ConvertReplicaGroups(groups).ValueOrDie();
+  return xla::ConvertReplicaGroups(groups).value();
 }
 
 // Converts types and corresponding layouts into xla shapes with layouts.
@@ -249,7 +249,7 @@ static xla::Shape GetCustomCallResultShapeWithLayout(mlir::Type type,
 static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
     mlir::mhlo::Transpose transpose) {
   return xla::ConvertTranspose(mlir::mhlo::stringifyTranspose(transpose))
-      .ValueOrDie();
+      .value();
 }
 
 static xla::Layout ExtractLayout(
@@ -403,7 +403,7 @@ std::optional<xla::ChannelHandle> Convert_channel_handle(
 static xla::ComparisonDirection Convert_comparison_direction(
     llvm::StringRef comparison_direction_string) {
   return xla::StringToComparisonDirection(comparison_direction_string.str())
-      .ValueOrDie();
+      .value();
 }
 
 static xla::GatherDimensionNumbers Convert_dimension_numbers(
@@ -1045,7 +1045,7 @@ mlir::LogicalResult ExportXlaOp(mlir::mhlo::CompareOp op,
   if (type_attr && type_attr.getValue() != mlir::mhlo::ComparisonType::NOTYPE) {
     auto type = xla::StringToComparisonType(
                     stringifyComparisonType(type_attr.getValue()).str())
-                    .ValueOrDie();
+                    .value();
     xla_result = xla::Compare(lhs, rhs, /*broadcast_dimensions=*/{}, dir, type);
   } else {
     xla_result = xla::Compare(lhs, rhs, dir);
@@ -1591,7 +1591,7 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
     return op.emitError(shape_or.status().ToString());
   }
 
-  xla::Shape& shape = shape_or.ValueOrDie();
+  xla::Shape& shape = shape_or.value();
   if (!shape.IsTuple()) {
     value_map[op.getResult(0)] = sorted;
     return success();
@@ -1655,7 +1655,7 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
     return op.emitError(shape_or.status().ToString());
   }
 
-  xla::Shape& shape = shape_or.ValueOrDie();
+  xla::Shape& shape = shape_or.value();
   if (!shape.IsTuple()) {
     value_map[op.getResult(0)] = whileop;
     return success();
@@ -2074,7 +2074,7 @@ LogicalResult ConvertToHloModule::Lower(
               xla::internal::XlaBuilderFriend::GetInstruction(xla_gte_op);
 
           assert(xla::StringToHloOpcode(get_tuple_element_proto->opcode())
-                         .ValueOrDie() == xla::HloOpcode::kGetTupleElement &&
+                         .value() == xla::HloOpcode::kGetTupleElement &&
                  "The token-result of mhlo.InfeedOp should be mapped to a "
                  "xla::HloOpcode::kGetTupleElement");
 
@@ -2085,9 +2085,10 @@ LogicalResult ConvertToHloModule::Lower(
                     xla_gte_op.builder(),
                     get_tuple_element_proto->operand_ids(0));
 
-            assert(xla::StringToHloOpcode(xla_infeed_op_proto->opcode())
-                           .ValueOrDie() == xla::HloOpcode::kInfeed &&
-                   "Expected xla::HloOpcode::kInfeed op");
+            assert(
+                xla::StringToHloOpcode(xla_infeed_op_proto->opcode()).value() ==
+                    xla::HloOpcode::kInfeed &&
+                "Expected xla::HloOpcode::kInfeed op");
 
             auto* shape = xla_infeed_op_proto->mutable_shape();
             if (failed(ConvertInfeedtLayout(inst, layout, shape)))
@@ -2107,10 +2108,10 @@ LogicalResult ConvertToHloModule::Lower(
                       get_tuple_element_proto->operand_ids(0));
               auto* data_tuple_shape = data_tuple_proto->mutable_shape();
 
-              assert(xla::StringToHloOpcode(data_tuple_proto->opcode())
-                             .ValueOrDie() ==
-                         xla::HloOpcode::kGetTupleElement &&
-                     "Expected a xla:tupleOp for all the data results.");
+              assert(
+                  xla::StringToHloOpcode(data_tuple_proto->opcode()).value() ==
+                      xla::HloOpcode::kGetTupleElement &&
+                  "Expected a xla:tupleOp for all the data results.");
               if (failed(ConvertInfeedtLayout(inst, layout, data_tuple_shape)))
                 return failure();
             }
@@ -2160,7 +2161,7 @@ LogicalResult ConvertToHloModule::Lower(
         CreateArrayLiteralFromAttr(const_attr, ExtractXlaShape(inst).layout());
     if (!literal_or.ok())
       return inst->emitError(literal_or.status().ToString());
-    auto constant = xla::ConstantLiteral(builder, literal_or.ValueOrDie());
+    auto constant = xla::ConstantLiteral(builder, literal_or.value());
     value_map[inst->getResult(0)] = constant;
 
     return success();
@@ -2192,7 +2193,7 @@ LogicalResult ConvertToHloModule::Lower(
         if (!reshape.ok())
           return inst->emitError() << reshape.status().error_message();
 
-        returns[index] = reshape.ValueOrDie();
+        returns[index] = reshape.value();
       }
 
       if (has_ret_shardings) {
@@ -2345,13 +2346,13 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
     auto arg_shape_status = options_.shape_representation_fn
                                 ? options_.shape_representation_fn(
                                       arg_shape, /*use_fast_memory=*/false,
-                                      layout_preference_status.ValueOrDie())
+                                      layout_preference_status.value())
                                 : arg_shape;
     if (!arg_shape_status.ok())
       return block->getParentOp()->emitError()
              << arg_shape_status.status().error_message();
 
-    arg_shape = std::move(arg_shape_status.ValueOrDie());
+    arg_shape = std::move(arg_shape_status.value());
 
     if (entry_args_same_across_replicas.empty()) continue;
     for (int i = 0, e = xla::ShapeUtil::GetLeafCount(arg_shape); i < e; ++i)
@@ -2376,7 +2377,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
                << hlo_sharding.status().error_message();
 
       auto status = RewriteLayoutWithShardedShape(
-          hlo_sharding.ValueOrDie(), /*use_fast_memory=*/false,
+          hlo_sharding.value(), /*use_fast_memory=*/false,
           options_.layout_preference_fn, options_.shape_representation_fn,
           &(*arg_shapes)[arg_sharding.index()]);
       if (!status.ok())
@@ -2510,7 +2511,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         llvm::Twine(computation_or.status().error_message()));
     return failure();
   }
-  *result = std::move(computation_or.ValueOrDie());
+  *result = std::move(computation_or.value());
   return success();
 }
 

@@ -75,7 +75,7 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
   if (is_dynamic) {
     extensions = TypeExtensionsAttr::get(builder.getContext(), bounds);
   }
-  return TypeT::get(shape, element_type_or.ValueOrDie(), extensions);
+  return TypeT::get(shape, element_type_or.value(), extensions);
 }
 
 StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(

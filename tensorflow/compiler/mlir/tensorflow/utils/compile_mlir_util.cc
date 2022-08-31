@@ -329,7 +329,7 @@ Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
                     mlir::ModuleOp module) {
   auto producer_or = GetTfGraphProducerVersion(module);
   if (!producer_or.ok()) return producer_or.status();
-  int64_t producer_version = producer_or.ValueOrDie();
+  int64_t producer_version = producer_or.value();
 
   llvm::SmallVector<int64_t, 16> shape_backing;
   llvm::SmallVector<llvm::ArrayRef<int64_t>, 4> arg_shapes_copy;
