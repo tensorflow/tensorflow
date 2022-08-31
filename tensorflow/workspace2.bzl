@@ -357,7 +357,10 @@ def _tf_repositories():
         sha256 = "87775784f8b22d0d0f1d7811870d39feaa7896319c7c20b849a4181c5a50609b",
         strip_prefix = "sqlite-amalgamation-3390200",
         system_build_file = "//third_party/systemlibs:sqlite.BUILD",
-        urls = tf_mirror_urls("https://www.sqlite.org/2022/sqlite-amalgamation-3390200.zip"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/sqlite.org/2021/sqlite-amalgamation-3390200.zip",
+            "https://www.sqlite.org/2021/sqlite-amalgamation-3390200.zip",
+        ],
     )
 
     tf_http_archive(
