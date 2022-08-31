@@ -19,10 +19,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 
-class mutex;
 class Tensor;
 
 // An Entry store a single input value for an individual kernel invocation in

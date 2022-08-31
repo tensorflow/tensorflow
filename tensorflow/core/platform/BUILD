@@ -415,9 +415,12 @@ filegroup(
 
 cc_library(
     name = "mutex",
+    hdrs = ["mutex.h"],
     compatible_with = get_compatible_with_portable(),
-    textual_hdrs = ["mutex.h"],
-    deps = tf_platform_deps("mutex"),
+    deps = [
+        ":types",
+        "//tensorflow/tsl/platform:mutex",
+    ],
 )
 
 cc_library(
@@ -874,6 +877,7 @@ cc_library(
 cc_library(
     name = "thread_annotations",
     hdrs = ["thread_annotations.h"],
+    deps = ["//tensorflow/tsl/platform:thread_annotations"],
 )
 
 cc_library(
