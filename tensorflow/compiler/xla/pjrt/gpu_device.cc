@@ -276,7 +276,7 @@ StatusOr<std::unique_ptr<se::DeviceMemoryAllocator>> GetGpuDeviceAllocator(
           allocator_config.preallocate);
       if (allocator_or.ok()) {
         LOG(INFO) << "Using CUDA async allocator.";
-        allocator = std::move(allocator_or.ValueOrDie());
+        allocator = std::move(allocator_or.value());
         break;
       }
       LOG(ERROR) << "Failed to initialize CUDA async allocator: "

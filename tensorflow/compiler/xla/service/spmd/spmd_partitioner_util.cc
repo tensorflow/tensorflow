@@ -504,7 +504,7 @@ std::optional<HloInstruction*> PadFromPartialReplicateShape(
                                  max_right_halo_size));
     auto padded_concat_shape = ShapeInference::InferPadShape(
                                    concat->shape(), zero->shape(), pad_config)
-                                   .ValueOrDie();
+                                   .value();
     concat = b->AddInstruction(HloInstruction::CreatePad(
         padded_concat_shape, concat, zero, pad_config));
 

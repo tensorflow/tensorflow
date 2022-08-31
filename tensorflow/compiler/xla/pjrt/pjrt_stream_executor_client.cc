@@ -533,7 +533,7 @@ void PjRtStreamExecutorBuffer::ScopedHold::Acquire(
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or) {
   CHECK(!ok());
   if (buffer_or.ok()) {
-    buffer_ = buffer_or.ValueOrDie();
+    buffer_ = buffer_or.value();
     SetState(kValid);
   } else {
     status_ = buffer_or.status();
@@ -1343,7 +1343,7 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
       [promise](Status status) mutable { promise.Set(status); });
 
   auto usage_event = std::make_shared<BufferSequencingEvent>();
-  local_device->event_pool().ThenRecordEvent(stream, event_or.ValueOrDie());
+  local_device->event_pool().ThenRecordEvent(stream, event_or.value());
   usage_event->SetSequencingEvent(std::move(event_or).value(), stream);
   // When using the ComputeSynchronized allocation model, retain a reference to
   // the device_buffer until the copy completes, to ensure that the buffer isn't
@@ -1535,7 +1535,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
     return buffer_and_event_or.status();
   }
 
-  auto& buffer_and_event = buffer_and_event_or.ValueOrDie();
+  auto& buffer_and_event = buffer_and_event_or.value();
   std::unique_ptr<PjRtBuffer>& buffer = buffer_and_event.first;
   std::shared_ptr<BufferSequencingEvent>& event = buffer_and_event.second;
 
@@ -2011,7 +2011,7 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   }
 
   if (device_state->allocation_model() == LocalDeviceState::kSynchronous) {
-    ExecutionOutput& execution_output = result_buffer_or_status.ValueOrDie();
+    ExecutionOutput& execution_output = result_buffer_or_status.value();
     // If we used a transient tuple for the arguments we donated its root table
     // buffer. In that case, and/or if we donated any input buffers that were
     // not aliased, the donated buffers are going to be passed back to us via

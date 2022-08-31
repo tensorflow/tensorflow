@@ -109,7 +109,7 @@ template <typename NativeT, typename T, typename = IsCompOrCompBuilder<T>>
 HloInstruction* CreateR0WithType(PrimitiveType type, NativeT value, T* b) {
   auto literal = LiteralUtil::CreateR0(value)
                      .ConvertToShape(ShapeUtil::MakeShape(type, {}))
-                     .ValueOrDie();
+                     .value();
   return b->AddInstruction(HloInstruction::CreateConstant(std::move(literal)));
 }
 

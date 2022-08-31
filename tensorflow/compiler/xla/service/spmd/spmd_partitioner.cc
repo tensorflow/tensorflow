@@ -427,7 +427,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target,
   // Tuple shape instructions may have non-tuple sharding, which means that the
   // same sharding applies to all the leaves.
   if (shape.IsTuple() && !target.IsTuple()) {
-    return Reshard(target.GetTupleSharding(shape).ValueOrDie());
+    return Reshard(target.GetTupleSharding(shape).value());
   }
 
   // For a tuple shape, recursively apply Reshard to all the leaves and return
@@ -1602,13 +1602,13 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
   }
   auto transpose = state_.b->AddInstruction(HloInstruction::CreateTranspose(
       ShapeInference::InferTransposeShape(all_to_all->shape(), permutation)
-          .ValueOrDie(),
+          .value(),
       all_to_all, permutation));
 
   // Combine the split dimension and the input partition dimension.
   auto new_shape = ShapeInference::InferAllToAllShape(
                        padded_hlo->shape(), target_dim, source_dim, group_size)
-                       .ValueOrDie();
+                       .value();
   result = state_.b->AddInstruction(
       HloInstruction::CreateReshape(new_shape, transpose));
 
@@ -2496,7 +2496,7 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
 
     // Partition original topk to different shards.
     auto topk_sharding =
-        input_sharding.GetTupleSharding(replicated_shape).ValueOrDie();
+        input_sharding.GetTupleSharding(replicated_shape).value();
     auto shard_shape = MakePartitionedShape(replicated_shape, topk_sharding);
     auto topk = b_.AddInstruction(hlo->CloneWithNewOperands(
         shard_shape, {partitioned_input.hlo(), partitioned_index.hlo()}));
@@ -2539,9 +2539,8 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
         final_topk_shape, sort_dim,
         {replicated_slice_input, replicated_slice_index}, sort->to_apply(),
         sort->is_stable()));
-    final_sort->set_sharding(HloSharding::Replicate()
-                                 .GetTupleSharding(final_sort->shape())
-                                 .ValueOrDie());
+    final_sort->set_sharding(
+        HloSharding::Replicate().GetTupleSharding(final_sort->shape()).value());
     PartitionedHlo replicated_sort(final_sort, final_sort->shape(),
                                    MakePartitioningState());
     SetPartitionedHlo(hlo, replicated_sort.Reshard(hlo->sharding()));
@@ -3948,7 +3947,7 @@ Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
                           hlo->to_apply()->ComputeProgramShape()));
   HloSharding result_sharding =
       (hlo->shape().IsTuple())
-          ? hlo->sharding().GetTupleSharding(hlo->shape()).ValueOrDie()
+          ? hlo->sharding().GetTupleSharding(hlo->shape()).value()
           : hlo->sharding();
   Shape shard_shape = MakePartitionedShape(hlo->shape(), result_sharding);
   if (shard_shape.has_layout()) {
@@ -4432,7 +4431,7 @@ HloInstruction* SpmdPartitioner::AllGatherShardsInternal(
   }
   result = b->AddInstruction(HloInstruction::CreateTranspose(
       ShapeInference::InferTransposeShape(result->shape(), xpose_permutation)
-          .ValueOrDie(),
+          .value(),
       result, xpose_permutation));
   // Reshape to the desired shape.
   auto ag_shape = operand->shape();
