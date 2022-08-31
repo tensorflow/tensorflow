@@ -65,7 +65,8 @@ std::string GetReduceCode(const std::string& value, OperationType op_type,
 }
 }  // namespace
 
-Softmax1x1::Softmax1x1(const OperationDef& definition)
+Softmax1x1::Softmax1x1(const OperationDef& definition, const GpuInfo& gpu_info,
+                       const BHWC& shape)
     : GPUOperation(definition) {
   work_group_size_ = int3(32, 1, 1);
   code_ = GetSoftmaxKernelCode(definition_);
@@ -160,8 +161,9 @@ int3 Softmax1x1::GetGridSize() const {
               dst_[0]->Height());
 }
 
-Softmax1x1 CreateSoftmax1x1(const OperationDef& definition) {
-  return Softmax1x1(definition);
+Softmax1x1 CreateSoftmax1x1(const OperationDef& definition,
+                            const GpuInfo& gpu_info, const BHWC& shape) {
+  return Softmax1x1(definition, gpu_info, shape);
 }
 
 }  // namespace gpu
