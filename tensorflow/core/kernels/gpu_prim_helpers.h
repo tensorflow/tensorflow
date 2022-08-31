@@ -26,50 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
-#if TENSORFLOW_USE_ROCM
-
-BEGIN_ROCPRIM_NAMESPACE
-namespace detail
-{
-
-template<bool Descending>
-struct radix_merge_compare<Descending, true, Eigen::half>
-{
-    using key_codec = radix_key_codec<rocprim::half, true>;
-    using bit_key_type = typename key_codec::bit_key_type;
-
-    unsigned int bit, length;
-
-    radix_merge_compare(const unsigned int bit, const unsigned int current_radix_bits)
-    {
-        this->bit = bit;
-        this->length = current_radix_bits;
-    }
-
-    ROCPRIM_DEVICE ROCPRIM_INLINE
-    bool operator()(const rocprim::half& a, const rocprim::half& b) const
-    {
-        __half ha = reinterpret_cast<const __half&>(a);
-        __half hb = reinterpret_cast<const __half&>(b);
-
-        const bit_key_type encoded_key_a = key_codec::encode(ha);
-        const bit_key_type masked_key_a  = key_codec::extract_digit(encoded_key_a, bit, length);
-
-        const bit_key_type encoded_key_b = key_codec::encode(hb);
-        const bit_key_type masked_key_b  = key_codec::extract_digit(encoded_key_b, bit, length);
-
-        if(Descending)
-          return __hgt(key_codec::decode(masked_key_a), key_codec::decode(masked_key_b));
-        else
-          return __hgt(key_codec::decode(masked_key_b), key_codec::decode(masked_key_a));
-    }
-};
-
-} // end namespace detail
-END_ROCPRIM_NAMESPACE
-
-#endif
-
 namespace tensorflow {
 
 namespace detail {
