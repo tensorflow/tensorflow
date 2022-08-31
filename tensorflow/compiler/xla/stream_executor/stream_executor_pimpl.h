@@ -850,7 +850,7 @@ inline port::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
   if (!untyped_symbol.ok()) {
     return untyped_symbol.status();
   }
-  return DeviceMemory<T>(untyped_symbol.ValueOrDie());
+  return DeviceMemory<T>(untyped_symbol.value());
 }
 
 template <typename ElemT>

@@ -61,7 +61,7 @@ port::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
     // executor.
     return result.status();
   }
-  entry->configurations.emplace_back(config, std::move(result.ValueOrDie()));
+  entry->configurations.emplace_back(config, std::move(result.value()));
   return entry->configurations.back().second.get();
 }
 

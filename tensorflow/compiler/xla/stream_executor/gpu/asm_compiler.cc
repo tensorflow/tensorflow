@@ -89,15 +89,14 @@ static void WarnIfBadPtxasVersion(const std::string& ptxas_path) {
 
   int64_t vmaj, vmin, vdot;
   std::string vmaj_str, vmin_str, vdot_str;
-  if (!RE2::PartialMatch(ptxas_version.ValueOrDie(),
-                         R"(\bV(\d+)\.(\d+)\.(\d+)\b)", &vmaj_str, &vmin_str,
-                         &vdot_str) ||
+  if (!RE2::PartialMatch(ptxas_version.value(), R"(\bV(\d+)\.(\d+)\.(\d+)\b)",
+                         &vmaj_str, &vmin_str, &vdot_str) ||
       !absl::SimpleAtoi(vmaj_str, &vmaj) ||
       !absl::SimpleAtoi(vmin_str, &vmin) ||
       !absl::SimpleAtoi(vdot_str, &vdot)) {
     LOG(WARNING) << "Couldn't parse ptxas version in output of " << ptxas_path
                  << " --version:\n"
-                 << ptxas_version.ValueOrDie();
+                 << ptxas_version.value();
     return;
   }
 
@@ -151,7 +150,7 @@ port::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
     return it->second.status();
   }
 
-  const std::vector<uint8_t>& compiled = it->second.ValueOrDie();
+  const std::vector<uint8_t>& compiled = it->second.value();
   return absl::MakeSpan(compiled);
 }
 
