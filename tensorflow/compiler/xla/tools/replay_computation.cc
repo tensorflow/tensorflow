@@ -292,6 +292,8 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
   std::optional<ScopedShapedBuffer> final_result;
+
+  double total_run_time = 0;
   LOG(ERROR) << "Running " << opts.num_runs << " number of times\n";
   for (int i = 0; i < opts.num_runs; ++i) {
     // If xla_hlo_profile is enabled, print a noisy message before the last run,
@@ -333,9 +335,10 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
 
     TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                         executable->Run(argument_ptrs, run_options));
-    LOG(INFO) << "Done executing in "
-              << static_cast<double>(profile.compute_time_ns()) / 1e9
+    double run_time = static_cast<double>(profile.compute_time_ns()) / 1e9;
+    LOG(INFO) << "Done executing in " << run_time
               << "s: " << module.hlo().hlo_module().name();
+    total_run_time += run_time;
 
     // Save the result if this is for the final iteration.  Otherwise discard
     // the result before rerunning the computation, so as to free up the
@@ -344,6 +347,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
       final_result = std::move(result);
     }
   }
+  LOG(INFO) << "Total execution time " << total_run_time << "s";
 
   TF_ASSIGN_OR_RETURN(Literal result_literal,
                       client->ShapedBufferToLiteral(*final_result));
