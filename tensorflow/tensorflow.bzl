@@ -2933,9 +2933,6 @@ def pybind_extension(
     )
 
     if static_deps:
-        if link_in_framework:
-            deps += [clean_dep("//tensorflow:libtensorflow_framework_import_lib")]  # buildifier: disable=list-append
-
         cc_library_name = so_file + "_cclib"
         cc_library(
             name = cc_library_name,
