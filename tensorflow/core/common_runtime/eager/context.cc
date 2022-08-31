@@ -58,8 +58,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {

@@ -1391,7 +1391,6 @@ cc_library(
         "//third_party/eigen3",
         "//tensorflow/core/lib/core:arena",
         "//tensorflow/core/lib/core:bitmap",
-        "//tensorflow/core/lib/core:blocking_counter",
         "//tensorflow/core/lib/core:bits",
         "//tensorflow/core/lib/core:coding",
         "//tensorflow/core/lib/core:errors",

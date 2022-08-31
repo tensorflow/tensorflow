@@ -43,10 +43,10 @@ cc_library(
     deps = [
         ":error_windows",
         ":wide_char",
-        "//tensorflow/core/lib/core:blocking_counter",
         "//tensorflow/core/lib/core:error_codes_proto_cc",
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/platform",
+        "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:context",
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:denormal",

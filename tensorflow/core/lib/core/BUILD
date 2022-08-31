@@ -38,14 +38,6 @@ cc_library(
 )
 
 cc_library(
-    name = "blocking_counter",
-    hdrs = ["blocking_counter.h"],
-    deps = [
-        "//tensorflow/core/platform:blocking_counter",
-    ],
-)
-
-cc_library(
     name = "bits",
     hdrs = ["bits.h"],
     deps = [
@@ -152,7 +144,6 @@ tf_proto_library(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "blocking_counter.h",
         "coding.h",
         "errors.h",
         "refcount.h",
@@ -183,7 +174,6 @@ filegroup(
         "arena.h",
         "bitmap.h",
         "bits.h",
-        "blocking_counter.h",
         "coding.h",
         "errors.h",
         "notification.h",
@@ -203,7 +193,6 @@ filegroup(
     name = "legacy_lib_core_all_tests",
     srcs = [
         "arena_test.cc",
-        "blocking_counter_test.cc",
         "coding_test.cc",
         "notification_test.cc",
         "status_test.cc",
@@ -215,7 +204,6 @@ filegroup(
 filegroup(
     name = "legacy_lib_internal_core_headers",
     srcs = [
-        "blocking_counter.h",
         "refcount.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
