@@ -1006,8 +1006,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
   const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
-  metrics::UpdateGraphOptimizationTime(optimization_end_time_usecs -
-                                       optimization_start_time_usecs);
+  metrics::UpdateFunctionGraphOptimizationTime(optimization_end_time_usecs -
+                                               optimization_start_time_usecs);
 
   if (options.graph_collector != nullptr) {
     for (const auto& pair : subgraphs) {
