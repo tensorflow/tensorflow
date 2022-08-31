@@ -101,6 +101,8 @@ PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args);
 PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
 PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
+PJRT_Error* PJRT_Client_BufferFromHostBuffer(
+    PJRT_Client_BufferFromHostBuffer_Args* args);
 
 PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
 PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args);

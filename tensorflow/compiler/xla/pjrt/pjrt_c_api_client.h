@@ -191,14 +191,7 @@ class PjRtCApiClient : public PjRtClient {
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer,
-      PjRtDevice* device) override {
-#ifdef PJRT_C_API_BYPASS
-    return WrapBuffer(wrapped_->BufferFromHostBuffer(
-        data, type, dims, byte_strides, host_buffer_semantics,
-        on_done_with_host_buffer, PjRtCApiDevice::GetWrapped(device)));
-#endif  // PJRT_C_API_BYPASS
-    return Unimplemented("PJRT C API does not support BufferFromHostBuffer");
-  }
+      PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override {

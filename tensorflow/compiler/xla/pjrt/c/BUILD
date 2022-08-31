@@ -44,6 +44,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_hdrs",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
     ],
 )

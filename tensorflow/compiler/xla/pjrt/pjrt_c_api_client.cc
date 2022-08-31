@@ -27,11 +27,13 @@ limitations under the License.
 // TODO(skyewm): remove when everything goes through C API
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/pjrt_api.h"
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
 
@@ -318,6 +320,74 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::WrapBuffer(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtCApiBuffer>(
       this, new PJRT_Buffer{std::move(buffer), pjrt_c_client()}));
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
+  if (host_buffer_semantics != HostBufferSemantics::kImmutableOnlyDuringCall &&
+      host_buffer_semantics != HostBufferSemantics::kZeroCopy) {
+    return Unimplemented(
+        "PJRT C API does not support HostBufferSemantics other than "
+        "HostBufferSemantics::kImmutableOnlyDuringCall and "
+        "HostBufferSemantics::kZeroCopy.");
+  }
+
+  PJRT_Client_BufferFromHostBuffer_Args args;
+  args.struct_size = PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = c_client_.get();
+  args.data = data;
+  args.type = ::pjrt::ConvertToPjRtBufferType(type);
+
+  args.dims = dims.data();
+  args.num_dims = dims.size();
+  if (byte_strides.has_value()) {
+    args.byte_strides = byte_strides.value().data();
+    args.num_byte_strides = byte_strides.value().size();
+  } else {
+    args.byte_strides = nullptr;
+    args.num_byte_strides = 0;
+  }
+  args.host_buffer_semantics =
+      ::pjrt::ConvertToPjRtHostBufferSemantics(host_buffer_semantics);
+  args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+
+  RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_BufferFromHostBuffer(&args),
+                         c_api_);
+
+  auto buffer = std::unique_ptr<PjRtBuffer>(
+      std::make_unique<PjRtCApiBuffer>(this, args.buffer));
+
+  std::unique_ptr<PJRT_Event, ::pjrt::PJRT_EventDeleter> event(
+      args.done_with_host_buffer, ::pjrt::MakeEventDeleter(c_api_));
+
+  if (on_done_with_host_buffer) {
+    PJRT_Event_OnReady_Args event_args;
+    event_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
+    event_args.priv = nullptr;
+    event_args.event = event.get();
+    event_args.user_arg = new std::function<void(PJRT_Error*)>(
+        [on_done_with_host_buffer = std::move(on_done_with_host_buffer),
+         c_api = c_api_](PJRT_Error* error) {
+          if (error) {
+            ::pjrt::MakeErrorDeleter(c_api)(error);
+          }
+          on_done_with_host_buffer();
+        });
+    event_args.callback = [](PJRT_Error* error, void* args) {
+      std::function<void(PJRT_Error*)>* on_done_with_host_buffer =
+          reinterpret_cast<std::function<void(PJRT_Error*)>*>(args);
+      (*on_done_with_host_buffer)(error);
+      delete on_done_with_host_buffer;
+    };
+
+    RETURN_STATUS_IF_ERROR(c_api_->PJRT_Event_OnReady(&event_args), c_api_);
+  }
+
+  return buffer;
 }
 
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }

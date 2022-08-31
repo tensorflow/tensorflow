@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -291,6 +293,44 @@ PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
 
   PopulateDeviceAssignment(args->default_assignment, replicas, partitions,
                            std::move(device_assignment));
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_BufferFromHostBuffer(
+    PJRT_Client_BufferFromHostBuffer_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_BufferFromHostBuffer_Args",
+      PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE, args->struct_size));
+
+  absl::Span<const int64_t> dims =
+      absl::Span<const int64_t>(args->dims, args->num_dims);
+
+  std::optional<absl::Span<int64_t const>> byte_strides = std::nullopt;
+  if (args->byte_strides != nullptr) {
+    byte_strides =
+        absl::Span<const int64_t>(args->byte_strides, args->num_byte_strides);
+  }
+
+  xla::PjRtFuture<xla::Status>::Promise promise =
+      xla::PjRtFuture<xla::Status>::CreatePromise();
+
+  std::function<void()> on_done_with_host_buffer = [promise]() mutable {
+    promise.Set(xla::Status::OK());
+  };
+
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer> buffer,
+      args->client->client->BufferFromHostBuffer(
+          args->data, ::pjrt::ConvertFromPjRtBufferType(args->type), dims,
+          byte_strides,
+          ::pjrt::ConvertFromPjRtHostBufferSemantics(
+              args->host_buffer_semantics),
+          on_done_with_host_buffer, args->device->device));
+
+  args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
+  args->done_with_host_buffer =
+      new PJRT_Event{xla::PjRtFuture<xla::Status>(std::move(promise))};
+
   return nullptr;
 }
 
