@@ -48,8 +48,7 @@ TEST_F(GpuUnrollingTest, DoNotUnroll) {
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
   debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
   config.set_debug_options(debug_options);
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
+  auto hlo_module = ParseAndReturnVerifiedModule(kAddModule, config).value();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -69,8 +68,7 @@ TEST_F(GpuUnrollingTest, UnrollFourTimes) {
   debug_options.set_xla_gpu_max_kernel_unroll_factor(8);
   debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
+  auto hlo_module = ParseAndReturnVerifiedModule(kAddModule, config).value();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -91,8 +89,7 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   auto debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
+  auto hlo_module = ParseAndReturnVerifiedModule(kAddModule, config).value();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -125,7 +122,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
       ROOT add = f32[2,2]{1,0} add(p0, p1)
     })";
   auto hlo_module =
-      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
+      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -156,7 +153,7 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
       ROOT s = f32[1600000]{0} sine(p0)
     })";
   auto hlo_module =
-      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
+      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
   // Note: On ROCm side, we do bare minimal to make the test pass.
   // "sine" function is in different code generation path from nvptx: on
@@ -190,7 +187,7 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
       ROOT s = f32[1600000]{0} cosine(p0)
     })";
   auto hlo_module =
-      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
+      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
   // Note: On ROCm side, we do bare minimal to make the test pass.
   // "cosine" function is in different code generation path from nvptx: on
@@ -224,7 +221,7 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedPower) {
       ROOT s = f32[1600000]{0} power(p0, p0)
     })";
   auto hlo_module =
-      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
+      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -249,7 +246,7 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
       ROOT s = f32[16000000]{0} atan2(p0, p0)
     })";
   auto hlo_module =
-      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
+      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
@@ -287,8 +284,7 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
                                                    calls=fused_computation
     })";
   auto hlo_module =
-      ParseAndReturnVerifiedModule(kMultiOutputFusionModule, config)
-          .ValueOrDie();
+      ParseAndReturnVerifiedModule(kMultiOutputFusionModule, config).value();
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(

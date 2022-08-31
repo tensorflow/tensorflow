@@ -146,7 +146,7 @@ ENTRY AddDotsFunc {
 ; CHECK:    custom_call_target="__cublas$gemm"
     )");
   TF_ASSERT_OK(filecheck_result_cublas.status());
-  EXPECT_TRUE(filecheck_result_cublas.ValueOrDie());
+  EXPECT_TRUE(filecheck_result_cublas.value());
   EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -970,7 +970,7 @@ ENTRY AddDotsFunc {
 ; CHECK:    custom_call_target="__cublas$lt$matmul"
     )");
   TF_ASSERT_OK(filecheck_result_cublas.status());
-  EXPECT_TRUE(filecheck_result_cublas.ValueOrDie());
+  EXPECT_TRUE(filecheck_result_cublas.value());
   EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-3, 1e-5}));
 }
 

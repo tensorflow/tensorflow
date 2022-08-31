@@ -48,7 +48,7 @@ GpuCodegenTest::CreateNewVerifiedModuleWithFTZ(bool ftz) {
 void GpuCodegenTest::CompileAndOptionallyVerifyPtx(
     std::unique_ptr<VerifiedHloModule> hlo_module, absl::string_view pattern) {
   std::unique_ptr<Executable> executable =
-      std::move(CompileToExecutable(std::move(hlo_module)).ValueOrDie());
+      std::move(CompileToExecutable(std::move(hlo_module)).value());
   std::string ptx_str(static_cast<GpuExecutable*>(executable.get())->text());
 
   // On the ROCM platform the "ptx" string is not populated for the compiled
@@ -57,7 +57,7 @@ void GpuCodegenTest::CompileAndOptionallyVerifyPtx(
   if (!is_built_with_rocm_) {
     StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
     ASSERT_TRUE(filecheck_result.ok());
-    EXPECT_TRUE(filecheck_result.ValueOrDie());
+    EXPECT_TRUE(filecheck_result.value());
   }
 }
 

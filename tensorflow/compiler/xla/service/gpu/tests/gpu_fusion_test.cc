@@ -79,7 +79,7 @@ TEST_F(GpuFusionTest, FusedBiggerThenThresholdButDoNotChangeTheFusionl) {
   b.AddInstruction(
       HloInstruction::CreateConcatenate(concat_shape, slice_params, 1));
   module->AddEntryComputation(b.Build());
-  EXPECT_TRUE(GpuInstructionFusion(false).Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuInstructionFusion(false).Run(module.get()).value());
   EXPECT_TRUE(module->entry_computation()->root_instruction()->opcode() ==
               HloOpcode::kFusion);
   for (HloInstruction* instr : module->entry_computation()->instructions()) {

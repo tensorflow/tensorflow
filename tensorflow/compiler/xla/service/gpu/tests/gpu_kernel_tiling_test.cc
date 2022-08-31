@@ -78,7 +78,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
   // layout assignment...well, nobody else adds the copy back.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithLayoutAssignment())
-          .ValueOrDie();
+          .value();
 
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @copy
@@ -106,7 +106,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
   // here.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @copy
 ; CHECK-NOT: call void BARRIER()
@@ -150,7 +150,7 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
   // Check that a call to llvm.nvvm.barrier0 is generated.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
 ; CHECK: call void BARRIER()
@@ -185,7 +185,7 @@ TEST_F(GpuKernelTilingTest, MultipleOutputFusionWithOnePossibleTransposeTiled) {
   // Check that a call to llvm.nvvm.barrier0 is generated.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
 ; CHECK: call void BARRIER()
@@ -221,7 +221,7 @@ TEST_F(GpuKernelTilingTest,
   // Check that a call to llvm.nvvm.barrier0 is not generated.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
 ; CHECK-NOT: call void BARRIER()
@@ -249,7 +249,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserReverseNotTiled) {
   // Check that a call to llvm.nvvm.barrier0 is not generated.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
 ; CHECK-NOT: call void BARRIER()
@@ -277,7 +277,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserBitcastNotTiled) {
   // Check that a call to llvm.nvvm.barrier0 is not generated.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
 ; CHECK-NOT: call void BARRIER()
@@ -313,7 +313,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithoutUnsafeUseTiled) {
   // Check that a call to llvm.nvvm.barrier0 is generated.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
 ; CHECK: call void BARRIER()
@@ -345,7 +345,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
   // Check that two calls to llvm.nvvm.atomic are generated.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   const char *expected_ir = R"(
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
@@ -389,7 +389,7 @@ TEST_F(GpuKernelTilingTest,
   // Check that one call to llvm.nvvm.atomic is generated.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   const char *expected_ir = R"(
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK-NOT: store float %{{.*}}, ptr addrspace(1)
@@ -435,7 +435,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
   // Check that four calls to llvm.nvvm.atomic are generated.
   std::unique_ptr<VerifiedHloModule> hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   const char *expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
@@ -469,7 +469,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
   // Check that the kernel is tiled by looking for llvm.nvvm.atomic.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   const char *expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
@@ -501,7 +501,7 @@ TEST_F(GpuKernelTilingTest, RowReductionWithLayoutChangeTiled) {
   // Check that the kernel is tiled by looking for llvm.nvvm.shfl.sync.down.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
 ; CHECK: call SHUFFLE
@@ -534,7 +534,7 @@ TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {
   // a write condition based on the logical thread ID (two writes per warp).
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
@@ -570,7 +570,7 @@ TEST_F(GpuKernelTilingTest, RowReductionFourRowsPerWarp) {
   // a write condition based on the logical thread ID (four writes per warp).
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
@@ -606,7 +606,7 @@ TEST_F(GpuKernelTilingTest,
   // Check that the kernel is tiled by looking for llvm.nvvm.atomic.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   const char *expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
@@ -652,7 +652,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionSmallTileSizeX) {
   // Check that no loop is generated for reduction.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   const char *expected_ir = R"(
 ; CHECK-NOT: reduce.0.loop_header
 ; CHECK: }
@@ -683,7 +683,7 @@ TEST_F(GpuKernelTilingTest,
   // Check that the kernel is not tiled by looking for llvm.nvvm.shfl.sync.down.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
 ; CHECK-NOT: call SHUFFLE
@@ -713,7 +713,7 @@ TEST_F(GpuKernelTilingTest, RowReductionRequiring64BitIndex) {
   }
   )";
   std::unique_ptr<VerifiedHloModule> hlo_module =
-      ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+      ParseAndReturnVerifiedModule(kHloString).value();
   const char *expected_ir = R"(
 ; CHECK: i64
   )";
@@ -740,7 +740,7 @@ ENTRY kernel_entry {
   auto expected_ir = R"(
 ; CHECK: load <2 x float>, ptr
   )";
-  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
 }
@@ -786,7 +786,7 @@ TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
     ROOT reduce = f32[] reduce(parameter, init_value), dimensions={0}, to_apply=Sum
   }
   )";
-  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK: initial_value_addr = internal unnamed_addr addrspace({{[0-9]*}}) global [1024 x float] undef, align 4
   )"
@@ -813,7 +813,7 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
     ROOT reduce = f32[4,1048576,1024] reduce(parameter, init_value), dimensions={3}, to_apply=Sum
   }
   )";
-  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   Status status = CompileToExecutable(std::move(hlo_module)).status();
   EXPECT_EQ(status.code(), tensorflow::error::Code::FAILED_PRECONDITION);
   EXPECT_THAT(
