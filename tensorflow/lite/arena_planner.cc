@@ -190,10 +190,11 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
 TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   // Grow the size of `allocs_` if necessary. This allows allocating temporary
   // tensors in op's `prepare` function.
-  TF_LITE_ENSURE(context_, graph_info_->num_tensors() >= allocs_.size());
-  alloc_node_.resize(graph_info_->num_tensors(), kNodeNotAssigned);
-  dealloc_node_.resize(graph_info_->num_tensors(), kNodeNotAssigned);
-  allocs_.resize(graph_info_->num_tensors());
+  const size_t num_tensors = graph_info_->num_tensors();
+  TF_LITE_ENSURE(context_, num_tensors >= allocs_.size());
+  alloc_node_.resize(num_tensors, kNodeNotAssigned);
+  dealloc_node_.resize(num_tensors, kNodeNotAssigned);
+  allocs_.resize(num_tensors);
   // Set allocation and deallocation for temporary tensors.
   for (size_t i = first_node; i <= static_cast<size_t>(last_node) &&
                               i < graph_info_->num_execution_nodes();
@@ -212,7 +213,7 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   TF_LITE_ENSURE_STATUS(CalculateAllocations(first_node, last_node));
   TF_LITE_ENSURE_STATUS(Commit());
 
-  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
+  for (int i = 0; i < static_cast<int>(num_tensors); ++i) {
     TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
   }
 
