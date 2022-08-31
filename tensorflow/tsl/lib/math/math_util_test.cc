@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
 
 #include <cmath>
 #include <limits>
@@ -39,16 +39,17 @@ void TestCeilOfRatio(const TestDataType test_data[][kNumTestArguments],
     const IntegralType expected_floor = test_data[i][2];
     const IntegralType expected_ceil = test_data[i][3];
     // Make sure the two ways to compute the floor return the same thing.
-    IntegralType floor_1 = MathUtil::FloorOfRatio(numerator, denominator);
-    IntegralType floor_2 = MathUtil::CeilOrFloorOfRatio<IntegralType, false>(
-        numerator, denominator);
+    IntegralType floor_1 = tsl::MathUtil::FloorOfRatio(numerator, denominator);
+    IntegralType floor_2 =
+        tsl::MathUtil::CeilOrFloorOfRatio<IntegralType, false>(numerator,
+                                                               denominator);
     EXPECT_EQ(floor_1, floor_2);
     EXPECT_EQ(expected_floor, floor_1)
         << "FloorOfRatio fails with numerator = " << numerator
         << ", denominator = " << denominator << " "
         << (8 * sizeof(IntegralType)) << " bits";
-    IntegralType ceil_1 = MathUtil::CeilOfRatio(numerator, denominator);
-    IntegralType ceil_2 = MathUtil::CeilOrFloorOfRatio<IntegralType, true>(
+    IntegralType ceil_1 = tsl::MathUtil::CeilOfRatio(numerator, denominator);
+    IntegralType ceil_2 = tsl::MathUtil::CeilOrFloorOfRatio<IntegralType, true>(
         numerator, denominator);
     EXPECT_EQ(ceil_1, ceil_2);
     EXPECT_EQ(expected_ceil, ceil_1)
@@ -169,7 +170,8 @@ static Integer CeilOrFloorOfRatioArithmetic(Integer numerator,
 void TestThatCeilOfRatioDenomMinusOneIsIncorrect(int64_t numerator,
                                                  int64_t denominator,
                                                  int64_t expected_error) {
-  const int64_t correct_result = MathUtil::CeilOfRatio(numerator, denominator);
+  const int64_t correct_result =
+      tsl::MathUtil::CeilOfRatio(numerator, denominator);
   const int64_t result_by_denom_minus_one =
       CeilOfRatioDenomMinusOne(numerator, denominator);
   EXPECT_EQ(result_by_denom_minus_one + expected_error, correct_result)
@@ -218,15 +220,15 @@ TEST(MathUtil, GCD) {
   });
 
   for (const auto& tc : testcases) {
-    EXPECT_EQ(tc.gcd, MathUtil::GCD<uint32>(tc.x, tc.y));
-    EXPECT_EQ(tc.gcd, MathUtil::GCD<uint32>(tc.y, tc.x));
-    EXPECT_EQ(tc.gcd, MathUtil::GCD<uint64>(tc.x, tc.y));
-    EXPECT_EQ(tc.gcd, MathUtil::GCD<uint64>(tc.y, tc.x));
+    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint32>(tc.x, tc.y));
+    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint32>(tc.y, tc.x));
+    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint64>(tc.x, tc.y));
+    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint64>(tc.y, tc.x));
   }
 
   const uint64 biggish_prime = 1666666667;
   EXPECT_EQ(biggish_prime,
-            MathUtil::GCD<uint64>(biggish_prime * 3, biggish_prime * 4));
+            tsl::MathUtil::GCD<uint64>(biggish_prime * 3, biggish_prime * 4));
 }
 
 template <typename T>
@@ -234,7 +236,7 @@ void TestOneIPowN() {
   const T one{1};
   for (int i = 0; i < 1024; ++i) {
     // Computations are exact.
-    EXPECT_EQ(MathUtil::IPow(one, i), one);
+    EXPECT_EQ(tsl::MathUtil::IPow(one, i), one);
   }
 }
 
@@ -243,7 +245,7 @@ void TestTwoIPowN() {
   int limit = std::is_integral<T>::value ? std::numeric_limits<T>::digits : 63;
   for (int i = 0; i < limit; ++i) {
     // Computations are exact.
-    EXPECT_EQ(MathUtil::IPow(T{2}, i), static_cast<T>(1ull << i));
+    EXPECT_EQ(tsl::MathUtil::IPow(T{2}, i), static_cast<T>(1ull << i));
   }
 }
 
@@ -252,7 +254,7 @@ void TestFloatIPow(const int max_exponent, const T start, const T end,
                    const T step) {
   for (T f = start; f < end; f += step) {
     for (int i = 0; i < max_exponent; ++i) {
-      EXPECT_FLOAT_EQ(MathUtil::IPow(f, i), std::pow(f, i));
+      EXPECT_FLOAT_EQ(tsl::MathUtil::IPow(f, i), std::pow(f, i));
     }
   }
 }
@@ -267,12 +269,12 @@ TEST(MathUtil, IPow) {
   TestTwoIPowN<int>();
   TestTwoIPowN<int64_t>();
 
-  EXPECT_EQ(MathUtil::IPow(3, 0), 1);
-  EXPECT_EQ(MathUtil::IPow(3, 1), 3);
-  EXPECT_EQ(MathUtil::IPow(3, 2), 9);
-  EXPECT_EQ(MathUtil::IPow(3, 3), 27);
-  EXPECT_EQ(MathUtil::IPow(3, 4), 81);
-  EXPECT_EQ(MathUtil::IPow(3, 5), 243);
+  EXPECT_EQ(tsl::MathUtil::IPow(3, 0), 1);
+  EXPECT_EQ(tsl::MathUtil::IPow(3, 1), 3);
+  EXPECT_EQ(tsl::MathUtil::IPow(3, 2), 9);
+  EXPECT_EQ(tsl::MathUtil::IPow(3, 3), 27);
+  EXPECT_EQ(tsl::MathUtil::IPow(3, 4), 81);
+  EXPECT_EQ(tsl::MathUtil::IPow(3, 5), 243);
 
   TestFloatIPow<float>(13, -16.0f, 16.0f, 1.0f / 8);
   TestFloatIPow<double>(13, -16.0, 16.0, 1.0 / 8);
@@ -286,38 +288,39 @@ TEST(MathUtil, IPow) {
 TEST(MathUtil, IPowEdgeCases) {
   constexpr const double kInf = std::numeric_limits<double>::infinity();
 
-  EXPECT_EQ(MathUtil::IPow(-12345.0, 79), -kInf);
-  EXPECT_EQ(MathUtil::IPow(-12345.0, 80), +kInf);
+  EXPECT_EQ(tsl::MathUtil::IPow(-12345.0, 79), -kInf);
+  EXPECT_EQ(tsl::MathUtil::IPow(-12345.0, 80), +kInf);
 
   // The semantics of the edge cases that follow  are defined in the standard:
   // http://en.cppreference.com/w/cpp/numeric/math/pow for a summary.
 
   // 1 - These edge cases apply.
   // pow(+0, exp), where exp is a positive odd integer, returns +0
-  EXPECT_EQ(MathUtil::IPow(+0.0, 3), +0.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(+0.0, 3), +0.0);
   // pow(-0, exp), where exp is a positive odd integer, returns -0
-  EXPECT_EQ(MathUtil::IPow(-0.0, 3), -0.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(-0.0, 3), -0.0);
   // pow(±0, exp), where exp is positive non-integer or a positive even integer,
   // returns +0
-  EXPECT_EQ(MathUtil::IPow(+0.0, 42), +0.0);
-  EXPECT_EQ(MathUtil::IPow(-0.0, 42), +0.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(+0.0, 42), +0.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(-0.0, 42), +0.0);
   // pow(base, ±0) returns 1 for any base, even when base is NaN
-  EXPECT_EQ(MathUtil::IPow(-kInf, 0.0), 1.0);
-  EXPECT_EQ(MathUtil::IPow(-2.0, 0.0), 1.0);
-  EXPECT_EQ(MathUtil::IPow(-1.0, 0.0), 1.0);
-  EXPECT_EQ(MathUtil::IPow(-0.0, 0.0), 1.0);
-  EXPECT_EQ(MathUtil::IPow(+0.0, 0.0), 1.0);
-  EXPECT_EQ(MathUtil::IPow(+1.0, 0.0), 1.0);
-  EXPECT_EQ(MathUtil::IPow(+2.0, 0.0), 1.0);
-  EXPECT_EQ(MathUtil::IPow(+kInf, 0.0), 1.0);
-  EXPECT_EQ(MathUtil::IPow(std::numeric_limits<double>::quiet_NaN(), 0.0), 1.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(-kInf, 0.0), 1.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(-2.0, 0.0), 1.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(-1.0, 0.0), 1.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(-0.0, 0.0), 1.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(+0.0, 0.0), 1.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(+1.0, 0.0), 1.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(+2.0, 0.0), 1.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(+kInf, 0.0), 1.0);
+  EXPECT_EQ(tsl::MathUtil::IPow(std::numeric_limits<double>::quiet_NaN(), 0.0),
+            1.0);
   // pow(-∞, exp) returns -∞ if exp is a positive odd integer
-  EXPECT_EQ(MathUtil::IPow(-kInf, 43), -kInf);
+  EXPECT_EQ(tsl::MathUtil::IPow(-kInf, 43), -kInf);
   // pow(-∞, exp) returns +∞ if exp is a positive non-integer or even integer
-  EXPECT_EQ(MathUtil::IPow(-kInf, 42), +kInf);
+  EXPECT_EQ(tsl::MathUtil::IPow(-kInf, 42), +kInf);
   // pow(+∞, exp) returns +∞ for any positive exp
-  EXPECT_EQ(MathUtil::IPow(+kInf, 42), +kInf);
-  EXPECT_EQ(MathUtil::IPow(+kInf, 43), +kInf);
+  EXPECT_EQ(tsl::MathUtil::IPow(+kInf, 42), +kInf);
+  EXPECT_EQ(tsl::MathUtil::IPow(+kInf, 43), +kInf);
 
   // 2 - These do not apply due to the restricted exp range.
   // pow(+0, exp), where exp is a negative odd integer, returns +∞ and raises
@@ -337,21 +340,22 @@ TEST(MathUtil, IPowEdgeCases) {
 }
 
 TEST(MathUtil, Sign) {
-  EXPECT_EQ(MathUtil::Sign(1), 1);
-  EXPECT_EQ(MathUtil::Sign(0), 0);
-  EXPECT_EQ(MathUtil::Sign(-1), -1);
+  EXPECT_EQ(tsl::MathUtil::Sign(1), 1);
+  EXPECT_EQ(tsl::MathUtil::Sign(0), 0);
+  EXPECT_EQ(tsl::MathUtil::Sign(-1), -1);
 
-  EXPECT_EQ(MathUtil::Sign(0.0f), 0.0f);
-  EXPECT_EQ(MathUtil::Sign(1.0f), 1.0f);
-  EXPECT_EQ(MathUtil::Sign(-1.0f), -1.0f);
+  EXPECT_EQ(tsl::MathUtil::Sign(0.0f), 0.0f);
+  EXPECT_EQ(tsl::MathUtil::Sign(1.0f), 1.0f);
+  EXPECT_EQ(tsl::MathUtil::Sign(-1.0f), -1.0f);
 
-  EXPECT_EQ(MathUtil::Sign(std::numeric_limits<float>::infinity()), 1.0f);
-  EXPECT_EQ(MathUtil::Sign(-std::numeric_limits<float>::infinity()), -1.0f);
+  EXPECT_EQ(tsl::MathUtil::Sign(std::numeric_limits<float>::infinity()), 1.0f);
+  EXPECT_EQ(tsl::MathUtil::Sign(-std::numeric_limits<float>::infinity()),
+            -1.0f);
 
   EXPECT_TRUE(
-      std::isnan(MathUtil::Sign(std::numeric_limits<float>::quiet_NaN())));
-  EXPECT_TRUE(
-      std::isnan(MathUtil::Sign(-std::numeric_limits<float>::quiet_NaN())));
+      std::isnan(tsl::MathUtil::Sign(std::numeric_limits<float>::quiet_NaN())));
+  EXPECT_TRUE(std::isnan(
+      tsl::MathUtil::Sign(-std::numeric_limits<float>::quiet_NaN())));
 }
 
 }  // namespace

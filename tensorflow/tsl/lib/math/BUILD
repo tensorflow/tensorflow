@@ -1,8 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -11,15 +7,13 @@ package(
     licenses = ["notice"],
 )
 
-# Todo(bmzhao): Remaining targets to add to this BUILD file are: math_util_test.
-
 cc_library(
     name = "math_util",
     hdrs = ["math_util.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/lib/math:math_util",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:types",
     ],
 )
 
@@ -29,9 +23,11 @@ filegroup(
     srcs = [
         "math_util.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
 exports_files([
     "math_util.h",
+    "math_util_test.cc",
 ])
