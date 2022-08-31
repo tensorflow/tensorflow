@@ -2606,6 +2606,42 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mlprogram_util",
+    srcs = ["utils/mlprogram_util.cc"],
+    hdrs = ["utils/mlprogram_util.h"],
+    deps = [
+        ":compile_mlir_util_no_tf_dialect_passes",
+        ":import_model",
+        ":tensorflow_passes",
+        ":tf_saved_model_passes",
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:tag_constants",
+        "//tensorflow/compiler/mlir/xla:legalize_tf",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+tf_cc_test(
+    name = "mlprogram_util_test",
+    size = "small",
+    srcs = ["utils/mlprogram_util_test.cc"],
+    data = [
+        "//tensorflow/cc/saved_model:saved_model_test_files",
+    ],
+    deps = [
+        ":mlprogram_util",
+        ":tensorflow_types",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 build_test(
     name = "tensorflow_build_test",
     targets = [

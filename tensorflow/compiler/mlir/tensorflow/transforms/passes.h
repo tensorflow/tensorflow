@@ -280,6 +280,11 @@ std::unique_ptr<Pass> CreateOrderByDialectPass();
 
 // Groups ops into functions that only contain one dialect.
 std::unique_ptr<Pass> CreateGroupByDialectPass();
+
+// Populates the supplied passmanager with the passes required to run the
+// CPU/GPU bridge.
+void CreateTFXLABridgePipeline(OpPassManager& pm);
+
 }  // namespace TF
 
 namespace tf_executor {

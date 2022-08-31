@@ -296,7 +296,6 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
   return diag_handler.ConsumeStatus();
 }
 
-namespace {
 void CreateTFXLABridgePipeline(OpPassManager &pm) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this.
@@ -342,8 +341,6 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addPass(createSymbolDCEPass());
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
-
-}  // namespace
 
 tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging) {
   Status status = mlir::TFTPU::RunTFXLABridge(module, enable_logging,
