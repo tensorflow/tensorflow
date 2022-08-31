@@ -132,7 +132,7 @@ TFL_CAPI_EXPORT extern void TfLiteModelDelete(TfLiteModel* model);
 // the lifetime of the `TfLiteInterpreter`.
 // WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteRegistrationExternal*
-TfLiteRegistrationExternalCreate(const char* custom_name, const int version);
+TfLiteRegistrationExternalCreate(const char* custom_name, int version);
 
 // Destroys the TfLiteRegistrationExternal instance.
 // WARNING: This is an experimental API and subject to change.
