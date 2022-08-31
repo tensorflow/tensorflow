@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================
 */
 
-#ifndef TENSORFLOW_CORE_KERNELS_LINALG_GPU_SOLVERS_H_
-#define TENSORFLOW_CORE_KERNELS_LINALG_GPU_SOLVERS_H_
+#ifndef TENSORFLOW_CORE_UTIL_GPU_SOLVERS_H_
+#define TENSORFLOW_CORE_UTIL_GPU_SOLVERS_H_
 
 // This header declares the class GpuSolver, which contains wrappers of linear
 // algebra solvers in the cuBlas/cuSolverDN or rocmSolver libraries for use in
@@ -673,4 +673,4 @@ inline DeviceLapackInfo GpuSolver::GetDeviceLapackInfo(
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#endif  // TENSORFLOW_CORE_KERNELS_LINALG_GPU_SOLVERS_H_
+#endif  // TENSORFLOW_CORE_UTIL_GPU_SOLVERS_H_
