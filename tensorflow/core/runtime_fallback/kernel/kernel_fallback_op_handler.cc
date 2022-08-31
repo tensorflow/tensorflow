@@ -301,8 +301,7 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
           propagate_error(kernel_runner_or_status.status());
           return;
         }
-        fallback_op_entry.op_kernel_runner =
-            kernel_runner_or_status.ValueOrDie();
+        fallback_op_entry.op_kernel_runner = kernel_runner_or_status.value();
 
         tfrt::ExecuteOnOpHandler<KernelFallbackOpHandlerCompatTraits>(
             update_chain, invocation, fallback_op_entry, this);

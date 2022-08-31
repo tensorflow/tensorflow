@@ -130,7 +130,7 @@ int64_t GetUniqueInt();
         _status,                                                              \
         ::tensorflow::strings::StrCat(stage, ": ", _status.error_message())); \
   }                                                                           \
-  lhs = std::move(statusor.ValueOrDie())
+  lhs = std::move(statusor.value())
 
 }  // namespace tfrt
 

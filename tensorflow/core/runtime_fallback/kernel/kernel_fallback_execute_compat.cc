@@ -630,7 +630,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackCreateOp(
         tfrt::ConvertTfErrorCodeToTfrtErrorCode(statusor_runner.status()));
 
   if (!runner_table->Insert(op_key.GetValue(),
-                            std::move(statusor_runner).ValueOrDie())) {
+                            std::move(statusor_runner).value())) {
     return tfrt::EmitErrorAsync(
         exec_ctx,
         absl::StrCat("KernelFallbackCreateOp: OpKernelRunner already exists: ",
