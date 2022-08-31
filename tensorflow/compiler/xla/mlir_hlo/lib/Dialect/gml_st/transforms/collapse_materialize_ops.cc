@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
@@ -27,6 +26,9 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 namespace {
+
+#define GEN_PASS_DEF_COLLAPSEMATERIALIZEOPSPASS
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 // Uncollapse materialize operations with nested tile chains t1, t2, ..., tn. A
 // materialize op of the form ...
@@ -108,7 +110,7 @@ struct CollapseMaterializePattern : public OpRewritePattern<MaterializeOp> {
 };
 
 struct CollapseMaterializeOpsPass
-    : public CollapseMaterializeOpsPassBase<CollapseMaterializeOpsPass> {
+    : public impl::CollapseMaterializeOpsPassBase<CollapseMaterializeOpsPass> {
   explicit CollapseMaterializeOpsPass(bool reverse)
       : CollapseMaterializeOpsPassBase() {
     reverse_ = reverse;

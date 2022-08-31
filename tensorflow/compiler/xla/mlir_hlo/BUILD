@@ -2003,7 +2003,6 @@ cc_library(
     name = "bufferize_tiled_loop",
     srcs = ["lib/Dialect/gml_st/transforms/bufferize_tiled_loop.cc"],
     hdrs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
         "include/mlir-hlo/Dialect/gml_st/transforms/rewriters.h",
     ],
@@ -2750,10 +2749,7 @@ gentbl_cc_library(
 
 cc_library(
     name = "gml_st_fusion",
-    srcs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
-        "lib/Dialect/gml_st/transforms/fusion.cc",
-    ],
+    srcs = ["lib/Dialect/gml_st/transforms/fusion.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
         "include/mlir-hlo/Dialect/gml_st/transforms/rewriters.h",
@@ -2782,10 +2778,7 @@ cc_library(
 
 cc_library(
     name = "gml_st_tiling",
-    srcs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
-        "lib/Dialect/gml_st/transforms/tiling.cc",
-    ],
+    srcs = ["lib/Dialect/gml_st/transforms/tiling.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
         "include/mlir-hlo/Dialect/gml_st/transforms/rewriters.h",
@@ -2814,10 +2807,7 @@ cc_library(
 
 cc_library(
     name = "gml_st_compose_set_ops",
-    srcs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
-        "lib/Dialect/gml_st/transforms/compose_set_ops.cc",
-    ],
+    srcs = ["lib/Dialect/gml_st/transforms/compose_set_ops.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
     ],
@@ -2836,10 +2826,7 @@ cc_library(
 
 cc_library(
     name = "gml_st_collapse_materialize_ops",
-    srcs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
-        "lib/Dialect/gml_st/transforms/collapse_materialize_ops.cc",
-    ],
+    srcs = ["lib/Dialect/gml_st/transforms/collapse_materialize_ops.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
     ],
@@ -2857,10 +2844,7 @@ cc_library(
 
 cc_library(
     name = "gml_st_vectorization",
-    srcs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
-        "lib/Dialect/gml_st/transforms/vectorization.cc",
-    ],
+    srcs = ["lib/Dialect/gml_st/transforms/vectorization.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
     ],
@@ -2879,10 +2863,7 @@ cc_library(
 
 cc_library(
     name = "gml_st_to_scf",
-    srcs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
-        "lib/Dialect/gml_st/transforms/gml_st_to_scf.cc",
-    ],
+    srcs = ["lib/Dialect/gml_st/transforms/gml_st_to_scf.cc"],
     hdrs = ["include/mlir-hlo/Dialect/gml_st/transforms/passes.h"],
     includes = ["include"],
     deps = [

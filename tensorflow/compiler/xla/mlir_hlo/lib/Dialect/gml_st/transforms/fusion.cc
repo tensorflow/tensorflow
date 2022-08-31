@@ -19,7 +19,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface_impl.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
@@ -38,6 +37,10 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 namespace {
+
+#define GEN_PASS_DEF_DEPRECATEDFUSIONPASS
+#define GEN_PASS_DEF_FUSIONPASS
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 // TODO(frgossen): Move this to the shape reification pass.
 struct DimOpFissionPattern : public OpRewritePattern<tensor::ExtractOp> {
@@ -144,7 +147,7 @@ struct DeprecatedFusionPattern : public OpRewritePattern<MaterializeOp> {
 };
 
 class DeprecatedFusionPass
-    : public DeprecatedFusionPassBase<DeprecatedFusionPass> {
+    : public impl::DeprecatedFusionPassBase<DeprecatedFusionPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
     registry.insert<scf::SCFDialect>();
     registerFusionInterfaceExternalModels(registry);
@@ -214,7 +217,7 @@ class FusionPattern : public OpRewritePattern<MaterializeOp> {
   OpFilterFn filterFn;
 };
 
-struct FusionPass : public FusionPassBase<FusionPass> {
+struct FusionPass : public impl::FusionPassBase<FusionPass> {
   FusionPass(StringRef producerLabel, StringRef consumerLabel) {
     this->producer = producerLabel.str();
     this->consumer = consumerLabel.str();

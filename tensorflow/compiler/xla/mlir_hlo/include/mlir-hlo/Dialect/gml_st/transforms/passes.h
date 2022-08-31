@@ -22,6 +22,12 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
+#define GEN_PASS_DECL_COLLAPSEMATERIALIZEOPSPASS
+#define GEN_PASS_DECL_DEPRECATEDTILINGPASS
+#define GEN_PASS_DECL_FUSIONPASS
+#define GEN_PASS_DECL_TILINGPASS
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
+
 namespace mlir {
 namespace gml_st {
 

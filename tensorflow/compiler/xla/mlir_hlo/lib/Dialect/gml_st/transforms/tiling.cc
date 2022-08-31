@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
@@ -42,6 +41,10 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 namespace {
+
+#define GEN_PASS_DEF_DEPRECATEDTILINGPASS
+#define GEN_PASS_DEF_TILINGPASS
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 Value createPoint(OpBuilder &b, Location loc, Value superset, ValueRange ivs) {
   ArrayAttr allDynamicOffsetsAttr = b.getI64ArrayAttr(
@@ -253,18 +256,19 @@ llvm::Optional<SmallVector<SmallVector<int64_t>>> parseNestedTileSizes(
 }
 
 struct DeprecatedTilingPass
-    : public DeprecatedTilingPassBase<DeprecatedTilingPass> {
-  DeprecatedTilingPass() : DeprecatedTilingPassBase<DeprecatedTilingPass>() {
+    : public impl::DeprecatedTilingPassBase<DeprecatedTilingPass> {
+  DeprecatedTilingPass()
+      : impl::DeprecatedTilingPassBase<DeprecatedTilingPass>() {
     tileSizesOpt.setCallback(
         [&](const std::string &str) { tileSizes = parseNestedTileSizes(str); });
   }
   explicit DeprecatedTilingPass(const std::string &tileSizesStr)
-      : DeprecatedTilingPassBase<DeprecatedTilingPass>() {
+      : impl::DeprecatedTilingPassBase<DeprecatedTilingPass>() {
     tileSizes = parseNestedTileSizes(tileSizesStr);
   }
   explicit DeprecatedTilingPass(
       const SmallVector<SmallVector<int64_t>> &tileSizes)
-      : DeprecatedTilingPassBase<DeprecatedTilingPass>(),
+      : impl::DeprecatedTilingPassBase<DeprecatedTilingPass>(),
         tileSizes(tileSizes) {}
 
   void getDependentDialects(DialectRegistry &registry) const final {
@@ -466,7 +470,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
   TilingOptions options;
 };
 
-struct TilingPass : public TilingPassBase<TilingPass> {
+struct TilingPass : public impl::TilingPassBase<TilingPass> {
   TilingPass() = default;
   TilingPass(StringRef label, bool distributeFlag,
              llvm::ArrayRef<int64_t> sizes) {
