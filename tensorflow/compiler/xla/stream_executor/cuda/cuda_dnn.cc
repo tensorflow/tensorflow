@@ -438,7 +438,7 @@ port::Status CudnnSupport::Init() {
       LOG(ERROR) << "Error retrieving driver version: "
                  << cuda::DriverVersionStatusToString(result);
     } else {
-      const auto& version = result.ValueOrDie();
+      const auto& version = result.value();
       LOG(ERROR) << "Possibly insufficient driver version: "
                  << cuda::DriverVersionToString(version);
     }
@@ -3089,7 +3089,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
       scratch_allocator);
 
   if (scratch_or.ok()) {
-    *scratch = scratch_or.ValueOrDie();
+    *scratch = scratch_or.value();
     return *algo_desc;
   }
 
@@ -3151,7 +3151,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
       scratch_allocator);
 
   if (scratch_or.ok()) {
-    *scratch = scratch_or.ValueOrDie();
+    *scratch = scratch_or.value();
     return *algo_desc;
   }
 
@@ -3213,7 +3213,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
           scratch_allocator);
 
   if (scratch_or.ok()) {
-    *scratch = scratch_or.ValueOrDie();
+    *scratch = scratch_or.value();
     return *algo_desc;
   }
 
@@ -6087,7 +6087,7 @@ port::Status CudnnSupport::DoPrepareForCtcLoss(
   const auto scratch_or =
       scratch_allocator->AllocateBytes(workspace_size_in_bytes);
   if (scratch_or.ok()) {
-    *scratch_memory = scratch_or.ValueOrDie();
+    *scratch_memory = scratch_or.value();
     return ::tensorflow::OkStatus();
   }
   return port::InternalError(
@@ -6449,7 +6449,7 @@ port::Status CudnnSupport::DoPoolForward(
   if (!splits_or.ok()) {
     return port::Status(port::error::INTERNAL, "Cudnn pooling failed to split");
   }
-  auto splits = std::move(splits_or.ValueOrDie());
+  auto splits = std::move(splits_or.value());
 
   dnn::BatchDescriptor input_split = input_dimensions;
   dnn::BatchDescriptor output_split = output_dimensions;
@@ -6518,7 +6518,7 @@ port::Status CudnnSupport::DoPoolBackward(
   if (!splits_or.ok()) {
     return port::Status(port::error::INTERNAL, "Cudnn pooling failed to split");
   }
-  auto splits = std::move(splits_or.ValueOrDie());
+  auto splits = std::move(splits_or.value());
 
   dnn::BatchDescriptor input_split = input_dimensions;
   dnn::BatchDescriptor output_split = output_dimensions;

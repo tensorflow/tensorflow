@@ -180,7 +180,7 @@ std::optional<Shape> GetXfeedShape(bool is_infeed, const HloModuleProto& module,
   bool generate_fake_xfeed =
       is_infeed ? opts.generate_fake_infeed : opts.generate_fake_outfeed;
   if (!fake_xfeed_shape.empty()) {
-    xfeed_shape = std::move(ParseShape(fake_xfeed_shape)).ValueOrDie();
+    xfeed_shape = std::move(ParseShape(fake_xfeed_shape)).value();
   } else if (generate_fake_xfeed) {
     QCHECK_LT(xfeed_instrs.size(), 2)
         << "--generate_fake_" << xfeed_name
@@ -256,7 +256,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     for (const auto& data : global_data_arguments) {
       argument_ptrs.push_back(
           client->GlobalDataToShapedBuffer(data->handle(), /*replica_number=*/0)
-              .ValueOrDie());
+              .value());
     }
   } else {  // use recorded data if available
     for (const auto& proto : module.arguments()) {
@@ -275,7 +275,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   if (std::optional<Shape> infeed_shape = GetXfeedShape(
           /*is_infeed=*/true, computation.proto(), opts)) {
     infeed_data = std::make_shared<Literal>(
-        std::move(MakeFakeLiteral(*infeed_shape)).ValueOrDie());
+        std::move(MakeFakeLiteral(*infeed_shape)).value());
   }
   std::optional<Shape> outfeed_shape =
       GetXfeedShape(/*is_infeed=*/false, computation.proto(), opts);
@@ -289,8 +289,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   // execution.
   const bool xla_hlo_profile = GetDebugOptionsFromFlags().xla_hlo_profile();
   se::StreamExecutorMemoryAllocator allocator(
-      client->platform(),
-      {client->platform()->ExecutorForDevice(0).ValueOrDie()});
+      client->platform(), {client->platform()->ExecutorForDevice(0).value()});
   std::optional<ScopedShapedBuffer> final_result;
 
   double total_run_time = 0;
@@ -420,8 +419,7 @@ StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(
         ParseAndReturnUnverifiedModule(hlo_module_text, config);
     if (module.ok()) {
       HloSnapshot snapshot;
-      *snapshot.mutable_hlo()->mutable_hlo_module() =
-          module.ValueOrDie()->ToProto();
+      *snapshot.mutable_hlo()->mutable_hlo_module() = module.value()->ToProto();
       snapshots.push_back(snapshot);
     } else {
       LOG(ERROR) << module.status();
@@ -460,7 +458,7 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
     StatusOr<std::vector<HloSnapshot>> maybe_snapshot =
         ParseInputFile(arg, opts);
     if (maybe_snapshot.ok()) {
-      auto new_snapshots = std::move(maybe_snapshot).ValueOrDie();
+      auto new_snapshots = std::move(maybe_snapshot).value();
       snapshots.insert(snapshots.end(),
                        std::make_move_iterator(new_snapshots.begin()),
                        std::make_move_iterator(new_snapshots.end()));
@@ -501,7 +499,7 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
       continue;
     }
 
-    LocalExecutable* executable = executables[i].ValueOrDie().get();
+    LocalExecutable* executable = executables[i].value().get();
     LOG(ERROR) << "Running iteration " << i;
     StatusOr<Literal> result_status =
         ReplayComputation(snapshots[i], executable, client, opts);
@@ -514,7 +512,7 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
     }
 
     if (opts.print_result) {
-      Literal result = std::move(result_status).ValueOrDie();
+      Literal result = std::move(result_status).value();
       fprintf(stdout, "%s: %s :: %s:%s\n", args[i],
               executable->executable()->module().name().c_str(),
               ShapeUtil::HumanString(result.shape()).c_str(),
