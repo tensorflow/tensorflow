@@ -396,6 +396,10 @@ class SparseBincountOp : public OpKernel {
         ctx, sparse_utils::ValidateSparseTensor<int64_t>(
                  indices, values, dense_shape, /*validate_indices=*/true));
 
+    OP_REQUIRES_OK(ctx, sparse_utils::ValidateSparseTensor<int64_t>(
+                            indices, values, dense_shape,
+                            sparse_utils::IndexValidation::kUnordered));
+
     bool is_1d = dense_shape.NumElements() == 1;
 
     Tensor* out_t;
