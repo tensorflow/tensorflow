@@ -1668,6 +1668,16 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
     } else {
       conv_params.block_size = int4(1, 1, 1, 1);
     }
+    if (dst_shape) {
+      if (dst_shape->w == 1) {
+        conv_params.block_size.y *= conv_params.block_size.x;
+        conv_params.block_size.x = 1;
+      }
+      if (dst_shape->h == 1) {
+        conv_params.block_size.x *= conv_params.block_size.y;
+        conv_params.block_size.y = 1;
+      }
+    }
     conv_params.src_depth_loop_size = 1;
     MaliInfo mali_info = gpu_info.mali_info;
     if (src_depth % 2 == 0 && block_size <= 2 && !mali_info.IsMidgard()) {
