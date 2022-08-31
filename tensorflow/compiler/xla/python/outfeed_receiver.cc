@@ -290,7 +290,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
   while (true) {
     Shape header_shape = ShapeUtil::MakeShape(U32, {kOutfeedHeaderWords});
     std::unique_ptr<Literal> header =
-        ReceiveRawFromOutfeed(device, header_shape).ValueOrDie();
+        ReceiveRawFromOutfeed(device, header_shape).value();
     absl::Span<uint32_t> header_data = header->data<uint32_t>();
     CHECK_EQ(header_data.size(), kOutfeedHeaderWords);
     CHECK_EQ(header_data[0], kOutfeedHeaderStart);
@@ -320,7 +320,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
       return;
     }
     std::unique_ptr<Literal> data =
-        ReceiveRawFromOutfeed(device, shape).ValueOrDie();
+        ReceiveRawFromOutfeed(device, shape).value();
     received->SetLiteral(std::move(data));
     absl::MutexLock lock(&mu_);
     EnqueueReceivedData(device_idx, std::move(received));
@@ -400,8 +400,8 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
       absl::StrFormat("special_outfeed_header_%d_%d", consumer_id, device_idx));
   XlaOp send =
       AddOutfeedToBuilder(&builder, CreateToken(&builder), consumer_id, {})
-          .ValueOrDie();
-  XlaComputation computation = builder.Build(send).ValueOrDie();
+          .value();
+  XlaComputation computation = builder.Build(send).value();
 
   CompileOptions compile_options;
   compile_options.executable_build_options.set_num_replicas(1);
@@ -425,7 +425,7 @@ StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
     XlaBuilder* builder, XlaOp token, uint32_t consumer_id,
     std::vector<XlaOp> arrays) {
   XlaOp data = Tuple(builder, std::move(arrays));
-  Shape shape_with_layout = builder->GetShape(data).ValueOrDie();
+  Shape shape_with_layout = builder->GetShape(data).value();
   ShapeUtil::ForEachMutableSubshape(
       &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
         if (!subshape->has_layout()) {

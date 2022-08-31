@@ -1131,7 +1131,7 @@ PyObject* JaxCompiledFunction_tp_call(PyObject* self, PyObject* args,
       PyErr_SetString(PyExc_ValueError, out.status().ToString().c_str());
       return nullptr;
     }
-    return out.ValueOrDie().release().ptr();
+    return out.value().release().ptr();
   } catch (py::error_already_set& e) {
     e.restore();
     return nullptr;
