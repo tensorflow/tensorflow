@@ -483,6 +483,62 @@ def ExecutorConvertControlToDataOutputsPass : Pass<"tf-executor-convert-control-
   let constructor = "tf_executor::CreateTFExecutorConvertControlToDataOutputsPass()";
 }
 
+def ExecutorCheckControlDependenciesPass : Pass<"tf-executor-check-control-dependencies", "ModuleOp"> {
+  let summary = "Checks control dependencies";
+
+  let description = [{
+    This pass analyzes control dependencies between islands and warns about
+    dependencies that are not explainable by side effects of the involved ops.
+    More precisely, for every minimal unexplainable control dependency path
+    we emit op warnings for all involved ops. The pass does not report
+    intermediate dummy ops for grouping control dependencies (Identity, NoOp),
+    unless they are part of an unexplainable path between other ops.
+    This pass is useful to understand control dependency conservatism for a
+    given MLIR module.
+
+    For example, the following function
+    ```mlir
+    func.func @path_with_intermediate_ops(
+      %arg0: tensor<!tf_type.resource<tensor<f32>>>,
+      %arg1: tensor<!tf_type.resource<tensor<f32>>>,
+      %arg2: tensor<f32>) -> () {
+      tf_executor.graph {
+        %island1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+        %island2 = tf_executor.island(%island1) wraps "tf.NoOp"() : () -> ()
+        %island3 = tf_executor.island(%island2) wraps "tf.NoOp"() : () -> ()
+        %island4 = tf_executor.island(%island3) wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+        tf_executor.fetch
+      }
+      func.return
+    }
+    ```
+    produces the following warnings
+    ```mlir
+      6:45: warning: unexpected control dependency path: path 0, node 0 (source)
+      %island1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+                                          ^
+      6:45: note: see current operation: %control = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+      7:55: warning: unexpected control dependency path: path 0, node 1 (intermediate)
+      %island2 = tf_executor.island(%island1) wraps "tf.NoOp"() : () -> ()
+                                                    ^
+      7:55: note: see current operation: %control_0 = tf_executor.island(%control) wraps "tf.NoOp"() : () -> ()
+      8:55: warning: unexpected control dependency path: path 0, node 2 (intermediate)
+      %island3 = tf_executor.island(%island2) wraps "tf.NoOp"() : () -> ()
+                                                    ^
+      8:55: note: see current operation: %control_1 = tf_executor.island(%control_0) wraps "tf.NoOp"() : () -> ()
+      9:55: warning: unexpected control dependency path: path 0, node 3 (target)
+      %island4 = tf_executor.island(%island3) wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+                                                    ^
+      9:55: note: see current operation: %control_2 = tf_executor.island(%control_1) wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+    ```
+    because the first and last `AssignVariableOp`s access different resources
+    and therefore should be independent. Note that the `NoOp`s are considered
+    as intermediate ops for control dependency grouping.
+  }];
+
+  let constructor = "tf_executor::CreateTFExecutorCheckControlDependenciesPass()";
+}
+
 def ExecutorGraphPruningPass : Pass<"tf-executor-graph-pruning", "mlir::func::FuncOp"> {
   let summary = "Prunes unreachable ops in a tf_executor.graph";
 

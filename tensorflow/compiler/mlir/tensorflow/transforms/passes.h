@@ -288,6 +288,9 @@ namespace tf_executor {
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorConvertControlToDataOutputsPass();
 
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFExecutorCheckControlDependenciesPass();
+
 // Creates a pass to merge IslandOps from TFExecutor dialect.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTFExecutorIslandCoarseningPass();
