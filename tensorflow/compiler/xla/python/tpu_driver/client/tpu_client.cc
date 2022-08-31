@@ -566,7 +566,7 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
   std::unique_ptr<::xla::PyTpuBuffer> output_buffer =
       ::xla::PyTpuBuffer::AllocateBuffer(result_shape_, client_,
                                          std::move(device))
-          .ValueOrDie();
+          .value();
   VLOG(1) << "Created output buffer: " << result_shape_.DebugString();
 
   std::vector<tpu_driver::BufferHandle*> inputs;
@@ -808,8 +808,7 @@ PyTpuExecutable::ExecuteShardedOnLocalDevices(
     std::shared_ptr<PyTpuClient> client, bool tuple_arguments) {
   tensorflow::profiler::TraceMe traceme("PyTpuExecutable::Compile");
 
-  VLOG(1) << "Compile: "
-          << computation.GetProgramShape().ValueOrDie().DebugString();
+  VLOG(1) << "Compile: " << computation.GetProgramShape().value().DebugString();
 
   // TODO(power) -- handle argument layouts
   // TODO(power) -- handle build options
