@@ -484,6 +484,9 @@ void SetError(KernelContext* ctx, const char* error) {
 bool CustomCall(KernelContext* ctx, const char* target, void** args,
                 void** attrs) {
   assert(ctx && target && args && attrs && "all arguments must be not null");
+  assert(ctx->custom_call_registry && "custom call registry must be not null");
+  if (ctx->custom_call_registry == nullptr) return false;
+
   auto* custom_call = ctx->custom_call_registry->Find(target);
   assert(custom_call && "custom call not found");
   if (custom_call == nullptr) return false;

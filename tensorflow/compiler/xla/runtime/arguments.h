@@ -146,6 +146,8 @@ class ArgumentsRef {
   static constexpr bool is_argument = std::is_base_of_v<Argument, T>;
 
  public:
+  ArgumentsRef() : data_(nullptr), size_(0), stride_(0) {}
+
   template <typename... Ts>
   ArgumentsRef(const Arguments<Ts...>& args)  // NOLINT
       : data_(reinterpret_cast<const Argument*>(args.storage_.data())),

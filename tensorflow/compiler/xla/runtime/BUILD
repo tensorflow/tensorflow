@@ -98,6 +98,22 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "custom_call_test",
+    srcs = ["custom_call_test.cc"],
+    deps = [
+        ":arguments",
+        ":async_runtime",
+        ":custom_call",
+        ":custom_call_registry",
+        ":executable",
+        ":jit_executable",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "custom_call_registry",
     srcs = ["custom_call_registry.cc"],
