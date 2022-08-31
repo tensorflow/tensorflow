@@ -21,25 +21,23 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 
+namespace tensorflow {
+namespace sparse_utils {
 namespace {
 
-using ::int64_t;
-using tensorflow::DataType;
-using tensorflow::int32;
-using tensorflow::Tensor;
-using tensorflow::TTypes;
-using tensorflow::uint16;
-using tensorflow::uint32;
-using tensorflow::uint64;
-using tensorflow::sparse_utils::ContainsEmptyRows;
-using tensorflow::sparse_utils::FindNextDenseRowStartIndex;
-using tensorflow::sparse_utils::GetStartIndicesOfEachDenseRow;
-using tensorflow::sparse_utils::ParseRowStartIndices;
+using ::tensorflow::testing::StatusIs;
+using ::testing::MatchesRegex;
 
 TEST(SparseUtilsTest, GetStartIndicesOfEachDenseRow) {
   {
@@ -464,7 +462,6 @@ TEST_P(ValidateSparseTensorTest, IndexOutOfBoundsFails) {
       int64_t row = RandomPhilox().Uniform64(indices.dim_size(0));
       int64_t dim = RandomPhilox().Uniform64(indices.dim_size(1));
       int64_t old_val = indices_mat(row, dim);
-
       for (int64_t val : {static_cast<int64_t>(-1), test_shape.dim_size(dim)}) {
         indices_mat(row, dim) = val;
         Status indices_valid = ValidateSparseTensor<int64_t>(
@@ -548,3 +545,5 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 }  // namespace
+}  // namespace sparse_utils
+}  // namespace tensorflow

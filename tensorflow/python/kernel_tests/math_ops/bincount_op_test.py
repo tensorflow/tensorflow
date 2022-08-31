@@ -24,6 +24,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -149,6 +150,31 @@ class BincountTest(test_util.TensorFlowTestCase):
       s = array_ops.placeholder(dtype=dtypes.int32)
       v2 = gen_math_ops.bincount([1, 2, 3, 1, 6, 8], s, [])
       self.assertAllEqual(v2.get_shape().as_list(), [None])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_inputs(self):
+    binary_output = True
+    inp = random_ops.random_uniform(
+        shape=[10, 10],
+        minval=-10000,
+        maxval=10000,
+        dtype=dtypes.int32,
+        seed=-2460)
+    size = random_ops.random_uniform(
+        shape=[], minval=-10000, maxval=10000, dtype=dtypes.int32, seed=-10000)
+    weights = random_ops.random_uniform(
+        shape=[],
+        minval=-10000,
+        maxval=10000,
+        dtype=dtypes.float32,
+        seed=-10000)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(
+          gen_math_ops.dense_bincount(
+              input=inp,
+              size=size,
+              weights=weights,
+              binary_output=binary_output))
 
 
 class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -366,7 +392,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
     num_rows = 128
     size = 1000
     n_elems = 4096
-    inp_indices = np.random.randint(0, num_rows, (n_elems,))
+    inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
     inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
 
     np_out = np.bincount(inp_vals, minlength=size)
@@ -390,7 +416,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
     num_rows = 128
     size = 1000
     n_elems = 4096
-    inp_indices = np.random.randint(0, num_rows, (n_elems,))
+    inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
     inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
     inp_weight = np.random.random((n_elems,))
 
@@ -415,7 +441,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
     num_rows = 128
     size = 10
     n_elems = 4096
-    inp_indices = np.random.randint(0, num_rows, (n_elems,))
+    inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
     inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
 
     np_out = np.ones((size,))
@@ -440,7 +466,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
     num_rows = 128
     size = 10
     n_elems = 4096
-    inp_indices = np.random.randint(0, num_rows, (n_elems,))
+    inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
     inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
     inp_weight = np.random.random((n_elems,))
 
@@ -531,6 +557,27 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               size=[1, 1],
               weights=[0, 0],
               binary_output=False))
+
+  def test_sparse_bincount_input_validation(self):
+    np.random.seed(42)
+    num_rows = 128
+    size = 1000
+    n_elems = 4096
+    inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
+    inp_vals = np.random.randint(0, size, (n_elems,))
+
+    # Insert negative index.
+    inp_indices[10, 0] = -2
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "out of bounds"):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=inp_indices,
+              values=inp_vals,
+              dense_shape=[num_rows],
+              size=size,
+              weights=[]))
 
 
 class RaggedBincountOpTest(test_util.TensorFlowTestCase,
