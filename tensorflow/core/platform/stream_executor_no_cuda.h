@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_STREAM_EXECUTOR_NO_CUDA_H_
-#define TENSORFLOW_PLATFORM_STREAM_EXECUTOR_NO_CUDA_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_STREAM_EXECUTOR_NO_CUDA_H_
+#define TENSORFLOW_CORE_PLATFORM_STREAM_EXECUTOR_NO_CUDA_H_
 
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
@@ -31,4 +31,4 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/platform/platform.h"
 
-#endif  // TENSORFLOW_PLATFORM_STREAM_EXECUTOR_NO_CUDA_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_STREAM_EXECUTOR_NO_CUDA_H_

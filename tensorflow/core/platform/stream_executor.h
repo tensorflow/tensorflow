@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_STREAM_EXECUTOR_H_
-#define TENSORFLOW_PLATFORM_STREAM_EXECUTOR_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_STREAM_EXECUTOR_H_
+#define TENSORFLOW_CORE_PLATFORM_STREAM_EXECUTOR_H_
 
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
@@ -42,4 +42,4 @@ using namespace stream_executor;  // NOLINT[build/namespaces]
 }  // namespace gputools
 }  // namespace perftools
 
-#endif  // TENSORFLOW_PLATFORM_STREAM_EXECUTOR_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_STREAM_EXECUTOR_H_
