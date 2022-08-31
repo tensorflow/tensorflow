@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TSL_PLATFORM_BYTE_ORDER_H_
-#define TSL_PLATFORM_BYTE_ORDER_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_BYTE_ORDER_H_
+#define TENSORFLOW_TSL_PLATFORM_BYTE_ORDER_H_
 
 // Byte order defines provided by gcc. MSVC doesn't define those so
 // we define them here.
@@ -34,4 +34,4 @@ constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 }  // namespace port
 }  // namespace tsl
 
-#endif  // TSL_PLATFORM_BYTE_ORDER_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_BYTE_ORDER_H_

@@ -15,8 +15,8 @@ limitations under the License.
 
 // Exact uniform integers using rejection sampling
 
-#ifndef TENSORFLOW_LIB_RANDOM_EXACT_UNIFORM_H_
-#define TENSORFLOW_LIB_RANDOM_EXACT_UNIFORM_H_
+#ifndef TENSORFLOW_CORE_LIB_RANDOM_EXACT_UNIFORM_INT_H_
+#define TENSORFLOW_CORE_LIB_RANDOM_EXACT_UNIFORM_INT_H_
 
 #include <type_traits>
 
@@ -80,4 +80,4 @@ UintType ExactUniformInt(const UintType n, const RandomBits& random) {
 }  // namespace random
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_RANDOM_EXACT_UNIFORM_H_
+#endif  // TENSORFLOW_CORE_LIB_RANDOM_EXACT_UNIFORM_INT_H_
