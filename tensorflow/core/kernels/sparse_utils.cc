@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse_utils.h"
 
 #include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace sparse_utils {
@@ -230,6 +234,7 @@ Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
   template Status ValidateSparseTensor<TypeIndex>(                          \
       const Tensor& indices, const Tensor& values, const Tensor& shape,     \
       bool validate_indices)
+
 
 REGISTER_SPARSE_UTIL_FUNCTIONS(int32);
 REGISTER_SPARSE_UTIL_FUNCTIONS(int64);
