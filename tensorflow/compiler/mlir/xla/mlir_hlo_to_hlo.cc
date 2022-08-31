@@ -1226,8 +1226,7 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
 
   if (sharding.has_value() &&
       sharding->tuple_shardings_size() != operands.size()) {
-    xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder,
-                                                     xla::OpSharding());
+    xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder, std::nullopt);
     operand = Tuple(ctx.builder, operands);
   } else {
     operand = Tuple(ctx.builder, operands);
