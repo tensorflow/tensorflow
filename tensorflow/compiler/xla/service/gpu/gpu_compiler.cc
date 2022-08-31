@@ -89,6 +89,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gather_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
+#include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_bitcast_lift.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
@@ -122,10 +124,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
+#include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
+#include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -949,6 +953,31 @@ struct CompileModuleResults {
   std::string module_name;
 };
 
+static void ForAllThunks(const std::function<void(Thunk*)>& fn,
+                         ThunkSequence* thunk_sequence) {
+  for (std::unique_ptr<Thunk>& thunk : *thunk_sequence) {
+    if (thunk->kind() == Thunk::kConditional) {
+      auto* cond_thunk = static_cast<ConditionalThunk*>(thunk.get());
+      for (const std::unique_ptr<SequentialThunk>& branch_thunks :
+           cond_thunk->branch_thunks()) {
+        ForAllThunks(fn, &branch_thunks->thunks());
+      }
+    } else if (thunk->kind() == Thunk::kFor) {
+      auto* for_thunk = static_cast<ForThunk*>(thunk.get());
+      ForAllThunks(fn, &for_thunk->body_thunk_sequence()->thunks());
+    } else if (thunk->kind() == Thunk::kSequential) {
+      auto* sequential_thunk = static_cast<SequentialThunk*>(thunk.get());
+      ForAllThunks(fn, &sequential_thunk->thunks());
+    } else if (thunk->kind() == Thunk::kWhile) {
+      auto* while_thunk = static_cast<WhileThunk*>(thunk.get());
+      ForAllThunks(fn, &while_thunk->condition_thunk_sequence()->thunks());
+      ForAllThunks(fn, &while_thunk->body_thunk_sequence()->thunks());
+    } else {
+      fn(thunk.get());
+    }
+  }
+}
+
 // The order of `thunk_sequence` corresponds to
 // `hlo_schedule->ThunkLaunchOrder()`.
 static Status CompileModuleToLlvmIrImpl(
@@ -1070,7 +1099,10 @@ static Status CompileModuleToLlvmIrImpl(
   }
 #endif  // XLA_ENABLE_XLIR
 
-  results->executable = ir_emitter->ConsumeThunkSequence();
+  auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
+  ForAllThunks([](Thunk* thunk) { thunk->ClearCompileTimeInfo(); },
+               thunk_sequence.get());
+  results->executable = std::move(thunk_sequence);
   return OkStatus();
 }
 

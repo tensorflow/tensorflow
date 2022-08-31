@@ -40,6 +40,11 @@ class MemzeroThunk : public Thunk {
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  void ClearCompileTimeInfo() override {
+    Thunk::ClearCompileTimeInfo();
+    dest_value_ = nullptr;
+  }
+
   const BufferAllocation::Slice& destination() const { return dest_; }
   mlir::Value dest_value() const { return dest_value_; }
 
@@ -61,6 +66,11 @@ class Memset32BitValueThunk : public Thunk {
         dest_value_(dest_value) {}
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  void ClearCompileTimeInfo() override {
+    Thunk::ClearCompileTimeInfo();
+    dest_value_ = nullptr;
+  }
 
   const BufferAllocation::Slice& destination() const { return dest_; }
   uint32_t value() const { return value_; }

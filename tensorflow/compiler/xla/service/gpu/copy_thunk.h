@@ -42,6 +42,12 @@ class DeviceToDeviceCopyThunk : public Thunk {
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  void ClearCompileTimeInfo() override {
+    Thunk::ClearCompileTimeInfo();
+    source_value_ = nullptr;
+    destination_value_ = nullptr;
+  }
+
   const BufferAllocation::Slice& source() const { return source_buffer_; }
   const BufferAllocation::Slice& destination() const {
     return destination_buffer_;

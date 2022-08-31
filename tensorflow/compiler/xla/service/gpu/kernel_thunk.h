@@ -60,6 +60,13 @@ class KernelThunk : public Thunk {
                     se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  void ClearCompileTimeInfo() override {
+    Thunk::ClearCompileTimeInfo();
+    for (auto& value : values_) {
+      value = nullptr;
+    }
+  }
+
   const std::vector<const BufferAllocation*>& arguments() const {
     return args_;
   }
