@@ -448,21 +448,19 @@ class QuantizeAndDequantizeV3OpTest(test_util.TensorFlowTestCase):
       self.fail(
           "Did not raise an exception where it is expected to raise either "
           "a ValueError or errors.InvalidArgumentError.")
-          
+
+
 class QuantizeDownAndShrinkRangeOpTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_invalid_inputs(self):
-    inputs = constant_op.constant(
-        np.int32(0), shape=[3, 3, 3, 3], dtype=dtypes.qint32)
-
-    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
-                                "must be rank 0"):
-      self.evaluate(
-          math_ops.quantize_down_and_shrink_range(input=inputs,
-                                                  input_min=[],
-                                                  input_max=4.0,
-                                                  out_type=dtypes.quint8))
+    input_value = constant_op.constant([-0.8, -0.5, 0, 0.3, 0.8, -2.0],
+                                       shape=(6,),
+                                       dtype=dtypes.float32),
+    input_min = constant_op.constant(-127, shape=(), dtype=dtypes.float32)
+    input_max = constant_op.constant(127, shape=(), dtype=dtypes.float32)
+    # Tensor with invalid shape and invalid number of elements.
+    num_bits = constant_op.constant([], shape=(0,), dtype=dtypes.int32)
 
 
 if __name__ == "__main__":
