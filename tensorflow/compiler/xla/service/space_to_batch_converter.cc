@@ -1454,7 +1454,7 @@ void ConvolutionVisitor::PropagateOnBroadcast(HloInstruction* consumer,
   if (batch_is_broadcasted) {
     new_broadcast =
         MakeReshapeHlo(new_producer->shape().dimensions(), new_broadcast)
-            .ValueOrDie();
+            .value();
     VLOG(2) << "Created reshape of broadcast " << new_broadcast->ToString();
   }
 
@@ -1473,7 +1473,7 @@ void ConvolutionVisitor::RewriteBroadcastTree(
     if (instr->opcode() == HloOpcode::kBroadcast) {
       PropagateOnBroadcast(instr, producer);
     } else if (IsTrivialElementwise(instr)) {
-      Propagate(instr, /*producer=*/instr->mutable_operand(0)).ValueOrDie();
+      Propagate(instr, /*producer=*/instr->mutable_operand(0)).value();
     } else {
       LOG(FATAL) << "Unsupported opcode in RewriteBroadcastTree";
     }
@@ -3853,7 +3853,7 @@ StatusOr<bool> SpaceToBatchConverter::Run(
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     ConvolutionVisitor visitor(ctrl_, comp);
-    if (visitor.Run().ValueOrDie()) {
+    if (visitor.Run().value()) {
       changed = true;
     }
     VLOG(1) << "Done operating on computation";

@@ -951,7 +951,7 @@ HloInstruction* RewriteInputWithDynamicPadding(
   // Reconstruct dynamic padding using pad and dynamic slice.
 
   HloInstruction* pad =
-      MakePadHlo(input, padding_value, padding_configs).ValueOrDie();
+      MakePadHlo(input, padding_value, padding_configs).value();
   input = conv->AddInstruction(HloInstruction::CreateDynamicSlice(
       padded_shape, pad, start_indices, padded_shape.dimensions()));
   return input;
@@ -1282,8 +1282,7 @@ StatusOr<bool> RewriteDynamicSelectAndScatterSamePadding(
     }
     *padding_configs.add_dimensions() = padding_dim;
   }
-  HloInstruction* padded =
-      MakePadHlo(rewritten, init, padding_configs).ValueOrDie();
+  HloInstruction* padded = MakePadHlo(rewritten, init, padding_configs).value();
   rewritten = hlo->AddInstruction(HloInstruction::CreateDynamicSlice(
       hlo->shape(), padded, start_indices, hlo->shape().dimensions()));
   TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rewritten));

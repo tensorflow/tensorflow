@@ -182,7 +182,7 @@ PlatformUtil::GetStreamExecutors(
       VLOG(1) << "Started device init " << device_ordinal;
       auto executor_status = platform->ExecutorForDevice(device_ordinal);
       if (executor_status.ok()) {
-        se::StreamExecutor* executor = executor_status.ValueOrDie();
+        se::StreamExecutor* executor = executor_status.value();
         if (IsDeviceSupported(executor)) {
           stream_executors[count] = executor;
         }

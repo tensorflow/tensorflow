@@ -275,7 +275,7 @@ HloInstruction* MakeScalarLike(HloInstruction* base, NativeT value) {
   auto scalar = base->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<NativeT>(value)
                                          .Convert(base->shape().element_type())
-                                         .ValueOrDie()));
+                                         .value()));
   if (base->shape().rank() == 0) {
     *scalar->mutable_shape() = base->shape();
     return scalar;

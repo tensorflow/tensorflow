@@ -645,7 +645,7 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
   }
   return ReplaceInstruction(old_instruction, new_instruction,
                             /*preserve_sharding=*/true)
-      .ValueOrDie();
+      .value();
 }
 
 bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
@@ -667,7 +667,7 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
   }
   return ReplaceInstruction(old_instruction, MaybeMakeTuple(new_instructions),
                             /*preserve_sharding=*/true)
-      .ValueOrDie();
+      .value();
 }
 
 Status AlgebraicSimplifierVisitor::HandleAbs(HloInstruction* abs) {
@@ -1532,7 +1532,7 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
     new_shape.DeleteDimension(concatenate_dimension);
     return ReplaceInstruction(
         concatenate,
-        MakeBroadcastHlo(MakeReshapeHlo(new_shape, operands[0]).ValueOrDie(),
+        MakeBroadcastHlo(MakeReshapeHlo(new_shape, operands[0]).value(),
                          broadcast_dims, concatenate->shape()));
   }
   return OkStatus();
@@ -5818,7 +5818,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
       if (!converted_pad_literal.ok()) {
         return false;
       }
-      return converted_pad_literal.ValueOrDie() == reduce_init_literal;
+      return converted_pad_literal.value() == reduce_init_literal;
     };
     // The pad value is usually a constant, so we handle that case and do not
     // try to get more fancy about proving equivalence in cases beyond that.

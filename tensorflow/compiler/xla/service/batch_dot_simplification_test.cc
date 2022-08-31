@@ -41,7 +41,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).value());
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -65,7 +65,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).value());
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -89,7 +89,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).value());
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -113,7 +113,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).value());
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -137,7 +137,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).value());
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -161,7 +161,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).value());
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -188,7 +188,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_FALSE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(pass.Run(m.get()).value());
 }
 
 TEST_F(BatchDotSimplificationTest,
@@ -209,7 +209,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_FALSE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(pass.Run(m.get()).value());
 }
 
 }  // namespace

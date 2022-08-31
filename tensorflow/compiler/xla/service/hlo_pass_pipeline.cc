@@ -139,7 +139,7 @@ Status HloPassPipeline::RunInvariantCheckers(
           absl::StrCat(changed_status.status().error_message(),
                        "\n\nFailed after ", after_pass_name));
     }
-    TF_RET_CHECK(!changed_status.ValueOrDie())
+    TF_RET_CHECK(!changed_status.value())
         << "invariant checkers must not change the graph";
   }
   return OkStatus();

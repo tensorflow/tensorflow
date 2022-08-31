@@ -730,7 +730,7 @@ bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(
     // Iterate through all users of all buffer aliases of the buffer in the
     // points-to set of fusion parameter at 'index'.
     // Return false if any uses are detected at 'index', returns true otherwise.
-    const LogicalBuffer* buffer = GetBufferDefinedAt(*it, index).ValueOrDie();
+    const LogicalBuffer* buffer = GetBufferDefinedAt(*it, index).value();
     for (const BufferAlias& alias : GetBufferAliases(*buffer)) {
       for (HloInstruction* alias_user : alias.instruction()->users()) {
         if (DoesNotUseOperandBuffer(alias.instruction(), alias.index(),

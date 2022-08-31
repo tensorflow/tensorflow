@@ -64,7 +64,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
-    auto alias_analysis = HloAliasAnalysis::Run(module).ValueOrDie();
+    auto alias_analysis = HloAliasAnalysis::Run(module).value();
 
     Options options;
     if (memory_space_assignment_options.has_value()) {
@@ -75,7 +75,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     }
     auto cost_analysis = MemorySpaceAssignmentCostAnalysis::Create(
                              hlo_cost_analysis, options, *module)
-                             .ValueOrDie();
+                             .value();
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
             *cost_analysis, /*min_overlap_to_async_copy_ratio=*/0.8,
@@ -160,16 +160,16 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     options.max_outstanding_evictions = max_outstanding_async_copies;
     options.allocate_across_sequential_calls = GetParam();
 
-    auto alias_analysis = HloAliasAnalysis::Run(module).ValueOrDie();
+    auto alias_analysis = HloAliasAnalysis::Run(module).value();
     std::unique_ptr<HloLiveRange> hlo_live_range =
         HloLiveRange::Run(module->schedule(), *alias_analysis,
                           module->entry_computation())
-            .ValueOrDie();
+            .value();
 
     std::unique_ptr<PresetAssignments> preset_assignments =
         MemorySpaceAssignment::Run(module, *hlo_live_range, *alias_analysis,
                                    options)
-            .ValueOrDie();
+            .value();
     if (check_parameters_in_default_memory) {
       CheckParametersInDefaultMemory(module);
     }
@@ -270,7 +270,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     // Returns the offset of the assignment, -1 if it's not in the alternate
     // memory.
     const HloModule* module = instruction->parent()->parent();
-    auto alias_analysis = HloAliasAnalysis::Run(module).ValueOrDie();
+    auto alias_analysis = HloAliasAnalysis::Run(module).value();
     HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(instruction, index);
     for (auto& pos_and_chunk : preset_assignments.chunks()) {
       for (auto& value : buffer.values()) {

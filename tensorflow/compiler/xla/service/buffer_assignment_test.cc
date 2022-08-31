@@ -2637,7 +2637,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 
   auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
     return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
-        .ValueOrDie();
+        .value();
   };
 
   // Make sure the parameters and root of the async called computation has the

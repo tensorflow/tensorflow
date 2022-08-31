@@ -252,7 +252,7 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape.ValueOrDie(), x, transpose_y,
+      conv_shape.value(), x, transpose_y,
       /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
       DefaultPrecisionConfig(2)));
 
@@ -310,7 +310,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape.ValueOrDie(), x, transpose_y,
+      conv_shape.value(), x, transpose_y,
       /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
       DefaultPrecisionConfig(2)));
 
@@ -373,7 +373,7 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape.ValueOrDie(), transpose_x, y,
+      conv_shape.value(), transpose_x, y,
       /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
       DefaultPrecisionConfig(2)));
 
@@ -442,7 +442,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape.ValueOrDie(), transpose_x, y,
+      conv_shape.value(), transpose_x, y,
       /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
       DefaultPrecisionConfig(2)));
 

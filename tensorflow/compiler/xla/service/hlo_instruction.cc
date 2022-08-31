@@ -4333,7 +4333,7 @@ Status HloInstruction::GetBackendConfigInternal(
 
 const std::string& HloInstruction::BackendConfigRep::GetRawString() const {
   if (proto_ && raw_string_.empty()) {
-    raw_string_ = BackendConfigToRawString(*proto_).ValueOrDie();
+    raw_string_ = BackendConfigToRawString(*proto_).value();
   }
   return raw_string_;
 }

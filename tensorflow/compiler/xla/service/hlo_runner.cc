@@ -280,7 +280,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
           (*device_assignment)(i / num_partitions, i % num_partitions);
       pool->Schedule([this, device, &options, i]() {
         se::StreamExecutor* executor =
-            backend().stream_executor(device).ValueOrDie();
+            backend().stream_executor(device).value();
         VLOG(1) << "Starting infeed on device " << device;
         for (int64_t step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
@@ -302,7 +302,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
           (*device_assignment)(i / num_partitions, i % num_partitions);
       pool->Schedule([this, device, &options, i]() {
         se::StreamExecutor* executor =
-            backend().stream_executor(device).ValueOrDie();
+            backend().stream_executor(device).value();
         VLOG(1) << "Starting outfeed on device " << device;
         for (int64_t step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
@@ -377,7 +377,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
             if (!thread_result.ok()) {
               return thread_result.status();
             }
-            results.push_back(std::move(thread_result).ValueOrDie());
+            results.push_back(std::move(thread_result).value());
           }
         }
         return results;
@@ -435,7 +435,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
           if (!thread_result.ok()) {
             return thread_result.status();
           }
-          results.push_back(std::move(thread_result).ValueOrDie());
+          results.push_back(std::move(thread_result).value());
         }
         return results;
       },

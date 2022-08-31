@@ -243,7 +243,7 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
     input_sizes[input_batch_dimension] /= batch_group_count;
     input_sizes.insert(input_sizes.begin() + input_batch_dimension,
                        batch_group_count);
-    activation = MakeReshapeHlo(input_sizes, activation).ValueOrDie();
+    activation = MakeReshapeHlo(input_sizes, activation).value();
     for (auto& d : *dim_numbers.mutable_input_spatial_dimensions()) {
       if (d > input_batch_dimension) {
         ++d;
@@ -262,7 +262,7 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
     kernel_sizes[kernel_output_feature_dimension] /= batch_group_count;
     kernel_sizes.insert(kernel_sizes.begin() + kernel_output_feature_dimension,
                         batch_group_count);
-    filter = MakeReshapeHlo(kernel_sizes, filter).ValueOrDie();
+    filter = MakeReshapeHlo(kernel_sizes, filter).value();
     for (auto& d : *dim_numbers.mutable_kernel_spatial_dimensions()) {
       if (d > kernel_output_feature_dimension) {
         ++d;
@@ -309,11 +309,11 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
             /*batch_group_count=*/1, window, dim_numbers,
             convolution->precision_config(),
             /*preferred_element_type=*/convolution->shape().element_type())
-            .ValueOrDie();
+            .value();
     convolution->SetupDerivedInstruction(new_convolution);
     TF_CHECK_OK(computation_->ReplaceInstruction(
         convolution,
-        MakeReshapeHlo(convolution->shape(), new_convolution).ValueOrDie()));
+        MakeReshapeHlo(convolution->shape(), new_convolution).value()));
     changed_ = true;
     return OkStatus();
   }
@@ -591,7 +591,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
   input_sizes[input_feature_dimension] /= group_count;
   input_sizes.insert(input_sizes.begin() + input_feature_dimension,
                      group_count);
-  activation = MakeReshapeHlo(input_sizes, activation).ValueOrDie();
+  activation = MakeReshapeHlo(input_sizes, activation).value();
   for (auto& d : *dim_numbers.mutable_input_spatial_dimensions()) {
     if (d > input_feature_dimension) {
       ++d;
@@ -613,7 +613,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
   kernel_sizes[kernel_output_feature_dimension] /= group_count;
   kernel_sizes.insert(kernel_sizes.begin() + kernel_output_feature_dimension,
                       group_count);
-  filter = MakeReshapeHlo(kernel_sizes, filter).ValueOrDie();
+  filter = MakeReshapeHlo(kernel_sizes, filter).value();
   for (auto& d : *dim_numbers.mutable_kernel_spatial_dimensions()) {
     if (d > kernel_output_feature_dimension) {
       ++d;
@@ -664,12 +664,12 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
           /*batch_group_count=*/1, window, dim_numbers,
           convolution->precision_config(),
           /*preferred_element_type=*/convolution->shape().element_type())
-          .ValueOrDie();
+          .value();
   convolution->SetupDerivedInstruction(new_convolution);
   changed_ = true;
   return computation_->ReplaceInstruction(
       convolution,
-      MakeReshapeHlo(convolution->shape(), new_convolution).ValueOrDie());
+      MakeReshapeHlo(convolution->shape(), new_convolution).value());
 }
 
 }  // namespace

@@ -34,7 +34,7 @@ class AllReduceSimplifierTest : public HloTestBase {
     if (!changed.ok()) {
       return changed.status();
     }
-    EXPECT_EQ(changed.ValueOrDie(), expect_change);
+    EXPECT_EQ(changed.value(), expect_change);
     return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 

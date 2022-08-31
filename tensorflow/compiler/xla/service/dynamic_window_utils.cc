@@ -51,7 +51,7 @@ HloOp BinaryOp(HloOp x, HloOp y, HloOpcode opcode,
                const std::string& name = "") {
   CHECK_EQ(x.get()->parent(), y.get()->parent());
   Shape binary_op_shape =
-      ShapeInference::InferBinaryOpShape(opcode, x.get(), y.get()).ValueOrDie();
+      ShapeInference::InferBinaryOpShape(opcode, x.get(), y.get()).value();
   return HloOp(x.get()->parent()->AddInstruction(
       HloInstruction::CreateBinary(binary_op_shape, opcode, x.get(), y.get()),
       name));

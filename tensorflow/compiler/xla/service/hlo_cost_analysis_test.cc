@@ -1258,7 +1258,7 @@ TEST_F(HloCostAnalysisTest, MultioutputScatter) {
     Tuple(&builder, {Add(x0, y0), Add(x1, y1)});
     auto computation_status = builder.Build();
     TF_CHECK_OK(computation_status.status());
-    return std::move(computation_status).ValueOrDie();
+    return std::move(computation_status).value();
   }();
   Scatter({operand0, operand1}, indices, {values0, values1}, add, dim_numbers);
 

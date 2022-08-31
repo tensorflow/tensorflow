@@ -87,7 +87,7 @@ class BFloat16NormalizationTest : public HloTestBase {
                          /*allow_mixed_precision=*/true);
     EXPECT_IS_OK(verifier.Run(module).status());
 
-    return result.ValueOrDie();
+    return result.value();
   }
 };
 
