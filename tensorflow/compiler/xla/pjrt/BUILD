@@ -472,31 +472,6 @@ cc_library(
     ] + if_nccl(["@local_config_nccl//:nccl"]),
 )
 
-tf_cc_test(
-    name = "gpu_multistream_test",
-    srcs = ["gpu_multistream_test.cc"],
-    tags = [
-        # TODO(phawkins): figure out TF test infra such that this only runs under GPU.
-        "no_oss",
-        "requires-gpu-nvidia",
-        "notap",
-    ],
-    deps = [
-        ":gpu_device",
-        ":pjrt_client",
-        ":pjrt_stream_executor_client",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/client:executable_build_options",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:random",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
 cc_library(
     name = "mlir_to_hlo",
     srcs = ["mlir_to_hlo.cc"],
