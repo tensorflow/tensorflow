@@ -71,24 +71,13 @@ bool IsPhysicallyTransposing(const HloInstruction& instr) {
 }
 
 bool IsReduceInputFusion(const HloInstruction& instr) {
-  if (instr.IsMultiOutputFusion()) {
-    for (const HloInstruction* operand :
-         instr.fused_expression_root()->operands()) {
-      if (IsReductionFromOrToContiguousDimensions(*operand)) {
-        CHECK(instr.IsInputFusion())
-            << " Multi-output fusion rooted at reduction-to-vector ops must be "
-               "of kind kInput: "
-            << instr.ToString();
-        return true;
-      }
+  if (instr.opcode() == HloOpcode::kFusion) {
+    if (HasAnyUnnestedReductionRoot(instr.called_computations()[0])) {
+      CHECK(instr.IsInputFusion())
+          << " Fusion rooted at reduction-to-vector op must be of kind kInput: "
+          << instr.ToString();
+      return true;
     }
-  } else if (instr.opcode() == HloOpcode::kFusion &&
-             IsReductionFromOrToContiguousDimensions(
-                 *instr.fused_expression_root())) {
-    CHECK(instr.IsInputFusion())
-        << " Fusion rooted at reduction-to-vector op must be of kind kInput: "
-        << instr.ToString();
-    return true;
   }
   return false;
 }

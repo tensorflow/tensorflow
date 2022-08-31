@@ -1743,61 +1743,6 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
   return OkStatus();
 }
 
-namespace {
-
-// Recursive helper for GetFusionRoots below.
-static void GetFusionRootsRec(HloInstruction* root,
-                              std::vector<HloInstruction*>& out) {
-  if (root->opcode() == HloOpcode::kGetTupleElement) {
-    return GetFusionRootsRec(root->mutable_operand(0), out);
-  } else if (root->opcode() == HloOpcode::kTuple) {
-    for (int i = 0; i < root->operand_count(); i++) {
-      GetFusionRootsRec(root->mutable_operand(i), out);
-    }
-  } else {
-    if (!out.empty() && out.back() == root) {
-      return;
-    }
-    CHECK(!absl::c_linear_search(out, root))
-        << "Fusion root contains instruction " << root->ToString()
-        << " multiple times";
-    out.push_back(root);
-  }
-}
-
-// Returns instructions which are roots of the fusion, following the operands of
-// GTE instructions in the root tuple. Groups multiple subsequent instruction
-// with the same root. CHECKs that the fusion never outputs the same instruction
-// twice, as well as that there are no explicitly created tuples or nested gtes
-// in fusion output.
-//
-// For input: (tuple (gte R1) (gte R1) O2)
-// Expected output: [R1, O2]
-//
-// For input: (tuple R1 R2 O2)
-// Expected output: [R1, R2, O2]
-//
-// For input: (tuple (gte R1) (gte R1) R2 O3)
-// Expected output: [R1, R2, O3]
-//
-// For input: R1
-// Expected output: [R1]
-std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation) {
-  std::vector<HloInstruction*> out;
-  GetFusionRootsRec(computation->root_instruction(), out);
-  return out;
-}
-
-// Returns whether any of the rooots of the fusion are unnested reductions.
-bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
-  return absl::c_any_of(
-      GetFusionRoots(computation), [&](const HloInstruction* instr) {
-        return IsReductionFromOrToContiguousDimensions(*instr);
-      });
-}
-
-}  // end namespace
-
 Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
   TF_ASSIGN_OR_RETURN(
