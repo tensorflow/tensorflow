@@ -123,7 +123,7 @@ class ScatterNdOp : public XlaOpKernel {
         XlaScatter(buffer, updates, indices,
                    /*indices_are_vectors=*/true, /*combiner=*/combine, builder);
     OP_REQUIRES_OK(context, result.status());
-    context->SetOutput(0, result.ValueOrDie());
+    context->SetOutput(0, result.value());
   }
 
  private:
@@ -175,7 +175,7 @@ void CompileTensorScatter(
   auto result = XlaScatter(buffer, updates, indices,
                            /*indices_are_vectors=*/true, combiner, builder);
   OP_REQUIRES_OK(context, result.status());
-  context->SetOutput(0, result.ValueOrDie());
+  context->SetOutput(0, result.value());
 }
 
 class TensorScatterAddOp : public XlaOpKernel {

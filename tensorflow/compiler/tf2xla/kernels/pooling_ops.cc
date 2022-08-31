@@ -176,11 +176,11 @@ class MaxPoolOp : public PoolingOp {
   void Compile(XlaOpKernelContext* ctx) override {
     auto ksize_or_error = GetKernelSize(ctx);
     OP_REQUIRES_OK(ctx, ksize_or_error.status());
-    std::vector<int64_t> ksize = ksize_or_error.ValueOrDie();
+    std::vector<int64_t> ksize = ksize_or_error.value();
 
     auto stride_or_error = GetStride(ctx);
     OP_REQUIRES_OK(ctx, stride_or_error.status());
-    std::vector<int64_t> stride = stride_or_error.ValueOrDie();
+    std::vector<int64_t> stride = stride_or_error.value();
 
     xla::XlaOp input = ctx->Input(0);
 
@@ -265,11 +265,11 @@ class AvgPoolOp : public PoolingOp {
   void Compile(XlaOpKernelContext* ctx) override {
     auto ksize_or_error = GetKernelSize(ctx);
     OP_REQUIRES_OK(ctx, ksize_or_error.status());
-    std::vector<int64_t> ksize = ksize_or_error.ValueOrDie();
+    std::vector<int64_t> ksize = ksize_or_error.value();
 
     auto stride_or_error = GetStride(ctx);
     OP_REQUIRES_OK(ctx, stride_or_error.status());
-    std::vector<int64_t> stride = stride_or_error.ValueOrDie();
+    std::vector<int64_t> stride = stride_or_error.value();
 
     const TensorShape input_shape = ctx->InputShape(0);
     OP_REQUIRES(ctx, input_shape.dims() == num_dims(),
@@ -392,7 +392,7 @@ class MaxPoolGradOp : public XlaOpKernel {
                      XlaTensorFormat(data_format_, tensor_in_shape.dims() - 2));
     auto status_or_shape = pooling.builder()->GetShape(pooling);
     OP_REQUIRES_OK(ctx, status_or_shape.status());
-    OP_REQUIRES_OK(ctx, XLAShapeToTensorShape(status_or_shape.ValueOrDie(),
+    OP_REQUIRES_OK(ctx, XLAShapeToTensorShape(status_or_shape.value(),
                                               &expected_out_shape));
     OP_REQUIRES(ctx, expected_out_shape == out_backprop_shape,
                 errors::Unimplemented("The output dimensions do not match the "

@@ -64,7 +64,7 @@ class RandomUniformOp : public XlaOpKernel {
     auto result_status_or =
         SetAllDimensionSizes(&ctx->value_inference(), result, ctx->Input(0));
     OP_REQUIRES_OK(ctx, result_status_or.status());
-    result = result_status_or.ValueOrDie();
+    result = result_status_or.value();
     ctx->SetOutput(0, result);
   }
 
@@ -136,7 +136,7 @@ class RandomStandardNormalOp : public XlaOpKernel {
     auto result_status_or =
         SetAllDimensionSizes(&ctx->value_inference(), result, ctx->Input(0));
     OP_REQUIRES_OK(ctx, result_status_or.status());
-    result = result_status_or.ValueOrDie();
+    result = result_status_or.value();
     ctx->SetOutput(0, result);
   }
 

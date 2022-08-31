@@ -505,7 +505,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       for (const string& node_name : token_input_nodes_) {
         auto token_or = compiler->GetNodeToken(node_name);
         OP_REQUIRES_OK(ctx, token_or.status());
-        token_inputs.push_back(token_or.ValueOrDie());
+        token_inputs.push_back(token_or.value());
       }
       inputs[i] = xla::AfterAll(builder, token_inputs);
     } else if (ctx->input_type(input_num) == DT_RESOURCE) {
@@ -516,7 +516,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       xla::XlaOp input = ctx->Input(input_num);
       auto input_shape_or = ctx->builder()->GetShape(input);
       OP_REQUIRES_OK(ctx, input_shape_or.status());
-      xla::Shape input_shape = input_shape_or.ValueOrDie();
+      xla::Shape input_shape = input_shape_or.value();
       const xla::Shape& list_shape = body_input_shape.tuple_shapes(i);
       // Shape/datatype of the input list may differ from shape/datatype of the
       // body/cond input if the list's shape/datatype was inferred after the
@@ -573,14 +573,14 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   // Wraps the condition in a computation that unpacks the output tuple.
   StatusOr<xla::XlaComputation> cond_result = BuildWrappedCond(ctx, cond);
   OP_REQUIRES_OK(ctx, cond_result.status());
-  xla::XlaComputation wrapped_cond = std::move(cond_result.ValueOrDie());
+  xla::XlaComputation wrapped_cond = std::move(cond_result.value());
 
   // Remove compile time const args from the list of body outputs.
   StatusOr<xla::XlaComputation> body_result =
       BuildWrappedBody(ctx, body, compile_time_const_arg_indices,
                        num_compile_time_const_args, has_token_input_output_);
   OP_REQUIRES_OK(ctx, body_result.status());
-  xla::XlaComputation wrapped_body = std::move(body_result.ValueOrDie());
+  xla::XlaComputation wrapped_body = std::move(body_result.value());
 
   // Builds the While op and pads its output with the compile time const args.
   xla::XlaOp while_result =
@@ -608,10 +608,10 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
         xla::GetTupleElement(while_result, ctx->num_outputs());
     auto shape_or = builder->GetShape(token_output);
     OP_REQUIRES_OK(ctx, shape_or.status());
-    OP_REQUIRES(ctx, shape_or.ValueOrDie().IsToken(),
+    OP_REQUIRES(ctx, shape_or.value().IsToken(),
                 errors::FailedPrecondition(
                     "Token output is not token type: ",
-                    xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));
+                    xla::ShapeUtil::HumanString(shape_or.value())));
     OP_REQUIRES_OK(ctx,
                    compiler->SetNodeToken(original_node_name_, token_output));
   }
