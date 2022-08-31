@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN: --gml-tile-to-for="tile-sizes=8 tiling-target="sum"" \
+// RUN: --gml-tiling="tile-sizes=8 distribute=false tiling-target="sum"" \
 // RUN: --gml-fusion="producer="mul" consumer="sum"" \
 // RUN: | FileCheck %s
 

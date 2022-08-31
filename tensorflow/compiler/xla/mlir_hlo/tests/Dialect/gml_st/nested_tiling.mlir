@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:     --gml-tile-to-for="tile-sizes=256,512 tiling-target=generic-2d" \
-// RUN:     --gml-tile-to-for="tile-sizes=4,1 tiling-target=generic-2d" | \
+// RUN:     --gml-tiling="tile-sizes=256,512 distribute=false tiling-target=generic-2d" \
+// RUN:     --gml-tiling="tile-sizes=4,1 distribute=false tiling-target=generic-2d" | \
 // RUN: FileCheck %s
 
 #id2d = affine_map<(d0, d1) -> (d0, d1)>

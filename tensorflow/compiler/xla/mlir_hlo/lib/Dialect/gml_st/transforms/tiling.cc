@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -307,11 +308,14 @@ struct TilingOptions {
   /// to infer tile sizes statically, e.g. based on an operation's rank, and
   /// also dynamically based, e.g. based on a tensor's shape at runtime.
   TileSizeComputationFunction tileSizeComputationFunction = nullptr;
+
+  /// If `true`, generate a `gml_st.parallel` loop nest.
+  bool distribute = true;
 };
 
 struct TilingResult {
   TilingInterface tiledOp;
-  gml_st::ForOp loop;
+  Operation *loop;
 };
 
 /// Generate an empty loop nest that represents the tiled loop nest shell.
@@ -319,12 +323,12 @@ struct TilingResult {
 /// - `tileSizeVals` is the tile sizes to use. Zero represent untiled loops.
 /// - In `offsets` and `sizes` return the multi-dimensional offset and size of
 /// the tile processed within the inner most loop.
-gml_st::ForOp generateTileLoopNest(OpBuilder &builder, Location loc,
-                                   ArrayRef<Range> loopRanges,
-                                   ArrayRef<Value> tileSizeVals,
-                                   ArrayRef<Value> dstOperands,
-                                   SmallVector<OpFoldResult> &offsets,
-                                   SmallVector<OpFoldResult> &sizes) {
+Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
+                                ArrayRef<Range> loopRanges,
+                                ArrayRef<Value> tileSizeVals,
+                                ArrayRef<Value> dstOperands, bool distribute,
+                                SmallVector<OpFoldResult> &offsets,
+                                SmallVector<OpFoldResult> &sizes) {
   assert(!loopRanges.empty() && "expected at least one loop range");
   assert(loopRanges.size() == tileSizeVals.size() &&
          "expected as many tile sizes as loop ranges");
@@ -356,28 +360,44 @@ gml_st::ForOp generateTileLoopNest(OpBuilder &builder, Location loc,
     nonemptyRangeIndices.push_back(loopRange.index());
   }
 
-  auto loop = builder.create<gml_st::ForOp>(
-      loc, TypeRange(ValueRange{dstOperands}), lbs, ubs, steps, dstOperands,
-      [&](OpBuilder &nestedBuilder, Location bodyLoc, ValueRange ivs,
-          ValueRange /*inits*/) {
-        for (const auto &en : llvm::enumerate(ivs)) {
-          Value iv = en.value();
-          size_t index = en.index();
-          Value boundedTileSize = nestedBuilder.create<AffineMinOp>(
-              bodyLoc, minMap, ValueRange{iv, steps[index], ubs[index]});
-          sizes[nonemptyRangeIndices[index]] = boundedTileSize;
-          offsets[nonemptyRangeIndices[index]] = iv;
-        }
-      });
+  auto buildBody = [&](OpBuilder &nestedBuilder, Location bodyLoc,
+                       ValueRange ivs) {
+    for (const auto &en : llvm::enumerate(ivs)) {
+      Value iv = en.value();
+      size_t index = en.index();
+      Value boundedTileSize = nestedBuilder.create<AffineMinOp>(
+          bodyLoc, minMap, ValueRange{iv, steps[index], ubs[index]});
+      sizes[nonemptyRangeIndices[index]] = boundedTileSize;
+      offsets[nonemptyRangeIndices[index]] = iv;
+    }
+  };
+  Operation *loop =
+      distribute
+          ? builder
+                .create<gml_st::ParallelOp>(
+                    loc, TypeRange(ValueRange{dstOperands}), lbs, ubs, steps,
+                    [&](OpBuilder &nestedBuilder, Location bodyLoc,
+                        ValueRange ivs) {
+                      buildBody(nestedBuilder, bodyLoc, ivs);
+                    })
+                .getOperation()
+          : builder
+                .create<gml_st::ForOp>(
+                    loc, TypeRange(ValueRange{dstOperands}), lbs, ubs, steps,
+                    dstOperands,
+                    [&](OpBuilder &nestedBuilder, Location bodyLoc,
+                        ValueRange ivs, ValueRange /*inits*/) {
+                      buildBody(nestedBuilder, bodyLoc, ivs);
+                    })
+                .getOperation();
   return loop;
 }
 
 /// Pattern to tile an op that implements the `TilingInterface` using
 /// `gml_st.for` for iterating over the tiles.
-struct TileToGmlStLoopsPattern
-    : public OpInterfaceRewritePattern<TilingInterface> {
-  TileToGmlStLoopsPattern(MLIRContext *context, StringRef tilingTarget,
-                          TilingOptions options, PatternBenefit benefit = 1)
+struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
+  TilingPattern(MLIRContext *context, StringRef tilingTarget,
+                TilingOptions options, PatternBenefit benefit = 1)
       : OpInterfaceRewritePattern<TilingInterface>(context, benefit),
         tilingTarget(tilingTarget),
         options(std::move(options)) {}
@@ -392,12 +412,18 @@ struct TileToGmlStLoopsPattern
           op, "missing tile size computation function");
     }
 
+    // Implement adding accumulator to the gml_st.parallel terminator.
+    if (options.distribute &&
+        llvm::any_of(op.getLoopIteratorTypes(), [](StringRef type) {
+          return type == getReductionIteratorTypeName();
+        }))
+      return failure();
+
     // 1. Get the range of the loops that are represented by the operation.
     SmallVector<Range> iterationDomain = op.getIterationDomain(rewriter);
     size_t numLoops = iterationDomain.size();
-    if (numLoops == 0) {
+    if (numLoops == 0)
       return rewriter.notifyMatchFailure(op, "missing iteration domain");
-    }
 
     // 2. Materialize the tile sizes. Enforce the convention that "tiling by
     // zero" skips tiling a particular dimension. This convention is
@@ -414,10 +440,10 @@ struct TileToGmlStLoopsPattern
     auto dstOperands = op.getDestinationOperands(rewriter);
     SmallVector<OpFoldResult> offsets, sizes;
     TilingResult tilingResult;
-    tilingResult.loop =
-        generateTileLoopNest(rewriter, op.getLoc(), iterationDomain,
-                             tileSizeVector, dstOperands, offsets, sizes);
-    Block *loopBody = tilingResult.loop.getBody();
+    tilingResult.loop = generateTileLoopNest(
+        rewriter, op.getLoc(), iterationDomain, tileSizeVector, dstOperands,
+        options.distribute, offsets, sizes);
+    Block *loopBody = &tilingResult.loop->getRegion(0).front();
     Operation *terminator = loopBody->getTerminator();
     rewriter.setInsertionPoint(terminator);
 
@@ -427,22 +453,23 @@ struct TileToGmlStLoopsPattern
 
     // 5. Add `gml_st.set_yield` terminator.
     SmallVector<Value> dstSubsets;
-    for (Value dst : tilingResult.tiledOp.getDestinationOperands(rewriter)) {
+    for (Value dst : tilingResult.tiledOp.getDestinationOperands(rewriter))
       dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().set());
-    }
     rewriter.replaceOpWithNewOp<SetYieldOp>(terminator,
                                             tilingResult.tiledOp->getResults(),
                                             dstOperands, dstSubsets);
 
     // 6. Replace the uses of `outputs` with the output block arguments.
-    for (auto [dst, regionArg] :
-         llvm::zip(dstOperands, tilingResult.loop.getRegionOutputArgs())) {
-      dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
-        return operand.getOwner()->getBlock() == loopBody;
-      });
+    if (!options.distribute) {
+      auto forLoop = cast<gml_st::ForOp>(tilingResult.loop);
+      for (auto [dst, regionArg] :
+           llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
+        dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
+          return operand.getOwner()->getBlock() == loopBody;
+        });
+      }
     }
-    rewriter.replaceOp(op, tilingResult.loop.getResults());
-
+    rewriter.replaceOp(op, tilingResult.loop->getResults());
     setTransformationAttr(rewriter, tilingResult.tiledOp);
     return success();
   }
@@ -452,10 +479,12 @@ struct TileToGmlStLoopsPattern
   TilingOptions options;
 };
 
-struct TileToForPass : public TileToForPassBase<TileToForPass> {
-  TileToForPass() = default;
-  TileToForPass(StringRef label, llvm::ArrayRef<int64_t> sizes) {
+struct TilingPass : public TilingPassBase<TilingPass> {
+  TilingPass() = default;
+  TilingPass(StringRef label, bool distributeFlag,
+             llvm::ArrayRef<int64_t> sizes) {
     tilingTarget = label.str();
+    distribute = distributeFlag;
     tileSizes = sizes;
   }
 
@@ -469,6 +498,7 @@ struct TileToForPass : public TileToForPassBase<TileToForPass> {
     MLIRContext *ctx = &getContext();
 
     TilingOptions opts;
+    opts.distribute = distribute;
     SmallVector<int64_t> ts(tileSizes.begin(), tileSizes.end());
     opts.tileSizeComputationFunction = [ts](OpBuilder &b, Operation *op) {
       OpBuilder::InsertionGuard guard(b);
@@ -481,7 +511,7 @@ struct TileToForPass : public TileToForPassBase<TileToForPass> {
     };
 
     RewritePatternSet patterns(ctx);
-    patterns.add<TileToGmlStLoopsPattern>(ctx, tilingTarget, opts);
+    patterns.add<TilingPattern>(ctx, tilingTarget, opts);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
@@ -508,9 +538,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
   return std::make_unique<DeprecatedTilingPass>(tileSizes);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTileToForPass(
-    StringRef tilingTarget, ArrayRef<int64_t> tileSizes) {
-  return std::make_unique<TileToForPass>(tilingTarget, tileSizes);
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
+    StringRef tilingTarget, bool distribute, ArrayRef<int64_t> tileSizes) {
+  return std::make_unique<TilingPass>(tilingTarget, distribute, tileSizes);
 }
 
 }  // namespace gml_st

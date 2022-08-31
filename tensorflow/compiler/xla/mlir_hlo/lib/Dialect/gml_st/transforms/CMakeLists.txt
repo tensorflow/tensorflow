@@ -110,6 +110,7 @@ add_mlir_library(GmlStPasses
   GmlStFusionInterfaceImpl
   GmlStTilingInterface
   GmlStTilingInterfaceImpl
+  MLIRDialectUtils
   MLIRFuncDialect
   MLIRIR
   MLIRLinalgDialect
