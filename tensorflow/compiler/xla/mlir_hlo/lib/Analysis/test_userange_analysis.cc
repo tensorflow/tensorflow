@@ -17,8 +17,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
-#include "mlir/Analysis/BufferViewFlowAnalysis.h"
 #include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferViewFlowAnalysis.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {

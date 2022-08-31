@@ -258,12 +258,12 @@ static Value FillDataFromDenseArrayAttr(
 }
 
 static Value CreateGlobalFromDenseArray(Globals &g, ImplicitLocOpBuilder &b,
-                                        DenseArrayBaseAttr base_array,
+                                        DenseArrayAttr base_array,
                                         Type arr_type,
                                         std::string_view symbol_base) {
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) {
     Value data = ib.create<LLVM::UndefOp>(arr_type);
-    llvm::TypeSwitch<DenseArrayBaseAttr>(base_array)
+    llvm::TypeSwitch<DenseArrayAttr>(base_array)
         .Case([&](DenseI8ArrayAttr attr) {
           data = FillDataFromDenseArrayAttr<int8_t, IntegerAttr>(
               b, &ImplicitLocOpBuilder::getI8IntegerAttr, attr, data);
@@ -288,7 +288,7 @@ static Value CreateGlobalFromDenseArray(Globals &g, ImplicitLocOpBuilder &b,
           data = FillDataFromDenseArrayAttr<double, FloatAttr>(
               b, &ImplicitLocOpBuilder::getF64FloatAttr, attr, data);
         })
-        .Default([&](DenseArrayBaseAttr attr) {
+        .Default([&](DenseArrayAttr attr) {
           assert(false && "unsupported DenseArrayAttr element type");
         });
     ib.create<LLVM::ReturnOp>(data);
@@ -303,7 +303,7 @@ static Value PackDenseArrayAttribute(Globals &g, ImplicitLocOpBuilder &b,
                                      std::string_view symbol_base) {
   MLIRContext *ctx = b.getContext();
 
-  DenseArrayBaseAttr base_array = value.cast<DenseArrayBaseAttr>();
+  DenseArrayAttr base_array = value.cast<DenseArrayAttr>();
   int64_t size = base_array.size();
 
   // Encoded array type:
@@ -696,7 +696,7 @@ FailureOr<EncodedAttr> ArrayAttrEncoding::Encode(Globals &g,
 
 LogicalResult DenseArrayAttrEncoding::Match(std::string_view name,
                                             Attribute attr) const {
-  if (auto array = attr.dyn_cast<DenseArrayBaseAttr>()) {
+  if (auto array = attr.dyn_cast<DenseArrayAttr>()) {
     return success();
   }
   return failure();
@@ -706,7 +706,7 @@ FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(Globals &g,
                                                       ImplicitLocOpBuilder &b,
                                                       std::string_view name,
                                                       Attribute attr) const {
-  Type elem_type = attr.cast<DenseArrayBaseAttr>().getType().getElementType();
+  Type elem_type = attr.cast<DenseArrayAttr>().getType().getElementType();
 
   Encoded encoded;
   encoded.name = PackString(g, b, name, kAttrName);

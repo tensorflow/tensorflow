@@ -19,8 +19,8 @@ limitations under the License.
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Analysis/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/Transforms/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
