@@ -257,18 +257,20 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
 
   absl::string_view format_str(args->program->format,
                                args->program->format_size);
-  absl::string_view module_str(args->program->code, args->program->code_size);
+  absl::string_view module_sv(args->program->code, args->program->code_size);
 
   std::unique_ptr<xla::PjRtLoadedExecutable> executable;
   if (format_str == pjrt::kMlirFormat) {
     mlir::MLIRContext context;
     PJRT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          xla::ParseMlirModuleString(module_str, context));
+                          xla::ParseMlirModuleString(module_sv, context));
 
     PJRT_ASSIGN_OR_RETURN(executable,
                           args->client->client->Compile(*module, options));
   } else if (format_str == pjrt::kHloFormat) {
     xla::HloModuleProto module_proto;
+    // Open source ParseFromString doesn't support string_view.
+    std::string module_str(module_sv);
     module_proto.ParseFromString(module_str);
     xla::XlaComputation computation(module_proto);
     PJRT_ASSIGN_OR_RETURN(executable,
