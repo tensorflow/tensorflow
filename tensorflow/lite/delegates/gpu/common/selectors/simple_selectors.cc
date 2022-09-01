@@ -202,7 +202,7 @@ std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
 void SelectSoftmax(const GpuInfo& gpu_info, const BHWC& shape,
                    const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr) {
-  if (shape.w * shape.h <= 16) {
+  if (shape.w * shape.h <= 256 && shape.w * shape.h <= shape.c) {
     Softmax1x1 operation = CreateSoftmax1x1(op_def, gpu_info, shape);
     *ptr = std::make_unique<Softmax1x1>(std::move(operation));
   } else {

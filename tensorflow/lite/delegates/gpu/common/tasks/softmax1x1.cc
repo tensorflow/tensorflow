@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -38,27 +39,46 @@ std::string MakeAccOp(OperationType op_type, const std::string& a,
 
 std::string GetReduceCode(const std::string& value, OperationType op_type,
                           int group_reduction_size) {
+  std::vector<int> stages;
+  if (group_reduction_size == 1024) {
+    stages = {8, 8, 4, 4};
+  } else if (group_reduction_size == 512) {
+    stages = {8, 8, 8};
+  } else if (group_reduction_size == 256) {
+    stages = {8, 8, 4};
+  } else if (group_reduction_size == 128) {
+    stages = {8, 4, 4};
+  } else if (group_reduction_size == 64) {
+    stages = {8, 8};
+  } else if (group_reduction_size == 32) {
+    stages = {8, 4};
+  } else if (group_reduction_size == 16) {
+    stages = {4, 4};
+  } else if (group_reduction_size <= 8) {
+    stages = {group_reduction_size};
+  }
   std::string c;
   c += "  LOCAL_MEM_BARRIER;\n";
   c += "  loc_mem[tid] = " + value + ";\n";
-  c += "  LOCAL_MEM_BARRIER;\n";
-  c += "  if (tid % 8 == 0) {\n";
-  c += "    " + MakeAccOp(op_type, value, "loc_mem[tid + 1]") + ";\n";
-  c += "    " + MakeAccOp(op_type, value, "loc_mem[tid + 2]") + ";\n";
-  c += "    " + MakeAccOp(op_type, value, "loc_mem[tid + 3]") + ";\n";
-  c += "    " + MakeAccOp(op_type, value, "loc_mem[tid + 4]") + ";\n";
-  c += "    " + MakeAccOp(op_type, value, "loc_mem[tid + 5]") + ";\n";
-  c += "    " + MakeAccOp(op_type, value, "loc_mem[tid + 6]") + ";\n";
-  c += "    " + MakeAccOp(op_type, value, "loc_mem[tid + 7]") + ";\n";
-  c += "    loc_mem[tid] = " + value + ";\n";
-  c += "  }\n";
-  c += "  LOCAL_MEM_BARRIER;\n";
-  c += "  if (tid == 0) {\n";
-  c += "    " + MakeAccOp(op_type, value, "loc_mem[8]") + ";\n";
-  c += "    " + MakeAccOp(op_type, value, "loc_mem[16]") + ";\n";
-  c += "    " + MakeAccOp(op_type, value, "loc_mem[24]") + ";\n";
-  c += "    loc_mem[0] = " + value + ";\n";
-  c += "  }\n";
+  int stride = 1;
+  for (int i = 0; i < stages.size(); ++i) {
+    const bool last_stage = i == stages.size() - 1;
+    const std::string condition =
+        last_stage ? "tid == 0"
+                   : "tid % " + std::to_string(stride * stages[i]) + " == 0";
+    const std::string location = last_stage ? "loc_mem[0]" : "loc_mem[tid]";
+    c += "  LOCAL_MEM_BARRIER;\n";
+    c += "  if (" + condition + ") {\n";
+    for (int j = 1; j < stages[i]; ++j) {
+      c += "    " +
+           MakeAccOp(op_type, value,
+                     "loc_mem[tid + " + std::to_string(stride * j) + "]") +
+           ";\n";
+    }
+    c += "    " + location + " = " + value + ";\n";
+    c += "  }\n";
+    stride *= stages[i];
+  }
   c += "  LOCAL_MEM_BARRIER;\n";
   c += "  " + value + " = loc_mem[0];\n";
   return c;
@@ -68,7 +88,27 @@ std::string GetReduceCode(const std::string& value, OperationType op_type,
 Softmax1x1::Softmax1x1(const OperationDef& definition, const GpuInfo& gpu_info,
                        const BHWC& shape)
     : GPUOperation(definition) {
-  work_group_size_ = int3(32, 1, 1);
+  // work_group_size_.x must be power of 2 up to 1024
+  if (gpu_info.IsAdreno()) {
+    work_group_size_ = int3(512, 1, 1);
+  } else if (gpu_info.IsMali()) {
+    work_group_size_ = int3(1024, 1, 1);
+  } else {
+    work_group_size_ = int3(256, 1, 1);
+  }
+  const int slices = DivideRoundUp(shape.c, 4);
+  while (work_group_size_.x >= slices * 2) {
+    work_group_size_.x /= 2;
+  }
+  if (gpu_info.IsAdreno()) {
+    while (work_group_size_.x >= gpu_info.GetMaxWorkGroupSizeForX()) {
+      work_group_size_.x /= 2;
+    }
+  } else {
+    while (work_group_size_.x > gpu_info.GetMaxWorkGroupSizeForX()) {
+      work_group_size_.x /= 2;
+    }
+  }
   code_ = GetSoftmaxKernelCode(definition_);
 }
 
