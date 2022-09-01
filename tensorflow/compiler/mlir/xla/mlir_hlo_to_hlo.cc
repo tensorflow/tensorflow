@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -1110,7 +1111,9 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.api_version());
   if (!xla_api_version.ok()) return failure();
   auto& value_map = *ctx.values;
-
+  auto aliasInfo =
+      xla::ConvertCustomCallOutputOperandAliasing(op.output_operand_aliases());
+  auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
   if (op.called_computations().size() == 1) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         op.called_computations()[0].cast<FlatSymbolRefAttr>());
@@ -1120,8 +1123,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     value_map[result] = xla::CustomCallWithComputation(
         ctx.builder, std::string(op.call_target_name()), args, computation,
         xla::TypeToShape(result.getType()), std::string(op.backend_config()),
-        op.has_side_effect(),
-        /*output_operand_aliasing=*/{},
+        op.has_side_effect(), output_operand_aliasing,
         /*literal=*/nullptr,
         /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
         /*api_version=*/*xla_api_version);
@@ -1137,7 +1139,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
         ctx.builder, std::string(op.call_target_name()), args,
         result_shape_with_layout, operand_shapes_with_layout,
         std::string(op.backend_config()), op.has_side_effect(),
-        /*output_operand_aliasing=*/{},
+        output_operand_aliasing,
         /*literal=*/nullptr,
         /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
         /*api_version=*/*xla_api_version);
@@ -1147,7 +1149,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   value_map[result] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), args,
       xla::TypeToShape(result.getType()), std::string(op.backend_config()),
-      op.has_side_effect(), /*output_operand_aliasing=*/{},
+      op.has_side_effect(), output_operand_aliasing,
       /*literal=*/nullptr,
       /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/*xla_api_version);

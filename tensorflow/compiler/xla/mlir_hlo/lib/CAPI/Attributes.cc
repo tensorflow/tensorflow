@@ -350,6 +350,60 @@ int64_t mlirMhloConvDimensionNumbersGetOutputSpatialDimensionsElem(
 }
 
 //
+// OutputOperandAliasAttr.
+//
+
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloOutputOperandAliasGet(
+    MlirContext ctx, intptr_t nOutputTupleIndices,
+    const int64_t *outputTupleIndices, int64_t operandIndex,
+    intptr_t nOperandTupleIndices, const int64_t *operandTupleIndices) {
+  return wrap(mlir::mhlo::OutputOperandAliasAttr::get(
+      unwrap(ctx), llvm::makeArrayRef(outputTupleIndices, nOutputTupleIndices),
+      operandIndex,
+      llvm::makeArrayRef(operandTupleIndices, nOperandTupleIndices)));
+}
+
+bool mlirMhloAttributeIsAOutputOperandAlias(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::OutputOperandAliasAttr>();
+}
+
+intptr_t mlirMhloOutputOperandAliasGetOutputTupleIndicesSize(
+    MlirAttribute attr) {
+  return unwrap(attr)
+      .cast<mlir::mhlo::OutputOperandAliasAttr>()
+      .getOutputTupleIndices()
+      .size();
+}
+
+int64_t mlirMhloOutputOperandAliasGetOutputTupleIndicesElem(MlirAttribute attr,
+                                                            intptr_t pos) {
+  return unwrap(attr)
+      .cast<mlir::mhlo::OutputOperandAliasAttr>()
+      .getOutputTupleIndices()[pos];
+}
+
+int64_t mlirMhloOutputOperandAliasGetOperandIndex(MlirAttribute attr) {
+  return unwrap(attr)
+      .cast<mlir::mhlo::OutputOperandAliasAttr>()
+      .getOperandIndex();
+}
+
+intptr_t mlirMhloOutputOperandAliasGetOperandTupleIndicesSize(
+    MlirAttribute attr) {
+  return unwrap(attr)
+      .cast<mlir::mhlo::OutputOperandAliasAttr>()
+      .getOperandTupleIndices()
+      .size();
+}
+
+int64_t mlirMhloOutputOperandAliasGetOperandTupleIndicesElem(MlirAttribute attr,
+                                                             intptr_t pos) {
+  return unwrap(attr)
+      .cast<mlir::mhlo::OutputOperandAliasAttr>()
+      .getOperandTupleIndices()[pos];
+}
+
+//
 // ComparisonDirectionAttr.
 //
 MlirAttribute mlirMhloComparisonDirectionAttrGet(MlirContext ctx,

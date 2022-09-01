@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_IMPORTER_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_IMPORTER_H_
 
+#include <utility>
+#include <vector>
+
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -46,6 +50,12 @@ mlir::mhlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
 // Converts the conv dimensions to attributes.
 mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
     const xla::ConvolutionDimensionNumbers& dnums, mlir::Builder* builder);
+
+// Converts the output operand aliasing to attributes.
+mlir::ArrayAttr ConvertCustomCallOutputOperandAliasing(
+    const std::vector<std::pair<xla::ShapeIndex,
+                                std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
+    mlir::Builder* builder);
 
 StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
 StatusOr<mlir::mhlo::Transpose> ConvertTranspose(

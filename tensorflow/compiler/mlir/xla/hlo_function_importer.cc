@@ -661,6 +661,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
+      attributes.push_back(builder_->getNamedAttr(
+          "custom_call_output_operand_aliasing",
+          ConvertCustomCallOutputOperandAliasing(
+              instruction->custom_call_output_operand_aliasing(), builder_)));
       return func_builder
           ->create<mlir::mhlo::CustomCallOp>(loc, result_type, operands,
                                              attributes)

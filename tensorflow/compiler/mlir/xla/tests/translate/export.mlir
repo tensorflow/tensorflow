@@ -147,7 +147,7 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
       handle = 5,
       type = 2
     >,
-    use_global_device_ids 
+    use_global_device_ids
   } : (tensor<10xf32>) -> tensor<10xf32>
   func.return %0 : tensor<10xf32>
 }
@@ -1704,6 +1704,22 @@ func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.round_nearest_even"(%arg0) {} : (tensor<2xf32>) -> tensor<2xf32>
   // CHECK: round-nearest-even(f32[2] %[[ARG0]])
   func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK{LITERAL}: output_to_operand_aliasing={{0}: (0, {1})}
+func.func @main(%arg0: tuple<tensor<1x1xf32>, tensor<2x3xf32>>, %arg1: tensor<5x5xf32>) {
+  %0 = "mhlo.custom_call"(%arg0, %arg1) {
+    call_target_name = "foo",
+    output_operand_aliases = [
+      #mhlo.output_operand_alias<output_tuple_indices = [0],
+                                 operand_index = 0,
+                                 operand_tuple_indices = [1]>
+    ]
+  } : (tuple<tensor<1x1xf32>, tensor<2x3xf32>>, tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
+  func.return
 }
 
 // -----

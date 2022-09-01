@@ -421,6 +421,18 @@ add {
   ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[2,3] %arg1, f32[5,5] %arg2), custom_call_target="foo", called_computations={%custom_call_computation_0, %custom_call_computation_1}
 }
 
+// CHECK-LABEL:  func private @test_custom_call_with_output_operand_alising
+// CHECK-SAME:  [[ARG_0:%.*]]: tuple<tensor<1x1xf32>, tensor<2x3xf32>>, [[ARG_1:%.*]]: tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
+%test_custom_call_with_output_operand_alising (arg1: (f32[1,1], f32[2,3]), arg2: f32[5,5]) -> (f32[2,3]) {
+  %arg1 = (f32[1,1], f32[2,3]) parameter(0)
+  %arg2 = f32[5,5] parameter(1)
+  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {
+  // CHECK-SAME: call_target_name = "foo"
+  // CHECK-SAME{LITERAL}: custom_call_output_operand_aliasing = [#mhlo.output_operand_alias<output_tuple_indices = [0], operand_index = 0, operand_tuple_indices = [1]>]
+  // CHECK-SAME: (tuple<tensor<1x1xf32>, tensor<2x3xf32>>, tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
+  ROOT %custom-call = (f32[2,3]) custom-call((f32[1,1], f32[2,3]) %arg1, f32[5,5] %arg2), custom_call_target="foo", output_to_operand_aliasing={{0}: (0, {1})}
+}
+
 // CHECK-LABEL:  func private @test_div(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
 %test_div (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
