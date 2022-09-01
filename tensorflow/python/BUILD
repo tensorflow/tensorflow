@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_xla_available", "py_test", "tf_enable_mlir_bridge")
+load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_xla_available", "py_test", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
@@ -386,8 +386,7 @@ tf_python_pybind_extension(
         "//tensorflow/c/eager:headers",
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
     ],
-    # TODO(rostam): Why does enabling cc_shared_library bloat the pip package?
-    # static_deps = tf_python_pybind_static_deps(),
+    static_deps = tf_python_pybind_static_deps(),
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
