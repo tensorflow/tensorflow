@@ -775,7 +775,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot,
                                      TransposeFolding::NeverFoldTranspose);
   // Rewrite GEMMs into custom calls.
-  pipeline.AddPass<GemmRewriter>();
+  pipeline.AddPass<GemmRewriter>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
 
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
