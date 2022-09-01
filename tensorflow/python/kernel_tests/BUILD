@@ -3461,7 +3461,10 @@ cuda_py_test(
     name = "concat_op_test",
     size = "medium",
     srcs = ["concat_op_test.py"],
-    tags = ["no_windows"],  # b/126916429
+    tags = ["no_windows",  # b/126916429
+         "no_oss",    #b/244625900 
+         "no_gpu",    #b/244625900
+           ],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
