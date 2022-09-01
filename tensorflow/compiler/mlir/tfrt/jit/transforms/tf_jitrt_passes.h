@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TF_JITRT_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TF_JITRT_PASSES_H_
 
 #include <memory>
 #include <string>
@@ -136,4 +136,4 @@ bool hasTransformationAttr(mlir::Operation *op);
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TF_JITRT_PASSES_H_
