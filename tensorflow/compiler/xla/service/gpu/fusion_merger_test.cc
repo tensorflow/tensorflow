@@ -84,8 +84,8 @@ ENTRY MergeSharedFusionInstruction.Computation0 {
   fusion.6 = f32[4]{0} fusion(constant, fusion.4), kind=kLoop, calls=comp
   ROOT tuple = (f32[4]{0}, f32[4]{0}, f32[4]{0}) tuple(fusion.3, fusion.5, fusion.6)
 })")
-                    .ValueOrDie();
-  EXPECT_TRUE(FusionMerger().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(FusionMerger().Run(module.get()).value());
 
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(HloOpcode::kTuple, root->opcode());
@@ -146,10 +146,10 @@ ENTRY BytesTransferredThresholdExceeded.Computation2 {
   fusion.4 = f32[4]{0} fusion(constant, fusion.2), kind=kLoop, calls=comp
   ROOT tuple = (f32[4]{0}, f32[4]{0}) tuple(fusion.3, fusion.4)
 })")
-                    .ValueOrDie();
+                    .value();
   // Run fusion merger pass, which should detect that the net bytes transferred
   // (if merged) would increase.
-  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(FusionMerger().Run(module.get()).value());
 }
 
 // Tests that threshold for bytes transferred if merged is not exceeded.
@@ -192,10 +192,10 @@ ENTRY BytesTransferredThresholdNotExceeded.Computation2 {
   fusion.4 = f32[4]{0} fusion(constant, fusion.2), kind=kLoop, calls=comp
   ROOT tuple = (f32[4]{0}, f32[4]{0}) tuple(fusion.3, fusion.4)
 })")
-                    .ValueOrDie();
+                    .value();
   // Run fusion merger pass, which should detect that the net bytes transferred
   // (if merged) would not increase.
-  EXPECT_TRUE(FusionMerger().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(FusionMerger().Run(module.get()).value());
 }
 
 // Check that we're willing to merge f1_computation into f2_computation, even
@@ -228,8 +228,8 @@ TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
       f1 = f32[32]{0} fusion(p0), kind=kLoop, calls=f1_computation
       ROOT f2 = f32[] fusion(f1), kind=kInput, calls=f2_computation
     })")
-                    .ValueOrDie();
-  EXPECT_TRUE(FusionMerger().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(FusionMerger().Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Fusion(op::Parameter()));
 }
@@ -276,8 +276,8 @@ TEST_F(FusionMergerTest, WillMergeIntoUnfusedConsumer) {
       reduce.16 = f32[200,200]{1,0} reduce(f32[200,200,200]{2,1,0} fusion.3, f32[] constant.11), dimensions={1}, to_apply=max
       ROOT fusion.1 = f32[200,200]{1,0} fusion(f32[200,200,200]{2,1,0} fusion.3, f32[200,200]{1,0} reduce.16), kind=kInput, calls=fused_computation.1
     })")
-                    .ValueOrDie();
-  EXPECT_TRUE(FusionMerger().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(FusionMerger().Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Fusion(op::Fusion(), op::Parameter(), op::Parameter()));
 }
@@ -311,8 +311,8 @@ TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
       f1 = f32[16,16,256]{2,1,0} fusion(p0), kind=kLoop, calls=f1_computation
       ROOT f2 = f32[] fusion(f1), kind=kInput, calls=f2_computation
     })")
-                    .ValueOrDie();
-  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_FALSE(FusionMerger().Run(module.get()).value());
 }
 
 // Check that we limit the number of operands to fusions we create.
@@ -356,7 +356,7 @@ TEST_F(FusionMergerTest, AvoidsLargeFusion) {
                       .subspan(0, MaxOperandsAndOutputsPerFusion())));
   b.AddInstruction(make_fusion({entry_params.back(), fusion}));
   module->AddEntryComputation(b.Build());
-  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(FusionMerger().Run(module.get()).value());
 }
 
 // TODO(b/119692968): Remove this test once fusion emitter is fixed.
@@ -411,8 +411,8 @@ TEST_F(FusionMergerTest, WillNotMergeIfFusionEmitterIsInefficient) {
       f1 = f32[6]{0} fusion(p0, p1), kind=kLoop, calls=%fused_computation.1
       ROOT f2 = f32[1] fusion(f1), kind=kLoop, calls=%fused_computation
     })")
-                    .ValueOrDie();
-  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_FALSE(FusionMerger().Run(module.get()).value());
 }
 
 TEST_F(FusionMergerTest, WillMergeExpensiveFusionsIfSavesMemory) {
@@ -442,8 +442,8 @@ TEST_F(FusionMergerTest, WillMergeExpensiveFusionsIfSavesMemory) {
       f3 = f32[1024,1024,1024] fusion(f1), kind=kLoop, calls=%f_c
       ROOT f4 = f32[1024,1024,1024] add(f2, f3)
     })")
-                    .ValueOrDie();
-  EXPECT_TRUE(FusionMerger().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(FusionMerger().Run(module.get()).value());
 }
 
 TEST_F(FusionMergerTest, WillMergeExpensiveFusionsWithSingleConsumer) {
@@ -465,8 +465,8 @@ TEST_F(FusionMergerTest, WillMergeExpensiveFusionsWithSingleConsumer) {
       f1 = f32[1024,1024,1024] fusion(p0), kind=kLoop, calls=%f_b
       ROOT f2 = f32[1024,1024,1024] fusion(f1), kind=kLoop, calls=%f_c
     })")
-                    .ValueOrDie();
-  EXPECT_TRUE(FusionMerger().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(FusionMerger().Run(module.get()).value());
 }
 
 TEST_F(FusionMergerTest, WillNotMergeExpensiveFusionsWithReusingConsumer) {
@@ -488,8 +488,8 @@ TEST_F(FusionMergerTest, WillNotMergeExpensiveFusionsWithReusingConsumer) {
       f1 = f32[1024,1024,1024] fusion(p0), kind=kLoop, calls=%f_b
       ROOT f2 = f32[1024,1024,1024,2] fusion(f1), kind=kLoop, calls=%f_c
     })")
-                    .ValueOrDie();
-  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_FALSE(FusionMerger().Run(module.get()).value());
 }
 
 TEST_F(FusionMergerTest, NoMergeBecauseCodeDuplication) {
@@ -647,8 +647,8 @@ ENTRY main {
   ROOT fusion.2 = f32[2,20,256]{2,0,1} fusion(param_0.0, param_1.0, param_2.0, param_3.0, fusion.1, param_5.0, param_10, param_7.0, param_8.0, param_9.0), kind=kLoop, calls=fused_computation.2
 }
   )")
-                    .ValueOrDie();
-  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_FALSE(FusionMerger().Run(module.get()).value());
 }
 
 }  // namespace

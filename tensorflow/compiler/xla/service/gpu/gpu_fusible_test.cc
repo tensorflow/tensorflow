@@ -41,7 +41,7 @@ TEST_F(GpuFusibleTest, IsPhysicallyTransposing_ElementwiseProducer) {
       exp = f32[2,2,2]{2,1,0} exponential(p0)
       ROOT reduce = f32[2,2]{1,0} reduce(exp, c0), dimensions={2}, to_apply=scalar_add
     })"))
-                    .ValueOrDie();
+                    .value();
   SCOPED_TRACE(module->ToString());
   const HloInstruction* exp =
       module->entry_computation()->root_instruction()->operand(0);
@@ -73,7 +73,7 @@ TEST_F(GpuFusibleTest, IsPhysicallyTransposing_MixedLayoutProducer) {
       reduce_fusion = f32[1024]{0} fusion(loop_fusion), kind=kInput, calls=fused_reduce
       ROOT root = (f32[1024]{0}, f16[128,1024,32,32]{1,3,2,0}) tuple(reduce_fusion, loop_fusion)
     })"))
-                    .ValueOrDie();
+                    .value();
   SCOPED_TRACE(module->ToString());
   const HloInstruction* loop_fusion =
       module->entry_computation()->root_instruction()->operand(1);
@@ -106,7 +106,7 @@ TEST_F(GpuFusibleTest,
       reduce_fusion = f32[1]{0} fusion(loop_fusion), kind=kInput, calls=fused_reduce
       ROOT root = (f32[1]{0}, f16[128,1,32,32]{1,3,2,0}) tuple(reduce_fusion, loop_fusion)
     })"))
-                    .ValueOrDie();
+                    .value();
   SCOPED_TRACE(module->ToString());
   const HloInstruction* loop_fusion =
       module->entry_computation()->root_instruction()->operand(1);
@@ -126,7 +126,7 @@ TEST_F(GpuFusibleTest, IsPhysicallyTransposing_CopyProducer) {
       copy = f32[128,1024,32,32]{1,3,2,0} copy(p0)
       ROOT reduce_fusion = f32[1024]{0} fusion(copy), kind=kInput, calls=fused_reduce
     })"))
-                    .ValueOrDie();
+                    .value();
   SCOPED_TRACE(module->ToString());
   const HloInstruction* copy =
       module->entry_computation()->root_instruction()->operand(0);
@@ -146,7 +146,7 @@ TEST_F(GpuFusibleTest, IsPhysicallyTransposing_PhysicalTranspose) {
       copy = f32[1024,128,32,32]{3,2,1,0} transpose(p0), dimensions={1,0,2,3}
       ROOT reduce_fusion = f32[1024]{0} fusion(copy), kind=kInput, calls=fused_reduce
     })"))
-                    .ValueOrDie();
+                    .value();
   SCOPED_TRACE(module->ToString());
   const HloInstruction* transpose =
       module->entry_computation()->root_instruction()->operand(0);
@@ -177,7 +177,7 @@ TEST_F(GpuFusibleTest, IsPhysicallyTransposing_LayoutChangingFusionProducer) {
       loop_fusion = f16[128,1024,32,32]{1,3,2,0} fusion(p0, p1), kind=kLoop, calls=layout_changing_computation
       ROOT reduce_fusion = f32[1024]{0} fusion(loop_fusion), kind=kInput, calls=fused_reduce
     })"))
-                    .ValueOrDie();
+                    .value();
   SCOPED_TRACE(module->ToString());
   const HloInstruction* loop_fusion =
       module->entry_computation()->root_instruction()->operand(0);
@@ -202,7 +202,7 @@ TEST_F(GpuFusibleTest,
       c0.2 = f32[] constant(0)
       ROOT reduce = f32[1024]{0} reduce(loop_fusion, c0.2), dimensions={0,2,3}, to_apply=scalar_add
     })"))
-                    .ValueOrDie();
+                    .value();
   SCOPED_TRACE(module->ToString());
   const HloInstruction* loop_fusion =
       module->entry_computation()->root_instruction()->operand(0);
@@ -218,7 +218,7 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_ReductionToVector) {
       // Reduction-to-vector lowered by IrEmitterUnnested.
       ROOT reduce = f32[512]{0} reduce(p1, c0), dimensions={0,2,3}, to_apply=scalar_add
     })"))
-                    .ValueOrDie();
+                    .value();
   SCOPED_TRACE(module->ToString());
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
@@ -236,7 +236,7 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_ElementalReduction) {
       ROOT reduce = f32[512,5,1,1]{3,2,1,0} reduce(p1, c0), dimensions={3,0},
         to_apply=scalar_add
     })"))
-                    .ValueOrDie();
+                    .value();
   SCOPED_TRACE(module->ToString());
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
@@ -256,7 +256,7 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_SingleOutputInputReduceFusion) {
       p0 = f32[128,512,28,28]{3,2,1,0} parameter(0)
       ROOT fusion = f32[128,512]{1,0} fusion(p0), kind=kInput, calls=fused_reduction
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
@@ -275,7 +275,7 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_SingleOutputLoopReduceFusion) {
       p0 = f32[8,512,5,16,1,1]{5,4,3,2,1,0} parameter(0)
       ROOT fusion = f32[8,5,1,1]{3,2,1,0} fusion(p0), kind=kLoop, calls=fused_reduction
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
@@ -296,7 +296,7 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_MultiOutputInputReduceFusion) {
       p0 = f32[128,512,28,28]{3,2,1,0} parameter(0)
       ROOT fusion = (f32[128,512]{1,0}, f32[128,512]{1,0}) fusion(p0), kind=kInput, calls=fused_reduction
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
@@ -318,7 +318,7 @@ TEST_F(GpuFusibleTest,
       p0 = f32[128,512,28,28]{3,2,1,0} parameter(0)
       ROOT fusion = (f32[128,512]{1,0}, f32[128,512,28,28]{3,2,1,0}) fusion(p0), kind=kInput, calls=fused_reduction
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
@@ -339,7 +339,7 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_MultiOutputLoopReduceFusion) {
       p0 = f32[128,512,28,28]{3,2,1,0} parameter(0)
       ROOT fusion = (f32[512,28]{1,0}, f32[512,28]{1,0}) fusion(p0), kind=kLoop, calls=fused_reduction
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
@@ -361,7 +361,7 @@ TEST_F(GpuFusibleTest,
       p0 = f32[128,512,28,28]{3,2,1,0} parameter(0)
       ROOT fusion = (f32[512,28]{1,0}, f32[128,512,28,28]{3,2,1,0}) fusion(p0), kind=kLoop, calls=fused_reduction
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
@@ -389,7 +389,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_LoopFusions) {
       fusion.2 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_2
       ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(fusion.1, fusion.2)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* fusion_1 =
       module->entry_computation()->root_instruction()->operand(0);
   const HloInstruction* fusion_2 =
@@ -415,7 +415,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_IgnoreFpPrecision) {
       fusion.2 = f16[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_2
       ROOT root = (f32[6400]{0}, f16[6400]{0}) tuple(fusion.1, fusion.2)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* fusion_1 =
       module->entry_computation()->root_instruction()->operand(0);
   const HloInstruction* fusion_2 =
@@ -437,7 +437,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_Reduce) {
       reduce = f32[] reduce(p0, const.2), dimensions={0}, to_apply=scalar_add
       ROOT root = (f32[6400]{0}, f32[]) tuple(fusion.1, reduce)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0);
   const HloInstruction* reduce =
@@ -460,7 +460,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_Elementwise) {
       div = f32[6400]{0} divide(p0, broadcast)
       ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(fusion.1, div)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0);
   const HloInstruction* div =
@@ -493,7 +493,7 @@ TEST_F(GpuFusibleTest,
       gte1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=1
       ROOT root = (f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}) tuple(gte0, gte1, fusion.2)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* fusion_1 =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   const HloInstruction* fusion_2 =
@@ -528,7 +528,7 @@ TEST_F(GpuFusibleTest,
       gte1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=1
       ROOT root = (f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}, s32[8,1,5,16,1,1]{5,4,3,2,1,0}) tuple(gte0, gte1, fusion.2)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* fusion_1 =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   const HloInstruction* fusion_2 =
@@ -547,7 +547,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_UnfusedOps) {
         to_apply=scalar_add
       ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0}) tuple(reduce, exp)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction()->operand(0);
   const HloInstruction* exp =
@@ -565,7 +565,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_DifferentLayouts) {
       reduce = f32[2,2]{0,1} reduce(p1, c0), dimensions={2}, to_apply=scalar_add
       ROOT root = (f32[2,2]{0,1}, f32[2,2,2]{2,1,0}) tuple(reduce, exp)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction()->operand(0);
   const HloInstruction* exp =
@@ -603,7 +603,7 @@ TEST_F(GpuFusibleTest,
       gte1 = f32[2,2]{1,0} get-tuple-element(fusion), index=1
       ROOT root = (f32[2,2]{1,0}, f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(gte1, gte1, select)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* fusion_1 =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   const HloInstruction* fusion_2 =
@@ -633,7 +633,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_ReduceFusions) {
       reduce_2 = f32[2,2]{1,0} fusion(p1), kind=kLoop, calls=fused_reduce_2
       ROOT root = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(reduce_1, reduce_2)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* fusion_1 =
       module->entry_computation()->root_instruction()->operand(0);
   const HloInstruction* fusion_2 =
@@ -667,7 +667,7 @@ TEST_F(GpuFusibleTest,
       reduce_2 = f32[32,32]{1,0} fusion(p1), kind=kLoop, calls=fused_reduce_2
       ROOT root = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(reduce_1, reduce_2)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* fusion_1 =
       module->entry_computation()->root_instruction()->operand(0);
   const HloInstruction* fusion_2 =
@@ -705,7 +705,7 @@ TEST_F(GpuFusibleTest,
       ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0})
         tuple(fusion, element_wise)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* fusion_1 =
       module->entry_computation()->root_instruction()->operand(0);
   const HloInstruction* fusion_2 =
@@ -722,7 +722,7 @@ TEST_F(GpuFusibleTest, IsFusibleAsMultiOutputFusionRoot) {
       rhs = f32[] parameter(1)
       ROOT add = f32[] add(lhs, rhs)
     })")
-                    .ValueOrDie();
+                    .value();
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_TRUE(IsFusibleAsMultiOutputFusionRoot(*root));
@@ -752,7 +752,7 @@ TEST_F(GpuFusibleTest, ScatterIsNotFusibleAsMultiOutputFusionRoot) {
           scatter_dims_to_operand_dims={0},
           index_vector_dim=1
     })")
-                    .ValueOrDie();
+                    .value();
 
   const HloInstruction* scatter_inst =
       module->entry_computation()->root_instruction();
@@ -769,7 +769,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionElementwiseAndReduce) {
         to_apply=scalar_add
       ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0}) tuple(reduce, exp)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
@@ -793,7 +793,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduce) {
         to_apply=scalar_add
       ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0}) tuple(reduce, add)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
@@ -832,7 +832,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
         calls=fused_reduce
       ROOT root = ((f32[32,32]{1,0}, f32[32,32]{1,0}), f32[32,32,32]{2,1,0}) tuple(fusion, select)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
@@ -864,7 +864,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
       fusion = f32[2,2]{1,0} fusion(element_wise), kind=kLoop, calls=fused_reduce
       ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(fusion, element_wise)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
@@ -896,7 +896,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionReduceUnfriendlyLoopFusion) {
       reduce_fusion = f32[1024]{0} fusion(loop_fusion), kind=kInput, calls=fused_reduce
       ROOT root = (f32[1024]{0}, f16[128,1024,32,32]{1,3,2,0}) tuple(reduce_fusion, loop_fusion)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
@@ -920,7 +920,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionInPlaceOperation) {
       %transpose = s32[4,4]{0,1} fusion(%updated), kind=kLoop, calls=fusion
       ROOT %tuple = tuple(%updated, %transpose)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   const HloInstruction* dus = tuple->operand(0);
@@ -948,7 +948,7 @@ TEST_F(GpuFusibleTest, NonscalarConstantsNotFused) {
                                                          to_apply=add
       ROOT root = (f32[], f32[], f32[16,16,16,16], f32[16]) tuple(reduce, constant.1, broadcast, constant)
     })")
-                    .ValueOrDie();
+                    .value();
   // Do not fuse if producer is a non-scalar constant or consumer is non-fusion
   // node.
   const HloInstruction* root = module->entry_computation()->root_instruction();
@@ -990,7 +990,7 @@ TEST_F(GpuFusibleTest, TransposingCopyNotFused) {
       producer = f32[32, 64, 128]{2,1,0} fusion(p), kind=kLoop, calls=fused_producer
       ROOT consumer = f32[32, 64]{1,0} fusion(producer), kind=kInput, calls=fused_consumer
     })")
-                    .ValueOrDie();
+                    .value();
   // Check that the transposing copy is not fusible into a reduction.
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer =
@@ -1016,7 +1016,7 @@ TEST_F(GpuFusibleTest, DoNotFuseLayoutChangingOpWithReduce) {
       constant.1 = f32[] constant(0)
       ROOT reduce = f32[16] reduce(copy, constant.1), dimensions={0,1,2}, to_apply=add
     })")
-                    .ValueOrDie();
+                    .value();
 
   const HloInstruction* consumer =
       module->entry_computation()->root_instruction();
@@ -1033,7 +1033,7 @@ TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
       copy = f32[16,16,16,16]{0,1,2,3} copy(p0)
       ROOT add = f32[16,16,16,16]{0,1,2,3} add(copy, copy)
     })")
-                    .ValueOrDie();
+                    .value();
 
   const HloInstruction* consumer =
       module->entry_computation()->root_instruction();
@@ -1057,7 +1057,7 @@ TEST_F(GpuFusibleTest, CreatesNestedLoop_NonfusionInstr) {
 
       ROOT root = (f32[3,5], f32[3,5]) tuple(reduce-window_1, reduce-window_2)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* producer = root->operand(0);
   const HloInstruction* consumer = root->operand(1);
@@ -1078,7 +1078,7 @@ TEST_F(GpuFusibleTest, DoesNotCreateNestedLoop_NonfusionInstr) {
 
       ROOT root = (f32[3,5], f32[3,5]) tuple(reduce-window, scaled_p_0)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* producer = root->operand(0);
   const HloInstruction* consumer = root->operand(1);
@@ -1100,7 +1100,7 @@ TEST_F(GpuFusibleTest, DoesNotCreateNestedLoop_NonoverlappingReduceWindows) {
 
       ROOT root = (f32[3,5], f32[2,3]) tuple(reduce-window_1, reduce-window_2)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* producer = root->operand(0);
   const HloInstruction* consumer = root->operand(1);
@@ -1133,7 +1133,7 @@ TEST_F(GpuFusibleTest, CreatesNestedLoop_FusionInstr) {
       consumer = f32[2,2] fusion(p0, producer), kind=kLoop, calls=fused_consumer
       ROOT root = (f32[2,2], f32[2,2]) tuple(producer, consumer)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* producer = root->operand(0);
   const HloInstruction* consumer = root->operand(1);
@@ -1166,7 +1166,7 @@ TEST_F(GpuFusibleTest, DoesNotCreateNestedLoop_FusionInstr) {
       consumer = f32[2,2] fusion(producer, p_0), kind=kLoop, calls=fused_consumer
       ROOT root = (f32[2,2], f32[2,2]) tuple(producer, consumer)
     })"))
-                    .ValueOrDie();
+                    .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* producer = root->operand(0);
   const HloInstruction* consumer = root->operand(1);

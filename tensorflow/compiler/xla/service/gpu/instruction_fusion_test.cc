@@ -45,9 +45,8 @@ TEST_F(InstructionFusionTest,
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(broadcast2, computation->root_instruction());
-  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
-                   .Run(module.get())
-                   .ValueOrDie());
+  EXPECT_FALSE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
   EXPECT_EQ(broadcast2, computation->root_instruction());
 }
 
@@ -65,9 +64,8 @@ TEST_F(InstructionFusionTest,
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(broadcast2, computation->root_instruction());
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
@@ -84,9 +82,8 @@ TEST_F(InstructionFusionTest,
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape2, computation->root_instruction());
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
@@ -103,9 +100,8 @@ TEST_F(InstructionFusionTest,
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose2, computation->root_instruction());
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
@@ -123,9 +119,8 @@ TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfDotFused) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(log, computation->root_instruction());
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 }
 
 TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
@@ -140,9 +135,8 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose2, computation->root_instruction());
-  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
-                   .Run(module.get())
-                   .ValueOrDie());
+  EXPECT_FALSE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 }
 
 // Tests that broadcasts fused into a fusion with a reduce root.
@@ -163,11 +157,10 @@ TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
       ROOT reduce = f32[] reduce(broadcast, constant.1), dimensions={0,1,2,3},
                                                          to_apply=add
     })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Fusion());
@@ -191,11 +184,10 @@ TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduce) {
       constant.1 = f32[] constant(0)
       ROOT reduce = f32[16] reduce(copy, constant.1), dimensions={0,1,2}, to_apply=add
     })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
-                   .Run(module.get())
-                   .ValueOrDie());
+  EXPECT_FALSE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 }
 
 TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduceFusion) {
@@ -221,11 +213,10 @@ TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduceFusion) {
       fusion = f32[] fusion(copy), kind=kInput, calls=fused_reduce
       ROOT root = (f32[]) tuple(fusion)
     })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
-                   .Run(module.get())
-                   .ValueOrDie());
+  EXPECT_FALSE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 }
 
 TEST_F(InstructionFusionTest, FuseLayoutChangingOpWithElementwise) {
@@ -236,11 +227,10 @@ TEST_F(InstructionFusionTest, FuseLayoutChangingOpWithElementwise) {
       copy = f32[16,16,16,16]{0,1,2,3} copy(p0)
       ROOT add = f32[16,16,16,16]{0,1,2,3} add(copy, copy)
     })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Fusion());
@@ -257,11 +247,10 @@ TEST_F(InstructionFusionTest, BitcastIntoAdd) {
       bitcast = f32[4,1]{1,0} bitcast(p0)
       ROOT add = f32[4,1] add(bitcast, p1)
     })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Fusion());
@@ -279,11 +268,10 @@ TEST_F(InstructionFusionTest, AddIntoBitcast) {
       add = f32[4,1] add(p0, p1)
       ROOT bitcast = f32[4,1,1] bitcast(add)
     })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Fusion());
@@ -300,11 +288,10 @@ TEST_F(InstructionFusionTest, DontFuseGTE) {
     gte1 = f32[10] get-tuple-element(p0), index=1
     ROOT add = f32[10] add(gte0, gte1)
   })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
-                   .Run(module.get())
-                   .ValueOrDie());
+  EXPECT_FALSE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 }
 
 // Compute sum(1/p0), where p0 has type f32, twice.  Check that the division is
@@ -326,11 +313,10 @@ TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
     sum2 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
     ROOT root = (f32[], f32[]) tuple(sum1, sum2)
   })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::Fusion(), op::Fusion()))
@@ -357,11 +343,10 @@ TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
     sum2 = s32[] reduce(recip, zero), dimensions={0}, to_apply=Add
     ROOT mul = (s32[], s32[]) tuple(sum1, sum2)
   })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
-                   .Run(module.get())
-                   .ValueOrDie())
+  EXPECT_FALSE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value())
       << module->ToString();
 }
 
@@ -377,11 +362,10 @@ TEST_F(InstructionFusionTest, DotOutputFusionImpossible) {
     d = f32[4,4]{1,0} multiply(dot, dot)
     ROOT mul = f32[4,4] multiply(d, broadcast)
   })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Fusion());
@@ -430,13 +414,12 @@ TEST_F(InstructionFusionTest, MultiOutputFusion) {
      add = f32[4,3]{1,0} add(sub, p1)
      ROOT tuple = (f32[4,3]{1,0}, f32[4,3]{1,0}) tuple(sub, add)
     })")
-                    .ValueOrDie();
+                    .value();
 
   // Multi-output fusion is disabled here and performed in the
   // GpuMultiOutputFusion pass instead.
-  ASSERT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
-                   .Run(module.get())
-                   .ValueOrDie());
+  ASSERT_FALSE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 }
 
 TEST_F(InstructionFusionTest, FuseScalarConstant) {
@@ -451,11 +434,10 @@ TEST_F(InstructionFusionTest, FuseScalarConstant) {
     c1 = f32[2]{0} constant({1, 2})
     ROOT add2 = f32[2]{0} add(b0, c1)
   })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Fusion());
@@ -483,9 +465,8 @@ TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
   }
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(b.Build());
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   for (const HloInstruction* instr : computation->instructions()) {
     EXPECT_LE(instr->operand_count(), MaxOperandsAndOutputsPerFusion())
@@ -518,11 +499,10 @@ TEST_F(InstructionFusionTest, FuseIntoScatter) {
           index_vector_dim=1
       ROOT add = s32[3,3] add(scatter, scatter)
     })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Add(op::Fusion(), op::Fusion()));
@@ -549,11 +529,10 @@ TEST_F(InstructionFusionTest, NonscalarConstantsNotFused) {
       ROOT reduce = f32[] reduce(broadcast, constant.1), dimensions={0,1,2,3},
                                                          to_apply=add
     })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
   // The f32[16] constant should not be fused into the reduce, but the f32[]
   // constant should be.
   auto* root = module->entry_computation()->root_instruction();
@@ -571,11 +550,10 @@ TEST_F(InstructionFusionTest, FuseReverse) {
       add = f32[50,96,1024]{2,1,0} add(p0, p0)
       ROOT reverse = f32[50,96,1024] reverse(add), dimensions={0}
     })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Fusion());
@@ -656,11 +634,10 @@ TEST_F(InstructionFusionTest, FloatingPointExpIsCheap) {
     sum2 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
     ROOT root = (f32[], f32[]) tuple(sum1, sum2)
   })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::Fusion(), op::Fusion()))
@@ -684,11 +661,10 @@ TEST_F(InstructionFusionTest, SmallReducedDimensionIsNotLoweredToLoop) {
       init = s32[] constant(0)
       ROOT reduce = s32[1048576] reduce(sum, init), dimensions={1}, to_apply=add
     })")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
-                  .Run(module.get())
-                  .ValueOrDie());
+  EXPECT_TRUE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_THAT(root, op::Fusion());

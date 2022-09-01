@@ -31,9 +31,8 @@ namespace {
 class BufferComparatorTest : public testing::Test {
  protected:
   BufferComparatorTest()
-      : platform_(
-            se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie()),
-        stream_exec_(platform_->ExecutorForDevice(0).ValueOrDie()) {}
+      : platform_(se::MultiPlatformManager::PlatformWithName("cuda").value()),
+        stream_exec_(platform_->ExecutorForDevice(0).value()) {}
 
   // Take floats only for convenience. Still uses ElementType internally.
   template <typename ElementType>
