@@ -24,6 +24,9 @@ limitations under the License.
 
 namespace pjrt {
 
+const absl::string_view kHloFormat = "hlo";
+const absl::string_view kMlirFormat = "mlir";
+
 PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
   return [api](PJRT_Client* client) -> void {
     PJRT_Client_Destroy_Args destroy_args;

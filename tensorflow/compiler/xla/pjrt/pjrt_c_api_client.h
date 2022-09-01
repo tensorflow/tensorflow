@@ -153,13 +153,7 @@ class PjRtCApiClient : public PjRtClient {
   }
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options) override {
-#ifdef PJRT_C_API_BYPASS
-    return WrapExecutable(wrapped_->Compile(computation, options));
-#endif  // PJRT_C_API_BYPASS
-    return Unimplemented(
-        "PJRT C API does not support Compile with XlaComputation");
-  }
+      const XlaComputation& computation, CompileOptions options) override;
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override;

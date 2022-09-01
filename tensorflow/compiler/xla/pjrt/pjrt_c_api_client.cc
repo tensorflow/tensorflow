@@ -230,7 +230,7 @@ static Status ValidateCompileOption(CompileOptions options) {
 // Convert `CompileOptions` to `PJRT_CompileOptions`. `device_assignment_str`
 // will be used for serialized DeviceAssignment storage.
 static StatusOr<PJRT_CompileOptions> ConvertCppCompileOptionsToCCompileOptions(
-    CompileOptions options, std::string* device_assignment_str) {
+    const CompileOptions& options, std::string& device_assignment_str) {
   PJRT_CompileOptions c_options;
   c_options.struct_size = PJRT_CompileOptions_STRUCT_SIZE;
   c_options.parameter_is_tupled_arguments =
@@ -249,9 +249,9 @@ static StatusOr<PJRT_CompileOptions> ConvertCppCompileOptionsToCCompileOptions(
     TF_RETURN_IF_ERROR(
         options.executable_build_options.device_assignment().Serialize(
             &device_assignment_proto));
-    *device_assignment_str = device_assignment_proto.SerializeAsString();
-    c_options.device_assignment = device_assignment_str->c_str();
-    c_options.device_assignment_size = device_assignment_str->size();
+    device_assignment_str = device_assignment_proto.SerializeAsString();
+    c_options.device_assignment = device_assignment_str.c_str();
+    c_options.device_assignment_size = device_assignment_str.size();
   } else {
     c_options.device_assignment_size = 0;
     c_options.device_assignment = nullptr;
@@ -259,26 +259,53 @@ static StatusOr<PJRT_CompileOptions> ConvertCppCompileOptionsToCCompileOptions(
   return c_options;
 }
 
-StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
-    mlir::ModuleOp module, CompileOptions options) {
+// Initializes `PJRT_Client_Compile_Args`, which will be used to call
+// API PJRT_Client_Compile().
+static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
+    PjRtCApiClient* api_client, const PJRT_Api* c_api, PJRT_Client* client,
+    const CompileOptions& options, const std::string& code,
+    const std::string& format) {
   TF_RETURN_IF_ERROR(ValidateCompileOption(options));
+
   PJRT_Client_Compile_Args args;
   args.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.client = c_client_.get();
+  args.client = client;
   std::string device_assignment_str;
   TF_ASSIGN_OR_RETURN(PJRT_CompileOptions c_options,
                       ConvertCppCompileOptionsToCCompileOptions(
-                          options, &device_assignment_str));
+                          options, device_assignment_str));
   args.options = &c_options;
-  std::string module_str = tensorflow::SerializeMlirModule(module);
-  args.module = module_str.c_str();
-  args.module_size = module_str.size();
 
-  RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_Compile(&args), c_api_);
+  PJRT_Program program;
+  program.struct_size = PJRT_Program_STRUCT_SIZE;
+  program.priv = nullptr;
+  program.code = code.c_str();
+  program.code_size = code.size();
+  program.format = format.c_str();
+  program.format_size = format.size();
+  args.program = &program;
+
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Client_Compile(&args), c_api);
   std::unique_ptr<PjRtLoadedExecutable> ret =
-      std::make_unique<PjRtCApiExecutable>(this, args.executable);
+      std::make_unique<PjRtCApiExecutable>(api_client, args.executable);
   return ret;
+}
+
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  std::string module_str = computation.proto().SerializeAsString();
+  std::string format(pjrt::kHloFormat);
+  return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
+                                  module_str, format);
+}
+
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
+    mlir::ModuleOp module, CompileOptions options) {
+  std::string module_str = tensorflow::SerializeMlirModule(module);
+  std::string format(pjrt::kMlirFormat);
+  return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
+                                  module_str, format);
 }
 
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(

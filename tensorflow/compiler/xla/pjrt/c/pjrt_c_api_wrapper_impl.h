@@ -173,6 +173,9 @@ xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
 std::string StructSizeErrorMsg(absl::string_view struct_name,
                                size_t expected_size, size_t actual_size);
 
+// Returns a specific error message when the program format is unknown.
+// Does not check the program format itself.
+std::string ProgramFormatErrorMsg(absl::string_view program_format);
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_WRAPPER_IMPL_H_

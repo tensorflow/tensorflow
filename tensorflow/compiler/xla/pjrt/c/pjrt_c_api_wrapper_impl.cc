@@ -23,12 +23,14 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -53,6 +55,10 @@ std::string StructSizeErrorMsg(absl::string_view struct_name,
   return absl::StrCat("Unexpected ", struct_name, " size: expected ",
                       expected_size, ", got ", actual_size,
                       ". Check installed software versions.");
+}
+
+std::string ProgramFormatErrorMsg(absl::string_view program_format) {
+  return absl::StrCat("Unknown program format '", program_format, "'.");
 }
 
 // Returns C device from wrapped C++ device.
@@ -242,16 +248,35 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_CompileOptions",
                                                 PJRT_CompileOptions_STRUCT_SIZE,
                                                 args->options->struct_size));
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Program", PJRT_Program_STRUCT_SIZE, args->program->struct_size));
+
   PJRT_ASSIGN_OR_RETURN(
       xla::CompileOptions options,
       ConvertCCompileOptionstoCppCompileOptions(args->options));
-  absl::string_view module_str(args->module, args->module_size);
-  mlir::MLIRContext context;
-  PJRT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                        xla::ParseMlirModuleString(module_str, context));
 
-  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
-                        args->client->client->Compile(*module, options));
+  absl::string_view format_str(args->program->format,
+                               args->program->format_size);
+  absl::string_view module_str(args->program->code, args->program->code_size);
+
+  std::unique_ptr<xla::PjRtLoadedExecutable> executable;
+  if (format_str == pjrt::kMlirFormat) {
+    mlir::MLIRContext context;
+    PJRT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          xla::ParseMlirModuleString(module_str, context));
+
+    PJRT_ASSIGN_OR_RETURN(executable,
+                          args->client->client->Compile(*module, options));
+  } else if (format_str == pjrt::kHloFormat) {
+    xla::HloModuleProto module_proto;
+    module_proto.ParseFromString(module_str);
+    xla::XlaComputation computation(module_proto);
+    PJRT_ASSIGN_OR_RETURN(executable,
+                          args->client->client->Compile(computation, options));
+  } else {
+    PJRT_RETURN_IF_ERROR(
+        tensorflow::errors::InvalidArgument(ProgramFormatErrorMsg(format_str)));
+  }
   // TODO(b/237545405): Implement creation methods for PJRT_Executable.
   args->executable = new PJRT_Executable{std::move(executable), args->client};
   PopulatePjrtExecutableAddressableDevices(args->executable);

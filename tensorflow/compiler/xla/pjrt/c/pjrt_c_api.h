@@ -336,12 +336,28 @@ const size_t PJRT_CompileOptions_STRUCT_SIZE =
 typedef struct {
   size_t struct_size;
   void* priv;
+  // Serialized code in the specified format below.
+  // String is owned by the caller and should stay alive for the duration of the
+  // compile call.
+  const char* code;
+  size_t code_size;
+  // Supported formats are:
+  // "hlo": code string takes serialized HloModuleProto.
+  // "mlir": code string takes MLIR module string.
+  // String is owned by the caller and should stay alive for the duration of the
+  // compile call.
+  const char* format;
+  size_t format_size;
+} PJRT_Program;
+const size_t PJRT_Program_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Program, format_size);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
   PJRT_Client* client;
-  // Serialized MLIR module. Only needs to stay alive for the duration of the
-  // Compile call.
-  const char* module;
-  size_t module_size;
   // Only needs to stay alive for the duration of the Compile call.
+  PJRT_Program* program;
   PJRT_CompileOptions* options;
   PJRT_Executable* executable;  // out
 } PJRT_Client_Compile_Args;
@@ -349,7 +365,8 @@ typedef struct {
 const size_t PJRT_Client_Compile_Args_STRUCT_SIZE =
     PJRT_STRUCT_SIZE(PJRT_Client_Compile_Args, executable);
 
-// Compiles an MLIR module with given `options`.
+// Compiles a program in specified format (such as MLIR or HLO) with given
+// `options`.
 typedef PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
 
 typedef struct {

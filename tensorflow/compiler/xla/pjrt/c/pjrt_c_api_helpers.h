@@ -26,6 +26,9 @@ limitations under the License.
 
 namespace pjrt {
 
+ABSL_CONST_INIT extern const absl::string_view kHloFormat;
+ABSL_CONST_INIT extern const absl::string_view kMlirFormat;
+
 using PJRT_ClientDeleter = std::function<void(PJRT_Client*)>;
 
 // Pass in an API pointer; receive a custom deleter for smart pointers.
