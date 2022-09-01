@@ -18,7 +18,6 @@ import time
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import service_config_pb2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
@@ -966,8 +965,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     cluster = data_service_test_base.TestCluster(
         num_workers=1,
         data_transfer_protocol=self._get_data_transfer_protocol())
-    dataset_id = ("UnregisteredID"
-                  if compat.forward_compatible(2022, 8, 31) else 0)
+    dataset_id = "UnregisteredID"
     element_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
     with self.assertRaisesRegex(errors.NotFoundError,
                                 f"Dataset id {dataset_id} not found."):
