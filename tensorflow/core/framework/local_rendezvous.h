@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_LOCAL_RENDEZVOUS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_LOCAL_RENDEZVOUS_H_
 
-#include <vector>
-
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -41,8 +39,8 @@ class LocalRendezvous {
   // Rendezvous), pass in its pointer in constructor so the LocalRendezvous
   // can make sure it outlives the async recv requests.
   // Pass in nullptr if the wrapping class is not refcounted.
-  explicit LocalRendezvous(Rendezvous* owner, int num_shards)
-      : rc_owner_(owner), table_buckets_(num_shards > 0 ? num_shards : 1) {}
+  explicit LocalRendezvous(Rendezvous* owner)
+      : rc_owner_(owner), pending_callback_counter_(0) {}
   ~LocalRendezvous();
 
   Status Send(const Rendezvous::ParsedKey& key,
@@ -73,19 +71,13 @@ class LocalRendezvous {
   // Pointer to the owner class of this LocalRendezvous if it is refcounted.
   const Rendezvous* rc_owner_;
 
-  struct TableBucket {
-    mutex mu;
-    Table table TF_GUARDED_BY(mu);
-
-    // Track the number of pening callbacks using a counter.
-    int pending_callback_counter TF_GUARDED_BY(mu) = 0;
-    condition_variable pending_callback_cond_var TF_GUARDED_BY(mu);
-  };
-
-  // Immutable vector.
-  std::vector<TableBucket> table_buckets_;
+  // TODO(zhifengc): shard table_.
   mutex mu_;
+  Table table_ TF_GUARDED_BY(mu_);
   Status status_ TF_GUARDED_BY(mu_);
+  // Track the number of pening callbacks using a counter.
+  int pending_callback_counter_ TF_GUARDED_BY(mu_);
+  condition_variable pending_callback_cond_var_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(LocalRendezvous);
 };

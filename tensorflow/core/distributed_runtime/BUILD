@@ -428,7 +428,6 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":rendezvous_mgr_interface",
-        ":session_mgr",
         ":worker_cache",
         ":worker_env",
         ":worker_interface",
@@ -441,7 +440,6 @@ cc_library(
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/hash",
     ],
 )
 

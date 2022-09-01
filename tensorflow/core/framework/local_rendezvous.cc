@@ -100,18 +100,15 @@ void LocalRendezvous::ItemQueue::push_back(Item* item) {
 LocalRendezvous::~LocalRendezvous() {
   // Before destroying this rendezvous instance, make sure all the done-callback
   // calls have finished and the tensors have been released from the queue.
-  for (int i = 0; i < table_buckets_.size(); ++i) {
-    auto& bucket = table_buckets_[i];
-    {
-      mutex_lock l(bucket.mu);
-      while (bucket.pending_callback_counter != 0) {
-        bucket.pending_callback_cond_var.wait_for(
-            l, std::chrono::milliseconds(50));
-      }
+  {
+    mutex_lock l(mu_);
+    while (pending_callback_counter_ != 0) {
+      pending_callback_cond_var_.wait_for(l, std::chrono::milliseconds(50));
     }
-    if (!bucket.table.empty()) {
-      StartAbort(errors::Cancelled("LocalRendezvous deleted"));
-    }
+  }
+
+  if (!table_.empty()) {
+    StartAbort(errors::Cancelled("LocalRendezvous deleted"));
   }
 }
 
@@ -135,14 +132,15 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
         ->IncrementBy(1);
   }
 
-  TF_RETURN_IF_ERROR(status());
+  mu_.lock();
+  if (!status_.ok()) {
+    // Rendezvous has been aborted.
+    Status s = status_;
+    mu_.unlock();
+    return s;
+  }
 
-  int bucket_index = key_hash % table_buckets_.size();
-  auto& bucket = table_buckets_[bucket_index];
-  bucket.mu.lock();
-
-  auto it = bucket.table.insert({key_hash, ItemQueue()}).first;
-  ItemQueue* queue = &it->second;
+  ItemQueue* queue = &table_[key_hash];
   if (queue->head == nullptr || queue->head->type == Item::kSend) {
     // There is no waiter for this message. Append the message
     // into the queue. The waiter will pick it up when arrives.
@@ -151,7 +149,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
     // the lock.
     DVLOG(2) << "Enqueue Send Item (key:" << key.FullKey() << "). ";
     queue->push_back(new Item(send_args, val, is_dead));
-    bucket.mu.unlock();
+    mu_.unlock();
     return OkStatus();
   }
 
@@ -162,13 +160,10 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
   // Delete the queue when the last element has been consumed.
   if (item->next == nullptr) {
     DVLOG(2) << "Clean up Send/Recv queue (key:" << key.FullKey() << "). ";
-    bucket.table.erase(it);
+    table_.erase(key_hash);
   } else {
     queue->head = item->next;
   }
-  bucket.pending_callback_counter++;
-  // Invoke the done-callback, without holding the lock.
-  bucket.mu.unlock();
 
   // Make sure the ref-count of the rendezvous won't reach 0 while the
   // done_callback is running, which would otherwise become deadlock:
@@ -179,14 +174,17 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
     rc_owner_ref.reset(rc_owner_);
     rc_owner_->Ref();
   }
+  pending_callback_counter_++;
+  // Invoke the done-callback, without holding the lock.
+  mu_.unlock();
   DCHECK_EQ(item->type, Item::kRecv);
   (*item->recv_state.waiter)(OkStatus(), send_args, item->args, val, is_dead);
   delete item;
   {
-    mutex_lock l(bucket.mu);
-    bucket.pending_callback_counter--;
-    if (bucket.pending_callback_counter == 0) {
-      bucket.pending_callback_cond_var.notify_all();
+    mutex_lock l(mu_);
+    pending_callback_counter_--;
+    if (pending_callback_counter_ == 0) {
+      pending_callback_cond_var_.notify_all();
     }
   }
   return OkStatus();
@@ -198,19 +196,16 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
   uint64 key_hash = KeyHash(key.FullKey());
   DVLOG(2) << "Recv " << this << " " << key_hash << " " << key.FullKey();
 
-  auto s = status();
-  if (!s.ok()) {
+  mu_.lock();
+  if (!status_.ok()) {
     // Rendezvous has been aborted.
+    Status s = status_;
+    mu_.unlock();
     done(s, Rendezvous::Args(), recv_args, Tensor(), false);
     return;
   }
 
-  int bucket_index = key_hash % table_buckets_.size();
-  auto& bucket = table_buckets_[bucket_index];
-  bucket.mu.lock();
-
-  auto it = bucket.table.insert({key_hash, ItemQueue()}).first;
-  ItemQueue* queue = &it->second;
+  ItemQueue* queue = &table_[key_hash];
   if (queue->head == nullptr || queue->head->type == Item::kRecv) {
     // There is no message to pick up.
     // Only recv-related fields need to be filled.
@@ -233,13 +228,11 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
       //     unref in the cancellation callback.
       if (rc_owner_) rc_owner_->Ref();
       token = cm->get_cancellation_token();
-      already_cancelled = !cm->RegisterCallback(token, [this, token, key_hash,
-                                                        &bucket] {
+      already_cancelled = !cm->RegisterCallback(token, [this, token, key_hash] {
         Item* item = nullptr;
         {
-          mutex_lock l(bucket.mu);
-          auto it = bucket.table.insert({key_hash, ItemQueue()}).first;
-          ItemQueue* queue = &it->second;
+          mutex_lock l(mu_);
+          ItemQueue* queue = &table_[key_hash];
           // Find an item in the queue with a cancellation token that matches
           // `token`, and remove it.
           if (queue->head != nullptr && queue->head->type == Item::kRecv) {
@@ -250,7 +243,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
                 if (queue->head->next == nullptr) {
                   // We have a single-element queue, so we can erase it from
                   // the table.
-                  bucket.table.erase(it);
+                  table_.erase(key_hash);
                 } else {
                   // Remove the current item from the queue.
                   if (curr == queue->head) {
@@ -282,7 +275,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
       });
     }
     if (already_cancelled) {
-      bucket.mu.unlock();
+      mu_.unlock();
       // Unref case (2)
       if (rc_owner_) rc_owner_->Unref();
       done(StatusGroup::MakeDerived(
@@ -319,7 +312,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
       queue->push_back(new Item(recv_args, std::move(done), token));
     }
 
-    bucket.mu.unlock();
+    mu_.unlock();
     return;
   }
 
@@ -331,13 +324,10 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
   // Delete the queue when the last element has been consumed.
   if (item->next == nullptr) {
     DVLOG(2) << "Clean up Send/Recv queue (key:" << key.FullKey() << "). ";
-    bucket.table.erase(it);
+    table_.erase(key_hash);
   } else {
     queue->head = item->next;
   }
-  bucket.pending_callback_counter++;
-  // Invoke the done-callback, without holding the lock.
-  bucket.mu.unlock();
 
   // Make sure the ref-count of the rendezvous won't reach 0 while the
   // done_callback is running, which would otherwise become deadlock:
@@ -348,43 +338,40 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
     rc_owner_ref.reset(rc_owner_);
     rc_owner_->Ref();
   }
+  pending_callback_counter_++;
+  // Invoke the done-callback, without holding the lock.
+  mu_.unlock();
   DCHECK_EQ(item->type, Item::kSend);
   done(OkStatus(), item->args, recv_args, *item->send_state.value,
        item->send_state.is_dead);
   delete item;
   {
-    mutex_lock l(bucket.mu);
-    bucket.pending_callback_counter--;
-    if (bucket.pending_callback_counter == 0) {
-      bucket.pending_callback_cond_var.notify_all();
+    mutex_lock l(mu_);
+    pending_callback_counter_--;
+    if (pending_callback_counter_ == 0) {
+      pending_callback_cond_var_.notify_all();
     }
   }
 }
 
 void LocalRendezvous::StartAbort(const Status& status) {
   CHECK(!status.ok());
+  Table table;
   {
     mutex_lock l(mu_);
     status_.Update(status);
+    table_.swap(table);
   }
-  for (int i = 0; i < table_buckets_.size(); ++i) {
-    auto& bucket = table_buckets_[i];
-    Table table;
-    {
-      mutex_lock l(bucket.mu);
-      bucket.table.swap(table);
-    }
-    for (auto& p : table) {
-      Item* item = p.second.head;
-      while (item != nullptr) {
-        if (item->type == Item::kRecv) {
-          (*item->recv_state.waiter)(status, Rendezvous::Args(),
-                                     Rendezvous::Args(), Tensor(), false);
-        }
-        Item* to_delete = item;
-        item = item->next;
-        delete to_delete;
+  for (auto& p : table) {
+    Item* item = p.second.head;
+    while (item != nullptr) {
+      if (item->type == Item::kRecv) {
+        (*item->recv_state.waiter)(status, Rendezvous::Args(),
+                                   Rendezvous::Args(), Tensor(), false);
       }
+      Item* to_delete = item;
+      item = item->next;
+      delete to_delete;
     }
   }
 }
