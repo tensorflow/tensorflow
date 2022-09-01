@@ -31,7 +31,6 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "third_party/eigen3/Eigen/Core"
-#include "llvm/ADT/Any.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -269,7 +268,7 @@ class CustomCallBinding {
 
   std::string callee_;              // custom call target
   std::vector<std::string> attrs_;  // names of bound attributes
-  std::vector<llvm::Any> values_;   // values bound to arguments
+  std::vector<std::any> values_;    // values bound to arguments
 };
 
 inline CustomCallBinding<> CustomCall::Bind(std::string callee) {
@@ -543,7 +542,7 @@ struct Decode {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
       llvm::ArrayRef<std::string> attrs_names, llvm::ArrayRef<size_t> attrs_idx,
-      internal::DecodedAttrs attrs, llvm::ArrayRef<llvm::Any> values,
+      internal::DecodedAttrs attrs, llvm::ArrayRef<std::any> values,
       const CustomCall::UserData* user_data) {
     internal::DecodedArg arg = args[offsets.args++];
     return CustomCallArgDecoding<T, checks>::Decode(arg.type_id, arg.value);
@@ -555,7 +554,7 @@ struct Decode<internal::Attr<T>, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
       llvm::ArrayRef<std::string> attrs_names, llvm::ArrayRef<size_t> attrs_idx,
-      internal::DecodedAttrs attrs, llvm::ArrayRef<llvm::Any> values,
+      internal::DecodedAttrs attrs, llvm::ArrayRef<std::any> values,
       const CustomCall::UserData* user_data) {
     // Find decoded attribute corresponding for the given attribute index.
     int64_t idx = offsets.attrs++;
@@ -580,7 +579,7 @@ struct Decode<internal::Attr<T>, checks> {
     }
 
     // Attribute we were looking for was not passed as an argument.
-    return mlir::failure();
+    return failure();
   }
 };
 
@@ -589,7 +588,7 @@ struct Decode<internal::UserData<T>, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
       llvm::ArrayRef<std::string> attrs_names, llvm::ArrayRef<size_t> attrs_idx,
-      internal::DecodedAttrs attrs, llvm::ArrayRef<llvm::Any> values,
+      internal::DecodedAttrs attrs, llvm::ArrayRef<std::any> values,
       const CustomCall::UserData* user_data) {
     using UserDataT = std::remove_pointer_t<T>;
 
@@ -601,7 +600,7 @@ struct Decode<internal::UserData<T>, checks> {
 
     // Get the requested value if user data was passed to the custom call.
     auto* ptr = user_data ? user_data->getIfExists<UserDataT>() : nullptr;
-    if (LLVM_UNLIKELY(!ptr)) return mlir::failure();
+    if (LLVM_UNLIKELY(!ptr)) return failure();
     return ptr;
   }
 };
@@ -611,9 +610,9 @@ struct Decode<internal::Value<T>, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
       llvm::ArrayRef<std::string> attrs_names, llvm::ArrayRef<size_t> attrs_idx,
-      internal::DecodedAttrs attrs, llvm::ArrayRef<llvm::Any> values,
+      internal::DecodedAttrs attrs, llvm::ArrayRef<std::any> values,
       const CustomCall::UserData* user_data) {
-    return llvm::any_cast<T>(values[offsets.values++]);
+    return std::any_cast<T>(values[offsets.values++]);
   }
 };
 
@@ -622,7 +621,7 @@ struct Decode<CustomCall::RemainingArgs, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<CustomCall::RemainingArgs> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
       llvm::ArrayRef<std::string> attr_names, llvm::ArrayRef<size_t> attrs_idx,
-      internal::DecodedAttrs attrs, llvm::ArrayRef<llvm::Any> values,
+      internal::DecodedAttrs attrs, llvm::ArrayRef<std::any> values,
       const CustomCall::UserData* user_data) {
     return CustomCall::RemainingArgs(args, offsets.args);
   }
@@ -633,7 +632,7 @@ struct Decode<CustomCall::VariantArg, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<CustomCall::VariantArg> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
       llvm::ArrayRef<std::string> attr_names, llvm::ArrayRef<size_t> attrs_idx,
-      internal::DecodedAttrs attrs, llvm::ArrayRef<llvm::Any> values,
+      internal::DecodedAttrs attrs, llvm::ArrayRef<std::any> values,
       const CustomCall::UserData* user_data) {
     return CustomCall::VariantArg(args, offsets.args++);
   }
@@ -734,7 +733,7 @@ class CustomCallHandler : public CustomCall {
     // Check if all arguments and attributes were decoded.
     bool all_decoded = true;
     auto check_all_decoded = [&](auto result) {
-      all_decoded &= mlir::succeeded(result);
+      all_decoded &= succeeded(result);
       return std::move(result);
     };
 
@@ -756,7 +755,7 @@ class CustomCallHandler : public CustomCall {
     if constexpr (kIsDetailedErr) {
       if (auto err = fn_(std::move(*std::get<Is>(fn_args))...))
         return diagnostic->EmitError() << std::move(err);
-      return mlir::success();
+      return success();
     }
 
     llvm_unreachable("unexpected custom call type");
@@ -767,7 +766,7 @@ class CustomCallHandler : public CustomCall {
   friend class CustomCallBinding;
 
   CustomCallHandler(Fn fn, std::string callee, std::vector<std::string> attrs,
-                    std::vector<llvm::Any> values)
+                    std::vector<std::any> values)
       : fn_(std::move(fn)),
         callee_(std::move(callee)),
         attrs_(std::move(attrs)),
@@ -787,7 +786,7 @@ class CustomCallHandler : public CustomCall {
   Fn fn_;
   std::string callee_;
   std::vector<std::string> attrs_;
-  std::vector<llvm::Any> values_;
+  std::vector<std::any> values_;
   // A mapping from the attribute index to its index in the lexicographically
   // sorter vector of attribute names. Attributes passed in the custom call
   // handler sorted by the name, we use this index to efficiently find the
@@ -842,7 +841,7 @@ struct CustomCallArgDecoding<StridedMemrefView, checks> {
   static FailureOr<StridedMemrefView> Decode(TypeID type_id, void* value) {
     if (!(CustomCall::CheckType<Tagged<MemrefView>>(checks, type_id) ||
           CustomCall::CheckType<Tagged<StridedMemrefView>>(checks, type_id)))
-      return mlir::failure();
+      return failure();
 
     auto* encoded = reinterpret_cast<EncodedMemref*>(value);
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
@@ -864,7 +863,7 @@ struct CustomCallArgDecoding<MemrefView, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   static FailureOr<MemrefView> Decode(TypeID type_id, void* value) {
     if (!CustomCall::CheckType<Tagged<MemrefView>>(checks, type_id))
-      return mlir::failure();
+      return failure();
 
     auto* encoded = reinterpret_cast<EncodedMemref*>(value);
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
@@ -883,7 +882,7 @@ struct CustomCallArgDecoding<FlatMemrefView, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   static FailureOr<FlatMemrefView> Decode(TypeID type_id, void* value) {
     if (!CustomCall::CheckType<Tagged<MemrefView>>(checks, type_id))
-      return mlir::failure();
+      return failure();
 
     auto* encoded = reinterpret_cast<EncodedMemref*>(value);
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
@@ -903,7 +902,7 @@ struct CustomCallArgDecoding<FlatMemrefView, checks> {
     LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(TypeID type_id, \
                                                             void* value) {  \
       if (!CustomCall::CheckType<Tagged<T>>(checks, type_id))               \
-        return mlir::failure();                                             \
+        return failure();                                                   \
                                                                             \
       return *reinterpret_cast<T*>(value);                                  \
     }                                                                       \
@@ -922,7 +921,7 @@ struct CustomCallArgDecoding<Eigen::half, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Eigen::half> Decode(
       TypeID type_id, void* value) {
     if (!CustomCall::CheckType<Tagged<Eigen::half>>(checks, type_id))
-      return mlir::failure();
+      return failure();
 
     auto* src = reinterpret_cast<uint16_t*>(value);
     return Eigen::numext::bit_cast<Eigen::half>(*src);
@@ -937,7 +936,7 @@ struct CustomCallAttrDecoding<std::string_view, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<std::string_view> Decode(
       std::string_view name, TypeID type_id, void* value) {
     if (!CustomCall::CheckType<Tagged<std::string_view>>(checks, type_id)) {
-      return mlir::failure();
+      return failure();
     }
 
     auto* encoded = reinterpret_cast<internal::EncodedArray<char>*>(value);
@@ -959,7 +958,7 @@ struct CustomCallAttrDecoding<CustomCall::VariantAttr, checks> {
     LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(  \
         std::string_view name, TypeID type_id, void* value) { \
       if (!CustomCall::CheckType<Tagged<T>>(checks, type_id)) \
-        return mlir::failure();                               \
+        return failure();                                     \
                                                               \
       return *reinterpret_cast<T*>(value);                    \
     }                                                         \
@@ -986,7 +985,7 @@ XLA_RUNTIME_REGISTER_SCALAR_ATTR_DECODING(double);
           (!CustomCall::CheckType<Tagged<CustomCall::TensorRef<T>>>(          \
               checks, type_id)) &&                                            \
           (!CustomCall::CheckType<Tagged<EmptyArrayRef>>(checks, type_id))) { \
-        return mlir::failure();                                               \
+        return failure();                                                     \
       }                                                                       \
                                                                               \
       auto* encoded = reinterpret_cast<internal::EncodedArray<T>*>(value);    \
@@ -1008,7 +1007,7 @@ XLA_RUNTIME_REGISTER_ARRAY_ATTR_DECODING(double);
     Decode(std::string_view name, TypeID type_id, void* value) {             \
       if (!CustomCall::CheckType<Tagged<CustomCall::TensorRef<T>>>(checks,   \
                                                                    type_id)) \
-        return mlir::failure();                                              \
+        return failure();                                                    \
                                                                              \
       auto* encoded =                                                        \
           reinterpret_cast<internal::EncodedDenseElements<T>*>(value);       \
@@ -1046,7 +1045,7 @@ XLA_RUNTIME_REGISTER_DENSE_ELEMENTS_ATTR_DECODING(double);
     LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(      \
         std::string_view name, TypeID type_id, void* value) {     \
       if (!CustomCall::CheckType<Tagged<T>>(checks, type_id))     \
-        return mlir::failure();                                   \
+        return failure();                                         \
                                                                   \
       return static_cast<T>(*reinterpret_cast<U*>(value));        \
     }                                                             \
@@ -1079,7 +1078,7 @@ struct AggregateMember {
     LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(                   \
         std::string_view name, TypeID type_id, void* value) {                  \
       if (!CustomCall::CheckType<Tagged<T>>(checks, type_id)) {                \
-        return mlir::failure();                                                \
+        return failure();                                                      \
       }                                                                        \
       auto decoder = internal::AggregateDecoder<T, checks>(__VA_ARGS__);       \
       return decltype(decoder)::Decode(reinterpret_cast<void**>(value),        \
@@ -1109,18 +1108,18 @@ struct DecodeAggregateAttr {
       std::index_sequence<Is...>) {
     // Check that the number of encoded attributes matches the signature.
     if (checks != RuntimeChecks::kNone && kSize != attrs.size())
-      return mlir::failure();
+      return failure();
 
     // Check that aggregate member names match the expected names.
     if (CustomCall::CheckNames(checks)) {
       for (unsigned i = 0; i < kSize; ++i)
-        if (attrs[i].name != names[i]) return mlir::failure();
+        if (attrs[i].name != names[i]) return failure();
     }
 
     // Check if all members were decoded.
     bool all_decoded = true;
     auto check_all_decoded = [&](auto result) {
-      all_decoded &= mlir::succeeded(result);
+      all_decoded &= succeeded(result);
       return std::move(result);
     };
 
@@ -1130,7 +1129,7 @@ struct DecodeAggregateAttr {
     std::tuple<FailureOr<Ts>...> members = {
         check_all_decoded(CustomCallAttrDecoding<Ts, checks>::Decode(
             attrs[Is].name, attrs[Is].type_id, attrs[Is].value))...};
-    if (LLVM_UNLIKELY(!all_decoded)) return mlir::failure();
+    if (LLVM_UNLIKELY(!all_decoded)) return failure();
 
     // Forward unpacked members to the type constructor.
     return T{std::move(*std::get<Is>(members))...};
