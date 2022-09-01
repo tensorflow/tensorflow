@@ -27,7 +27,6 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager import function_saved_model_utils
 from tensorflow.python.eager import function_spec
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
@@ -66,6 +65,9 @@ np_arrays = lazy_loader.LazyLoader(
     "np_arrays", globals(),
     "tensorflow.python.ops.numpy_ops.np_arrays")
 
+function_saved_model_utils = lazy_loader.LazyLoader(
+    "function_saved_model_utils", globals(),
+    "tensorflow.python.eager.function_saved_model_utils")
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
@@ -73,51 +75,11 @@ IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 
 
-def _type_spec_for(x):
-  """Returns a TypeSpec for `x`, or `x` if `x` doesn't have a TensorSpec."""
-  if isinstance(x, ops.Tensor):
-    # We intentionally leave out the name of x from the TensorSpec here,
-    # because the name of a TensorSpec will override arg_name
-    # in the '_get_defun_inputs' method in func_graph.py.
-    return tensor_spec.TensorSpec(x.shape, x.dtype)
-  elif isinstance(x, type_spec.TypeSpec):
-    return x
-  elif isinstance(x, composite_tensor.CompositeTensor):
-    return x._type_spec  # pylint: disable=protected-access
-  else:
-    return x
-
-
 def _is_type_subset(a, b):
   """Returns true if `b` is a subset of type `a` (or if a is not a TypeSpec.)"""
   if isinstance(a, type_spec.TypeSpec):
     return a.most_specific_compatible_type(b) == a
   return True
-
-
-def common_shape(x, y):
-  """Find a `TensorShape` that is compatible with both `x` and `y`."""
-  if x is None != y is None:
-    raise RuntimeError(
-        "Cannot find a common shape when LHS shape is None but RHS shape "
-        f"is not (or vice versa): {x} vs. {y}.")
-  if x is None:
-    return None  # The associated input was not a Tensor, no shape generated.
-  if not isinstance(x, tensor_shape.TensorShape):
-    raise TypeError(f"`x` must be a TensorShape, got type {type(x)}.")
-  if not isinstance(y, tensor_shape.TensorShape):
-    raise TypeError(f"`y` must be a TensorShape, got type {type(y)}.")
-  if x.rank != y.rank or x.rank is None:
-    return tensor_shape.TensorShape(None)
-  dims = []
-  for dim_x, dim_y in zip(x.dims, y.dims):
-    if (dim_x != dim_y
-        or tensor_shape.dimension_value(dim_x) is None
-        or tensor_shape.dimension_value(dim_y) is None):
-      dims.append(None)
-    else:
-      dims.append(tensor_shape.dimension_value(dim_x))
-  return tensor_shape.TensorShape(dims)
 
 
 def _parse_func_attrs(attributes):

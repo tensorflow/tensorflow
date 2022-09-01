@@ -906,7 +906,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        ":function",
         ":function_spec",
         ":lift_to_graph",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
@@ -918,6 +917,8 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python/distribute/parallel_device",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/trackable:base",
     ],

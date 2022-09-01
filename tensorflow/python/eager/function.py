@@ -17,55 +17,29 @@
 # pylint:disable=unused-import,g-bad-import-order
 
 # TODO(b/243822285): Reduce this list as much as possible.
-# Public Constants
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import BACKWARD_FUNCTION_ATTRIBUTE_NAME
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import FORWARD_FUNCTION_ATTRIBUTE_NAME
+# Constants
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import IMPLEMENTS_ATTRIBUTE_NAME
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import SHARED_RENDEZVOUS_ATTRIBUTE_NAME
-
-# Public Classes
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import ConcreteFunction
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import ConcreteFunctionGarbageCollector
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import TfMethodTarget
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import Function
-
-# Public Functions
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import add_function_callback
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import clear_function_callbacks
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import common_shape
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import remove_function_callback
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import class_method_to_instance_method
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import defun
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import defun_with_attributes
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import register
-
-# Private Constants
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _BACKWARD_PREFIX
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _FORWARD_PREFIX
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _INFERENCE_PREFIX
 
-# Private Classes
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _DelayedRewriteGradientFunctions
+# Function Classes
+from tensorflow.python.eager.polymorphic_function.monomorphic_function import ConcreteFunction
+from tensorflow.python.eager.polymorphic_function.polymorphic_function import Function
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _EagerDefinedFunction
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _EagerDefinedFunctionDeleter
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _FirstOrderTapeGradientFunctions
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _ForwardBackwardCall
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _ForwardWrapper
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _HigherOrderTapeGradientFunctions
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _Marker
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _TapeGradientFunctions
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _InterpolateFunctionError
 
-# Private Functions and Attributes
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _backward_name
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _contains_type_spec
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _create_forward_backward_with_graph
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _forward_name
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _function_callbacks
+# Utilities
+from tensorflow.python.eager.polymorphic_function.polymorphic_function import TfMethodTarget
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _inference_name
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _is_type_subset
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _parse_func_attrs
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _structure_summary
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _type_spec_for
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import _graph_building_time_counter
+
+# Function Callback Modification API
+from tensorflow.python.eager.polymorphic_function.monomorphic_function import add_function_callback
+from tensorflow.python.eager.polymorphic_function.monomorphic_function import clear_function_callbacks
+from tensorflow.python.eager.polymorphic_function.monomorphic_function import remove_function_callback
+from tensorflow.python.eager.polymorphic_function.monomorphic_function import _function_callbacks
+
+# Defun API
+from tensorflow.python.eager.polymorphic_function.polymorphic_function import defun
+from tensorflow.python.eager.polymorphic_function.polymorphic_function import defun_with_attributes
+from tensorflow.python.eager.polymorphic_function.polymorphic_function import register
 
