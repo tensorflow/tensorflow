@@ -1574,7 +1574,8 @@ class ResourceVariable(BaseResourceVariable):
       distribute_strategy=None,
       synchronization=None,
       aggregation=None,
-      shape=None):
+      shape=None,
+      handle=None):
     """Creates a variable.
 
     Args:
@@ -1629,6 +1630,9 @@ class ResourceVariable(BaseResourceVariable):
         `initial_value` will be used. When setting this argument to
         `tf.TensorShape(None)` (representing an unspecified shape), the variable
         can be assigned with values of different shapes.
+      handle: (optional) The handle of a `tf.Variable`. If provided, only
+        `trainable`, `shape`, `dtype`, and `handle` will be used to construct
+        this `tf.Variable`.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -1654,6 +1658,11 @@ class ResourceVariable(BaseResourceVariable):
           variable_def,
           import_scope=import_scope,
           validate_shape=validate_shape)
+    elif handle is not None:
+      self._init_from_handle(trainable=trainable,
+                             shape=shape,
+                             dtype=dtype,
+                             handle=handle)
     else:
       self._init_from_args(
           initial_value=initial_value,
@@ -1996,6 +2005,20 @@ class ResourceVariable(BaseResourceVariable):
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._constraint = None
     self._validate_shape = validate_shape
+
+  def _init_from_handle(self,
+                        trainable=None,
+                        shape=None,
+                        dtype=None,
+                        handle=None):
+    handle_data = get_eager_safe_handle_data(handle)
+    if not handle_data.is_set:
+      # The handle may not have the handle shape and dtype if it was created
+      # using tf.placeholder.
+      handle_data = handle_data_util.create_handle_data(shape, dtype)
+      handle_data_util.set_handle_data(handle, handle_data)
+    super().__init__(
+        trainable=trainable, shape=shape, dtype=dtype, handle=handle)
 
 
 class UninitializedVariable(BaseResourceVariable):
@@ -2356,60 +2379,120 @@ ops.NotDifferentiable("VariableShape")
 
 
 class VariableSpec(tensor_spec.DenseSpec):
-  """Describes a tf.Variable."""
+  """Describes a tf.Variable.
 
-  __slots__ = ["trainable"]
+  A `VariableSpec` provides metadata describing the `tf.Variable` objects
+  accepted or returned by TensorFlow 2.x APIs.
+  """
 
-  value_type = property(lambda self: BaseResourceVariable)
+  __slots__ = ["trainable", "alias_id"]
 
-  def __init__(self, shape, dtype=dtypes.float32, trainable=True):
+  value_type = property(lambda self: ResourceVariable)
+
+  def __init__(self, shape, dtype=dtypes.float32, trainable=True,
+               alias_id=None):
     super(VariableSpec, self).__init__(shape, dtype=dtype)
     self.trainable = trainable
+    self.alias_id = alias_id
 
   def is_compatible_with(self, spec_or_value):
-    return (isinstance(spec_or_value, (type(self), self.value_type)) and
-            self.shape.is_compatible_with(spec_or_value.shape) and
-            self.dtype == spec_or_value.dtype and
-            self.trainable == spec_or_value.trainable)
+    """Returns True if `spec_or_value` is compatible with this `VariableSpec`.
+
+    `spec_or_value` is considered to be compatible with this `VariableSpec` if
+
+    * `spec_or_value` is a `Variable` or `VariableSpec`,
+    * their shapes are compatible,
+    * their dtypes are the same,
+    * they are both trainable or not trainable.
+    * they share the same alias_id if `spec_or_value` is a `VariableSpec`.
+
+    Example:
+
+    >>> v = tf.Variable([1., 2., 3.])
+    >>> spec = VariableSpec([None])
+    >>> spec.is_compatible_with(v)
+    True
+    >>> v = tf.Variable(1)
+    >>> spec.is_compatible_with(v)
+    False
+
+    Args:
+      spec_or_value: A VariableSpec or Variable to compare against.
+
+    Returns:
+      True if `spec_or_value` is compatible with this `VariableSpec`.
+    """
+    if not isinstance(spec_or_value, (type(self), self.value_type)):
+      return False
+    compatible = (self.shape.is_compatible_with(spec_or_value.shape) and
+                  self.dtype == spec_or_value.dtype and
+                  self.trainable == spec_or_value.trainable)
+    if isinstance(spec_or_value, type(self)):
+      # alias_id must be the same to be compatible.
+      return compatible and self.alias_id == spec_or_value.alias_id
+    return compatible
 
   @classmethod
   def from_value(cls, value):
+    """Creates a `VariableSpec` from the given `Variable`.
+
+    `value`'s shape, dtype, and trainable attributes will be used to create
+    the new `VariableSpec`.
+
+    Example:
+
+    >>> v = tf.Variable([1., 2., 3.])
+    >>> VariableSpec.from_value(v)
+    VariableSpec(shape=(3,), dtype=tf.float32, trainable=True, alias_id=None)
+
+    Args:
+      value: A Variable.
+
+    Returns:
+      A `VariableSpec` created from `value`.
+    """
     return cls(value.shape, dtype=value.dtype, trainable=value.trainable)
 
   def _to_components(self, value):
-    return value.handle
+    return [value.handle]
 
   def _from_components(self, components):
-    return BaseResourceVariable(
-        trainable=self.trainable,
-        shape=self.shape,
-        dtype=self.dtype,
-        handle=components)
+    if not isinstance(components, (list, tuple)):
+      raise TypeError(f"Components of a ResourceVariable must be a list or "
+                      f"tuple, got f{components} instead.")
+    if len(components) != 1:
+      raise ValueError(f"Components of a ResourceVariable must only contain "
+                       f"its resource handle, got f{components} instead.")
+    handle = components[0]
+    if not isinstance(handle, ops.Tensor) or handle.dtype != dtypes.resource:
+      raise ValueError(f"The handle of a ResourceVariable must be a resource "
+                       f"tensor, got {handle} instead.")
+    return ResourceVariable(trainable=self.trainable,
+                            shape=self.shape,
+                            dtype=self.dtype,
+                            handle=handle)
 
   @property
   def _component_specs(self):
-    return tensor_spec.TensorSpec(self.shape, dtypes.resource)
-
-  def _from_compatible_tensor_list(self, tensor_list):
-    assert len(tensor_list) == 1
-    return tensor_list[0]
+    return [tensor_spec.TensorSpec([], dtypes.resource)]
 
   def _serialize(self):
-    return self.shape, self.dtype, self.trainable
+    return self.shape, self.dtype, self.trainable, self.alias_id
 
   def __tf_tracing_type__(self, signature_context):
     return signature_context.make_reference_type(self, id(self))
 
   def __repr__(self):
-    return (f"{type(self).__name__}(shape={self.shape}, dtype={self.dtype}, "
-            f"trainable={self.trainable})")
+    return (f"{type(self).__name__}(shape={self.shape}, dtype={self.dtype!r}, "
+            f"trainable={self.trainable!r}, alias_id={self.alias_id!r})")
 
   def __hash__(self):
-    return hash((self.shape, self.dtype, self.trainable))
+    return hash((self.shape, self.dtype, self.trainable, self.alias_id))
 
   def __eq__(self, other):
     return (type(self) is type(other) and self.shape == other.shape and
-            self.dtype == other.dtype and self.trainable == other.trainable)
+            self.dtype == other.dtype and self.trainable == other.trainable and
+            self.alias_id == other.alias_id)
 
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
