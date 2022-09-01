@@ -1679,6 +1679,8 @@ cuda_py_test(
     tags = [
         "noasan",  # times out
         "optonly",  # times out
+        "no-oss",   #b/244625900  
+        "no_gpu",   #b/244625900
     ],
     deps = [
         "//tensorflow/python:array_ops",
