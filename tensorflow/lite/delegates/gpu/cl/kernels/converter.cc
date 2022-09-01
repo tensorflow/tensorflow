@@ -76,7 +76,7 @@ class OpenClConverterImpl : public TensorObjectConverter {
 
 bool IsSupportedDataType(DataType type) {
   return type == DataType::FLOAT16 || type == DataType::FLOAT32 ||
-         type == DataType::BOOL;
+         type == DataType::INT32 || type == DataType::BOOL;
 }
 
 bool IsBHWCOpenCLBuffer(const ObjectDef& def) {

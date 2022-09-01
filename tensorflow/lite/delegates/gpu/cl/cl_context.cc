@@ -94,6 +94,11 @@ absl::Status CreateCLContext(const CLDevice& device,
 CLContext::CLContext(cl_context context, bool has_ownership)
     : context_(context), has_ownership_(has_ownership) {}
 
+CLContext::CLContext(cl_context context, bool has_ownership, CLDevice& device)
+    : context_(context), has_ownership_(has_ownership) {
+  AddSupportedImageFormats(context, &device.info_);
+}
+
 CLContext::CLContext(CLContext&& context)
     : context_(context.context_), has_ownership_(context.has_ownership_) {
   context.context_ = nullptr;
