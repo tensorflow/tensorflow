@@ -35,9 +35,7 @@ def TilingInterface : OpInterface<"TilingInterface"> {
         }],
         /*retType=*/"SmallVector<Value>",
         /*methodName=*/"getDestinationOperands",
-        /*args=*/(ins "OpBuilder &":$b),
-        /*methodBody=*/"",
-        /*defaultImplementation=*/"return ValueRange{};"
+        /*args=*/(ins "OpBuilder &":$b)
       >,
       InterfaceMethod<
         /*desc=*/[{
@@ -49,9 +47,7 @@ def TilingInterface : OpInterface<"TilingInterface"> {
         }],
         /*retType=*/"SmallVector<StringRef>",
         /*methodName=*/"getLoopIteratorTypes",
-        /*args=*/(ins),
-        /*methodBody=*/"",
-        /*defaultImplementation=*/"return {};"
+        /*args=*/(ins)
       >,
       InterfaceMethod<
         /*desc=*/[{
@@ -60,9 +56,7 @@ def TilingInterface : OpInterface<"TilingInterface"> {
         }],
         /*retTy=*/"SmallVector<Range>",
         /*methodName=*/"getIterationDomain",
-        /*args=*/(ins "OpBuilder &":$b),
-        /*methodBody=*/"",
-        /*defaultImplementation=*/"return {};"
+        /*args=*/(ins "OpBuilder &":$b)
       >,
       InterfaceMethod<
         /*desc=*/[{
@@ -89,23 +83,17 @@ def TilingInterface : OpInterface<"TilingInterface"> {
           The method returns the operation that is the tiled
           implementation.
         }],
-        /*retType=*/"TilingInterface",
+        /*retType=*/"mlir::gml_st::TilingInterface",
         /*methodName=*/"getTiledImplementation",
         /*args=*/(ins
             "OpBuilder &":$b,
-            "ValueRange ":$dest,
-            "ArrayRef<OpFoldResult> ":$offsets,
-            "ArrayRef<OpFoldResult> ":$sizes,
-            "bool ":$tileDestOperands),
-        /*methodBody=*/"",
-        /*defaultImplementation=*/[{
-          return {};
-        }]
+            "ValueRange":$dest,
+            "ArrayRef<OpFoldResult>":$offsets,
+            "ArrayRef<OpFoldResult>":$sizes,
+            "bool ":$tileDestOperands)
       >,
       InterfaceMethod<
         /*desc=*/[{
-          Method to generate the code that produces a tile of the result.
-
           Generates the IR that computes the tile of a result of the
           operation.  The `offsets` and `sizes` describe the tile of
           the output required. This is different from
@@ -140,11 +128,7 @@ def TilingInterface : OpInterface<"TilingInterface"> {
           "ValueRange":$dest,
           "ArrayRef<OpFoldResult>":$offsets,
           "ArrayRef<OpFoldResult>":$sizes,
-          "bool":$tileDestOperands),
-        /*methodBody=*/"",
-        /*defaultImplementation=*/[{
-          return failure();
-        }]
+          "bool":$tileDestOperands)
       >
   ];
 }
