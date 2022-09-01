@@ -408,9 +408,7 @@ ParseResult ConcatenateOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseDstStyleOp(parser, result);
 }
 
-void ConcatenateOp::print(OpAsmPrinter &p) {
-  printDstStyleOp(cast<ConcatenateOp>(getOperation()), p);
-}
+void ConcatenateOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult ConcatenateOp::verify() {
   return verifyDestinationStyleOp(getOperation(), getNumOutputs());
@@ -431,7 +429,7 @@ ParseResult DynamicBroadcastInDimOp::parse(OpAsmParser &parser,
 
 void DynamicBroadcastInDimOp::print(OpAsmPrinter &p) {
   printDstStyleOp<DynamicBroadcastInDimOp>(
-      cast<DynamicBroadcastInDimOp>(getOperation()), p,
+      *this, p,
       [](DynamicBroadcastInDimOp op,
          OpAsmPrinter &p) -> SmallVector<StringRef> {
         printDenseI64ArrayAttr(p, op.broadcast_dimensionsAttrName(),
@@ -573,9 +571,7 @@ ParseResult ScatterOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseDstStyleOp(parser, result);
 }
 
-void ScatterOp::print(OpAsmPrinter &p) {
-  printDstStyleOp(cast<ScatterOp>(getOperation()), p);
-}
+void ScatterOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult ScatterOp::verify() {
   return verifyDestinationStyleOp(getOperation(), getNumOutputs());
@@ -589,9 +585,7 @@ ParseResult GatherOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseDstStyleOp(parser, result);
 }
 
-void GatherOp::print(OpAsmPrinter &p) {
-  printDstStyleOp(cast<GatherOp>(getOperation()), p);
-}
+void GatherOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult GatherOp::verify() {
   return verifyDestinationStyleOp(getOperation(), getNumOutputs());
@@ -610,8 +604,7 @@ ParseResult TransposeOp::parse(OpAsmParser &parser, OperationState &result) {
 
 void TransposeOp::print(OpAsmPrinter &p) {
   printDstStyleOp<TransposeOp>(
-      cast<TransposeOp>(getOperation()), p,
-      [](TransposeOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+      *this, p, [](TransposeOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
         printDenseI64ArrayAttr(p, op.permutationAttrName(), op.permutation());
         return {op.permutationAttrName()};
       });
@@ -689,8 +682,7 @@ ParseResult ReductionOp::parse(OpAsmParser &parser, OperationState &result) {
 
 void ReductionOp::print(OpAsmPrinter &p) {
   printDstStyleOp<ReductionOp>(
-      cast<ReductionOp>(getOperation()), p,
-      [](ReductionOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+      *this, p, [](ReductionOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
         printDenseI64ArrayAttr(p, op.dimensionsAttrName(), op.dimensions());
         return {op.dimensionsAttrName()};
       });
@@ -821,7 +813,7 @@ ParseResult MapOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void MapOp::print(OpAsmPrinter &p) {
-  printDstStyleOp<MapOp>(cast<MapOp>(getOperation()), p);
+  printDstStyleOp<MapOp>(*this, p);
 
   p << "(";
   llvm::interleaveComma(mapper().getArguments(), p,
