@@ -446,6 +446,7 @@ tf_py_test(
     size = "small",
     srcs = ["conv_utils_test.py"],
     python_version = "PY3",
+    tags = ["no_oss"],  #TODO b/244625900
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
