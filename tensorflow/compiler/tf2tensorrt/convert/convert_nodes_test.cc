@@ -1923,12 +1923,13 @@ class ParameterizedOpConverterTestBase
   // the TRT network, executes it and checks the output. Handles multiple output
   // tensors.
   void TestOpConverterMultiOut(
-      const string& name, const NodeDef node_def,
+      const NodeDef& node_def,
       const std::vector<std::vector<int>>& expected_output_dims,
       const Status& expected_conversion_status,
       const Status& expected_runtime_status,
       const std::vector<Matcher<std::vector<float>>>& matcher,
       const std::vector<DataType>& out_tf_type = {}) {
+    const auto& name = node_def.name();
     RunValidationAndConversion(node_def, expected_conversion_status, name,
                                expected_output_dims);
     if (expected_conversion_status.ok()) {
@@ -1939,14 +1940,14 @@ class ParameterizedOpConverterTestBase
 
   // Runs validation and conversion. If conversion is successfull then builds
   // the TRT network, executes it and checks the output.
-  void TestOpConverter(const string& name, const NodeDef node_def,
+  void TestOpConverter(const NodeDef& node_def,
                        const std::vector<int>& expected_output_dims,
                        const Status& expected_conversion_status,
                        const Status& expected_runtime_status,
                        const Matcher<std::vector<float>>& matcher,
                        const std::vector<DataType>& out_tf_types = {}) {
     TestOpConverterMultiOut(
-        name, node_def, std::vector<std::vector<int>>({expected_output_dims}),
+        node_def, std::vector<std::vector<int>>({expected_output_dims}),
         expected_conversion_status, expected_runtime_status,
         std::vector<Matcher<std::vector<float>>>({matcher}), out_tf_types);
   }
@@ -2010,8 +2011,7 @@ class OpConverter_UnaryTest : public ParameterizedOpConverterTestBase {
       std::transform(input_values.begin(), input_values.end(),
                      std::back_inserter(output), op_map[op_name].second);
 
-      TestOpConverter(node.name(), node, p.expected_output_dims, conv_status,
-                      Status::OK(),
+      TestOpConverter(node, p.expected_output_dims, conv_status, Status::OK(),
                       ArrayFloatNear(output, max_abs_error, nan_sensitive),
                       {output_tf_type});
     }
@@ -2108,8 +2108,7 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
             AddTestWeights("input2", {2, 1}, data[3], tf_type);
           }
 
-          TestOpConverter("my_binary", node_def, {2, 2, 2}, conv_status,
-                          Status::OK(),
+          TestOpConverter(node_def, {2, 2, 2}, conv_status, Status::OK(),
                           ElementsAreArray(op_test_info[op_name].second),
                           logical_op ? bool_types : default_types);
         }
@@ -2659,9 +2658,8 @@ TEST_P(OpConverter_FP32_Test, ConvertFusedBatchNorm) {
                          node_input[i].val, tf_type_);
         }
       }
-      TestOpConverter("my_batchnorm", node_def, node_input[0].dims,
-                      p.conversion_status, Status::OK(),
-                      ArrayFloatNear(expected_output));
+      TestOpConverter(node_def, node_input[0].dims, p.conversion_status,
+                      Status::OK(), ArrayFloatNear(expected_output));
     }
   }
 }
@@ -2720,7 +2718,7 @@ TEST_P(OpConverter_FP32_Test, ConvertTranspose) {
       AddTestWeights<int32>("weights", {static_cast<int>(p.param.size())},
                             p.param);
     }
-    TestOpConverter("my_transpose", node_def, p.expected_output_dims, p.status,
+    TestOpConverter(node_def, p.expected_output_dims, p.status,
                     p.runtime_status, ElementsAreArray(expected_values));
   }
 }
@@ -2855,7 +2853,7 @@ TEST_P(OpConverter_FP32_Test, ConvertTile) {
           AddTestWeights<int32>("weights", num_mults, p.multiplier);
         }
 
-        TestOpConverter("my_tile", node_def, p.expected_output_dims, p.status,
+        TestOpConverter(node_def, p.expected_output_dims, p.status,
                         Status::OK(), ElementsAreArray(p.expected_results));
       }
     }
@@ -3006,9 +3004,8 @@ TEST_P(OpConverter_FP32_Test, ConvertReshape) {
       std::vector<int> expected_shape =
           p.expected_shape.empty() ? p.shape : p.expected_shape;
       VLOG(2) << "Calling TestOpConverter";
-      TestOpConverter("my_reshape", node_def, expected_shape,
-                      p.conversion_status, p.runtime_status,
-                      ElementsAreArray(input_vec));
+      TestOpConverter(node_def, expected_shape, p.conversion_status,
+                      p.runtime_status, ElementsAreArray(input_vec));
     }
   }
 }
@@ -3056,7 +3053,7 @@ TEST_P(OpConverter_FP32_Test, ConvertShape) {
     } else {
       AddTestWeights("input", p.input_dims, input_val, tf_type_);
     }
-    TestOpConverter("my_shape", node_def, p.expected_output_dims, p.status,
+    TestOpConverter(node_def, p.expected_output_dims, p.status,
                     p.runtime_status, ElementsAreArray(p.input_dims),
                     {DT_INT32});
   }
@@ -3184,8 +3181,8 @@ void TestMatMulHelper(
             }
           }
 
-          test->TestOpConverter("my_matmul", node_def, p.expected_shape,
-                                conversion_status, Status::OK(),
+          test->TestOpConverter(node_def, p.expected_shape, conversion_status,
+                                Status::OK(),
                                 ElementsAreArray(p.expected_output));
           if (!conversion_status.ok()) {
             VLOG(2) << "Converted with status " << conversion_status;
@@ -3400,8 +3397,8 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
     AddTestTensor("input_a", {2, 3});
     AddTestTensor("input_b", {2, 3});
     const auto& err = convert_not_supported_implicit(node.op(), node.name());
-    TestOpConverter(node.name(), node, {2, 2}, errors::Unimplemented(err),
-                    Status::OK(), ElementsAreArray({13, 16, 40, 52}));
+    TestOpConverter(node, {2, 2}, errors::Unimplemented(err), Status::OK(),
+                    ElementsAreArray({13, 16, 40, 52}));
     // No further tests.
     return;
   }
@@ -3612,8 +3609,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
             AddTestWeights("input_b", p.shape_b, p.values_b, tf_type_);
           }
         }
-        TestOpConverter(node_def.name(), node_def, p.expected_shape,
-                        p.conv_status, Status::OK(),
+        TestOpConverter(node_def, p.expected_shape, p.conv_status, Status::OK(),
                         ElementsAreArray(p.expected_output));
       }
     }
@@ -3679,8 +3675,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertBiasAdd) {
           output_data = {1, 1, 1, 2, 2, 2};
         }
       }
-      TestOpConverter("my_biasadd", node_def, dims_array, Status::OK(),
-                      Status::OK(), ElementsAreArray(output_data));
+      TestOpConverter(node_def, dims_array, Status::OK(), Status::OK(),
+                      ElementsAreArray(output_data));
     }
   }
 }
@@ -3784,7 +3780,7 @@ void TestAddN(ParameterizedOpConverterTestBase* test, AddNTestParams& p) {
     test->AddTestTensor(name, p.dimensions, test->get_tf_type(), sub_input_val);
   }
 
-  test->TestOpConverter("my_addn", node_def, p.dimensions,
+  test->TestOpConverter(node_def, p.dimensions,
                         /*expected_conversion_status=*/p.status,
                         /*expected_runtime_status=*/p.status,
                         /*matcher=*/ElementsAreArray(p.expected_output),
@@ -4011,7 +4007,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
   }
   AddTestTensor("input", {1, 1, 20}, tf_type_, inputs);
 
-  TestOpConverter("my_square", node_def, {1, 1, 20}, Status::OK(), Status::OK(),
+  TestOpConverter(node_def, {1, 1, 20}, Status::OK(), Status::OK(),
                   ArrayFloatNear(expected_outputs, 0));
 }
 
@@ -4074,7 +4070,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
             nb_el *= d;
           }
           std::vector<float> expected_output(nb_el, val);
-          TestOpConverter("my_fill", node_def, output_dims, status, status,
+          TestOpConverter(node_def, output_dims, status, status,
                           ElementsAreArray(expected_output));
         }
       }
@@ -4285,7 +4281,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
           set_parameters(param_name, param_value, param_type, config,
                          partial_shape_idx);
           const std::vector<int> output_dims = {num_values};
-          TestOpConverter("my_range", ndef, output_dims, status, status,
+          TestOpConverter(ndef, output_dims, status, status,
                           ElementsAreArray(expected_output));
         }
       }
@@ -4317,12 +4313,11 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertLikeOps) {
   for (int value : {0, 1}) {
     Reset();
     const NodeDef& node_def = get_node(value);
-    const std::string name = value ? "Ones" : "Zeros";
 
     if (trt_mode_ == TrtTestMode::kImplicitBatch) {
       std::vector<float> input_data(8, 42.0f);
       AddTestTensor("input", {8}, tf_type_, input_data);
-      const auto& err = convert_not_supported_implicit(string(name) + "Like",
+      const auto& err = convert_not_supported_implicit(node_def.name() + "Like",
                                                        node_def.name());
       RunValidationAndConversion(node_def, error::UNIMPLEMENTED, err);
       continue;
@@ -4347,7 +4342,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertLikeOps) {
           AddTestWeights("input", output_dims, input_data, tf_type_);
         }
         std::vector<float> expected_output(nb_el, value);
-        TestOpConverter(name, node_def, output_dims, status, status,
+        TestOpConverter(node_def, output_dims, status, status,
                         ElementsAreArray(expected_output));
       }
     }
@@ -4544,7 +4539,7 @@ TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
 
     auto node_def = get_nms_nodedef(tf_type_, p.clip_boxes, p.pad_per_class);
 
-    TestOpConverterMultiOut("my_nms", node_def, p.expected_output_dims,
+    TestOpConverterMultiOut(node_def, p.expected_output_dims,
                             p.conversion_status, p.runtime_status,
                             {
                                 ElementsAreArray(p.exp_boxes),
@@ -4749,7 +4744,7 @@ TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
 
     auto node_def = get_nms_nodedef(tf_type_, p.clip_boxes, p.pad_per_class);
 
-    TestOpConverterMultiOut("my_nms", node_def, p.expected_output_dims,
+    TestOpConverterMultiOut(node_def, p.expected_output_dims,
                             p.conversion_status, p.runtime_status,
                             {
                                 ElementsAreArray(p.exp_boxes),
@@ -4897,7 +4892,7 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
     Reset();
     AddTestTensor("input", p.input_dims, {1, 2, 3, 4, 5, 6});
     AddTestWeights<int32>("weights", {1}, {p.param[0]});
-    TestOpConverter("my_expanddims", node_def, p.expected_output_dims, p.status,
+    TestOpConverter(node_def, p.expected_output_dims, p.status,
                     p.runtime_status, ElementsAreArray({1, 2, 3, 4, 5, 6}));
   }
 }
@@ -4926,8 +4921,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSoftmax) {
   for (auto p : test_params) {
     Reset();
     AddTestTensor("logits", p.input_dims, input_values);
-    TestOpConverter("my_softmax", node_def, p.input_dims, Status::OK(),
-                    Status::OK(), ArrayFloatNear(p.expected_values, 1e-3));
+    TestOpConverter(node_def, p.input_dims, Status::OK(), Status::OK(),
+                    ArrayFloatNear(p.expected_values, 1e-3));
   }
 }
 
@@ -4956,8 +4951,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertLogSoftmax) {
   for (auto p : test_params) {
     Reset();
     AddTestTensor("logits", p.input_dims, input_values);
-    TestOpConverter("my_logsoftmax", node_def, p.input_dims, Status::OK(),
-                    Status::OK(), ArrayFloatNear(p.expected_values, 1e-3));
+    TestOpConverter(node_def, p.input_dims, Status::OK(), Status::OK(),
+                    ArrayFloatNear(p.expected_values, 1e-3));
   }
 }
 
@@ -5060,7 +5055,7 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
     NodeDef node_def = get_squeeze_nodedef(p.param, tf_type_);
     AddTestTensor("input", p.input_dims, {1, 2, 3, 4, 5, 6},
                   p.partial_input_dims);
-    TestOpConverter("my_squeeze", node_def, p.expected_output_dims, p.status,
+    TestOpConverter(node_def, p.expected_output_dims, p.status,
                     p.runtime_status, ElementsAreArray({1, 2, 3, 4, 5, 6}));
   }
 }
@@ -5858,9 +5853,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
     AddTestWeights<int32>("strides", {static_cast<int>(p.strides.size())},
                           p.strides);
 
-    TestOpConverter("my_strided_slice", node_def, p.expected_output_dims,
-                    p.conversion_status, p.runtime_status,
-                    ElementsAreArray(p.expected_output));
+    TestOpConverter(node_def, p.expected_output_dims, p.conversion_status,
+                    p.runtime_status, ElementsAreArray(p.expected_output));
   }
 }
 
@@ -6028,9 +6022,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
         trt_mode_ == TrtTestMode::kDynamicShape && (i == 9 || i == 11);
     if (flag) logger_.suppressLoggerMsgs(nvinfer1::ILogger::Severity::kERROR);
 
-    TestOpConverter("my_slice", node_def, p.expected_output_dims,
-                    p.conversion_status, p.runtime_status,
-                    ElementsAreArray(p.expected_output));
+    TestOpConverter(node_def, p.expected_output_dims, p.conversion_status,
+                    p.runtime_status, ElementsAreArray(p.expected_output));
     if (flag) logger_.unsuppressLoggerMsgs(nvinfer1::ILogger::Severity::kERROR);
   }
 }
@@ -6249,8 +6242,8 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", ok_params[i].filter_dims,
                           ok_params[i].filter);
 
-    TestOpConverter("my_conv2d", node_def, ok_params[i].expected_output_dims,
-                    Status::OK(), Status::OK(),
+    TestOpConverter(node_def, ok_params[i].expected_output_dims, Status::OK(),
+                    Status::OK(),
                     ElementsAreArray(ok_params[i].expected_output));
   }
 }
@@ -6453,9 +6446,8 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
         AddTestWeights<int>("input_sizes", {2}, tf_input_sizes);
       }
 
-      TestOpConverter("my_conv2d_backprop_input", node_def,
-                      p.expected_output_dims, p.conversion_status, Status::OK(),
-                      ElementsAreArray(p.expected_output));
+      TestOpConverter(node_def, p.expected_output_dims, p.conversion_status,
+                      Status::OK(), ElementsAreArray(p.expected_output));
     }
   }
 }
@@ -6528,7 +6520,7 @@ void TestConv3D(ParameterizedOpConverterTestBase* test, Conv3DTestParams& p) {
                                 p.expected_output);
   }
 
-  test->TestOpConverter("my_conv3d", node_def, p.expected_output_dims,
+  test->TestOpConverter(node_def, p.expected_output_dims,
                         /*expected_conversion_status=*/p.validation_status,
                         /*expected_runtime_status=*/Status::OK(),
                         /*matcher=*/ElementsAreArray(p.expected_output),
@@ -6987,12 +6979,10 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
       }
       for (bool is_max_pooling : {true, false}) {
         Reset();
-        NodeDef node_def =
-            get_pool_nodedef(tf_type_, nDim, ksize, strides, p.padding,
-                             data_format, is_max_pooling);
+        NodeDef node = get_pool_nodedef(tf_type_, nDim, ksize, strides,
+                                        p.padding, data_format, is_max_pooling);
         AddTestTensor("input", input_dims, input);
-        TestOpConverter("my_pool", node_def, expected_output_dims, Status::OK(),
-                        Status::OK(),
+        TestOpConverter(node, expected_output_dims, Status::OK(), Status::OK(),
                         ElementsAreArray(p.expected_outputs.at(test_counter)));
         test_counter++;
       }
@@ -7022,8 +7012,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertTopK) {
     AddTestWeights<int32>("weights", {1}, {2});
     std::vector<std::vector<int>> expected_output_dims{{1, 1, 2, 2},
                                                        {1, 1, 2, 2}};
-    TestOpConverterMultiOut("my_topk", node_def, expected_output_dims,
-                            Status::OK(), Status::OK(),
+    TestOpConverterMultiOut(node_def, expected_output_dims, Status::OK(),
+                            Status::OK(),
                             {ElementsAre(6, 5, 7, 1), ElementsAre(4, 2, 1, 2)},
                             {tf_type_, DT_INT32});
   }
@@ -7182,8 +7172,8 @@ TEST_P(OpConverter_INT32_Test, ConvertDataFormatVecPermute) {
       AddTestWeights("x", p.x_shape, p.x, DT_INT32);
     }
 
-    TestOpConverter("my_dfvp", node_def, p.x_shape, p.conversion_status,
-                    Status::OK(), ElementsAreArray(p.expected_output));
+    TestOpConverter(node_def, p.x_shape, p.conversion_status, Status::OK(),
+                    ElementsAreArray(p.expected_output));
   }
 }
 
@@ -7490,9 +7480,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
     }
 
     AddTestWeights<int32>("axis", {1}, {p.axis});
-    TestOpConverter("my_gather", node_def, p.expected_output_shape,
-                    p.conversion_status, p.runtime_status,
-                    ElementsAreArray(p.expected_output));
+    TestOpConverter(node_def, p.expected_output_shape, p.conversion_status,
+                    p.runtime_status, ElementsAreArray(p.expected_output));
   }
 }
 
@@ -7638,9 +7627,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertReduce) {
                         [](float& _n) { _n = std::floor(_n); });
         }
 
-        TestOpConverter("my_reduce", node_def, expected_output_dims,
-                        p.conversion_status, Status::OK(),
-                        ArrayFloatNear(expected_values));
+        TestOpConverter(node_def, expected_output_dims, p.conversion_status,
+                        Status::OK(), ArrayFloatNear(expected_values));
       }
     }
   }
@@ -7889,9 +7877,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
     }
     AddTestWeights<int32>("axis", {1}, {p.axis});
 
-    TestOpConverter("my_concat", node_def, p.expected_output_dims,
-                    p.conversion_status, p.run_status,
-                    ElementsAreArray(p.expected_output));
+    TestOpConverter(node_def, p.expected_output_dims, p.conversion_status,
+                    p.run_status, ElementsAreArray(p.expected_output));
   }
 }
 
@@ -8104,8 +8091,7 @@ void TestConvertUnpack(ParameterizedOpConverterTestBase* test,
     expected_output_dims.push_back(p.expected_output_dims);
   }
 
-  test->TestOpConverterMultiOut(/*name=*/"my_unpack",
-                                /*node_def=*/node_def,
+  test->TestOpConverterMultiOut(/*node_def=*/node_def,
                                 /*expected_output_dims=*/expected_output_dims,
                                 /*expected_conversion_status=*/p.run_status,
                                 /*expected_runtime_status=*/p.run_status,
@@ -8412,9 +8398,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
                       p.input_values[j], p.partial_input_shapes[j]);
       }
     }
-    TestOpConverter("my_pack", node_def, p.expected_output_dims,
-                    p.conversion_status, p.runtime_status,
-                    ElementsAreArray(p.expected_output));
+    TestOpConverter(node_def, p.expected_output_dims, p.conversion_status,
+                    p.runtime_status, ElementsAreArray(p.expected_output));
   }
 }
 
@@ -8459,7 +8444,7 @@ void TestConvertArgMinMax(ParameterizedOpConverterTestBase* test,
   test->AddTestTensor("input", p.input_shape, _tf_type, p.input_value);
   test->AddTestWeights("dimension", {1}, {p.axis}, DT_INT32);
 
-  test->TestOpConverter("my_arg", node_def, p.expected_output_dims,
+  test->TestOpConverter(node_def, p.expected_output_dims,
                         /*expected_conversion_status=*/p.status,
                         /*expected_runtime_status=*/Status::OK(),
                         /*matcher=*/ElementsAreArray(expected_out), {DT_INT32});
@@ -8680,11 +8665,10 @@ void TestConvertDepthSpaceShuffle(
 
   for (auto p : params) {
     test->Reset();
-    NodeDef node_def = GetDepthSpaceShuffleNodeDef<OpType>(
+    const NodeDef node = GetDepthSpaceShuffleNodeDef<OpType>(
         test->get_tf_type(), p.block_size, p.data_format);
     test->AddTestTensor("input", p.input_dims, p.input_value);
-    test->TestOpConverter("my_shuffle", node_def, p.expected_output_dims,
-                          status, Status::OK(),
+    test->TestOpConverter(node, p.expected_output_dims, status, Status::OK(),
                           ElementsAreArray(p.expected_output));
   }
 }
@@ -8879,7 +8863,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
     AddTestWeights("clip_value_min", {1}, {p.clip_value_min}, tf_type_);
     AddTestWeights("clip_value_max", {1}, {p.clip_value_max}, tf_type_);
 
-    TestOpConverter("my_clip", node_def, p.dims,
+    TestOpConverter(node_def, p.dims,
                     /*expected_conversion_status=*/Status::OK(),
                     /*expected_runtime_status=*/Status::OK(),
                     /*matcher=*/ElementsAreArray(p.expected_output));
@@ -8953,11 +8937,10 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquaredDifference) {
 
   for (auto p : params) {
     Reset();
-    NodeDef node_def = GetSquaredDifferenceNodeDef(tf_type_);
+    const NodeDef node = GetSquaredDifferenceNodeDef(tf_type_);
     AddTestTensor("x", p.dims_x, p.value_x);
     AddTestTensor("y", p.dims_y, p.value_y);
-    TestOpConverter("my_squared_diff", node_def, p.expected_output_dims,
-                    p.status, p.runtime_status,
+    TestOpConverter(node, p.expected_output_dims, p.status, p.runtime_status,
                     ElementsAreArray(p.expected_output));
   }
 }
@@ -9013,7 +8996,7 @@ void TestConvertResize(ParameterizedOpConverterTestBase* test,
     ASSERT_TRUE(false);
   }
 
-  test->TestOpConverter("my_resize", node_def, p.expected_output_dims,
+  test->TestOpConverter(node_def, p.expected_output_dims,
                         /*expected_conversion_status=*/p.status,
                         /*expected_runtime_status=*/p.status,
                         /*matcher=*/ElementsAreArray(expected_out),
@@ -9250,8 +9233,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPad) {
     AddTestTensor("input", p.input_dims, p.input_values);
     // Create output size.
     AddTestWeights<int32>("padding", p.pad_dims, p.pad_values);
-    TestOpConverter("my_pad", node_def, p.expected_output_dims, p.status,
-                    p.status, ElementsAreArray(p.expected_output_values));
+    TestOpConverter(node_def, p.expected_output_dims, p.status, p.status,
+                    ElementsAreArray(p.expected_output_values));
   }
 }
 
@@ -9387,7 +9370,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
   auto run_test = [&](const NodeDef& node, const std::vector<int>& exp_dims) {
     for (int n = 0; n < 2; n++) {
       set_parameters();
-      TestOpConverter("my_select", node, exp_dims, Status::OK(), Status::OK(),
+      TestOpConverter(node, exp_dims, Status::OK(), Status::OK(),
                       ElementsAreArray(expected_output));
       if (!n) {
         // Changing the condition and expected_output.
@@ -9462,7 +9445,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
     do {
       set_parameters();
       if (config[0]) {
-        TestOpConverter("my_select", node, {1}, status, status,
+        TestOpConverter(node, {1}, status, status,
                         ElementsAreArray(expected_output));
       } else {
         RunValidationAndConversion(node, error::INVALID_ARGUMENT, err_msg);
@@ -9682,7 +9665,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
         err_msg = then_else_dtypes_error_msg(trt_type[0], trt_type[1], node);
         RunValidationAndConversion(node, error::INVALID_ARGUMENT, err_msg);
       } else {
-        TestOpConverter("my_select", node, dims, status, status,
+        TestOpConverter(node, dims, status, status,
                         ElementsAreArray(expected_output));
       }
     }
