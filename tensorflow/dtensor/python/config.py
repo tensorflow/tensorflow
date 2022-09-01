@@ -26,6 +26,10 @@ _DT_JOBS = "DTENSOR_JOBS"
 _DT_HEARTBEAT_ENABLED = "DTENSOR_ENABLE_HEARTBEAT"
 
 
+# All functions in this file can be used before calling
+# `tf.experimental.dtensor.initialize_accelerator_system`.
+
+
 @tf_export("experimental.dtensor.client_id", v1=[])
 def client_id() -> int:
   """Returns this client's ID."""
