@@ -17,6 +17,7 @@ def repo(name):
         ],
         build_file = "//third_party/llvm:llvm.BUILD",
         patch_file = [
+            "//third_party/llvm:until_7c0cf32838136734add8ef7a736e7e5fe22988f4.patch",
             "//third_party/llvm:infer_type.patch",  # TODO(b/231285230): remove once resolved
             "//third_party/llvm:build.patch",
             "//third_party/llvm:toolchains.patch",
