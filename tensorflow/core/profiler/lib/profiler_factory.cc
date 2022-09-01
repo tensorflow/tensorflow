@@ -28,9 +28,12 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-mutex mu(LINKER_INITIALIZED);
+mutex& getFactoryMutex() {
+  static mutex mu(LINKER_INITIALIZED);
+  return mu;
+}
 
-std::vector<ProfilerFactory>* GetFactories() TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
+std::vector<ProfilerFactory>* GetFactories() {
   static auto factories = new std::vector<ProfilerFactory>();
   return factories;
 }
@@ -38,14 +41,14 @@ std::vector<ProfilerFactory>* GetFactories() TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
 }  // namespace
 
 void RegisterProfilerFactory(ProfilerFactory factory) {
-  mutex_lock lock(mu);
+  mutex_lock lock(getFactoryMutex());
   GetFactories()->push_back(std::move(factory));
 }
 
 std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
     const ProfileOptions& options) {
   std::vector<std::unique_ptr<profiler::ProfilerInterface>> result;
-  mutex_lock lock(mu);
+  mutex_lock lock(getFactoryMutex());
   for (const auto& factory : *GetFactories()) {
     auto profiler = factory(options);
     // A factory might return nullptr based on options.
@@ -57,7 +60,7 @@ std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
 }
 
 void ClearRegisteredProfilersForTest() {
-  mutex_lock lock(mu);
+  mutex_lock lock(getFactoryMutex());
   GetFactories()->clear();
 }
 
