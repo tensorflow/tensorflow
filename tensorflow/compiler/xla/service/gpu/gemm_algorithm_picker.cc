@@ -58,20 +58,8 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
       return se::cuda::BlasLt::Epilogue::kBias;
     case GemmBackendConfig::BIASRELU:
       return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
-    case GemmBackendConfig::GELU:
-#if CUDA_VERSION >= 11040
-      return se::cuda::BlasLt::Epilogue::kGeLU;
-#else
-      return InternalError(absl::StrCat(
-          "CUBLASLT_EPILOGUE_GELU epilogue requires cublasLt >= 11.4"));
-#endif
-    case GemmBackendConfig::BIASGELU:
-#if CUDA_VERSION >= 11040
-      return se::cuda::BlasLt::Epilogue::kBiasThenGeLUApproximate;
-#else
-      return InternalError(absl::StrCat(
-          "CUBLASLT_EPILOGUE_GELU_BIAS epilogue requires cublasLt >= 11.4"));
-#endif
+    default:
+      return InternalError("Unsupported Epilogue.");
   }
 }
 

@@ -411,7 +411,7 @@ class MatOpsDotAddTest
   }
 };
 
-XLA_TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2BF16) { TestImpl<bfloat16>();
+XLA_TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2BF16) { TestImpl<bfloat16>(); }
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
 XLA_TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2F16) { TestImpl<Eigen::half>(); }
 XLA_TEST_P(MatOpsDotAddTest, Dot_BiasAdd_2x2_2x2F16) {

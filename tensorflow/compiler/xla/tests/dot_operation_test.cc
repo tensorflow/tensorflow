@@ -714,13 +714,13 @@ XLA_TYPED_TEST(DotOperationTestWithCublasLt_F16F32F64CF64,
       this->client_
           ->TransferToServer(LiteralUtil::CreateR3FromArray3D<T>(
               {{{-1.0f, 2.0f}, {3.0f, -4.0f}}, {{5.0f, 6.0f}, {-7.0f, 8.0f}}}))
-          .ConsumeValueOrDie();
+          .value();
 
   auto y_data =
       this->client_
           ->TransferToServer(LiteralUtil::CreateR3FromArray3D<T>(
               {{{1.0f, 0.0f}, {0.0f, -1.0f}}, {{1.0f, 0.0f}, {0.0f, 1.0f}}}))
-          .ConsumeValueOrDie();
+          .value();
   Array3D<T> expected(
       {{{-1.0f, -2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {-7.0f, 8.0f}}});
   if (prim_type != C64) {
