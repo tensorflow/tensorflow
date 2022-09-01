@@ -53,6 +53,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:file_system_utils",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
