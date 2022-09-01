@@ -20,7 +20,7 @@ from absl import logging
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.dtensor.python import api
+from tensorflow.dtensor.python import config
 from tensorflow.python.eager import context
 from tensorflow.python.platform import remote_utils
 
@@ -61,16 +61,16 @@ def initialize_multi_client_cluster(job_name: str,
   if _is_multi_client_initialized:
     raise ValueError("Multi-client mode has already been initialized.")
 
-  if api.num_clients() <= 1:
+  if config.num_clients() <= 1:
     raise ValueError(
         "DTENSOR_NUM_CLIENTS must be set greater than 1 for multi-client mode.")
 
-  if not api.jobs() or len(api.jobs()) <= 1:
+  if not config.jobs() or len(config.jobs()) <= 1:
     raise ValueError(
         "DTENSOR_JOBS environment variable is required when using multi-client "
         "mode to properly set up communications between servers.")
 
-  if len(api.jobs()) != api.num_clients():
+  if len(config.jobs()) != config.num_clients():
     raise ValueError(
         "DTENSOR_JOBS environment variable must be configured with the same "
         "number of items as DTENSOR_NUM_CLIENTS.")

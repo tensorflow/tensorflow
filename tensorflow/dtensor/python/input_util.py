@@ -63,6 +63,7 @@ import dataclasses
 from typing import Any, List, Optional, Sequence, Tuple
 
 from tensorflow.dtensor.python import api
+from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -461,9 +462,8 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     # the local devices on that client can be correctly matched to slices of the
     # input tensor(s). If replicas are wholly contained within a client, then
     # this offset is always 0.
-    self._partition_offset = (
-        api.client_id() %
-        self._num_clients_per_replica) * self._num_local_devices_per_replica
+    self._partition_offset = (config.client_id() % self._num_clients_per_replica
+                             ) * self._num_local_devices_per_replica
 
     # Helper data structures used in partitioning the dataset tensors.
     self._all_shard_counts = [
@@ -505,7 +505,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
           data_service_ops.distribute(
               processing_mode=sharding_policy,
               service=self._tf_data_service_config.dispatcher_address,
-              job_name=f'{self._tf_data_service_config.job_name}_{api.client_id()}',
+              job_name=f'{self._tf_data_service_config.job_name}_{config.client_id()}',
               target_workers='LOCAL'))
 
     for local_replica_idx, replica_id in enumerate(self._local_replica_ids):

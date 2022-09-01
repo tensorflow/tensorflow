@@ -24,6 +24,7 @@ pytype_strict_library(
     ],
     deps = [
         ":api",
+        ":config",
         ":d_checkpoint",
         ":d_variable",
         ":gen_dtensor_ops",
@@ -43,6 +44,7 @@ pytype_strict_library(
     srcs = ["api.py"],
     srcs_version = "PY3",
     deps = [
+        ":config",
         ":dtensor_device",
         ":gen_dtensor_ops",
         ":layout",
@@ -50,6 +52,15 @@ pytype_strict_library(
         "//tensorflow/python:device",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+pytype_strict_library(
+    name = "config",
+    srcs = ["config.py"],
+    srcs_version = "PY3",
+    deps = [
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -154,6 +165,7 @@ pytype_strict_library(
     name = "dtensor_device",
     srcs = ["dtensor_device.py"],
     deps = [
+        ":config",
         ":gen_dtensor_ops",
         ":layout",
         "//tensorflow/core:protos_all_py",
@@ -180,6 +192,7 @@ pytype_strict_library(
     ],
     deps = [
         ":api",
+        ":config",
         ":layout",
         ":multi_client_util",
         ":tpu_util",
@@ -202,6 +215,7 @@ pytype_strict_library(
     ],
     deps = [
         ":api",
+        ":config",
         ":dtensor_device",
         ":gen_dtensor_ops",
         ":heartbeat",
@@ -230,6 +244,7 @@ pytype_strict_library(
     srcs = ["heartbeat.py"],
     deps = [
         ":api",
+        ":config",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:device",
         "//tensorflow/python:framework_ops",
@@ -243,7 +258,7 @@ pytype_strict_library(
     name = "multi_client_util",
     srcs = ["multi_client_util.py"],
     deps = [
-        ":api",
+        ":config",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/eager:context",
@@ -256,6 +271,7 @@ pytype_strict_library(
     srcs = ["input_util.py"],
     deps = [
         ":api",
+        ":config",
         ":layout",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
