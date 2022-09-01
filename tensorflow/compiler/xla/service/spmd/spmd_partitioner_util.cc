@@ -1706,10 +1706,10 @@ HloSharding CreateMatchingShardingOnDims(
   }
 }
 
-std::optional<GatherScatterParallelDimSharding>
-GatherScatterOperandsShardedAcrossParallelDims(
+std::optional<GatherParallelDimSharding>
+GatherOperandsShardedAcrossParallelDims(
     const HloInstruction& operand, const HloInstruction& indices,
-    const hlo_sharding_util::GatherScatterParallelDims& parallel_dims) {
+    const hlo_sharding_util::GatherParallelDims& parallel_dims) {
   auto& indices_parallel_dims = parallel_dims.indices_parallel_dims;
   auto& operand_parallel_dims = parallel_dims.operand_parallel_dims;
   if (indices_parallel_dims.size() != operand_parallel_dims.size()) {
@@ -1729,14 +1729,14 @@ GatherScatterOperandsShardedAcrossParallelDims(
     }
   }
   if (new_index_shard.IsReplicated()) {
-    return GatherScatterParallelDimSharding{
+    return GatherParallelDimSharding{
         CreateMatchingShardingOnDims(indices.shape(), new_operand_shard,
                                      indices_parallel_dims_ordered_as_operand,
                                      operand_parallel_dims),
         new_operand_shard};
   }
   if (new_operand_shard.IsReplicated()) {
-    return GatherScatterParallelDimSharding{
+    return GatherParallelDimSharding{
         new_index_shard,
         CreateMatchingShardingOnDims(operand.shape(), new_index_shard,
                                      operand_parallel_dims,
@@ -1809,7 +1809,7 @@ GatherScatterOperandsShardedAcrossParallelDims(
                               : HloSharding::Tile(operand_shard_tiles),
                           operand_parallel_dims, new_index_shard,
                           indices_parallel_dims_ordered_as_operand);
-  return GatherScatterParallelDimSharding{new_index_shard, new_operand_shard};
+  return GatherParallelDimSharding{new_index_shard, new_operand_shard};
 }
 
 int64_t FindRotateRightPattern(const HloInstruction* concat,
