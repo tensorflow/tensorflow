@@ -84,6 +84,7 @@ filegroup(
         "init_main.h",
         "net.h",
         "stack_frame.h",
+        "stacktrace.h",
         "stacktrace_handler.h",
         "stringpiece.h",
     ],
@@ -125,6 +126,7 @@ filegroup(
         "platform.h",
         "platform_strings_computed.h",
         "regexp.h",
+        "stacktrace.h",
         "stringpiece.h",
         "threadpool_interface.h",
     ],
@@ -443,4 +445,13 @@ cc_library(
     deps = [
         ":platform",
     ] + tf_platform_deps("casts"),
+)
+
+cc_library(
+    name = "stacktrace",
+    hdrs = ["stacktrace.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+    ] + tf_windows_aware_platform_deps("stacktrace"),
 )

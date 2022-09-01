@@ -689,7 +689,8 @@ cc_library(
     hdrs = ["stacktrace.h"],
     deps = [
         ":platform",
-    ] + tf_windows_aware_platform_deps("stacktrace"),
+        "//tensorflow/tsl/platform:stacktrace",
+    ],
 )
 
 filegroup(
