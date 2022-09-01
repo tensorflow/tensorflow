@@ -245,7 +245,7 @@ class WorkerConfig(
     collections.namedtuple("WorkerConfig", [
         "dispatcher_address", "worker_address", "port", "protocol",
         "heartbeat_interval_ms", "dispatcher_timeout_ms",
-        "data_transfer_protocol"
+        "data_transfer_protocol", "data_transfer_address"
     ])):
   """Configuration class for tf.data service dispatchers.
 
@@ -267,6 +267,8 @@ class WorkerConfig(
       dispatcher before giving up and reporting an error. Defaults to 1 hour.
     data_transfer_protocol: A string indicating the protocol to be used by the
       worker to transfer data to the client. E.g. "grpc".
+    data_transfer_address: A string indicating the data transfer address of the
+      worker server.
   """
 
   def __new__(cls,
@@ -276,7 +278,8 @@ class WorkerConfig(
               protocol=None,
               heartbeat_interval_ms=None,
               dispatcher_timeout_ms=None,
-              data_transfer_protocol=None):
+              data_transfer_protocol=None,
+              data_transfer_address=None):
     if worker_address is None:
       worker_address = "localhost:%port%"
     if protocol is None:
@@ -284,13 +287,16 @@ class WorkerConfig(
     if data_transfer_protocol is None:
       data_transfer_protocol = (
           _pywrap_utils.TF_DATA_DefaultDataTransferProtocol())
+    if data_transfer_address is None:
+      data_transfer_address = "localhost:%port%"
     heartbeat_interval_ms = _get_time_or_placeholder(heartbeat_interval_ms)
     dispatcher_timeout_ms = _get_time_or_placeholder(dispatcher_timeout_ms)
 
     return super(WorkerConfig,
                  cls).__new__(cls, dispatcher_address, worker_address, port,
                               protocol, heartbeat_interval_ms,
-                              dispatcher_timeout_ms, data_transfer_protocol)
+                              dispatcher_timeout_ms, data_transfer_protocol,
+                              data_transfer_address)
 
 
 @tf_export("data.experimental.service.WorkerServer", v1=[])
@@ -345,7 +351,8 @@ class WorkerServer:
           protocol=config.protocol,
           heartbeat_interval_ms=config.heartbeat_interval_ms,
           dispatcher_timeout_ms=config.dispatcher_timeout_ms,
-          data_transfer_protocol=None)
+          data_transfer_protocol=config.data_transfer_protocol,
+          data_transfer_address=config.data_transfer_address)
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
         config_proto.SerializeToString())
     if start:
