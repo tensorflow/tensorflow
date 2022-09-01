@@ -78,6 +78,41 @@ static absl::Status CompileAndExecute(
 
 // ===---------------------------------------------------------------------===//
 
+// Static counter to observe side effects of direct custom call.
+static int32_t custom_call_counter = 0;
+
+// Direct custom call linked with XLA runtime executable at compile (link) time.
+static bool DirectCustomCall(KernelContext* ctx, void** args, void** attrs) {
+  auto handler = CustomCall::Bind("test.custom_call")
+                     .Arg<int32_t>()
+                     .To([&](int32_t arg) -> LogicalResult {
+                       custom_call_counter += arg;
+                       return success();
+                     });
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+}
+
+TEST(CustomCallTest, DirectCustomCall) {
+  absl::string_view module = R"(
+    func.func private @custom_call(%arg0: i32)
+      attributes { rt.direct_custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = arith.constant 42 : i32
+      call @custom_call(%0) : (i32) -> ()
+      return
+    }
+  )";
+
+  DirectCustomCallLibrary lib;
+  lib.Insert("test.custom_call", DirectCustomCall);
+
+  ASSERT_EQ(custom_call_counter, 0);
+  ASSERT_TRUE(CompileAndExecute(module, {}, {}, std::move(lib)).ok());
+  EXPECT_EQ(custom_call_counter, 42);
+}
+
 TEST(CustomCallTest, ScalarArgs) {
   absl::string_view module = R"(
     func.func private @custom_call(%arg0: i1, %arg1: i32, %arg2: i64,
