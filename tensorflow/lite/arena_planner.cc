@@ -298,7 +298,9 @@ std::vector<int32_t> ArenaPlanner::CreateTensorAllocationVector(int first_node,
   };
 
   std::vector<int32_t> tensor_order;
-  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
+  int num_tensors = static_cast<int>(graph_info_->num_tensors());
+  tensor_order.reserve(num_tensors);
+  for (int i = 0; i < num_tensors; ++i) {
     if (alloc_node_[i] >= first_node && alloc_node_[i] <= last_node) {
       tensor_order.push_back(i);
     }
@@ -351,13 +353,13 @@ TfLiteStatus ArenaPlanner::ResolveTensorAllocation(int tensor_index) {
     // Skip resolution if the size of the tensor is zero, leaving it as a
     // nullptr.
     if (allocs_[tensor_index].size != 0) {
-      TF_LITE_ENSURE_STATUS(arena_.ResolveAlloc(context_, allocs_[tensor_index],
-                                                &tensor.data.raw));
+      return arena_.ResolveAlloc(context_, allocs_[tensor_index],
+                                 &tensor.data.raw);
     }
   }
   if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
-    TF_LITE_ENSURE_STATUS(persistent_arena_.ResolveAlloc(
-        context_, allocs_[tensor_index], &tensor.data.raw));
+    return persistent_arena_.ResolveAlloc(context_, allocs_[tensor_index],
+                                          &tensor.data.raw);
   }
   return kTfLiteOk;
 }
