@@ -227,7 +227,7 @@ LogicalResult StripDefaultAttrsPass::removeDefaultValuedAttrs(Operation *op) {
         ConvertAttributeValue(attr.default_value(), b);
     if (!maybe_attr.ok())
       return op->emitError(maybe_attr.status().error_message());
-    if (maybe_attr.ValueOrDie() == it.first->getValue())
+    if (maybe_attr.value() == it.first->getValue())
       indices_to_remove.set(std::distance(attrs.begin(), it.first));
   }
   if (indices_to_remove.none()) return success();
@@ -316,7 +316,7 @@ LogicalResult AddDefaultAttrsPass::addDefaultValuedAttrs(Operation *op) {
         ConvertAttributeValue(attr.default_value(), b);
     if (!maybe_attr.ok())
       return op->emitError(maybe_attr.status().error_message());
-    attrs.set(attr.name(), maybe_attr.ValueOrDie());
+    attrs.set(attr.name(), maybe_attr.value());
   }
   op->setAttrs(attrs.getDictionary(&getContext()));
 
