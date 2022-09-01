@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_MUTEX_DATA_H_
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_MUTEX_DATA_H_
 
-namespace tensorflow {
+namespace tsl {
 namespace internal {
 
 // The internal state of a mutex.
@@ -30,6 +30,6 @@ struct CVData {
 };
 
 }  // namespace internal
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_MUTEX_DATA_H_
