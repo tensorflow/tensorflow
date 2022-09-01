@@ -14,10 +14,6 @@ load(
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
 )
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
 
 package(
     default_visibility = [
@@ -42,13 +38,6 @@ cc_library(
 )
 
 cc_library(
-    name = "mutex",
-    compatible_with = get_compatible_with_portable(),
-    textual_hdrs = ["mutex.h"],
-    deps = tf_platform_deps("mutex"),
-)
-
-cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],
     compatible_with = get_compatible_with_portable(),
@@ -62,11 +51,6 @@ cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
     compatible_with = get_compatible_with_portable(),
-)
-
-cc_library(
-    name = "thread_annotations",
-    hdrs = ["thread_annotations.h"],
 )
 
 cc_library(
@@ -98,12 +82,10 @@ filegroup(
         "bfloat16.h",
         "casts.h",
         "init_main.h",
-        "mutex.h",
         "net.h",
         "stack_frame.h",
         "stacktrace_handler.h",
         "stringpiece.h",
-        "thread_annotations.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -125,9 +107,7 @@ filegroup(
         "bfloat16.h",
         "byte_order.h",
         "macros.h",
-        "mutex.h",
         "platform.h",
-        "thread_annotations.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -142,12 +122,10 @@ filegroup(
         "init_main.h",
         "intrusive_ptr.h",
         "macros.h",
-        "mutex.h",
         "platform.h",
         "platform_strings_computed.h",
         "regexp.h",
         "stringpiece.h",
-        "thread_annotations.h",
         "threadpool_interface.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -174,7 +152,6 @@ filegroup(
         exclude = [
             "gif.h",
             "jpeg.h",
-            "thread_annotations.h",
         ],
     ),
     compatible_with = get_compatible_with_portable(),
@@ -188,7 +165,6 @@ exports_files(
         "stacktrace_handler.h",
         "bfloat16.h",
         "logging.h",
-        "mutex.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
