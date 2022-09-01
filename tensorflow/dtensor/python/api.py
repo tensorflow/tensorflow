@@ -411,15 +411,18 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
 def local_devices(
     device_type: str,
     for_client_id: Optional[int] = None) -> List[tf_device.DeviceSpec]:
-  """Returns a list of device specs of device_type attached to this client."""
+  """Returns a list of device specs configured on this client."""
   if device_type.upper() not in ["CPU", "GPU", "TPU"]:
     raise ValueError(f"Device type {device_type} is not CPU, GPU, or TPU.")
+
   if for_client_id is None:
     for_client_id = config.client_id()
 
+  # Directly generate a list of local devices to avoid
+  # triggering TensorFlow context initialization.
   logical_devices = [
-      tf_device.DeviceSpec.from_string(d.name)
-      for d in tf_config.list_logical_devices(device_type)
+      tf_device.DeviceSpec.from_string(f"/device:{device_type}:{i}")
+      for i in range(num_local_devices(device_type))
   ]
 
   # Get the number of local devices.
@@ -443,8 +446,14 @@ def local_devices(
 
 @tf_export("experimental.dtensor.num_local_devices", v1=[])
 def num_local_devices(device_type: str) -> int:
-  """Returns the number of devices of device_type attached to this client."""
-  return len(local_devices(device_type))
+  """Returns the number of devices of device_type configured on this client."""
+
+  # Reads from config because CPU and GPU can use logical devices.
+  if device_type.upper() in ["CPU", "GPU"]:
+    context_config = context.get_config()
+    return context_config.device_count[device_type.upper()]
+
+  return len(tf_config.list_physical_devices(device_type))
 
 
 @tf_export("experimental.dtensor.num_global_devices", v1=[])
