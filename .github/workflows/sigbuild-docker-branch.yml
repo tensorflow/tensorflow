@@ -27,6 +27,7 @@ on:
 
 jobs:
   docker:
+    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     runs-on: ubuntu-latest
     strategy:
       matrix:
