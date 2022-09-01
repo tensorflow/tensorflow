@@ -17,7 +17,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -29,6 +28,10 @@ limitations under the License.
 
 namespace mlir {
 namespace lmhlo {
+
+#define GEN_PASS_DEF_LHLOLEGALIZETOPARALLELLOOPSPASS
+#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
+
 namespace {
 
 // Clones and adapts the code in `lhlo_block` that works on buffers and has a
@@ -695,7 +698,7 @@ class SelectAndScatterOpConverter
 };
 
 struct LhloLegalizeToParallelLoopsPass
-    : public LhloLegalizeToParallelLoopsPassBase<
+    : public impl::LhloLegalizeToParallelLoopsPassBase<
           LhloLegalizeToParallelLoopsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<arith::ArithmeticDialect, func::FuncDialect,

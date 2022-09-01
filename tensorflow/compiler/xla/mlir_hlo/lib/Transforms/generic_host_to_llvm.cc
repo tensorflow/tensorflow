@@ -15,7 +15,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -36,10 +36,14 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 
 namespace mlir {
+
+#define GEN_PASS_DEF_GENERICHOSTTOLLVMPASS
+#include "mlir-hlo/Transforms/passes.h.inc"
+
 namespace {
 
 class GenericHostToLLVMPass
-    : public GenericHostToLLVMPassBase<GenericHostToLLVMPass> {
+    : public impl::GenericHostToLLVMPassBase<GenericHostToLLVMPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<LLVM::LLVMDialect>();
   }

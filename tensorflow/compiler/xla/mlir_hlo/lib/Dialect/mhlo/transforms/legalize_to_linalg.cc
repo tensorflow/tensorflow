@@ -28,7 +28,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
@@ -66,6 +65,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_HLOLEGALIZETOLINALGPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 Value getResultValue(Operation* op) { return op->getResult(0); }
@@ -3238,7 +3241,7 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
 };
 
 struct HloLegalizeToLinalgPass
-    : public mhlo::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
+    : public impl::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<bufferization::BufferizationDialect, linalg::LinalgDialect,
                     scf::SCFDialect, complex::ComplexDialect, math::MathDialect,

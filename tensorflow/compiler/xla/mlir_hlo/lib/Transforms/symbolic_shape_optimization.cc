@@ -25,7 +25,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -39,6 +38,9 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
+
+#define GEN_PASS_DEF_SYMBOLICSHAPEOPTIMIZATION
+#include "mlir-hlo/Transforms/passes.h.inc"
 
 using ShapeOrValueInfo = ShapeComponentAnalysis::ShapeOrValueInfo;
 using Symbol = ShapeComponentAnalysis::Symbol;
@@ -782,7 +784,8 @@ struct CstrBroadcastableOpLowering
 };
 
 class SymbolicShapeOptimizationPass final
-    : public SymbolicShapeOptimizationBase<SymbolicShapeOptimizationPass> {
+    : public impl::SymbolicShapeOptimizationBase<
+          SymbolicShapeOptimizationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<linalg::LinalgDialect>();
   }

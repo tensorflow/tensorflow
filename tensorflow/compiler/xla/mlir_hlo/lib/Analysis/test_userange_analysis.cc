@@ -15,17 +15,18 @@ limitations under the License.
 
 #include "mlir-hlo/Analysis/userange_analysis.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Transforms/PassDetail.h"
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/Dialect/Bufferization/Transforms/BufferViewFlowAnalysis.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
 
+#define GEN_PASS_DEF_TESTUSERANGE
+#include "mlir-hlo/Transforms/passes.h.inc"
+
 namespace {
 
-struct TestUserangePass : public TestUserangeBase<TestUserangePass> {
+struct TestUserangePass : public impl::TestUserangeBase<TestUserangePass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::lmhlo::LmhloDialect>();
   }

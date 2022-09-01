@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -43,6 +42,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_HLOLEGALIZESORTPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 using ::mlir::arith::AddIOp;
@@ -536,7 +539,8 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
   }
 };
 
-struct LegalizeSortPass : public HloLegalizeSortPassBase<LegalizeSortPass> {
+struct LegalizeSortPass
+    : public impl::HloLegalizeSortPassBase<LegalizeSortPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<scf::SCFDialect>();
     registry.insert<memref::MemRefDialect>();

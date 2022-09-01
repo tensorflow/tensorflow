@@ -36,6 +36,9 @@ class FusionOp;
 
 namespace lmhlo {
 
+#define GEN_PASS_DECL_LHLOFUSELINALGPASS
+#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
+
 // Lowers from LHLO dialect to Affine dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLhloLegalizeToAffinePass();
 

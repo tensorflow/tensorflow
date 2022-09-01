@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/bufferizable_op_interface_impl.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
-#include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir-hlo/Transforms/rewriters.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -76,6 +75,12 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
+
+#define GEN_PASS_DEF_COMPUTEOPANDFUNCBUFFERIZEPASS
+#define GEN_PASS_DEF_FINALBUFFERIZEPASS
+#define GEN_PASS_DEF_ONESHOTBUFFERIZE
+#include "mlir-hlo/Transforms/passes.h.inc"
+
 namespace {
 
 /// A helper type converter class that automatically populates the relevant
@@ -124,7 +129,8 @@ class CustomBufferizeTypeConverter
 };
 
 struct ComputeOpAndFuncBufferizePass
-    : public ComputeOpAndFuncBufferizePassBase<ComputeOpAndFuncBufferizePass> {
+    : public impl::ComputeOpAndFuncBufferizePassBase<
+          ComputeOpAndFuncBufferizePass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<bufferization::BufferizationDialect, lmhlo::LmhloDialect,
@@ -215,7 +221,7 @@ struct ComputeOpAndFuncBufferizePass
 };
 
 struct OneShotBufferizePass
-    : public OneShotBufferizeBase<OneShotBufferizePass> {
+    : public impl::OneShotBufferizeBase<OneShotBufferizePass> {
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
@@ -250,7 +256,8 @@ struct OneShotBufferizePass
   }
 };
 
-struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
+struct FinalBufferizePass
+    : public impl::FinalBufferizePassBase<FinalBufferizePass> {
  private:
   BufferizeDialectsCallback dialectsCallback;
   BufferizePatternsCallback patternsCallback;

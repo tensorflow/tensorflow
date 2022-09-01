@@ -19,7 +19,6 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
@@ -35,6 +34,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_LEGALIZEMHLOTOTHLOPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 bool isIotaArray(llvm::ArrayRef<int64_t> array, int expectedSize = -1) {
@@ -286,7 +289,7 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
 };
 
 class LegalizeMHLOToTHLOPass
-    : public LegalizeMHLOToTHLOPassBase<LegalizeMHLOToTHLOPass> {
+    : public impl::LegalizeMHLOToTHLOPassBase<LegalizeMHLOToTHLOPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
     registry.insert<thlo::THLODialect, linalg::LinalgDialect,
                     arith::ArithmeticDialect, tensor::TensorDialect>();

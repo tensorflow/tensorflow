@@ -22,7 +22,6 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -52,6 +51,11 @@ static bool operator<(const Value &lhs, const Value &rhs) {
 }
 
 namespace mhlo {
+
+#define GEN_PASS_DEF_RANKSPECIALIZATIONCLUSTERPASS
+#define GEN_PASS_DEF_RANKSPECIALIZATIONTOSCFPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 /// Identify clusters of operations that can be rank-specialized together. The
@@ -278,7 +282,8 @@ struct MergeRankSpecializationClusterOpsPattern
 };
 
 struct RankSpecializationClusterPass
-    : public RankSpecializationClusterPassBase<RankSpecializationClusterPass> {
+    : public impl::RankSpecializationClusterPassBase<
+          RankSpecializationClusterPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect, chlo::ChloDialect>();
   }
@@ -902,7 +907,8 @@ struct LowerRankSpecializationClusterPattern
 };
 
 struct RankSpecializationToSCFPass
-    : public RankSpecializationToSCFPassBase<RankSpecializationToSCFPass> {
+    : public impl::RankSpecializationToSCFPassBase<
+          RankSpecializationToSCFPass> {
   explicit RankSpecializationToSCFPass(int64_t maxTargetRank)
       : RankSpecializationToSCFPassBase<
             RankSpecializationToSCFPass>::RankSpecializationToSCFPassBase() {

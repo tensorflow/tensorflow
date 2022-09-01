@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/utils/hlo_utils.h"
@@ -42,8 +41,12 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_LOWERCOMPLEXPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
-class LowerComplexPass : public LowerComplexPassBase<LowerComplexPass> {
+class LowerComplexPass : public impl::LowerComplexPassBase<LowerComplexPass> {
  public:
   /// Performs the lowering to MHLO dialect.
   void runOnOperation() override;

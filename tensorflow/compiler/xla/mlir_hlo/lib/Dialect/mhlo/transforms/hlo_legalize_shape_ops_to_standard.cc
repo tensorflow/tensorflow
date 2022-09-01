@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -42,6 +41,11 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
+namespace mhlo {
+
+#define GEN_PASS_DEF_HLOLEGALIZESHAPEOPSTOSTANDARDPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 struct ComputeReshapeShapeConversion
@@ -192,7 +196,7 @@ struct CstrReshapableConversion
 };
 
 struct HloLegalizeShapeOpsToStandardPass
-    : public mhlo::HloLegalizeShapeOpsToStandardPassBase<
+    : public impl::HloLegalizeShapeOpsToStandardPassBase<
           HloLegalizeShapeOpsToStandardPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<arith::ArithmeticDialect, shape::ShapeDialect,
@@ -219,8 +223,6 @@ struct HloLegalizeShapeOpsToStandardPass
 };
 
 }  // namespace
-
-namespace mhlo {
 
 void populateHloShapeOpsToStandardConversionPattern(
     MLIRContext* context, TypeConverter& typeConverter,

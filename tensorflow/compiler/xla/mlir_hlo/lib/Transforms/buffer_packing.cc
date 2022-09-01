@@ -16,7 +16,6 @@ limitations under the License.
 #include <list>
 
 #include "mlir-hlo/Analysis/userange_analysis.h"
-#include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -28,6 +27,10 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+
+#define GEN_PASS_DEF_BUFFERPACKING
+#define GEN_PASS_DEF_MEMORYCOUNT
+#include "mlir-hlo/Transforms/passes.h.inc"
 
 namespace {
 
@@ -422,7 +425,7 @@ class BufferPacking : bufferization::BufferPlacementTransformationBase {
 /// memory. The window size is used as sliding window size. Allocation
 /// userangepoitions that are in the same range are mapped to the same window
 /// id. The information of the allocation starting position is blured.
-struct BufferPackingPass : public BufferPackingBase<BufferPackingPass> {
+struct BufferPackingPass : public impl::BufferPackingBase<BufferPackingPass> {
   explicit BufferPackingPass(unsigned windowSize) {
     this->window_size_ = windowSize;
   }
@@ -441,7 +444,7 @@ struct BufferPackingPass : public BufferPackingBase<BufferPackingPass> {
 };
 
 /// Pass to find all allocations and to compute memory usage.
-struct MemoryCountPass : MemoryCountBase<MemoryCountPass> {
+struct MemoryCountPass : impl::MemoryCountBase<MemoryCountPass> {
   void runOnOperation() override {
     Operation *op = getOperation();
     std::vector<Value> allocs;
