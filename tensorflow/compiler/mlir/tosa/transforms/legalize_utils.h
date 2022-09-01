@@ -39,6 +39,15 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 
+LogicalResult getDynamicDims(PatternRewriter& rewriter, Value value,
+                             llvm::SmallVector<Value>& dims);
+
+llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
+                                                  Operation* op,
+                                                  Value input_value,
+                                                  ShapedType output_type,
+                                                  llvm::ArrayRef<Value> dims);
+
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val, double scale,

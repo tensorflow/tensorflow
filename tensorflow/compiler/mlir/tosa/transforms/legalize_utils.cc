@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
@@ -27,6 +32,90 @@ limitations under the License.
 
 namespace mlir {
 namespace tosa {
+
+LogicalResult getDynamicDims(PatternRewriter& rewriter, Operation* op,
+                             Value value, llvm::SmallVector<Value>& dims) {
+  auto value_ty = value.getType().dyn_cast<ShapedType>();
+  if (!value_ty || !value_ty.hasRank()) return failure();
+
+  dims.resize(value_ty.getRank());
+  RankedTensorType dim_ty = RankedTensorType::get({}, rewriter.getI32Type());
+
+  for (int i = 0, s = value_ty.getRank(); i < s; ++i) {
+    if (!value_ty.isDynamicDim(i)) {
+      dims[i] = rewriter.create<tosa::ConstOp>(
+          op->getLoc(), dim_ty,
+          SplatElementsAttr::get(dim_ty, value_ty.getDimSize(i)));
+      continue;
+    }
+
+    // TODO(suderman): This should be changed to TOSA operations when TOSA has
+    // a TOSA dimension op.
+    Value dim = rewriter.create<tensor::DimOp>(op->getLoc(), value, i);
+    dim = rewriter.create<arith::IndexCastOp>(op->getLoc(),
+                                              rewriter.getI32Type(), dim);
+    dim = rewriter.create<tensor::FromElementsOp>(op->getLoc(), dim_ty,
+                                                  ValueRange{dim});
+    dims[i] = dim;
+  }
+
+  return success();
+}
+
+llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
+                                                  Operation* op,
+                                                  Value input_value,
+                                                  ShapedType output_type,
+                                                  llvm::ArrayRef<Value> dims) {
+  auto e_ty = input_value.getType().cast<ShapedType>().getElementType();
+  llvm::SmallVector<int64_t> static_dims;
+
+  if (output_type.hasRank()) {
+    static_dims.append(output_type.getShape().begin(),
+                       output_type.getShape().end());
+  } else {
+    static_dims.resize(dims.size(), -1);
+  }
+
+  int64_t dyn_count = 0;
+  for (int i = 0, s = dims.size(); i < s; ++i) {
+    auto dim = dims[i];
+    SplatElementsAttr dim_attr;
+    if (matchPattern(dim, m_Constant(&dim_attr))) {
+      if (dim_attr.getType().cast<ShapedType>().getRank() != 0) {
+        (void)rewriter.notifyMatchFailure(
+            op, "dim for building tosa::ReshapeOp should be rank-0");
+        return llvm::None;
+      }
+      int64_t size = dim_attr.getSplatValue<APInt>().getSExtValue();
+
+      // Check that static shapes agree.
+      if (size != ShapedType::kDynamicSize &&
+          static_dims[i] != ShapedType::kDynamicSize &&
+          size != static_dims[i]) {
+        (void)rewriter.notifyMatchFailure(
+            op, "mismatch reshape static dim when creating tosa::ReshapeOp");
+        return llvm::None;
+      }
+
+      static_dims[i] = size == ShapedType::kDynamicSize ? static_dims[i] : size;
+    }
+
+    if (static_dims[i] == ShapedType::kDynamicSize) dyn_count++;
+  }
+
+  if (dyn_count > 1) {
+    (void)rewriter.notifyMatchFailure(
+        op, "multiple dynamic shapes when creating tosa::ReshapeOp");
+    return llvm::None;
+  }
+
+  ArrayAttr shape_attr = rewriter.getI64ArrayAttr(static_dims);
+  auto output_ty = RankedTensorType::get(static_dims, e_ty);
+  return rewriter
+      .create<tosa::ReshapeOp>(op->getLoc(), output_ty, input_value, shape_attr)
+      .getResult();
+}
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,

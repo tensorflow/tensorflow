@@ -660,11 +660,23 @@ func.func @test_reshape(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 
 // -----
 
-// CHECK-LABEL: test_reshape_dynamic
-// CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, -1]}
-func.func @test_reshape_dynamic(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = arith.constant dense<[1, -1]> : tensor<2xi32>
+// CHECK-LABEL: test_reshape_unknown
+// CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [9, -1]}
+// CHECK-SAME: -> tensor<9x91xf32>
+func.func @test_reshape_unknown(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %cst = arith.constant dense<[9, -1]> : tensor<2xi32>
   %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_reshape_dynamic
+// CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [3, -1]}
+// CHECK-SAME: -> tensor<3x?xf32>
+func.func @test_reshape_dynamic(%arg0: tensor<13x21x?xf32>) -> tensor<*xf32> {
+  %cst = arith.constant dense<[3, -1]> : tensor<2xi32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x?xf32>, tensor<2xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
