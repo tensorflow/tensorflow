@@ -47,6 +47,7 @@ add_mlir_library(GmlStTilingInterfaceImpl
   tiling_interface_impl.cc
 
   LINK_LIBS PUBLIC
+  GmlStDialect
   GmlStTilingInterface
   MLIRArithmeticDialect
   MLIRAffineDialect
@@ -63,6 +64,7 @@ add_mlir_library(GmlStFusionInterfaceImpl
   fusion_interface_impl.cc
 
   LINK_LIBS PUBLIC
+  GmlStDialect
   GmlStFusionInterface
   MLIRArithmeticDialect
   MLIRIR
@@ -83,6 +85,7 @@ add_mlir_library(GmlStBufferizableOpInterface
   bufferizable_op_interface_impl.cc
 
   LINK_LIBS PUBLIC
+  GmlStDialect
   MLIRBufferizationDialect
   MLIRBufferizationTransforms
   MLIRIR
@@ -128,6 +131,7 @@ add_mlir_library(GmlStTransforms
   Core
 
   LINK_LIBS PUBLIC
+  GmlStDialect
   MLIRAffineDialect
   MLIRDialectUtils
   MLIRIR
@@ -145,6 +149,7 @@ add_mlir_library(GmlStTestPasses
 
   LINK_LIBS PUBLIC
   GmlStBufferizableOpInterface
+  GmlStDialect
   GmlStTransforms
   MLIRPass
   MLIRTransforms
