@@ -143,7 +143,7 @@ HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
 
 bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
   // Entry parameter should always be defined before other instructions.
-  const HloModule* module = b.defining_instruction()->parent()->parent();
+  const HloModule* module = b.defining_instruction()->GetModule();
   if (b.defining_instruction()->parent() == module->entry_computation() &&
       b.defining_instruction()->opcode() == HloOpcode::kParameter) {
     return false;

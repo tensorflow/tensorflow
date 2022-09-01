@@ -269,7 +269,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
                                    const ShapeIndex& index = {}) const {
     // Returns the offset of the assignment, -1 if it's not in the alternate
     // memory.
-    const HloModule* module = instruction->parent()->parent();
+    const HloModule* module = instruction->GetModule();
     auto alias_analysis = HloAliasAnalysis::Run(module).value();
     HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(instruction, index);
     for (auto& pos_and_chunk : preset_assignments.chunks()) {

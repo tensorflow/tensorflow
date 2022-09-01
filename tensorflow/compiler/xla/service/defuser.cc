@@ -80,7 +80,7 @@ Status Defuse(HloInstruction* fusion_instruction) {
   TF_RETURN_IF_ERROR(fusion_instruction->ReplaceAllUsesWith(
       defused_instructions.at(fusion_instruction->fused_expression_root())));
 
-  HloModule* module = fusion_instruction->parent()->parent();
+  HloModule* module = fusion_instruction->GetModule();
   TF_RETURN_IF_ERROR(
       fusion_instruction->parent()->RemoveInstruction(fusion_instruction));
   return module->RemoveEmbeddedComputation(fused_computation);

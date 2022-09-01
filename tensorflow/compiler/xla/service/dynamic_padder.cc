@@ -1378,7 +1378,7 @@ StatusOr<bool> RewriteDynamicSort(
       "inbound_rhs");
   std::vector<const HloInstruction*> extra_parameters{new_param_0.get(),
                                                       new_param_1.get()};
-  HloComputation* sort_comp = sort->parent()->parent()->AddEmbeddedComputation(
+  HloComputation* sort_comp = sort->GetModule()->AddEmbeddedComputation(
       sort->called_computations()[0]->CloneWithReplacements(
           /*replacements=*/nullptr, extra_parameters));
   auto inbound_lhs =

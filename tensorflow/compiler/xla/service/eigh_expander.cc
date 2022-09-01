@@ -548,7 +548,7 @@ StatusOr<HloInstruction*> EighExpander::ExpandInstruction(
       absl::StrFormat("xla.%s_%s", instruction->custom_call_target(),
                       instruction->operand(0)->shape().ToString());
 
-  HloModule* module = instruction->parent()->parent();
+  HloModule* module = instruction->GetModule();
 
   HloComputation*& computation =
       computation_cache_.emplace(name, nullptr).first->second;

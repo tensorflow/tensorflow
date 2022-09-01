@@ -106,7 +106,7 @@ StatusOr<HloInstruction*> RngBitGeneratorExpander::ExpandInstruction(
     algorithm = default_algorithm_;
   }
 
-  HloModule* module = hlo->parent()->parent();
+  HloModule* module = hlo->GetModule();
   const Shape& data_shape = rng->shape().tuple_shapes(1);
   const Shape& state_shape = rng->operand(0)->shape();
   TF_ASSIGN_OR_RETURN(

@@ -336,16 +336,16 @@ Status DotOpEmitter::EmitLinalgMatmul() {
 
         mlir::linalg::LinalgTilingOptions tilingOptions;
         tilingOptions = tilingOptions.setTileSizes(GetMlirGemmTileSize());
-        // TODO: this has been retired upstream, reevaluate whether this 
-        // path really needs it or if it is even relevant anymore.
+        // TODO(kramerb): this has been retired upstream, reevaluate whether
+        // this path really needs it or if it is even relevant anymore.
         // int64_t alignment =
         //     target_machine_features_.minimum_alignment_for_allocation(
         //         ShapeUtil::ByteSizeOf(dot_info_.result_shape));
         mlir::linalg::CodegenStrategy strategy;
         strategy
             .tile(mlir::linalg::GenericOp::getOperationName(), tilingOptions)
-            // TODO: this has been retired upstream, reevaluate whether this 
-            // path really needs it or if it is even relevant anymore.
+            // TODO(kramerb): this has been retired upstream, reevaluate whether
+            // this path really needs it or if it is even relevant anymore.
             // .promote(mlir::linalg::GenericOp::getOperationName(),
             //          mlir::linalg::LinalgPromotionOptions()
             //              .setAlignment(alignment)
@@ -361,8 +361,8 @@ Status DotOpEmitter::EmitLinalgMatmul() {
                                     OuterProduct))
                     .setVectorTransferToSCFOptions(
                         mlir::VectorTransferToSCFOptions().enableFullUnroll()));
-        // TODO: this should be within a pass and we should be able to create a
-        // nested OpPassManager.
+        // TODO(kramerb): this should be within a pass and we should be able to
+        // create a nested OpPassManager.
         // Created a nested OpPassManager, populate the strategy and run.
         // mlir::OpPassManager dynamicPM("func.func");
         // strategy.configurePassPipeline(dynamicPM, function.getContext());
@@ -1370,7 +1370,7 @@ bool PotentiallyImplementedAsEigenMatmul(
   }
 
   DotImplementationStrategy impl_strategy = GetDotImplementationStrategy(
-      dot.parent()->parent()->config(), dot_info, target_machine_features);
+      dot.GetModule()->config(), dot_info, target_machine_features);
 
   return impl_strategy == DotImplementationStrategy::kEigen;
 }
@@ -1473,7 +1473,7 @@ bool DotImplementationCanHandleTranspose(
     const HloInstruction& dot_instr,
     const TargetMachineFeatures& target_machine_features) {
   DotImplementationStrategy impl_strategy =
-      GetDotImplementationStrategy(dot_instr.parent()->parent()->config(),
+      GetDotImplementationStrategy(dot_instr.GetModule()->config(),
                                    DotInfo(dot_instr), target_machine_features);
 
   return impl_strategy == DotImplementationStrategy::kNaiveLlvmIr ||
@@ -1492,7 +1492,7 @@ bool DotOperandsAndResultMustHaveRowMajorLayout(
   }
 
   DotImplementationStrategy impl_strategy =
-      GetDotImplementationStrategy(dot_instr.parent()->parent()->config(),
+      GetDotImplementationStrategy(dot_instr.GetModule()->config(),
                                    DotInfo(dot_instr), target_machine_features);
 
   return impl_strategy == DotImplementationStrategy::kTiledLlvmIrGemm ||
