@@ -2410,7 +2410,10 @@ cuda_py_test(
     name = "pad_op_test",
     size = "small",
     srcs = ["pad_op_test.py"],
-    tags = ["no_mac"],  # test is times out on mac b/186262388
+    tags = [
+         "no_mac",  # test is times out on mac b/186262388
+         "no_oss",  # b/244625900
+           ],  
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
@@ -2588,6 +2591,7 @@ cuda_py_test(
     name = "scan_ops_test",
     size = "medium",
     srcs = ["scan_ops_test.py"],
+    tags = ["no_oss"],    # b/244625900
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -2801,6 +2805,7 @@ py_library(
 cuda_py_test(
     name = "split_op_test",
     size = "medium",
+    tags = ["no_oss"],  #b/244625900
     srcs = ["split_op_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
