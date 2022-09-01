@@ -16,10 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_REQUEST_ID_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_REQUEST_ID_H_
 
-#include <cstdint>
-
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -28,21 +25,6 @@ namespace tensorflow {
 // zero, and must be unique over RecentRequestIds' window of
 // num_tracked_request_ids. See recent_request_ids.h for more details.
 int64_t GetUniqueRequestId();
-
-// Same as above method, this class is used to generate non zero request ids.
-// Different shard_id of this class will never generate the same ids.
-class ShardUniqueRequestIdGenerator {
- public:
-  ShardUniqueRequestIdGenerator(uint64_t num_shards, uint64_t shard_id);
-
-  int64_t GetUniqueRequestId();
-
- private:
-  random::RandomGenerator generator_;
-  uint64_t num_shards_;
-  uint64_t shard_id_;
-  uint64_t mask_;
-};
 
 }  // namespace tensorflow
 
