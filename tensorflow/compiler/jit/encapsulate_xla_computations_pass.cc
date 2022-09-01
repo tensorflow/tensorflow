@@ -284,7 +284,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     const int num_outputs = launch->output_types().size();
     absl::flat_hash_set<Node*> control_outputs;
     std::vector<std::vector<std::pair<Node*, int>>> data_outputs(num_outputs);
-    DataTypeVector output_types(num_outputs);
+    const DataTypeVector& output_types(launch->output_types());
 
     for (const Edge* le : launch->out_edges()) {
       if (le->IsControlEdge()) {
@@ -309,7 +309,6 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
           data_outputs[le->src_output()].push_back(
               {le->dst(), le->dst_input()});
         }
-        output_types[le->src_output()] = output_node->input_type(0);
       }
     }
 
