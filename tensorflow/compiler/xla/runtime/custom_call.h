@@ -904,6 +904,7 @@ struct CustomCallArgDecoding<FlatMemrefView, checks> {
       if (!CustomCall::CheckType<Tagged<T>>(checks, type_id))               \
         return failure();                                                   \
                                                                             \
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(T));                \
       return *reinterpret_cast<T*>(value);                                  \
     }                                                                       \
   }
