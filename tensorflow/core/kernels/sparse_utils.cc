@@ -318,10 +318,10 @@ Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
       const std::vector<TypeIndex>& row_start_indices);                     \
   template std::vector<TypeIndex> ParseRowStartIndices<TypeIndex>(          \
       const tensorflow::Tensor& tensor,                                     \
-      const TypeIndex num_nonzero_entries_in_sparse_mat)                    \
+      const TypeIndex num_nonzero_entries_in_sparse_mat);                   \
   template Status ValidateSparseTensor<TypeIndex>(                          \
       const Tensor& indices, const Tensor& values, const Tensor& shape,     \
-      IndexValidation index_validation);
+      IndexValidation index_validation)
 
 
 REGISTER_SPARSE_UTIL_FUNCTIONS(int32);
