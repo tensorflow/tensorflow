@@ -54,7 +54,7 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
     });
     return buffer;
   }
-  return se::DeviceMemoryBase(output_rz_or.ValueOrDie());
+  return se::DeviceMemoryBase(output_rz_or.value());
 }
 
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
@@ -76,7 +76,7 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
     });
     return;
   }
-  auto rz_check_status = rz_status.ValueOrDie();
+  auto rz_check_status = rz_status.value();
   if (!rz_check_status.ok()) {
     auto* fail = autotune_result->mutable_failure();
     fail->set_msg(rz_check_status.RedzoneFailureMsg());
@@ -113,7 +113,7 @@ tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
   if (auto* dnn = stream_executor->AsDnn()) {
     se::port::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
     if (version_or.ok()) {
-      const auto& version = version_or.ValueOrDie();
+      const auto& version = version_or.value();
       cudnn_version.set_major(version.major_version());
       cudnn_version.set_minor(version.minor_version());
       cudnn_version.set_patch(version.patch());

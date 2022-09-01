@@ -636,14 +636,14 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                                           dnn_activation_mode};
       auto primary_or = runners.primary->GetOrCreateRunner(config, stream);
       OP_REQUIRES_OK(context, primary_or.status());
-      auto* primary = primary_or.ValueOrDie();
+      auto* primary = primary_or.value();
 
       const se::dnn::FusedConvRunner* no_scratch_fallback = nullptr;
       if (runners.no_scratch_fallback) {
         auto no_scratch_fallback_or =
             runners.no_scratch_fallback->GetOrCreateRunner(config, stream);
         OP_REQUIRES_OK(context, no_scratch_fallback_or.status());
-        no_scratch_fallback = no_scratch_fallback_or.ValueOrDie();
+        no_scratch_fallback = no_scratch_fallback_or.value();
       }
 
       auto runner_and_scratch_or =
