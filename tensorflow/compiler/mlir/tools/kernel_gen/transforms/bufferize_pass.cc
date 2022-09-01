@@ -30,11 +30,12 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_KERNELGENFINALBUFFERIZEPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct KernelgenFinalBufferizePass
-    : public KernelgenFinalBufferizePassBase<KernelgenFinalBufferizePass> {
+    : public impl::KernelgenFinalBufferizePassBase<
+          KernelgenFinalBufferizePass> {
   // Default alignment_ specified in passes.td
   KernelgenFinalBufferizePass() = default;
 

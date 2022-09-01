@@ -186,7 +186,7 @@ namespace transforms {
 
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PROPAGATESHAPEKNOWLEDGETOKERNELS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 // A basic shape equality inference. This should be superceeded by a proper
@@ -314,7 +314,7 @@ class ShapeEqualityKnowledge {
 /// shape information of the left-most argument inside of the kernel function.
 /// That way, llvm can CSE index computations on same-shaped inputs.
 struct PropagateShapeKnowledgeToKernels
-    : public PropagateShapeKnowledgeToKernelsBase<
+    : public impl::PropagateShapeKnowledgeToKernelsBase<
           PropagateShapeKnowledgeToKernels> {
   void runOnOperation() override {
     ShapeEqualityKnowledge knowledge;

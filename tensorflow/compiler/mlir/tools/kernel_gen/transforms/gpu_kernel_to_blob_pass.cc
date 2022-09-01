@@ -42,11 +42,11 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_GPUKERNELTOBLOBPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 class GpuKernelToBlobPass
-    : public GpuKernelToBlobPassBase<GpuKernelToBlobPass> {
+    : public impl::GpuKernelToBlobPassBase<GpuKernelToBlobPass> {
  public:
   GpuKernelToBlobPass(StringRef blob_annotation,
                       llvm::ArrayRef<std::string> architectures, bool print_ptx,

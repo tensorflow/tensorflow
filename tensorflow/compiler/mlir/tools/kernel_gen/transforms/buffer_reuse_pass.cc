@@ -233,10 +233,10 @@ class BufferReuseAnalysis {
   DenseMap<Operation *, int32_t> output_indices_;
 };
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_BUFFERREUSEPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
+struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
   void runOnOperation() override {
     if (!getOperation()->getAttrOfType<UnitAttr>(
             tf_framework::TFFrameworkDialect::kTFEntryAttrName))
