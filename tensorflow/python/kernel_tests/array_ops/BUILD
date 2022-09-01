@@ -44,7 +44,10 @@ cuda_py_test(
     name = "slice_op_test",
     size = "medium",
     srcs = ["slice_op_test.py"],
-    tags = ["no_oss"],  #b/244625900
+    tags = [
+         "no_oss",
+         "no_gpu",
+           ],  #b/244625900
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
