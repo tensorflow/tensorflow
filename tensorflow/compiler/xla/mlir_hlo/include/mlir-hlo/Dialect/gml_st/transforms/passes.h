@@ -43,7 +43,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
 
 /// Pass to tile ops using TilingInterface.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
-    StringRef tilingTarget = "", bool distribute = true,
+    StringRef opName = "", StringRef opLabel = "", bool distribute = true,
     ArrayRef<int64_t> tileSizes = {});
 
 /// Pass to fuse producers into a tiled consumer.

@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN: --gml-tiling="tile-sizes=8 distribute=false tiling-target="sum"" \
-// RUN: --gml-fusion="producer="mul" consumer="sum"" \
+// RUN: --gml-tiling="tile-sizes=8 distribute=false op-label="sum"" \
+// RUN: --gml-fusion="producer-label="mul" consumer-label="sum"" \
 // RUN: | FileCheck %s
 
 #id_2d = affine_map<(d0, d1) -> (d0, d1)>

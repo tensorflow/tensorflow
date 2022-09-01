@@ -1,9 +1,13 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN: --gml-tiling="tile-sizes=256,512 distribute=false tiling-target="op_2d"" \
+// RUN: --gml-tiling="tile-sizes=256,512 distribute=false op-label=op_2d" \
 // RUN: | FileCheck %s --check-prefix=FOR
 
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN: --gml-tiling="tile-sizes=256,512 distribute=true tiling-target="op_2d"" \
+// RUN: --gml-tiling="tile-sizes=256,512 distribute=false op-name=linalg.generic" \
+// RUN: | FileCheck %s --check-prefix=FOR
+
+// RUN: mlir-hlo-opt %s --split-input-file \
+// RUN: --gml-tiling="tile-sizes=256,512 distribute=true op-label=op_2d" \
 // RUN: | FileCheck %s --check-prefix=PARALLEL
 
 #id_map = affine_map<(d0, d1) -> (d0, d1)>

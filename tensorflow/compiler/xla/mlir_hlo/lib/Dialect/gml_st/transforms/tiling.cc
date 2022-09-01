@@ -472,9 +472,10 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
 
 struct TilingPass : public impl::TilingPassBase<TilingPass> {
   TilingPass() = default;
-  TilingPass(StringRef label, bool distributeFlag,
+  TilingPass(StringRef name, StringRef label, bool distributeFlag,
              llvm::ArrayRef<int64_t> sizes) {
-    tilingTarget = label.str();
+    opName = name.str();
+    opLabel = label.str();
     distribute = distributeFlag;
     tileSizes = sizes;
   }
@@ -502,7 +503,10 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
     };
 
     auto filterFn = [&](Operation *op) {
-      return success(hasMatchingLabel(op, tilingTarget));
+      if (!opName.empty() && op->getName().getStringRef() != opName)
+        return failure();
+      if (!opLabel.empty() && !hasMatchingLabel(op, opLabel)) return failure();
+      return success();
     };
     RewritePatternSet patterns(ctx);
     populateTilingPatterns(ctx, filterFn, opts, &patterns);
@@ -537,8 +541,9 @@ void populateTilingPatterns(MLIRContext *context, OpFilterFn filterFn,
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
-    StringRef tilingTarget, bool distribute, ArrayRef<int64_t> tileSizes) {
-  return std::make_unique<TilingPass>(tilingTarget, distribute, tileSizes);
+    StringRef opName, StringRef opLabel, bool distribute,
+    ArrayRef<int64_t> tileSizes) {
+  return std::make_unique<TilingPass>(opName, opLabel, distribute, tileSizes);
 }
 
 }  // namespace gml_st

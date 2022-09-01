@@ -218,9 +218,9 @@ class FusionPattern : public OpRewritePattern<MaterializeOp> {
 };
 
 struct FusionPass : public impl::FusionPassBase<FusionPass> {
-  FusionPass(StringRef producerLabel, StringRef consumerLabel) {
-    this->producer = producerLabel.str();
-    this->consumer = consumerLabel.str();
+  FusionPass(StringRef producer, StringRef consumer) {
+    this->producerLabel = producer.str();
+    this->consumerLabel = consumer.str();
   }
 
   void getDependentDialects(DialectRegistry& registry) const final {
@@ -234,17 +234,21 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
     auto filterFn = [&](Operation* op) {
       auto materializeOp = cast<MaterializeOp>(op);
       Operation* producerOp = materializeOp.source().getDefiningOp();
-      if (!producerOp || !hasMatchingLabel(producerOp, producer))
+      if (!producerOp || (!producerLabel.empty() &&
+                          !hasMatchingLabel(producerOp, producerLabel)))
         return failure();
 
       Operation* consumerOp = nullptr;
-      for (Operation* user : materializeOp.getResult().getUsers()) {
-        if (hasMatchingLabel(user, consumer)) {
-          consumerOp = user;
-          break;
+      if (!consumerLabel.empty()) {
+        for (Operation* user : materializeOp.getResult().getUsers()) {
+          if (hasMatchingLabel(user, consumerLabel)) {
+            consumerOp = user;
+            break;
+          }
         }
+        return success(consumerOp != nullptr);
       }
-      return success(consumerOp != nullptr);
+      return success();
     };
 
     // Populate patterns.
