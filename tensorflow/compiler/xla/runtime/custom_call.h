@@ -1056,29 +1056,35 @@ XLA_RUNTIME_REGISTER_DENSE_ELEMENTS_ATTR_DECODING(double);
 // Register an XLA custom call attribute decoding for aggregate attributes.
 //===----------------------------------------------------------------------===//
 
-// A workaround for passing braced initializers to macro.
-#define XLA_RUNTIME_AGGREGATE_FIELDS(...) \
-  { __VA_ARGS__ }
+template <typename T>
+struct AggregateMember {
+  using Type = T;
+
+  explicit AggregateMember(std::string_view name) : name(name) {}
+  std::string_view name;
+};
 
 // Example: register decoding for a user-defined struct
 //
 //   struct PairOfI64 { int64_t a; int64_t b; };
 //
 //   XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
-//     PairOfI64, XLA_RUNTIME_AGGREGATE_FIELDS("a", "b"),
-//     int64_t, int64_t);
+//     PairOfI64,
+//     AggregateMember<int64_t>("a"),
+//     AggregateMember<int64_t>("b"));
 //
-#define XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(T, NAMES, ...)       \
-  template <CustomCall::RuntimeChecks checks>                             \
-  struct CustomCallAttrDecoding<T, checks> {                              \
-    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(              \
-        std::string_view name, TypeID type_id, void* value) {             \
-      if (!CustomCall::CheckType<Tagged<T>>(checks, type_id))             \
-        return mlir::failure();                                           \
-                                                                          \
-      using Impl = internal::DecodeAggregateAttr<T, checks, __VA_ARGS__>; \
-      return Impl::Decode(reinterpret_cast<void**>(value), NAMES);        \
-    }                                                                     \
+#define XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(T, ...)                   \
+  template <CustomCall::RuntimeChecks checks>                                  \
+  struct CustomCallAttrDecoding<T, checks> {                                   \
+    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(                   \
+        std::string_view name, TypeID type_id, void* value) {                  \
+      if (!CustomCall::CheckType<Tagged<T>>(checks, type_id)) {                \
+        return mlir::failure();                                                \
+      }                                                                        \
+      auto decoder = internal::AggregateDecoder<T, checks>(__VA_ARGS__);       \
+      return decltype(decoder)::Decode(reinterpret_cast<void**>(value),        \
+                                       internal::AggregateNames(__VA_ARGS__)); \
+    }                                                                          \
   }
 
 namespace internal {
@@ -1130,6 +1136,17 @@ struct DecodeAggregateAttr {
     return T{std::move(*std::get<Is>(members))...};
   }
 };
+
+template <typename... Members>
+auto AggregateNames(Members... m) {
+  return std::array<std::string_view, sizeof...(Members)>{m.name...};
+}
+
+template <typename T, CustomCall::RuntimeChecks checks, typename... Members>
+auto AggregateDecoder(Members... m) {
+  return DecodeAggregateAttr<T, checks, typename Members::Type...>();
+}
+
 }  // namespace internal
 
 // Declare/define an explicit specialialization for TypeID for types used

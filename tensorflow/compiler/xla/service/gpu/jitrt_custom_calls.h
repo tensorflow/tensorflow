@@ -82,28 +82,37 @@ XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(
 
 XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
     xla::gpu::DotDimensionNumbers,
-    XLA_RUNTIME_AGGREGATE_FIELDS("lhs_batch", "lhs_contract", "rhs_batch",
-                                 "rhs_contract"),
-    ArrayRef<int64_t>, ArrayRef<int64_t>, ArrayRef<int64_t>, ArrayRef<int64_t>);
+    AggregateMember<ArrayRef<int64_t>>("lhs_batch"),
+    AggregateMember<ArrayRef<int64_t>>("lhs_contract"),
+    AggregateMember<ArrayRef<int64_t>>("rhs_batch"),
+    AggregateMember<ArrayRef<int64_t>>("rhs_contract"));
 
 XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
     xla::gpu::ConvDimensionNumbers,
-    XLA_RUNTIME_AGGREGATE_FIELDS("input_batch_dim", "input_feature_dim",
-                                 "input_spatial_dims", "kernel_in_feature_dim",
-                                 "kernel_out_feature_dim",
-                                 "kernel_spatial_dims", "output_batch_dim",
-                                 "output_feature_dim", "output_spatial_dims"),
-    int64_t, int64_t, ArrayRef<int64_t>, int64_t, int64_t, ArrayRef<int64_t>,
-    int64_t, int64_t, ArrayRef<int64_t>);
+    // --- input dimensions
+    AggregateMember<int64_t>("input_batch_dim"),
+    AggregateMember<int64_t>("input_feature_dim"),
+    AggregateMember<ArrayRef<int64_t>>("input_spatial_dims"),
+    // --- kernel dimensions
+    AggregateMember<int64_t>("kernel_in_feature_dim"),
+    AggregateMember<int64_t>("kernel_out_feature_dim"),
+    AggregateMember<ArrayRef<int64_t>>("kernel_spatial_dims"),
+    // --- output dimensions
+    AggregateMember<int64_t>("output_batch_dim"),
+    AggregateMember<int64_t>("output_feature_dim"),
+    AggregateMember<ArrayRef<int64_t>>("output_spatial_dims"));
 
 XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
-    xla::gpu::ConvBackendConfig,
-    XLA_RUNTIME_AGGREGATE_FIELDS("algorithm", "tensor_ops_enabled",
-                                 "is_cudnn_frontend", "knob_ids", "knob_values",
-                                 "operand_0_layout", "operand_1_layout",
-                                 "result_layout", "workspace_size"),
-    int64_t, bool, bool, ArrayRef<int64_t>, ArrayRef<int64_t>,
-    ArrayRef<int64_t>, ArrayRef<int64_t>, ArrayRef<int64_t>, int64_t);
+    xla::gpu::ConvBackendConfig,  //
+    AggregateMember<int64_t>("algorithm"),
+    AggregateMember<bool>("tensor_ops_enabled"),
+    AggregateMember<bool>("is_cudnn_frontend"),
+    AggregateMember<ArrayRef<int64_t>>("knob_ids"),
+    AggregateMember<ArrayRef<int64_t>>("knob_values"),
+    AggregateMember<ArrayRef<int64_t>>("operand_0_layout"),
+    AggregateMember<ArrayRef<int64_t>>("operand_1_layout"),
+    AggregateMember<ArrayRef<int64_t>>("result_layout"),
+    AggregateMember<int64_t>("workspace_size"));
 
 }  // namespace runtime
 }  // namespace xla
