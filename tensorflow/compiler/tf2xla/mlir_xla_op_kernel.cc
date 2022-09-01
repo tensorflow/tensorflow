@@ -43,7 +43,7 @@ Status MlirXlaOpKernel::ContextToXlaArgs(
                        ctx->InputExpression(i).HumanString()));
     XlaCompiler::Argument arg;
     arg.type = ctx->input_type(i);
-    arg.shape = ctx->InputXlaShape(i).ValueOrDie();
+    arg.shape = ctx->InputXlaShape(i).value();
     arg.name = absl::StrCat("_arg", i);
     if (registered_consts.count(i)) {
       arg.kind = XlaCompiler::Argument::kConstant;
