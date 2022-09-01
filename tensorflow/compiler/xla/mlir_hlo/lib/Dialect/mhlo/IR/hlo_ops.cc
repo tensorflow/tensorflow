@@ -25,6 +25,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <set>
 #include <string>
@@ -52,6 +53,7 @@ limitations under the License.
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -84,9 +86,68 @@ namespace mlir {
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.cc.inc"
+#define GET_TYPEDEF_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_typedefs.cc.inc"
 
 namespace mlir {
 namespace mhlo {
+
+namespace detail {
+/// A type representing a collection of other types.
+struct AsyncBundleTypeStorage final
+    : public TypeStorage,
+      public llvm::TrailingObjects<AsyncBundleTypeStorage, Type> {
+  using KeyTy = TypeRange;
+
+  explicit AsyncBundleTypeStorage(unsigned numTypes) : num_elements(numTypes) {}
+
+  // Construction.
+  static AsyncBundleTypeStorage* construct(TypeStorageAllocator& allocator,
+                                           TypeRange key) {
+    // Allocate a new storage instance.
+    auto byteSize = AsyncBundleTypeStorage::totalSizeToAlloc<Type>(key.size());
+    auto* rawMem =
+        allocator.allocate(byteSize, alignof(AsyncBundleTypeStorage));
+    auto* result = ::new (rawMem) AsyncBundleTypeStorage(key.size());
+
+    // Copy in the element types into the trailing storage.
+    std::uninitialized_copy(key.begin(), key.end(),
+                            result->getTrailingObjects<Type>());
+    return result;
+  }
+
+  bool operator==(const KeyTy& key) const { return key == getTypes(); }
+
+  // Return the number of held types.
+  unsigned size() const { return num_elements; }
+
+  // Return the held types.
+  ArrayRef<Type> getTypes() const {
+    return {getTrailingObjects<Type>(), size()};
+  }
+
+  void getFlattenedTypes(SmallVectorImpl<Type>& types) {
+    for (Type type : getTypes()) {
+      if (auto nestedTuple = type.dyn_cast<TupleType>())
+        nestedTuple.getFlattenedTypes(types);
+      else
+        types.push_back(type);
+    }
+  }
+
+  // The number of tuple elements.
+  unsigned num_elements;
+};
+
+}  // namespace detail
+/// Return the elements types for this tuple.
+ArrayRef<Type> AsyncBundleType::getTypes() const {
+  return getImpl()->getTypes();
+}
+void AsyncBundleType::getFlattenedTypes(SmallVectorImpl<Type>& types) {
+  getImpl()->getFlattenedTypes(types);
+}
+
 namespace {
 void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
                 ArrayRef<Type> types,
@@ -727,6 +788,171 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SqrtOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SubtractOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
+
+//===----------------------------------------------------------------------===//
+// Async ops
+//===----------------------------------------------------------------------===//
+
+Type MaybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types) {
+  if (types.size() == 1) return types[0];
+  return TupleType::get(ctx, TypeRange(types));
+}
+
+LogicalResult AsyncStartOp::verify() {
+  ModuleOp module = getOperation()->getParentOfType<ModuleOp>();
+  func::FuncOp callee = module.lookupSymbol<func::FuncOp>(called_computation());
+  if (!callee) {
+    return emitOpError() << "can't find function: " << called_computation();
+  }
+  FunctionType calleeType = callee.getFunctionType();
+  auto calleeInputTypes = calleeType.getInputs();
+  auto calleeResultTypes = calleeType.getResults();
+
+  auto calleeThreadName = callee->getAttrOfType<StringAttr>("execution_thread");
+  if (!calleeThreadName)
+    return emitOpError() << "callee must have execution_thread attribute.";
+  if (calleeThreadName != execution_thread()) {
+    return emitOpError()
+           << "execution_thread does not match the execution_thread of "
+           << called_computation() << ".  Got: \"" << execution_thread()
+           << "\", but expected " << calleeThreadName << ".";
+  }
+
+  if (calleeType.getNumInputs() != getOperands().size()) {
+    return emitOpError() << "number of operands doesn't match operands for "
+                         << called_computation()
+                         << ". Got: " << getOperands().size()
+                         << ", but expected: " << calleeType.getNumInputs()
+                         << ".";
+  }
+  for (int i = 0; i < getOperands().size(); ++i) {
+    if (calleeType.getInput(i) != getOperandTypes()[i]) {
+      return emitOpError() << "type mismatch on argument #" << i << " of "
+                           << called_computation()
+                           << ". Got: " << getOperandTypes()[i]
+                           << ", but expected: " << calleeType.getInput(i)
+                           << ".";
+    }
+  }
+
+  auto resultTypes = getResult().getType().cast<AsyncBundleType>().getTypes();
+  if (resultTypes.size() < 2)
+    return emitOpError() << "result is expected to be a bundle of at least 2 "
+                            "components, but got "
+                         << resultTypes.size();
+  if (resultTypes[0] != MaybeTupleFromTypes(getContext(), calleeInputTypes)) {
+    return emitOpError()
+           << "component #0 of return type doesn't match callee input types";
+  }
+  if (resultTypes[1] != MaybeTupleFromTypes(getContext(), calleeResultTypes)) {
+    return emitOpError()
+           << "component #1 of return type doesn't match callee result types";
+  }
+
+  return success();
+}
+
+LogicalResult AsyncUpdateOp::verify() {
+  ModuleOp module = getOperation()->getParentOfType<ModuleOp>();
+  func::FuncOp callee = module.lookupSymbol<func::FuncOp>(called_computation());
+  if (!callee) {
+    return emitOpError() << "can't find function: " << called_computation();
+  }
+  FunctionType calleeType = callee.getFunctionType();
+  auto calleeInputTypes = calleeType.getInputs();
+  auto calleeResultTypes = calleeType.getResults();
+  auto bundleTypes = bundle().getType().cast<AsyncBundleType>().getTypes();
+
+  auto calleeThreadName = callee->getAttrOfType<StringAttr>("execution_thread");
+  if (!calleeThreadName)
+    return emitOpError() << "callee must have execution_thread attribute.";
+  if (calleeThreadName != execution_thread()) {
+    return emitOpError() << "execution_thread does not match name of "
+                         << called_computation() << ".  Got: \""
+                         << execution_thread() << "\", but expected "
+                         << calleeThreadName << ".";
+  }
+
+  if (bundleTypes.size() < 2)
+    return emitOpError() << "operand is expected to be a bundle of at least 2 "
+                            "components, but got "
+                         << bundleTypes.size();
+  if (bundleTypes[0] != MaybeTupleFromTypes(getContext(), calleeInputTypes)) {
+    return emitOpError() << "component #0 of operand bundle type doesn't match "
+                            "callee input types";
+  }
+  if (bundleTypes[1] != MaybeTupleFromTypes(getContext(), calleeResultTypes)) {
+    return emitOpError() << "component #1 of operand bundle type doesn't match "
+                            "callee result types";
+  }
+
+  return success();
+}
+
+LogicalResult AsyncUpdateOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  AsyncUpdateOp::Adaptor adaptor(operands, attributes, regions);
+  auto stateType = adaptor.bundle().getType().cast<AsyncBundleType>();
+  inferredReturnTypes.push_back(stateType);
+  return success();
+}
+
+LogicalResult AsyncDoneOp::verify() {
+  ModuleOp module = getOperation()->getParentOfType<ModuleOp>();
+  func::FuncOp callee = module.lookupSymbol<func::FuncOp>(called_computation());
+  if (!callee) {
+    return emitOpError() << "can't find function: " << called_computation();
+  }
+  FunctionType calleeType = callee.getFunctionType();
+  auto calleeInputTypes = calleeType.getInputs();
+  auto calleeResultTypes = calleeType.getResults();
+  auto bundleTypes = bundle().getType().cast<AsyncBundleType>().getTypes();
+
+  auto calleeThreadName = callee->getAttrOfType<StringAttr>("execution_thread");
+  if (!calleeThreadName)
+    return emitOpError() << "callee must have execution_thread attribute.";
+  if (calleeThreadName != execution_thread()) {
+    return emitOpError() << "execution_thread does not match name of "
+                         << called_computation() << ".  Got: \""
+                         << execution_thread() << "\", but expected "
+                         << calleeThreadName << ".";
+  }
+
+  if (bundleTypes.size() < 2)
+    return emitOpError() << "operand is expected to be a bundle of at least 2 "
+                            "components, but got "
+                         << bundleTypes.size();
+  if (bundleTypes[0] != MaybeTupleFromTypes(getContext(), calleeInputTypes)) {
+    return emitOpError()
+           << "operand type component #0 doesn't match callee input types";
+  }
+  if (bundleTypes[1] != MaybeTupleFromTypes(getContext(), calleeResultTypes)) {
+    return emitOpError()
+           << "operand type component #1 doesn't match callee result types";
+  }
+
+  return success();
+}
+
+LogicalResult AsyncDoneOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  AsyncDoneOp::Adaptor adaptor(operands, attributes, regions);
+  ModuleOp module =
+      adaptor.bundle().getDefiningOp()->getParentOfType<ModuleOp>();
+  auto calledComputation = adaptor.called_computationAttr();
+  func::FuncOp callee = module.lookupSymbol<func::FuncOp>(calledComputation);
+  if (!callee) {
+    return adaptor.bundle().getDefiningOp()->emitOpError()
+           << "can't find function: " << calledComputation;
+  }
+  llvm::append_range(inferredReturnTypes,
+                     callee.getFunctionType().getResults());
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // ConstantOp
@@ -8658,7 +8884,7 @@ MhloDialect::MhloDialect(MLIRContext* context)
       >();
   addInterfaces<HLOBoundedDialectInterface>();
   addInterfaces<HLOInlinerInterface>();
-  addTypes<TokenType>();
+  addTypes<TokenType, AsyncBundleType>();
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.cc.inc"
@@ -8667,11 +8893,12 @@ MhloDialect::MhloDialect(MLIRContext* context)
 }
 
 Type MhloDialect::parseType(DialectAsmParser& parser) const {
-  StringRef dataType;
-  if (parser.parseKeyword(&dataType)) return Type();
-
-  if (dataType == "token") return TokenType::get(getContext());
-  parser.emitError(parser.getNameLoc()) << "unknown mhlo type: " << dataType;
+  StringRef mnemonic;
+  Type parsedType;
+  auto parseResult = generatedTypeParser(parser, &mnemonic, parsedType);
+  if (parseResult.hasValue()) return parsedType;
+  if (mnemonic == "token") return TokenType::get(getContext());
+  parser.emitError(parser.getNameLoc()) << "unknown mhlo type: " << mnemonic;
   return nullptr;
 }
 
@@ -8680,6 +8907,7 @@ void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
     os << "token";
     return;
   }
+  if (succeeded(generatedTypePrinter(type, os))) return;
   os << "<unknown mhlo type>";
 }
 

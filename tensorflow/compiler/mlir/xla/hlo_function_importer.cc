@@ -521,6 +521,50 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                   Cast<HloIotaInstruction>(instruction)->iota_dimension()))
           .getOperation();
     }
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone: {
+      auto async_op = Cast<HloAsyncInstruction>(instruction);
+      auto called_computation = async_op->async_wrapped_computation();
+      TF_ASSIGN_OR_RETURN(FuncOp function,
+                          ImportAsFunc(*called_computation, /*is_main=*/false));
+      attributes.push_back(builder_->getNamedAttr(
+          "called_computation",
+          mlir::FlatSymbolRefAttr::get(builder_->getContext(),
+                                       function.getName())));
+      auto execution_thread = async_op->async_execution_thread();
+      attributes.push_back(builder_->getNamedAttr(
+          "execution_thread", builder_->getStringAttr(execution_thread)));
+      function->setAttr("execution_thread",
+                        builder_->getStringAttr(execution_thread));
+      auto group_id = async_op->async_group_id();
+      if (group_id) {
+        attributes.push_back(builder_->getNamedAttr(
+            "group_id", builder_->getI64IntegerAttr(*group_id)));
+      }
+
+      if (instruction->opcode() == HloOpcode::kAsyncStart) {
+        auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
+            context_, result_type.cast<mlir::TupleType>().getTypes());
+        return func_builder
+            ->create<mlir::mhlo::AsyncStartOp>(loc, bundle_result_type,
+                                               operands, attributes)
+            .getOperation();
+      } else if (instruction->opcode() == HloOpcode::kAsyncUpdate) {
+        auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
+            context_, result_type.cast<mlir::TupleType>().getTypes());
+        return func_builder
+            ->create<mlir::mhlo::AsyncUpdateOp>(loc, bundle_result_type,
+                                                operands, attributes)
+            .getOperation();
+      } else {
+        assert(instruction->opcode() == HloOpcode::kAsyncDone);
+        return func_builder
+            ->create<mlir::mhlo::AsyncDoneOp>(loc, result_type, operands,
+                                              attributes)
+            .getOperation();
+      }
+    }
     case HloOpcode::kBroadcast: {
       // Note that the HLO broadcast is more powerful than the XLA broadcast
       // op. BroadcastInDim offers a superset of the HLO op's functionality.

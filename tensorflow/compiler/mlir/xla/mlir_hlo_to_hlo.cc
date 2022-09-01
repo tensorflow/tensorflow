@@ -805,6 +805,165 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
+  for (auto* user : op.getResult().getUsers()) {
+    if (auto asyncOp = dyn_cast_or_null<AsyncDoneOp>(user)) {
+      if (asyncOp.group_id() != op.group_id() ||
+          asyncOp.called_computation() != op.called_computation()) {
+        return op.emitOpError()
+               << "Users of AsyncStart's return value must have "
+                  "the same group_id and called_computation";
+      }
+    } else if (auto asyncOp = dyn_cast_or_null<AsyncUpdateOp>(user)) {
+      if (asyncOp.group_id() != op.group_id() ||
+          asyncOp.called_computation() != op.called_computation()) {
+        return op.emitOpError()
+               << "Users of AsyncStart's return value must have "
+                  "the same group_id and called_computation";
+      }
+    } else {
+      return op.emitOpError() << "Users of AsyncStart's return value must be "
+                              << "async_update or async_done";
+    }
+  }
+
+  auto& value_map = *ctx.values;
+
+  Value result = op.getResult();
+  llvm::SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+
+  mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
+      FlatSymbolRefAttr::get(op->getContext(), op.called_computation()));
+  if (failed(ctx.converter->RunOnFunction(callee))) return failure();
+  xla::XlaComputation& computation =
+      ctx.converter->GetLoweredComputation(callee);
+  computation.mutable_proto()
+      ->mutable_computations()
+      ->at(0)
+      .set_execution_thread(op.execution_thread().str());
+  if (op.group_id()) {
+    value_map[result] = xla::internal::XlaBuilderFriend::BuildAsyncStart(
+        ctx.builder, operands, op.execution_thread().str(), *op.group_id(),
+        computation, xla::TypeToShape(result.getType()));
+  } else {
+    value_map[result] = xla::internal::XlaBuilderFriend::BuildAsyncStart(
+        ctx.builder, operands, op.execution_thread().str(), computation,
+        xla::TypeToShape(result.getType()));
+  }
+  return success();
+}
+
+LogicalResult ExportXlaOp(AsyncUpdateOp op, OpLoweringContext ctx) {
+  if (!isa<AsyncStartOp, AsyncUpdateOp>(op.bundle().getDefiningOp())) {
+    auto theerror = op.emitError()
+                    << "Defining op of AsyncUpdate's operand must be "
+                    << "async_start or async_update";
+    if (op.bundle().getDefiningOp()) {
+      return theerror << ", but got " << op.bundle().getDefiningOp()->getName();
+    } else {
+      return theerror << ".";
+    }
+  }
+
+  for (auto* user : op.getResult().getUsers()) {
+    if (auto asyncOp = dyn_cast_or_null<AsyncDoneOp>(user)) {
+      if (asyncOp.group_id() != op.group_id() ||
+          asyncOp.called_computation() != op.called_computation()) {
+        return op.emitOpError()
+               << "Users of AsyncUpdate's return value must have "
+                  "the same group_id and called_computation";
+      }
+    } else if (auto asyncOp = dyn_cast_or_null<AsyncUpdateOp>(user)) {
+      if (asyncOp.group_id() != op.group_id() ||
+          asyncOp.called_computation() != op.called_computation()) {
+        return op.emitOpError()
+               << "Users of AsyncUpdate's return value must have "
+                  "the same group_id and called_computation";
+      }
+    } else {
+      return op.emitOpError() << "Users of AsyncUpdate's return value must be "
+                              << "async_update or async_done";
+    }
+  }
+  auto& value_map = *ctx.values;
+
+  Value result = op.getResult();
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.bundle(), value_map, &operand, op))) return failure();
+
+  mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
+      FlatSymbolRefAttr::get(op->getContext(), op.called_computation()));
+  if (failed(ctx.converter->RunOnFunction(callee))) return failure();
+  xla::XlaComputation& computation =
+      ctx.converter->GetLoweredComputation(callee);
+  computation.mutable_proto()
+      ->mutable_computations()
+      ->at(0)
+      .set_execution_thread(op.execution_thread().str());
+  if (op.group_id()) {
+    value_map[result] = xla::internal::XlaBuilderFriend::BuildAsyncUpdate(
+        ctx.builder, operand, op.execution_thread().str(), *op.group_id(),
+        computation, xla::TypeToShape(result.getType()));
+  } else {
+    value_map[result] = xla::internal::XlaBuilderFriend::BuildAsyncUpdate(
+        ctx.builder, operand, op.execution_thread().str(), computation,
+        xla::TypeToShape(result.getType()));
+  }
+  return success();
+}
+
+LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
+  if (!isa<AsyncStartOp, AsyncUpdateOp>(op.bundle().getDefiningOp())) {
+    auto theerror = op.emitError()
+                    << "Defining op of AsyncDone's operand must be "
+                    << "async_start or async_update";
+    if (op.bundle().getDefiningOp())
+      return theerror << ", but got " << op.bundle().getDefiningOp()->getName();
+    return theerror << ".";
+  }
+
+  auto& value_map = *ctx.values;
+
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.bundle(), value_map, &operand, op))) return failure();
+
+  mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
+      FlatSymbolRefAttr::get(op->getContext(), op.called_computation()));
+  if (failed(ctx.converter->RunOnFunction(callee))) return failure();
+  xla::XlaComputation& computation =
+      ctx.converter->GetLoweredComputation(callee);
+  computation.mutable_proto()
+      ->mutable_computations()
+      ->at(0)
+      .set_execution_thread(op.execution_thread().str());
+
+  std::vector<xla::Shape> subshapes;
+  for (const auto& item : op.getResults().getType()) {
+    subshapes.push_back(xla::TypeToShape(item));
+  }
+  xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
+
+  xla::XlaOp exportedOp;
+  if (op.group_id()) {
+    exportedOp = xla::internal::XlaBuilderFriend::BuildAsyncDone(
+        ctx.builder, operand, op.execution_thread().str(), *op.group_id(),
+        computation, data_shape);
+  } else {
+    exportedOp = xla::internal::XlaBuilderFriend::BuildAsyncDone(
+        ctx.builder, operand, op.execution_thread().str(), computation,
+        data_shape);
+  }
+  if (op.getNumResults() == 1) {
+    value_map[op.getResult(0)] = exportedOp;
+  } else {
+    for (const auto& item : llvm::enumerate(op.getResults())) {
+      value_map[item.value()] = xla::GetTupleElement(exportedOp, item.index());
+    }
+  }
+  return success();
+}
+
 LogicalResult ExportXlaOp(BitcastConvertOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp operand;

@@ -1695,6 +1695,50 @@ func.func @main(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f
            window_strides = dense<[3, 1]> : tensor<2xi64> } : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
   func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
+// -----
+
+func.func @AsyncOp(%arg0: tensor<10xf32>) -> tensor<20xf32>
+  attributes {execution_thread = "thread"} {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<10xf32>) -> tensor<20xf32>
+  return %0 : tensor<20xf32>
+}
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<10xf32>) -> tensor<20xf32> {
+  // CHECK: %[[ARG0:.*]] = f32[10] parameter(0)
+  // CHECK: %[[START:.*]] = (f32[10], f32[20], s32[]) custom-call-start(f32[10] %[[ARG0]])
+  %0 = "mhlo.async_start"(%arg0) {called_computation = @AsyncOp, execution_thread = "thread"} : (tensor<10xf32>) -> !mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>
+  // CHECK: %[[UPDATE:.*]] = (f32[10], f32[20], s32[]) custom-call-update((f32[10], f32[20], s32[]) %[[START]])
+  %1 = "mhlo.async_update"(%0) {called_computation = @AsyncOp, execution_thread = "thread"} : (!mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>
+  // CHECK: ROOT %{{.*}} = (f32[20]) custom-call-done((f32[10], f32[20], s32[]) %[[UPDATE]])
+  %2 = "mhlo.async_done"(%1) {called_computation = @AsyncOp, execution_thread = "thread"} : (!mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>) -> tensor<20xf32>
+  return %2 : tensor<20xf32>
+}
+
+// -----
+
+func.func @AsyncOp(%arg0: tensor<10xf32>) -> tensor<20xf32>
+  attributes {execution_thread = "thread"} {
+  %1 = "mhlo.custom_call"(%arg0) {call_target_name = "bar"} : (tensor<10xf32>) -> tensor<20xf32>
+  return %1 : tensor<20xf32>
+}
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<10xf32>) -> tensor<20xf32> {
+  // CHECK: %[[ARG0:.*]] = f32[10] parameter(0)
+  // CHECK: %[[START:.*]] = (f32[10], f32[20], s32[]) custom-call-start(f32[10] %[[ARG0]]), async_group_id=1, async_execution_thread="thread", custom_call_target="bar"
+  // CHECK: %[[UPDATE:.*]] = (f32[10], f32[20], s32[]) custom-call-update((f32[10], f32[20], s32[]) %[[START]]), async_group_id=1, async_execution_thread="thread", custom_call_target="bar"
+  // CHECK: ROOT
+  // CHECK-SAME: (f32[20]) custom-call-done((f32[10], f32[20], s32[]) %[[UPDATE]]), async_group_id=1, async_execution_thread="thread",  custom_call_target="bar"
+
+  %0 = "mhlo.async_start"(%arg0) {called_computation = @AsyncOp, execution_thread="thread", group_id = 1} : (tensor<10xf32>) -> !mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>
+  %1 = "mhlo.async_update"(%0) {called_computation = @AsyncOp, execution_thread="thread", group_id=1} : (!mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>
+  %2 = "mhlo.async_done"(%1) {called_computation = @AsyncOp, execution_thread="thread", group_id=1} : (!mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>) -> tensor<20xf32>
+  return %2 : tensor<20xf32>
+}
+
 
 // -----
 

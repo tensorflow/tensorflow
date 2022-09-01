@@ -905,6 +905,94 @@ def HLO_AfterAllOp : HLO_Op<"after_all", [NoSideEffect]> {
   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
+def HLO_AsyncStartOp : HLO_Op<"async_start", []> {
+  let summary = "AsyncStart operator";
+
+  let description = [{
+    AsyncStart kicks off an asynchronous computation.
+
+    This is used when there are functions that contain both asynchronous waits
+    (such as DMAs) and on-thread computation. For example, a function might
+    consist of a computation, a DMA, another computation, a second DMA, and a
+    final computation. This would be represented as an async_start followed by
+    and async_update and an async_done. The async_start would do the first
+    computation on-thread and then start the DMA. The async_update would wait
+    for the DMA to complete if it wasn't yet done, then execute the second
+    computation in the function, and start the second DMA. Finally, the
+    async_done would wait on this last DMA, and then run the last computation
+    that needs to be run on-thread and return the result of that final
+    computation.
+
+    `operands` are passed to the computation directly
+    `called_computation` is the function that will be run asynchronously
+    `execution_thread` is the name of the thread in which it will be run. The main
+      thread is called "main". All threads have names.
+    `group_id` labels a set of async-start, async-done, and zero or more
+      async-update ops corresponding to the same computation. We
+      represent a missing group_id with either an negative value or None.
+
+    This returns all the state needed between async ops. After buffer
+    assignment, the return values represents the space needed to hold the input,
+    results, and any scratchpads needed or edited by the async op.
+  }];
+
+  let arguments = (ins
+    Variadic<HLO_TensorOrTokenOrTuple>:$operands,
+    FlatSymbolRefAttr:$called_computation,
+    StrAttr:$execution_thread,
+    OptionalAttr<I64Attr>:$group_id
+  );
+
+  let results = (outs HLO_AsyncBundle);
+  let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
+}
+
+def HLO_AsyncUpdateOp : HLO_Op<"async_update", [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "AsyncUpdate operator";
+
+  let description = [{
+    AsyncUpdate blocks on an asynchronous computation until a sync barrier.
+    This returns `bundle` after operating on it.
+
+    See the documentation for AsyncStart for more information.
+  }];
+
+  let arguments = (ins
+    HLO_AsyncBundle:$bundle,
+    FlatSymbolRefAttr:$called_computation,
+    StrAttr:$execution_thread,
+    OptionalAttr<I64Attr>:$group_id
+    );
+
+  let results = (outs HLO_AsyncBundle);
+
+  let hasVerifier = 1;
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_AsyncDoneOp : HLO_Op<"async_done", [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "AsyncDone operator";
+
+  let description = [{
+    AsyncDone blocks until the end of an asynchronous computation.
+    It returns the final result of the asynchronous computation.
+
+    See the documentation for AsyncStart for more information.
+  }];
+
+  let arguments = (ins
+    HLO_AsyncBundle:$bundle,
+    FlatSymbolRefAttr:$called_computation,
+    StrAttr:$execution_thread,
+    OptionalAttr<I64Attr>:$group_id
+    );
+
+  let results = (outs Variadic<HLO_TensorOrTokenOrTuple>);
+  let hasVerifier = 1;
+  let hasCustomHLOConverter = 1;
+}
+
 // Xla Client API has two separate calls for indexed and predicated conditional,
 // although both eventually map to kConditional HLO. IfOp maps to predicated
 // conditional use of kConditional HLO.

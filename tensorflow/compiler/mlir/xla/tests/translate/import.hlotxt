@@ -1527,6 +1527,41 @@ add {
   ROOT %add-dep = f32[4,4] add-dependency(f32[4,4] %Arg_0.1, token[] %after-all)
 }
 
+// CHECK-LABEL: func private @AsyncOp
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<10xf32>)
+ %AsyncOp (p0.1: f32[10]) -> f32[20] {
+   %p0.1 = f32[10]{0} parameter(0)
+  // CHECK:  "mhlo.custom_call"
+   ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %p0.1),
+                                  custom_call_target="foo"
+ }
+
+// CHECK-LABEL: func private @async
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<10xf32>)
+%async (p0: f32[10]) -> f32[20] {
+   %p0 = f32[10]{0} parameter(0)
+  // CHECK:  %[[START:.*]] = "mhlo.async_start"(%[[ARG0]])
+  // CHECK-SAME: called_computation = @AsyncOp
+  // CHECK-SAME: execution_thread = "main"
+  // CHECK-SAME: group_id = 1
+   %async-start = (f32[10]{0}, f32[20]{0}, s32[]) async-start(%p0),
+                                                    calls=%AsyncOp,
+                                                    async_group_id=1
+  // CHECK: %[[UPDATE:.*]] = "mhlo.async_update"(%[[START]])
+  // CHECK-SAME: called_computation = @AsyncOp
+  // CHECK-SAME: execution_thread = "main"
+  // CHECK-SAME: group_id = 1
+   %async-update = (f32[10]{0}, f32[20]{0}, s32[]) async-update(
+                                                         %async-start),
+                                                     calls=%AsyncOp,
+                                                     async_group_id=1
+  // CHECK: "mhlo.async_done"(%[[UPDATE]])
+  // CHECK-SAME: called_computation = @AsyncOp
+  // CHECK-SAME: execution_thread = "main"
+  // CHECK-SAME: group_id = 1
+   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp, async_group_id=1
+ }
+
 // CHECK-LABEL: func private @test_args_and_result_with_sharding
 // CHECK-SAME: ([[Arg:%.*]]: tensor<4xi32> {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"}) -> (tensor<4xi32> {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"})
 %test_args_and_result_with_sharding (Arg_0.1: s32[4]) -> s32[4] {
