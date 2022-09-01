@@ -373,6 +373,7 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
     typedef Scalar Coefficient;
     const Scalar alpha = Scalar(1.0);
 
+#if GOOGLE_CUDA
 
     // TODO(b/146763573): Consider using Trsv here when the right hand side is
     // a vector. This will require an explicit transpose since Trsv assumes
@@ -407,6 +408,15 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
         }
       }
     }
+#elif TENSORFLOW_USE_ROCM
+    for (int batch = 0; batch < batch_size; ++batch) {
+      OP_REQUIRES_OK(
+          context,
+          solver->Trsm(side, uplo, trans, diag, colmajor_rows, colmajor_cols,
+                       &alpha, a_ptrs[batch], leading_dim_matrix /*lda*/,
+                       out_ptrs[batch], leading_dim_output /*ldb*/));
+    }
+#endif
   }
 };
 
