@@ -117,7 +117,7 @@ TEST_F(TFRDecomposeContextTest, FLOAT_1_ins) {
   auto decomposed = test_ctx_->ExpandNode(test_node, "test");
   EXPECT_TRUE(decomposed.ok());
   std::vector<NodeAndType> expected_results{{"Identity", DT_FLOAT}};
-  EXPECT_THAT(NodesSequenceOf(decomposed.ValueOrDie()),
+  EXPECT_THAT(NodesSequenceOf(decomposed.value()),
               ElementsAreArray(expected_results));
 }
 
@@ -136,7 +136,7 @@ TEST_F(TFRDecomposeContextTest, FLOAT_3_ins) {
 
   std::vector<NodeAndType> expected_results{{"RiscAddDummy", DT_FLOAT},
                                             {"RiscAddDummy", DT_FLOAT}};
-  EXPECT_THAT(NodesSequenceOf(decomposed.ValueOrDie()),
+  EXPECT_THAT(NodesSequenceOf(decomposed.value()),
               ElementsAreArray(expected_results));
 }
 
@@ -154,7 +154,7 @@ TEST_F(TFRDecomposeContextTest, INT32_3_ins) {
 
   std::vector<NodeAndType> expected_results{{"RiscAddDummy", DT_INT32},
                                             {"RiscAddDummy", DT_INT32}};
-  EXPECT_THAT(NodesSequenceOf(decomposed.ValueOrDie()),
+  EXPECT_THAT(NodesSequenceOf(decomposed.value()),
               ElementsAreArray(expected_results));
 }
 

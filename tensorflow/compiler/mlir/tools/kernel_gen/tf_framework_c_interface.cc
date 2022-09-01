@@ -189,7 +189,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
             /*jit_i64_indexed_for_large_tensors=*/false,
             /*apply_cl_options=*/false);
     if (!status_or_module.ok()) return nullptr;
-    module = std::move(status_or_module.ValueOrDie());
+    module = std::move(status_or_module.value());
 
     if (!cache_dir.empty() && tenv->RecursivelyCreateDir(cache_dir).ok()) {
       // Save the compilation result here for future processes to use.
@@ -205,7 +205,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   } else {
     module = tensorflow::kernel_gen::SetupContextAndParseModule(
                  context, item.result_module())
-                 .ValueOrDie();
+                 .value();
   }
 
   // Initialize LLVM targets.

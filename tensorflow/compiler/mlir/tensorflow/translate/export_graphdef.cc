@@ -556,7 +556,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         // definition library
         // TODO(prakalps): If two functions have cyclic dependence, this will
         // introduce an infinite loop.
-        TF_RETURN_IF_ERROR(convert_called_function(op_name.ValueOrDie().str()));
+        TF_RETURN_IF_ERROR(convert_called_function(op_name.value().str()));
       }
 
       if (IsLegacyCallInstruction(&inner_op)) {

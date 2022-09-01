@@ -258,7 +258,7 @@ GraphdefToSplattedMlirTranslateFunction(
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return module_or.status();
   }
-  auto& module = module_or.ValueOrDie();
+  auto& module = module_or.value();
   std::srand(0);
   for (auto fn : module->getOps<mlir::func::FuncOp>()) {
     for (auto& bb : fn) {

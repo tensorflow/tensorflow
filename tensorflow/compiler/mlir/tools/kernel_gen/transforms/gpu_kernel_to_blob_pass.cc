@@ -62,7 +62,7 @@ class GpuKernelToBlobPass
     gpu::GPUModuleOp gpu_module = getOperation();
     auto blob_or = GetGpuBinaryBlob(gpu_module);
     if (blob_or.ok()) {
-      const auto& blob = blob_or.ValueOrDie();
+      const auto& blob = blob_or.value();
       std::string blob_string(blob.begin(), blob.end());
       gpu_module->setAttr(blob_annotation_,
                           StringAttr::get(&getContext(), blob_string));
@@ -179,7 +179,7 @@ class GpuKernelToBlobPass
                                                      ptx.c_str(), gpu_asm_opts);
         if (gpu_asm.ok()) {
           images.push_back(
-              {absl::StrCat("sm_", arch), std::move(gpu_asm.ValueOrDie())});
+              {absl::StrCat("sm_", arch), std::move(gpu_asm.value())});
         } else {
 #ifdef PLATFORM_GOOGLE
           // Require compilation with ptxas.

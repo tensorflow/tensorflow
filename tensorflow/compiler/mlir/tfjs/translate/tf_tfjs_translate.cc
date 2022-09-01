@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
   tensorflow::AddTFToTFJSConversionPasses(&pm);
 
   std::string result;
-  auto status = tensorflow::ConvertTFOpsToTfjsJSON(module.ValueOrDie().get(),
+  auto status = tensorflow::ConvertTFOpsToTfjsJSON(module.value().get(),
                                                    output_mlir, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
