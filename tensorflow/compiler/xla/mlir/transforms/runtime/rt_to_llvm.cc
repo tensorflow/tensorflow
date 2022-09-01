@@ -20,9 +20,11 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Async/IR/Async.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -434,6 +436,27 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   llvm_converter.addConversion(RuntimeTypeConverter::ConvertKernelContextType);
   llvm_converter.addConversion(RuntimeTypeConverter::ConvertStatusType);
 
+  // TODO(ezhulenev): We should combine AsyncToLLVM and RtToLLVM into a single
+  // pass that composed from `rt` and `async` patterns, because they both
+  // rewriter function into the CFG and they interact badly.
+
+  // Convert all async types to opaque pointers.
+  llvm_converter.addConversion([](Type type) -> Optional<Type> {
+    if (type.isa<async::TokenType, async::GroupType, async::ValueType>())
+      return LLVM::LLVMPointerType::get(IntegerType::get(type.getContext(), 8));
+
+    return llvm::None;
+  });
+
+  // Use UnrealizedConversionCast as the bridge so that we don't need to pull
+  // in patterns for other dialects.
+  auto add_unrealized_cast = [](OpBuilder &builder, Type type,
+                                ValueRange inputs, Location loc) {
+    auto cast = builder.create<UnrealizedConversionCastOp>(loc, type, inputs);
+    return Optional<Value>(cast.getResult(0));
+  };
+  converter.addSourceMaterialization(add_unrealized_cast);
+
   // Add type conversions for user-defined types so that we can properly convert
   // all function signatures in the module and prepare values for custom calls.
   if (opts_.populate_type_conversions) {
@@ -481,6 +504,10 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // Add dynamic legality constraints to apply conversions defined above.
   target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
     return converter.isSignatureLegal(op.getFunctionType());
+  });
+
+  target.addDynamicallyLegalOp<func::CallOp>([&](func::CallOp op) {
+    return converter.isSignatureLegal(op.getCalleeType());
   });
 
   if (failed(applyPartialConversion(module, target, std::move(patterns))))

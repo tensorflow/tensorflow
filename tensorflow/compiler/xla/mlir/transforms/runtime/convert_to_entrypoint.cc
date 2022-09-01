@@ -147,7 +147,9 @@ static void ConvertReturnOperations(func::FuncOp func, Value exec_ctx) {
 static void ConvertAssertOperations(func::FuncOp func, Value exec_ctx) {
   // Collect all assert operations in the function body.
   llvm::SmallVector<cf::AssertOp> asserts;
-  func.walk([&](cf::AssertOp op) { asserts.push_back(op); });
+  func.walk([&](cf::AssertOp op) {
+    if (op->getParentOp() == func) asserts.push_back(op);
+  });
 
   // Rewrite all asserts to the Runtime API calls.
   for (cf::AssertOp assert : asserts) {
