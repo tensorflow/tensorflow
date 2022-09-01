@@ -830,6 +830,7 @@ cc_library(
         ":mhlo_pass_details",
         ":mlir_hlo",
         ":thlo",
+        ":type_conversion",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",

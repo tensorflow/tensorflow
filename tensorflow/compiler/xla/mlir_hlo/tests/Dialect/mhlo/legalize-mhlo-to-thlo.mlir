@@ -121,6 +121,29 @@ func.func @simple_gather(%operand : tensor<3x3xf32>,
 //  CHECK-SAME:   outs(%[[INIT]] : tensor<3xf32>)
 //       CHECK: return %[[GATHER]]
 
+func.func @simple_gather_unsigned(
+    %operand : tensor<3x3xui32>, %indices: tensor<3x2xi64>) -> tensor<3xui32> {
+  %0 = "mhlo.gather"(%operand, %indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 1,
+      offset_dims = [],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<3x3xui32>, tensor<3x2xi64>) -> tensor<3xui32>
+  func.return %0 : tensor<3xui32>
+}
+// CHECK-LABEL: @simple_gather_unsigned
+//       CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<3x3xui32> to tensor<3x3xi32>
+//       CHECK: %[[INIT:.*]] = linalg.init_tensor [3] : tensor<3xi32>
+//       CHECK: %[[GATHER:.*]] = thlo.gather
+//  CHECK-SAME:   ins(%[[CAST]] : tensor<3x3xi32>, %arg1 : tensor<3x2xi64>)
+//  CHECK-SAME:   outs(%[[INIT]] : tensor<3xi32>)
+//       CHECK: %[[CAST2:.*]] = builtin.unrealized_conversion_cast %[[GATHER]] : tensor<3xi32> to tensor<3xui32>
+//       CHECK: return %[[CAST2]]
+
 func.func @unsupported_gather(%operand: tensor<3x3xf32>,
                               %indices: tensor<3x2xi64>) -> tensor<3xf32> {
   %0 = "mhlo.gather"(%operand, %indices) {

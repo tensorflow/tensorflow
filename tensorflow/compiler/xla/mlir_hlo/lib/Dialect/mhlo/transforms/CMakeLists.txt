@@ -91,6 +91,7 @@ add_mlir_library(MhloToThloConversion
 
   LINK_LIBS PUBLIC
   MhloDialect
+  MhloTypeConversion
   THLODialect
   MLIRIR
   MLIRMhloUtils
