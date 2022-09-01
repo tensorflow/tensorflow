@@ -8,7 +8,6 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -674,15 +673,6 @@ py_library(
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:resource",
-    ],
-)
-
-pybind_extension(
-    name = "_concrete_function",
-    srcs = ["function.cc"],
-    deps = [
-        "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 
