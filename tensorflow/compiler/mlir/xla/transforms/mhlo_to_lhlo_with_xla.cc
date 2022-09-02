@@ -699,7 +699,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     return EmitCholesky(custom_call_instr);
   }
 
-  if (xla::gpu::IsLegacyCublasMatmul(*instr)) {
+  if (xla::gpu::IsCublasGemm(*instr)) {
     return EmitGemm(custom_call_instr);
   }
 

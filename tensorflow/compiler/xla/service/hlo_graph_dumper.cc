@@ -1273,7 +1273,7 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
     if (config.ok()) {
       props = ExtractCudnnConvBackendConfigProps(*config);
     }
-  } else if (gpu::IsCublasGemm(*instr)) {
+  } else if (instr->IsCustomCall(gpu::kGemmCallTarget)) {
     StatusOr<gpu::GemmBackendConfig> config =
         instr->backend_config<gpu::GemmBackendConfig>();
     if (config.ok()) {

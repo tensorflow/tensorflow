@@ -22,8 +22,7 @@ namespace xla {
 namespace gpu {
 
 Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
-  if (custom_call->custom_call_target() == gpu::kGemmCallTarget ||
-      custom_call->custom_call_target() == gpu::kCublasLtMatmulCallTarget) {
+  if (custom_call->custom_call_target() == gpu::kGemmCallTarget) {
     // The naming conventions and meanings of gemm parameters are documented
     // here:
     // https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gemm

@@ -54,9 +54,6 @@ std::string CudnnConvKindToString(CudnnConvKind kind);
 // after a GemmRewriter lowering pass.
 bool IsCublasGemm(const HloInstruction& hlo);
 
-// Matrix multiplication that calls into legacy cublas.
-bool IsLegacyCublasMatmul(const HloInstruction& hlo);
-
 // Matrix multiplication that calls into cublasLt.
 bool IsCublasLtMatmul(const HloInstruction& hlo);
 

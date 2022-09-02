@@ -69,9 +69,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_cudnn_frontend(true);
 
-  // TODO(b/241801928): Remove this flag and legacy cublas support once cublasLt
-  // is fully supported
-  opts.set_xla_gpu_enable_cublaslt(true);
+  opts.set_xla_gpu_enable_cublaslt(false);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
